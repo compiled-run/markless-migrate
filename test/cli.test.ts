@@ -32,10 +32,13 @@ test('network needs page URLs, a known profile and browser, and one --control fo
 	assert.match((await run()).stdout, /^  network <url>\.\.\. /m);
 });
 
-test('check takes --slow-network profiles, and its other flags only with one', async () => {
-	assert.match((await run('check', '--old', 'https://a.example', '--new', 'https://b.example', '--route', '/', '--slow-network-runs', '3')).stderr, /go with --slow-network <profile>/);
-	assert.match((await run('check', '--old', 'https://a.example', '--new', 'https://b.example', '--route', '/', '--slow-network', 'edge')).stderr, /unknown --slow-network edge: one of regular-2g, regular-3g, slow-4g, chrome-slow-4g/);
-	assert.match((await run('check', '--old', 'https://a.example', '--new', 'https://b.example', '--route', '/', '--slow-network', 'regular-2g', '--slow-network-browser', 'opera')).stderr, /unknown --slow-network-browser opera/);
+test('check takes --slow-network profiles and browsers, and --no-slow-network alone', async () => {
+	const check = async (...extra: string[]) => (await run('check', '--old', 'https://a.example', '--new', 'https://b.example', '--route', '/', ...extra)).stderr;
+	assert.match(await check('--no-slow-network', '--slow-network-runs', '5'), /--no-slow-network and --slow-network-runs contradict each other/);
+	assert.match(await check('--slow-network', 'edge'), /unknown --slow-network edge: one of regular-2g, regular-3g, slow-4g, chrome-slow-4g/);
+	assert.match(await check('--slow-network-browser', 'opera'), /unknown --slow-network-browser opera/);
+	assert.match(await check('--slow-network-runs', '3'), /at least 4/);
+	assert.match((await run()).stdout, /Slow network, on by default/);
 });
 
 test('an unknown command is a usage error', async () => {

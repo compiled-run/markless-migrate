@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
+import { deployOf, NetworkCache } from './slow-network-cache.ts';
+import { GATED, noiseBand, resolution } from './slow-network-verdicts.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
 export const NETWORK_BROWSERS = ['chromium', 'firefox', 'webkit'] as const;
@@ -41,15 +43,19 @@ export interface NetworkRun {
 	/** The frame after the control first changed state (aria-selected, aria-expanded, aria-pressed, aria-checked, data-state, open). */
 	readonly answered?: number;
 	readonly clicks: number;
+	/** No control to click was on the page by the time it had loaded and the network gone quiet. */
+	readonly noControl?: boolean;
 	/** Bytes the browser received over the link, TLS and framing included: by the answer, and once the network went quiet for 2 s (at most 60 s after the answer). */
 	readonly bytesByAnswer?: number;
 	readonly bytes: number;
 	/** JavaScript downloaded (compressed, as sent) by the answer and in all. */
 	readonly jsDownloadedByAnswer?: number;
 	readonly jsDownloaded: number;
-	/** JavaScript the page executed by the answer: bytes of source in functions and blocks that ran (Chromium only). */
+	/** JavaScript the page executed by the answer, or by the end of the load when there was nothing to click: bytes of source in functions and blocks that ran (Chromium only). */
 	readonly jsExecutedByAnswer?: number;
 	readonly requests: readonly NetworkRequest[];
+	/** The longest time this process went without running a 100 ms timer: a machine that pauses or swaps the measurement skews every time in it. */
+	readonly stalledMs?: number;
 	readonly error?: string;
 }
 
@@ -94,7 +100,10 @@ export interface NetworkCell {
 	readonly median: Readonly<Partial<Record<RunMetric, number>>>;
 	/** The run whose answer is the median, kept whole for its request waterfall. */
 	readonly medianRun?: NetworkRun;
+	/** Why the cell was not measured: the browser is not installed, or the profile is one it cannot apply. */
 	readonly unavailable?: string;
+	/** The runs came from an earlier check of the same deploy. */
+	readonly cached?: boolean;
 }
 
 export function summarizeCell(profile: string, browser: NetworkBrowser, runs: readonly NetworkRun[]): NetworkCell {
@@ -131,9 +140,9 @@ export function blankFrame(png: Buffer): boolean {
 	return true;
 }
 
-const FRAME_EVERY_MS = 100;
+export const FRAME_EVERY_MS = 100;
 
-/** Epoch ms of the first screenshot with anything painted, taken every 100 ms until one is or `stop` says so. */
+/** Epoch ms when the first screenshot with anything painted came back, taken every 100 ms until one is or `stop` says so. */
 async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<number | undefined> {
 	while (!stop()) {
 		const at = Date.now();
@@ -143,10 +152,50 @@ async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<numbe
 		const png = await page.screenshot({ scale: 'css', type: 'png', timeout: 5000 }).catch(() => undefined);
 		if (before === undefined) delete process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY;
 		else process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = before;
-		if (png && !blankFrame(png)) return at;
+		// Chromium holds a capture until the page can paint, so the frame is as late as the capture's return.
+		if (png && !blankFrame(png)) return Date.now();
 		await new Promise((r) => setTimeout(r, Math.max(0, FRAME_EVERY_MS - (Date.now() - at))));
 	}
 	return undefined;
+}
+
+/** A process stalled longer than this (a job queue pausing it, the machine swapping) has a run whose times are not the network's. */
+export const STALL_MS = 1000;
+const RETAKES = 2;
+/** Fresh runs of a cached old page each check takes: the cached runs stand only while these land among them. */
+export const CACHE_SAMPLES = 2;
+
+/** Every gated time of each fresh run lies within the cached runs' range, widened by their own band. */
+function agrees(cachedRuns: readonly NetworkRun[], fresh: readonly NetworkRun[]): boolean {
+	const ok = fresh.filter((r) => !r.error);
+	if (!ok.length) return false;
+	for (const metric of GATED) {
+		const before = cachedRuns.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+		const now = ok.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+		if (!before.length || !now.length) continue;
+		const band = Math.max(noiseBand(before) ?? 0, resolution(metric));
+		const [lo, hi] = [Math.min(...before) - band, Math.max(...before) + band];
+		if (now.some((v) => v < lo || v > hi)) return false;
+	}
+	return true;
+}
+
+/** Watches this process's timers: `stop` returns the longest gap beyond the expected tick. */
+export function stallWatch(everyMs = 100): { stop(): number } {
+	let last = performance.now();
+	let worst = 0;
+	const timer = setInterval(() => {
+		const now = performance.now();
+		worst = Math.max(worst, now - last - everyMs);
+		last = now;
+	}, everyMs);
+	return {
+		stop: () => {
+			clearInterval(timer);
+			worst = Math.max(worst, performance.now() - last - everyMs);
+			return Math.max(0, Math.round(worst));
+		},
+	};
 }
 
 // Runs in the page before its own scripts: notes trusted clicks, the first state change on a clicked control (or one
@@ -155,6 +204,7 @@ function observe() {
 	const STATE = ['aria-selected', 'aria-expanded', 'aria-pressed', 'aria-checked', 'data-state', 'open'];
 	const w = window as unknown as { __mmNet: { clicks: number[]; answered?: number; controls: Element[] } };
 	const net = (w.__mmNet = { clicks: [], controls: [] } as { clicks: number[]; answered?: number; controls: Element[] });
+	performance.setResourceTimingBufferSize?.(100_000);
 	const key = (el: Element) => `${el.getAttribute('role') ?? el.tagName}|${(el.textContent ?? '').trim().slice(0, 80)}`;
 	addEventListener(
 		'click',
@@ -191,7 +241,7 @@ function observe() {
 	watch();
 }
 
-async function pageTimings(page: Page): Promise<Omit<NetworkRun, 'clicks' | 'bytes' | 'jsDownloaded' | 'requests' | 'firstClick' | 'answered'> & { origin: number; firstClick?: number; answered?: number }> {
+async function pageTimings(page: Page): Promise<Omit<NetworkRun, 'clicks' | 'bytes' | 'jsDownloaded' | 'requests' | 'firstClick' | 'answered'> & { origin: number; firstClick?: number; answered?: number; resources: { url: string; start: number; end: number }[] }> {
 	return page.evaluate(async () => {
 		const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
 		const fcp = performance.getEntriesByName('first-contentful-paint')[0]?.startTime;
@@ -217,7 +267,8 @@ async function pageTimings(page: Page): Promise<Omit<NetworkRun, 'clicks' | 'byt
 			firstClick: at(net?.clicks[0]),
 			answered: at(net?.answered),
 		};
-		return Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined)) as never;
+		const resources = [nav, ...performance.getEntriesByType('resource')].filter((e): e is PerformanceResourceTiming => Boolean(e)).map((e) => ({ url: e.name, start: e.startTime, end: e.responseEnd }));
+		return { ...Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined)), resources } as never;
 	});
 }
 
@@ -226,6 +277,8 @@ export interface NetworkRunOptions {
 	readonly control?: string;
 	/** false skips the screenshots that find the first painted frame. */
 	readonly firstFrame?: boolean;
+	/** How long after the answer to wait for the network to go quiet, at most; default 60 s. */
+	readonly afterAnswerMs?: number;
 	/** Give up on a run after this long; default 120 s. */
 	readonly timeoutMs?: number;
 	/** Host names the proxy connects elsewhere (tests). */
@@ -244,6 +297,14 @@ async function launch(name: NetworkBrowser, throttle: Throttle): Promise<Browser
 
 /** One cold load of `url` over `profile` in a fresh `browser`, clicking the control every 250 ms from when it is on screen until it answers. */
 export async function networkRun(url: string, profile: NetworkProfile, name: NetworkBrowser, options: NetworkRunOptions = {}): Promise<NetworkRun> {
+	const watch = stallWatch();
+	const run = await measureOnce(url, profile, name, options);
+	const stalledMs = watch.stop();
+	if (stalledMs < STALL_MS) return run;
+	return { ...run, stalledMs, error: `this machine stalled the measurement for ${(stalledMs / 1000).toFixed(1)} s (a paused job or swapping): its times are not the network's` };
+}
+
+async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBrowser, options: NetworkRunOptions): Promise<NetworkRun> {
 	const timeoutMs = options.timeoutMs ?? 120_000;
 	if (profile.devtools && name !== 'chromium') return { clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], error: `${profile.name} is DevTools throttling, which only Chromium has` };
 	// DevTools throttling happens in the browser; the proxy then only counts the bytes.
@@ -275,16 +336,25 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 		const coverage = name === 'chromium';
 		if (coverage) await page.coverage.startJSCoverage({ resetOnNavigation: false, reportAnonymousScripts: false });
 		const deadline = Date.now() + timeoutMs;
+		let loaded = false;
+		page.once('load', () => (loaded = true));
 		await page.goto(url, { waitUntil: 'commit', timeout: timeoutMs });
 		let clicks = 0;
 		let done = false;
-		const frame = options.firstFrame !== false ? firstPaintedFrame(page, () => done || Date.now() > deadline) : Promise.resolve(undefined);
+		let seen = false;
+		let noControl = false;
+		const frame = options.firstFrame !== false ? firstPaintedFrame(page, () => done || noControl || Date.now() > deadline) : Promise.resolve(undefined);
 		void answered.then(() => (done = true));
 		const control = page.locator(options.control ?? AUTO_CONTROL).first();
 		while (!done && Date.now() < deadline) {
 			const started = Date.now();
 			const box = await control.boundingBox({ timeout: CLICK_EVERY_MS }).catch(() => null);
+			if (!box && !seen && loaded && Date.now() - throttle.lastActivity() > QUIET_MS) {
+				noControl = true;
+				break;
+			}
 			if (box && box.width > 0 && box.height > 0) {
+				seen = true;
 				if (box.y < 0 || box.y + box.height > VIEWPORT.height) await control.scrollIntoViewIfNeeded({ timeout: CLICK_EVERY_MS }).catch(() => {});
 				else {
 					await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => {});
@@ -293,8 +363,8 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 			}
 			await Promise.race([answered, new Promise((r) => setTimeout(r, Math.max(0, CLICK_EVERY_MS - (Date.now() - started))))]);
 		}
-		const executed = coverage && done ? executedBytes((await page.coverage.stopJSCoverage()).filter((e) => e.url)) : undefined;
-		const settle = Math.min(deadline, Date.now() + AFTER_ANSWER_MS);
+		const executed = coverage && (done || noControl) ? executedBytes((await page.coverage.stopJSCoverage()).filter((e) => e.url)) : undefined;
+		const settle = Math.min(deadline, Date.now() + (options.afterAnswerMs ?? AFTER_ANSWER_MS));
 		while (Date.now() < settle && Date.now() - throttle.lastActivity() < QUIET_MS) await new Promise((r) => setTimeout(r, 200));
 		const painted = await frame;
 		const timings = await pageTimings(page);
@@ -303,11 +373,15 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 		let jsByAnswer = 0;
 		let jsDownloaded = 0;
 		const answerEpoch = timings.answered !== undefined ? timings.origin + timings.answered : undefined;
+		// The page's own Resource Timing, where it lists the request: Chromium reports some preloads to Playwright as finishing seconds after their bytes arrived.
+		const listed = new Map<string, { start: number; end: number }[]>();
+		for (const r of timings.resources) if (r.end > 0) listed.set(r.url, [...(listed.get(r.url) ?? []), r]);
 		for (const got of await Promise.all(finished)) {
 			if (!got) continue;
+			const own = listed.get(got.request.url())?.shift();
 			const timing = got.request.timing();
-			const start = Math.round(timing.startTime - timings.origin);
-			const end = Math.round(start + Math.max(timing.responseEnd, 0));
+			const start = Math.round(own ? own.start : timing.startTime - timings.origin);
+			const end = Math.round(own ? own.end : timing.startTime - timings.origin + Math.max(timing.responseEnd, 0));
 			requests.push({ url: got.request.url(), type: got.request.resourceType(), start, end, bytes: got.bytes });
 			if (got.script) {
 				jsDownloaded += got.bytes;
@@ -315,7 +389,7 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 			}
 		}
 		requests.sort((a, b) => a.start - b.start);
-		const { origin: _, ...rest } = timings;
+		const { origin: _, resources: __, ...rest } = timings;
 		return {
 			...rest,
 			...(firstFrame !== undefined ? { firstFrame } : {}),
@@ -325,7 +399,8 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 			jsDownloaded,
 			...(executed !== undefined ? { jsExecutedByAnswer: executed } : {}),
 			requests,
-			...(timings.answered === undefined ? { error: `the control (${options.control ?? 'first unselected tab or closed disclosure'}) never answered a click within ${Math.round(timeoutMs / 1000)} s` } : {}),
+			...(noControl ? { noControl } : {}),
+			...(timings.answered === undefined && !noControl ? { error: seen ? `the control (${options.control ?? 'first unselected tab or closed disclosure'}) never answered a click within ${Math.round(timeoutMs / 1000)} s` : `no control (${options.control ?? 'first unselected tab or closed disclosure'}) showed, and the page had not finished loading, within ${Math.round(timeoutMs / 1000)} s` } : {}),
 		};
 	} catch (error) {
 		return { clicks: 0, bytes: throttle.downloaded(), jsDownloaded: 0, requests: [], error: (error as Error).message.split('\n')[0]! };
@@ -353,6 +428,12 @@ export interface SlowNetworkOptions extends NetworkRunOptions {
 	/** Pages measured at once, each over its own link; default 1. */
 	readonly concurrency?: number;
 	readonly onRun?: (label: string, run: NetworkRun) => void;
+	/** Old-page runs reused from earlier checks of the same deploy: `deploys` maps each url to its fingerprint, `reuse` names the urls whose runs may be reused. */
+	readonly cache?: { readonly store: NetworkCache; readonly deploys: Readonly<Record<string, string>>; readonly reuse: readonly string[] };
+	/** Where check keeps old-page runs between checks (.migrate/slow-network). */
+	readonly cacheDir?: string;
+	/** Takes one run in place of networkRun (tests). */
+	readonly runner?: typeof networkRun;
 }
 
 export interface SideNetwork {
@@ -369,30 +450,80 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 	});
 	const browsers = options.browsers ?? ['chromium'];
 	const runs = options.runs ?? DEFAULT_NETWORK_RUNS;
+	const runner = options.runner ?? networkRun;
 	const results = new Map<string, NetworkRun[]>();
-	const unavailable = new Map<NetworkBrowser, string>();
-	for (const b of browsers) if (!browserInstalled(b)) unavailable.set(b, `${b} is not installed (npx playwright install ${b})`);
+	const hits = new Map<string, NetworkRun[]>();
+	const cached = new Set<string>();
+	const installed = new Map<NetworkBrowser, boolean>(browsers.map((b) => [b, options.runner ? true : browserInstalled(b)]));
+	const skipped = (profile: NetworkProfile, b: NetworkBrowser) =>
+		!installed.get(b) ? `${b} is not installed (npx playwright install ${b})` : profile.devtools && b !== 'chromium' ? `${profile.name} is Chrome DevTools throttling, which only Chromium has` : undefined;
+	const k = (url: string, profile: string, b: string) => `${url}\n${profile}\n${b}`;
+	const cacheKey = (url: string, profile: NetworkProfile, b: NetworkBrowser) => {
+		const deploy = options.cache?.deploys[url];
+		const control = options.controls?.[url] ?? options.control;
+		return deploy && options.cache?.reuse.includes(url) ? { url, profile: profile.name, browser: b, runs, deploy, ...(control ? { control } : {}) } : undefined;
+	};
+	for (const profile of profiles)
+		for (const b of browsers)
+			for (const url of urls) {
+				const key = skipped(profile, b) ? undefined : cacheKey(url, profile, b);
+				const hit = key ? await options.cache!.store.get(key) : undefined;
+				if (hit) {
+					hits.set(k(url, profile.name, b), hit.slice(0, runs));
+					cached.add(k(url, profile.name, b));
+				}
+			}
+	const job = (url: string, profile: NetworkProfile, b: NetworkBrowser) => async () => {
+		const control = options.controls?.[url] ?? options.control;
+		let run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
+		for (let retake = 0; retake < RETAKES && run.stalledMs !== undefined && run.stalledMs >= STALL_MS; retake++) run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
+		results.set(k(url, profile.name, b), [...(results.get(k(url, profile.name, b)) ?? []), run]);
+		options.onRun?.(`${b} ${profile.name} ${url}`, run);
+	};
+	const drain = async (jobs: (() => Promise<void>)[]) => {
+		let next = 0;
+		await Promise.all(
+			Array.from({ length: Math.max(1, options.concurrency ?? 1) }, async () => {
+				while (next < jobs.length) await jobs[next++]!();
+			}),
+		);
+	};
 	const jobs: (() => Promise<void>)[] = [];
 	for (let i = 0; i < runs; i++)
 		for (const profile of profiles)
 			for (const b of browsers) {
-				if (unavailable.has(b)) continue;
-				for (const url of i % 2 ? [...urls].reverse() : urls)
-					jobs.push(async () => {
-						const control = options.controls?.[url] ?? options.control;
-						const run = await networkRun(url, profile, b, { ...options, ...(control ? { control } : {}) });
-						const k = `${url}\n${profile.name}\n${b}`;
-						results.set(k, [...(results.get(k) ?? []), run]);
-						options.onRun?.(`${b} ${profile.name} ${url}`, run);
-					});
+				if (skipped(profile, b)) continue;
+				// A cached page is still taken a few times, to check the cache against this session.
+				for (const url of i % 2 ? [...urls].reverse() : urls) if (!cached.has(k(url, profile.name, b)) || i < CACHE_SAMPLES) jobs.push(job(url, profile, b));
 			}
-	let next = 0;
-	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 1) }, async () => {
-		while (next < jobs.length) await jobs[next++]!();
-	}));
+	await drain(jobs);
+	const again: (() => Promise<void>)[] = [];
+	for (const key of [...cached]) {
+		const [url, name, b] = key.split('\n') as [string, string, NetworkBrowser];
+		const fresh = results.get(key) ?? [];
+		if (agrees(hits.get(key)!, fresh)) results.set(key, [...hits.get(key)!, ...fresh]);
+		else {
+			cached.delete(key);
+			for (let i = fresh.length; i < runs; i++) again.push(job(url, NETWORK_PROFILES[name]!, b));
+		}
+	}
+	await drain(again);
+	for (const profile of profiles)
+		for (const b of browsers)
+			for (const url of urls) {
+				const key = cached.has(k(url, profile.name, b)) || skipped(profile, b) ? undefined : cacheKey(url, profile, b);
+				if (key) await options.cache!.store.put(key, results.get(k(url, profile.name, b)) ?? []);
+			}
 	return urls.map((url) => ({
 		url,
-		cells: profiles.flatMap((p) => browsers.map((b) => (unavailable.has(b) ? { profile: p.name, browser: b, runs: [], median: {}, unavailable: unavailable.get(b)! } : summarizeCell(p.name, b, results.get(`${url}\n${p.name}\n${b}`) ?? [])))),
+		cells: profiles.flatMap((p) =>
+			browsers.map((b): NetworkCell => {
+				const reason = skipped(p, b);
+				if (reason) return { profile: p.name, browser: b, runs: [], median: {}, unavailable: reason };
+				const cell = summarizeCell(p.name, b, results.get(k(url, p.name, b)) ?? []);
+				return cached.has(k(url, p.name, b)) ? { ...cell, cached: true } : cell;
+			}),
+		),
 	}));
 }
 
@@ -439,28 +570,59 @@ export function shortNames(urls: readonly string[]): string[] {
 export interface RouteNetwork {
 	readonly old: SideNetwork;
 	readonly new: SideNetwork;
+	/** How long measuring the route took. */
+	readonly ms?: number;
 }
 
-const SUMMARY_METRICS: readonly RunMetric[] = ['answered', 'visibleToAnswer', 'firstFrame', 'lcp', 'bytesByAnswer', 'jsExecutedByAnswer'];
-
-/** One line per network and browser: the summary's medians, old -> new. */
-export function networkLines(network: RouteNetwork | { readonly unavailable: string } | undefined): string[] {
-	if (!network) return [];
-	if ('unavailable' in network) return [`slow network: ${network.unavailable}`];
-	return network.old.cells.map((old, i) => {
-		const next = network.new.cells[i]!;
-		const label = `slow network, ${old.browser} ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
-		if (old.unavailable) return `${label}: ${old.unavailable}`;
-		const runs = Math.min(old.runs.filter((r) => !r.error).length, next.runs.filter((r) => !r.error).length);
-		const parts = SUMMARY_METRICS.filter((m) => old.median[m] !== undefined || next.median[m] !== undefined).map((m) => `${RUN_METRIC_LABEL[m].replace(/ \(Chromium\)$/, '')} ${formatValue(m, old.median[m])} -> ${formatValue(m, next.median[m])}`);
-		const failed = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'new' : 'old'} ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed: ${c.runs.find((r) => r.error)!.error}`] : []));
-		return `${label} (median of ${runs} cold loads): ${parts.join(', ') || 'no run finished'}${failed.length ? `; ${failed.join('; ')}` : ''}`;
-	});
-}
-
-/** Cold loads of the route on old and new over each profile in each browser, the two sides taken in turn. */
+/** Cold loads of the route on old and new over each profile in each browser, the two sides taken in turn; the old page's runs are reused from `cacheDir` while its deploy is the same. */
 export async function measureRouteNetwork(origins: { readonly old: string; readonly new: string }, route: string, options: SlowNetworkOptions = {}): Promise<RouteNetwork> {
+	const started = Date.now();
 	const urls = [new URL(route, origins.old).href, new URL(route, origins.new).href];
-	const [old, next] = await measureSlowNetwork(urls, options);
-	return { old: old!, new: next! };
+	const deploy = options.cacheDir ? await deployOf(urls[0]!) : undefined;
+	const cache = options.cacheDir && deploy ? { store: new NetworkCache(options.cacheDir), deploys: { [urls[0]!]: deploy }, reuse: [urls[0]!] } : undefined;
+	const [old, next] = await measureSlowNetwork(urls, { ...options, ...(cache ? { cache } : {}) });
+	return { old: old!, new: next!, ms: Date.now() - started };
+}
+
+/** What check measures on every page unless --slow-network names others: the two Firefox presets, and Lighthouse's slow 4G with real round trips. */
+export const DEFAULT_CHECK_PROFILES = ['regular-3g', 'regular-2g', 'slow-4g'] as const;
+/** Cold loads a side: the old page's runs are split in two to find its own noise, which needs 4; 5 a side lets Mann-Whitney reach p = 0.004, and a median of 5 holds when 2 of them land on the slow side of a race between requests (measured on the shadcn port at Regular 2G). */
+export const DEFAULT_CHECK_RUNS = 5;
+export const DEFAULT_CHECK_CONCURRENCY = 2;
+/** In check, "in all" ends this long after the answer: what the page fetched before it is the measure. */
+export const CHECK_AFTER_ANSWER_MS = 10_000;
+/** A run in check gives up after this long: the shadcn original took 113 s to answer on Regular 2G. */
+export const CHECK_RUN_TIMEOUT_MS = 240_000;
+
+export interface SlowNetworkFlags {
+	readonly 'no-slow-network'?: boolean;
+	readonly 'slow-network'?: readonly string[];
+	readonly 'slow-network-browser'?: readonly string[];
+	readonly 'slow-network-runs'?: string;
+	readonly 'slow-network-control'?: string;
+	readonly 'slow-network-concurrency'?: string;
+}
+
+/** check's slow-network options from its flags: on by default, off with --no-slow-network. */
+export function slowNetworkFlags(values: SlowNetworkFlags): { readonly options?: SlowNetworkOptions; readonly error?: string } {
+	if (values['no-slow-network']) {
+		const given = (['slow-network', 'slow-network-browser', 'slow-network-runs', 'slow-network-control', 'slow-network-concurrency'] as const).filter((f) => values[f] !== undefined);
+		return given.length ? { error: `--no-slow-network and --${given[0]} contradict each other` } : { options: undefined };
+	}
+	const profiles = [...(values['slow-network'] ?? DEFAULT_CHECK_PROFILES)];
+	const unknown = profiles.find((p) => !NETWORK_PROFILES[p]);
+	if (unknown) return { error: `unknown --slow-network ${unknown}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}` };
+	const browsers = [...(values['slow-network-browser'] ?? NETWORK_BROWSERS)] as NetworkBrowser[];
+	const odd = browsers.find((b) => !NETWORK_BROWSERS.includes(b));
+	if (odd) return { error: `unknown --slow-network-browser ${odd}: one of ${NETWORK_BROWSERS.join(', ')}` };
+	const whole = (flag: 'slow-network-runs' | 'slow-network-concurrency', fallback: number, least: number) => {
+		const raw = values[flag];
+		const n = raw === undefined ? fallback : Number(raw);
+		return Number.isInteger(n) && n >= least ? n : undefined;
+	};
+	const runs = whole('slow-network-runs', DEFAULT_CHECK_RUNS, 4);
+	if (runs === undefined) return { error: "--slow-network-runs must be a whole number of at least 4: the old page's own runs are split in two to tell noise from a difference" };
+	const concurrency = whole('slow-network-concurrency', DEFAULT_CHECK_CONCURRENCY, 1);
+	if (concurrency === undefined) return { error: '--slow-network-concurrency must be a whole number of at least 1' };
+	return { options: { profiles, browsers, runs, concurrency, ...(values['slow-network-control'] ? { control: values['slow-network-control'] } : {}) } };
 }

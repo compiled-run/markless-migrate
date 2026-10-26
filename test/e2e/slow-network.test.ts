@@ -42,9 +42,16 @@ for (const name of NETWORK_BROWSERS) {
 	});
 }
 
-test('in Chromium the first painted frame is where FCP says the page painted', async () => {
-	const run = await networkRun(`${origin}/`, LINK, 'chromium', { timeoutMs: 30_000 });
-	assert.ok(Math.abs(run.firstFrame! - run.fcp!) < 400, `first painted frame at ${run.firstFrame} ms, FCP at ${run.fcp} ms`);
+test('in Chromium the first painted frame is where FCP says the page painted, also when a stylesheet holds the paint back', async () => {
+	const blocked = await serve(48_000, 0, true, 64_000);
+	try {
+		const run = await networkRun(`${blocked.origin}/`, LINK, 'chromium', { timeoutMs: 30_000 });
+		const sheet = run.requests.find((r) => r.url.endsWith('/blocking.css'))!;
+		assert.ok(run.fcp! >= sheet.end, `FCP at ${run.fcp} ms, the stylesheet arrived at ${sheet.end} ms`);
+		assert.ok(Math.abs(run.firstFrame! - run.fcp!) < 400, `first painted frame at ${run.firstFrame} ms, FCP at ${run.fcp} ms`);
+	} finally {
+		blocked.server.close();
+	}
 });
 
 test('a control that never answers is an error, not a time', async () => {
@@ -53,24 +60,42 @@ test('a control that never answers is an error, not a time', async () => {
 	assert.equal(run.answered, undefined);
 });
 
-test('check --only load with --slow-network puts both sides cold loads in the summary and the report beside the lab, not as a verdict', async () => {
+const DESKTOP = [{ name: 'desktop', width: 1280, height: 800, isMobile: false }];
+
+test('check is red on the slow network when the new page answers later beyond the old page\'s own noise, naming the cell and what came first', async () => {
 	const { runCheck } = await import('../../src/check/run.ts');
 	const { summarize } = await import('../../src/check/summary.ts');
 	const { renderHtml } = await import('../../src/check/html.ts');
 	const heavier = await serve(120_000);
 	try {
-		const report = await runCheck({ oldOrigin: origin, newOrigin: heavier.origin, routes: ['/'], viewports: [{ name: 'desktop', width: 1280, height: 800, isMobile: false }], only: 'load', load: { runs: 4, psi: false, network: { profiles: ['regular-3g'], runs: 1 } } });
-		const network = report.routes[0]!.load!.network!;
-		assert.ok(!('unavailable' in network));
-		const [old, next] = [network.old.cells[0]!, network.new.cells[0]!];
-		assert.equal(old.profile, 'regular-3g');
-		assert.ok(next.median.answered! > old.median.answered!, `new answered at ${next.median.answered} ms, old at ${old.median.answered} ms: 72 kB more script on 96 kB/s`);
-		assert.ok(report.routes[0]!.failures.every((f) => !/slow network/i.test(f.check)), 'shown, not a verdict');
-		assert.match(summarize(report), /slow network, chromium Regular 3G \(768 kbit\/s, 100 ms RTT\) \(median of 1 cold loads\): First click answered [\d.]+ s -> [\d.]+ s, Painted to first click answered/);
-		const html = renderHtml(report, () => 'x.png');
-		assert.match(html, /<h4>Slow network <small>/);
-		assert.match(html, /<td>First click answered<\/td><td>[\d.]+ s<\/td><td>[\d.]+ s<\/td>/);
+		const report = await runCheck({ oldOrigin: origin, newOrigin: heavier.origin, routes: ['/'], viewports: DESKTOP, only: 'load', load: { runs: 4, psi: false, network: { profiles: ['regular-3g'], browsers: ['chromium'], runs: 4, concurrency: 2 } } });
+		const route = report.routes[0]!;
+		const f = route.failures.find((x) => x.check === 'page load: slow network, chromium Regular 3G (768 kbit/s, 100 ms RTT): First click answered');
+		assert.ok(f, route.failures.map((x) => x.check).join('\n'));
+		assert.equal(route.dimensions.load, 'fail');
+		assert.match(f.actual, /worse, beyond the [\d.]+ s the old page's own runs differ by or the measurement can tell apart \(p = 0\.0\d+\); before the answer the new page finished \d+ kB \([\d.]+ s of the link\): script \/app\.js 12\d\.\d kB/);
+		assert.match(summarize(report), /slow network: 1 of 1 browser and network cells measured, [\d.]+ min/);
+		assert.match(summarize(report), /First click answered [\d.]+ s -> [\d.]+ s \(slower\)/);
+		assert.match(renderHtml(report, () => 'x.png'), /<strong>slower<\/strong> by [\d.]+ s \(old against old: ±/);
 	} finally {
 		heavier.server.close();
 	}
 });
+
+test('the same page against itself is not red on the slow network, and a page with nothing to click is timed to its paint', async () => {
+	const { runCheck } = await import('../../src/check/run.ts');
+	const { summarize } = await import('../../src/check/summary.ts');
+	const [a, b] = await Promise.all([serve(48_000, 0, false), serve(48_000, 0, false)]);
+	try {
+		const report = await runCheck({ oldOrigin: a.origin, newOrigin: b.origin, routes: ['/'], viewports: DESKTOP, only: 'load', load: { runs: 4, psi: false, network: { profiles: ['regular-3g'], browsers: ['chromium'], runs: 4, concurrency: 2 } } });
+		const network = report.routes[0]!.load!.network!;
+		assert.ok(!('unavailable' in network));
+		assert.ok(network.new.cells[0]!.runs.every((r) => r.noControl && !r.error && r.firstFrame !== undefined), JSON.stringify(network.new.cells[0]!.runs.map((r) => r.error)));
+		assert.deepEqual(report.routes[0]!.failures.filter((f) => /slow network/.test(f.check)), []);
+		assert.match(summarize(report), /nothing to click on either page/);
+	} finally {
+		a.server.close();
+		b.server.close();
+	}
+});
+

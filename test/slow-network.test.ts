@@ -61,3 +61,34 @@ test('painted-to-answered counts from the first painted frame, the browser\'s FC
 	assert.equal(summarizeCell('regular-3g', 'webkit', [{ fcp: 1000, answered: 4000, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] }]).median.visibleToAnswer, 3000);
 	assert.match(networkTables([{ url: 'https://a.example/', cells: [cell] }]), /First painted frame +0\.90 s\n +FCP \(as the browser reports it\) +3\.30 s/);
 });
+
+test('check measures every page on Regular 3G, Regular 2G and slow 4G in all three browsers unless told otherwise', async () => {
+	const { slowNetworkFlags, DEFAULT_CHECK_PROFILES } = await import('../src/check/slow-network.ts');
+	assert.deepEqual(DEFAULT_CHECK_PROFILES, ['regular-3g', 'regular-2g', 'slow-4g']);
+	assert.deepEqual(slowNetworkFlags({}), { options: { profiles: ['regular-3g', 'regular-2g', 'slow-4g'], browsers: ['chromium', 'firefox', 'webkit'], runs: 5, concurrency: 2 } });
+	assert.deepEqual(slowNetworkFlags({ 'no-slow-network': true }), { options: undefined });
+	assert.deepEqual(slowNetworkFlags({ 'slow-network': ['regular-2g'], 'slow-network-browser': ['firefox'], 'slow-network-runs': '7', 'slow-network-control': '#tab' }), { options: { profiles: ['regular-2g'], browsers: ['firefox'], runs: 7, concurrency: 2, control: '#tab' } });
+	assert.match(String(slowNetworkFlags({ 'slow-network-runs': '3' }).error), /at least 4: the old page's own runs are split in two to tell noise/);
+	assert.match(String(slowNetworkFlags({ 'slow-network': ['edge'] }).error), /unknown --slow-network edge/);
+	assert.match(String(slowNetworkFlags({ 'no-slow-network': true, 'slow-network': ['regular-2g'] }).error), /--no-slow-network and --slow-network/);
+});
+
+test('a run during which this machine stalled the measuring process is retaken, and named when it stalls every time', async () => {
+	const { stallWatch, measureSlowNetwork } = await import('../src/check/slow-network.ts');
+	const watch = stallWatch(50);
+	const until = Date.now() + 400;
+	while (Date.now() < until);
+	await new Promise((r) => setTimeout(r, 80));
+	assert.ok(watch.stop() >= 300, 'a blocked process is seen as a stall');
+	const calm = stallWatch(50);
+	await new Promise((r) => setTimeout(r, 200));
+	assert.ok(calm.stop() < 150);
+	let calls = 0;
+	const flaky = async (): Promise<NetworkRun> => (++calls === 1 ? { clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], stalledMs: 4000, error: 'stalled' } : { answered: 1000, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] });
+	const [side] = await measureSlowNetwork(['https://a.example/'], { profiles: ['regular-3g'], browsers: ['chromium'], runs: 1, runner: flaky });
+	assert.equal(calls, 2);
+	assert.equal(side!.cells[0]!.median.answered, 1000);
+	const stuck = async (): Promise<NetworkRun> => ({ clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], stalledMs: 4000, error: 'this machine stalled the measurement for 4.0 s' });
+	const [again] = await measureSlowNetwork(['https://a.example/'], { profiles: ['regular-3g'], browsers: ['chromium'], runs: 1, runner: stuck });
+	assert.match(again!.cells[0]!.runs[0]!.error ?? '', /stalled the measurement/);
+});

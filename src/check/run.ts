@@ -34,7 +34,8 @@ import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
-import { measureRouteNetwork } from './slow-network.ts';
+import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRouteNetwork } from './slow-network.ts';
+import { networkFailures } from './slow-network-verdicts.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, weightAllowed, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines, type NetworkRecord } from './network.ts';
@@ -910,13 +911,13 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const networkOptions = options.load?.network;
 			if (networkOptions) {
 				// The proxy cannot add a bypass token to https requests it only tunnels.
-				for (const [route, load] of loads) loads.set(route, { ...load, network: bypassed ? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } : await measureRouteNetwork({ old: options.oldOrigin, new: options.newOrigin }, route, networkOptions) });
+				for (const [route, load] of loads) loads.set(route, { ...load, network: bypassed ? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } : await measureRouteNetwork({ old: options.oldOrigin, new: options.newOrigin }, route, { afterAnswerMs: CHECK_AFTER_ANSWER_MS, timeoutMs: CHECK_RUN_TIMEOUT_MS, ...networkOptions }) });
 			}
 			routes.forEach((r, i) => {
 				const load = anonymous(r) ? loads.get(r.route) : undefined;
 				if (!load) return;
 				// Real PageSpeed Insights, when it answered, is the gate; the calibrated lab stands in for it otherwise.
-				const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load))];
+				const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load)), ...networkFailures(r.route, load.network)];
 				routes[i] = r.only ? { ...r, load, failures, ok: failures.length === 0, dimensions: { ...r.dimensions, load: failures.length ? 'fail' : 'pass' } } : withFailures(r, failures, { load });
 			});
 		}
