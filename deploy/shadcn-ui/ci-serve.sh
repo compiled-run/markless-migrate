@@ -8,7 +8,13 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 wait_for() { for _ in $(seq 1 240); do curl -s -o /dev/null "$1" && return 0; sleep 0.5; done; echo "no answer from $1" >&2; return 1; }
 case "${1:-}" in
 	old)
-		ORIGIN=http://localhost:4000 "$DIR/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
+		# A build restored from an earlier job (check.yml caches deploy/shadcn-ui/old) is served as it is, so every shard and every
+		# run serves the same build and the old side's cached captures, journeys and slow-network runs stay valid between runs.
+		built="$(sha256sum "$DIR/fetch-old.sh" | cut -d' ' -f1)"
+		if [ "$(cat "$DIR/old/.ci-built" 2>/dev/null)" != "$built" ]; then
+			ORIGIN=http://localhost:4000 "$DIR/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
+			echo "$built" > "$DIR/old/.ci-built"
+		fi
 		nohup "$DIR/serve-old.sh" > "$RUNNER_TEMP/old-serve.log" 2>&1 &
 		wait_for http://localhost:4000/
 		for path in / /blocks /view/new-york-v4/dashboard-01; do curl -s -o /dev/null -w "old $path: %{http_code} in %{time_total} s\n" "http://localhost:4000$path"; done

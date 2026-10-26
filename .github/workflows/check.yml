@@ -104,8 +104,26 @@ jobs:
         with:
           name: check-shards
           path: ${{ runner.temp }}/shards
+      # The old site as an earlier job built it: a Next.js build differs from the last in every file name, so without this each
+      # shard serves a different deploy and nothing check keeps of the old side survives to the next run.
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Keep the old site's build
+        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the port
         run: bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The old side's captures, journeys and slow-network runs from this shard's earlier runs. Check reuses an entry only while
