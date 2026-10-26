@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page, Request } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
@@ -43,9 +43,31 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 	const el = trigger.asElement();
 	if (!el) return false;
 	await el.click({ timeout: 2000 }).catch(() => {});
-	await page.waitForTimeout(400);
+	// A loaded page slow to answer its trigger shows its options later than 400 ms: they are waited for, a while.
+	await Promise.all([page.waitForTimeout(400), page.locator(OPTION).first().waitFor({ state: 'attached', timeout: 3000 }).catch(() => {})]);
 	await finishAnimations(page).catch(() => {});
 	return true;
+}
+
+/** The requests a page has open, and when the last one ended. */
+function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } {
+	const seen = { open: new Set<Request>(), ended: 0 };
+	page.on('request', (r) => seen.open.add(r));
+	const end = (r: Request) => {
+		if (seen.open.delete(r)) seen.ended = Date.now();
+	};
+	page.on('requestfinished', end);
+	page.on('requestfailed', end);
+	return seen;
+}
+
+// What choosing an option started is read after 500 ms, or, while it is still fetching what it goes to (a client router
+// loads the next page before it changes the address), once that has answered: at most 5 s.
+async function afterChoosing(page: Page, before: string, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<void> {
+	await page.waitForTimeout(500);
+	const deadline = Date.now() + 4500;
+	const busy = () => [...requests.open].some((r) => !earlier.has(r)) || Date.now() - requests.ended < 150;
+	while (page.url() === before && busy() && Date.now() < deadline) await page.waitForTimeout(50);
 }
 
 // Base UI's Select.Root renders its hidden input right after its trigger; Select.Value shows the chosen item's label.
@@ -76,14 +98,17 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	let failure: string | undefined;
 	const choose = async (page: Page, keys: readonly string[]): Promise<Record<string, Choice>> => {
 		const out: Record<string, Choice> = {};
+		const requests = requestsOf(page);
 		try {
 			for (const key of keys) {
 				if (key in out) continue;
 				const before = page.url();
 				const byValue = page.locator(`[cmdk-item][data-value="${key.replace(/["\\]/g, '\\$&')}"]`).first();
 				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
+				const earlier = new Set(requests.open);
+				requests.ended = 0;
 				await target.click({ timeout: 2000 }).catch(() => {});
-				await page.waitForTimeout(500);
+				await afterChoosing(page, before, requests, earlier);
 				const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};

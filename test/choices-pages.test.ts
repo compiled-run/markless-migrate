@@ -30,12 +30,30 @@ document.getElementById('open').addEventListener('click', () => {
 });
 </script></body></html>`;
 
+// A client router: choosing an option fetches the next page's data (slow to answer here) and only then changes the address.
+const ROUTER = `<!doctype html><html><body><button id="open" aria-expanded="false">Search</button><script>
+document.getElementById('open').addEventListener('click', () => {
+	const item = document.createElement('div');
+	item.setAttribute('cmdk-item', '');
+	item.setAttribute('data-value', 'slow');
+	item.textContent = 'Slow';
+	item.addEventListener('click', async () => {
+		await fetch('/data/slow').then((r) => r.text());
+		history.pushState(null, '', '/docs/slow');
+	});
+	document.body.append(item);
+});
+</script></body></html>`;
+
 let browser: Browser;
 let server: Server;
 let origin: string;
 before(async () => {
 	browser = await chromium.launch();
-	server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE));
+	server = createServer((request, res) => {
+		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 1500);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : PAGE);
+	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -64,6 +82,16 @@ test('captureChoices chooses a long list of options on several pages at once, un
 		assert.deepEqual(Object.keys(found), Array.from({ length: COUNT }, (_, i) => `doc-${i}`));
 		assert.deepEqual(Object.values(found), Array.from({ length: COUNT }, (_, i) => ({ href: `/docs/${COUNT - i}` })));
 		assert.equal(peak, 3);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('captureChoices records where an option went when the page fetched it for longer than the first look waits', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-router-'));
+	try {
+		const reveal: Reveal = { key: 'router', path: [0], sig: 'button||Search', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div cmdk-item="" data-value="slow">Slow</div>' }] };
+		assert.deepEqual(await captureChoices(browser, origin, '/router', reveal, dir), { slow: { href: '/docs/slow' } });
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
