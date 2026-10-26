@@ -63,8 +63,13 @@ export function clockDifferences(oldAt: readonly string[], oldAgain: readonly st
 	return baked.length ? { followed: minus(after, newMoved), baked } : { followed: [], baked: [] };
 }
 
-// A server reading a saved session 40 days on expires it in its store, signing the role out for the rest of the run.
-const movedEnv = (env: SideEnv, moved: FreezeOptions): SideEnv => ({ ...env, freeze: moved, ...(env.storageState || env.frontDoor?.storageState ? { serverClock: false } : {}) });
+// A server reading a saved session 40 days on expires it in its store, so with the server's clock moved the look goes signed out.
+function movedEnv(env: SideEnv, moved: FreezeOptions): SideEnv {
+	const out: SideEnv = { ...env, freeze: moved };
+	if (!env.serverClock) return out;
+	const { storageState: _session, ...rest } = out;
+	return { ...rest, ...(env.frontDoor ? { frontDoor: { ...env.frontDoor, storageState: undefined } } : {}) };
+}
 
 const when = (f: FreezeOptions) => `${new Date(f.time).toISOString().replace('T', ' ').slice(0, 16)} ${f.timezone}`;
 
