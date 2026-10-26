@@ -211,9 +211,12 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
             any browser and network by more than the old page's own runs differ from each other (the
             90th percentile gap between the medians of two halves of them) and the runs differ
             (one-sided Mann-Whitney, p < 0.05); the failure names the cell and the largest requests the
-            new page finished first. The old page's runs are kept in .migrate/slow-network/ and reused
-            while its deploy (the files its HTML names) is the same. Cells not measured (a browser not
-            installed) are listed as skipped. --slow-network <profile> (repeatable: ${Object.keys(NETWORK_PROFILES).join(', ')})
+            new page finished first; a gap finer than the measurement's own step (screenshots 100 ms
+            apart, clicks 250 ms apart) is not a difference. The old page's runs are kept in
+            .migrate/slow-network/ and reused while its deploy (the files its HTML names) is the same
+            and two fresh runs of it land among them; otherwise it is measured again. A run during which
+            this machine stalled the measuring process for over a second (a paused job, swapping) is
+            taken again. Cells not measured (a browser not installed) are listed as skipped. --slow-network <profile> (repeatable: ${Object.keys(NETWORK_PROFILES).join(', ')})
             and --slow-network-browser <name> narrow it, --slow-network-concurrency loads that many pages
             at once (default 2), --no-slow-network leaves it out. markless-migrate network measures any
             pages the same way, side by side.

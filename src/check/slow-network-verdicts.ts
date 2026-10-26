@@ -7,7 +7,7 @@ import type { Failure } from './types.ts';
 export const GATED: readonly RunMetric[] = ['firstFrame', 'lcp', 'answered'];
 const BAND_QUANTILE = 0.9;
 /** The instrument's own step: a first frame is read from screenshots this far apart, and a click is sent no more often than this, so a smaller difference cannot be seen. */
-export const RESOLUTION: Readonly<Partial<Record<RunMetric, number>>> = { firstFrame: FRAME_EVERY_MS, answered: CLICK_EVERY_MS };
+export const resolution = (metric: RunMetric): number => (metric === 'firstFrame' ? FRAME_EVERY_MS : metric === 'answered' ? CLICK_EVERY_MS : 0);
 
 /** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
 export function noiseBand(old: readonly number[]): number | undefined {
@@ -57,7 +57,7 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 		}
 		const noise = noiseBand(o);
 		if (!o.length || !n.length || noise === undefined) continue;
-		const band = Math.max(noise, RESOLUTION[metric] ?? 0);
+		const band = Math.max(noise, resolution(metric));
 		const om = median(o);
 		const nm = median(n);
 		const p = mannWhitneyGreater(o, n);

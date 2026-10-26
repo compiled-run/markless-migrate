@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
+import { GATED, noiseBand, resolution } from './slow-network-verdicts.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
 export const NETWORK_BROWSERS = ['chromium', 'firefox', 'webkit'] as const;
@@ -53,6 +54,8 @@ export interface NetworkRun {
 	/** JavaScript the page executed by the answer, or by the end of the load when there was nothing to click: bytes of source in functions and blocks that ran (Chromium only). */
 	readonly jsExecutedByAnswer?: number;
 	readonly requests: readonly NetworkRequest[];
+	/** The longest time this process went without running a 100 ms timer: a machine that pauses or swaps the measurement skews every time in it. */
+	readonly stalledMs?: number;
 	readonly error?: string;
 }
 
@@ -156,6 +159,45 @@ async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<numbe
 	return undefined;
 }
 
+/** A process stalled longer than this (a job queue pausing it, the machine swapping) has a run whose times are not the network's. */
+export const STALL_MS = 1000;
+const RETAKES = 2;
+/** Fresh runs of a cached old page each check takes: the cached runs stand only while these land among them. */
+export const CACHE_SAMPLES = 2;
+
+/** Every gated time of each fresh run lies within the cached runs' range, widened by their own band. */
+function agrees(cachedRuns: readonly NetworkRun[], fresh: readonly NetworkRun[]): boolean {
+	const ok = fresh.filter((r) => !r.error);
+	if (!ok.length) return false;
+	for (const metric of GATED) {
+		const before = cachedRuns.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+		const now = ok.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+		if (!before.length || !now.length) continue;
+		const band = Math.max(noiseBand(before) ?? 0, resolution(metric));
+		const [lo, hi] = [Math.min(...before) - band, Math.max(...before) + band];
+		if (now.some((v) => v < lo || v > hi)) return false;
+	}
+	return true;
+}
+
+/** Watches this process's timers: `stop` returns the longest gap beyond the expected tick. */
+export function stallWatch(everyMs = 100): { stop(): number } {
+	let last = performance.now();
+	let worst = 0;
+	const timer = setInterval(() => {
+		const now = performance.now();
+		worst = Math.max(worst, now - last - everyMs);
+		last = now;
+	}, everyMs);
+	return {
+		stop: () => {
+			clearInterval(timer);
+			worst = Math.max(worst, performance.now() - last - everyMs);
+			return Math.max(0, Math.round(worst));
+		},
+	};
+}
+
 // Runs in the page before its own scripts: notes trusted clicks, the first state change on a clicked control (or one
 // with its role and text, should the framework replace the node), and the frame after it.
 function observe() {
@@ -255,6 +297,14 @@ async function launch(name: NetworkBrowser, throttle: Throttle): Promise<Browser
 
 /** One cold load of `url` over `profile` in a fresh `browser`, clicking the control every 250 ms from when it is on screen until it answers. */
 export async function networkRun(url: string, profile: NetworkProfile, name: NetworkBrowser, options: NetworkRunOptions = {}): Promise<NetworkRun> {
+	const watch = stallWatch();
+	const run = await measureOnce(url, profile, name, options);
+	const stalledMs = watch.stop();
+	if (stalledMs < STALL_MS) return run;
+	return { ...run, stalledMs, error: `this machine stalled the measurement for ${(stalledMs / 1000).toFixed(1)} s (a paused job or swapping): its times are not the network's` };
+}
+
+async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBrowser, options: NetworkRunOptions): Promise<NetworkRun> {
 	const timeoutMs = options.timeoutMs ?? 120_000;
 	if (profile.devtools && name !== 'chromium') return { clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], error: `${profile.name} is DevTools throttling, which only Chromium has` };
 	// DevTools throttling happens in the browser; the proxy then only counts the bytes.
@@ -402,6 +452,7 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 	const runs = options.runs ?? DEFAULT_NETWORK_RUNS;
 	const runner = options.runner ?? networkRun;
 	const results = new Map<string, NetworkRun[]>();
+	const hits = new Map<string, NetworkRun[]>();
 	const cached = new Set<string>();
 	const installed = new Map<NetworkBrowser, boolean>(browsers.map((b) => [b, options.runner ? true : browserInstalled(b)]));
 	const skipped = (profile: NetworkProfile, b: NetworkBrowser) =>
@@ -418,31 +469,45 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 				const key = skipped(profile, b) ? undefined : cacheKey(url, profile, b);
 				const hit = key ? await options.cache!.store.get(key) : undefined;
 				if (hit) {
-					results.set(k(url, profile.name, b), hit.slice(0, runs));
+					hits.set(k(url, profile.name, b), hit.slice(0, runs));
 					cached.add(k(url, profile.name, b));
 				}
 			}
+	const job = (url: string, profile: NetworkProfile, b: NetworkBrowser) => async () => {
+		const control = options.controls?.[url] ?? options.control;
+		let run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
+		for (let retake = 0; retake < RETAKES && run.stalledMs !== undefined && run.stalledMs >= STALL_MS; retake++) run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
+		results.set(k(url, profile.name, b), [...(results.get(k(url, profile.name, b)) ?? []), run]);
+		options.onRun?.(`${b} ${profile.name} ${url}`, run);
+	};
+	const drain = async (jobs: (() => Promise<void>)[]) => {
+		let next = 0;
+		await Promise.all(
+			Array.from({ length: Math.max(1, options.concurrency ?? 1) }, async () => {
+				while (next < jobs.length) await jobs[next++]!();
+			}),
+		);
+	};
 	const jobs: (() => Promise<void>)[] = [];
 	for (let i = 0; i < runs; i++)
 		for (const profile of profiles)
 			for (const b of browsers) {
 				if (skipped(profile, b)) continue;
-				for (const url of i % 2 ? [...urls].reverse() : urls) {
-					if (cached.has(k(url, profile.name, b))) continue;
-					jobs.push(async () => {
-						const control = options.controls?.[url] ?? options.control;
-						const run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
-						results.set(k(url, profile.name, b), [...(results.get(k(url, profile.name, b)) ?? []), run]);
-						options.onRun?.(`${b} ${profile.name} ${url}`, run);
-					});
-				}
+				// A cached page is still taken a few times, to check the cache against this session.
+				for (const url of i % 2 ? [...urls].reverse() : urls) if (!cached.has(k(url, profile.name, b)) || i < CACHE_SAMPLES) jobs.push(job(url, profile, b));
 			}
-	let next = 0;
-	await Promise.all(
-		Array.from({ length: Math.max(1, options.concurrency ?? 1) }, async () => {
-			while (next < jobs.length) await jobs[next++]!();
-		}),
-	);
+	await drain(jobs);
+	const again: (() => Promise<void>)[] = [];
+	for (const key of [...cached]) {
+		const [url, name, b] = key.split('\n') as [string, string, NetworkBrowser];
+		const fresh = results.get(key) ?? [];
+		if (agrees(hits.get(key)!, fresh)) results.set(key, [...hits.get(key)!, ...fresh]);
+		else {
+			cached.delete(key);
+			for (let i = fresh.length; i < runs; i++) again.push(job(url, NETWORK_PROFILES[name]!, b));
+		}
+	}
+	await drain(again);
 	for (const profile of profiles)
 		for (const b of browsers)
 			for (const url of urls) {
