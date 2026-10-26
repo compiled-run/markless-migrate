@@ -282,7 +282,13 @@ export async function mapOf(url: string, text: string, dir?: string): Promise<So
 		const path = decodeURIComponent(new URL(url).pathname);
 		for (const root of ['', 'static', 'public', '.vercel/output/static', '.output/public']) {
 			const found = await readFile(join(dir, root, `${path}.map`), 'utf8').catch(() => undefined);
-			if (found) return valid(JSON.parse(found));
+			if (found) {
+				try {
+					return valid(JSON.parse(found));
+				} catch {
+					return undefined;
+				}
+			}
 		}
 	}
 	const map = await mapFor(url, text).catch(() => undefined);
