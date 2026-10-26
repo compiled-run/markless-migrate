@@ -31,8 +31,9 @@ import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
-import { applyLateFonts, fontPreloads, withoutOffscreenFontPreloads } from './fonts.ts';
+import { applyLateFonts, fontPreloads, lateFaces, withoutOffscreenFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
+import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -205,6 +206,8 @@ interface Prepared {
 	readonly clipboard: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
+	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
+	readonly lateFontPaths: readonly string[];
 }
 
 // What a library's runtime adds around revealed content for focus handling; its Markless port adds its own.
@@ -818,6 +821,10 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
 	if (applyLateFonts(doc, (capture.lateFonts ?? []).map((f) => f.id))) lateFontPages.add(capture.route);
+	const lateFontPaths = (capture.lateFonts ?? []).flatMap((f) => f.urls ?? []).flatMap((u) => {
+		const url = URL.parse(u);
+		return url && url.origin === new URL(origin).origin ? [url.pathname + url.search] : [];
+	});
 	const plan = planImages(doc, paired, optimizer, dropped);
 	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
@@ -846,10 +853,15 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		tags.splice(tags.findIndex((t) => t.tag === 'meta' && t.attrs.charset !== undefined) + 1, 0, ...fonts);
 		fontPreloadCount += fonts.length;
 	}
+	const faces = lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin);
+	if (faces.length) {
+		const config = lateFontsConfig(faces);
+		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
+	}
 	const kids = elementChildren(body(doc));
 	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
 }
 
 function headModule(byRoute: Map<string, Prepared>): string {
@@ -1560,7 +1572,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		headScripts.push('LATE_FONTS_SCRIPT');
 		documentParts.push({ part: 'late-fonts', import: (dir) => `import { LATE_FONTS_SCRIPT } from '${dir}/late-fonts.ts';` });
 		usedPorts.add('late-fonts');
-		log(`late fonts: on ${lateFontPages.size} pages, a web font only text below every first screen uses is fetched after the load`);
 	}
 	// A theme toggle the site names switches the theme from the first paint, before the page's code has arrived.
 	const toggle = themeToggleOf(await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>[], () => []));
@@ -1615,7 +1626,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const queried = [...paths].filter((p) => p.includes('?'));
 	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log);
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
-	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)] }] as const] : []))));
+	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));

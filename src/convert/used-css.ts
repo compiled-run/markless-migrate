@@ -57,9 +57,10 @@ function possible(selector: Node, tokens: { has(token: string): boolean }): bool
  * The stylesheet without the style rules no element of the page can match: a rule goes when each of its selectors needs a
  * class or id (outside `:not()`) that `tokens` does not hold, and a grouping at-rule goes with its last rule, except
  * `@layer`, whose order it declares. What stays is the source text, byte for byte and in its order, so the cascade among
- * the kept rules is the original's.
+ * the kept rules is the original's. With `late`, an @font-face any of whose files is `withheld` (paths, its url()s
+ * resolved from the stylesheet's path `sheet`) goes too: the page adds that face from script (late-fonts.ts).
  */
-export function usedCss(css: string, tokens: { has(token: string): boolean }): string {
+export function usedCss(css: string, tokens: { has(token: string): boolean }, late?: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): string {
 	let ast: Node;
 	try {
 		ast = parse(css).ast;
@@ -77,6 +78,8 @@ export function usedCss(css: string, tokens: { has(token: string): boolean }): s
 					walk(node.block.children);
 					kept = true;
 				}
+			} else if (late && node.type === 'Atrule' && node.block && node.name.toLowerCase() === 'font-face' && withheldFace(css, node, late)) {
+				cuts.push([node.start, node.end]);
 			} else if (node.type === 'Atrule' && node.block && GROUPING.has(node.name.toLowerCase())) {
 				if (walk(node.block.children) || node.name.toLowerCase() === 'layer') kept = true;
 				else cuts.push([node.start, node.end]);
@@ -98,6 +101,16 @@ export function usedCss(css: string, tokens: { has(token: string): boolean }): s
 	return out + css.slice(at);
 }
 
+function withheldFace(css: string, node: Node, late: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): boolean {
+	const src = (node.block.children as Node[]).find((d) => d.type === 'Declaration' && d.property.toLowerCase() === 'src');
+	if (!src) return false;
+	const base = new URL(late.sheet, 'http://sheet.invalid');
+	return [...css.slice(src.value.start, src.value.end).matchAll(/url\(\s*(["']?)([^"')]+)\1\s*\)/g)].some((m) => {
+		const at = new URL(m[2]!, base);
+		return late.withheld.has(at.origin === base.origin ? at.pathname + at.search : at.href);
+	});
+}
+
 interface Tag {
 	readonly tag: string;
 	readonly attrs: Readonly<Record<string, string>>;
@@ -115,7 +128,7 @@ async function filesUnder(dir: string): Promise<string[]> {
  * url()s still resolve, and the page's link names it. `texts` is what else the page's markup holds (its <html> and <body>
  * attributes, its head). Returns the pages' head tags with the new hrefs.
  */
-export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; bytes: [number, number] }> {
+export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; bytes: [number, number] }> {
 	const publicDir = join(app, 'public');
 	const texts = new Map<string, Promise<string>>();
 	const read = (file: string) => {
@@ -143,7 +156,8 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 	const written = new Map<string, string>();
 	const bytes: [number, number] = [0, 0];
 	const out = new Map<string, T[]>();
-	for (const [route, { page, head, texts: extra }] of heads) {
+	for (const [route, { page, head, texts: extra, withheld }] of heads) {
+		const withheldPaths = new Set(withheld ?? []);
 		const own = new Set<string>();
 		await closure(page, own);
 		const ownTokens = classTokens([...extra, ...(await Promise.all([...own].filter((f) => !shared.has(f)).map(read)))]);
@@ -157,7 +171,7 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 			}
 			if (!sheets.has(href)) sheets.set(href, await readFile(join(publicDir, href), 'utf8').catch(() => ''));
 			const css = sheets.get(href)!;
-			const used = css && usedCss(css, tokens);
+			const used = css && usedCss(css, tokens, withheldPaths.size ? { sheet: href, withheld: withheldPaths } : undefined);
 			if (!used || used === css) {
 				tags.push(tag);
 				continue;

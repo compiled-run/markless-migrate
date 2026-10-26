@@ -21,7 +21,7 @@ export interface CapturedPage {
 	/** Where each image was drawn, per viewport name; absent from a capture taken before it was recorded. */
 	readonly images?: Readonly<Record<string, ImageFacts>>;
 	/** The web fonts (by the id their blocks carry in the desktop document) whose text no first screen shows, with the face each one is. */
-	readonly lateFonts?: readonly { readonly id: string; readonly key: string }[];
+	readonly lateFonts?: readonly { readonly id: string; readonly key: string; readonly urls?: readonly string[]; readonly face?: { readonly family: string; readonly src: string; readonly descriptors: Readonly<Record<string, string>> } }[];
 	/** The web fonts a first screen draws that the page does not preload: the file each was fetched from. */
 	readonly firstScreenFonts?: readonly string[];
 	/** The font files the page preloads that no first screen draws. */
@@ -35,7 +35,7 @@ export interface CapturedPage {
 }
 
 /** The version of the font facts a capture records: lateFonts, firstScreenFonts and offscreenFontPreloads. */
-export const FONT_FACTS = 2;
+export const FONT_FACTS = 3;
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
 
@@ -91,7 +91,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	let status = 0;
 	const settled: Record<string, string> = {};
 	const images: Record<string, ImageFacts> = {};
-	let lateFonts: { id: string; key: string }[] = [];
+	let lateFonts: NonNullable<CapturedPage['lateFonts']>[number][] = [];
 	let firstScreenFonts: string[] = [];
 	let offscreenFontPreloads: string[] = [];
 	for (const viewport of viewports) {
@@ -122,8 +122,8 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 					if (preloads.preloaded.length) for (const u of (await page.evaluate(fontPreloadsInFirstScreen).catch(() => preloads)).drawn) drawn.add(u);
 				}
 				offscreenFontPreloads = preloads.preloaded.filter((u) => !drawn.has(u));
-				lateFonts = faces.filter((f) => !f.firstScreen && !shownOnPhone.includes(f.id)).map((f) => ({ id: f.id, key: f.key }));
-				firstScreenFonts = faces.filter((f) => f.firstScreen || shownOnPhone.includes(f.id)).map((f) => f.url);
+				lateFonts = faces.filter((f) => !f.firstScreen && !shownOnPhone.includes(f.id)).map((f) => ({ id: f.id, key: f.key, urls: f.urls, face: f.face }));
+				firstScreenFonts = faces.filter((f) => !f.preloaded && (f.firstScreen || shownOnPhone.includes(f.id))).map((f) => f.url);
 				images[viewport.name] = await withWidths(page, images[viewport.name]!, viewport);
 			}
 		} finally {

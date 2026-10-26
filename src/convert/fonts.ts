@@ -1,16 +1,18 @@
-import { LATE_FONT } from '../../parts/late-fonts.ts';
+import { LATE_FONT, type LateFace } from '../../parts/late-fonts.ts';
 import { attr, removeAttr, setAttr, walk, type Document } from './dom.ts';
 
 /** The attribute capture puts on the blocks whose text a candidate late font draws: the faces' ids, space-separated. */
 export const LATE_CANDIDATE = 'data-mm-lf';
 
 /**
- * Runs in the page at the desktop capture: each web font the page loaded without preloading it, the blocks whose text it
- * draws, and whether any of that text is in the first screen. The blocks are marked `data-mm-lf` with the face's id
- * before the document is kept; `lateFontsInFirstScreen` then checks them at a phone's width.
+ * Runs in the page at the desktop capture: each web font face the page fetched, the blocks whose text it draws, and
+ * whether any of that text is in the first screen. A face draws a character when its family is the first in the
+ * element's font-family list with a face whose unicode-range has it, as the browser matches fonts; spaces count, since
+ * they fetch the face too. The blocks are marked `data-mm-lf` with the face's id before the document is kept;
+ * `lateFontsInFirstScreen` then checks them at a phone's width.
  */
-export function markLateFontCandidates(attribute: string): { id: string; key: string; family: string; firstScreen: boolean; url: string }[] {
-	type Face = { key: string; family: string; ranges: [number, number][]; urls: string[] };
+export function markLateFontCandidates(attribute: string): { id: string; key: string; family: string; firstScreen: boolean; url: string; urls: string[]; preloaded: boolean; face: { family: string; src: string; descriptors: Record<string, string> } }[] {
+	type Face = { key: string; family: string; ranges: [number, number][]; urls: string[]; face: { family: string; src: string; descriptors: Record<string, string> } };
 	const faces: Face[] = [];
 	const parseRanges = (value: string): [number, number][] =>
 		value
@@ -29,7 +31,15 @@ export function markLateFontCandidates(attribute: string): { id: string; key: st
 				const range = rule.style.getPropertyValue('unicode-range');
 				const urls = [...rule.style.getPropertyValue('src').matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => new URL(m[1]!, rule.parentStyleSheet?.href ?? location.href).href);
 				const key = `${family}|${rule.style.getPropertyValue('font-weight')}|${rule.style.getPropertyValue('font-style')}|${range}`;
-				faces.push({ key, family, ranges: range ? parseRanges(range) : [[0, 0x10ffff]], urls });
+				// The face as FontFace takes it: its descriptors by FontFace's names, its url()s absolute.
+				const src = rule.style.getPropertyValue('src').replace(/url\(\s*["']?([^"')]+)["']?\s*\)/g, (_, u: string) => `url(${JSON.stringify(new URL(u, rule.parentStyleSheet?.href ?? location.href).href)})`);
+				const descriptors: Record<string, string> = {};
+				for (let i = 0; i < rule.style.length; i++) {
+					const name = rule.style[i]!;
+					if (name === 'src' || name === 'font-family') continue;
+					descriptors[name.replace(/^font-(?=style|weight|stretch|display|feature-settings|variation-settings)/, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = rule.style.getPropertyValue(name);
+				}
+				faces.push({ key, family, ranges: range ? parseRanges(range) : [[0, 0x10ffff]], urls, face: { family, src, descriptors } });
 			} else if ('cssRules' in rule && (rule as CSSGroupingRule).cssRules) visit((rule as CSSGroupingRule).cssRules);
 		}
 	};
@@ -40,19 +50,9 @@ export function markLateFontCandidates(attribute: string): { id: string; key: st
 	}
 	const fetched = new Set(performance.getEntriesByType('resource').map((e) => e.name));
 	const preloaded = new Set([...document.querySelectorAll('link[rel~="preload"][as="font"]')].map((l) => (l as HTMLLinkElement).href));
-	const late = faces.filter((f) => f.urls.some((u) => fetched.has(u)) && !f.urls.some((u) => preloaded.has(u)));
-	const out: { id: string; key: string; family: string; firstScreen: boolean; url: string }[] = [];
-	const families = (el: Element) =>
-		getComputedStyle(el)
-			.fontFamily.split(',')
-			.map((f) => f.trim().replace(/^["']|["']$/g, ''));
-	const inRange = (text: string, ranges: [number, number][]) => {
-		for (const ch of text) {
-			const cp = ch.codePointAt(0)!;
-			if (cp > 0x7f && ranges.some(([a, b]) => cp >= a && cp <= b)) return true;
-		}
-		return false;
-	};
+	const used = faces.filter((f) => f.urls.some((u) => fetched.has(u)));
+	const byFamily = new Map<string, Face[]>();
+	for (const f of faces) byFamily.set(f.family.toLowerCase(), [...(byFamily.get(f.family.toLowerCase()) ?? []), f]);
 	const blockOf = (el: Element | null): Element | null => {
 		for (let e = el; e && e !== document.body; e = e.parentElement) {
 			const d = getComputedStyle(e).display;
@@ -60,31 +60,57 @@ export function markLateFontCandidates(attribute: string): { id: string; key: st
 		}
 		return null;
 	};
-	for (const [i, face] of late.entries()) {
-		const id = `f${i}`;
-		let firstScreen = false;
-		const blocks = new Set<Element>();
-		const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-		for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-			const parent = node.parentElement;
-			if (!parent || !node.textContent || !inRange(node.textContent, face.ranges) || !families(parent).includes(face.family)) continue;
-			const range = document.createRange();
-			range.selectNodeContents(node);
-			const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
-			if (!rects.length) continue;
-			if (rects.some((r) => r.top + scrollY < innerHeight)) firstScreen = true;
-			const block = blockOf(parent);
-			if (!block) firstScreen = true;
-			else blocks.add(block);
+	// Each used face: the blocks it draws text in, and whether a first screen holds any of that text.
+	const drawn = new Map<Face, { blocks: Set<Element>; firstScreen: boolean }>(used.map((f) => [f, { blocks: new Set(), firstScreen: false }]));
+	const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		const parent = node.parentElement;
+		const text = node.textContent ?? '';
+		if (!parent || !text.trim()) continue;
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
+		if (!rects.length) continue;
+		const families = getComputedStyle(parent)
+			.fontFamily.split(',')
+			.map((f) => f.trim().replace(/^["']|["']$/g, '').toLowerCase());
+		const hit = new Set<Face>();
+		for (const ch of new Set(text)) {
+			const cp = ch.codePointAt(0)!;
+			if (cp === 0x0a || cp === 0x09 || cp === 0x0d) continue;
+			for (const family of families) {
+				const own = byFamily.get(family);
+				// A family no face names is the system's, and draws the character.
+				if (!own) break;
+				const covering = own.filter((f) => f.ranges.some(([a, b]) => cp >= a && cp <= b));
+				if (!covering.length) continue;
+				for (const f of covering) hit.add(f);
+				break;
+			}
 		}
+		if (!hit.size) continue;
+		const inFirst = rects.some((r) => r.top + scrollY < innerHeight);
+		const block = blockOf(parent);
+		for (const f of hit) {
+			const d = drawn.get(f);
+			if (!d) continue;
+			if (inFirst || !block) d.firstScreen = true;
+			if (block) d.blocks.add(block);
+		}
+	}
+	const out: ReturnType<typeof markLateFontCandidates> = [];
+	for (const [i, face] of used.entries()) {
+		const id = `f${i}`;
+		const { blocks, firstScreen: textInFirst } = drawn.get(face)!;
 		if (!blocks.size) continue;
+		let firstScreen = textInFirst;
 		// The outermost blocks only, each wholly below the first screen.
 		for (const block of blocks) {
 			if ([...blocks].some((other) => other !== block && other.contains(block))) continue;
 			if (block.getBoundingClientRect().top + scrollY < innerHeight) firstScreen = true;
 			block.setAttribute(attribute, `${block.getAttribute(attribute) ?? ''} ${id}`.trim());
 		}
-		out.push({ id, key: face.key, family: face.family, firstScreen, url: face.urls.find((u) => fetched.has(u))! });
+		out.push({ id, key: face.key, family: face.family, firstScreen, url: face.urls.find((u) => fetched.has(u))!, urls: face.urls, preloaded: face.urls.some((u) => preloaded.has(u)), face: face.face });
 	}
 	return out;
 }
@@ -199,4 +225,19 @@ export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: strin
 export function withoutOffscreenFontPreloads<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], offscreen: readonly string[], origin: string): T[] {
 	const gone = new Set(offscreen);
 	return tags.filter((t) => !(t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && t.attrs.href && gone.has(new URL(t.attrs.href, origin).href)));
+}
+
+/** The late faces as the page adds them, their files on the page's own origin given by path. */
+export function lateFaces(faces: readonly { readonly family: string; readonly src: string; readonly descriptors: Readonly<Record<string, string>> }[], origin: string): LateFace[] {
+	const own = new URL(origin).origin;
+	const unique = new Map<string, LateFace>();
+	for (const f of faces) {
+		const src = f.src.replace(/url\("([^"]+)"\)/g, (whole, u: string) => {
+			const url = URL.parse(u);
+			return url && url.origin === own ? `url(${JSON.stringify(url.pathname + url.search)})` : whole;
+		});
+		const face = { family: f.family, src, descriptors: f.descriptors };
+		unique.set(JSON.stringify(face), face);
+	}
+	return [...unique.values()];
 }
