@@ -112,3 +112,9 @@ test("each page links a cut copy of its stylesheet beside the original, holding 
 		await rm(app, { recursive: true, force: true });
 	}
 });
+
+test("a late face's @font-face leaves the page's stylesheet, its url() resolved from the stylesheet's path", () => {
+	const sheet = '@font-face{font-family:Geist;src:url(../media/geist.woff2)format("woff2");font-display:swap}@layer base{@font-face{font-family:"Noto Sans Arabic";font-style:normal;font-weight:100 900;src:url(../media/arabic.woff2)format("woff2");unicode-range:U+6??,U+750-77F;font-display:swap}}.flex{display:flex}';
+	const out = usedCss(sheet, classTokens(['flex']), { sheet: '/_next/static/chunks/site.css', withheld: new Set(['/_next/static/media/arabic.woff2']) });
+	assert.equal(out, '@font-face{font-family:Geist;src:url(../media/geist.woff2)format("woff2");font-display:swap}@layer base{}.flex{display:flex}');
+});
