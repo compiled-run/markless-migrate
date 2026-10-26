@@ -98,10 +98,12 @@ const written = new WeakMap<Node, string>();
 const observed = new WeakSet<Element>();
 
 function apply(el: Element, rules: readonly ClockRule[]): void {
-	// A chart's tooltip label shows one date at a time; its axis says how the chart names months.
-	const may = rules.some((r) => '*' in r) ? monthNamesIn(el.textContent ?? '') : undefined;
+	const texts: Text[] = [];
 	const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) texts.push(node);
+	// A chart's axis says how its tooltip's "May" is written; its tick labels touch, so each text is read on its own.
+	const may = rules.some((r) => '*' in r) ? monthNamesIn(texts.map((t) => t.data).join('\n')) : undefined;
+	for (const node of texts) {
 		if (written.get(node) === node.data) continue;
 		const next = rewrite(node.data, rules, Date.now(), may);
 		if (next !== node.data) node.data = next;
