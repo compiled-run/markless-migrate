@@ -38,3 +38,26 @@ test('a cell where the two pages are close takes every run', async () => {
 	await measureSlowNetwork(urls, { profiles: ['regular-3g'], browsers: ['chromium'], runs: 5, runner: fake, settle: { old: urls[0]!, new: urls[1]! } });
 	assert.equal(taken.length, 10);
 });
+
+test("a settled cell's old runs are kept for the next check of the same deploy, which takes two fresh ones to check them", async () => {
+	const { mkdtemp, rm } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const { NetworkCache } = await import('../src/check/slow-network-cache.ts');
+	const dir = await mkdtemp(join(tmpdir(), 'slow-network-settle-'));
+	try {
+		const taken: string[] = [];
+		const fake = async (url: string): Promise<NetworkRun> => (taken.push(url), run(url.includes('old') ? 110_000 + 100 * (taken.length % 3) : 18_000));
+		const urls = ['https://old.example/', 'https://new.example/'];
+		const options = { profiles: ['regular-2g'], browsers: ['chromium' as const], runs: 5, runner: fake, settle: { old: urls[0]!, new: urls[1]! }, cache: { store: new NetworkCache(dir), deploys: { [urls[0]!]: 'deploy-1' }, reuse: [urls[0]!] } };
+		await measureSlowNetwork(urls, options);
+		assert.equal(taken.filter((u) => u.includes('old')).length, 3);
+		taken.length = 0;
+		const [old] = await measureSlowNetwork(urls, options);
+		assert.equal(taken.filter((u) => u.includes('old')).length, 2);
+		assert.equal(old!.cells[0]!.cached, true);
+		assert.equal(old!.cells[0]!.runs.length, 5);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

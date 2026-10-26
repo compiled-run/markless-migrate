@@ -529,7 +529,7 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 		for (const b of browsers)
 			for (const url of urls) {
 				const key = cached.has(k(url, profile.name, b)) || skipped(profile, b) ? undefined : cacheKey(url, profile, b);
-				if (key) await options.cache!.store.put(key, results.get(k(url, profile.name, b)) ?? []);
+				if (key) await options.cache!.store.put(key, results.get(k(url, profile.name, b)) ?? [], settled.has(`${profile.name}\n${b}`));
 			}
 	return urls.map((url) => ({
 		url,
