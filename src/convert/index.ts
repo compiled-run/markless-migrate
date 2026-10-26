@@ -32,6 +32,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, fontPreloads, withoutOffscreenFontPreloads } from './fonts.ts';
+import { usedStylesheets } from './used-css.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -1602,7 +1603,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await rm(join(app, 'lib', 'parts', 'clipboard'), { recursive: true, force: true });
 	await rm(join(app, 'lib', 'parts', 'clipboard.ts'), { force: true });
 	if (unplaced.length) log(`${unplaced.length} revealed contents not placed (no Markless state drives them yet): ${unplaced.slice(0, 3).join('; ')}`);
-	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const publicDir = join(app, 'public');
 	for (const [path, css] of styles) {
 		await mkdir(dirname(join(publicDir, path)), { recursive: true });
@@ -1614,6 +1614,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// Resources a query picks are served by the routing middleware from the old build's answers, not as files.
 	const queried = [...paths].filter((p) => p.includes('?'));
 	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log);
+	const pageOf = new Map(out.map((r) => [r.route, r.page]));
+	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)] }] as const] : []))));
+	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
+	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
+	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const endpoints: EndpointPort[] = [];
 	if (options.source) {
 		const scanned = await readSource(options.source);
