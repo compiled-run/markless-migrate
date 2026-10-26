@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
-import { checkClock, clockDifferences } from '../src/check/clock-shift.ts';
+import { CLOCK_SHIFT_MS, checkClock, clockDifferences } from '../src/check/clock-shift.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
 const PAGES = {
@@ -78,4 +78,5 @@ test('with --server-clock, the moved look never sends a signed-in session to the
 	const moved = tags.filter((t) => t.includes('sid=signed-in') && /time=(\d+)/.test(t) && Number(/time=(\d+)/.exec(t)![1]) !== base);
 	assert.ok(tags.some((t) => t.includes('sid=signed-in')), 'the session is sent');
 	assert.deepEqual(moved, []);
+	assert.ok(tags.some((t) => !t.includes('sid=signed-in') && t.includes(`time=${base + CLOCK_SHIFT_MS}`)), 'the moved look still moves the server clock, signed out, so server-rendered times follow it as the page\'s do');
 });

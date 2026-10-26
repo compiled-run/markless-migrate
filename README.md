@@ -420,8 +420,8 @@ text the old page changes with the clock (a date, a relative time, a chart axis)
 page too, and a new page still showing what the old page shows at the usual frozen instant is red in
 `rendered` (`new still shows "January 17, 2026", what the old page shows at 2026-01-15 12:00 UTC, the
 instant check freezes the clock to`): the converter wrote check's clock into the page. With `--server-clock`, a role
-signed in by a saved session keeps the server on its own clock for that load: a session store reading it 40 days on
-would expire it and sign the role out for the rest of the run.
+signed in by a saved session takes this look signed out: a session store reading the session 40 days on would expire
+it and sign the role out for the rest of the run.
 
 `--no-probes` leaves both out; `--only probes` runs them alone (a partial run).
 
