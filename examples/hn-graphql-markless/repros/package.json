@@ -1,0 +1,10 @@
+{
+	"name": "hn-graphql-markless-repros",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vp build",
+		"start": "node .output/server/index.mjs",
+		"probe": "node probe.mjs"
+	}
+}
