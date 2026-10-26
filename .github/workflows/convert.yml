@@ -168,6 +168,8 @@ jobs:
 
   emit:
     needs: [prepare, capture]
+    # A shard that failed leaves its pages to be captured here.
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
