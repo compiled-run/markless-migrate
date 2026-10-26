@@ -296,7 +296,9 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 			const align = async (state: SceneNode) => {
 				await page.evaluate((tree) => {
 					const s = (window as unknown as { __mmScene: { root: Element; ids: WeakMap<Node, number>; next: number } }).__mmScene;
-					const walk = (el: Element, node: { id: number; kids?: { id: number; text?: string }[] }) => {
+					// What the replayed state holds beyond the recorded one is new: it gets ids of its own at the next snapshot.
+					const walk = (el: Element, node: { id: number; kids?: { id: number; text?: string }[] } | undefined) => {
+						if (!node) return;
 						s.ids.set(el, node.id);
 						const nodes = node.kids ?? [];
 						let k = 0;

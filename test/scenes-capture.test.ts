@@ -61,3 +61,32 @@ test('a demo\'s controls are used from every state they lead to, and each use is
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+// Each load of this page sends one more row than the last: a state reached again by replay holds more than when it was recorded.
+const GROWING = `<!doctype html><html><body><main>
+<div data-slot="preview"><div role="log"><p>Hi</p></div><button data-slot="button" id="send">Send</button></div>
+<script>
+const loads = Number(localStorage.getItem('loads') ?? 0) + 1;
+localStorage.setItem('loads', String(loads));
+document.getElementById('send').addEventListener('click', () => {
+	const log = document.querySelector('[role=log]');
+	for (let i = 0; i < loads; i++) { const row = document.createElement('div'); row.innerHTML = '<p>Row</p>'; log.append(row); }
+});
+</script></main></body></html>`;
+
+test('a state that a replay reaches holding more than it was recorded with is recorded from, not a failed capture', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(GROWING));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 200, max: 2000 });
+		assert.equal(scenes.length, 1);
+		assert.ok(scenes[0]!.states.length >= 2);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
