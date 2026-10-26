@@ -32,7 +32,7 @@ import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
-import { applyLateFonts, fontPreloads, lateFaces, withoutOffscreenFontPreloads } from './fonts.ts';
+import { applyLateFonts, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
@@ -896,9 +896,15 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		const self = selfReferences(attrs, origin);
 		tags.push({ tag, attrs, ...(text !== undefined ? { text } : {}), ...(self ? { self } : {}) });
 	}
-	const kept = withoutOffscreenFontPreloads(tags, capture.offscreenFontPreloads ?? [], origin);
-	if (kept.length < tags.length) dropped.set('<link rel=preload as=font>: a font no first screen draws', (dropped.get('<link rel=preload as=font>: a font no first screen draws') ?? 0) + tags.length - kept.length);
-	tags.splice(0, tags.length, ...kept);
+	for (const [files, why] of [
+		[capture.offscreenFontPreloads, 'a font no first screen draws'],
+		[capture.swapFontPreloads, 'a font-display: swap font, which first paint does not wait for'],
+	] as const) {
+		const kept = withoutFontPreloads(tags, files ?? [], origin);
+		const what = `<link rel=preload as=font>: ${why}`;
+		if (kept.length < tags.length) dropped.set(what, (dropped.get(what) ?? 0) + tags.length - kept.length);
+		tags.splice(0, tags.length, ...kept);
+	}
 	// The first screen's web fonts are fetched with the stylesheet, not after it: preloaded right after the charset.
 	const preloaded = tags.filter((t) => t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font').length;
 	const fonts = fontPreloads(capture.firstScreenFonts ?? [], origin, preloaded).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));

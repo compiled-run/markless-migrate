@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { LATE_FONT } from '../parts/late-fonts.ts';
 import { capturePage } from '../src/convert/capture.ts';
 import { attr, parseDocument, walk } from '../src/convert/dom.ts';
-import { applyLateFonts, fontPreloads, fontPreloadsInFirstScreen, withoutOffscreenFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
+import { applyLateFonts, fontPreloads, fontPreloadsInFirstScreen, withoutFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
 
 const PAGE = (head = '', mark = '') => `<!doctype html><html><head>${head}<style>
 @font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+2014}
@@ -132,5 +132,50 @@ test("a font preload no first screen needs is dropped from the page's head; the 
 	const o = 'https://site.example';
 	const link = (href: string) => ({ tag: 'link' as const, attrs: { rel: 'preload', href, as: 'font', crossorigin: '' } });
 	const tags = [{ tag: 'meta' as const, attrs: { charset: 'utf-8' } }, link('/latin.woff2'), link('/mono.woff2'), { tag: 'link' as const, attrs: { rel: 'stylesheet', href: '/mono.woff2' } }, link('https://cdn.example/x.woff2')];
-	assert.deepEqual(withoutOffscreenFontPreloads(tags, [`${o}/mono.woff2`, 'https://cdn.example/x.woff2'], o), [tags[0], tags[1], tags[3]]);
+	assert.deepEqual(withoutFontPreloads(tags, [`${o}/mono.woff2`, 'https://cdn.example/x.woff2'], o), [tags[0], tags[1], tags[3]]);
+});
+
+test('a preloaded font every face of which swaps is found, so text paints in a fallback first; a font that hides its text until it arrives keeps its preload', async () => {
+	const page = `<!doctype html><html><head>
+<link rel="preload" href="/sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/icons.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/mixed.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/optional.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:Sans;src:url(/sans.woff2) format("woff2");font-display:swap}
+@font-face{font-family:Icons;src:url(/icons.woff2) format("woff2");font-display:block}
+@font-face{font-family:Mixed;src:url(/mixed.woff2) format("woff2");font-display:swap;font-weight:400}
+@font-face{font-family:Mixed;src:url(/mixed.woff2) format("woff2");font-weight:700}
+@font-face{font-family:Opt;src:url(/optional.woff2) format("woff2");font-display:optional}
+@font-face{font-family:Swapped;src:url(/swapped.woff2) format("woff2");font-display:swap}
+@font-face{font-family:Auto;src:url(/auto.woff2) format("woff2")}
+body{font-family:Sans,sans-serif;margin:0}
+i{font-family:Icons}
+b{font-family:Mixed}
+small{font-family:Opt}
+h2{font-family:Swapped}
+h3{font-family:Auto}
+</style></head><body><h1>Tabs</h1><i>x</i><b>bold</b><small>fine</small><h2>Install</h2><h3>Body copy</h3></body></html>`;
+	const server = createServer((req, res) => {
+		if (req.url === '/') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page);
+		res.writeHead(200, { 'content-type': 'font/woff2' }).end(Buffer.alloc(64));
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const browser = await chromium.launch();
+	const dir = await mkdtemp(join(tmpdir(), 'mm-fonts-'));
+	try {
+		const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+		await tab.goto(origin, { waitUntil: 'load' });
+		const found = await tab.evaluate(fontPreloadsInFirstScreen);
+		assert.deepEqual(found.drawn, [`${origin}/sans.woff2`, `${origin}/icons.woff2`, `${origin}/mixed.woff2`, `${origin}/optional.woff2`]);
+		assert.deepEqual(found.swap, [`${origin}/sans.woff2`], 'icons block, one Mixed face blocks (auto), optional may never be used unless preloaded');
+		const captured = await capturePage(browser, origin, '/', dir);
+		assert.deepEqual(captured.swapFontPreloads, [`${origin}/sans.woff2`]);
+		assert.deepEqual(captured.firstScreenFonts, [`${origin}/auto.woff2`], 'a first-screen face only a stylesheet names that swaps is not preloaded either; one that hides its text until it arrives is');
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
 });
