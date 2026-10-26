@@ -74,15 +74,22 @@ function dateFor(rule: ClockRule, found: DateText, now: number): Date | undefine
 	return new Date(today.getFullYear() + rule.year[0], rule.year[1], rule.year[2]);
 }
 
-/** The text with every date a rule names written for this browser's clock and time zone. */
-export function rewrite(text: string, rules: readonly ClockRule[], now = Date.now()): string {
+/** How the dates in `text` other than May's name their month, when they agree: "May" is both forms. */
+export function monthNamesIn(text: string): 'long' | 'short' | undefined {
+	const forms = new Set([...text.matchAll(DATE_TEXT)].flatMap((m) => (m[3] === 'May' ? [] : [parseDate(m)?.shape.m === 'long' ? 'long' : 'short'] as const)));
+	return forms.size === 1 ? [...forms][0] : undefined;
+}
+
+/** The text with every date a rule names written for this browser's clock and time zone; `may`: the form a "May" in it is. */
+export function rewrite(text: string, rules: readonly ClockRule[], now = Date.now(), may?: 'long' | 'short'): string {
 	const region = rules.find((r) => '*' in r);
 	return text.replace(DATE_TEXT, (...m) => {
 		const whole = m[0] as string;
 		const found = parseDate(m as unknown as string[]);
 		const rule = rules.find((r) => !('*' in r) && r.x === whole) ?? region;
 		const date = found && rule && dateFor(rule, found, now);
-		return date && !Number.isNaN(date.getTime()) ? writeDate(found!.shape, date) : whole;
+		const shape = found && may && m[3] === 'May' ? { ...found.shape, m: may } : found?.shape;
+		return date && shape && !Number.isNaN(date.getTime()) ? writeDate(shape, date) : whole;
 	});
 }
 
@@ -91,10 +98,14 @@ const written = new WeakMap<Node, string>();
 const observed = new WeakSet<Element>();
 
 function apply(el: Element, rules: readonly ClockRule[]): void {
+	const texts: Text[] = [];
 	const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) texts.push(node);
+	// A chart's axis says how its tooltip's "May" is written; its tick labels touch, so each text is read on its own.
+	const may = rules.some((r) => '*' in r) ? monthNamesIn(texts.map((t) => t.data).join('\n')) : undefined;
+	for (const node of texts) {
 		if (written.get(node) === node.data) continue;
-		const next = rewrite(node.data, rules);
+		const next = rewrite(node.data, rules, Date.now(), may);
 		if (next !== node.data) node.data = next;
 		written.set(node, next);
 	}

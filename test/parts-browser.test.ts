@@ -27,8 +27,8 @@ after(async () => {
 // `deliver`: also hand every event to the parts from the body's or the window's capture phase, as a Markless page delegates
 // them, before the event reaches the document listener.
 // `head`: what the app's Document puts in the head before any module (the inline theme toggle).
-async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = ''): Promise<Page> {
-	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = '', timezoneId?: string): Promise<Page> {
+	const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, ...(timezoneId ? { timezoneId } : {}) });
 	// `site`: the shadcn-ui port's own site parts (lib/site/parts.ts), which import the ports as the app's lib/parts.
 	const registry = `${ports.map((p, i) => (p === 'site' ? `import { SITE_PARTS as p${i} } from './site.ts';` : `import * as p${i} from './${p}.ts';`)).join('\n')}\nexport const PARTS = [${ports.map((p, i) => (p === 'site' ? `...p${i}` : `p${i}`)).join(', ')}];`;
 	await page.route('http://parts.test/**', async (route) => {
@@ -886,6 +886,13 @@ test('clock: a marked date is written for the visitor\'s clock and zone once the
 	assert.equal(await page.locator('input').inputValue(), expected[1]);
 	await page.locator('#tip').evaluate((el) => (el.firstChild!.nodeValue = 'Apr 9, 2024'));
 	assert.equal(await page.locator('#tip').textContent(), await page.evaluate(() => `Apr ${new Date(Date.UTC(2024, 3, 9)).getDate()}, 2024`), 'a tooltip Markless writes later');
+	await page.close();
+});
+
+test('clock: a chart region\'s "May" moved to April is written in the form the axis names its months, west of UTC', async () => {
+	const page = await open(`<div data-mm-clock='[{"*":2026}]'><svg><g><text><tspan>Apr 5</tspan></text></g><g><text><tspan>Jun 29</tspan></text></g></svg><span id="tip">May 1, 2024</span></div>`, ['clock'], undefined, '', 'America/Chicago');
+	assert.equal(await page.locator('#tip').textContent(), 'Apr 30, 2024');
+	assert.deepEqual(await page.locator('tspan').allTextContents(), ['Apr 4', 'Jun 28']);
 	await page.close();
 });
 
