@@ -36,6 +36,10 @@ on:
         description: The compiled-run/markless ref the build packs @markless/* from (the app's scripts/link-markless.sh)
         required: false
         default: main
+      plan-from:
+        description: A run of this workflow whose plan (its convert-inputs artifact) is used instead of planning again
+        required: false
+        default: ''
       release:
         description: A release tag to attach the build archive to (check.yml's build input takes its URL)
         required: false
@@ -50,6 +54,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   SITE: ${{ inputs.site || 'shadcn-ui' }}
@@ -72,11 +77,24 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       # The old site's own build scripts call bun (ui.shadcn.com's registry:build).
-      - uses: oven-sh/setup-bun@v2
-      - name: Serve the old site
+      - if: inputs.plan-from == ''
+        uses: oven-sh/setup-bun@v2
+      - if: inputs.plan-from == ''
+        name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Plan
+      - if: inputs.plan-from == ''
+        name: Plan
         run: PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
+      - if: inputs.plan-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: convert-inputs
+          run-id: ${{ inputs.plan-from }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/planned
+      - if: inputs.plan-from != ''
+        name: Take the plan
+        run: mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/planned/state/*.json "$APP/.migrate/" && rm -f "$APP/.migrate/inventory.json.only"
       - id: split
         env:
           SHARDS: ${{ inputs.shards || '2' }}
