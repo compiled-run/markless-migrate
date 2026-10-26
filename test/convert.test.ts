@@ -99,3 +99,35 @@ test('a region alike on two pages but showing different content on use (View Cod
 	assert.ok(factor(roots).components.some((c) => c.source.includes('View Code')), 'alike markup alone is shared');
 	assert.ok(!factor(roots, { extra: (el) => code.get(el) }).components.some((c) => c.source.includes('View Code')), 'the block, whose View Code shows each page its own source, is each page\'s');
 });
+
+// Two routes rendering one tabs block (ui.shadcn.com's /blocks and /blocks/dashboard), whose tab state the parts declare.
+function sharedTabs() {
+	const block = (route: string) =>
+		`<div id="dashboard-01"><div role="tablist"><button role="tab" id="${route === '/blocks' ? 'radix-_R_1_' : 'radix-_R_2_'}" aria-selected="true">Preview</button><button role="tab" aria-selected="false">Code</button></div><div role="tabpanel">${'x'.repeat(2400)}</div></div>`;
+	const roots = new Map(['/blocks', '/blocks/dashboard'].map((route) => [route, body(parseDocument(`<body><div>${block(route)}<main>${route}</main></div></body>`)).childNodes[0] as never]));
+	return factor(roots, {
+		bind: (el) => {
+			if (attr(el, 'role') === 'tablist') return { declare: ['let tab0 = state("Preview");'] };
+			if (attr(el, 'role') !== 'tab') return undefined;
+			const name = el.childNodes.map((n) => (n as { value?: string }).value ?? '').join('');
+			return { expressions: { 'aria-selected': `tab0 === ${JSON.stringify(name)} ? "true" : "false"` }, extra: [`onClick={() => (tab0 = ${JSON.stringify(name)})}`] };
+		},
+	});
+}
+
+test('a shared region keeps the state its parts declare, beside the values that differ by page', () => {
+	const f = sharedTabs();
+	assert.equal(f.components.length, 1);
+	const source = f.components[0]!.source;
+	assert.match(source, /onClick=\{\(\) => \(tab0 = "Preview"\)\}/);
+	assert.match(source, /^\tlet tab0 = state\("Preview"\);$/m, 'the declaration the handlers write is in the component body');
+	assert.match(source, /path === "\/blocks(\/dashboard)?" \? "radix-_R_\d_" : "radix-_R_\d_"/, 'the id each page rendered comes back by path');
+});
+
+test('a shared region with state compiles with Markless, with no error diagnostics', async () => {
+	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	const component = sharedTabs().components[0]!;
+	const result = await compileTsrxModule({ filename: component.file, source: component.source, symbols: [] });
+	const errors = collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error');
+	assert.deepEqual(errors.map((d) => `${d.code}: ${d.message}`), []);
+});
