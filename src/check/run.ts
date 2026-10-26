@@ -35,6 +35,7 @@ import { applyNavigation, checkNavigation, type NavigationOptions, type Navigati
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
 import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
+import { measureWaste, type WasteReport } from './waste.ts';
 import { networkFailures } from './slow-network-verdicts.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, weightAllowed, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
@@ -819,6 +820,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			return group ? { ...result, template: { pattern: group.pattern, representative: group.representative, members: group.members.length } } : result;
 		};
 		const coverages: RouteCoverage[] = [];
+		const wasteReferences: WasteReport[] = [];
 		const navigation: NavigationResult[] = [];
 		for (const role of roles) {
 			let roleRun = base;
@@ -914,6 +916,15 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				const measured = bypassed ? undefined : await measureRoutesNetwork({ old: options.oldOrigin, new: options.newOrigin }, [...loads.keys()], { afterAnswerMs: CHECK_AFTER_ANSWER_MS, timeoutMs: CHECK_RUN_TIMEOUT_MS, ...networkOptions });
 				for (const [route, load] of loads) loads.set(route, { ...load, network: measured?.get(route) ?? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } });
 			}
+			const wasteOptions = options.load?.waste;
+			if (wasteOptions) {
+				const control = networkOptions?.control ? { control: networkOptions.control } : {};
+				for (const [route, load] of loads) {
+					const waste = bypassed ? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } : await measureWaste(new URL(route, options.newOrigin).href, { ...wasteOptions, ...control }).catch((error: Error) => ({ unavailable: error.message.split('\n')[0]! }));
+					loads.set(route, { ...load, waste });
+				}
+				for (const url of wasteOptions.references ?? []) wasteReferences.push(await measureWaste(url, wasteOptions));
+			}
 			routes.forEach((r, i) => {
 				const load = anonymous(r) ? loads.get(r.route) : undefined;
 				if (!load) return;
@@ -943,6 +954,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(coverage ? { coverage } : {}),
 			...(options.partial ? { partial: { checked: checkedCount, total: options.partial.total } } : {}),
 			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
+			...(wasteReferences.length ? { wasteReferences } : {}),
 			...(oldCache ? { cache: { ...oldCache.counts } } : {}),
 			...(navigation.length ? { navigation: { destinations: navigation.reduce((n, r) => n + r.destinations.length, 0), pairs: navigation.reduce((n, r) => n + r.pairs.length, 0), inPlace: navigation.reduce((n, r) => n + r.pairs.filter((p) => p.inPlace).length, 0), loads: navigation.reduce((n, r) => n + r.loads, 0), ms: navigation.reduce((n, r) => n + r.ms, 0) } } : {}),
 		}, options.accepted ?? [], options.automaticOff ?? []);

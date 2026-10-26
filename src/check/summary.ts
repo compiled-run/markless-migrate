@@ -4,6 +4,7 @@ import { headlines, worstLine } from './responsiveness.ts';
 import { loadLine, psiLines } from './load.ts';
 import { PSI_NOTICE } from './psi.ts';
 import { networkLines } from './slow-network-verdicts.ts';
+import { wasteLines, wasteSummaryLines } from './waste.ts';
 import { notCompared, type Coverage, type Failure, type LoginResult, type Report, type RouteResult } from './types.ts';
 
 function kb(bytes: number): string {
@@ -68,6 +69,8 @@ export function summarize(report: Report): string {
 			lines.push(`      motion: ${route.motion.checked} interactions recorded, ${route.motion.interactions.length} moved${differ ? `, ${differ} differently on new` : ', alike on both'}${route.motion.skipped.length ? `; ${route.motion.skipped.length} not recorded` : ''}`);
 		}
 		if (route.load) lines.push(`      ${loadLine(route.load)}`, ...psiLines(route.load.psi).map((l) => `      ${l}`), ...networkLines(route.load.network).map((l) => `      ${l}`));
+		const waste = route.load?.waste;
+		if (waste) lines.push(...('unavailable' in waste ? [`first-click waste: ${waste.unavailable}`] : wasteLines(waste, 5)).map((l) => `      ${l}`));
 		for (const f of route.failures) lines.push(...failureLines(f));
 	}
 	const keyless = report.routes.some((r) => r.load?.psi && ('unavailable' in r.load.psi ? /quota|keyless/.test(r.load.psi.unavailable) : !r.load.psi.keyed));
@@ -93,6 +96,9 @@ export function summarize(report: Report): string {
 		const n = report.navigation;
 		lines.push('', `In-place navigation: ${n.destinations} page${n.destinations === 1 ? '' : 's'} (one per layout and scripts) reached by clicking a link on other pages ${n.pairs} time${n.pairs === 1 ? '' : 's'}, ${n.inPlace} swapped in place and compared with a fresh load; ${n.loads} page loads in ${Math.round(n.ms / 1000)} s. Pass --no-navigation to leave it out.`);
 	}
+	const wasted = report.routes.flatMap((r) => (r.load?.waste && !('unavailable' in r.load.waste) ? [{ route: r.route, waste: r.load.waste }] : []));
+	const wasteSummary = wasteSummaryLines(wasted, report.wasteReferences);
+	if (wasteSummary.length) lines.push('', ...wasteSummary);
 	if (report.coverage) lines.push('', ...coverageLines(report.coverage));
 	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
 	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);

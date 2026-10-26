@@ -403,3 +403,52 @@ export function wasteHtml(report: WasteReport): string {
 	const maps = report.mapped < report.scripts ? `<p><small>${report.scripts - report.mapped} of ${report.scripts} scripts had no source map; their code is named by file.</small></p>` : '';
 	return `<h4>First-click waste <small>${esc(wasteHeadline(report))}; one cold load in Chromium over ${esc(NETWORK_PROFILES[report.profile]?.label ?? report.profile)}, clicking ${esc(report.control)}; brotli is quality 11, an owner's share of a file's brotli in proportion to its bytes</small></h4>${maps}<table><thead><tr><th>Kind</th><th>Owner</th><th>Downloaded (brotli)</th><th>Raw</th><th>Ran in functions</th><th>Ran at top level only</th><th>Never ran (brotli / raw)</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>${data}`;
 }
+
+export interface WasteCheckOptions extends WasteOptions {
+	/** Pages elsewhere (another framework's version of a page) measured once and shown beside the port's numbers. */
+	readonly references?: readonly string[];
+}
+
+export interface WasteFlags {
+	readonly 'no-waste'?: boolean;
+	readonly 'waste-profile'?: string;
+	readonly 'js-budget'?: string;
+	readonly 'waste-maps'?: string;
+	readonly reference?: readonly string[];
+}
+
+/** check's first-click waste options from its flags: on by default, off with --no-waste. */
+export function wasteFlags(values: WasteFlags): { readonly options?: WasteCheckOptions; readonly error?: string } {
+	if (values['no-waste']) {
+		const given = (['waste-profile', 'js-budget', 'waste-maps', 'reference'] as const).filter((f) => values[f] !== undefined);
+		return given.length ? { error: `--no-waste and --${given[0]} contradict each other` } : {};
+	}
+	const profile = values['waste-profile'];
+	if (profile !== undefined && !NETWORK_PROFILES[profile]) return { error: `unknown --waste-profile ${profile}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}` };
+	const budget = values['js-budget'] === undefined ? undefined : Number(values['js-budget']) * 1000;
+	if (budget !== undefined && !(budget > 0)) return { error: '--js-budget takes kB of brotli JavaScript, above 0' };
+	const odd = values.reference?.find((url) => !URL.canParse(url));
+	if (odd) return { error: `--reference takes a page URL: ${odd}` };
+	return { options: { ...(profile ? { profile } : {}), ...(budget ? { budget } : {}), ...(values['waste-maps'] ? { maps: values['waste-maps'] } : {}), ...(values.reference?.length ? { references: values.reference } : {}) } };
+}
+
+/** One line for a reference page, to read beside a port's headline. */
+export function referenceLine(report: WasteReport): string {
+	if (report.error) return `${report.url}: not measured (${report.error})`;
+	return `${report.url}: ${report.noControl ? 'no control to click' : `answered at ${(report.answered! / 1000).toFixed(1)} s`}, ${kB(report.js.brotli)} brotli JS before it, ${kB(report.js.neverRanBrotli)} of it never ran`;
+}
+
+/** The end of check's summary: the pages over the JS budget (a warning, not red) and the reference pages. */
+export function wasteSummaryLines(pages: readonly { readonly route: string; readonly waste: WasteReport }[], references: readonly WasteReport[] = []): string[] {
+	if (!pages.length && !references.length) return [];
+	const measured = pages.filter((p) => !p.waste.error);
+	const over = measured.filter((p) => overBudget(p.waste)).sort((a, b) => b.waste.js.brotli - a.waste.js.brotli);
+	const budget = pages[0]?.waste.budget ?? references[0]?.budget ?? DEFAULT_JS_BUDGET;
+	const lines = [
+		over.length
+			? `First-click JS (a warning, not red): ${over.length} of ${measured.length} page${measured.length === 1 ? '' : 's'} measured download more than ${kB(budget)} of brotli JavaScript before their first click answers: ${over.map((p) => `${p.route} ${kB(p.waste.js.brotli)} (${kB(p.waste.js.neverRanBrotli)} never ran)`).join(', ')}.`
+			: `First-click JS: ${measured.length} page${measured.length === 1 ? '' : 's'} measured, each within ${kB(budget)} of brotli JavaScript before its first click answers.`,
+	];
+	if (references.length) lines.push('Reference pages, measured the same way:', ...references.map((r) => `  ${referenceLine(r)}`));
+	return lines;
+}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { bundle } from '../fixtures/waste/server.ts';
-import { attribute, decodeMappings, inlineScripts, ownerOf, ranMask, wasteHtml, wasteLines, wasteOf } from '../src/check/waste.ts';
+import { attribute, decodeMappings, inlineScripts, ownerOf, ranMask, wasteFlags, wasteHtml, wasteLines, wasteOf, wasteSummaryLines, type WasteReport } from '../src/check/waste.ts';
 import type { NetworkRun } from '../src/check/slow-network.ts';
 
 test('source-map segments decode to their generated line, column and source', () => {
@@ -99,4 +99,20 @@ test('the report counts what was requested before the answer, names inline block
 	assert.match(lines, /1 of 1 scripts had no source map/);
 	assert.match(lines, /inline in the HTML \(brotli\)/);
 	assert.match(wasteHtml(report), /&lt;script type=&quot;importmap&quot;&gt;/);
+});
+
+test('check measures first-click waste unless --no-waste, with a budget in kB and reference pages', () => {
+	assert.deepEqual(wasteFlags({}), { options: {} });
+	assert.deepEqual(wasteFlags({ 'no-waste': true }), {});
+	assert.deepEqual(wasteFlags({ 'js-budget': '80', reference: ['https://qwik.example/tabs'], 'waste-profile': 'regular-2g' }), { options: { profile: 'regular-2g', budget: 80_000, references: ['https://qwik.example/tabs'] } });
+	assert.match(String(wasteFlags({ 'no-waste': true, reference: ['https://a.example/'] }).error), /--no-waste and --reference contradict/);
+});
+
+test('the summary warns about the pages over the JS budget, never red, and puts the reference pages beside them', () => {
+	const page = (brotli: number, never: number): WasteReport => ({ url: 'https://new.example/x', profile: 'regular-3g', control: 'tab', answered: 3000, mapped: 1, scripts: 1, js: { bytes: brotli * 3, brotli, ranInFunctions: 0, ranAtTopLevel: 0, neverRan: never * 3, neverRanBrotli: never }, items: [], kinds: [], inlineData: [], downloaded: {}, budget: 60_000, ms: 1 });
+	const lines = wasteSummaryLines([{ route: '/tabs', waste: page(189_000, 149_000) }, { route: '/', waste: page(20_000, 1_000) }], [{ ...page(25_000, 5_000), url: 'https://qwik.example/tabs', answered: 1500 }]).join('\n');
+	assert.match(lines, /^First-click JS \(a warning, not red\): 1 of 2 pages measured download more than 60\.0 kB of brotli JavaScript before their first click answers: \/tabs 189 kB \(149 kB never ran\)\.$/m);
+	assert.match(lines, /^  https:\/\/qwik\.example\/tabs: answered at 1\.5 s, 25\.0 kB brotli JS before it, 5\.0 kB of it never ran$/m);
+	assert.match(wasteSummaryLines([{ route: '/', waste: page(20_000, 1_000) }]).join('\n'), /1 page measured, each within 60\.0 kB/);
+	assert.deepEqual(wasteSummaryLines([]), []);
 });

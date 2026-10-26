@@ -9,6 +9,7 @@ import { chromium } from 'playwright';
 import { HINTS } from './hints.ts';
 import { TRACKER_HOSTS, type BlockList } from './trackers.ts';
 import type { Failure } from './types.ts';
+import type { WasteCheckOptions, WasteReport } from './waste.ts';
 import type { FieldData, PsiOptions, PsiResult } from './psi.ts';
 import type { RouteNetwork, SlowNetworkOptions } from './slow-network.ts';
 
@@ -38,6 +39,8 @@ export interface LoadOptions {
 	readonly bypass?: AppBypass;
 	/** Cold loads over named slow networks in each browser, old and new in turn, with the first click timed (--network); left out unless given. */
 	readonly network?: SlowNetworkOptions;
+	/** What the new page's first click did not need, by owner (waste.ts); left out unless given. */
+	readonly waste?: WasteCheckOptions;
 }
 
 export interface AppBypass {
@@ -196,6 +199,8 @@ export interface RouteLoad {
 	readonly psi?: PsiResult;
 	/** Cold loads over slow networks, old and new: shown beside the rest, not a verdict. */
 	readonly network?: RouteNetwork | { readonly unavailable: string };
+	/** The new page's first-click waste: shown beside the rest, a warning when over budget, never red. */
+	readonly waste?: WasteReport | { readonly unavailable: string };
 }
 
 export function median(values: readonly number[]): number {
