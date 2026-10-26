@@ -8,6 +8,10 @@ import type { PartResolver, PartUsage } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
 export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url));
+/** Where convert puts the used library ports and their registry in the app. */
+export const APP_PARTS_DIR = 'lib/parts';
+/** The module listing every used port, which the app's markup imports. */
+export const PARTS_REGISTRY = 'registry.ts';
 
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
 export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6', '@internationalized/date': '3.12.3', '@tanstack/table-core': '9.0.0' };
@@ -306,7 +310,7 @@ async function exists(path: string): Promise<boolean> {
  * after the app's own parts (`lib/site/parts.ts`, written for the site's own components) when there are any.
  */
 export async function writeParts(app: string, modules: ReadonlySet<string>, choices: Readonly<Record<string, unknown>> = {}, imported: readonly string[] = []): Promise<{ readonly files: string[]; readonly site: boolean }> {
-	const out = join(app, 'lib', 'parts');
+	const out = join(app, APP_PARTS_DIR);
 	const files: string[] = [];
 	const copy = async (rel: string) => {
 		await mkdir(dirname(join(out, rel)), { recursive: true });
@@ -344,6 +348,6 @@ ${site ? "import { SITE_PARTS } from '../site/parts.ts';\n" : ''}${used.map((m, 
 
 export const PARTS: readonly Part[] = [${[...(site ? ['...SITE_PARTS'] : []), ...used.map((_, i) => `port${i}`)].join(', ')}];
 `;
-	await writeFile(join(out, 'registry.ts'), registry);
+	await writeFile(join(out, PARTS_REGISTRY), registry);
 	return { files, site };
 }
