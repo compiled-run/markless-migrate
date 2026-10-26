@@ -924,6 +924,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	layerChoices = choices;
 	try {
 		const limit = limiter(width);
+		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
+		const reading = limiter(width * 2);
 		const at = (name: string) => join(state, 'convert', name);
 		const reveal = options.reveal !== false;
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
@@ -1104,7 +1106,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			facts.reveals = reveals;
 			return facts;
 		};
-		const read = await Promise.all(captureRoutes.map(readRoute));
+		const read = await Promise.all(captureRoutes.map((route) => reading(() => readRoute(route))));
 		captures = await Promise.all(captureRoutes.map((route) => pageOf.get(route)!));
 		await Promise.all([scenesRead, notifiesRead]);
 		captureRoutes.forEach((route, i) => {
