@@ -38,6 +38,8 @@ export interface RegionOptions {
 	readonly skip?: (el: Element) => boolean;
 	/** The region's name, before the default (its data-slot, aria-label, id or landmark tag). */
 	readonly name?: (el: Element) => string | undefined;
+	/** Whether a value that differs may be an expression of the path besides the current page's link (default true); false reads it from the table. */
+	readonly derive?: boolean;
 }
 
 /** One region several pages render alike: its markup is `element` (the first page's copy) with `expressions` of `path` for what differs. */
@@ -209,13 +211,13 @@ export function sharedRegions(roots: ReadonlyMap<string, Element>, options: Regi
 					exprs[attrName] = `path === ${lit(href)} ? ${optional(current[0]!.value)} : undefined`;
 					continue;
 				}
-				const section = href !== undefined && href !== '/' ? values.filter((v) => v.path.startsWith(href)) : [];
+				const section = options.derive !== false && href !== undefined && href !== '/' ? values.filter((v) => v.path.startsWith(href)) : [];
 				const outside = values.filter((v) => !section.includes(v));
 				if (section.length && uniform(section) && uniform(outside) && section[0]!.value !== outside[0]!.value) {
 					exprs[attrName] = `path.startsWith(${lit(href!)}) ? ${optional(section[0]!.value)} : ${optional(outside[0]!.value)}`;
 					continue;
 				}
-				const derived = pathInside(values) ?? byPath(values);
+				const derived = options.derive === false ? undefined : (pathInside(values) ?? byPath(values));
 				if (derived) {
 					exprs[attrName] = derived;
 					continue;
@@ -252,7 +254,8 @@ export function factor(roots: ReadonlyMap<string, Element>, options: { readonly 
 	const usedBy = new Map<string, SharedComponent[]>();
 	const components: SharedComponent[] = [];
 	const dir = options.dir ?? 'components/converted';
-	for (const region of sharedRegions(roots, { extra: options.extra })) {
+	// Markless cannot rebuild an @if arm whose attributes are expressions of a prop; a table read it can.
+	for (const region of sharedRegions(roots, { extra: options.extra, derive: false })) {
 		const declarations: string[] = [];
 		const markup = emitElement(region.element, {
 			declarations,

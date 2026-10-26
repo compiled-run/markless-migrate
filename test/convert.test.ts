@@ -121,7 +121,8 @@ test('a shared region keeps the state its parts declare, beside the values that 
 	const source = f.components[0]!.source;
 	assert.match(source, /onClick=\{\(\) => \(tab0 = "Preview"\)\}/);
 	assert.match(source, /^\tlet tab0 = state\("Preview"\);$/m, 'the declaration the handlers write is in the component body');
-	assert.match(source, /path === "\/blocks(\/dashboard)?" \? "radix-_R_\d_" : "radix-_R_\d_"/, 'the id each page rendered comes back by path');
+	assert.match(source, /^const VALUES: .* = \{"\/blocks":\{"v0":"radix-_R_1_"\},"\/blocks\/dashboard":\{"v0":"radix-_R_2_"\}\};$/m, 'the id each page rendered is in the per-page table');
+	assert.match(source, /id=\{values\["v0"\]\}/);
 });
 
 test('a shared region with state compiles with Markless, with no error diagnostics', async () => {
@@ -130,4 +131,18 @@ test('a shared region with state compiles with Markless, with no error diagnosti
 	const result = await compileTsrxModule({ filename: component.file, source: component.source, symbols: [] });
 	const errors = collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error');
 	assert.deepEqual(errors.map((d) => `${d.code}: ${d.message}`), []);
+});
+
+test('a value that differs by page inside an @if arm of a shared region compiles with Markless', async () => {
+	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	const item = (route: string, href: string) => `<li><a href="${href}" class="${route === '/demo' ? 'item hidden-when-icon' : 'item'}">${href}${'x'.repeat(900)}</a></li>`;
+	const block = (route: string) => `<div data-slot="collapsible-content"><ul>${item(route, '/a')}${item(route, '/b')}${item(route, '/c')}</ul></div>`;
+	const roots = new Map(['/demo', '/one', '/two'].map((route) => [route, body(parseDocument(`<body><div>${block(route)}<main>${route}</main></div></body>`)).childNodes[0] as never]));
+	const f = factor(roots, {
+		bind: (el) => (attr(el, 'data-slot') === 'collapsible-content' ? { declare: ['let open0 = state(0);'], expressions: { hidden: '!(open0 === 0)' }, wrap: (children) => `@if (open0 === 0) { <>${children}</> }` } : undefined),
+	});
+	assert.equal(f.components.length, 1);
+	const component = f.components[0]!;
+	const result = await compileTsrxModule({ filename: component.file, source: component.source, symbols: [] });
+	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
 });
