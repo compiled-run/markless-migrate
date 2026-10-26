@@ -206,3 +206,16 @@ test('a row pressed anywhere (React Aria) holding a label around its checkbox co
 	const out = emitElement(root, { bind });
 	assert.match(out, /<tr data-slot="table-row" data-state=\{row\.sel \? "selected" : "false"\} onClick=\{\(event\) => \{ const at = event\.target as Element; if \(at\.closest\('label'\) && at\.tagName !== 'INPUT'\) return; tt0\.s = ttAct\([^)]*\{ k: "row", r: row\.id \}\); \}\}>/);
 });
+
+test('a table whose rows are no one template renders as the old page showed it, every part of it, and compiles', async () => {
+	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	// One row draws its name inside a <b>: the rows differ in more than values.
+	const { plan, out, declarations } = convert((s) => radixRegion(s).replace('<div class="lowercase">beta</div>', '<div class="lowercase"><b>beta</b></div>'));
+	assert.match(plan.notes.join('\n'), /its rows are not one template/);
+	assert.doesNotMatch(out, /\brow\.|tt0/, 'nothing in the table reads a row or the table state');
+	assert.deepEqual(declarations, []);
+	assert.match(out, /<tbody><tr data-slot="table-row" data-state="false">/);
+	const source = `export default function Page() @{\n\t${out}\n}\n`;
+	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
+	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
+});

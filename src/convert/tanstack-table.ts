@@ -857,6 +857,9 @@ export class TablePlan {
 	private readonly lazy = new Map<Tree, () => Binding | undefined>();
 	private readonly owner = new Map<Tree, string>();
 	private readonly emitting = new Set<Tree>();
+	/** Each placed table's rows binding, made once; a table whose rows are no template renders as the old page showed it. */
+	private readonly rows = new Map<string, () => Binding | undefined>();
+	private readonly bound = new Map<string, boolean>();
 	private readonly placed: Placed[] = [];
 	/** Every table captured, placed or not: a menu of one is bound before its page is (layers are emitted first). */
 	private readonly expected = new Map<string, Placed[]>();
@@ -883,6 +886,13 @@ export class TablePlan {
 	}
 
 	bind(el: Tree): Binding | undefined {
+		const name = this.owner.get(el);
+		if (name !== undefined && !this.bound.has(name)) {
+			// The rows are emitted before any of the table is: every binding in it reads the state the rows declare.
+			this.bound.set(name, true);
+			this.bound.set(name, this.rows.get(name)?.() !== undefined);
+		}
+		if (name !== undefined && !this.bound.get(name)) return undefined;
 		const lazy = this.lazy.get(el);
 		return lazy ? mergeBindings(this.bindings.get(el), lazy()) : this.bindings.get(el);
 	}
@@ -1102,7 +1112,11 @@ export class TablePlan {
 		// The rows: one template from the rows as emitted; what differs between them is each row's own value.
 		const empty = snaps.find((s) => s.name === 'empty');
 		const emptyBody = empty ? at(empty.root, bodyPath) : undefined;
-		this.lazy.set(tbody, () => {
+		let rows: { binding: Binding | undefined } | undefined;
+		const rowsBinding = () => (rows ??= { binding: emitRows() }).binding;
+		this.rows.set(name, rowsBinding);
+		this.lazy.set(tbody, rowsBinding);
+		const emitRows = (): Binding | undefined => {
 			const local: string[] = [];
 			const template = templateOf(bodyRows.map((tr) => this.emitter(tr, local)));
 			if (typeof template === 'string') {
@@ -1113,7 +1127,7 @@ export class TablePlan {
 			// A row's values are fields of its row in the view: a plain read of the row updates, a composite one would not.
 			const markup = template.markup.replace(/\u0000(\d+)\u0000/g, (_, slot: string) => `row.c${slot}`);
 			return { declare: [...declare, ...local], children: `@for (const row of ${v}.rows; key row.id) { ${markup} }${emptyBody ? ` @empty { ${this.emitHtml(innerOf(emptyBody))} }` : ''}` };
-		});
+		};
 
 		for (const note of notes) this.notes.push(`${route} table ${table.sig.slice(0, 40)}: ${note}`);
 		for (const [el, b] of bindings) this.bindings.set(el, mergeBindings(this.bindings.get(el), b)!);
