@@ -5,12 +5,16 @@ import { join } from 'node:path';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { APP_PARTS_DIR, PARTS_REGISTRY } from '../convert/parts.ts';
 import { mapFor } from './sourcemap.ts';
-import { AUTO_CONTROL, networkRun, type CoverageEntry, type NetworkRun, type NetworkRunOptions, type RunCapture } from './slow-network.ts';
+import { networkRun, type CoverageEntry, type NetworkRun, type NetworkRunOptions, type RunCapture } from './slow-network.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 
+/** The control waste clicks unless told: the first unselected tab or closed disclosure, as network clicks, but never a link, which would leave the page. */
+export const WASTE_CONTROL = '[role="tab"][aria-selected="false"]:visible, [aria-expanded="false"]:visible:not(a[href])';
 /** Above this much JavaScript (brotli) downloaded before the first click answers, the page is warned about. */
 export const DEFAULT_JS_BUDGET = 60_000;
 export const DEFAULT_WASTE_PROFILE = 'regular-3g';
+/** A waste run gives up waiting for the answer after this long and reports what had downloaded and run by then. */
+export const WASTE_TIMEOUT_MS = 60_000;
 const NEVER = 0;
 const IN_FUNCTION = 1;
 const TOP_LEVEL = 2;
@@ -62,6 +66,8 @@ export interface WasteReport {
 	readonly answered?: number;
 	/** No control showed: what the page downloaded and ran by the end of its load is measured instead. */
 	readonly noControl?: boolean;
+	/** The control never answered (why): what the page downloaded and ran by the time the run gave up is measured instead. */
+	readonly unanswered?: string;
 	readonly error?: string;
 	/** Scripts with a source map; the others are attributed to their file. */
 	readonly mapped: number;
@@ -287,7 +293,8 @@ export async function mapOf(url: string, text: string, dir?: string): Promise<So
 export async function wasteOf(url: string, run: NetworkRun, options: { profile: string; control: string; maps?: string; budget?: number; ms?: number; lookupMap?: typeof mapOf }): Promise<WasteReport> {
 	const lookup = options.lookupMap ?? mapOf;
 	const capture: RunCapture = run.capture ?? { scripts: [], coverage: [] };
-	const cutoff = run.answered ?? (run.noControl ? Infinity : -1);
+	const unanswered = run.answered === undefined && !run.noControl && run.capture ? run.error : undefined;
+	const cutoff = run.answered ?? (run.noControl || unanswered ? Infinity : -1);
 	const before = run.requests.filter((r) => r.start < cutoff);
 	const downloaded: Record<string, number> = {};
 	for (const r of before) downloaded[r.type] = (downloaded[r.type] ?? 0) + r.bytes;
@@ -329,7 +336,7 @@ export async function wasteOf(url: string, run: NetworkRun, options: { profile: 
 		control: options.control,
 		...(run.answered !== undefined ? { answered: run.answered } : {}),
 		...(run.noControl ? { noControl: true } : {}),
-		...(run.error ? { error: run.error } : {}),
+		...(unanswered ? { unanswered } : run.error ? { error: run.error } : {}),
 		mapped,
 		scripts: capture.scripts.filter((s) => s.start < cutoff).length,
 		js,
@@ -357,8 +364,9 @@ export async function measureWaste(url: string, options: WasteOptions = {}): Pro
 	const profileName = options.profile ?? DEFAULT_WASTE_PROFILE;
 	const profile = NETWORK_PROFILES[profileName];
 	if (!profile) throw new Error(`unknown network profile ${profileName}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}`);
-	const run = await networkRun(url, profile, 'chromium', { ...options, capture: true, firstFrame: false, afterAnswerMs: 0 });
-	return wasteOf(url, run, { profile: profileName, control: options.control ?? AUTO_CONTROL, ...(options.maps ? { maps: options.maps } : {}), ...(options.budget !== undefined ? { budget: options.budget } : {}), ms: Date.now() - started });
+	const control = options.control ?? WASTE_CONTROL;
+	const run = await networkRun(url, profile, 'chromium', { timeoutMs: WASTE_TIMEOUT_MS, ...options, control, capture: true, firstFrame: false, afterAnswerMs: 0 });
+	return wasteOf(url, run, { profile: profileName, control, ...(options.maps ? { maps: options.maps } : {}), ...(options.budget !== undefined ? { budget: options.budget } : {}), ms: Date.now() - started });
 }
 
 export const kB = (n: number) => `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)} kB`;
@@ -368,7 +376,7 @@ export const overBudget = (report: WasteReport) => !report.error && report.js.br
 
 export function wasteHeadline(report: WasteReport): string {
 	if (report.error) return `first-click waste: not measured (${report.error})`;
-	const when = report.noControl ? 'by the end of the load (no control to click)' : `before the first click answered (${(report.answered! / 1000).toFixed(1)} s)`;
+	const when = report.noControl ? 'by the end of the load (no control to click)' : report.unanswered ? 'by the end of the run (the control never answered)' : `before the first click answered (${(report.answered! / 1000).toFixed(1)} s)`;
 	return `first-click JS ${when}: ${kB(report.js.brotli)} brotli downloaded, ${kB(report.js.neverRanBrotli)} of it never ran; ${kB(report.js.bytes - report.js.neverRan)} of ${kB(report.js.bytes)} executed${overBudget(report) ? `; over the ${kB(report.budget)} budget` : ''}`;
 }
 
@@ -376,6 +384,7 @@ export function wasteHeadline(report: WasteReport): string {
 export function wasteLines(report: WasteReport, top = 8): string[] {
 	const lines = [wasteHeadline(report)];
 	if (report.error) return lines;
+	if (report.unanswered) lines.push(`  ${report.unanswered}`);
 	if (report.mapped < report.scripts) lines.push(`  ${report.scripts - report.mapped} of ${report.scripts} scripts had no source map: their code is named by file (pass --maps <build output> for modules)`);
 	const kinds = report.kinds.filter((k) => k.neverRan > 0);
 	if (kinds.length) lines.push(`  never ran, by kind (brotli): ${kinds.map((k) => `${k.kind}${k.owners > 1 ? ` (${k.owners})` : ''} ${kB(k.neverRanBrotli)}`).join(', ')}`);
@@ -399,9 +408,10 @@ export function wasteHtml(report: WasteReport): string {
 		.slice(0, 40)
 		.map((i) => `<tr><td>${esc(i.kind)}</td><td>${esc(i.name)}${i.modules.length > 1 ? `<br><small>${i.modules.slice(0, 5).map((m) => `${esc(m.module)} ${kB(m.neverRan)}`).join(', ')}</small>` : ''}</td><td>${kB(i.brotli)}</td><td>${kB(i.bytes)}</td><td>${kB(i.ranInFunctions)}</td><td>${kB(i.ranAtTopLevel)}</td><td><strong>${kB(i.neverRanBrotli)}</strong> / ${kB(i.neverRan)}</td><td><small>${i.files.slice(0, 3).map(esc).join('<br>')}</small></td></tr>`)
 		.join('');
+	const kinds = report.kinds.filter((k) => k.neverRan > 0).length ? `<p>Never ran, by kind (brotli / raw): ${report.kinds.filter((k) => k.neverRan > 0).map((k) => `${esc(k.kind)}${k.owners > 1 ? ` (${k.owners})` : ''} ${kB(k.neverRanBrotli)} / ${kB(k.neverRan)}`).join('; ')}</p>` : '';
 	const data = report.inlineData.length ? `<p>Inline data in the HTML (brotli, raw): ${report.inlineData.map((d) => `${esc(d.name)} ${kB(d.brotli)}, ${kB(d.bytes)}`).join('; ')}</p>` : '';
 	const maps = report.mapped < report.scripts ? `<p><small>${report.scripts - report.mapped} of ${report.scripts} scripts had no source map; their code is named by file.</small></p>` : '';
-	return `<h4>First-click waste <small>${esc(wasteHeadline(report))}; one cold load in Chromium over ${esc(NETWORK_PROFILES[report.profile]?.label ?? report.profile)}, clicking ${esc(report.control)}; brotli is quality 11, an owner's share of a file's brotli in proportion to its bytes</small></h4>${maps}<table><thead><tr><th>Kind</th><th>Owner</th><th>Downloaded (brotli)</th><th>Raw</th><th>Ran in functions</th><th>Ran at top level only</th><th>Never ran (brotli / raw)</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>${data}`;
+	return `<h4>First-click waste <small>${esc(wasteHeadline(report))}; one cold load in Chromium over ${esc(NETWORK_PROFILES[report.profile]?.label ?? report.profile)}, clicking ${esc(report.control)}; brotli is quality 11, an owner's share of a file's brotli in proportion to its bytes</small></h4>${maps}${report.unanswered ? `<p>${esc(report.unanswered)}</p>` : ''}${kinds}<table><thead><tr><th>Kind</th><th>Owner</th><th>Downloaded (brotli)</th><th>Raw</th><th>Ran in functions</th><th>Ran at top level only</th><th>Never ran (brotli / raw)</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>${data}`;
 }
 
 export interface WasteCheckOptions extends WasteOptions {
@@ -435,7 +445,7 @@ export function wasteFlags(values: WasteFlags): { readonly options?: WasteCheckO
 /** One line for a reference page, to read beside a port's headline. */
 export function referenceLine(report: WasteReport): string {
 	if (report.error) return `${report.url}: not measured (${report.error})`;
-	return `${report.url}: ${report.noControl ? 'no control to click' : `answered at ${(report.answered! / 1000).toFixed(1)} s`}, ${kB(report.js.brotli)} brotli JS before it, ${kB(report.js.neverRanBrotli)} of it never ran`;
+	return `${report.url}: ${report.noControl ? 'no control to click' : report.unanswered ? 'the control never answered' : `answered at ${(report.answered! / 1000).toFixed(1)} s`}, ${kB(report.js.brotli)} brotli JS before it, ${kB(report.js.neverRanBrotli)} of it never ran`;
 }
 
 /** The end of check's summary: the pages over the JS budget (a warning, not red) and the reference pages. */

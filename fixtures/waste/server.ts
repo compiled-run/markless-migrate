@@ -66,7 +66,7 @@ export async function serve(fixture: WasteFixture, padding = 60_000): Promise<{ 
 		{ source: fixture.handler, code: `for (const control of document.querySelectorAll('[role=${fixture.role}]')) control.addEventListener('click', () => {\n  for (const c of document.querySelectorAll('[role=${fixture.role}]')) c.setAttribute('${state}', String(c === control));\n});` },
 	]);
 	const controls = fixture.role === 'tab' ? '<div role="tablist"><button role="tab" aria-selected="true">One</button><button role="tab" aria-selected="false">Two</button></div>' : '<button role="button" aria-expanded="false">More</button>';
-	const page = `<!doctype html><html><head><title>Waste</title><script type="application/json" data-state>${JSON.stringify({ rows: Array.from({ length: 50 }, (_, i) => i) })}</script><script src="/bundle.js" defer></script></head><body><main>${controls}</main></body></html>`;
+	const page = `<!doctype html><html><head><title>Waste</title><script type="application/json" data-state>${JSON.stringify({ rows: Array.from({ length: 50 }, (_, i) => i) })}</script><script src="/bundle.js" defer></script></head><body><nav><a href="/elsewhere" aria-haspopup="true" aria-expanded="false">Versions</a></nav><main>${controls}</main></body></html>`;
 	const server = createServer((req, res) => {
 		if (req.url === '/bundle.js') res.writeHead(200, { 'content-type': 'text/javascript' }).end(code);
 		else if (req.url === '/bundle.js.map') res.writeHead(200, { 'content-type': 'application/json' }).end(map);

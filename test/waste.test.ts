@@ -116,3 +116,21 @@ test('the summary warns about the pages over the JS budget, never red, and puts 
 	assert.match(wasteSummaryLines([{ route: '/', waste: page(20_000, 1_000) }]).join('\n'), /1 page measured, each within 60\.0 kB/);
 	assert.deepEqual(wasteSummaryLines([]), []);
 });
+
+test('a control that never answered still gets a report, of what downloaded and ran by the time the run gave up', async () => {
+	const run: NetworkRun = {
+		clicks: 40,
+		bytes: 3000,
+		jsDownloaded: 2000,
+		error: 'the control (x) never answered a click within 60 s',
+		requests: [{ url: 'https://site.test/a.js', type: 'script', start: 600, end: 1500, bytes: 2000 }],
+		capture: { scripts: [{ url: 'https://site.test/a.js', type: 'script', start: 600, end: 1500, bytes: 2000, text: 'function f(){}' }], coverage: [] },
+	};
+	const report = await wasteOf('https://site.test/', run, { profile: 'regular-3g', control: 'x', lookupMap: async () => undefined });
+	assert.equal(report.error, undefined);
+	assert.equal(report.unanswered, 'the control (x) never answered a click within 60 s');
+	assert.equal(report.js.neverRan, 14);
+	assert.match(wasteLines(report).join('\n'), /by the end of the run \(the control never answered\)[^]*never answered a click within 60 s/);
+	const failed = await wasteOf('https://site.test/', { ...run, capture: undefined }, { profile: 'regular-3g', control: 'x' });
+	assert.equal(failed.error, 'the control (x) never answered a click within 60 s');
+});
