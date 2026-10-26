@@ -1,8 +1,10 @@
-// Serves a Vercel Build Output API directory locally: config redirects, then static files, then the Node server function.
+// Serves a Vercel Build Output API directory locally: config redirects, then static files, then the Node server function,
+// gzipped as `next start` serves the old side, so a slow-network check compares the two over the same encoding.
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
 import { Readable } from 'node:stream';
+import { createGzip } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
 const [dir, port = '4700'] = process.argv.slice(2);
@@ -11,6 +13,21 @@ const handler = (await import(pathToFileURL(join(dir, 'functions/__server.func/i
 const filesystemAt = config.routes.findIndex((r) => r.handle === 'filesystem');
 const before = config.routes.slice(0, filesystemAt < 0 ? 0 : filesystemAt).filter((r) => r.src);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml', '.ico': 'image/x-icon' };
+
+const COMPRESSIBLE = /^(text\/|application\/(javascript|json|xml|manifest\+json|ld\+json)|image\/svg\+xml)/;
+// Gzip what a browser accepts it for, as the compression middleware next start uses does (at least 1 kB, or of unknown length).
+function send(req, res, status, headers, stream, length) {
+	const type = String(headers['content-type'] ?? '');
+	const zip = /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? '')) && COMPRESSIBLE.test(type) && !headers['content-encoding'] && (length === undefined || length >= 1024) && req.method !== 'HEAD';
+	if (!zip) {
+		res.writeHead(status, headers);
+		return void (stream ? stream.pipe(res) : res.end());
+	}
+	const { 'content-length': _, ...rest } = headers;
+	res.writeHead(status, { ...rest, 'content-encoding': 'gzip', vary: 'accept-encoding' });
+	if (stream) stream.pipe(createGzip()).pipe(res);
+	else res.end();
+}
 
 createServer(async (req, res) => {
 	try {
@@ -29,8 +46,7 @@ createServer(async (req, res) => {
 		for (const candidate of [path, `${path}.html`, join(path, 'index.html')]) {
 			const file = join(dir, 'static', candidate);
 			if (file.startsWith(join(dir, 'static')) && existsSync(file) && statSync(file).isFile()) {
-				res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', ...headers });
-				return void createReadStream(file).pipe(res);
+				return void send(req, res, 200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', ...headers }, createReadStream(file), statSync(file).size);
 			}
 		}
 		const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : Readable.toWeb(req);
@@ -41,9 +57,8 @@ createServer(async (req, res) => {
 			if (k !== 'set-cookie') out[k] = v;
 		});
 		const cookies = response.headers.getSetCookie?.() ?? [];
-		res.writeHead(response.status, { ...out, ...(cookies.length ? { 'set-cookie': cookies } : {}) });
-		if (response.body) Readable.fromWeb(response.body).pipe(res);
-		else res.end();
+		const length = out['content-length'] === undefined ? undefined : Number(out['content-length']);
+		send(req, res, response.status, { ...out, ...(cookies.length ? { 'set-cookie': cookies } : {}) }, response.body ? Readable.fromWeb(response.body) : undefined, length);
 	} catch (error) {
 		res.writeHead(500).end(String(error?.stack ?? error));
 	}
