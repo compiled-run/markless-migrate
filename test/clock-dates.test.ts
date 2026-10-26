@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { rewrite } from '../parts/clock.ts';
+import { monthNamesIn, rewrite } from '../parts/clock.ts';
 import { clockMarks, type ClockText } from '../src/convert/clock.ts';
 import { LATER } from '../src/convert/day-picker.ts';
 import { DEFAULT_FREEZE } from '../src/check/freeze.ts';
@@ -31,4 +31,20 @@ test('each rule writes its date for the visitor: the instant in their time zone,
 	assert.equal(rewrite('June 01, 2025', [{ x: 'June 01, 2025', at: Date.UTC(2025, 5, 1) }]), `${['May', 'June'][local.getMonth() - 4]} ${String(local.getDate()).padStart(2, '0')}, 2025`, 'in this process\'s time zone');
 	assert.equal(rewrite('Fri, Apr 5, 2024 Page Views', [{ '*': 2026 }]), `${local.getTimezoneOffset() > 0 ? 'Thu, Apr 4' : 'Fri, Apr 5'}, 2024 Page Views`, 'a chart region writes every date in it, its weekday too');
 	assert.equal(rewrite('Updated Jan 3', [{ x: 'Jan 4', in: 1 }], now), 'Updated Jan 3', 'a date no rule names is left');
+});
+
+test('"May" names its month in either form: a chart region writes it as its other dates name theirs', () => {
+	const zone = process.env.TZ;
+	process.env.TZ = 'America/Chicago';
+	try {
+		assert.equal(monthNamesIn('Apr 5 Apr 21 May 8 Jun 29'), 'short');
+		assert.equal(monthNamesIn('July 15, 2024 May 2'), 'long');
+		assert.equal(monthNamesIn('May 8'), undefined, 'May alone does not tell');
+		assert.equal(rewrite('May 1, 2024', [{ '*': 2026 }], Date.now(), 'short'), 'Apr 30, 2024');
+		assert.equal(rewrite('May 1, 2024', [{ '*': 2026 }], Date.now(), 'long'), 'April 30, 2024');
+		assert.equal(rewrite('May 1, 2024', [{ '*': 2026 }]), 'April 30, 2024', 'with nothing to tell, as before');
+	} finally {
+		if (zone === undefined) delete process.env.TZ;
+		else process.env.TZ = zone;
+	}
 });
