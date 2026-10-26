@@ -91,8 +91,8 @@ test("each page links a cut copy of its stylesheet beside the original, holding 
 		await mkdir(dirname(join(app, file)), { recursive: true });
 		await writeFile(join(app, file), text);
 	}
-	const link = (href: string) => ({ tag: 'link', attrs: { rel: 'stylesheet', href } });
-	const head = [link('/_next/css/site.css'), link('/_next/css/small.css'), link('https://cdn.example/x.css'), { tag: 'meta', attrs: { charset: 'utf-8' } }];
+	const link = (href: string) => ({ tag: 'link', attrs: { rel: 'stylesheet', href } as Record<string, string> });
+	const head: { tag: string; attrs: Record<string, string> }[] = [link('/_next/css/site.css'), link('/_next/css/small.css'), link('https://cdn.example/x.css'), { tag: 'meta', attrs: { charset: 'utf-8' } }];
 	try {
 		const out = await usedStylesheets(
 			app,
