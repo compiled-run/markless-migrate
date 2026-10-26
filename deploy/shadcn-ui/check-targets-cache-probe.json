@@ -1,0 +1,6 @@
+{
+	"routes": [
+		"/docs/package-imports",
+		"/docs/registry/registry-item-json"
+	]
+}
