@@ -1388,6 +1388,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let tableCount = 0;
 	for (const [route, p] of prepared) tableCount += tables.add(route, locator(p.root.parentNode as Element));
 	for (const line of tables.notes) log(`  ${line}`);
+	const tableNotesPlaced = tables.notes.length;
 	if (tableCount) log(`TanStack tables on Markless state: ${tableCount}`);
 	if (tables.focusesControls) templatePorts.add('toggle');
 	// React Aria tables whose checkboxes choose rows: the rows, the checkboxes and select-all are one state.
@@ -1668,6 +1669,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers)));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
+	for (const line of tables.notes.slice(tableNotesPlaced)) log(`  ${line}; it renders as the old page showed it`);
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page; ${layers.served.length} served as files and mounted on use`);
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
 	await rm(join(app, 'lib', 'parts', 'clipboard'), { recursive: true, force: true });
