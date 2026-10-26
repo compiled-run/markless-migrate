@@ -40,6 +40,10 @@ on:
         description: A run of this workflow whose plan (its convert-inputs artifact) is used instead of planning again
         required: false
         default: ''
+      converted-from:
+        description: A run of this workflow whose converted app is built, instead of converting again
+        required: false
+        default: ''
       release:
         description: A release tag to attach the build archive to (check.yml's build input takes its URL)
         required: false
@@ -67,6 +71,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: ${{ !inputs.converted-from }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -204,7 +209,7 @@ jobs:
   emit:
     needs: [prepare, capture]
     # A shard that failed leaves its pages to be captured here.
-    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    if: ${{ !cancelled() && !inputs.converted-from && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
@@ -263,7 +268,7 @@ jobs:
 
   build:
     needs: emit
-    if: github.event_name == 'pull_request' || inputs.build
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || inputs.build) && (inputs.converted-from || needs.emit.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -280,6 +285,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: converted-app
+          run-id: ${{ inputs.converted-from || github.run_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/converted
       - name: Link Markless
         run: |
@@ -291,10 +298,12 @@ jobs:
           set -uo pipefail
           cd "$APP"
           status=0
-          /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
+          # Node's default heap on a 16 GB runner is 4 GB; the rest of the runner is the build's to use.
+          NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/build.txt"
           peak=$(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}')
-          echo "build: exit $status, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') wall, peak RSS of one process $((peak / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+          echo "build: exit $status, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') wall, peak RSS of one process $((peak / 1024)) MB, runner memory in use at most $(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) MB" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: Pack the build
         run: tar -czf "$RUNNER_TEMP/${{ env.SITE }}-markless-output.tar.gz" -C "$APP" .output
