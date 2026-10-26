@@ -1420,3 +1420,30 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-removed') === 'true');
 	await page.close();
 });
+
+test('shadcn-ui site: a chart\'s frame stays transparent until its page has loaded, then shows, whatever the capture caught it in', async () => {
+	const frame = (name: string, opacity: string) => `<iframe src="/frame/${name}" class="w-full border-none transition-opacity duration-300 ${opacity}" height="100" loading="lazy" title="chart-${name}"></iframe>`;
+	const page = await open(`<div style="height:5000px"></div>${frame('slow', 'opacity-100')}<div style="height:5000px"></div>${frame('loaded', 'opacity-0')}`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		if (route.request().url().endsWith('/slow')) await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg class="recharts-surface"></svg>' });
+	});
+	const classOf = (i: number) => page.locator('iframe').nth(i).evaluate((f) => f.className);
+	const loaded = (i: number) => page.waitForFunction((i) => document.querySelectorAll('iframe')[i]!.contentDocument?.querySelector('svg') != null, i);
+	const mount = () => page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('iframe[loading]'));
+
+	await page.locator('iframe').nth(1).scrollIntoViewIfNeeded();
+	await loaded(1);
+	await mount();
+	assert.match(await classOf(1), / opacity-100$/, 'a frame already loaded when it is mounted shows');
+
+	await page.locator('iframe').nth(0).scrollIntoViewIfNeeded();
+	await mount();
+	assert.match(await classOf(0), / opacity-0$/, 'a frame still loading is transparent');
+	release();
+	await loaded(0);
+	await page.waitForFunction(() => document.querySelector('iframe')!.className.endsWith(' opacity-100'));
+	await page.close();
+});

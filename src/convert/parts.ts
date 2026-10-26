@@ -168,14 +168,19 @@ export function useResolver(next: PartResolver): void {
 
 let mounts: readonly string[] = [];
 
-/** The attributes whose elements the site's own parts mount when visible (`lib/site/mounts.json`). */
+/** The attributes (`name`, or `tag[name]`) whose elements the site's own parts mount when visible (`lib/site/mounts.json`). */
 export function useMounts(next: readonly string[]): void {
 	mounts = next;
 }
 
+const mountedBy = (el: Element, entry: string): boolean => {
+	const [, tag, name] = /^([a-z][\w-]*)\[([^\]]+)\]$/.exec(entry) ?? [, undefined, entry];
+	return (!tag || el.tagName === tag) && el.attrs.some((a) => a.name === name);
+};
+
 /** The visibility hook for an element one of the site's parts mounts. */
 export function bindMount(el: Element): Binding | undefined {
-	const hit = mounts.find((name) => el.attrs.some((a) => a.name === name));
+	const hit = mounts.find((entry) => mountedBy(el, entry));
 	return hit ? { extra: [`onVisible={() => mount(${JSON.stringify(hit)})}`] } : undefined;
 }
 
