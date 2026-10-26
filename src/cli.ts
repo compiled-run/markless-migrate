@@ -87,7 +87,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--no-reveal] [--concurrency <n>]
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--no-reveal] [--concurrency <n>] [--capture-only]
           Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
           browser holds it once settled (loaded as check loads it), without the old framework's runtime;
           shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
@@ -97,6 +97,8 @@ const USAGE = `markless-migrate ${VERSION}
           redirects and rewrites and its route handlers answer through a generated Nitro middleware.
           Writes .migrate/convert/report.json: what was left out and why, the shared components, the
           endpoints and how each is answered, and the library parts no port implements yet.
+          --capture-only takes every capture of the old pages into .migrate/convert and writes no page:
+          shards of routes captured apart (with --only) are put together and converted in one run.
 ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -987,10 +989,14 @@ async function main(argv: string[]): Promise<number> {
 			return report.ok ? 0 : 1;
 		}
 		case 'convert': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' } } });
 			if (!values.old) fail('convert needs --old <origin>');
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
-			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), log: (line) => out(`${line}\n`) });
+			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), log: (line) => out(`${line}\n`) });
+			if (values['capture-only']) {
+				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}\n`);
+				return 0;
+			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
 			return report.routes.length ? 0 : 1;
 		}
