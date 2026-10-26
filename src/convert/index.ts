@@ -989,7 +989,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const readRoute = async (route: string): Promise<RouteFacts> => {
 			const ref = await pageOf.get(route)!;
 			const facts: RouteFacts = {};
-			const page = () => ref.load();
+			// The capture (a few MB of JSON) is read once for all of this route's steps.
+			let loaded: Promise<CapturedPage> | undefined;
+			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
 			if (reveal && routes.includes(route)) {
 				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), memo, { extra, opens }));

@@ -14,19 +14,28 @@ const hash = (text: string) => createHash('sha256').update(text).digest('hex').s
  * one, given names from the layer's own content: the same dialog on two pages differs only by those ids, and is then
  * one layer component instead of one per page.
  */
+// The same layer on every page that shows it (a site's search palette) is named once: by its key and its markup.
+const named = new Map<string, ReadonlyMap<string, string>>();
+
 export function layerIds(key: string, kept: readonly Element[]): Map<string, string> {
+	const markup = kept.map((e) => outer(e)).join('');
+	const memo = `${key}\0${createHash('sha256').update(markup).digest('hex')}`;
+	const known = named.get(memo);
+	if (known) return new Map(known);
 	const own: string[] = [];
+	const seen = new Set<string>();
 	for (const top of kept)
 		for (const el of walk(top)) {
 			const id = attr(el, 'id');
-			if (id && GENERATED_ID.test(id) && !own.includes(id)) own.push(id);
+			if (id && GENERATED_ID.test(id) && !seen.has(id)) own.push(id), seen.add(id);
 		}
-	if (GENERATED_ID.test(key) && !own.includes(key)) own.push(key);
-	if (!own.length) return new Map();
-	let text = kept.map((e) => outer(e)).join('');
+	if (GENERATED_ID.test(key) && !seen.has(key)) own.push(key);
+	let text = markup;
 	own.forEach((id, k) => (text = text.split(id).join(`@${k}`)));
 	const h = hash(text);
-	return new Map(own.map((id, k) => [id, `mm-${h}-${k}`]));
+	const names = new Map(own.map((id, k) => [id, `mm-${h}-${k}`]));
+	named.set(memo, names);
+	return new Map(names);
 }
 
 /**
