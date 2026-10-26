@@ -24,7 +24,7 @@ of 56), `/security`, every trailing-slash redirect, the 404, `robots.txt`, and s
 | Upvote or hide sends the refetch (`topNewsItems`, or `User` when it lands on the login page) | 35 | the normalized-cache gap (intended, below) |
 | React's repair of invalid nesting in six static pages (`/changepw`, `/front`, `/leaders`, `/newsfaq`, `/newsguidelines`, `/showhn`): the old DOM is what React built, the new is what the HTML parser builds from the same markup | 19 accessibility tree, 11 visible text, 4 css | intended (below) |
 | Page load FCP on seven routes: HTML sent uncompressed by Nitro's Node server | 7 | hosting (below) |
-| Text that follows the clock, signed in: the 40-day look now loads signed out (#232) on both sides, and the new page's server-rendered times did not move with it | 10 | the tool: #232 kept the server clock still for signed-in looks; fixed forward in #<NEXT> |
+| Text that follows the clock, signed in: the 40-day look now loads signed out (#232) on both sides, and the new page's server-rendered times did not move with it | 10 | the tool: #232 kept the server clock still for signed-in looks; fixed forward in #247 |
 | `/reply` does not send the old page's unused `Comment` query | 2 | intended (below) |
 
 ### Differences that are intended
@@ -212,6 +212,7 @@ Each became a red-first test and its own PR (never part of the port's PR):
 | 12 | since #168 (alike clickables used in turn in one session), every `hide` after the first on a feed was "not exercised": signed out, the first one sends the visitor to the login page and the turn had nothing left to click | the members after one that leaves the page start a new turn from a fresh load | [#189](https://github.com/compiled-run/markless-migrate/pull/189) | merged |
 | 13 | with `--server-clock`, every signed-in route checked after the first signed-in upvote was really signed out: the mutation ran at the frozen time, so the old server's user cache entry it wrote (2 h max age) was stale to the next request and Passport dropped the user. All 28 signed-in `/user` routes compared two signed-out pages | writes (any method but GET and HEAD) keep the real clock; only reads render at the frozen time | [#225](https://github.com/compiled-run/markless-migrate/pull/225) | merged |
 | 14 | after #225 the signed-in role still lost its session partway through: the clock-shift look (#185, by another worker, after #147) rendered on the server 40 days ahead with the role's cookie, and express-session's store deleted a session it read past its 7-day expiry | for a role with a saved session the moved look keeps the server on its own clock (the browser still moves) | [#232](https://github.com/compiled-run/markless-migrate/pull/232) | merged |
+| 15 | #232 itself made a false red: for the signed-in look the browser moved 40 days and the server did not, so a page the server renders (the port) kept real times while the old page's browser moved them; 10 signed-in route checks | the moved look moves the server too and loads signed out instead | [#247](https://github.com/compiled-run/markless-migrate/pull/247) | PR247 |
 
 Also hit, already fixed on `main` by other workers before this port needed it: the crawl ran into the sample-data feeds'
 endless `?p=N` pagination (`/newcomments?p=1246`, 10,000 pages, an hour of `plan`) until #116 stopped it where a page
