@@ -42,7 +42,8 @@ export interface NetworkVerdict {
 	readonly reason?: string;
 }
 
-const values = (runs: readonly NetworkRun[], metric: RunMetric) => runs.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+// A run that stopped waiting for its answer counts it at that moment: an old page's answer is no sooner than that.
+const values = (runs: readonly NetworkRun[], metric: RunMetric) => runs.map((r) => runMetric(r, metric) ?? (metric === 'answered' && !r.error ? r.answeredAfter : undefined)).filter((v): v is number => v !== undefined);
 const unanswered = (r: NetworkRun) => Boolean(r.error && /never answered/.test(r.error));
 
 /** Each gated time old against new in one browser and network. */
@@ -70,6 +71,15 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 /** The median of `known` and `missing` more values, each of those as large as it can be (`hi`) or as small (`lo`). */
 function medianWith(known: readonly number[], missing: number, fill: number): number {
 	return median([...known, ...Array.from({ length: Math.max(0, missing) }, () => fill)]);
+}
+
+/** The latest the new page's median answer can come, whatever answers its missing runs bring; undefined while it can still be any time. */
+export function latestAnswer(next: readonly NetworkRun[], runs: number): number | undefined {
+	if (next.some((r) => r.error)) return undefined;
+	const answers = values(next, 'answered');
+	if (answers.length !== next.length) return undefined;
+	const latest = medianWith(answers, runs - next.length, Infinity);
+	return Number.isFinite(latest) ? latest : undefined;
 }
 
 /**

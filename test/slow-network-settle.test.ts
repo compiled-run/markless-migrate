@@ -61,3 +61,21 @@ test("a settled cell's old runs are kept for the next check of the same deploy, 
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("the old page's answer is waited for only until the new page's median answer can no longer come later, and the verdict counts it then", async () => {
+	const given: (number | undefined)[] = [];
+	let newRuns = 0;
+	// The first paint is too close to settle the cell; only the answer is far apart.
+	const fake = async (url: string, _p: unknown, _b: unknown, options: { answerBy?: number } = {}): Promise<NetworkRun> => {
+		if (url.includes('new')) return { firstFrame: newRuns++ % 2 ? 11_600 : 11_000, lcp: 11_000, answered: 18_000, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] };
+		given.push(options.answerBy);
+		const ff = 11_500;
+		return options.answerBy !== undefined ? { firstFrame: ff, lcp: ff, answeredAfter: options.answerBy, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] } : { firstFrame: ff, lcp: ff, answered: 112_000, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] };
+	};
+	const urls = ['https://old.example/', 'https://new.example/'];
+	const [old, next] = await measureSlowNetwork(urls, { profiles: ['regular-2g'], browsers: ['chromium'], runs: 5, runner: fake as never, settle: { old: urls[0]!, new: urls[1]! } });
+	assert.deepEqual(given, [undefined, undefined, undefined, 18_500, 18_500], 'a bound once three new answers are in');
+	assert.equal(old!.cells[0]!.settled, undefined);
+	const answered = networkVerdicts(old!.cells[0]!, next!.cells[0]!).find((v) => v.metric === 'answered')!;
+	assert.equal(answered.ok, true);
+});

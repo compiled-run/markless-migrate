@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
-import { GATED, networkFailures, noiseBand, resolution, settledNotSlower } from './slow-network-verdicts.ts';
+import { GATED, latestAnswer, networkFailures, noiseBand, resolution, settledNotSlower } from './slow-network-verdicts.ts';
 import { criticalPathOf, networkGroups, type CriticalPath } from './slow-network-groups.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
@@ -43,6 +43,8 @@ export interface NetworkRun {
 	readonly firstClick?: number;
 	/** The frame after the control first changed state (aria-selected, aria-expanded, aria-pressed, aria-checked, data-state, open). */
 	readonly answered?: number;
+	/** The run stopped waiting for the answer this long after navigation start (`answerBy`): it came later, if at all. */
+	readonly answeredAfter?: number;
 	readonly clicks: number;
 	/** No control to click was on the page by the time it had loaded and the network gone quiet. */
 	readonly noControl?: boolean;
@@ -284,6 +286,8 @@ export interface NetworkRunOptions {
 	readonly afterAnswerMs?: number;
 	/** Give up on a run after this long; default 120 s. */
 	readonly timeoutMs?: number;
+	/** Stop waiting for the answer this long after navigation start, once the first frame is painted: the run records that it came later. */
+	readonly answerBy?: number;
 	/** Host names the proxy connects elsewhere (tests). */
 	readonly hosts?: Readonly<Record<string, string>>;
 }
@@ -339,6 +343,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 		const coverage = name === 'chromium';
 		if (coverage) await page.coverage.startJSCoverage({ resetOnNavigation: false, reportAnonymousScripts: false });
 		const deadline = Date.now() + timeoutMs;
+		const navigated = Date.now();
 		let loaded = false;
 		page.once('load', () => (loaded = true));
 		await page.goto(url, { waitUntil: 'commit', timeout: timeoutMs });
@@ -346,10 +351,17 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 		let done = false;
 		let seen = false;
 		let noControl = false;
-		const frame = options.firstFrame !== false ? firstPaintedFrame(page, () => done || noControl || Date.now() > deadline) : Promise.resolve(undefined);
+		let cut = false;
+		let paintedYet = options.firstFrame === false;
+		const frame = options.firstFrame !== false ? firstPaintedFrame(page, () => done || noControl || cut || Date.now() > deadline) : Promise.resolve(undefined);
+		void frame.then(() => (paintedYet = true));
 		void answered.then(() => (done = true));
 		const control = page.locator(options.control ?? AUTO_CONTROL).first();
 		while (!done && Date.now() < deadline) {
+			if (options.answerBy !== undefined && paintedYet && Date.now() - navigated > options.answerBy) {
+				cut = true;
+				break;
+			}
 			const started = Date.now();
 			const box = await control.boundingBox({ timeout: CLICK_EVERY_MS }).catch(() => null);
 			if (!box && !seen && loaded && Date.now() - throttle.lastActivity() > QUIET_MS) {
@@ -367,7 +379,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			await Promise.race([answered, new Promise((r) => setTimeout(r, Math.max(0, CLICK_EVERY_MS - (Date.now() - started))))]);
 		}
 		const executed = coverage && (done || noControl) ? executedBytes((await page.coverage.stopJSCoverage()).filter((e) => e.url)) : undefined;
-		const settle = Math.min(deadline, Date.now() + (options.afterAnswerMs ?? AFTER_ANSWER_MS));
+		const settle = cut ? 0 : Math.min(deadline, Date.now() + (options.afterAnswerMs ?? AFTER_ANSWER_MS));
 		while (Date.now() < settle && Date.now() - throttle.lastActivity() < QUIET_MS) await new Promise((r) => setTimeout(r, 200));
 		const painted = await frame;
 		const timings = await pageTimings(page);
@@ -403,7 +415,8 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			...(executed !== undefined ? { jsExecutedByAnswer: executed } : {}),
 			requests,
 			...(noControl ? { noControl } : {}),
-			...(timings.answered === undefined && !noControl ? { error: seen ? `the control (${options.control ?? 'first unselected tab or closed disclosure'}) never answered a click within ${Math.round(timeoutMs / 1000)} s` : `no control (${options.control ?? 'first unselected tab or closed disclosure'}) showed, and the page had not finished loading, within ${Math.round(timeoutMs / 1000)} s` } : {}),
+			...(cut && timings.answered === undefined ? { answeredAfter: Math.round(Date.now() - timings.origin) } : {}),
+			...(timings.answered === undefined && !noControl && !cut ? { error: seen ? `the control (${options.control ?? 'first unselected tab or closed disclosure'}) never answered a click within ${Math.round(timeoutMs / 1000)} s` : `no control (${options.control ?? 'first unselected tab or closed disclosure'}) showed, and the page had not finished loading, within ${Math.round(timeoutMs / 1000)} s` } : {}),
 		};
 	} catch (error) {
 		return { clicks: 0, bytes: throttle.downloaded(), jsDownloaded: 0, requests: [], error: (error as Error).message.split('\n')[0]! };
@@ -480,8 +493,11 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 			}
 	const job = (url: string, profile: NetworkProfile, b: NetworkBrowser) => async () => {
 		const control = options.controls?.[url] ?? options.control;
-		let run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
-		for (let retake = 0; retake < RETAKES && run.stalledMs !== undefined && run.stalledMs >= STALL_MS; retake++) run = await runner(url, profile, b, { ...options, ...(control ? { control } : {}) });
+		// The old page's answer need not be waited for past the latest the new page's median answer can still come.
+		const latest = options.settle && url === options.settle.old ? latestAnswer(results.get(k(options.settle.new, profile.name, b)) ?? [], runs) : undefined;
+		const own = { ...options, ...(control ? { control } : {}), ...(latest !== undefined ? { answerBy: latest + 2 * CLICK_EVERY_MS } : {}) };
+		let run = await runner(url, profile, b, own);
+		for (let retake = 0; retake < RETAKES && run.stalledMs !== undefined && run.stalledMs >= STALL_MS; retake++) run = await runner(url, profile, b, own);
 		results.set(k(url, profile.name, b), [...(results.get(k(url, profile.name, b)) ?? []), run]);
 		options.onRun?.(`${b} ${profile.name} ${url}`, run);
 	};
@@ -497,7 +513,8 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 	const settled = new Set<string>();
 	const settles = (profile: NetworkProfile, b: NetworkBrowser) => {
 		const { old, new: next } = options.settle!;
-		if (cached.has(k(old, profile.name, b)) || !settledNotSlower(results.get(k(old, profile.name, b)) ?? [], results.get(k(next, profile.name, b)) ?? [], runs)) return;
+		const [o, n] = [results.get(k(old, profile.name, b)) ?? [], results.get(k(next, profile.name, b)) ?? []];
+		if (cached.has(k(old, profile.name, b)) || (o.length >= runs && n.length >= runs) || !settledNotSlower(o, n, runs)) return;
 		settled.add(`${profile.name}\n${b}`);
 	};
 	const jobs: (() => Promise<void>)[] = [];
@@ -572,6 +589,8 @@ export function networkTables(sides: readonly SideNetwork[], names: readonly str
 		for (const [i, c] of cells.entries()) {
 			const failed = c.runs.filter((r) => r.error);
 			if (failed.length) out.push(`  ${names[i]}: ${failed.length} of ${c.runs.length} runs failed (${[...new Set(failed.map((r) => r.error))].join('; ')})`);
+			const waited = c.runs.filter((r) => r.answeredAfter !== undefined);
+			if (waited.length) out.push(`  ${names[i]}: ${waited.length} of ${c.runs.length} runs stopped waiting for the answer after ${waited.map((r) => formatValue('answered', r.answeredAfter)).join(', ')} (later than the other page's median answer could come)`);
 		}
 		out.push('');
 	}
