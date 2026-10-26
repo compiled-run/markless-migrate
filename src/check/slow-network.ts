@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
-import { GATED, noiseBand, resolution, settledNotSlower } from './slow-network-verdicts.ts';
+import { GATED, networkFailures, noiseBand, resolution, settledNotSlower } from './slow-network-verdicts.ts';
+import { criticalPathOf, networkGroups, type CriticalPath } from './slow-network-groups.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
 export const NETWORK_BROWSERS = ['chromium', 'firefox', 'webkit'] as const;
@@ -589,6 +590,10 @@ export interface RouteNetwork {
 	readonly new: SideNetwork;
 	/** How long measuring the route took. */
 	readonly ms?: number;
+	/** Not measured itself: the route whose measurement stands for it (the same files on both sides, its new HTML no larger, its old HTML no smaller). */
+	readonly measuredAs?: string;
+	/** The routes this route's measurement stands for. */
+	readonly standsFor?: readonly string[];
 }
 
 /** Cold loads of the route on old and new over each profile in each browser, the two sides taken in turn; the old page's runs are reused from `cacheDir` while its deploy is the same. */
@@ -599,6 +604,32 @@ export async function measureRouteNetwork(origins: { readonly old: string; reado
 	const cache = options.cacheDir && deploy ? { store: new NetworkCache(options.cacheDir), deploys: { [urls[0]!]: deploy }, reuse: [urls[0]!] } : undefined;
 	const [old, next] = await measureSlowNetwork(urls, { ...options, ...(cache ? { cache } : {}), settle: { old: urls[0]!, new: urls[1]! } });
 	return { old: old!, new: next!, ms: Date.now() - started };
+}
+
+async function criticalPath(url: string): Promise<CriticalPath | undefined> {
+	try {
+		const response = await fetch(url, { signal: AbortSignal.timeout(15_000), redirect: 'follow' });
+		return response.ok ? criticalPathOf(await response.text()) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Each route's slow-network loads, one route measured for each group of routes with the same files on both sides' critical
+ * paths (slow-network-groups.ts): its measurement stands for the others while it is green; when it is red, each of them is measured too.
+ */
+export async function measureRoutesNetwork(origins: { readonly old: string; readonly new: string }, routes: readonly string[], options: SlowNetworkOptions = {}): Promise<Map<string, RouteNetwork>> {
+	const paths = new Map<string, { old?: CriticalPath; new?: CriticalPath }>();
+	for (const route of routes) paths.set(route, { old: await criticalPath(new URL(route, origins.old).href), new: await criticalPath(new URL(route, origins.new).href) });
+	const out = new Map<string, RouteNetwork>();
+	for (const group of networkGroups(paths)) {
+		const measured = await measureRouteNetwork(origins, group.route, options);
+		const red = networkFailures(group.route, measured).length > 0;
+		out.set(group.route, group.members.length && !red ? { ...measured, standsFor: group.members } : measured);
+		for (const member of group.members) out.set(member, red ? await measureRouteNetwork(origins, member, options) : { ...measured, ms: 0, measuredAs: group.route });
+	}
+	return new Map(routes.map((r) => [r, out.get(r)!]));
 }
 
 /** What check measures on every page unless --slow-network names others: the two Firefox presets, and Lighthouse's slow 4G with real round trips. */
