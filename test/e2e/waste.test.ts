@@ -53,3 +53,30 @@ test('the waste command prints the offenders and writes the report as JSON', asy
 		server.close();
 	}
 });
+
+test('check measures each page\'s first-click waste after the load, warns about a page over the JS budget and keeps it green', async () => {
+	const { runCheck } = await import('../../src/check/run.ts');
+	const { summarize } = await import('../../src/check/summary.ts');
+	const { renderHtml } = await import('../../src/check/html.ts');
+	const old = await serve(SHAPES[0]!, 2_000);
+	const next = await serve(SHAPES[0]!);
+	const reference = await serve(SHAPES[1]!, 2_000);
+	try {
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: next.origin, routes: ['/'], viewports: [{ name: 'desktop', width: 1280, height: 800, isMobile: false }], only: 'load', load: { runs: 4, psi: false, waste: { budget: 20_000, references: [`${reference.origin}/`] } } });
+		const route = report.routes[0]!;
+		const waste = route.load?.waste;
+		assert.ok(waste && !('unavailable' in waste), JSON.stringify(waste));
+		assert.equal(waste.url, `${next.origin}/`, 'the new page is measured');
+		assert.equal(waste.items[0]?.name, 'heavy-chart');
+		assert.ok(!route.failures.some((f) => /first-click|waste/i.test(f.check)), 'over budget is a warning, not a failure');
+		const summary = summarize(report);
+		assert.match(summary, /first-click JS before the first click answered .* over the 20\.0 kB budget/);
+		assert.match(summary, /^First-click JS \(a warning, not red\): 1 of 1 page measured/m);
+		assert.match(summary, new RegExp(`^  ${reference.origin.replace(/[.]/g, '\\.')}/: answered at`, 'm'));
+		assert.match(renderHtml(report), /First-click waste: JS before the first click answered/);
+	} finally {
+		old.server.close();
+		next.server.close();
+		reference.server.close();
+	}
+});

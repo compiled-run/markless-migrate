@@ -16,7 +16,7 @@ import { parseArgs } from 'node:util';
 import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { networkHtml } from './check/slow-network-html.ts';
-import { DEFAULT_JS_BUDGET, measureWaste, wasteHtml, wasteLines, type WasteReport } from './check/waste.ts';
+import { DEFAULT_JS_BUDGET, measureWaste, wasteFlags, wasteHtml, wasteLines, type WasteFlags, type WasteReport } from './check/waste.ts';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
 import { renderStatusPage } from './check/html.ts';
@@ -108,7 +108,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
-          [--psi-key <key>] [--psi-runs <n>] [--no-psi]
+          [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -223,6 +223,13 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
             and --slow-network-browser <name> narrow it, --slow-network-concurrency loads that many pages
             at once (default 2), --no-slow-network leaves it out. markless-migrate network measures any
             pages the same way, side by side.
+          - First-click waste, on by default: each page (one per template group) loaded cold once more in
+            Chromium over --waste-profile (default regular-3g), the same control clicked until it answers,
+            and the JavaScript requested before the answer split by what ran and who owns it through
+            source maps (--waste-maps <build output> when the site does not serve them), as markless-migrate
+            waste does. A page whose JavaScript before the answer is over --js-budget kB of brotli (default
+            ${DEFAULT_JS_BUDGET / 1000}) is warned about in the summary, never red. --reference <url> (repeatable) measures
+            another page the same way once, shown beside the port's numbers. --no-waste leaves it out.
           --no-load leaves page load out;
           --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
@@ -434,6 +441,11 @@ const TIMING_FLAGS = {
 	'slow-network-control': { type: 'string' },
 	'slow-network-concurrency': { type: 'string' },
 	'no-slow-network': { type: 'boolean' },
+	'no-waste': { type: 'boolean' },
+	'waste-profile': { type: 'string' },
+	'js-budget': { type: 'string' },
+	'waste-maps': { type: 'string' },
+	reference: { type: 'string', multiple: true },
 	'nav-entries': { type: 'string' },
 	'nav-destinations': { type: 'string' },
 } as const;
@@ -458,7 +470,7 @@ function slowNetworkOptions(values: SlowNetworkFlags): SlowNetworkOptions | unde
 	return options && { ...options, cacheDir: join(process.cwd(), STATE_DIR, 'slow-network') };
 }
 
-function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean } & SlowNetworkFlags): CheckOptions['load'] {
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean } & SlowNetworkFlags & WasteFlags): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
 	const count = (flag: 'load-runs' | 'psi-runs') => {
 		const raw = values[flag];
@@ -474,7 +486,9 @@ function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-
 	if (typeof cpu === 'number' && !(cpu >= 1)) fail('--load-cpu takes calibrated or a CPU slowdown of at least 1 (default 4)');
 	const psi = values['no-psi'] ? false : { ...(values['psi-key'] ? { key: values['psi-key'] } : {}), ...(psiRuns ? { runs: psiRuns } : {}) };
 	const network = slowNetworkOptions(values);
-	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi, ...(network ? { network } : {}) };
+	const { options: waste, error } = wasteFlags(values);
+	if (error) fail(error);
+	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi, ...(network ? { network } : {}), ...(waste ? { waste: { ...waste, ...(waste.maps ? { maps: resolve(waste.maps) } : {}) } } : {}) };
 }
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {

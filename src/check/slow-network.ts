@@ -397,8 +397,8 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			}
 			await Promise.race([answered, new Promise((r) => setTimeout(r, Math.max(0, CLICK_EVERY_MS - (Date.now() - started))))]);
 		}
-		const entries = coverage && (done || noControl) ? (await page.coverage.stopJSCoverage()).filter((e) => e.url) : undefined;
-		const executed = entries ? executedBytes(entries) : undefined;
+		const entries = coverage && (done || noControl || capturing) ? (await page.coverage.stopJSCoverage()).filter((e) => e.url) : undefined;
+		const executed = entries && (done || noControl) ? executedBytes(entries) : undefined;
 		const settle = cut ? 0 : Math.min(deadline, Date.now() + (options.afterAnswerMs ?? AFTER_ANSWER_MS));
 		while (Date.now() < settle && Date.now() - throttle.lastActivity() < QUIET_MS) await new Promise((r) => setTimeout(r, 200));
 		const painted = await frame;

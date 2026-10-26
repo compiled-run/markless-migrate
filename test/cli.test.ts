@@ -41,6 +41,19 @@ test('check takes --slow-network profiles and browsers, and --no-slow-network al
 	assert.match((await run()).stdout, /Slow network, on by default/);
 });
 
+test('waste needs page URLs and a known profile; check takes --js-budget, --reference and --no-waste alone', async () => {
+	assert.match((await run('waste')).stderr, /waste needs the URLs of the pages to load/);
+	assert.match((await run('waste', 'https://a.example/', '--profile', 'edge')).stderr, /unknown --profile edge/);
+	assert.match((await run('waste', 'https://a.example/', '--budget', '0')).stderr, /--budget takes kB of brotli JavaScript, above 0/);
+	const check = async (...extra: string[]) => (await run('check', '--old', 'https://a.example', '--new', 'https://b.example', '--route', '/', ...extra)).stderr;
+	assert.match(await check('--no-waste', '--js-budget', '80'), /--no-waste and --js-budget contradict each other/);
+	assert.match(await check('--waste-profile', 'edge'), /unknown --waste-profile edge/);
+	assert.match(await check('--reference', 'qwik ui'), /--reference takes a page URL: qwik ui/);
+	const usage = (await run()).stdout;
+	assert.match(usage, /^  waste <url>\.\.\. /m);
+	assert.match(usage, /First-click waste, on by default/);
+});
+
 test('an unknown command is a usage error', async () => {
 	assert.equal((await run('frobnicate')).status, 2);
 });

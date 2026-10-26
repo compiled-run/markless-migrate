@@ -4,6 +4,7 @@ import { headlines, type Sample } from './responsiveness.ts';
 import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail, type RouteLoad } from './load.ts';
 import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMetric } from './slow-network.ts';
 import { GATED, networkHeadline, networkVerdicts } from './slow-network-verdicts.ts';
+import { overBudget, referenceLine, wasteHeadline, wasteHtml } from './waste.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
@@ -108,6 +109,13 @@ function slowNetwork(network: RouteLoad['network']): string {
 			? `<p><small>This measurement also stands for ${network.standsFor.map(esc).join(', ')}.</small></p>`
 			: '';
 	return `<h4>Slow network <small>${esc(networkHeadline(network).replace(/^slow network: /, ''))}; cold loads through a throttling proxy, the control clicked every ${CLICK_EVERY_MS} ms from when it shows until it answers; red when the new page is slower beyond how far the old page's own runs differ</small></h4>${stood}${tables.join('')}`;
+}
+
+function firstClickWaste(r: RouteResult): string {
+	const waste = r.load?.waste;
+	if (!waste) return '';
+	if ('unavailable' in waste) return `<details class="states waste"><summary>First-click waste: not measured</summary><p>${esc(waste.unavailable)}</p></details>`;
+	return `<details class="states waste"${overBudget(waste) ? ' open' : ''}><summary>First-click waste: ${esc(wasteHeadline(waste).replace(/^first-click /, ''))}${overBudget(waste) ? ' <strong>(a warning, not red)</strong>' : ''}</summary>${wasteHtml(waste)}</details>`;
 }
 
 function pageLoad(r: RouteResult): string {
@@ -261,6 +269,7 @@ ${writes(r)}
 ${coverage(r)}
 ${timings(r)}
 ${pageLoad(r)}
+${firstClickWaste(r)}
 ${motion(r)}
 ${journeyNames(r).length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${journeyNames(r).length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${journeyNames(r).map((name) => `<li${r.failures.some((f) => f.check.startsWith(name)) ? ' class="differs"' : ''}>${esc(name)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>
@@ -401,6 +410,7 @@ ${report.partial ? `<p><strong>${esc(partialLine(report.partial))}</strong></p>`
 ${report.coverage ? `<p><strong>Routes ported: ${report.coverage.present} of ${report.coverage.total} routes of the old site${report.coverage.missing.length ? `, ${report.coverage.missing.length} missing on the new app` : ''}${report.coverage.servedByOld?.length ? `, ${report.coverage.servedByOld.length} served by the old app` : ''}${report.coverage.accepted.length ? `, ${report.coverage.accepted.length} left out on purpose (accepted)` : ''}.</strong></p>${report.coverage.failures.length ? `<details${report.coverage.missing.length || report.coverage.servedByOld?.length ? ' open' : ''}><summary>Routes the new app lacks or serves from the old app</summary><ul>${report.coverage.failures.map((f) => `<li><code>${esc(f.route)}</code>${f.role ? ` (${esc(f.role)})` : ""} old ${esc(f.expected)}, new ${esc(f.actual)}${f.accepted ? ` (accepted: ${esc(f.accepted.reason)})` : f.id ? ` [${esc(f.id)}]` : ''}</li>`).join('')}</ul></details>` : ''}` : ''}
 ${report.templates ? `<p>Every page got every check except visual, responsiveness and motion, which ran on one representative per template group (by URL pattern, page layout and the kinds of control each page renders): ${report.templates.groups.map((g) => `<code>${esc(g.pattern)}</code> ${g.members.length} pages, on ${esc(g.representative)}`).join('; ')}.</p>` : ''}
 ${report.responsiveness ? responsivenessHeader(report.responsiveness) : ''}
+${report.wasteReferences?.length ? `<p>Reference pages for first-click waste, measured as each page's is: ${report.wasteReferences.map((w) => esc(referenceLine(w))).join('; ')}.</p>` : ''}
 ${run(report)}
 <p><small>Red boxes mark where the screenshots differ outside the noise mask. Slider: drag to wipe between old (left of the line) and new. Blink: alternates old and new in place.</small></p>
 ${report.staleAccepts?.length ? `<p><strong>Accepted differences that no longer match anything</strong> (remove them from .migrate/accepted.json):</p><ul>${report.staleAccepts.map((a) => `<li>${esc(a.route)} ${esc(a.dimension)}: ${esc(a.check)}: ${esc(a.reason)}</li>`).join('')}</ul>` : ''}

@@ -11,6 +11,7 @@ import type { NondeterminismFact } from './source-facts.ts';
 import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
 import type { Filmstrip, MotionResult } from './motion.ts';
 import type { RouteLoad } from './load.ts';
+import type { WasteReport } from './waste.ts';
 
 export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'load', 'responsiveness', 'motion', 'navigation'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
@@ -421,6 +422,8 @@ export interface Report {
 	readonly coverage?: RouteCoverage;
 	/** Pages grouped by template: every page got the other dimensions, visual, responsiveness and motion ran on each group's representative. */
 	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
+	/** The reference pages --reference named, measured as each page's first-click waste is. */
+	readonly wasteReferences?: readonly WasteReport[];
 	/** In-place navigation compared with fresh loads on the new app: pages sampled, page loads it made and how long it took. */
 	readonly navigation?: { readonly destinations: number; readonly pairs: number; readonly inPlace: number; readonly loads: number; readonly ms: number };
 	/** How OLD's captures and journeys were found in the cache between runs: reused, never written, or not reused because a response the old page loaded or the checker changed. */
