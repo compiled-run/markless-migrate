@@ -79,9 +79,27 @@ jobs:
       # The old site's own build scripts call bun (ui.shadcn.com's registry:build).
       - if: inputs.plan-from == ''
         uses: oven-sh/setup-bun@v2
-      - if: inputs.plan-from == ''
-        name: Serve the old site
+      # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
+      - name: Restore the old site's build
+        id: old-build
+        if: inputs.plan-from == ''
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+      - name: Serve the old site
+        if: inputs.plan-from == ''
         run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Keep the old site's build
+        if: inputs.plan-from == '' && steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - if: inputs.plan-from == ''
         name: Plan
         run: PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
@@ -138,8 +156,25 @@ jobs:
         with:
           name: convert-inputs
           path: ${{ runner.temp }}/inputs
+      # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Keep the old site's build
+        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Capture
         env:
           SHARD: ${{ matrix.shard }}
@@ -187,8 +222,25 @@ jobs:
           pattern: captures-*
           merge-multiple: true
           path: ${{ env.APP }}/.migrate/convert
+      # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Keep the old site's build
+        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Convert
         run: |
           set -euo pipefail
