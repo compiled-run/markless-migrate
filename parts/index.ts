@@ -1,4 +1,3 @@
-import { PARTS } from './registry.ts';
 import { layersPending, loadLayers, swap } from './reveal.ts';
 
 export interface Part {
@@ -25,6 +24,21 @@ export interface Part {
 }
 
 type Kind = keyof Part;
+
+// The parts every loaded registry listed, the site's first, then the ports in module order: each page's registry adds its own.
+let PARTS: readonly Part[] = [];
+const sites = new Set<readonly Part[]>();
+const ports = new Map<string, Part>();
+const idled = new WeakSet<Part>();
+
+/** Adds a page's parts to those behave, listen and mount run; the functions it returns are the same on every page. */
+export function use(site: readonly Part[], own: Readonly<Record<string, Part>>): { readonly behave: typeof behave; readonly listen: typeof listen; readonly mount: typeof mount } {
+	const before = sites.size + ports.size;
+	sites.add(site);
+	for (const [name, part] of Object.entries(own)) ports.set(name, part);
+	if (sites.size + ports.size !== before) PARTS = [...[...sites].flat(), ...[...ports.keys()].sort().map((name) => ports.get(name)!)];
+	return { behave, listen, mount };
+}
 
 const handled = new WeakSet<Event>();
 const EVENTS: readonly Kind[] = ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input', 'submit'];
@@ -66,10 +80,15 @@ function run(kind: Kind, target: Element, event: Event): boolean {
  */
 export function listen(): void {
 	void loadLayers();
-	if (listening) return;
-	listening = true;
-	for (const type of EVENTS) document.addEventListener(type, behave);
-	for (const part of PARTS) part.idle?.();
+	if (!listening) {
+		listening = true;
+		for (const type of EVENTS) document.addEventListener(type, behave);
+	}
+	for (const part of PARTS) {
+		if (idled.has(part)) continue;
+		idled.add(part);
+		part.idle?.();
+	}
 }
 
 /** Runs every part's mount for the elements carrying `attribute` (or matching `tag[attribute]`), once each; the converter calls it when they become visible. */
