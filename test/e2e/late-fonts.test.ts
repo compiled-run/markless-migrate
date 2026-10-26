@@ -31,7 +31,7 @@ for (const tab of document.querySelectorAll('[role=tab]')) tab.addEventListener(
 }
 
 for (const name of NETWORK_BROWSERS) {
-	test(`${name}: a web font only text far below the first screen draws is fetched once the page's scripts have come over the link, not with them`, { skip: browserInstalled(name) ? false : `${name} is not installed` }, async () => {
+	test(`${name}: a web font only text far below the first screen draws is fetched once the page's scripts have come over the link, not with them`, { skip: browserInstalled(name) || process.env.CI ? false : `${name} is not installed` }, async () => {
 		const { origin, server } = await serve();
 		try {
 			// WebKit sends loopback origins past any proxy; a name the proxy maps to the server reaches it in every browser.
@@ -47,7 +47,7 @@ for (const name of NETWORK_BROWSERS) {
 		}
 	});
 
-	test(`${name}: the late font is fetched before the scripts arrive when its text is near the screen`, { skip: browserInstalled(name) ? false : `${name} is not installed` }, async () => {
+	test(`${name}: the late font is fetched before the scripts arrive when its text is near the screen`, { skip: browserInstalled(name) || process.env.CI ? false : `${name} is not installed` }, async () => {
 		const { origin, server } = await serve(true);
 		try {
 			const run = await networkRun('http://late.test/', LINK, name, { timeoutMs: 30_000, hosts: { 'late.test': new URL(origin).host } });

@@ -73,6 +73,16 @@ test('check measures every page on Regular 3G, Regular 2G and slow 4G in all thr
 	assert.match(String(slowNetworkFlags({ 'no-slow-network': true, 'slow-network': ['regular-2g'] }).error), /--no-slow-network and --slow-network/);
 });
 
+test('on CI a browser the slow network is measured in but that is not installed is an error naming it; elsewhere its cells are skipped', async () => {
+	const { missingBrowsersError } = await import('../src/check/slow-network.ts');
+	const only = (present: string) => (name: string) => name === present;
+	const error = missingBrowsersError(['chromium', 'firefox', 'webkit'], { CI: 'true' }, only('chromium'));
+	assert.match(String(error), /firefox and webkit are not installed on this CI machine \(pnpm exec playwright install --with-deps firefox webkit\)/);
+	assert.equal(missingBrowsersError(['chromium', 'firefox', 'webkit'], {}, only('chromium')), undefined);
+	assert.equal(missingBrowsersError(['chromium', 'firefox'], { CI: 'false' }, only('chromium')), undefined);
+	assert.equal(missingBrowsersError(['chromium'], { CI: 'true' }, only('chromium')), undefined);
+});
+
 test('a run during which this machine stalled the measuring process is retaken, and named when it stalls every time', async () => {
 	const { stallWatch, measureSlowNetwork } = await import('../src/check/slow-network.ts');
 	const watch = stallWatch(50);
