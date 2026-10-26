@@ -60,6 +60,22 @@ export interface NetworkRun {
 	/** The longest time this process went without running a 100 ms timer: a machine that pauses or swaps the measurement skews every time in it. */
 	readonly stalledMs?: number;
 	readonly error?: string;
+	/** What the page downloaded and ran, kept when `capture` is asked for (Chromium): not stored with cached runs. */
+	readonly capture?: RunCapture;
+}
+
+/** A V8 precise-coverage entry, as Playwright returns it. */
+export interface CoverageEntry {
+	readonly url: string;
+	readonly source?: string;
+	readonly functions: readonly { readonly functionName?: string; readonly ranges: readonly { readonly startOffset: number; readonly endOffset: number; readonly count: number }[] }[];
+}
+
+/** The page's document, the scripts it downloaded and the coverage taken at the answer (or the end of the load). */
+export interface RunCapture {
+	readonly document?: { readonly url: string; readonly text: string };
+	readonly scripts: readonly (NetworkRequest & { readonly text: string })[];
+	readonly coverage: readonly CoverageEntry[];
 }
 
 export const RUN_METRICS = ['ttfb', 'firstFrame', 'fcp', 'lcp', 'load', 'answered', 'visibleToAnswer', 'bytesByAnswer', 'bytes', 'jsDownloadedByAnswer', 'jsDownloaded', 'jsExecutedByAnswer'] as const;
@@ -290,6 +306,8 @@ export interface NetworkRunOptions {
 	readonly answerBy?: number;
 	/** Host names the proxy connects elsewhere (tests). */
 	readonly hosts?: Readonly<Record<string, string>>;
+	/** Keep the document, each script's text and the coverage on the run (Chromium). */
+	readonly capture?: boolean;
 }
 
 const TYPES: Readonly<Record<NetworkBrowser, BrowserType>> = { chromium, firefox, webkit };
@@ -331,12 +349,13 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 		const answered = new Promise<void>((resolve) => (answeredAt = resolve));
 		await page.exposeFunction('__mmNetAnswered', () => answeredAt?.());
 		await page.addInitScript(observe);
-		const finished: Promise<{ request: Request; bytes: number; script: boolean } | undefined>[] = [];
+		const finished: Promise<{ request: Request; bytes: number; script: boolean; text?: string } | undefined>[] = [];
+		const capturing = options.capture && name === 'chromium';
 		page.on('requestfinished', (request) => {
+			const kept = capturing && /^(script|document)$/.test(request.resourceType()) ? request.response().then((r) => r?.text()).catch(() => undefined) : undefined;
 			finished.push(
-				request
-					.sizes()
-					.then((s) => ({ request, bytes: s.responseHeadersSize + s.responseBodySize, script: request.resourceType() === 'script' }))
+				Promise.all([request.sizes(), kept])
+					.then(([s, text]) => ({ request, bytes: s.responseHeadersSize + s.responseBodySize, script: request.resourceType() === 'script', ...(text !== undefined ? { text } : {}) }))
 					.catch(() => undefined),
 			);
 		});
@@ -378,7 +397,8 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			}
 			await Promise.race([answered, new Promise((r) => setTimeout(r, Math.max(0, CLICK_EVERY_MS - (Date.now() - started))))]);
 		}
-		const executed = coverage && (done || noControl) ? executedBytes((await page.coverage.stopJSCoverage()).filter((e) => e.url)) : undefined;
+		const entries = coverage && (done || noControl) ? (await page.coverage.stopJSCoverage()).filter((e) => e.url) : undefined;
+		const executed = entries ? executedBytes(entries) : undefined;
 		const settle = cut ? 0 : Math.min(deadline, Date.now() + (options.afterAnswerMs ?? AFTER_ANSWER_MS));
 		while (Date.now() < settle && Date.now() - throttle.lastActivity() < QUIET_MS) await new Promise((r) => setTimeout(r, 200));
 		const painted = await frame;
@@ -391,13 +411,18 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 		// The page's own Resource Timing, where it lists the request: Chromium reports some preloads to Playwright as finishing seconds after their bytes arrived.
 		const listed = new Map<string, { start: number; end: number }[]>();
 		for (const r of timings.resources) if (r.end > 0) listed.set(r.url, [...(listed.get(r.url) ?? []), r]);
+		const scripts: (NetworkRequest & { text: string })[] = [];
+		let document: RunCapture['document'];
 		for (const got of await Promise.all(finished)) {
 			if (!got) continue;
 			const own = listed.get(got.request.url())?.shift();
 			const timing = got.request.timing();
 			const start = Math.round(own ? own.start : timing.startTime - timings.origin);
 			const end = Math.round(own ? own.end : timing.startTime - timings.origin + Math.max(timing.responseEnd, 0));
-			requests.push({ url: got.request.url(), type: got.request.resourceType(), start, end, bytes: got.bytes });
+			const request = { url: got.request.url(), type: got.request.resourceType(), start, end, bytes: got.bytes };
+			requests.push(request);
+			if (got.text !== undefined && got.script) scripts.push({ ...request, text: got.text });
+			if (got.text !== undefined && request.type === 'document' && !document) document = { url: request.url, text: got.text };
 			if (got.script) {
 				jsDownloaded += got.bytes;
 				if (answerEpoch !== undefined && timings.origin + end <= answerEpoch) jsByAnswer += got.bytes;
@@ -414,6 +439,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			jsDownloaded,
 			...(executed !== undefined ? { jsExecutedByAnswer: executed } : {}),
 			requests,
+			...(capturing && entries ? { capture: { ...(document ? { document } : {}), scripts, coverage: entries } } : {}),
 			...(noControl ? { noControl } : {}),
 			...(cut && timings.answered === undefined ? { answeredAfter: Math.round(Date.now() - timings.origin) } : {}),
 			...(timings.answered === undefined && !noControl && !cut ? { error: seen ? `the control (${options.control ?? 'first unselected tab or closed disclosure'}) never answered a click within ${Math.round(timeoutMs / 1000)} s` : `no control (${options.control ?? 'first unselected tab or closed disclosure'}) showed, and the page had not finished loading, within ${Math.round(timeoutMs / 1000)} s` } : {}),

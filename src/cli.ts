@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util';
 import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { networkHtml } from './check/slow-network-html.ts';
+import { DEFAULT_JS_BUDGET, measureWaste, wasteHtml, wasteLines, type WasteReport } from './check/waste.ts';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
 import { renderStatusPage } from './check/html.ts';
@@ -309,6 +310,16 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           --concurrency loads that many pages at once, each over its own link (default 1).
           --json writes every run with its requests; --html a page to share: the tables, and each page's
           request timeline from its median run, marked at its first painted frame and its answer.
+  waste <url>... [--profile <name>] [--control <selector>] [--maps <build output>] [--budget <kB>] [--timeout <s>] [--json <file>] [--html <file>]
+          What each page's first click did not need: one cold load in Chromium over --profile (default
+          regular-3g), the control clicked until it answers (as network does), and every script requested
+          before the answer split by what ran (V8 coverage) and who owns it, through its source map: a
+          package, the framework (@markless/*), each library port convert copied into lib/parts and their
+          registry, the page and the app's own modules; a script with no map is named by its file, and
+          --maps reads the maps from a build output for a site that does not serve them. Lists the owners
+          by brotli bytes (quality 11) that never ran, the code that only ran as its script loaded, and the
+          inline scripts and data in the HTML. Warns when the JavaScript downloaded before the answer is
+          over --budget kB of brotli (default ${DEFAULT_JS_BUDGET / 1000}).
   proxy   --old <origin> --new <origin> [--port <n>] [--host <addr>]
           One origin in front of both apps: switched routes from NEW, everything else from OLD, with
           method, body, headers and cookies passed through, redirects to either app pointed back at the
@@ -1189,6 +1200,25 @@ async function main(argv: string[]): Promise<number> {
 			if (values.html) await writeFile(values.html, networkHtml(sides, shortNames(positionals)));
 			out(`${networkTables(sides, shortNames(positionals))}\n`);
 			return sides.every((s) => s.cells.every((c) => c.unavailable || c.runs.some((r) => !r.error))) ? 0 : 1;
+		}
+		case 'waste': {
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { profile: { type: 'string' }, control: { type: 'string' }, maps: { type: 'string' }, budget: { type: 'string' }, json: { type: 'string' }, html: { type: 'string' }, timeout: { type: 'string' } } });
+			if (!positionals.length) fail('waste needs the URLs of the pages to load');
+			for (const url of positionals) if (!URL.canParse(url)) fail(`not a URL: ${url}`);
+			if (values.profile && !NETWORK_PROFILES[values.profile]) fail(`unknown --profile ${values.profile}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}`);
+			const budget = values.budget === undefined ? undefined : Number(values.budget) * 1000;
+			if (budget !== undefined && !(budget > 0)) fail('--budget takes kB of brotli JavaScript, above 0');
+			const timeout = values.timeout === undefined ? undefined : Number(values.timeout);
+			if (timeout !== undefined && !(timeout > 0)) fail('--timeout takes seconds, above 0');
+			const reports: WasteReport[] = [];
+			for (const url of positionals) {
+				const report = await measureWaste(url, { ...(values.profile ? { profile: values.profile } : {}), ...(values.control ? { control: values.control } : {}), ...(values.maps ? { maps: resolve(cwd, values.maps) } : {}), ...(budget ? { budget } : {}), ...(timeout ? { timeoutMs: timeout * 1000 } : {}) });
+				reports.push(report);
+				out(`${url}\n${wasteLines(report).map((l) => `  ${l}`).join('\n')}\n`);
+			}
+			if (values.json) await writeFile(values.json, `${JSON.stringify(reports, null, '\t')}\n`);
+			if (values.html) await writeFile(values.html, `<!doctype html><meta charset="utf-8"><title>First-click waste</title><style>body{font:14px system-ui;margin:2em}table{border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top}</style>${reports.map((r) => `<h3>${r.url.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}</h3>${wasteHtml(r)}`).join('')}`);
+			return reports.every((r) => !r.error) ? 0 : 1;
 		}
 		case 'proxy': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, port: { type: 'string' }, host: { type: 'string' }, quiet: { type: 'boolean' } } });
