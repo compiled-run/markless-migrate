@@ -24,9 +24,34 @@ runs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
+    # The browsers' system packages, as apt downloaded them: the runners' mirror has served them at 30 kB/s, past a job's
+    # 45 minutes. What a run downloads is kept even when the install did not finish, so the next run starts from it.
+    - uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/apt-archives
+        key: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-
+    - id: apt
+      run: |
+        echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded > /dev/null
+        mkdir -p ~/.cache/apt-archives
+        if compgen -G ~/.cache/apt-archives/'*.deb' > /dev/null; then sudo cp ~/.cache/apt-archives/*.deb /var/cache/apt/archives/; fi
+        echo "before=$(find ~/.cache/apt-archives -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
+      shell: bash
     - if: steps.browsers.outputs.cache-hit != 'true'
-      run: pnpm exec playwright install --with-deps ${{ inputs.browsers }}
+      run: timeout 1200 pnpm exec playwright install --with-deps ${{ inputs.browsers }}
       shell: bash
     - if: steps.browsers.outputs.cache-hit == 'true'
-      run: pnpm exec playwright install-deps ${{ inputs.browsers }}
+      run: timeout 1200 pnpm exec playwright install-deps ${{ inputs.browsers }}
       shell: bash
+    - id: kept
+      if: always()
+      run: |
+        find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -n {} ~/.cache/apt-archives/ \;
+        echo "new=$(( $(find ~/.cache/apt-archives -name '*.deb' | wc -l) - ${{ steps.apt.outputs.before || 0 }} ))" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - if: always() && steps.kept.outputs.new > 0
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/apt-archives
+        key: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-${{ github.run_id }}-${{ github.run_attempt }}
