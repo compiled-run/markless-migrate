@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
-import { GATED, noiseBand, resolution } from './slow-network-verdicts.ts';
+import { GATED, noiseBand, resolution, settledNotSlower } from './slow-network-verdicts.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
 export const NETWORK_BROWSERS = ['chromium', 'firefox', 'webkit'] as const;
@@ -104,6 +104,8 @@ export interface NetworkCell {
 	readonly unavailable?: string;
 	/** The runs came from an earlier check of the same deploy. */
 	readonly cached?: boolean;
+	/** Fewer runs than asked for were taken: those left could not have made the new page slower here. */
+	readonly settled?: boolean;
 }
 
 export function summarizeCell(profile: string, browser: NetworkBrowser, runs: readonly NetworkRun[]): NetworkCell {
@@ -434,6 +436,8 @@ export interface SlowNetworkOptions extends NetworkRunOptions {
 	readonly cacheDir?: string;
 	/** Takes one run in place of networkRun (tests). */
 	readonly runner?: typeof networkRun;
+	/** Which url is the old page and which the new: a cell stops taking runs once its remaining runs could no longer make the new page slower. */
+	readonly settle?: { readonly old: string; readonly new: string };
 }
 
 export interface SideNetwork {
@@ -488,13 +492,26 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 			}),
 		);
 	};
+	// A cell whose old page is measured afresh is settled once no runs still to come could make the new page slower there.
+	const settled = new Set<string>();
+	const settles = (profile: NetworkProfile, b: NetworkBrowser) => {
+		const { old, new: next } = options.settle!;
+		if (cached.has(k(old, profile.name, b)) || !settledNotSlower(results.get(k(old, profile.name, b)) ?? [], results.get(k(next, profile.name, b)) ?? [], runs)) return;
+		settled.add(`${profile.name}\n${b}`);
+	};
 	const jobs: (() => Promise<void>)[] = [];
 	for (let i = 0; i < runs; i++)
 		for (const profile of profiles)
 			for (const b of browsers) {
 				if (skipped(profile, b)) continue;
 				// A cached page is still taken a few times, to check the cache against this session.
-				for (const url of i % 2 ? [...urls].reverse() : urls) if (!cached.has(k(url, profile.name, b)) || i < CACHE_SAMPLES) jobs.push(job(url, profile, b));
+				for (const url of i % 2 ? [...urls].reverse() : urls)
+					if (!cached.has(k(url, profile.name, b)) || i < CACHE_SAMPLES)
+						jobs.push(async () => {
+							if (settled.has(`${profile.name}\n${b}`)) return;
+							await job(url, profile, b)();
+							if (options.settle) settles(profile, b);
+						});
 			}
 	await drain(jobs);
 	const again: (() => Promise<void>)[] = [];
@@ -521,7 +538,7 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 				const reason = skipped(p, b);
 				if (reason) return { profile: p.name, browser: b, runs: [], median: {}, unavailable: reason };
 				const cell = summarizeCell(p.name, b, results.get(k(url, p.name, b)) ?? []);
-				return cached.has(k(url, p.name, b)) ? { ...cell, cached: true } : cell;
+				return { ...cell, ...(cached.has(k(url, p.name, b)) ? { cached: true } : {}), ...(settled.has(`${p.name}\n${b}`) ? { settled: true } : {}) };
 			}),
 		),
 	}));
@@ -542,7 +559,7 @@ export function networkTables(sides: readonly SideNetwork[], names: readonly str
 	for (const [profile, browser] of keys) {
 		const cells = sides.map((s) => s.cells.find((c) => c.profile === profile && c.browser === browser)!);
 		const label = NETWORK_PROFILES[profile]?.label ?? profile;
-		out.push(`${browser}, ${label}: median of ${Math.max(...cells.map((c) => c.runs.filter((r) => !r.error).length))} cold loads`);
+		out.push(`${browser}, ${label}: median of ${Math.max(...cells.map((c) => c.runs.filter((r) => !r.error).length))} cold loads${cells.some((c) => c.settled) ? ' (stopped there: the runs left could not have made the new page slower)' : ''}`);
 		const unavailable = cells.find((c) => c.unavailable)?.unavailable;
 		if (unavailable) {
 			out.push(`  ${unavailable}`, '');
@@ -580,7 +597,7 @@ export async function measureRouteNetwork(origins: { readonly old: string; reado
 	const urls = [new URL(route, origins.old).href, new URL(route, origins.new).href];
 	const deploy = options.cacheDir ? await deployOf(urls[0]!) : undefined;
 	const cache = options.cacheDir && deploy ? { store: new NetworkCache(options.cacheDir), deploys: { [urls[0]!]: deploy }, reuse: [urls[0]!] } : undefined;
-	const [old, next] = await measureSlowNetwork(urls, { ...options, ...(cache ? { cache } : {}) });
+	const [old, next] = await measureSlowNetwork(urls, { ...options, ...(cache ? { cache } : {}), settle: { old: urls[0]!, new: urls[1]! } });
 	return { old: old!, new: next!, ms: Date.now() - started };
 }
 
