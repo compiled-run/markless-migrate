@@ -10,6 +10,12 @@ const FIZZ = /(?:^|[;\s(])\$R[BCSVTX]\s*=|\$RC\(|\$RS\(|\$RT=performance\.now/;
 const GLOBALS = RUNTIME_MARKERS.scriptGlobals.map(([name]) => new RegExp(`(?<![\\w$.])${name.replace(/[.$]/g, '\\$&')}(?![\\w$])`));
 const ATTRIBUTES: ReadonlySet<string> = new Set(RUNTIME_MARKERS.attributes.map(([name]) => name));
 const ELEMENTS = new Set<string>([...RUNTIME_MARKERS.elements.map(([name]) => name), 'next-route-announcer']);
+const SCRIPT_TYPES: ReadonlySet<string> = new Set(RUNTIME_MARKERS.scriptTypes.map(([name]) => name));
+// Qwik's container and node attributes, and its handlers: QRLs it resumes from (`on:click`, `on-window:scroll`).
+const QWIK_ATTRIBUTE = /^(?:q:|on(?:-window|-document)?:)/;
+// Qwik Insights' listener for the symbols Qwik's runtime loads, which only that runtime dispatches.
+const QWIK_SYMBOLS = /addEventListener\(\s*["']qsymbol["']/;
+const IMPORTED = /\bimport\s*\(\s*["']([^"']+)["']|\bfrom\s*["']([^"']+)["']/g;
 
 export interface CleanContext {
 	/** The build paths of the frameworks whose transport global the page carries. */
@@ -48,21 +54,30 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 			count(dropped, `<${tag}>: the old framework's own element`);
 			continue;
 		}
+		if (tag === 'q:template') {
+			doomed.push(el);
+			count(dropped, "<q:template>: content Qwik keeps for a slot the page does not project");
+			continue;
+		}
 		if (tag === 'script') {
 			const src = attr(el, 'src');
 			const text = childrenOf(el)
 				.map((n) => ('value' in n ? (n as { value: string }).value : ''))
 				.join('');
-			if (src ? isFrameworkCode(src, ctx) : GLOBALS.some((re) => re.test(text)) || FIZZ.test(text)) {
+			const qwik = qwikScript(el, text, ctx);
+			if (qwik) {
+				doomed.push(el);
+				count(dropped, qwik);
+			} else if (src ? isFrameworkCode(src, ctx) : GLOBALS.some((re) => re.test(text)) || FIZZ.test(text)) {
 				doomed.push(el);
 				count(dropped, src ? 'script: the old framework build' : "inline script: the old framework's server state or streaming runtime");
-			}
+			} else removeQwikAttributes(el, dropped);
 			continue;
 		}
 		if (tag === 'link') {
 			const rel = attr(el, 'rel') ?? '';
 			const href = attr(el, 'href') ?? '';
-			if ((/\bmodulepreload\b/.test(rel) || (/\bpreload\b/.test(rel) && attr(el, 'as') === 'script')) && isFrameworkCode(href, ctx)) {
+			if ((/\bmodulepreload\b/.test(rel) || (/\bpreload\b/.test(rel) && (attr(el, 'as') === 'script' || attr(el, 'as') === 'fetch'))) && isFrameworkCode(href, ctx)) {
 				doomed.push(el);
 				count(dropped, 'script preload: the old framework build');
 				continue;
@@ -84,9 +99,29 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 				count(dropped, `${name}: the old framework's marker attribute`);
 			}
 		}
+		removeQwikAttributes(el, dropped);
 	}
 	for (const node of doomed) remove(node);
 	stripComments(doc);
+}
+
+function removeQwikAttributes(el: Element, dropped: Dropped): void {
+	for (const name of [...el.attrs.map((a) => a.name)]) {
+		if (!QWIK_ATTRIBUTE.test(name)) continue;
+		removeAttr(el, name);
+		count(dropped, name.startsWith('q:') ? "q:* attributes: Qwik's container and node markers" : "on:* attributes: Qwik's handlers, as QRLs it resumes from");
+	}
+}
+
+/** Why a script is Qwik's own (its loader, its paused state, its preloader, an element it hangs handlers on), if it is. */
+function qwikScript(el: Element, text: string, ctx: CleanContext): string | undefined {
+	const type = attr(el, 'type') ?? attr(el, 'q:func');
+	if (type && SCRIPT_TYPES.has(type)) return `<script type=${type}>: Qwik's paused state`;
+	if (attr(el, 'id') === 'qwikloader') return "<script id=qwikloader>: Qwik's event loader";
+	if (QWIK_SYMBOLS.test(text)) return "inline script: Qwik Insights' listener for the symbols Qwik loads";
+	if (!attr(el, 'src') && !text.trim() && el.attrs.some((a) => QWIK_ATTRIBUTE.test(a.name))) return "empty <script>: an element Qwik hangs window and document handlers on";
+	for (const m of text.matchAll(IMPORTED)) if (isFrameworkCode(m[1] ?? m[2]!, ctx)) return 'inline script: loads the old framework build';
+	return undefined;
 }
 
 function stripComments(parent: ParentNode): void {

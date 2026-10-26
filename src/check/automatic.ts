@@ -12,6 +12,7 @@ const RUNTIMES: readonly [string, readonly RegExp[]][] = [
 	['Angular', [/ɵɵdefineComponent|ɵcmp\b/]],
 	['Solid', [/\$DX_DELEGATE|\b_\$HY\b/]],
 	['Preact', [/__PREACT_DEVTOOLS__/]],
+	['Qwik', [/["'`](?:\[?q\\{0,2}:container\]?)["'`]|\bqwikevents\b/, /qwik\/json|qwikevents|__q_context__/]],
 	['htmx', [/htmx:configRequest/, /htmx:afterSwap/]],
 	['Alpine.js', [/\bAlpine\b/, /x-data/, /x-init/]],
 ];
