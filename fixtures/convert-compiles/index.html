@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Home</title></head>
+<body>
+<div id="app">
+<header class="site-header">
+<nav aria-label="Main"><ul><li><a href="/" class="nav-link">Section 0 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 1 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 2 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 3 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 4 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 5 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 6 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 7 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 8 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 9 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 10 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 11 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 12 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 13 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 14 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 15 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 16 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 17 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 18 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 19 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 20 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 21 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 22 of the guide, with a label long enough to make the shared region worth a component</a></li><li><a href="/b/" class="nav-link">Section 23 of the guide, with a label long enough to make the shared region worth a component</a></li></ul></nav>
+<button type="button" role="switch" aria-checked="false" data-state="unchecked" class="theme-switch">Dark mode</button>
+</header>
+<main><h1>Home</h1><p>The home page, its own text.</p></main>
+</div>
+<script>
+document.querySelector('.theme-switch').addEventListener('click', (event) => {
+	const on = event.currentTarget.getAttribute('aria-checked') !== 'true';
+	event.currentTarget.setAttribute('aria-checked', String(on));
+	event.currentTarget.setAttribute('data-state', on ? 'checked' : 'unchecked');
+});
+</script>
+</body>
+</html>

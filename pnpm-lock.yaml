@@ -66,6 +66,9 @@ importers:
       '@floating-ui/dom':
         specifier: 1.7.6
         version: 1.7.6
+      '@markless/compiler':
+        specifier: 0.9.0
+        version: 0.9.0
       '@markless/router':
         specifier: 0.7.0
         version: 0.7.0(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3)
@@ -551,6 +554,9 @@ packages:
   '@markless/compiler@0.7.0':
     resolution: {integrity: sha512-uQSv1hqbclJ4m9Xm2LJQapt4ddW1A/JAYOhVAGQS3cPSLqtio+fvl7mYbLxmFAQ9THgWZS/WoQaT0iWjQmiFOA==}
 
+  '@markless/compiler@0.9.0':
+    resolution: {integrity: sha512-5LCn2Jto9lmkjEORoPshVEVcXTXdw1fd+vQKeGYQta85U60p7g7nDCXKrVQQv5IALoKGsN8cG7ihNsLr7rASSg==}
+
   '@markless/core@0.4.0':
     resolution: {integrity: sha512-3Z/agJfHwR+l+P3mtUvH5kwuGwizURa7p90+U7i3nb4ipHLNcIwCvXlA/A2uZ7lsKi97jlxtmao3jkAGtymWDw==}
 
@@ -585,6 +591,9 @@ packages:
 
   '@markless/serializer@0.7.0':
     resolution: {integrity: sha512-BvRxecSBC4HmrOa9IiiBVpBK+3TOryMOWtxeHQwMEPmmG+Oh9NnJv5nPDmbwmEIcXiJbfTL1XXMJVt9wbOHVRA==}
+
+  '@markless/serializer@0.9.0':
+    resolution: {integrity: sha512-gqii87prOxFk2GeGVNu7pDnJ0yVHV25bcv0Eg5xaVCguMpFdnxpto4ZHndGKDjRwgWSNHvbfwS+P/gx5y4xD4w==}
 
   '@markless/typescript-plugin@0.7.0':
     resolution: {integrity: sha512-Liirf5tGAPnOY9EKt+ckxjjuGQDECKYIYRflF1RZP3jrdlmv4d3W/s1x5zGS2ATPMGRko1Yu5Vi0TuEAFgmZzA==}
@@ -2115,6 +2124,10 @@ packages:
   '@tsrx/yuku@0.2.0':
     resolution: {integrity: sha512-WfpuftifA93ngi0L17W3VP3vslIiJmZtve1htxjziLtjaEXKA5fD2wNNPlnME7LpofgrqR/vny1ZrQGxSMJImw==}
     engines: {node: '>=22'}
+
+  '@tsrx/yuku@0.8.0':
+    resolution: {integrity: sha512-G0bDi+RC1RY8VmycuVY7pNqUNgQ9fwIEbfn42DCxMPUJszOP9d8fZ4FHaasiO77k93zH8X6ZOfaAedDfbhn31A==}
+    engines: {node: '>=16.4.0'}
 
   '@tybys/wasm-util@0.10.4':
     resolution: {integrity: sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A==}
@@ -4946,6 +4959,10 @@ packages:
   yuku-codegen@0.9.5:
     resolution: {integrity: sha512-zGUVyDpSK4b6c9B0yyxi2P0wujn1XZTbG9dCb7d6gyAoP63EMgyLzUwPUvwxPG5jgYqhlI7w+S3oCyapqGr4PA==}
 
+  yuku-css@0.1.0:
+    resolution: {integrity: sha512-qt4gQYYTgaBcokM/bcwSpvkkpKT/OEJGabFEUfVX/lkfbMvPCER5SlHy6zCpwisAAev223Dm0aNciTLrOVactQ==}
+    engines: {node: '>=18'}
+
   yuku-css@0.2.0:
     resolution: {integrity: sha512-/jK+jrtOAY5VLwSajX33NcjkPu9z7bcO9W5l30Hr7VsdzH5q6Y8cxzlkR41dtvizb7c9GWbTLMfla1ejVpYVYw==}
     engines: {node: '>=18'}
@@ -4962,6 +4979,10 @@ packages:
     resolution: {integrity: sha512-2duefgyx64/RcEWgTDE9dN843fRMMQsxK71pMfvxkQIATNv14Sx4TcvHgP36bK8O153eG1lmrizNxGrMBbBICA==}
     engines: {node: '>=22'}
     deprecated: moved to @tsrx/yuku
+
+  yuku@0.20.1:
+    resolution: {integrity: sha512-F8Pfho7RQSH2X/ph7DRqCYi/gX7m/urcFmNSzjmbGanlnTfy+P86d8pca5DHVYObpe1NlsmJ6PF5sC6+Vqrpyg==}
+    engines: {node: '>=16.4.0'}
 
   zimmerframe@1.1.5:
     resolution: {integrity: sha512-msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA==}
@@ -5254,6 +5275,12 @@ snapshots:
       yuku-analyzer: 0.9.1
       yuku-codegen: 0.9.1
 
+  '@markless/compiler@0.9.0':
+    dependencies:
+      '@markless/serializer': 0.9.0
+      '@tsrx/yuku': 0.8.0
+      yuku-css: 0.1.0
+
   '@markless/core@0.4.0(jiti@2.7.0)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))':
     dependencies:
       '@markless/bundler': 0.4.0(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
@@ -5381,6 +5408,8 @@ snapshots:
   '@markless/serializer@0.4.0': {}
 
   '@markless/serializer@0.7.0': {}
+
+  '@markless/serializer@0.9.0': {}
 
   '@markless/typescript-plugin@0.7.0(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3)':
     dependencies:
@@ -6574,6 +6603,10 @@ snapshots:
     optionalDependencies:
       '@tsrx/yuku-darwin-arm64': 0.2.0
       '@tsrx/yuku-linux-x64-gnu': 0.2.0
+
+  '@tsrx/yuku@0.8.0':
+    dependencies:
+      yuku: 0.20.1
 
   '@tybys/wasm-util@0.10.4':
     dependencies:
@@ -9250,6 +9283,8 @@ snapshots:
       '@yuku-codegen/binding-win32-arm64': 0.9.5
       '@yuku-codegen/binding-win32-x64': 0.9.5
 
+  yuku-css@0.1.0: {}
+
   yuku-css@0.2.0: {}
 
   yuku-parser@0.9.5:
@@ -9279,6 +9314,8 @@ snapshots:
     optionalDependencies:
       '@yuku-tsrx/binding-darwin-arm64': 0.1.4
       '@yuku-tsrx/binding-linux-x64-gnu': 0.1.4
+
+  yuku@0.20.1: {}
 
   zimmerframe@1.1.5: {}
 
