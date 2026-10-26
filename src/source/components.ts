@@ -257,33 +257,152 @@ export async function scanComponents(ctx: Context, routes: SourceRoute[]): Promi
 /** Migration order: dependencies before what renders them; among ready ones, layouts first, then the most depended-on. */
 export function planOrder(facts: { components: readonly Component[] }): PlanStep[] {
 	const byId = new Map(facts.components.map((c) => [c.id, c]));
-	const dependents = new Map<string, number>();
-	const count = (id: string) => {
-		if (dependents.has(id)) return dependents.get(id)!;
-		dependents.set(id, 0);
-		const seen = new Set<string>();
-		const queue = [...(byId.get(id)?.usedBy ?? [])];
-		while (queue.length) {
-			const next = queue.pop()!;
-			if (seen.has(next) || next === id) continue;
-			seen.add(next);
-			queue.push(...(byId.get(next)?.usedBy ?? []));
-		}
-		dependents.set(id, seen.size);
-		return seen.size;
-	};
-	const remaining = new Map(facts.components.map((c) => [c.id, new Set(c.uses.filter((u) => byId.has(u) && u !== c.id))]));
+	const count = dependentCounts(facts.components);
 	const rank = { layout: 0, component: 1, route: 2 } as const;
+	const place = new Map(facts.components.map((c, i) => [c.id, i]));
+	// Ties keep the components' own order, as a stable sort of the ready ones would.
+	const better = (a: Component, b: Component) => rank[a.kind] - rank[b.kind] || count(b.id) - count(a.id) || a.id.localeCompare(b.id) || place.get(a.id)! - place.get(b.id)!;
+	const remaining = new Map(facts.components.map((c) => [c.id, new Set(c.uses.filter((u) => byId.has(u) && u !== c.id))]));
+	const waiting = new Map<string, string[]>();
+	for (const [id, deps] of remaining) for (const d of deps) (waiting.get(d) ?? waiting.set(d, []).get(d)!).push(id);
+	const ready = new Heap<Component>(better);
+	for (const [id, deps] of remaining) if (!deps.size) ready.push(byId.get(id)!);
 	const order: PlanStep[] = [];
-	const better = (a: Component, b: Component) => rank[a.kind] - rank[b.kind] || count(b.id) - count(a.id) || a.id.localeCompare(b.id);
 	while (remaining.size) {
-		let ready = [...remaining].filter(([, deps]) => deps.size === 0).map(([id]) => byId.get(id)!);
-		if (!ready.length) ready = [[...remaining].sort(([a, x], [b, y]) => x.size - y.size || a.localeCompare(b))[0]!].map(([id]) => byId.get(id)!);
-		const next = ready.sort(better)[0]!;
+		let next = ready.pop();
+		// A cycle leaves nothing ready: the component with the fewest dependencies left goes first.
+		if (!next) {
+			let pick: [string, Set<string>] | undefined;
+			for (const entry of remaining) if (!pick || entry[1].size - pick[1].size < 0 || (entry[1].size === pick[1].size && entry[0].localeCompare(pick[0]) < 0)) pick = entry;
+			next = byId.get(pick![0])!;
+		}
 		order.push({ kind: next.kind, id: next.id, name: next.name, file: next.file, unlocks: count(next.id) });
 		remaining.delete(next.id);
-		for (const deps of remaining.values()) deps.delete(next.id);
+		for (const id of waiting.get(next.id) ?? []) {
+			const deps = remaining.get(id);
+			if (deps?.delete(next.id) && !deps.size) ready.push(byId.get(id)!);
+		}
 	}
 	return order;
 }
 
+// How many components render each one, directly or through others (itself left out): strongly connected parts found once,
+// and each part's dependents a bit set joined from the parts that render it.
+function dependentCounts(components: readonly Component[]): (id: string) => number {
+	const index = new Map<string, number>();
+	const ids: string[] = [];
+	const at = (id: string) => index.get(id) ?? (index.set(id, ids.push(id) - 1), ids.length - 1);
+	for (const c of components) at(c.id);
+	const edges: number[][] = [];
+	for (const c of components) edges[at(c.id)] = [...new Set(c.usedBy.map(at))];
+	const n = ids.length;
+	for (let v = 0; v < n; v++) edges[v] ??= [];
+	// Tarjan's algorithm without recursion: parts come out with every part they reach already out.
+	const order = new Int32Array(n).fill(-1);
+	const low = new Int32Array(n);
+	const part = new Int32Array(n).fill(-1);
+	const stack: number[] = [];
+	const onStack = new Uint8Array(n);
+	const parts: number[][] = [];
+	let time = 0;
+	for (let root = 0; root < n; root++) {
+		if (order[root] !== -1) continue;
+		const work: [number, number][] = [[root, 0]];
+		order[root] = low[root] = time++;
+		stack.push(root);
+		onStack[root] = 1;
+		while (work.length) {
+			const top = work[work.length - 1]!;
+			const [v, i] = top;
+			if (i < edges[v]!.length) {
+				top[1]++;
+				const w = edges[v]![i]!;
+				if (order[w] === -1) {
+					order[w] = low[w] = time++;
+					stack.push(w);
+					onStack[w] = 1;
+					work.push([w, 0]);
+				} else if (onStack[w]) low[v] = Math.min(low[v]!, order[w]!);
+				continue;
+			}
+			work.pop();
+			if (work.length) {
+				const u = work[work.length - 1]![0];
+				low[u] = Math.min(low[u]!, low[v]!);
+			}
+			if (low[v] === order[v]) {
+				const members: number[] = [];
+				for (let w = stack.pop()!; ; w = stack.pop()!) {
+					onStack[w] = 0;
+					part[w] = parts.length;
+					members.push(w);
+					if (w === v) break;
+				}
+				parts.push(members);
+			}
+		}
+	}
+	const words = (n + 31) >>> 5;
+	const reach = parts.map(() => new Uint32Array(words));
+	const bit = (set: Uint32Array, v: number) => (set[v >>> 5]! |= 1 << (v & 31));
+	parts.forEach((members, p) => {
+		const own = reach[p]!;
+		for (const v of members)
+			for (const w of edges[v]!) {
+				const q = part[w]!;
+				bit(own, w);
+				if (q !== p) for (let k = 0; k < words; k++) own[k]! |= reach[q]![k]!;
+			}
+	});
+	const ones = (x: number) => {
+		x -= (x >>> 1) & 0x55555555;
+		x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+		return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+	};
+	const counts = reach.map((set) => set.reduce((sum, word) => sum + ones(word), 0));
+	return (id: string) => {
+		const v = index.get(id);
+		if (v === undefined) return 0;
+		const own = reach[part[v]!]!;
+		return counts[part[v]!]! - ((own[v >>> 5]! >>> (v & 31)) & 1);
+	};
+}
+
+/** A binary heap: pop gives the least by `less`. */
+class Heap<T> {
+	private readonly items: T[] = [];
+	private readonly less: (a: T, b: T) => number;
+	constructor(less: (a: T, b: T) => number) {
+		this.less = less;
+	}
+	push(item: T): void {
+		const a = this.items;
+		a.push(item);
+		for (let i = a.length - 1; i > 0; ) {
+			const up = (i - 1) >> 1;
+			if (this.less(a[i]!, a[up]!) >= 0) break;
+			[a[i], a[up]] = [a[up]!, a[i]!];
+			i = up;
+		}
+	}
+	pop(): T | undefined {
+		const a = this.items;
+		if (!a.length) return undefined;
+		const top = a[0]!;
+		const last = a.pop()!;
+		if (a.length) {
+			a[0] = last;
+			for (let i = 0; ; ) {
+				const l = 2 * i + 1;
+				const r = l + 1;
+				let m = i;
+				if (l < a.length && this.less(a[l]!, a[m]!) < 0) m = l;
+				if (r < a.length && this.less(a[r]!, a[m]!) < 0) m = r;
+				if (m === i) break;
+				[a[i], a[m]] = [a[m]!, a[i]!];
+				i = m;
+			}
+		}
+		return top;
+	}
+}
