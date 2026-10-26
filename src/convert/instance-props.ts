@@ -1,3 +1,5 @@
+import type { Mark, Marked } from './marks.ts';
+
 /** A prop a port reads off one rendered instance, as the old page's React tree gave it. */
 export interface InstanceProp {
 	readonly name: string;
@@ -15,6 +17,8 @@ export interface InstanceSpec {
 	readonly props: readonly InstanceProp[];
 	/** Text every captured document holding such an element contains: a capture without it never needs taking again. */
 	readonly hints: readonly string[];
+	/** Bumped when the spec reads more: captures holding its hints are taken again, others are kept (1 when absent). */
+	readonly version?: number;
 }
 
 export const INSTANCE_PROPS: readonly InstanceSpec[] = [
@@ -23,11 +27,11 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
 ];
 
-/** Bumped when the specs read more: captures marked with an older version are taken again where a spec applies. */
-export const INSTANCE_PROPS_VERSION = 1;
+/** Each spec as a mark of its own, so a spec that reads more takes again only the captures holding its hints. */
+export const instancePropMarks = (specs: readonly InstanceSpec[] = INSTANCE_PROPS): Mark[] => specs.map((s) => ({ id: `instance-props:${s.port}:${s.selector}`, version: s.version ?? 1, applies: (html) => s.hints.every((hint) => html.includes(hint)) }));
 
-/** Whether a capture of these documents holds the instance props the specs read (or holds nothing they read). */
-export const markedInstanceProps = (htmls: readonly string[], marked: number | undefined, specs: readonly InstanceSpec[] = INSTANCE_PROPS) => marked === INSTANCE_PROPS_VERSION || !htmls.some((h) => specs.some((s) => s.hints.every((hint) => h.includes(hint))));
+/** A capture written before each spec had its own version: `instanceProps: 1` was read as holding every spec. */
+export const legacyInstanceProps = (instanceProps: number | undefined, specs: readonly InstanceSpec[] = INSTANCE_PROPS): Marked => (instanceProps === 1 ? Object.fromEntries(specs.map((s) => [`instance-props:${s.port}:${s.selector}`, 1])) : {});
 
 /** Runs in the old page: writes on each element a spec selects the props its own instance was given (`added`: in `__mmAdded` only). */
 export function markInstanceProps({ specs, added }: { readonly specs: readonly InstanceSpec[]; readonly added: boolean }): void {

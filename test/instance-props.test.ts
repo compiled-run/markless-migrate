@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
-import { INSTANCE_PROPS, markedInstanceProps, markInstanceProps, type InstanceSpec } from '../src/convert/instance-props.ts';
+import { INSTANCE_PROPS, instancePropMarks, legacyInstanceProps, markInstanceProps, type InstanceSpec } from '../src/convert/instance-props.ts';
+import { missingMarks } from '../src/convert/marks.ts';
 
 let browser: Browser;
 before(async () => {
@@ -101,11 +102,16 @@ test('with `added`, only what the reveal added is marked', async () => {
 	await page.close();
 });
 
-test('a capture is taken again only where an older one holds what a spec reads', () => {
+test('a capture is taken again only where an older one holds what a spec reads, and a spec read again takes again only what holds its hints', () => {
 	const spec: InstanceSpec = { port: 'x', selector: 'input', props: [{ name: 'p' }], hints: ['aria-haspopup="listbox"'] };
-	assert.equal(markedInstanceProps(['<input aria-haspopup="listbox">'], undefined, [spec]), false);
-	assert.equal(markedInstanceProps(['<p>nothing</p>'], undefined, [spec]), true);
-	assert.equal(markedInstanceProps(['<input aria-haspopup="listbox">'], 1, [spec]), true);
+	const other: InstanceSpec = { port: 'y', selector: 'button', props: [{ name: 'q' }], hints: ['data-y'] };
+	const missing = (htmls: string[], marked: Record<string, number>, specs: InstanceSpec[]) => missingMarks(htmls, marked, instancePropMarks(specs)).length > 0;
+	assert.equal(missing(['<input aria-haspopup="listbox">'], {}, [spec]), true);
+	assert.equal(missing(['<p>nothing</p>'], {}, [spec]), false);
+	assert.equal(missing(['<input aria-haspopup="listbox">'], legacyInstanceProps(1, [spec]), [spec]), false);
+	const read = legacyInstanceProps(1, [spec, other]);
+	assert.equal(missing(['<input aria-haspopup="listbox">'], read, [spec, { ...other, version: 2 }]), false, 'a bump to another spec keeps it');
+	assert.equal(missing(['<button data-y>'], read, [spec, { ...other, version: 2 }]), true);
 });
 
 test("a dialog trigger gets its root's disablePointerDismissal, which Drawer.Root takes and Drawer.Trigger does not render", async () => {
