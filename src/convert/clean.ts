@@ -55,7 +55,8 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 		}
 		if (tag === 'q:template') {
 			doomed.push(el);
-			count(dropped, "<q:template>: content Qwik keeps for a slot the page does not project");
+			if (projectIntoHost(el)) count(dropped, '<q:template>: its content moved into the slot host Qwik projects it into, hidden until a part shows it');
+			else count(dropped, "<q:template>: content Qwik keeps for a slot the page does not project");
 			continue;
 		}
 		if (tag === 'script') {
@@ -102,6 +103,30 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 	}
 	for (const node of doomed) remove(node);
 	stripComments(doc);
+}
+
+/**
+ * Qwik keeps a slot's content it has not projected yet in a <q:template> right after the slot's host (a select item's
+ * check icon beside its empty indicator span). The content goes into the empty host, each element hidden, so the
+ * part that shows it (on selection) only switches an attribute; Markless renders every node.
+ */
+function projectIntoHost(template: Element): boolean {
+	const parent = template.parentNode as ParentNode | null;
+	if (!parent) return false;
+	const siblings = childrenOf(parent);
+	const at = siblings.indexOf(template);
+	const host = siblings.slice(0, at).reverse().find((n) => isElement(n) || ('value' in n && String((n as { value: string }).value).trim() !== '')) as Element | undefined;
+	if (!host || !isElement(host) || childrenOf(host).some((n) => isElement(n) || ('value' in n && String((n as { value: string }).value).trim() !== ''))) return false;
+	const content = childrenOf(template).filter((n) => isElement(n));
+	if (!content.length) return false;
+	for (const node of content) {
+		const el = node as Element;
+		el.attrs = [...el.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }];
+		(el as unknown as { parentNode: ParentNode }).parentNode = host;
+		childrenOf(host).push(el);
+	}
+	childrenOf(template).length = 0;
+	return true;
 }
 
 function removeQwikAttributes(el: Element, dropped: Dropped): void {
