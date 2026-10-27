@@ -1,5 +1,6 @@
 import type { Part } from '../parts/index.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
+import { DEMO_PARTS } from './demos.ts';
 import { startPagefind } from './pagefind-search.ts';
 
 // qwikui.com's own client components (apps/website/src/components) on Markless. Each control is found by the handler it
@@ -324,4 +325,4 @@ const searchShortcut: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [themeControls, mobileNav, cssConfig, codeCopy, statusBanner, toc, searchShortcut];
+export const SITE_PARTS: readonly Part[] = [themeControls, mobileNav, cssConfig, codeCopy, statusBanner, toc, searchShortcut, ...DEMO_PARTS];

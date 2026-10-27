@@ -29,7 +29,7 @@ export default function SearchBox() @{
 			data-id="search"
 			class="rounded-base flex border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 h-12 w-full rounded-b-none border-none focus-visible:ring-0 focus-visible:outline-hidden"
 			onInput={(event) => {
-				const typed = (event.target as HTMLInputElement).value;
+				const typed = (event.currentTarget as HTMLInputElement).value;
 				term = typed;
 				active = 0;
 				void latestSearch(typed).then((found) => {
@@ -39,7 +39,7 @@ export default function SearchBox() @{
 				});
 			}}
 			onKeyDown={(event) => {
-				const input = event.target as HTMLInputElement;
+				const input = event.currentTarget as HTMLInputElement;
 				const count = document.querySelectorAll(`[id^="${ITEM}-"][role="option"]`).length;
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 				if (event.key === 'ArrowDown' && active < count - 1) active = active + 1;
@@ -61,7 +61,7 @@ export default function SearchBox() @{
 						<a
 							href={hit.url}
 							onClick={(event) => {
-								const dialog = (event.target as Element).closest('dialog');
+								const dialog = (event.currentTarget as Element).closest('dialog');
 								if (dialog) close(dialog);
 							}}
 						>
