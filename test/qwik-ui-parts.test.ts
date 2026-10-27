@@ -263,3 +263,20 @@ test('carousel: Next moves the track one slide and its gap, marks the slide acti
 	assert.equal(await p.locator('[data-qui-carousel-scroller]').evaluate((e) => (e as HTMLElement).style.transform), 'translate3d(0px, 0px, 0px)');
 	await p.close();
 });
+
+test("carousel: the player turns autoplay on and off under reduced motion too, as isAutoplaySig does, and the root tells a bound signal each change", async () => {
+	const p = await open(CAROUSEL.replace('<div role="tablist">', '<button data-qui-carousel-player aria-label="start automatic slide show">play</button><div role="tablist">'), ['qwik-ui/carousel']);
+	await p.emulateMedia({ reducedMotion: 'reduce' });
+	await p.evaluate(() => {
+		const w = window as unknown as { heard: unknown[] };
+		w.heard = [];
+		for (const type of ['qui-carousel-autoplay', 'qui-carousel-index']) document.addEventListener(type, (e) => w.heard.push([type, (e as CustomEvent).detail]));
+	});
+	await p.getByText('play').click();
+	assert.equal(await p.getByText('play').getAttribute('aria-label'), 'stop automatic slide show');
+	await p.getByText('play').click();
+	assert.equal(await p.getByText('play').getAttribute('aria-label'), 'start automatic slide show');
+	await p.getByText('next').click();
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [['qui-carousel-autoplay', true], ['qui-carousel-autoplay', false], ['qui-carousel-index', 1]]);
+	await p.close();
+});
