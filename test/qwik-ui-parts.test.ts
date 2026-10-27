@@ -193,3 +193,15 @@ test("Qwik's manifest names each handler's source: a library handler a port need
 	assert.equal(attr(other!, 'data-mm-qwik'), undefined);
 	assert.equal(attr(close!, 'on:click'), undefined);
 });
+
+test("a site handler's captured strings come from the page's paused state, so its part knows what each control applies", () => {
+	const state = JSON.stringify({ refs: { '3l': '9m fp 0', '3n': '9n fp 0' }, ctx: {}, objs: Object.assign(new Array(400).fill(''), { [parseInt('9m', 36)]: 'base-slate', [parseInt('9n', 36)]: 'base-gray', [parseInt('fp', 36)]: { themeSig: '9h' }, 0: '\u0012fr' }) });
+	const html = page(`<button q:id="3l" on:click="q-A.js#s_base">a</button><button q:id="3n" on:click="q-A.js#s_base">b</button><script type="qwik/json">${state}</script>`);
+	const doc = parseDocument(html);
+	const symbols = new Map([['s_base', { origin: 'components/make-it-yours/make-it-yours.tsx', name: 'make-it-yours.tsx_make_it_yours_component_div_div_Button_onClick' }]]);
+	cleanDocument(doc, { builds: frameworkBuilds(html).map((b) => b.path), frameworkScripts: new Set(), origin: 'http://old', qwik: { symbols, marks: QWIK_HANDLER_MARKS } }, new Map());
+	const [a, b] = [...walk(doc)].filter((el) => el.tagName === 'button');
+	assert.equal(attr(a!, 'data-mm-qwik-captures'), '["base-slate"]');
+	assert.equal(attr(b!, 'data-mm-qwik-captures'), '["base-gray"]');
+	assert.equal(attr(a!, 'q:id'), undefined);
+});

@@ -53,6 +53,7 @@ function count(dropped: Dropped, rule: string): void {
  */
 export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped): void {
 	const doomed: Node[] = [];
+	const paused = ctx.qwik ? pausedState(doc) : undefined;
 	for (const el of walk(doc)) {
 		const tag = el.tagName;
 		if (ELEMENTS.has(tag)) {
@@ -78,7 +79,10 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 			} else if (src ? isFrameworkCode(src, ctx) : GLOBALS.some((re) => re.test(text)) || FIZZ.test(text)) {
 				doomed.push(el);
 				count(dropped, src ? 'script: the old framework build' : "inline script: the old framework's server state or streaming runtime");
-			} else removeQwikAttributes(el, dropped, ctx.qwik);
+			} else {
+				if (ctx.qwik) nameQwikHandlers(el, ctx.qwik, paused);
+				removeQwikAttributes(el, dropped);
+			}
 			continue;
 		}
 		if (tag === 'link') {
@@ -100,13 +104,15 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 			count(dropped, "<template>: the old framework's streaming placeholder");
 			continue;
 		}
+		// Named before the markers go: a handler's captures are found by the element's q:id.
+		if (ctx.qwik) nameQwikHandlers(el, ctx.qwik, paused);
 		for (const name of [...el.attrs.map((a) => a.name)]) {
 			if (ATTRIBUTES.has(name)) {
 				removeAttr(el, name);
 				count(dropped, `${name}: the old framework's marker attribute`);
 			}
 		}
-		removeQwikAttributes(el, dropped, ctx.qwik);
+		removeQwikAttributes(el, dropped);
 	}
 	for (const node of doomed) remove(node);
 	stripComments(doc);
@@ -143,7 +149,35 @@ const SYMBOL = /#(\w+)/;
  * What the handlers an element runs on the old page say about it, by their source (q-manifest.json): a library handler
  * a port finds its elements by marks it; the app's own handlers are named, `<event>:<handler>`, for the site's parts.
  */
-function nameQwikHandlers(el: Element, qwik: QwikHandlers): void {
+interface PausedState {
+	readonly refs: Readonly<Record<string, string>>;
+	readonly objs: readonly unknown[];
+}
+
+/** A paused Qwik container's state (`<script type="qwik/json">`): each element's captured objects by its q:id. */
+function pausedState(doc: Document): PausedState | undefined {
+	for (const el of walk(doc)) {
+		if (el.tagName !== 'script' || attr(el, 'type') !== 'qwik/json') continue;
+		try {
+			const state = JSON.parse(childrenOf(el).map((n) => ('value' in n ? (n as { value: string }).value : '')).join('')) as Partial<PausedState>;
+			return state.refs && state.objs ? { refs: state.refs, objs: state.objs } : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+// Qwik writes a value of another kind (a signal, a QRL, a store) as a string led by a control character.
+const plainString = (v: unknown): v is string => typeof v === 'string' && v !== '' && v.charCodeAt(0) >= 0x20;
+
+function capturedStrings(el: Element, paused: PausedState): string[] {
+	const ref = paused.refs[attr(el, 'q:id') ?? ''];
+	if (!ref) return [];
+	return ref.split(/\s+/).map((id) => paused.objs[parseInt(id.replace(/!$/, ''), 36)]).filter(plainString);
+}
+
+function nameQwikHandlers(el: Element, qwik: QwikHandlers, paused?: PausedState): void {
 	const own: string[] = [];
 	for (const a of el.attrs) {
 		const event = /^on(?:-window|-document)?:([\w-]+)$/.exec(a.name)?.[1];
@@ -156,11 +190,13 @@ function nameQwikHandlers(el: Element, qwik: QwikHandlers): void {
 			else if (!symbol.origin.startsWith('../') && !symbol.origin.includes('node_modules')) own.push(`${a.name.startsWith('on:') ? '' : `${a.name.slice(3, a.name.indexOf(':'))}-`}${event}:${symbol.name}`);
 		}
 	}
-	if (own.length) setAttr(el, 'data-mm-qwik', [...new Set(own)].join(' '));
+	if (!own.length) return;
+	setAttr(el, 'data-mm-qwik', [...new Set(own)].join(' '));
+	const captured = paused ? capturedStrings(el, paused) : [];
+	if (captured.length) setAttr(el, 'data-mm-qwik-captures', JSON.stringify(captured));
 }
 
-function removeQwikAttributes(el: Element, dropped: Dropped, qwik?: QwikHandlers): void {
-	if (qwik) nameQwikHandlers(el, qwik);
+function removeQwikAttributes(el: Element, dropped: Dropped): void {
 	for (const name of [...el.attrs.map((a) => a.name)]) {
 		if (!QWIK_ATTRIBUTE.test(name)) continue;
 		removeAttr(el, name);
