@@ -300,3 +300,17 @@ test('a Base UI disclosure whose content holds disclosures of its own keeps that
 	assert.match(out, /<button id="base-ui-b" [^>]*aria-expanded=\{ins1 \? "true" : "false"\}/);
 	assert.match(out, /@if \(ins1 \|\| ins1x\) \{ <><div data-open="">button\.tsx<\/div><\/> \}/);
 });
+
+test("a Base UI Select whose trigger renders the chosen value as bare text (button-group's currency) shows the chosen option's value, its icon kept", async () => {
+	const { SelectPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><button type="button" role="combobox" aria-haspopup="listbox" data-slot="select-trigger">$<svg aria-hidden="true"><path d="m6 9 6 6 6-6"></path>▼</svg></button></body>');
+	const plan = new SelectPlan();
+	assert.equal(plan.add(body(doc), () => true, (html) => html), 1);
+	const trigger = find(doc, (el) => attr(el, 'data-slot') === 'select-trigger')!;
+	const binding = plan.bind(trigger)!;
+	assert.match(binding.declare!.join(' '), /let sel0 = state\("\$"\);/);
+	assert.match(binding.children!, /^\{sel0\}<svg/);
+	// The select part hands over what the trigger showed after the choice, its icon's text included.
+	const handler = binding.extra!.find((e) => e.startsWith('onMmchoose'))!;
+	assert.match(handler, /"▼"/);
+});
