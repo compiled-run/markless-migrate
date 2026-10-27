@@ -436,6 +436,20 @@ test('a Base UI submenu opens once the pointer rests on its trigger, focus stayi
 	await page.close();
 });
 
+test("a mouse press on a Base UI submenu trigger does not open it: the pointer's 100 ms rest does, as useClick ignores the mouse with openOnHover", async () => {
+	const page = await open(withSub(), ['base-ui/menu']);
+	await page.locator('#dd').click();
+	const box = (await page.getByText('Invite users').boundingBox())!;
+	await page.mouse.move(box.x + 20, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.up();
+	await settled(page);
+	assert.match(await subState(page), /sub=false/, 'still closed right after the press');
+	await page.waitForTimeout(250);
+	assert.match(await subState(page), /sub=true/, 'open once the pointer rested 100 ms');
+	await page.close();
+});
+
 test('the pointer leaving a Base UI submenu trigger away from its submenu closes the submenu, with nothing highlighted', async () => {
 	const page = await open(withSub(), ['base-ui/menu']);
 	await page.locator('#dd').click();
