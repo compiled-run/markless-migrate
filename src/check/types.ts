@@ -354,7 +354,7 @@ export interface Blocked {
 	readonly message: string;
 }
 
-export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout' | 'old page broken';
+export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout' | 'old page broken' | 'not measured';
 
 export interface Infrastructure {
 	readonly side?: 'old' | 'new';

@@ -113,6 +113,33 @@ test("each page links a cut copy of its stylesheet beside the original, holding 
 	}
 });
 
+test('a page and the pages it shows in frames link one cut of a stylesheet, holding what any of them can show, so the frames fetch it once', async () => {
+	const app = await mkdtemp(join(tmpdir(), 'mm-used-css-'));
+	const files: Record<string, string> = {
+		'document.tsrx': '<body class="doc"></body>',
+		'pages/gallery.tsrx': '<div class="gallery"><iframe src="/view/a" class="frame" loading="lazy"></iframe><iframe src="/view/b/"></iframe><iframe src="https://other.example/x"></iframe></div>',
+		'pages/view/a.tsrx': '<div class="only-a"></div>',
+		'pages/view/b.tsrx': '<div class="only-b"></div>',
+		'pages/view/c.tsrx': '<div class="only-c"></div>',
+		'public/site.css': '.doc{a:1}.gallery{a:2}.frame{a:3}.only-a{a:4}.only-b{a:5}.only-c{a:6}.nowhere{a:7}',
+	};
+	for (const [file, text] of Object.entries(files)) {
+		await mkdir(dirname(join(app, file)), { recursive: true });
+		await writeFile(join(app, file), text);
+	}
+	const head = [{ tag: 'link', attrs: { rel: 'stylesheet', href: '/site.css' } as Record<string, string> }];
+	try {
+		const out = await usedStylesheets(app, new Map(['/gallery', '/view/a', '/view/b', '/view/c'].map((route) => [route, { page: `pages${route === '/gallery' ? '/gallery' : route}.tsrx`, head, texts: [] }])));
+		const href = (route: string) => out.heads.get(route)![0]!.attrs.href!;
+		assert.equal(href('/view/a'), href('/gallery'));
+		assert.equal(href('/view/b'), href('/gallery'));
+		assert.equal(await readFile(join(app, 'public', href('/gallery')), 'utf8'), '.doc{a:1}.gallery{a:2}.frame{a:3}.only-a{a:4}.only-b{a:5}');
+		assert.equal(await readFile(join(app, 'public', href('/view/c')), 'utf8'), '.doc{a:1}.only-c{a:6}', 'a page no page frames keeps its own cut');
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
+});
+
 test("a late face's @font-face leaves the page's stylesheet, its url() resolved from the stylesheet's path", () => {
 	const sheet = '@font-face{font-family:Geist;src:url(../media/geist.woff2)format("woff2");font-display:swap}@layer base{@font-face{font-family:"Noto Sans Arabic";font-style:normal;font-weight:100 900;src:url(../media/arabic.woff2)format("woff2");unicode-range:U+6??,U+750-77F;font-display:swap}}.flex{display:flex}';
 	const out = usedCss(sheet, classTokens(['flex']), { sheet: '/_next/static/chunks/site.css', withheld: new Set(['/_next/static/media/arabic.woff2']) });

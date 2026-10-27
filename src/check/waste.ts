@@ -3,7 +3,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { brotliCompressSync, constants } from 'node:zlib';
-import { APP_PARTS_DIR, PARTS_REGISTRY } from '../convert/parts.ts';
+import { APP_PARTS_DIR, PARTS_REGISTRIES } from '../convert/parts.ts';
 import { mapFor } from './sourcemap.ts';
 import { networkRun, type CoverageEntry, type NetworkRun, type NetworkRunOptions, type RunCapture } from './slow-network.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
@@ -159,7 +159,8 @@ export function ownerOf(source: string): { owner: Owner; module: string } {
 	const parts = `/${path}`.lastIndexOf(`/${APP_PARTS_DIR}/`);
 	if (parts >= 0) {
 		const rel = path.slice(parts + APP_PARTS_DIR.length + 1);
-		if (rel === PARTS_REGISTRY) return { owner: { kind: 'parts registry', name: `${APP_PARTS_DIR}/${rel}` }, module: rel };
+		// An app converted before registries were per page has one, registry.ts.
+		if (rel.startsWith(`${PARTS_REGISTRIES}/`) || rel === 'registry.ts') return { owner: { kind: 'parts registry', name: `${APP_PARTS_DIR}/${rel}` }, module: rel };
 		return { owner: { kind: 'library port', name: `${APP_PARTS_DIR}/${rel.replace(/\.[cm]?[jt]sx?$|\.tsrx$/, '')}` }, module: rel };
 	}
 	if (/(^|\/)pages\//.test(path)) return { owner: { kind: 'page', name: path.slice(path.search(/(^|\/)pages\//)).replace(/^\//, '') }, module: path };
