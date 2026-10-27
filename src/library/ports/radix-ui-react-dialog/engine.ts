@@ -60,6 +60,7 @@ function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => vo
 		p.prevAnimationName = next === 'mounted' ? animationName(el) : 'none';
 		if (next === 'unmounted') {
 			el.hidden = true;
+			restoreEndGuard();
 			onUnmount();
 		} else if (was === 'unmounted') {
 			forgetMarks(el);
@@ -126,6 +127,19 @@ function portal(el: HTMLElement): void {
 	if (guard && !host.contains(guard)) host.insertBefore(guard, end);
 	host.insertBefore(el, end);
 	focused?.focus({ preventScroll: true });
+}
+
+// Radix's end guard is the body's last element again once every part portalled after it has left.
+function restoreEndGuard(): void {
+	const guard = guardCount > 0 ? document.querySelectorAll('[data-radix-focus-guard]')[1] : undefined;
+	if (!guard || guard.parentElement === document.body) return;
+	for (let node = guard.nextElementSibling; node; node = node.nextElementSibling) {
+		const part = presences.get(node as HTMLElement);
+		if (part && part.state !== 'unmounted') return;
+	}
+	const focused = document.activeElement === guard;
+	document.body.insertAdjacentElement('beforeend', guard);
+	if (focused) (guard as HTMLElement).focus({ preventScroll: true });
 }
 
 function transition(state: Presence['state'], event: 'MOUNT' | 'UNMOUNT' | 'ANIMATION_OUT' | 'ANIMATION_END'): Presence['state'] {
