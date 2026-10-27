@@ -249,7 +249,7 @@ ${hasTable ? '\tconst values = VALUES[path] ?? {};\n' : ''}${(head.declarations 
  * Writes each region several pages render alike as one component taking the page's path (see sharedRegions), for the
  * converter's pages.
  */
-export function factor(roots: ReadonlyMap<string, Element>, options: { readonly bind?: EmitOptions['bind']; readonly dir?: string; readonly extra?: (el: Element) => string | undefined } = {}): Factored {
+export function factor(roots: ReadonlyMap<string, Element>, options: { readonly bind?: EmitOptions['bind']; readonly dir?: string; readonly extra?: (el: Element) => string | undefined; readonly enter?: (routes: readonly string[]) => void } = {}): Factored {
 	const byElement = new Map<Element, SharedComponent>();
 	const usedBy = new Map<string, SharedComponent[]>();
 	const components: SharedComponent[] = [];
@@ -257,6 +257,7 @@ export function factor(roots: ReadonlyMap<string, Element>, options: { readonly 
 	// Markless cannot rebuild an @if arm whose attributes are expressions of a prop; a table read it can.
 	for (const region of sharedRegions(roots, { extra: options.extra, derive: false })) {
 		const declarations: string[] = [];
+		options.enter?.(region.members.map((m) => m.route));
 		const markup = emitElement(region.element, {
 			declarations,
 			bind: (el) => {

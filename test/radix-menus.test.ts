@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
+import { registryModule } from '../src/convert/parts.ts';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
 // Placement is not under test: a layer goes below its anchor, or beside it for a right-hand side (a submenu).
@@ -19,12 +20,12 @@ before(async () => {
 });
 after(() => browser.close());
 
-async function open(body: string, ports: readonly string[], extra = ''): Promise<Page> {
+async function open(body: string, ports: readonly string[]): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
-	const registry = `${extra}\n${ports.map((p, i) => `import * as p${i} from './${p}.ts';`).join('\n')}\nexport const PARTS = [${extra ? '...EXTRA, ' : ''}${ports.map((_, i) => `p${i}`).join(', ')}];`;
+	const registry = registryModule(ports, '.');
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=menuitem],[role=menuitemcheckbox]{height:30px}[role=menu]{padding:20px;width:240px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/index.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=menuitem],[role=menuitemcheckbox]{height:30px}[role=menu]{padding:20px;width:240px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/registry.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
