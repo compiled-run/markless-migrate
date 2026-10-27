@@ -1,7 +1,7 @@
 // Vendored from qwik-ui (MIT, (c) HiRez.io, Qwikifiers) packages/utils/src/theme/extract-theme-css.ts at bea80eb1, for the "Copy code" dialog.
 type Theme = string | string[];
-import { calculate, compare } from 'specificity';
-import { extractBetweenComments } from './extract-between-comments';
+import { calculate, compare } from './specificity.ts'; // specificity@1.0.0's API; css-tree, which it parses with, does not bundle (repros/namespace-reexport)
+import { extractBetweenComments } from './extract-between-comments.ts';
 
 export const extractThemeCSS = (theme: Theme, globalCSS: string) => {
   const cssClasses = extractRelevantCSS(globalCSS);
