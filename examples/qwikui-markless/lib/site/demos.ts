@@ -557,7 +557,66 @@ const pageDemos: Part = {
 	},
 };
 
+// The examples whose lines count a component's callbacks (onChange$, onOpenChange$, onInput$): accordion on-change.tsx,
+// collapsible open-change.tsx, select change-value.tsx and open-change.tsx, combobox change.tsx, input.tsx and
+// open-change.tsx, tooltip onChange.tsx. Each line is found by its text in the example's section.
+const sectionOf = (el: Element) => el.closest('section');
+// The innermost element of the tag whose text starts so: an example's line, not a box around it.
+const lineIn = (section: Element | null, start: string, tag = 'p') => [...(section?.querySelectorAll(tag) ?? [])].reverse().find((el) => el.textContent?.trimStart().startsWith(start));
+const countIn = (line: Element | undefined) => Number(/\d+/.exec(line?.textContent ?? '')?.[0] ?? 0) + 1;
+const callbackDemos: Part = {
+	idle() {
+		document.addEventListener('qui-collapsible-open', (event) => {
+			const item = event.target as Element;
+			const section = sectionOf(item);
+			const accordionLine = lineIn(section, 'Called change count:');
+			if (accordionLine && (event as CustomEvent<boolean>).detail) {
+				accordionLine.textContent = `Called change count: ${countIn(accordionLine)}`;
+				const items = [...(item.parentElement?.querySelectorAll(':scope > [data-collapsible]') ?? [])];
+				const changed = lineIn(section, 'Changed to:');
+				if (changed) changed.textContent = `Changed to: item-${items.indexOf(item) + 1}`;
+			}
+			const count = lineIn(section, 'count:')?.querySelector('strong');
+			if (count && !accordionLine) count.textContent = ` ${countIn(count)}`;
+		});
+		const opened = (event: Event) => {
+			const section = sectionOf(event.target as Element);
+			const times = lineIn(section, 'The listbox opened and closed');
+			if (times) times.textContent = `The listbox opened and closed ${countIn(times)} time(s)`;
+			const now = lineIn(section, 'It is currently:', 'span');
+			if (now) now.textContent = `It is currently: ${(event as CustomEvent<boolean>).detail ? 'open' : 'closed'}`;
+		};
+		document.addEventListener('qui-select-open', opened);
+		document.addEventListener('qui-combobox-open', opened);
+		const changed = (event: Event) => {
+			const line = lineIn(sectionOf(event.target as Element), 'You have changed');
+			if (line) line.textContent = `You have changed ${countIn(line)} times`;
+		};
+		document.addEventListener('qui-combobox-change', changed);
+		document.addEventListener('mmchoose', (event) => {
+			if ((event.target as Element).closest('[data-qui-select-root]')) changed(event);
+		});
+		document.addEventListener('qui-tooltip-open', (event) => {
+			const section = sectionOf(event.target as Element);
+			const text = [...(section?.childNodes ?? [])].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.startsWith('The tooltip is '));
+			if (!text) return;
+			text.textContent = `The tooltip is ${(event as CustomEvent<string>).detail}`;
+			while (text.nextSibling?.nodeType === Node.TEXT_NODE) text.nextSibling.remove();
+		});
+	},
+	input(target) {
+		if (!(target instanceof HTMLInputElement) || target.getAttribute('role') !== 'combobox') return false;
+		const section = sectionOf(target);
+		const times = lineIn(section, 'onInput$ was called');
+		if (!times) return false;
+		times.textContent = `onInput$ was called ${countIn(times)} time(s)`;
+		const value = lineIn(section, 'onInput$ value:', 'div');
+		if (value) value.textContent = `onInput$ value: ${target.value}`;
+		return false;
+	},
+};
+
 // dynamic.tsx's newItem: one object, made once per demo, so every add inserts the same item.
 const newItemId = new WeakMap<Element, string>();
 
-export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos, selectDemos, otherDemos, tabsDemo, pageDemos];
+export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos, selectDemos, otherDemos, tabsDemo, pageDemos, callbackDemos];
