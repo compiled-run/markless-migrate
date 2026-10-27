@@ -46,6 +46,7 @@ import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
 import { renderHtmlParts } from './html.ts';
 import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
+import { learnLiveCounts, pinnedCounts } from './live-counts.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
 import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteCoverage, RouteResult, Shot, Viewport } from './types.ts';
@@ -226,11 +227,13 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	// The new page gets the third-party answers the cached old page read; one this run already got differently means the old page is loaded again.
 	if (cached && (await adoptAnswers(cached.answers ?? []))) {
 		for (const page of cached.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], run.old.origin);
+		if (run.new.liveCounts) await learnLiveCounts(cached.olds, run.new.liveCounts);
 		return { olds: cached.olds, loads: cached.loads, next: await steadyWeight(browser, run, route, viewports, cached.olds, await captureRoute(browser, run.new.origin, route, viewports, run.new)) };
 	}
 	if (cached) run.oldCache?.demote();
 	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
 	const oldA = await captureRoute(browser, run.old.origin, route, viewports, run.old);
+	if (run.new.liveCounts) await learnLiveCounts([oldA], run.new.liveCounts);
 	const [oldB, next] = await Promise.all([captureRoute(browser, run.old.origin, route, viewports, run.old), captureRoute(browser, run.new.origin, route, viewports, run.new)]);
 	const olds = [oldA, oldB];
 	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, viewports, run.old));
@@ -789,7 +792,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -944,7 +947,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			startedAt,
 			ok: routes.every((r) => r.ok) && logins.every((l) => l.ok),
 			routes,
-			pinned: pinnedSummary(freeze),
+			pinned: [...pinnedSummary(freeze), ...pinnedCounts(base.new.liveCounts ?? new Map())],
 			...(sources ? { sources } : {}),
 			...(options.data ? { data: options.data } : {}),
 			writes: shared.sendWrites ? 'sent' : 'held back',
