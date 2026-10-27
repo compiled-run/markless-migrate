@@ -260,6 +260,21 @@ test('the site\'s D theme shortcut, a document listener on the old page, runs wi
 	await page.close();
 });
 
+test("another document's theme switch (the storage event next-themes' ThemeProvider listens for) applies here too", async () => {
+	const page = await open('<main>page</main>', ['site']);
+	await page.evaluate(() => {
+		localStorage.setItem('theme', 'dark');
+		window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: 'dark' }));
+	});
+	assert.deepEqual(await page.evaluate(() => [document.documentElement.classList.contains('dark'), document.documentElement.style.colorScheme]), [true, 'dark']);
+	await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'other', newValue: 'light' })));
+	assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), true, 'another key is not the theme');
+	await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: null })));
+	assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), 'a cleared theme is the default, the system one');
+	assert.equal(await page.evaluate(() => localStorage.getItem('theme')), 'system', 'stored again, as setTheme(defaultTheme) does');
+	await page.close();
+});
+
 test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base UI's useTypeahead stops it: the site's D shortcut does not see it", async () => {
 	const page = await open(
 		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
