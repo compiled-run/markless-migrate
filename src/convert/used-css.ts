@@ -156,11 +156,38 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 	const written = new Map<string, string>();
 	const bytes: [number, number] = [0, 0];
 	const out = new Map<string, T[]>();
-	for (const [route, { page, head, texts: extra, withheld }] of heads) {
-		const withheldPaths = new Set(withheld ?? []);
+	const ownTexts = async (route: string) => {
+		const { page, texts: extra } = heads.get(route)!;
 		const own = new Set<string>();
 		await closure(page, own);
-		const ownTokens = classTokens([...extra, ...(await Promise.all([...own].filter((f) => !shared.has(f)).map(read)))]);
+		return [...extra, ...(await Promise.all([...own].filter((f) => !shared.has(f)).map(read)))];
+	};
+	// A page and the pages it frames are one group with one cut, which the frames then fetch once.
+	const groupOf = new Map<string, string>();
+	const find = (route: string): string => {
+		const up = groupOf.get(route) ?? route;
+		return up === route ? route : find(up);
+	};
+	const canonical = new Map([...heads.keys()].map((route) => [route.replace(/(.)\/$/, '$1'), route]));
+	const grouped = new Set<string>();
+	for (const route of heads.keys()) {
+		for (const text of await ownTexts(route)) {
+			for (const m of text.matchAll(/<iframe\b[^>]*?\ssrc="(\/(?!\/)[^"?#]*)/g)) {
+				const framed = canonical.get(m[1]!.replace(/(.)\/$/, '$1'));
+				if (!framed) continue;
+				grouped.add(route).add(framed);
+				if (find(framed) !== find(route)) groupOf.set(find(framed), find(route));
+			}
+		}
+	}
+	const members = new Map<string, string[]>();
+	for (const route of grouped) members.set(find(route), [...(members.get(find(route)) ?? []), route]);
+	const groupTokens = new Map<string, Promise<Set<string>>>();
+	for (const [route, { head, withheld }] of heads) {
+		const withheldPaths = new Set(withheld ?? []);
+		const group = members.has(find(route)) ? find(route) : undefined;
+		if (group && !groupTokens.has(group)) groupTokens.set(group, Promise.all(members.get(group)!.map(ownTexts)).then((texts) => classTokens(texts.flat())));
+		const ownTokens = group ? await groupTokens.get(group)! : classTokens(await ownTexts(route));
 		const tokens = { has: (t: string) => sharedTokens.has(t) || ownTokens.has(t) };
 		const tags: T[] = [];
 		for (const tag of head) {
