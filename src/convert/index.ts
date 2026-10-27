@@ -9,6 +9,7 @@ import { atRest } from './at-rest.ts';
 import { captureRouteReveals, type RevealMemo, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
+import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
@@ -943,6 +944,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
+	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
 	layerChoices = choices;
@@ -1009,6 +1011,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			tables?: readonly CapturedTable[];
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
+			floating?: readonly QwikFloating[];
 		}
 		const readRoute = async (route: string): Promise<RouteFacts> => {
 			const ref = await pageOf.get(route)!;
@@ -1102,6 +1105,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				if (facts.dated) facts.clock = (await limit(() => captureClock(browser, options.old, route, at('clock')))).marks;
 				if (facts.chart) facts.charts = (await limit(() => captureCharts(browser, options.old, route, at('toggles')))).charts;
 			}
+			// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
+			if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(() => captureQwikFloating(browser, options.old, route, at('toggles')))).panels;
 			if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(() => captureScrollers(browser, options.old, route, at('toggles')))).scrollers;
 			if (reveal && ref.status === 200) {
 				const settled = Object.values((await page()).settled);
@@ -1153,6 +1158,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.tables) tablesRead.set(route, f.tables);
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
+			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control.
 		const seenKeys = new Set<string>();
@@ -1247,6 +1253,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		for (const r of revealed.get(ref.route) ?? []) if (r.sig) racChips(prepared.get(ref.route)!.root.parentNode as Element, r);
 	}
+	let placedFloating = 0;
+	for (const [route, panels] of floatingRead) {
+		const p = prepared.get(route);
+		if (p) placedFloating += applyQwikFloating(p.root.parentNode as Element, panels);
+	}
+	if (placedFloating) log(`Qwik UI floating panels placed as the old page placed them: ${placedFloating}`);
 	if (images.lazy + images.eager + images.responsive + images.someScreens) log(`images: ${images.lazy} lazy (in no first screen), ${images.eager} eager (in a first screen), ${images.responsive} given a width per device, ${images.preloadsDropped} head preloads dropped, ${images.someScreens} drawn only in one range of widths (lazy, preloaded there)`);
 
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
