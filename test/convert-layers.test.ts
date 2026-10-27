@@ -7,7 +7,7 @@ import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
-import { componentImport, componentName, siteComponentOf } from '../src/convert/site-components.ts';
+import { componentImport, componentName, pageComponentOf, siteComponentOf, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -152,4 +152,18 @@ test('a layer captured open loses the interaction state the server never renders
 	<button data-slot="tooltip-trigger" data-state="closed">Copy</button><button data-state="closed">Paste</button><button aria-describedby="hint">Plain</button>
 	<pre><span data-highlighted-line="">x</span><mark data-highlighted-chars="">y</mark></pre><div data-selected="" aria-selected="true" cmdk-item="">First</div></div>`,
 	);
+});
+
+test('a site component listed "in": "page" stands in for a page element; a module that renders it imports it', () => {
+	const doc = parseDocument('<body><dialog id="s-root"><div data-combobox-root=""><input data-id="search"></div></dialog><div data-combobox-root=""><input data-id="other"></div></body>');
+	const site = [
+		{ selector: 'div[data-combobox-root]:has(input[data-id="search"])', component: 'search-box.tsrx', in: 'page' as const },
+		{ selector: 'div[cmdk-root]', component: 'command-menu.tsrx' },
+	];
+	const roots = [...walk(body(doc))].filter((el) => el.attrs.some((a) => a.name === 'data-combobox-root'));
+	assert.deepEqual(roots.map((el) => pageComponentOf(el, site)?.component), ['search-box.tsrx', undefined]);
+	assert.equal(pageComponentOf(parseDocument('<div cmdk-root=""></div>').childNodes[0] as never, site), undefined, 'a layer component is not a page one');
+	const source = "// Generated\nexport default function Header() @{\n\t<header><SearchBox /></header>\n}\n";
+	assert.equal(withSiteImports(source, site, '../..'), "// Generated\nimport SearchBox from '../../lib/site/search-box.tsrx';\nexport default function Header() @{\n\t<header><SearchBox /></header>\n}\n");
+	assert.equal(withSiteImports(source.replace('<SearchBox />', ''), site, '../..'), source.replace('<SearchBox />', ''));
 });

@@ -41,7 +41,7 @@ import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
-import { componentImport, componentName, readSiteComponents, siteComponentOf, type SiteComponent } from './site-components.ts';
+import { componentImport, componentName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -1495,6 +1495,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		replacedParts.set(r.trigger, mergeBindings(replacedParts.get(r.trigger), { extra: [`data-mm-replace=${JSON.stringify(r.key)}`] })!);
 	}
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
+		// A site component the site lists for a page element renders it, and what it shows, itself.
+		const standIn = pageComponentOf(el, siteComponents);
+		if (standIn) return { replace: `<${componentName(standIn)} />` };
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
 		const keyed = triggerKeys.get(el);
@@ -1643,7 +1646,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 
 	const siteParts = await stat(join(app, 'lib', 'site', 'parts.ts')).then(() => true, () => false);
 	const handlers = bodyHandlers(usedPorts, siteParts).join(' ');
-	for (const [file, source] of written) written.set(file, withPartImports(handlers ? source.replaceAll(ROOT_HANDLERS, handlers) : source.replaceAll(` ${ROOT_HANDLERS}`, ''), partsDir(file)));
+	const appDir = (from: string) => relative(dirname(join(app, from)), app).replace(/^(?!\.)/, './');
+	for (const [file, source] of written) written.set(file, withSiteImports(withPartImports(handlers ? source.replaceAll(ROOT_HANDLERS, handlers) : source.replaceAll(` ${ROOT_HANDLERS}`, ''), partsDir(file)), siteComponents, appDir(file)));
 	if (!options.only?.length) await rm(join(app, 'pages'), { recursive: true, force: true });
 	await rm(join(app, 'components', 'converted'), { recursive: true, force: true });
 	for (const [file, source] of written) {
@@ -1653,7 +1657,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const component of factored.components) {
 		const imports = [...new Set(sharedParts.map((part) => part.import(partsDir(component.file))))].join('\n');
 		await mkdir(dirname(join(app, component.file)), { recursive: true });
-		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file))));
+		await writeFile(join(app, component.file), appUrlDeclaration(withSiteImports(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file)), siteComponents, appDir(component.file))));
 	}
 	const documentParts: PartUse[] = [];
 	// DocSearch's button keys and loading on intent run from the head, before the first paint and the first press.
