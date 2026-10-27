@@ -958,7 +958,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const log = options.log ?? (() => {});
 	const app = options.app;
 	const state = join(app, '.migrate');
-	const planned = JSON.parse(await readFile(join(state, 'inventory.json'), 'utf8')) as { routes: { route: string; status: number }[]; allRoutes?: { route: string; status?: number; contentType?: string }[] };
+	const planned = JSON.parse(await readFile(join(state, 'inventory.json'), 'utf8')) as { routes: { route: string; status: number }[]; allRoutes?: { route: string; status?: number; contentType?: string; redirectsTo?: string }[] };
 	// allRoutes carries each route's content type; routes only those the browser inventoried.
 	const types = new Map((planned.allRoutes ?? []).map((r) => [r.route, r]));
 	const inventory = { routes: [...new Map([...planned.routes.map((r) => [r.route, { route: r.route, status: r.status, contentType: types.get(r.route)?.contentType }] as const), ...(planned.allRoutes ?? []).filter((r) => r.status !== undefined).map((r) => [r.route, { route: r.route, status: r.status!, contentType: r.contentType }] as const)]).values()] };
@@ -1802,7 +1802,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (route.status !== 200 || route.route.includes('?') || (route.contentType ?? 'text/html').includes('html')) continue;
 			if (!(await stat(join(publicDir, route.route)).then((x) => x.isFile(), () => false))) builtPaths.add(route.route);
 		}
-		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], log });
+		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string>; overrides?: Record<string, unknown> };
