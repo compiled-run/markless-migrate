@@ -102,6 +102,17 @@ describe('the Markless port of @radix-ui/react-dialog', () => {
 		assert.deepEqual(await compareSequence(pair, steps), []);
 	});
 
+	test('Shift+Tab after a press on a backdrop that has since left starts from the end of the body, where Radix removed it', async () => {
+		const steps: Step[] = [
+			{ command: { kind: 'click-trigger', dialog: 'd' }, wait: 0 },
+			{ command: { kind: 'click-close', dialog: 'd', which: 0 }, wait: 177 },
+			{ command: { kind: 'program-trigger', dialog: 'd' }, wait: 0 },
+			{ command: { kind: 'click-trigger', dialog: 'd' }, wait: 261 },
+			{ command: { kind: 'key', key: 'Shift+Tab' }, wait: 0 },
+		];
+		assert.deepEqual(await compareSequence(pair, steps), []);
+	});
+
 	test('the backdrop is gone in the first frame after its own fade ends, while the dialog is still fading', async () => {
 		const snaps = await pinned(context, port.origin, [open('a'), closeThenWatch]);
 		const after = frame(snaps, 'first frame after a-overlay exit ended');
