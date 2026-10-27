@@ -226,7 +226,8 @@ export function click(target: Element, event?: MouseEvent): boolean {
 		if (pointer !== 'mouse' && pointer !== 'pen') openSub(p, item, 'pointer');
 		return true;
 	}
-	closeTree(p, 'item');
+	// Menu.RadioItem and Menu.CheckboxItem default closeOnClick to false.
+	if (!item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]')) closeTree(p, 'item');
 	return true;
 }
 export function pointerover(target: Element): boolean {
