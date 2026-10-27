@@ -95,6 +95,21 @@ function choose(c: Combobox, item: HTMLElement): void {
 	if (!many && !c.inline) setOpen(c, false);
 }
 
+/** What a Root's bind:value writes: the item becomes the chosen and highlighted one. */
+export function chooseItem(item: Element): void {
+	const c = comboboxOf(item.closest(ROOT) ?? document.querySelector(`${ROOT}:has([aria-controls="${CSS.escape(item.parentElement?.id ?? '')}"])`));
+	if (!c || !(item instanceof HTMLElement)) return;
+	choose(c, item);
+	highlight(c, item);
+}
+
+/** What a Root's bind:open reads and writes. */
+export const listOpen = (root: Element): boolean => root.hasAttribute('data-open');
+export function setListOpen(root: Element, on: boolean): void {
+	const c = comboboxOf(root);
+	if (c) setOpen(c, on);
+}
+
 export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const c = comboboxOf(target);
 	if (!c || target !== c.input) return false;
