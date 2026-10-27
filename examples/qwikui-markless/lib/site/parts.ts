@@ -231,4 +231,15 @@ const toc: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [themeControls, mobileNav, cssConfig, codeCopy, statusBanner, toc];
+// search.tsx's SearchModal: Cmd+K anywhere toggles the search dialog.
+const searchShortcut: Part = {
+	shortcut(_target, event) {
+		if (event.key !== 'k' || !event.metaKey) return;
+		const dialog = document.querySelector('input[data-id="search"]')?.closest('dialog');
+		if (!dialog) return;
+		if (dialog.open) close(dialog);
+		else show(dialog);
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [themeControls, mobileNav, cssConfig, codeCopy, statusBanner, toc, searchShortcut];
