@@ -39,7 +39,7 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, splitBody } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { componentImport, componentName, readSiteComponents, siteComponentOf, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
@@ -1657,35 +1657,24 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// carries only its own. Markless renders a fragment root of components only inside branches: both are arms of
 		// a branch on a module constant, which never changes.
 		const pageLayers = layers.own(route);
-		let after = bodyAfter ? `<BodyAfter route={${lit(route)}} />` : '';
-		// A toaster nests a repeat in a repeat's rows, which Markless renders only outside a branch: it follows the arms.
-		let toasters = '';
+		// A toaster nests a repeat in a repeat's rows, which Markless renders only outside a branch: it stays in the old order between them.
+		const after: { markup: string; toaster?: boolean }[] = [];
 		const owned = ownAfter.get(route);
 		if (bodyAfter && owned?.length) {
 			let from = 0;
-			after = '';
 			for (const i of owned) {
-				for (let j = from; j < i; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
+				for (let j = from; j < i; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
 				const el = bodyParts.after[i]!.byRoute.get(route)!;
-				const markup = emitElement(el, { declarations, bind: (x) => mergeBindings(bindParts(x, usedPorts), notifyPlan.bind(x)), dropped: noteDropped });
-				if (notifyPlan.rendersToasts(el)) toasters += markup;
-				else after += markup;
+				after.push({ markup: emitElement(el, { declarations, bind: (x) => mergeBindings(bindParts(x, usedPorts), notifyPlan.bind(x)), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
 				from = i + 1;
 			}
-			for (let j = from; j < bodyParts.after.length; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
-		}
-		const extras = (ownExtras.get(route) ?? [])
-			.map((el) => {
-				const markup = emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped });
-				if (!notifyPlan.rendersToasts(el)) return markup;
-				toasters += markup;
-				return '';
-			})
-			.join('');
+			for (let j = from; j < bodyParts.after.length; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
+		} else if (bodyAfter) after.push({ markup: `<BodyAfter route={${lit(route)}} />` });
+		for (const el of ownExtras.get(route) ?? []) after.push({ markup: emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
-		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}${copied}`;
-		const markup = tail || toasters ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }${tail ? `@if (${PAGE_SHOWN}) { <>${tail}</> }` : ''}${toasters}</>` : rootMarkup;
+		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
+		const markup = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
