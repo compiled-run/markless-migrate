@@ -26,7 +26,7 @@ import { checkClock } from './clock-shift.ts';
 import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, describeTarget, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -428,8 +428,8 @@ const RETIMED = 10;
 const RETIMES = 2;
 
 /**
- * A step answered more slowly on the new page is timed again one side at a time (old, then new, twice), since a busy machine
- * slows whichever side it happens to: it stands only when the new page is slower every time.
+ * A step answered more slowly on the new page, or showing a view in between only there, is timed again one side at a time
+ * (old, then new, twice), since a busy machine slows whichever side it happens to: it stands only when it happens every time.
  */
 async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[]): Promise<Failure[]> {
 	const slow = failures.filter((f) => timedOnly.has(f)).slice(0, RETIMED);
@@ -437,12 +437,20 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 	const dropped = new Set<Failure>();
 	const notes = new Map<Failure, string>();
 	for (const failure of slow) {
-		const { journey, step } = timedOnly.get(failure)!;
+		const { journey, step, views } = timedOnly.get(failure)!;
 		const times: { old?: number; next?: number }[] = [];
+		const shown: (string | undefined | null)[] = [];
 		for (let i = 0; i < RETIMES; i++) {
-			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
-			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
-			times.push({ old, next });
+			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step];
+			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
+			times.push({ old: old?.reaction?.answeredMs, next: next?.reaction?.answeredMs });
+			shown.push(old?.reaction?.views && next?.reaction?.views ? interimViews([old], next) : null);
+		}
+		if (views) {
+			if (shown.some((s) => s === null)) notes.set(failure, '; it could not be timed again one side at a time');
+			else if (shown.some((s) => s === undefined)) dropped.add(failure);
+			else notes.set(failure, `; timed again one side at a time, the new page showed it every time (${shown.join('; ')})`);
+			continue;
 		}
 		// Timed again only where both sides answered: a step that could not be timed again keeps its failure, unconfirmed.
 		if (times.some((t) => t.old === undefined || t.next === undefined)) notes.set(failure, '; it could not be timed again one side at a time');
