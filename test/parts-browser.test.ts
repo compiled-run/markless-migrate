@@ -691,6 +691,23 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 });
 
 
+test('react-resizable-panels: a press within the separator\'s 10 px hit area drags it, though another element is on top there', async () => {
+	// The second panel is drawn over the separator, as a block viewer's panel is once a viewport button has resized it.
+	const page = await open(
+		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:2px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px;margin-left:-2px;position:relative;background:#eee"></div></div></div>`,
+		['resizable'],
+	);
+	const separator = page.locator('[role="separator"]');
+	const box = (await separator.boundingBox())!;
+	await page.mouse.move(box.x + 4, box.y + 50);
+	await page.mouse.down();
+	assert.equal(await separator.getAttribute('data-separator'), 'active', 'the press is within 10 px around the separator');
+	await page.mouse.move(box.x + 44, box.y + 50, { steps: 4 });
+	await page.mouse.up();
+	assert.equal(await separator.getAttribute('aria-valuenow'), '60', 'dragged by 40 of the panels\' 400 px');
+	await page.close();
+});
+
 test('react-resizable-panels: the arrows do not follow the text direction, and the other orientation\'s arrows do nothing', async () => {
 	const page = await open(
 		`<div dir="rtl" style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div></div>`,
