@@ -26,7 +26,12 @@ case "${1:-}" in
 		dest="$LOGS/new"
 		mkdir -p "$dest"
 		curl -fsSL "${2:?usage: ci-serve.sh new URL}" | tar -xz -C "$dest"
-		(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$LOGS/new-serve.log" 2>&1 &)
+		# A Vercel build (.vercel/output, what deploy.sh uploads) is served as Vercel serves it; a node-server build runs itself.
+		if [ -d "$dest/.vercel/output" ]; then
+			(cd "$dest" && nohup node "$DIR/../shadcn-ui/serve-vercel-output.mjs" "$dest/.vercel/output" 3000 > "$LOGS/new-serve.log" 2>&1 &)
+		else
+			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$LOGS/new-serve.log" 2>&1 &)
+		fi
 		wait_for http://127.0.0.1:3000/
 		;;
 	*) echo "usage: $0 old | new <url of the built port's .tar.gz>" >&2; exit 1 ;;

@@ -49,24 +49,30 @@ const classes = (c: Config) => [c.font, c.mode, c.style, c.baseColor, c.primaryC
 
 // What the panel and the header render from the theme, switched by class as Qwik re-rendered them.
 const NEUTRAL = /^primary-(slate|gray|zinc|neutral|stone)-(800|900)$/;
+// Every Make it yours swatch and radius button names what it applies in its captures; the kind is in the value.
+const PANEL_BUTTON = `${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_Button_onClick')}, ${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_div_Button_onClick')}, ${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_div_Button_onClick_1')}`;
+const kindOf = (value: string): keyof Config | undefined => (value.startsWith('base-') ? 'baseColor' : value.startsWith('primary-') ? 'primaryColor' : value.startsWith('border-radius') ? 'borderRadius' : undefined);
+const valueOf = (el: Element) => capturedOf(el).find((v) => kindOf(v) !== undefined);
+
 function render(): void {
 	const c = config();
-	for (const button of document.querySelectorAll<HTMLElement>(on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_Button_onClick'))) {
-		const value = capturedOf(button)[0] ?? '';
-		if (value.startsWith('base-')) button.classList.toggle('border-2', value === c.baseColor), button.classList.toggle('border-ring', value === c.baseColor);
-		else if (value.startsWith('border-radius')) button.classList.toggle('mb-2', value === c.borderRadius), button.classList.toggle('border-ring', value === c.borderRadius);
-	}
 	const dark = theme.includes('dark');
-	for (const button of document.querySelectorAll<HTMLElement>(`${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_div_Button_onClick')}, ${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_div_Button_onClick_1')}`)) {
-		const value = capturedOf(button)[0] ?? '';
-		button.classList.toggle('border', value === c.primaryColor);
-		button.classList.toggle('border-ring', value === c.primaryColor);
-		// A neutral 800 or 900 shows its 200 or 100 swatch in dark mode.
-		const neutral = NEUTRAL.exec(value);
-		const swatch = button.firstElementChild;
-		if (neutral && swatch) {
-			for (const n of ['100', '200', '800', '900']) swatch.classList.remove(`bg-${neutral[1]}-${n}`);
-			swatch.classList.add(`bg-${neutral[1]}-${dark ? (neutral[2] === '800' ? '200' : '100') : neutral[2]}`);
+	for (const button of document.querySelectorAll<HTMLElement>(PANEL_BUTTON)) {
+		const value = valueOf(button) ?? '';
+		const kind = kindOf(value);
+		const on = kind !== undefined && c[kind] === value;
+		if (kind === 'baseColor') button.classList.toggle('border-2', on), button.classList.toggle('border-ring', on);
+		else if (kind === 'borderRadius') button.classList.toggle('mb-2', on), button.classList.toggle('border-ring', on);
+		else if (kind === 'primaryColor') {
+			button.classList.toggle('border', on);
+			button.classList.toggle('border-ring', on);
+			// A neutral 800 or 900 shows its 200 or 100 swatch in dark mode.
+			const neutral = NEUTRAL.exec(value);
+			const swatch = button.firstElementChild;
+			if (neutral && swatch) {
+				for (const n of ['100', '200', '800', '900']) swatch.classList.remove(`bg-${neutral[1]}-${n}`);
+				swatch.classList.add(`bg-${neutral[1]}-${dark ? (neutral[2] === '800' ? '200' : '100') : neutral[2]}`);
+			}
 		}
 	}
 	for (const select of document.querySelectorAll<HTMLSelectElement>(`select${on('change', 'make-it-yours.tsx_make_it_yours_component_div_select_onChange')}`)) select.value = c.style;
@@ -75,7 +81,37 @@ function render(): void {
 	document.querySelector('header')?.parentElement?.classList.toggle('border-b-2', theme.includes('brutalist'));
 }
 
+// The document's inline theme script sets color-scheme from storage on every page load (a plain light or dark theme;
+// none for a full theme). qwikui.com follows its links with page loads, so each page gets it; here pages arrive in
+// place and the script does not run again, so each arrival applies the same rule.
+function colorSchemeAsOnLoad(): void {
+	const stored = localStorage.getItem('theme');
+	const style = document.documentElement.style;
+	if (stored === 'light' || stored === 'dark' || !stored) style.colorScheme = stored || 'light';
+	else style.removeProperty('color-scheme');
+}
+function onArrival(): void {
+	requestAnimationFrame(() => requestAnimationFrame(colorSchemeAsOnLoad));
+}
+let watchingArrivals = false;
+function watchArrivals(): void {
+	if (watchingArrivals) return;
+	watchingArrivals = true;
+	for (const name of ['pushState', 'replaceState'] as const) {
+		const original = history[name].bind(history);
+		history[name] = (...args: Parameters<History['pushState']>) => {
+			const before = location.pathname;
+			original(...args);
+			if (location.pathname !== before) onArrival();
+		};
+	}
+	window.addEventListener('popstate', onArrival);
+}
+
 const themeControls: Part = {
+	idle() {
+		watchArrivals();
+	},
 	click(target) {
 		const el = target.closest<HTMLElement>('[data-mm-qwik]');
 		if (!el) return false;
@@ -85,12 +121,9 @@ const themeControls: Part = {
 			return true;
 		}
 		const c = config();
-		if (el.matches(on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_Button_onClick'))) {
-			const value = capturedOf(el)[0] ?? '';
-			if (value.startsWith('base-')) c.baseColor = value;
-			else if (value.startsWith('border-radius')) c.borderRadius = value;
-			else return false;
-		} else if (el.matches(`${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_div_Button_onClick')}, ${on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_div_Button_onClick_1')}`)) c.primaryColor = capturedOf(el)[0] ?? c.primaryColor;
+		const value = el.matches(PANEL_BUTTON) ? valueOf(el) : undefined;
+		const kind = value ? kindOf(value) : undefined;
+		if (kind && value) c[kind] = value;
 		else if (el.matches(on('click', 'make-it-yours.tsx_make_it_yours_component_div_div_input_onClick'))) c.mode = c.mode.includes('light') ? 'dark' : 'light';
 		else if (el.matches(on('click', 'make-it-yours.tsx_make_it_yours_component_footer_Button_onClick'))) {
 			setTheme(theme.includes('dark') ? 'dark' : 'light');
