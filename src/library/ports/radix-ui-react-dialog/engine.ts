@@ -28,9 +28,20 @@ const POPPER = '[data-radix-popper-content-wrapper]';
 const dialogs = new WeakMap<HTMLElement, Dialog>();
 const presences = new WeakMap<HTMLElement, Presence>();
 
+// What a press last landed on until focus moves: where Tab and Shift+Tab start from (the browser's starting point).
+let pressed: Node | null = null;
+let watchingPresses = false;
+function watchPresses(): void {
+	if (watchingPresses) return;
+	watchingPresses = true;
+	document.addEventListener('pointerdown', (event) => (pressed = event.target instanceof Node ? event.target : null), true);
+	document.addEventListener('focusin', () => (pressed = null), true);
+}
+
 /** Wires a dialog's elements once; every later open and close is read off their `data-state`. */
 export function installDialog(triggers: readonly HTMLElement[] | undefined, overlay: HTMLElement | undefined, content: HTMLElement | undefined, cancel: HTMLElement | undefined, alert: boolean): void {
 	if (!content || dialogs.has(content)) return;
+	watchPresses();
 	// React renders no autofocus attribute; it focuses the control when it mounts, so the attribute leaves the page here.
 	const autofocus = [...content.querySelectorAll<HTMLElement>('[autofocus]')];
 	for (const el of autofocus) el.removeAttribute('autofocus');
@@ -133,13 +144,23 @@ function portal(el: HTMLElement): void {
 function restoreEndGuard(): void {
 	const guard = guardCount > 0 ? document.querySelectorAll('[data-radix-focus-guard]')[1] : undefined;
 	if (!guard || guard.parentElement === document.body) return;
+	const left: Element[] = [];
 	for (let node = guard.nextElementSibling; node; node = node.nextElementSibling) {
 		const part = presences.get(node as HTMLElement);
 		if (part && part.state !== 'unmounted') return;
+		left.push(node);
 	}
 	const focused = document.activeElement === guard;
 	document.body.insertAdjacentElement('beforeend', guard);
 	if (focused) (guard as HTMLElement).focus({ preventScroll: true });
+	else if (pressed && document.activeElement === document.body && left.some((node) => node.contains(pressed))) {
+		// Radix removed the pressed part from after this guard, so the next Tab starts from the end of the body.
+		const mark = document.createElement('span');
+		mark.tabIndex = -1;
+		document.body.append(mark);
+		mark.focus({ preventScroll: true });
+		mark.remove();
+	}
 }
 
 function transition(state: Presence['state'], event: 'MOUNT' | 'UNMOUNT' | 'ANIMATION_OUT' | 'ANIMATION_END'): Presence['state'] {
