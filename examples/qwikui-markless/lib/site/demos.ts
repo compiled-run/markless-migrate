@@ -1,5 +1,6 @@
 import type { Part } from '../parts/index.ts';
 import { autoplaying, goTo, setAutoplay } from '../parts/qwik-ui/carousel.ts';
+import { openItem } from '../parts/qwik-ui/collapsible.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
 
 // The docs pages' example components (apps/website/src/routes/docs/**/examples), each control found by the handler it ran
@@ -154,4 +155,86 @@ const carouselDemos: Part = {
 	},
 };
 
-export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos];
+// Collapsible and Accordion items as collapsible-root.tsx, accordion-item.tsx and their trigger and content render them in
+// the browser (an accordion item's trigger sits in an <h3>, its content is a region).
+const CHEVRON = '<svg data-qwikest-icon="" fill="none" height="1em" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6"></path></svg>';
+const item = (id: string, trigger: string, content: string, accordion: boolean) => {
+	const button = `<button aria-disabled="false" data-closed="" aria-expanded="false" class="collapsible-trigger" id="${id}-trigger" aria-controls="${id}-content">${trigger}</button>`;
+	return `<div data-collapsible="" aria-live="polite" id="${id}" data-closed="" class="collapsible">${accordion ? `<h3>${button}</h3>` : button}<div data-collapsible-content="" hidden=""${accordion ? ' role="region"' : ''} class="collapsible-content collapsible-content-outline" id="${id}-content" aria-labelledby="${id}-trigger">${content}</div></div>`;
+};
+const isOpen = (root: Element) => root.hasAttribute('data-open');
+let made = 0;
+const freshId = () => `mm-demo-${++made}`;
+
+// collapsible programmatic.tsx: a checkbox bound to bind:open, with an "is open" line; animation.tsx: a button toggles
+// bind:open; csr.tsx: a button renders one. accordion programmatic.tsx: a button toggles the first item through
+// bind:value; dynamic.tsx: Add Item and Remove Item splice the items at the indexes typed (from 2 to 6 items, each
+// content showing its index); csr.tsx: a button renders three items.
+const collapsibleDemos: Part = {
+	idle() {
+		document.addEventListener('qui-collapsible-open', (event) => {
+			const root = event.target as Element;
+			const box = root.parentElement?.querySelector<HTMLInputElement>(`:scope > input${on('input', 'programmatic.tsx_programmatic_component_Fragment_input_bind_checked')}`);
+			if (!box) return;
+			const open = (event as CustomEvent<boolean>).detail;
+			box.checked = open;
+			const line = box.nextElementSibling?.querySelector('strong');
+			if (line) line.textContent = String(open);
+		});
+	},
+	input(target) {
+		if (!(target instanceof HTMLInputElement) || !target.matches(on('input', 'programmatic.tsx_programmatic_component_Fragment_input_bind_checked'))) return false;
+		const root = target.parentElement?.querySelector(':scope > [data-collapsible]');
+		if (root) openItem(root, target.checked);
+		return true;
+	},
+	click(target) {
+		const animation = target.closest(on('click', 'animation.tsx_animation_component_div_button_onClick'));
+		const animated = animation?.parentElement?.querySelector(':scope > [data-collapsible]');
+		if (animated) {
+			openItem(animated, !isOpen(animated));
+			return true;
+		}
+		const first = target.closest(on('click', 'programmatic.tsx_programmatic_component_Fragment_button_onClick'));
+		const accordion = first?.previousElementSibling;
+		if (accordion?.matches('[data-accordion]')) {
+			const one = accordion.querySelector(':scope > [data-collapsible]');
+			if (!one) return true;
+			openItem(one, !isOpen(one));
+			return true;
+		}
+		const change = target.closest(`${on('click', 'dynamic.tsx_dynamic_component_Fragment_div_button_onClick')}, ${on('click', 'dynamic.tsx_dynamic_component_Fragment_div_button_onClick_1')}`);
+		const list = change?.parentElement?.previousElementSibling;
+		if (change && list?.matches('[data-accordion]')) {
+			const inputs = list.previousElementSibling?.querySelectorAll('input') ?? [];
+			const items = [...list.querySelectorAll(':scope > [data-collapsible]')];
+			const adding = change.getAttribute('data-mm-qwik')!.endsWith('_onClick');
+			const at = parseInt(inputs[adding ? 0 : 1]?.value ?? '0');
+			if (adding && items.length < 6) {
+				const t = document.createElement('template');
+				t.innerHTML = item(newItemId.get(list) ?? newItemId.set(list, String(Math.random())).get(list)!, 'New Item', '', true);
+				const added = t.content.firstElementChild!;
+				const before = items.at(at);
+				if (before && at >= -items.length) list.insertBefore(added, before);
+				else list.append(added);
+			} else if (!adding && items.length > 2) items.at(at)?.remove();
+			[...list.querySelectorAll(':scope > [data-collapsible] > [data-collapsible-content]')].forEach((content, i) => (content.textContent = `index: ${i}`));
+			return true;
+		}
+		const render = target.closest(on('click', 'csr.tsx_csr_component_Fragment_button_onClick'));
+		const label = render?.textContent?.trim();
+		if (render && label === 'Render Collapsible') {
+			renderAfter(render, item(freshId(), `<span>Trigger</span>${CHEVRON}`, 'Content', false));
+			return true;
+		}
+		if (render && label === 'Render Accordion') {
+			renderAfter(render, `<div data-accordion="">${[1, 2, 3].map((n) => item(freshId(), `<span>Trigger ${n}</span>${CHEVRON}`, `Inside Content ${n}`, true)).join('')}</div>`);
+			return true;
+		}
+		return false;
+	},
+};
+// dynamic.tsx's newItem: one object, made once per demo, so every add inserts the same item.
+const newItemId = new WeakMap<Element, string>();
+
+export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos];
