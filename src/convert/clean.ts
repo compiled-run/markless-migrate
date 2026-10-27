@@ -1,5 +1,6 @@
 import { RUNTIME_MARKERS } from '../check/residue.ts';
 export { frameworkBuilds } from '../client/builds.ts';
+import { frameworkInlineScript } from '../client/builds.ts';
 import { attr, childrenOf, isElement, remove, removeAttr, walk, type Document, type Element, type Node, type ParentNode } from './dom.ts';
 
 /** Why the converter left a piece of the old page out, per rule, with how often it applied. */
@@ -13,9 +14,7 @@ const ELEMENTS = new Set<string>([...RUNTIME_MARKERS.elements.map(([name]) => na
 const SCRIPT_TYPES: ReadonlySet<string> = new Set(RUNTIME_MARKERS.scriptTypes.map(([name]) => name));
 // Qwik's container and node attributes, and its handlers: QRLs it resumes from (`on:click`, `on-window:scroll`).
 const QWIK_ATTRIBUTE = /^(?:q:|on(?:-window|-document)?:)/;
-// Qwik Insights' listener for the symbols Qwik's runtime loads, which only that runtime dispatches.
-const QWIK_SYMBOLS = /addEventListener\(\s*["']qsymbol["']/;
-const IMPORTED = /\bimport\s*\(\s*["']([^"']+)["']|\bfrom\s*["']([^"']+)["']/g;
+
 
 export interface CleanContext {
 	/** The build paths of the frameworks whose transport global the page carries. */
@@ -118,9 +117,8 @@ function qwikScript(el: Element, text: string, ctx: CleanContext): string | unde
 	const type = attr(el, 'type') ?? attr(el, 'q:func');
 	if (type && SCRIPT_TYPES.has(type)) return `<script type=${type}>: Qwik's paused state`;
 	if (attr(el, 'id') === 'qwikloader') return "<script id=qwikloader>: Qwik's event loader";
-	if (QWIK_SYMBOLS.test(text)) return "inline script: Qwik Insights' listener for the symbols Qwik loads";
 	if (!attr(el, 'src') && !text.trim() && el.attrs.some((a) => QWIK_ATTRIBUTE.test(a.name))) return "empty <script>: an element Qwik hangs window and document handlers on";
-	for (const m of text.matchAll(IMPORTED)) if (isFrameworkCode(m[1] ?? m[2]!, ctx)) return 'inline script: loads the old framework build';
+	if (!attr(el, 'src') && frameworkInlineScript(text, ctx.builds.map((path) => ({ framework: '', path })), ctx.origin) !== undefined) return "inline script: the old framework's own (it loads its build, or listens for what only it dispatches)";
 	return undefined;
 }
 

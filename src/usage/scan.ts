@@ -1,4 +1,4 @@
-import { frameworkBuilds } from '../client/builds.ts';
+import { frameworkBuilds, frameworkInlineScript } from '../client/builds.ts';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -119,8 +119,8 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 		for (const ref of pageBehaviours(elements, route, into, found)) {
 			const key = ref.src ? new URL(ref.src, options.origin ?? 'http://built.invalid').href : `inline:${sha8(ref.text ?? '')}`;
 			const path = ref.src ? new URL(key).pathname : undefined;
-			const build = path ? builds.find((b) => b.path.test(path)) : undefined;
-			if (build) builtBy.set(key, build.framework);
+			const build = path ? builds.find((b) => b.path.test(path))?.framework : frameworkInlineScript(ref.text ?? '', builds);
+			if (build) builtBy.set(key, build);
 			const known = scriptsByKey.get(key);
 			// An inline script shared by every page is named after its shortest route (/ rather than a debug page).
 			if (known) {

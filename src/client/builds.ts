@@ -26,3 +26,20 @@ export function frameworkBuilds(servedHtml: string): { framework: string; path: 
 	if (QWIK_CONTAINER.test(servedHtml)) found.push({ framework: 'Qwik', path: qwikBuild(servedHtml) });
 	return found;
 }
+
+const IMPORTED = /\bimport\s*\(\s*["']([^"']+)["']|\bfrom\s*["']([^"']+)["']/g;
+// Qwik Insights' listener for the symbols Qwik's runtime loads, which only that runtime dispatches.
+const QWIK_SYMBOLS = /addEventListener\(\s*["']qsymbol["']/;
+// The functions a paused Qwik container serialises for its state (`q:func="qwik/json"`).
+const QWIK_FUNCS = /\bdocument\[\s*["']qFuncs_/;
+
+/** The framework whose own code an inline script is (it imports that framework's build, or listens for what only it dispatches), if any. */
+export function frameworkInlineScript(text: string, builds: readonly { framework: string; path: RegExp }[], origin = 'http://x'): string | undefined {
+	if (QWIK_SYMBOLS.test(text) || QWIK_FUNCS.test(text)) return 'Qwik';
+	for (const m of text.matchAll(IMPORTED)) {
+		const url = URL.parse(m[1] ?? m[2]!, origin);
+		const found = url && url.origin === new URL(origin).origin ? builds.find((b) => b.path.test(url.pathname)) : undefined;
+		if (found) return found.framework;
+	}
+	return undefined;
+}

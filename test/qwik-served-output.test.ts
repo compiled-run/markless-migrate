@@ -6,6 +6,10 @@ import { classifyScript } from '../src/client/classify.ts';
 import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
 import { body, find, head, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { scanUsage } from '../src/usage/scan.ts';
 
 // A Qwik City page as its static adapter serves it, cut down from qwikui.com (Qwik 1.17): the container attributes on
 // <html>, handlers as QRL attributes, the loader, the paused state and its functions, the preloader, Qwik Insights'
@@ -85,4 +89,17 @@ test("Qwik's loader and core are recognised as Qwik's runtime by what their code
 	assert.deepEqual(classifyScript(core).runtimes, ['qwik']);
 	assert.equal(frameworkRuntime(core), 'Qwik');
 	assert.deepEqual(classifyScript('document.body.dataset.note = "Qwik resumes where the server stopped";').runtimes, []);
+});
+
+test("usage counts the app's own inline scripts as behaviours to port, and none of Qwik's", async () => {
+	const built = await mkdtemp(join(tmpdir(), 'qwik-usage-'));
+	await writeFile(join(built, 'index.html'), QWIK_PAGE);
+	const usage = await scanUsage({ built, routes: ['/'] });
+	const summaries = usage.behaviours.map((b) => b.summary).join('\n');
+	assert.doesNotMatch(summaries, /bundle-graph|qsymbol|qwikevents/, summaries);
+	assert.match(summaries, /theme/, "the theme script's storage read is the app's");
+	assert.match(summaries, /initPagefind/);
+	// The loader, the qwikevents push, the two preloaders, Qwik Insights' listener and the serialised functions.
+	const qwik = usage.scripts.filter((s) => /Qwik/.test(s.runtime ?? ''));
+	assert.equal(qwik.length, 6, JSON.stringify(usage.scripts.map((s) => [s.script.slice(0, 40), s.runtime])));
 });
