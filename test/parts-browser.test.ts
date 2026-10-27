@@ -563,6 +563,19 @@ test('shadcn-ui site: a code block\'s copy button writes what it copied on the o
 	await page.close();
 });
 
+test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s check over its Terminal icon (a polyline and a line) for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg>';
+	const page = await open(`<button data-slot="button" type="button">${icon}<span>npx shadcn add sidebar-07</span></button><template data-mm-clipboard="button|button|npx shadcn add sidebar-07#0" data-mm-text="npx shadcn@latest add sidebar-07"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button svg').evaluate((svg) => [svg.getAttribute('class'), ...[...svg.children].map((c) => `${c.tagName}:${c.getAttribute('points') ?? c.getAttribute('d') ?? c.getAttribute('x1')}${c.getAttribute('display') ? ' hidden' : ''}`)]);
+	assert.deepEqual(await look(), ['lucide lucide-check', 'polyline:20 6 9 17 4 12', 'line:12 hidden'], 'the check is drawn, not just the terminal hidden');
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['lucide lucide-terminal', 'polyline:4 17 10 11 4 5', 'line:12']);
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
