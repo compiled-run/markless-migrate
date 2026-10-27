@@ -19,13 +19,15 @@ runs:
     - id: playwright
       run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
       shell: bash
-    - uses: actions/cache@v4
+    # Caches are saved on main only: a pull request's copy is visible to that pull request alone, and those copies pushed
+    # the repository past its 10 GB cache limit (10.5 GB on 2026-10-27), which evicted main's and sent jobs to the mirror.
+    - uses: actions/cache/restore@v4
       id: browsers
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
     # The browsers' system packages, as apt downloaded them: the runners' mirror has served them at 30 kB/s, past a job's
-    # 45 minutes. What a run downloads is kept even when the install did not finish, so the next run starts from it.
+    # 45 minutes (165 kB/s, 12 minutes for 119 MB, on 2026-10-27). The newest main entry is restored.
     - uses: actions/cache/restore@v4
       with:
         path: ~/.cache/apt-archives
@@ -50,7 +52,12 @@ runs:
         find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -n {} ~/.cache/apt-archives/ \;
         echo "new=$(( $(find ~/.cache/apt-archives -name '*.deb' | wc -l) - ${{ steps.apt.outputs.before || 0 }} ))" >> "$GITHUB_OUTPUT"
       shell: bash
-    - if: always() && steps.kept.outputs.new > 0
+    - if: steps.browsers.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
+    - if: always() && steps.kept.outputs.new > 0 && github.ref == 'refs/heads/main'
       uses: actions/cache/save@v4
       with:
         path: ~/.cache/apt-archives
