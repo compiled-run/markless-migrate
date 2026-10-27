@@ -806,7 +806,7 @@ export class RacCalendarPlan {
 				'data-mm-rac-calendar=""',
 				`aria-label={${m}.label}`,
 				`data-invalid={${m}.invalid}`,
-				...['onClick', 'onKeyDown', 'onFocusIn', 'onFocusOut', 'onPointerOver', 'onPointerDown', 'onPointerUp', 'onMmchoose'].map((on) => `${on}={(event) => { const next = racCalendarEvent(${name}, ${v}, event); if (next) ${v} = next; }}`),
+				...['onClick', 'onKeyDown', 'onFocusIn', 'onFocusOut', 'onPointerOver', 'onPointerDown', 'onPointerUp', 'onMmchoose'].map((on) => `${on}={(event) => { const next = racCalendarEvent(${name}, structuredClone(${v}), event); if (next) ${v} = next; }}`),
 				`onIdle={() => { ${v} = racCalendarWake(${name}, ${v}); }}`,
 			],
 			children: markup,

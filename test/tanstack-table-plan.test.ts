@@ -105,10 +105,21 @@ test('a TanStack table renders its rows from one template in a keyed @for over t
 	assert.match(plan.specsModule()!, /export const ttc_[0-9a-f]{10}: Readonly<Record<string, readonly string\[\]>> = \{"a":\["alpha","menu-a"\],"b":\["beta","menu-b"\],"c":\["gamma","menu-c"\]\};/);
 });
 
+// ttAct keeps the state it is handed in its table instance, so the page hands it a copy and assigns the result back.
+test('every control hands ttAct a copy of the table state and assigns the state it returns', () => {
+	for (const region of [radixRegion]) {
+		const { out } = convert(region);
+		const calls = out.match(/ttAct\([^;]*;/g) ?? [];
+		assert.ok(calls.length > 0);
+		for (const call of calls) assert.match(call, /^ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt\d+\.s\), /);
+		assert.equal((out.match(/\btt\d+\.s = ttAct\(/g) ?? []).length, calls.length);
+	}
+});
+
 test('a row checkbox and the select-all box show what the old page showed for each selection, and call the table on use', () => {
 	const { out } = convert(radixRegion);
 	assert.match(out, /aria-checked=\{row\.sel \? "true" : "false"\}/);
-	assert.match(out, /onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, tt0\.s, \{ k: "row", r: row\.id \}\); \}\}/);
+	assert.match(out, /onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "row", r: row\.id \}\); \}\}/);
 	assert.match(out, /onKeyDown=\{\(event\) => \{ if \(event\.key === 'Enter'\) event\.preventDefault\(\); \}\}/, "Enter does not toggle Radix's checkbox");
 	// In a keyed row the indicator is hidden while unchecked: a row holding a branch could not be built when it comes back.
 	assert.match(out, /aria-checked=\{row\.sel \? "true" : "false"\} data-state=\{row\.sel \? "checked" : "unchecked"\}/);
@@ -116,7 +127,7 @@ test('a row checkbox and the select-all box show what the old page showed for ea
 	assert.doesNotMatch(out.slice(out.indexOf('@for')), /@if/, 'nothing in a row is a branch');
 	assert.match(out, /aria-checked=\{tt0v\.q\.pageSel === "none" \? "false" : tt0v\.q\.pageSel === "some" \? "mixed" : "true"\}/);
 	assert.match(out, /@if \(tt0v\.q\.pageSel === "some"\) \{ <><span data-slot="checkbox-indicator" data-state="indeterminate">/);
-	assert.match(out, /tt0\.s = ttAct\(tts_[0-9a-f]{10}, tt0\.s, \{ k: "select", next: \{"none":"pageOn","some":"pageOn","all":"pageOff"\} \}\)/);
+	assert.match(out, /tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "select", next: \{"none":"pageOn","some":"pageOn","all":"pageOff"\} \}\)/);
 });
 
 test('a hideable column takes its header out and hides its cells; the count and the page buttons read the view; the filter sets the column filter', () => {
@@ -126,8 +137,8 @@ test('a hideable column takes its header out and hides its cells; the count and 
 	// Text updates where it reads a name: each count is a computed() of its own.
 	assert.match(out, /<div class="count">\{tt0t0\}\{" of "\}\{tt0t1\}\{" row\(s\) selected\."\}<\/div>/);
 	assert.ok(declarations.includes('const tt0t0 = computed(() => tt0v.q.filteredSelected);') && declarations.includes('const tt0t1 = computed(() => tt0v.q.filtered);'), declarations.join('\n'));
-	assert.match(out, /<button data-slot="button" disabled=\{tt0v\.q\.canNext \? false : true\} onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, tt0\.s, \{ k: "page", d: 1 \}\); \}\}>Next<\/button>/);
-	assert.match(out, /<input placeholder="Filter names\.\.\." value="" onInput=\{\(event\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, tt0\.s, \{ k: "filter", c: "name", v: \(event\.target as HTMLInputElement\)\.value \}\); \}\} \/>/);
+	assert.match(out, /<button data-slot="button" disabled=\{tt0v\.q\.canNext \? false : true\} onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "page", d: 1 \}\); \}\}>Next<\/button>/);
+	assert.match(out, /<input placeholder="Filter names\.\.\." value="" onInput=\{\(event\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "filter", c: "name", v: \(event\.target as HTMLInputElement\)\.value \}\); \}\} \/>/);
 	assert.match(plan.sharedModule('../../lib/parts')!, /export const ttShared0 = shared\(\(\) => \{\n\tconst table = state<\{ s: TableState \}>\(\{ s: \{"rowSelection":\{\},"columnFilters":\[\],"columnVisibility":\{\},"pagination":\{"pageIndex":0,"pageSize":10\}\} \}\);/);
 	assert.match(plan.specsModule()!, /import \{ columnFilteringFeature, columnVisibilityFeature, createFilteredRowModel, createPaginatedRowModel, filterFn_includesString, rowPaginationFeature, rowSelectionFeature \} from '@tanstack\/table-core';/);
 	assert.match(plan.specsModule()!, /features: \{ columnFilteringFeature, columnVisibilityFeature, rowSelectionFeature, rowPaginationFeature, filteredRowModel: createFilteredRowModel\(\), paginatedRowModel: createPaginatedRowModel\(\), filterFns: \{ includesString: filterFn_includesString \} \}/);
@@ -162,7 +173,7 @@ test('an alternate-shaped table binds the same quantities: a span checkbox with 
 	plan.emitter = (el, declarations) => emitElement(el, { declarations, bind });
 	const out = emitElement(root, { bind });
 	assert.match(out, /@for \(const row of tt0v\.rows; key row\.id\) \{ <tr class="r" data-selected=\{row\.sel \? "true" : undefined\}><td hidden=\{!tt0v\.c\["name"\]\.v\}><b>\{row\.c0\}<\/b><\/td>/);
-	assert.match(out, /<input type="checkbox" aria-hidden="true" tabindex="-1" checked=\{row\.sel \? true : false\} onClick=\{\(\) => \{ tt0\.s = ttAct\([^)]*\{ k: "row", r: row\.id \}\); \}\} onFocus=\{\(event\) => focusControl\(event\)\} \/>/);
+	assert.match(out, /<input type="checkbox" aria-hidden="true" tabindex="-1" checked=\{row\.sel \? true : false\} onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "row", r: row\.id \}\); \}\} onFocus=\{\(event\) => focusControl\(event\)\} \/>/);
 	assert.match(out, /onKeyUp=\{\(event\) => \{ if \(event\.key === ' '\) \{ tt0\.s = ttAct/, "Space toggles Base UI's checkbox as it comes up");
 	assert.match(out, /<span>\{"Picked "\}\{tt0t0\}\{" \/ "\}\{tt0t1\}<\/span>/);
 	assert.match(out, /@empty \{ <tr><td colspan="2">Nothing here<\/td><\/tr> \}/);
@@ -187,7 +198,7 @@ test("the menu of a table's columns binds each item's check to its column and to
 	const layer = plan.layer('/t', { sig: 'columns', nth: 0 }, kept)!;
 	assert.deepEqual(layer.declare, ['const tt0 = ttShared0();', 'const tt0v = computed(() => ttView(' + /tts_[0-9a-f]{10}/.exec(plan.specsModule()!)![0] + ', tt0.s));']);
 	const out = emitElement(kept[0]!, { bind: layer.bind });
-	assert.match(out, /<div role="menuitemcheckbox" aria-checked=\{tt0v\.c\["name"\]\.v \? "true" : "false"\} data-state=\{tt0v\.c\["name"\]\.v \? "checked" : "unchecked"\} onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, tt0\.s, \{ k: "vis", c: "name" \}\); \}\}><span data-slot="indicator">@if \(tt0v\.c\["name"\]\.v\) \{ <><span data-state="checked"><svg class="check"><\/svg><\/span><\/> \}<\/span>name<\/div>/);
+	assert.match(out, /<div role="menuitemcheckbox" aria-checked=\{tt0v\.c\["name"\]\.v \? "true" : "false"\} data-state=\{tt0v\.c\["name"\]\.v \? "checked" : "unchecked"\} onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "vis", c: "name" \}\); \}\}><span data-slot="indicator">@if \(tt0v\.c\["name"\]\.v\) \{ <><span data-state="checked"><svg class="check"><\/svg><\/span><\/> \}<\/span>name<\/div>/);
 });
 
 test('a row pressed anywhere (React Aria) holding a label around its checkbox counts only the input click the label forwards', () => {
@@ -204,7 +215,7 @@ test('a row pressed anywhere (React Aria) holding a label around its checkbox co
 	const bind = (el: Element) => plan.bind(el);
 	plan.emitter = (el, declarations) => emitElement(el, { declarations, bind });
 	const out = emitElement(root, { bind });
-	assert.match(out, /<tr data-slot="table-row" data-state=\{row\.sel \? "selected" : "false"\} onClick=\{\(event\) => \{ const at = event\.target as Element; if \(at\.closest\('label'\) && at\.tagName !== 'INPUT'\) return; tt0\.s = ttAct\([^)]*\{ k: "row", r: row\.id \}\); \}\}>/);
+	assert.match(out, /<tr data-slot="table-row" data-state=\{row\.sel \? "selected" : "false"\} onClick=\{\(event\) => \{ const at = event\.target as Element; if \(at\.closest\('label'\) && at\.tagName !== 'INPUT'\) return; tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "row", r: row\.id \}\); \}\}>/);
 });
 
 test('a table whose rows are no one template renders as the old page showed it, every part of it, and compiles', async () => {
