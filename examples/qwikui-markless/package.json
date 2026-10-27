@@ -9,13 +9,14 @@
 		"doctor": "node scripts/markless-doctor.mjs"
 	},
 	"dependencies": {
+		"@floating-ui/dom": "1.7.6",
 		"@markless/core": "0.9.0",
 		"@markless/router": "0.9.0",
+		"canvas-confetti": "1.9.3",
 		"nitro": "3.0.260903-beta",
-		"vite-plus": "1.3.0",
-		"@floating-ui/dom": "1.7.6",
 		"path-to-regexp": "6.3.0",
-		"shiki": "3.13.0"
+		"shiki": "3.13.0",
+		"vite-plus": "1.3.0"
 	},
 	"devDependencies": {
 		"@markless/analyzer": "0.9.0",

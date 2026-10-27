@@ -395,7 +395,169 @@ const selectDemos: Part = {
 	},
 };
 
+// toggle bind-pressed.tsx: "I can only press" sets bind:pressed true; toggle-group value-bind.tsx: "I can only press
+// 'right'" sets bind:value to right. The pressed state and the line it shows are Markless state, so the control is used.
+// tabs on-click.tsx: the first tab's own click writes "Jack" into it. popover programmatic.tsx: the button's click, and
+// its "o" key, toggle the manual popover; toggle-event.tsx: the panel's toggle event shows its new state in a line.
+// tooltip placement.tsx: the select re-creates the tooltip on the side chosen.
+const pressUnlessPressed = (control: Element | null | undefined) => {
+	if (control instanceof HTMLElement && control.getAttribute('aria-pressed') !== 'true') control.click();
+};
+// bind:anchor is the invoking button: the popover port places a panel against the element its data-mm-anchor names.
+function programmaticPanel(invoker: Element): HTMLElement | null {
+	const panel = document.getElementById(`${invoker.closest('[id$="-root"]')?.id.replace(/-root$/, '') ?? ''}-panel`);
+	if (panel && !panel.dataset.mmAnchor) {
+		invoker.id ||= `${panel.id}-anchor`;
+		panel.dataset.mmAnchor = invoker.id;
+	}
+	return panel;
+}
+const otherDemos: Part = {
+	idle() {
+		document.addEventListener(
+			'toggle',
+			(event) => {
+				const panel = event.target as Element;
+				if (!panel.matches?.(on('toggle', 'toggle-event.tsx_toggle_event_component_onToggle'))) return;
+				const line = panel.parentElement?.querySelector(':scope > p');
+				if (line) line.textContent = `Panel is ${(event as ToggleEvent).newState}!`;
+			},
+			true,
+		);
+	},
+	keydown(target, event) {
+		const invoker = target.closest(on('keydown', 'programmatic.tsx_programmatic_component_button_onKeyDown'));
+		if (!invoker || event.key !== 'o') return false;
+		programmaticPanel(invoker)?.togglePopover();
+		return true;
+	},
+	input(target) {
+		if (!(target instanceof HTMLSelectElement) || !target.matches(on('change', 'placement.tsx_placement_component_div_select_onChange'))) return false;
+		const panel = target.parentElement?.querySelector<HTMLElement>('[role="tooltip"]');
+		if (panel) {
+			panel.dataset.mmPlacement = target.value;
+			panel.setAttribute('aria-label', `Tooltip content on the ${target.value}`);
+			panel.textContent = `Tooltip content on the ${target.value}`;
+		}
+		return true;
+	},
+	click(target, event) {
+		const only = target.closest(on('click', 'bind-pressed.tsx_bind_pressed_component_div_button_onClick'));
+		if (only) {
+			pressUnlessPressed(only.parentElement?.querySelector('button[aria-pressed]'));
+			return true;
+		}
+		const right = target.closest(on('click', 'value-bind.tsx_value_bind_component_div_button_onClick'));
+		if (right) {
+			pressUnlessPressed(right.parentElement?.querySelector('[data-qui-togglegroup-item][aria-label="Right aligned"]'));
+			return true;
+		}
+		const maria = target.closest(on('click', 'on-click.tsx_on_click_component_Fragment_div_onClick'));
+		if (maria) maria.innerHTML = 'Jack';
+		const invoker = target.closest(on('click', 'programmatic.tsx_programmatic_component_button_onClick'));
+		const panel = invoker && programmaticPanel(invoker);
+		if (panel) {
+			event.preventDefault();
+			panel.togglePopover();
+			return true;
+		}
+		return false;
+	},
+};
+
+// tabs dynamic.tsx: a store of labels drawn by index (key={i}): Add Tab before and after add "Added Tab" at either end, a
+// tab's x removes its label (one stays); the tab and panel elements stay in place and their text moves, one element more
+// or fewer at the end.
+function relabel(root: Element, labels: readonly string[]): void {
+	const list = root.querySelector('[role="tablist"]')!;
+	let tabs = [...list.querySelectorAll<HTMLElement>(':scope > [role="tab"]')];
+	let panels = [...root.querySelectorAll<HTMLElement>(':scope > [role="tabpanel"]')];
+	const base = tabs[0]!.id.replace(/_tab_\d+$/, '');
+	while (tabs.length < labels.length) {
+		const i = tabs.length;
+		const tab = tabs.at(-1)!.cloneNode(true) as HTMLElement;
+		Object.assign(tab, { id: `${base}_tab_${i}`, tabIndex: -1 });
+		tab.setAttribute('aria-controls', `${base}_tabpanel_${i}`);
+		tab.setAttribute('data-state', 'unselected');
+		tab.setAttribute('aria-selected', 'false');
+		tab.removeAttribute('class');
+		list.append(tab);
+		const panel = panels.at(-1)!.cloneNode(true) as HTMLElement;
+		panel.id = `${base}_tabpanel_${i}`;
+		panel.setAttribute('aria-labelledby', tab.id);
+		panel.hidden = true;
+		panels.at(-1)!.after(panel);
+		tabs = [...tabs, tab];
+		panels = [...panels, panel];
+	}
+	tabs.slice(labels.length).forEach((t) => t.remove());
+	panels.slice(labels.length).forEach((p) => p.remove());
+	labels.forEach((label, i) => {
+		tabs[i]!.firstChild!.textContent = `${label} `;
+		panels[i]!.textContent = `${label} Panel`;
+	});
+}
+const labelsOf = (root: Element) => [...root.querySelectorAll(':scope > [role="tablist"] > [role="tab"]')].map((t) => t.firstChild?.textContent?.trim() ?? '');
+const tabsDemo: Part = {
+	click(target) {
+		const add = target.closest(`${on('click', 'dynamic.tsx_dynamic_component_Fragment_div_button_onClick')}, ${on('click', 'dynamic.tsx_dynamic_component_Fragment_div_button_onClick_1')}`);
+		const root = add?.parentElement?.querySelector(':scope > [data-qui-tabs-root]');
+		if (add && root) {
+			const labels = labelsOf(root);
+			if (add.getAttribute('data-mm-qwik')!.endsWith('_1')) labels.push('Added Tab');
+			else labels.unshift('Added Tab');
+			relabel(root, labels);
+			return true;
+		}
+		const x = target.closest(on('click', 'dynamic.tsx_dynamic_component_Fragment_div_span_onClick'));
+		const tab = x?.closest('[role="tab"]');
+		const tabs = tab?.closest('[data-qui-tabs-root]');
+		if (tab && tabs) {
+			const labels = labelsOf(tabs);
+			if (labels.length > 1) {
+				labels.splice([...tab.parentElement!.children].indexOf(tab), 1);
+				relabel(tabs, labels);
+			}
+		}
+		return false;
+	},
+};
+
+// confetti-button.tsx: canvas-confetti bursts from the button's top (the intro's in the JavaScript logo's shape), and the
+// intro's button says its click ran. contributing the-problem.tsx and inline.tsx: "render on the client" renders four
+// items (numbered in the order their tasks ran: 4, 1, 2, 3; and 1 to 4 in a wrapper).
+const JS_LOGO = [
+	'M0 0h1052v1052H0z',
+	'M965.9 801.1c-7.7-48-39-88.3-131.7-125.9-32.2-14.8-68.1-25.399-78.8-49.8-3.8-14.2-4.3-22.2-1.9-30.8 6.9-27.9 40.2-36.6 66.6-28.6 17 5.7 33.1 18.801 42.8 39.7 45.4-29.399 45.3-29.2 77-49.399-11.6-18-17.8-26.301-25.4-34-27.3-30.5-64.5-46.2-124-45-10.3 1.3-20.699 2.699-31 4-29.699 7.5-58 23.1-74.6 44-49.8 56.5-35.6 155.399 25 196.1 59.7 44.8 147.4 55 158.6 96.9 10.9 51.3-37.699 67.899-86 62-35.6-7.4-55.399-25.5-76.8-58.4-39.399 22.8-39.399 22.8-79.899 46.1 9.6 21 19.699 30.5 35.8 48.7 76.2 77.3 266.899 73.5 301.1-43.5 1.399-4.001 10.6-30.801 3.199-72.101zm-394-317.6h-98.4c0 85-.399 169.4-.399 254.4 0 54.1 2.8 103.7-6 118.9-14.4 29.899-51.7 26.2-68.7 20.399-17.3-8.5-26.1-20.6-36.3-37.699-2.8-4.9-4.9-8.7-5.601-9-26.699 16.3-53.3 32.699-80 49 13.301 27.3 32.9 51 58 66.399 37.5 22.5 87.9 29.4 140.601 17.3 34.3-10 63.899-30.699 79.399-62.199 22.4-41.3 17.6-91.3 17.4-146.6.5-90.2 0-180.4 0-270.9z',
+];
+const pageDemos: Part = {
+	click(target) {
+		const button = target.closest<HTMLElement>(on('click', 'confetti-button.tsx_ConfettiButton_component_div_div_div_button_onClick'));
+		if (button) {
+			const intro = button.textContent?.trim() === 'Click me!';
+			const row = button.parentElement?.parentElement?.parentElement;
+			if (intro && row && !row.querySelector(':scope > p')) row.insertAdjacentHTML('beforeend', '<p>My click event just executed! (not the button component)</p>');
+			const rect = button.getBoundingClientRect();
+			void import('canvas-confetti').then(({ default: confetti }) =>
+				confetti({ colors: intro ? ['#f0db4f'] : ['#02B9FC', '#B57DFC'], shapes: intro ? [confetti.shapeFromPath({ path: JS_LOGO as unknown as string })] : undefined, origin: { x: (rect.left + rect.width / 2) / innerWidth, y: rect.top / innerHeight } }),
+			);
+			return true;
+		}
+		const problem = target.closest(on('click', 'the-problem.tsx_the_problem_component_div_button_onClick'));
+		if (problem) {
+			if (!problem.nextElementSibling) problem.insertAdjacentHTML('afterend', [4, 1, 2, 3].map((n) => `<div>Item ${n}</div>`).join(''));
+			return true;
+		}
+		const inline = target.closest(on('click', 'inline.tsx_inline_component_div_button_onClick'));
+		if (inline) {
+			if (!inline.nextElementSibling) inline.insertAdjacentHTML('afterend', `<div>${[1, 2, 3, 4].map((n) => `<div>Item ${n}</div>`).join('')}</div>`);
+			return true;
+		}
+		return false;
+	},
+};
+
 // dynamic.tsx's newItem: one object, made once per demo, so every add inserts the same item.
 const newItemId = new WeakMap<Element, string>();
 
-export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos, selectDemos];
+export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos, selectDemos, otherDemos, tabsDemo, pageDemos];
