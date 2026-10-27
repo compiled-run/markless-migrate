@@ -39,7 +39,7 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, splitBody } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { componentImport, componentName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
@@ -1656,7 +1656,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const b = withAppend(x, undefined);
 		return Boolean(b?.declare?.length || b?.extra?.some((e) => /^on[A-Z]/.test(e)));
 	};
-	for (const [route, extras] of bodyParts.extras) if (!ownExtras.has(route) && extras.some((el) => [...walk(el)].some(wired))) ownExtras.set(route, extras);
+	for (const [route, extras] of pagesWiring(bodyParts.extras, wired)) if (!ownExtras.has(route)) ownExtras.set(route, extras);
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
 		const file = route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(url.pathname, folders);

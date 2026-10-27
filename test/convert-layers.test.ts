@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
-import { extrasModule, LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
+import { extrasModule, LAYER_FILL, layerTable, pagesWiring, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
 import { componentImport, componentName, pageComponentOf, siteComponentOf, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
@@ -182,4 +182,12 @@ test("a page's extras outside its root are bound as its root is: a site componen
 	assert.match(source, /<SearchBox \/>/);
 	assert.doesNotMatch(source, /data-combobox-root/);
 	assert.deepEqual(seen, ['tabs']);
+});
+
+test("a page renders its own body children outside its root when they hold something to wire (a site component, a handler); the Document renders the rest", () => {
+	const doc = parseDocument('<body><header id="a"><div data-combobox-root=""><input data-id="search"></div></header><header id="b"><a href="/">Home</a></header></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => el.tagName === 'header');
+	const site = [{ selector: 'div[data-combobox-root]:has(input[data-id="search"])', component: 'search-box.tsrx', in: 'page' as const }];
+	const owned = pagesWiring(new Map([['/one/', [a!]], ['/two/', [b!]]]), (el) => pageComponentOf(el, site) !== undefined);
+	assert.deepEqual([...owned.keys()], ['/one/']);
 });
