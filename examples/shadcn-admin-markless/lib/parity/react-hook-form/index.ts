@@ -14,7 +14,7 @@ export interface UseFormOptions<T> {
 
 /** The errors after a submit: every field validated at once. */
 export function handleSubmit<T>(options: UseFormOptions<T>, values: T): { readonly valid: boolean; readonly errors: FieldErrors<T> } {
-	const errors = options.resolver(values);
+	const errors = options.resolver(structuredClone(values));
 	return { valid: Object.keys(errors).length === 0, errors };
 }
 
@@ -25,5 +25,5 @@ export function firstError<T>(order: readonly (keyof T & string)[], errors: Fiel
 
 /** After the first submit react-hook-form validates again on every change. */
 export function revalidate<T>(options: UseFormOptions<T>, submitted: boolean, values: T, errors: FieldErrors<T>): FieldErrors<T> {
-	return submitted ? options.resolver(values) : errors;
+	return submitted ? options.resolver(structuredClone(values)) : errors;
 }

@@ -6,7 +6,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
 import { attr, body, find, parseDocument, walk } from '../src/convert/dom.ts';
-import { markupPorts, QWIK_HANDLER_MARKS, registryModule, useMarkupLibraries } from '../src/convert/parts.ts';
+import { markupPorts, QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, registryModule, useMarkupLibraries } from '../src/convert/parts.ts';
 import { SelectPlan } from '../src/convert/stateful.ts';
 
 // A Qwik UI select as Qwik serves it, cut to one item: the item's indicator host is empty and the check icon waits in
@@ -177,6 +177,31 @@ test('modal: opens modal and locks the page, Tab stays inside, Escape and its cl
 	await p.close();
 });
 
+test("modal: a press on the backdrop closes it and focus goes back to its trigger, as focus-trap's deactivation returns it; with closeOnBackdropClick false it stays open", async () => {
+	const p = await open(`${MODAL}<div tabindex="-1" id="holder"><button aria-haspopup="dialog" aria-expanded="false">Keep</button><dialog id="m2-root" data-mm-backdrop-close="false"><input id="other"></dialog></div>`, ['qwik-ui/modal']);
+	await p.getByText('Open').click();
+	await p.mouse.click(5, 400);
+	assert.equal(await p.locator('#m1-root').evaluate((d) => (d as HTMLDialogElement).open), false);
+	await p.waitForFunction(() => document.activeElement?.textContent === 'Open', null, { timeout: 2000 }).catch(() => {});
+	assert.equal(await focused(p), 'Open');
+	await p.getByText('Keep').click();
+	await p.mouse.click(5, 400);
+	assert.equal(await p.locator('#m2-root').evaluate((d) => (d as HTMLDialogElement).open), true);
+	await p.keyboard.press('Escape');
+	assert.equal(await focused(p), 'Keep');
+	await p.close();
+});
+
+test("a Qwik UI modal's own props come from its context in the page's paused state: closeOnBackdropClick false is written on its dialog", () => {
+	const objs = Object.assign(new Array(100).fill(''), { 1: 'm2', 2: false, 3: '\u0001', 4: 'm1', 5: { localId: '4', closeOnBackdropClick: '3', alert: '3' }, 6: { localId: '1', closeOnBackdropClick: '2', alert: '3' } });
+	const html = page(`<dialog id="m1-root" q:id="a"></dialog><dialog id="m2-root" q:id="b"></dialog><script type="qwik/json">${JSON.stringify({ refs: {}, ctx: {}, objs })}</script>`);
+	const doc = parseDocument(html);
+	cleanDocument(doc, { builds: frameworkBuilds(html).map((b) => b.path), frameworkScripts: new Set(), origin: 'http://old', qwik: { symbols: new Map(), marks: QWIK_HANDLER_MARKS, contexts: QWIK_CONTEXT_PROPS } }, new Map());
+	const [m1, m2] = [...walk(doc)].filter((el) => el.tagName === 'dialog');
+	assert.equal(attr(m1!, 'data-mm-backdrop-close'), undefined);
+	assert.equal(attr(m2!, 'data-mm-backdrop-close'), 'false');
+});
+
 test("Qwik's manifest names each handler's source: a library handler a port needs marks its element, the site's own are named", () => {
 	const html = page(`<dialog id="m1-root"><button type="button" on:click="q-Ab.js#s_close[0]">x</button><button on:click="q-Cd.js#s_theme">Dark</button><button on:click="q-Ef.js#s_other">Other</button></dialog>`);
 	const doc = parseDocument(html);
@@ -236,5 +261,77 @@ test('carousel: Next moves the track one slide and its gap, marks the slide acti
 	assert.equal(await p.getByText('next').isDisabled(), true, 'Next is disabled at the last stop');
 	await p.getByRole('tab', { name: 'Slide 1' }).click();
 	assert.equal(await p.locator('[data-qui-carousel-scroller]').evaluate((e) => (e as HTMLElement).style.transform), 'translate3d(0px, 0px, 0px)');
+	await p.close();
+});
+
+test("carousel: the player turns autoplay on and off under reduced motion too, as isAutoplaySig does, and the root tells a bound signal each change", async () => {
+	const p = await open(CAROUSEL.replace('<div role="tablist">', '<button data-qui-carousel-player aria-label="start automatic slide show">play</button><div role="tablist">'), ['qwik-ui/carousel']);
+	await p.emulateMedia({ reducedMotion: 'reduce' });
+	await p.evaluate(() => {
+		const w = window as unknown as { heard: unknown[] };
+		w.heard = [];
+		for (const type of ['qui-carousel-autoplay', 'qui-carousel-index']) document.addEventListener(type, (e) => w.heard.push([type, (e as CustomEvent).detail]));
+	});
+	await p.getByText('play').click();
+	assert.equal(await p.getByText('play').getAttribute('aria-label'), 'stop automatic slide show');
+	await p.getByText('play').click();
+	assert.equal(await p.getByText('play').getAttribute('aria-label'), 'start automatic slide show');
+	await p.getByText('next').click();
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [['qui-carousel-autoplay', true], ['qui-carousel-autoplay', false], ['qui-carousel-index', 1]]);
+	await p.close();
+});
+
+test('accordion: each open and close is told on its item, as a bound signal hears it', async () => {
+	const p = await open(ACCORDION, ['qwik-ui/collapsible']);
+	await p.evaluate(() => {
+		const w = window as unknown as { heard: unknown[] };
+		w.heard = [];
+		document.addEventListener('qui-collapsible-open', (e) => w.heard.push([(e.target as Element).id, (e as CustomEvent).detail]));
+	});
+	await p.click('#i1-trigger');
+	await p.click('#i2-trigger');
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [['i1', true], ['i1', false], ['i2', true]]);
+	await p.close();
+});
+
+test('select: a multiple select tells its display value as the chosen items in the order they were chosen, joined', async () => {
+	const p = await open(SELECT_PAGE.replace('role="listbox" popover="manual"', 'role="listbox" popover="manual" aria-multiselectable="true"'), ['qwik-ui/select']);
+	await p.evaluate(() => {
+		const w = window as unknown as { told: string[] };
+		w.told = [];
+		document.addEventListener('mmchoose', (e) => w.told.push((e as CustomEvent<string>).detail));
+	});
+	await p.click('#s1-trigger');
+	await p.click('#s1-2');
+	await p.click('#s1-0');
+	await p.click('#s1-2');
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { told: string[] }).told), ['Blueberry', 'Blueberry, Apple', 'Apple']);
+	await p.close();
+});
+
+test("select, combobox and tooltip tell each open and close (and a combobox each choice) on themselves, as onOpenChange$ and onChange$ hear them", async () => {
+	const TIP = `<div><button aria-describedby="t1" data-state="closed">tip</button><div hidden data-floating="absolute" role="tooltip" id="t1-panel" popover="manual">Tip</div></div>`;
+	const COMBO = `<div role="group" data-combobox-root data-closed><div data-combobox-control><input role="combobox" id="c1-input" aria-controls="c1-panel" aria-expanded="false"><button type="button" tabindex="-1">v</button></div><div hidden data-floating="absolute" id="c1-panel" role="listbox" popover="manual"><div role="option" data-item id="c1-0" aria-selected="false"><span id="c1-0-item-label">Apple</span></div></div></div>`;
+	const p = await open(`${SELECT_PAGE}${COMBO}${TIP}`, ['qwik-ui/select', 'qwik-ui/combobox', 'qwik-ui/tooltip']);
+	await p.evaluate(() => {
+		const w = window as unknown as { heard: unknown[] };
+		w.heard = [];
+		for (const type of ['qui-select-open', 'qui-combobox-open', 'qui-combobox-change', 'qui-tooltip-open']) document.addEventListener(type, (e) => w.heard.push([type, (e as CustomEvent).detail]));
+	});
+	await p.click('#s1-trigger');
+	await p.keyboard.press('Escape');
+	await p.click('[data-combobox-control] button');
+	await p.click('#c1-0');
+	await p.hover('text=tip');
+	await p.mouse.move(900, 700);
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [
+		['qui-select-open', true],
+		['qui-select-open', false],
+		['qui-combobox-open', true],
+		['qui-combobox-change', 'Apple'],
+		['qui-combobox-open', false],
+		['qui-tooltip-open', 'open'],
+		['qui-tooltip-open', 'closed'],
+	]);
 	await p.close();
 });

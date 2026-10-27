@@ -36,11 +36,11 @@ export default function Tasks({ http, url }: PageProps) @{
 	const prefs = layoutPrefs(http.request.headers.get('cookie'));
 	const initial = fromSearch(url.search);
 	let sorting = state('');
-	let filter = state(initial.filter);
-	let status = state(initial.status);
-	let priority = state(initial.priority);
-	let page = state(initial.page);
-	let pageSize = state(initial.pageSize);
+	let filter = state<string>(initial.filter);
+	let status = state<string>(initial.status);
+	let priority = state<string>(initial.priority);
+	let page = state<number>(initial.page);
+	let pageSize = state<number>(initial.pageSize);
 	let selected = state('');
 	let hidden = state('');
 	const m = menus();
