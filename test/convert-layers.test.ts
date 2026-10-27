@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
-import { LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
+import { extrasModule, LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
 import { componentImport, componentName, pageComponentOf, siteComponentOf, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
@@ -166,4 +166,20 @@ test('a site component listed "in": "page" stands in for a page element; a modul
 	const source = "// Generated\nexport default function Header() @{\n\t<header><SearchBox /></header>\n}\n";
 	assert.equal(withSiteImports(source, site, '../..'), "// Generated\nimport SearchBox from '../../lib/site/search-box.tsrx';\nexport default function Header() @{\n\t<header><SearchBox /></header>\n}\n");
 	assert.equal(withSiteImports(source.replace('<SearchBox />', ''), site, '../..'), source.replace('<SearchBox />', ''));
+});
+
+test("a page's extras outside its root are bound as its root is: a site component stands in, the parts are recorded", () => {
+	const doc = parseDocument('<body><div id="bar"><div data-combobox-root=""><input data-id="search"></div><div data-qui-tabs-root=""></div></div></body>');
+	const bar = [...walk(body(doc))].find((el) => el.attrs.some((a) => a.name === 'id' && a.value === 'bar'))!;
+	const site = [{ selector: 'div[data-combobox-root]:has(input[data-id="search"])', component: 'search-box.tsrx', in: 'page' as const }];
+	const seen: string[] = [];
+	const source = extrasModule({ pages: [], before: [], after: [], extras: new Map([['/a/', [bar]]]) }, () => {}, { files: [], served: [], everywhere: [] } as never, (el) => {
+		const own = pageComponentOf(el, site);
+		if (own) return { replace: `<${componentName(own)} />` };
+		if (el.attrs.some((a) => a.name === 'data-qui-tabs-root')) seen.push('tabs');
+		return undefined;
+	});
+	assert.match(source, /<SearchBox \/>/);
+	assert.doesNotMatch(source, /data-combobox-root/);
+	assert.deepEqual(seen, ['tabs']);
 });

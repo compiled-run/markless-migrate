@@ -251,9 +251,9 @@ export default function BodyAfter({ route }: { readonly route: string }) @{
  * portals alike. The layers only some pages portal are the pages' own (`LayerTable.own`), so each page's server code
  * carries only its own layers.
  */
-export function extrasModule(split: BodySplit, dropped: (what: string) => void, table: LayerTable): string {
+export function extrasModule(split: BodySplit, dropped: (what: string) => void, table: LayerTable, bind?: (el: Element) => Binding | undefined): string {
 	const cases = [...split.extras.keys()];
-	const arms = cases.map((route) => `\t\t\t@case ${lit(route)}: {\n\t\t\t\t<>${(split.extras.get(route) ?? []).map((el) => emitElement(el, { dropped })).join('')}</>\n\t\t\t}`).join('\n');
+	const arms = cases.map((route) => `\t\t\t@case ${lit(route)}: {\n\t\t\t\t<>${(split.extras.get(route) ?? []).map((el) => emitElement(el, { dropped, ...(bind ? { bind } : {}) })).join('')}</>\n\t\t\t}`).join('\n');
 	const imports = table.everywhere.map((name) => `import ${name} from './layers/${name.replace(/^Layer/, 'layer-')}.tsrx';`).join('\n');
 	// Components in a fragment root render only inside branches: the layers sit in one on a module constant.
 	const top = table.everywhere.length ? `@if (SHOWN) { <>${table.everywhere.map((n) => `<${n} />`).join('')}</> }` : '';
