@@ -1,6 +1,6 @@
 import { state } from '@markless/core';
 import { close } from '../parts/qwik-ui/modal.ts';
-import { highlightedLink, latestSearch, startPagefind, type Hit } from './pagefind-search.ts';
+import { highlightedLink, latestSearch, type Hit } from './pagefind-search.ts';
 
 // search.tsx's Search: an inline Qwik UI Combobox (filter off) in the header's search dialog. Each input searches
 // Pagefind; the list shows "Headless" and up to 8 results, each a link to its best heading, or "No results found" when
@@ -28,7 +28,6 @@ export default function SearchBox() @{
 			placeholder="Find anything"
 			data-id="search"
 			class="rounded-base flex border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 h-12 w-full rounded-b-none border-none focus-visible:ring-0 focus-visible:outline-hidden"
-			onFocusIn={() => startPagefind()}
 			onInput={(event) => {
 				const typed = (event.target as HTMLInputElement).value;
 				term = typed;

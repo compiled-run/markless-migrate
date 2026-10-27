@@ -1,5 +1,6 @@
 import type { Part } from '../parts/index.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
+import { startPagefind } from './pagefind-search.ts';
 
 // qwikui.com's own client components (apps/website/src/components) on Markless. Each control is found by the handler it
 // ran on the old page (data-mm-qwik, from the old build's q-manifest.json) and what that handler closed over
@@ -272,14 +273,25 @@ const toc: Part = {
 	},
 };
 
-// search.tsx's SearchModal: Cmd+K anywhere toggles the search dialog.
+// search.tsx's SearchModal: Cmd+K anywhere toggles the search dialog; the first time it opens, by Cmd+K or its trigger,
+// the page's script is asked to load Pagefind (its useTask$ on isOpen).
+const searchDialog = () => document.querySelector('input[data-id="search"]')?.closest('dialog');
 const searchShortcut: Part = {
+	click(target) {
+		const trigger = target.closest('button[aria-haspopup="dialog"]');
+		const dialog = searchDialog();
+		if (trigger && dialog && trigger.parentElement?.contains(dialog)) startPagefind();
+		return false;
+	},
 	shortcut(_target, event) {
 		if (event.key !== 'k' || !event.metaKey) return;
-		const dialog = document.querySelector('input[data-id="search"]')?.closest('dialog');
+		const dialog = searchDialog();
 		if (!dialog) return;
 		if (dialog.open) close(dialog);
-		else show(dialog);
+		else {
+			startPagefind();
+			show(dialog);
+		}
 	},
 };
 
