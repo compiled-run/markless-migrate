@@ -293,3 +293,18 @@ test('accordion: each open and close is told on its item, as a bound signal hear
 	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [['i1', true], ['i1', false], ['i2', true]]);
 	await p.close();
 });
+
+test('select: a multiple select tells its display value as the chosen items in the order they were chosen, joined', async () => {
+	const p = await open(SELECT_PAGE.replace('role="listbox" popover="manual"', 'role="listbox" popover="manual" aria-multiselectable="true"'), ['qwik-ui/select']);
+	await p.evaluate(() => {
+		const w = window as unknown as { told: string[] };
+		w.told = [];
+		document.addEventListener('mmchoose', (e) => w.told.push((e as CustomEvent<string>).detail));
+	});
+	await p.click('#s1-trigger');
+	await p.click('#s1-2');
+	await p.click('#s1-0');
+	await p.click('#s1-2');
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { told: string[] }).told), ['Blueberry', 'Blueberry, Apple', 'Apple']);
+	await p.close();
+});
