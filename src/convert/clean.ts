@@ -1,7 +1,7 @@
 import { RUNTIME_MARKERS } from '../check/residue.ts';
 export { frameworkBuilds } from '../client/builds.ts';
 import { frameworkInlineScript } from '../client/builds.ts';
-import { attr, childrenOf, isElement, remove, removeAttr, walk, type Document, type Element, type Node, type ParentNode } from './dom.ts';
+import { attr, childrenOf, isElement, remove, removeAttr, setAttr, walk, type Document, type Element, type Node, type ParentNode } from './dom.ts';
 
 /** Why the converter left a piece of the old page out, per rule, with how often it applied. */
 export type Dropped = Map<string, number>;
@@ -22,6 +22,13 @@ export interface CleanContext {
 	/** Every script URL of the old site already classified as framework code by its own text. */
 	readonly frameworkScripts: ReadonlySet<string>;
 	readonly origin: string;
+	/** A Qwik build's handler symbols (q-manifest.json), with the library handlers ports find their elements by. */
+	readonly qwik?: QwikHandlers;
+}
+
+export interface QwikHandlers {
+	readonly symbols: ReadonlyMap<string, { readonly origin: string; readonly name: string }>;
+	readonly marks: readonly { readonly origin: RegExp; readonly mark: string }[];
 }
 
 function localPath(url: string, origin: string): string | undefined {
@@ -71,7 +78,7 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 			} else if (src ? isFrameworkCode(src, ctx) : GLOBALS.some((re) => re.test(text)) || FIZZ.test(text)) {
 				doomed.push(el);
 				count(dropped, src ? 'script: the old framework build' : "inline script: the old framework's server state or streaming runtime");
-			} else removeQwikAttributes(el, dropped);
+			} else removeQwikAttributes(el, dropped, ctx.qwik);
 			continue;
 		}
 		if (tag === 'link') {
@@ -99,7 +106,7 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 				count(dropped, `${name}: the old framework's marker attribute`);
 			}
 		}
-		removeQwikAttributes(el, dropped);
+		removeQwikAttributes(el, dropped, ctx.qwik);
 	}
 	for (const node of doomed) remove(node);
 	stripComments(doc);
@@ -129,7 +136,31 @@ function projectIntoHost(template: Element): boolean {
 	return true;
 }
 
-function removeQwikAttributes(el: Element, dropped: Dropped): void {
+// A Qwik handler attribute holds QRLs, `<chunk>#<symbol>[<captures>]`, one per handler, separated by whitespace.
+const SYMBOL = /#(\w+)/;
+
+/**
+ * What the handlers an element runs on the old page say about it, by their source (q-manifest.json): a library handler
+ * a port finds its elements by marks it; the app's own handlers are named, `<event>:<handler>`, for the site's parts.
+ */
+function nameQwikHandlers(el: Element, qwik: QwikHandlers): void {
+	const own: string[] = [];
+	for (const a of el.attrs) {
+		const event = /^on(?:-window|-document)?:([\w-]+)$/.exec(a.name)?.[1];
+		if (!event) continue;
+		for (const qrl of a.value.split(/\s+/)) {
+			const symbol = qwik.symbols.get(SYMBOL.exec(qrl)?.[1] ?? '');
+			if (!symbol) continue;
+			const mark = qwik.marks.find((m) => m.origin.test(symbol.origin));
+			if (mark) setAttr(el, mark.mark, '');
+			else if (!symbol.origin.startsWith('../') && !symbol.origin.includes('node_modules')) own.push(`${a.name.startsWith('on:') ? '' : `${a.name.slice(3, a.name.indexOf(':'))}-`}${event}:${symbol.name}`);
+		}
+	}
+	if (own.length) setAttr(el, 'data-mm-qwik', [...new Set(own)].join(' '));
+}
+
+function removeQwikAttributes(el: Element, dropped: Dropped, qwik?: QwikHandlers): void {
+	if (qwik) nameQwikHandlers(el, qwik);
 	for (const name of [...el.attrs.map((a) => a.name)]) {
 		if (!QWIK_ATTRIBUTE.test(name)) continue;
 		removeAttr(el, name);

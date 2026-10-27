@@ -9,7 +9,7 @@ import { atRest } from './at-rest.ts';
 import { captureRouteReveals, type RevealMemo, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
-import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
+import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
@@ -22,7 +22,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { useMarkupLibraries, bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -801,10 +801,20 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 	}
 }
 
+// The old Qwik build's handler symbols, from its q-manifest.json, while its pages are prepared.
+let qwikHandlers: QwikHandlers | undefined;
+
+/** A Qwik build's symbols by name, with each one's source file and handler name, from the manifest it serves. */
+async function readQwikSymbols(origin: string): Promise<QwikHandlers['symbols'] | undefined> {
+	const manifest = await fetch(new URL('/q-manifest.json', origin)).then((r) => (r.ok ? (r.json() as Promise<{ symbols?: Record<string, { origin?: string; displayName?: string }> }>) : undefined), () => undefined);
+	if (!manifest?.symbols) return undefined;
+	return new Map(Object.entries(manifest.symbols).flatMap(([symbol, s]) => (s.origin && s.displayName ? [[symbol, { origin: s.origin, name: s.displayName }] as const] : [])));
+}
+
 function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
 	currentRoute = capture.route;
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
-	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
+	const ctx = { builds, frameworkScripts: new Set<string>(), origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
@@ -1210,6 +1220,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const tables = new TablePlan();
 	for (const [route, captured] of tablesRead) tables.expect(route, captured);
 	layerTables = tables;
+	qwikHandlers = undefined;
+	for (const ref of captures) {
+		if (ref.status !== 200 || qwikHandlers) continue;
+		if (!frameworkBuilds((await ref.load()).server).some((b) => b.framework === 'Qwik')) break;
+		const symbols = await readQwikSymbols(options.old);
+		if (symbols) {
+			qwikHandlers = { symbols, marks: QWIK_HANDLER_MARKS };
+			log(`Qwik handlers named from the old build's q-manifest.json: ${symbols.size} symbols`);
+		}
+		break;
+	}
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });

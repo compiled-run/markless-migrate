@@ -6,7 +6,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
 import { attr, body, find, parseDocument, walk } from '../src/convert/dom.ts';
-import { markupPorts, useMarkupLibraries } from '../src/convert/parts.ts';
+import { markupPorts, QWIK_HANDLER_MARKS, useMarkupLibraries } from '../src/convert/parts.ts';
 import { SelectPlan } from '../src/convert/stateful.ts';
 
 // A Qwik UI select as Qwik serves it, cut to one item: the item's indicator host is empty and the check icon waits in
@@ -175,4 +175,21 @@ test('modal: opens modal and locks the page, Tab stays inside, Escape and its cl
 	await p.getByText('Close').click();
 	assert.equal(await p.getAttribute('dialog', 'data-state'), 'closed');
 	await p.close();
+});
+
+test("Qwik's manifest names each handler's source: a library handler a port needs marks its element, the site's own are named", () => {
+	const html = page(`<dialog id="m1-root"><button type="button" on:click="q-Ab.js#s_close[0]">x</button><button on:click="q-Cd.js#s_theme">Dark</button><button on:click="q-Ef.js#s_other">Other</button></dialog>`);
+	const doc = parseDocument(html);
+	const symbols = new Map([
+		['s_close', { origin: '../../../packages/kit-headless/src/components/modal/modal-close.tsx', name: 'modal-close.tsx_HModalClose_component_handleClick' }],
+		['s_theme', { origin: 'components/header/header.tsx', name: 'header.tsx_DarkModeToggle_component_Button_onClick' }],
+		['s_other', { origin: '../../../node_modules/some-lib/x.tsx', name: 'x.tsx_thing' }],
+	]);
+	cleanDocument(doc, { builds: frameworkBuilds(html).map((b) => b.path), frameworkScripts: new Set(), origin: 'http://old', qwik: { symbols, marks: QWIK_HANDLER_MARKS } }, new Map());
+	const [close, theme, other] = [...walk(doc)].filter((el) => el.tagName === 'button');
+	assert.equal(attr(close!, 'data-mm-close'), '');
+	assert.equal(attr(close!, 'data-mm-qwik'), undefined, "a library's handler is the port's, not the site's");
+	assert.equal(attr(theme!, 'data-mm-qwik'), 'click:header.tsx_DarkModeToggle_component_Button_onClick');
+	assert.equal(attr(other!, 'data-mm-qwik'), undefined);
+	assert.equal(attr(close!, 'on:click'), undefined);
 });

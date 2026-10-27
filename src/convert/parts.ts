@@ -40,6 +40,11 @@ export interface Port {
 	 * this port's, which places the port on a site whose source imports the library.
 	 */
 	readonly markup?: (el: Element) => boolean;
+	/**
+	 * Elements the port finds by the library handler they run on the old page (a Qwik handler's source file, from the old
+	 * build's q-manifest.json), marked with `mark` because the library writes nothing else on them (Qwik UI's Modal.Close).
+	 */
+	readonly handlers?: readonly { readonly origin: RegExp; readonly mark: string }[];
 }
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
@@ -153,7 +158,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'qwik-ui/dropdown', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Dropdown.Root', 'Dropdown.Trigger', 'Dropdown.Popover', 'Dropdown.Item', 'Dropdown.CheckboxItem', 'Dropdown.RadioGroup', 'Dropdown.RadioItem', 'Dropdown.ItemIndicator', 'Dropdown.Group', 'Dropdown.GroupLabel', 'Dropdown.Separator'], events: ['click', 'keydown', 'pointerover'], locate: () => true, markup: (el) => attr(el, 'data-qui-dropdown') !== undefined },
 	{ module: 'qwik-ui/tooltip', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Panel', 'Tooltip.Arrow'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: () => true, markup: (el) => attr(el, 'role') === 'tooltip' && quiFloating(el) },
 	{ module: 'qwik-ui/popover', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Panel', 'Popover.Anchor'], events: ['click'], locate: () => true, markup: (el) => attr(el, 'popovertarget') !== undefined || (quiFloating(el) && attr(el, 'role') === undefined) },
-	{ module: 'qwik-ui/modal', library: QWIK_UI, exports: ['Modal.Root', 'Modal.Trigger', 'Modal.Panel', 'Modal.Close', 'Modal.Title', 'Modal.Description'], events: ['click', 'pointerdown', 'keydown'], locate: () => true, markup: (el) => el.tagName === 'dialog' && /-root$/.test(attr(el, 'id') ?? '') },
+	{ module: 'qwik-ui/modal', library: QWIK_UI, exports: ['Modal.Root', 'Modal.Trigger', 'Modal.Panel', 'Modal.Close', 'Modal.Title', 'Modal.Description'], events: ['click', 'pointerdown', 'keydown'], locate: () => true, markup: (el) => el.tagName === 'dialog' && /-root$/.test(attr(el, 'id') ?? ''), handlers: [{ origin: /\/kit-headless\/src\/components\/modal\/modal-close\.tsx$/, mark: 'data-mm-close' }] },
 	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
@@ -288,6 +293,9 @@ function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding |
 	const { shell: _shell, ...config } = docsearch;
 	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(config))}}`, ...keys] };
 }
+
+/** Every library handler a port finds its elements by (Port.handlers). */
+export const QWIK_HANDLER_MARKS: readonly { readonly origin: RegExp; readonly mark: string }[] = PORTS.flatMap((p) => p.handlers ?? []);
 
 let markupLibraries: ReadonlySet<string> = new Set();
 /** The libraries the old source imports whose parts are placed by their own markup (Port.markup). */
