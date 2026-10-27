@@ -109,10 +109,10 @@ export function chooseItem(item: Element): void {
 	if (s && item instanceof HTMLElement) choose(s, item);
 }
 
-/** What a Root's bind:open writes: the list opens as its trigger opens it. */
+/** What a Root's bind:open writes: the list opens, nothing highlighted. */
 export function openList(root: Element): void {
 	const s = selectOf(root);
-	if (s && !isOpen(s)) openWithHighlight(s, 'Enter');
+	if (s) setOpen(s, true);
 }
 
 export function click(target: Element, event: MouseEvent): boolean {
