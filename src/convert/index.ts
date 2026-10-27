@@ -23,7 +23,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -33,7 +33,7 @@ import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
-import { applyLateFonts, fontPreloads, lateFaces, withoutOffscreenFontPreloads } from './fonts.ts';
+import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
@@ -49,10 +49,17 @@ const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
 const PAGE_SHOWN = 'PAGE_SHOWN';
 const NOT_FOUND = '/_markless-migrate/not-found';
 
+/** The registries under `lib/parts/` a module's calls of the parts runtime import: its pages' ports, and the ports that mount. */
+interface Registries {
+	readonly behave: () => string;
+	readonly mount: () => string;
+}
+
 /** Imports the parts runtime's functions a generated module calls, after its first line. */
-function withPartImports(source: string, dir: string): string {
-	const used = ['behave', 'listen', 'mount'].filter((name) => source.includes(`=> ${name}(`));
-	let out = used.length ? source.replace('\n', `\nimport { ${used.join(', ')} } from '${dir}/index.ts';\n`) : source;
+function withPartImports(source: string, dir: string, registries: Registries): string {
+	const used = ['behave', 'listen'].filter((name) => source.includes(`=> ${name}(`));
+	let out = used.length ? source.replace('\n', `\nimport { ${used.join(', ')} } from '${dir}/${registries.behave()}';\n`) : source;
+	if (source.includes('=> mount(')) out = out.replace('\n', `\nimport { mount } from '${dir}/${registries.mount()}';\n`);
 	const rovingNames = ['roving', 'tabValue'].filter((name) => new RegExp(`\\b${name}\\(event\\)`).test(out));
 	if (rovingNames.length) out = out.replace('\n', `\nimport { ${rovingNames.join(', ')} } from '${dir}/radix/roving.ts';\n`);
 	if (/\baccordionKeys\(/.test(out)) out = out.replace('\n', `\nimport { accordionKeys } from '${dir}/radix/disclosure-motion.ts';\n`);
@@ -234,8 +241,51 @@ function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped:
 }
 
 let placementResolver: PartResolver | undefined;
+const dayPickerIn = (binding: Binding | undefined) => {
+	if (binding) templatePorts.add('day-picker');
+	return binding;
+};
+/**
+ * The ports the converted markup uses, and which routes each is for: what is emitted for some routes (a page, the layers
+ * it portals, a region pages share) is theirs; what a plan puts on Markless state is the routes whose markup that plan
+ * binds; anything else (the document, the body's shared children) is every page's.
+ */
+export class RoutedPorts extends Set<string> {
+	/** The routes the markup being emitted is for; none while emitting what every page renders. */
+	routes: readonly string[] | undefined;
+	private readonly own = new Map<string, Set<string>>();
+	private readonly everywhere = new Set<string>();
+	private readonly planned = new Set<string>();
+	override add(module: string): this {
+		super.add(module);
+		if (this.routes) for (const route of this.routes) this.give(route, module);
+		else this.everywhere.add(module);
+		return this;
+	}
+	/** A port a plan needs: it is the routes' whose markup the plan's binding is emitted for, or every page's if none. */
+	plan(module: string): void {
+		super.add(module);
+		this.planned.add(module);
+	}
+	/** The ports these routes' pages can use. */
+	of(routes: readonly string[]): Set<string> {
+		const given = new Set([...this.own.values()].flatMap((s) => [...s]));
+		const unplaced = [...this.planned].filter((m) => !given.has(m));
+		return new Set([...this.everywhere, ...unplaced, ...routes.flatMap((r) => [...(this.own.get(r) ?? [])])]);
+	}
+	override clear(): void {
+		super.clear();
+		this.own.clear();
+		this.everywhere.clear();
+		this.planned.clear();
+		this.routes = undefined;
+	}
+	private give(route: string, module: string): void {
+		(this.own.get(route) ?? this.own.set(route, new Set()).get(route)!).add(module);
+	}
+}
 // Ports the parts inside revealed content need (a command palette exists only in its template).
-const templatePorts = new Set<string>();
+const templatePorts = new RoutedPorts();
 const isRadixTab = (el: Element) => attr(el, 'role') === 'tab' && portFor(el) === 'radix/roving';
 const isRadixDisclosure = (el: Element) => portFor(el) === 'radix/disclosure-motion';
 // Tabs that render only the chosen panel: Base UI's, and React Aria's (whose markup carries data-rac).
@@ -601,7 +651,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies)));
+						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies)));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
@@ -857,7 +907,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		const self = selfReferences(attrs, origin);
 		tags.push({ tag, attrs, ...(text !== undefined ? { text } : {}), ...(self ? { self } : {}) });
 	}
-	const kept = withoutOffscreenFontPreloads(tags, capture.offscreenFontPreloads ?? [], origin);
+	const kept = withoutFontPreloads(tags, capture.offscreenFontPreloads ?? [], origin);
 	if (kept.length < tags.length) dropped.set('<link rel=preload as=font>: a font no first screen draws', (dropped.get('<link rel=preload as=font>: a font no first screen draws') ?? 0) + tags.length - kept.length);
 	tags.splice(0, tags.length, ...kept);
 	// The first screen's web fonts are fetched with the stylesheet, not after it: preloaded right after the charset.
@@ -867,6 +917,9 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		tags.splice(tags.findIndex((t) => t.tag === 'meta' && t.attrs.charset !== undefined) + 1, 0, ...fonts);
 		fontPreloadCount += fonts.length;
 	}
+	const swapFonts = fontPreloads(capture.swapFirstScreenFonts ?? [], origin, 0).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
+	tags.splice(0, tags.length, ...swapFontPreloadsLow(tags, capture.swapFontPreloads ?? [], origin, swapFonts));
+	fontPreloadCount += swapFonts.length;
 	const faces = lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin);
 	if (faces.length) {
 		const config = lateFontsConfig(faces);
@@ -1254,6 +1307,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			continue;
 		}
 		racLayer.route = ref.route;
+		templatePorts.routes = [ref.route];
 		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 		for (const e of racPageEmpties.get(ref.route) ?? []) {
 			const p = prepared.get(ref.route)!;
@@ -1264,6 +1318,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		for (const r of revealed.get(ref.route) ?? []) if (r.sig) racChips(prepared.get(ref.route)!.root.parentNode as Element, r);
 	}
+	templatePorts.routes = undefined;
 	let placedFloating = 0;
 	for (const [route, panels] of floatingRead) {
 		const p = prepared.get(route);
@@ -1293,10 +1348,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const baseTabs = new BaseTabsPlan();
 	let baseTabGroups = 0;
 	const emitPanel = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
-	for (const p of prepared.values()) baseTabGroups += baseTabs.add(p.root, isBaseTab, (t) => basePanels.get(t), emitPanel);
+	for (const [route, p] of prepared) {
+		templatePorts.routes = [route];
+		baseTabGroups += baseTabs.add(p.root, isBaseTab, (t) => basePanels.get(t), emitPanel);
+	}
+	templatePorts.routes = undefined;
 	if (baseTabGroups) {
 		log(`Base UI tab lists on Markless state: ${baseTabGroups}`);
-		templatePorts.add('radix/roving');
+		templatePorts.plan('radix/roving');
 	}
 	const ownDelays = new Map<Element, Record<string, string>>();
 	for (const [route, p] of prepared) {
@@ -1342,7 +1401,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	if (clocked) {
-		usedPorts.add('clock');
+		usedPorts.plan('clock');
 		log(`dates that follow the visitor's clock or time zone: ${clocked}`);
 	}
 	useMeasuredProps(ownDelays);
@@ -1388,10 +1447,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const line of dayPickers.notes) log(`  ${line}`);
 	if (pickerCount) {
 		log(`react-day-picker calendars on Markless state: ${pickerCount}`);
-		templatePorts.add('day-picker');
+		templatePorts.plan('day-picker');
 	}
 	const insertedGroups = insertedDisclosures.add(inserted, [...prepared.values()].map((p) => p.root), multiple);
 	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
+	if (disclosureGroups || insertedGroups) templatePorts.plan('panel-motion');
 	// A form the old page's script handled (submitting it left the page where it was) does not submit natively.
 	const handledForms = new Set<Element>();
 	for (const [route, p] of prepared) {
@@ -1402,7 +1462,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	const formBinding: Binding = { extra: ['data-mm-form=""', 'onSubmit={(event) => event.preventDefault()}'] };
-	if (handledForms.size) templatePorts.add('form');
+	if (handledForms.size) templatePorts.plan('form');
 	const notifyPlan = new NotifyPlan();
 	let notifyCount = 0;
 	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
@@ -1423,7 +1483,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
 	if (switchGroups) {
 		log(`site switches on Markless state: ${switchGroups}`);
-		templatePorts.add('switch');
+		templatePorts.plan('switch');
 	}
 	const checkables = new CheckablePlan();
 	let checkableGroups = 0;
@@ -1435,7 +1495,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const line of tables.notes) log(`  ${line}`);
 	const tableNotesPlaced = tables.notes.length;
 	if (tableCount) log(`TanStack tables on Markless state: ${tableCount}`);
-	if (tables.focusesControls) templatePorts.add('toggle');
+	if (tables.focusesControls) templatePorts.plan('toggle');
 	// React Aria tables whose checkboxes choose rows: the rows, the checkboxes and select-all are one state.
 	const racTables = new RacTablePlan();
 	let racTableCount = 0;
@@ -1444,7 +1504,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) checkableGroups += checkables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml, (el) => racTables.claims(el) || tables.claims(el));
 	if (checkableGroups) {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
-		templatePorts.add('toggle');
+		templatePorts.plan('toggle');
 	}
 	const charts = new ChartPlan();
 	let chartCount = 0;
@@ -1452,7 +1512,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (chartCount) {
 		log(`recharts charts on Markless state: ${chartCount} charts`);
 		styles.set(MOTION_FILE, CHART_CSS);
-		templatePorts.add('recharts');
+		templatePorts.plan('recharts');
 	}
 	let racCalendarCount = 0;
 	for (const [route, p] of prepared) {
@@ -1462,7 +1522,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const line of racCalendars.notes) log(`  ${line}`);
 	if (racCalendarCount) {
 		log(`React Aria calendars on Markless state: ${racCalendarCount}`);
-		templatePorts.add('react-aria/calendar');
+		templatePorts.plan('react-aria/calendar');
 	}
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
@@ -1481,7 +1541,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const selects = new SelectPlan();
 	const racSelect = (el: Element) => attr(el, 'aria-haspopup') === 'listbox' && candidatesOf(el).some((c) => c.library === 'react-aria-components');
 	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
-	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || (racSelect(el) && !racCalendars.within(el)), emitTrigger);
+	for (const [route, p] of prepared) {
+		templatePorts.routes = [route];
+		selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || (racSelect(el) && !racCalendars.within(el)), emitTrigger);
+	}
+	templatePorts.routes = undefined;
 	// A demo's recorded uses never take over an element another plan puts on Markless state (a disclosure, a tab, a toggle).
 	const scenePlan = new ScenePlan((el) => [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps].some((plan) => plan.bind(el) !== undefined));
 	let sceneCount = 0;
@@ -1496,8 +1560,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	if (sceneCount) {
 		log(`demos playing their recorded uses on Markless state: ${sceneCount}`);
-		templatePorts.add('scene');
-		templatePorts.add('form');
+		templatePorts.plan('scene');
+		templatePorts.plan('form');
 	}
 	for (const why of scenePlan.refused) log(`  recorded uses not played: ${why}`);
 	for (const [container, r] of replaced) {
@@ -1514,11 +1578,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// A React Aria DisclosureGroup that lets several Disclosures be expanded (allowsMultipleExpanded writes nothing).
 		binding = mergeBindings(binding, multipleAccordions.has(el) && attr(el, 'data-rac') !== undefined ? { extra: ['data-mm-multiple=""'] } : undefined);
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
-		binding = mergeBindings(dayPickers.bind(el), binding);
-		binding = mergeBindings(racCalendars.bind(el), binding);
+		// The port a plan's binding needs belongs to the routes being emitted.
+		const needs = <T>(found: T, ...ports: string[]): T => {
+			if (found) for (const port of ports) templatePorts.add(port);
+			return found;
+		};
+		needs(attr(el, 'data-mm-clock') !== undefined, 'clock');
+		binding = mergeBindings(needs(dayPickers.bind(el), 'day-picker'), binding);
+		binding = mergeBindings(needs(racCalendars.bind(el), 'react-aria/calendar'), binding);
 		binding = mergeBindings(racTables.bind(el), binding);
 		binding = mergeBindings(tables.bind(el), binding);
-		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
+		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? needs(formBinding, 'form') : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
@@ -1563,7 +1633,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent });
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes) });
+	usedPorts.routes = undefined;
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();
@@ -1578,6 +1649,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const parts: PartUse[] = [];
 		const declarations: string[] = [];
 		onRoute(route);
+		usedPorts.routes = [route];
 		const rootMarkup = emitElement(p.root, {
 			declarations,
 			bind: (el): Binding | undefined => {
@@ -1623,6 +1695,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
 	}
+	usedPorts.routes = undefined;
 	const partsDir = (from: string) => relative(dirname(join(app, from)), join(app, 'lib', 'parts')).replace(/^(?!\.)/, './');
 	for (const [file, variants] of byFile) {
 		const imports = new Set<string>(["import type { PageProps } from '@markless/router';"]);
@@ -1652,9 +1725,22 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const v of variants) out.push({ route: v.route, page: file, bytes: v.markup.length, parts: v.parts });
 	}
 
+	if (docsearchConfigured()) usedPorts.add('docsearch');
+	if (lateFontPages.size) usedPorts.add('late-fonts');
 	const siteParts = await stat(join(app, 'lib', 'site', 'parts.ts')).then(() => true, () => false);
-	const handlers = bodyHandlers(usedPorts, siteParts).join(' ');
-	for (const [file, source] of written) written.set(file, withPartImports(handlers ? source.replaceAll(ROOT_HANDLERS, handlers) : source.replaceAll(` ${ROOT_HANDLERS}`, ''), partsDir(file)));
+	// Each page's root delegates to a registry of only the ports its own markup, the regions it shares and its layers use.
+	const registrySets = new Map<string, ReadonlySet<string>>();
+	const registry = (modules: ReadonlySet<string>) => {
+		const path = registryPath(modules);
+		registrySets.set(path, modules);
+		return path;
+	};
+	const shared: Registries = { behave: () => registry(new Set(usedPorts)), mount: () => registry(new Set(mountingPorts(usedPorts))) };
+	for (const [file, source] of written) {
+		const ports = usedPorts.of(byFile.get(file)!.map((v) => v.route));
+		const handlers = bodyHandlers(ports, siteParts).join(' ');
+		written.set(file, withPartImports(source.replaceAll(ROOT_HANDLERS, handlers), partsDir(file), { ...shared, behave: () => registry(ports) }));
+	}
 	if (!options.only?.length) await rm(join(app, 'pages'), { recursive: true, force: true });
 	await rm(join(app, 'components', 'converted'), { recursive: true, force: true });
 	for (const [file, source] of written) {
@@ -1664,19 +1750,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const component of factored.components) {
 		const imports = [...new Set(sharedParts.map((part) => part.import(partsDir(component.file))))].join('\n');
 		await mkdir(dirname(join(app, component.file)), { recursive: true });
-		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file))));
+		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file), shared)));
 	}
 	const documentParts: PartUse[] = [];
 	// DocSearch's button keys and loading on intent run from the head, before the first paint and the first press.
 	const shell = docsearchShell();
 	const headScripts: (string | { name: string; attributes: string })[] = docsearchConfigured() ? ['DOCSEARCH_SCRIPT', ...(shell ? [{ name: 'DOCSEARCH_SHELL', attributes: 'type="text/html" data-mm-docsearch-shell' }] : [])] : [];
-	if (headScripts.length) usedPorts.add('docsearch');
 	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { DOCSEARCH_SCRIPT${shell ? ', shellScript' : ''} } from '${dir}/docsearch.ts';${shell ? `\nimport DOCSEARCH_SHELL_HTML from '${dir}/docsearch-shell.ts';\nconst DOCSEARCH_SHELL = shellScript(DOCSEARCH_SHELL_HTML);` : ''}` });
 	if (fontPreloadCount) log(`font preloads: ${fontPreloadCount} first-screen web fonts that only a stylesheet named are preloaded`);
 	if (lateFontPages.size) {
 		headScripts.push('LATE_FONTS_SCRIPT');
 		documentParts.push({ part: 'late-fonts', import: (dir) => `import { LATE_FONTS_SCRIPT } from '${dir}/late-fonts.ts';` });
-		usedPorts.add('late-fonts');
 	}
 	// A theme toggle the site names switches the theme from the first paint, before the page's code has arrived.
 	const toggle = themeToggleOf(await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>[], () => []));
@@ -1692,8 +1776,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
 	await writeParts(app, usedPorts, choices, tables.used ? ['tanstack-table'] : []);
+	await writeRegistries(app, registrySets.values(), !options.only?.length);
 	const tableSpecs = tables.specsModule();
 	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);
 	if (shell) await writeFile(join(app, 'lib', 'parts', 'docsearch-shell.ts'), `// Generated by markless-migrate convert: DocSearch's dialog as the old site first draws it on a press (captured by plan).\nexport default ${JSON.stringify(shell)};\n`);
@@ -1701,7 +1785,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (racCalendars.placed) await writeFile(join(app, 'lib', 'parts', RAC_CONFIGS_MODULE), racCalendars.configsModule());
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
-	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(withPartImports(layer.source, partsDir(join('components', 'converted', layer.file)))));
+	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(withPartImports(layer.source, partsDir(join('components', 'converted', layer.file)), shared)));
 	// The calendar views date pickers share between their popover and their trigger, at page scope.
 	const sharedPickers = dayPickers.sharedModule(`../../lib/parts/${CONFIGS_MODULE}`, '../../lib/parts');
 	if (sharedPickers) await writeFile(join(app, 'components', 'converted', 'day-pickers.tsrx'), sharedPickers);

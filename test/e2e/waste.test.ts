@@ -5,8 +5,8 @@ import { measureWaste, wasteLines } from '../../src/check/waste.ts';
 
 // Two shapes of one page: a package imported and never called, and a library port the registry lists, beside the handler the click runs.
 const SHAPES: readonly WasteFixture[] = [
-	{ handler: 'src/tabs.ts', heavy: 'node_modules/heavy-chart/dist/index.js', port: 'lib/parts/cmdk.ts', registry: 'lib/parts/registry.ts', role: 'tab' },
-	{ handler: 'app/menu-button.tsx', heavy: 'node_modules/@plots/canvas/lib/draw.mjs', port: 'lib/parts/radix/menu.ts', registry: 'lib/parts/registry.ts', role: 'button' },
+	{ handler: 'src/tabs.ts', heavy: 'node_modules/heavy-chart/dist/index.js', port: 'lib/parts/cmdk.ts', registry: 'lib/parts/registries/3fa1c09e7b2d.ts', role: 'tab' },
+	{ handler: 'app/menu-button.tsx', heavy: 'node_modules/@plots/canvas/lib/draw.mjs', port: 'lib/parts/radix/menu.ts', registry: 'lib/parts/registries/c84e0d51a6f9.ts', role: 'button' },
 ];
 
 for (const shape of SHAPES) {

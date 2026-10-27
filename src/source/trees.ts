@@ -39,20 +39,25 @@ export const lineOf = (node: TsNode) => node.startPosition.row + 1;
 export function* descendants(node: TsNode, type?: string | readonly string[]): Generator<TsNode> {
 	const types = typeof type === 'string' ? [type] : type;
 	const cursor = node.walk();
-	let depth = 0;
-	for (;;) {
-		const current = cursor.currentNode;
-		if (depth > 0 && current.isNamed && (!types || types.includes(current.type))) yield current;
-		if (cursor.gotoFirstChild()) {
-			depth++;
-			continue;
-		}
+	// web-tree-sitter's finalizer for a collected cursor frees whatever cursor its transfer buffer holds, corrupting the heap.
+	try {
+		let depth = 0;
 		for (;;) {
-			if (depth === 0) return;
-			if (cursor.gotoNextSibling()) break;
-			cursor.gotoParent();
-			depth--;
+			const current = cursor.currentNode;
+			if (depth > 0 && current.isNamed && (!types || types.includes(current.type))) yield current;
+			if (cursor.gotoFirstChild()) {
+				depth++;
+				continue;
+			}
+			for (;;) {
+				if (depth === 0) return;
+				if (cursor.gotoNextSibling()) break;
+				cursor.gotoParent();
+				depth--;
+			}
 		}
+	} finally {
+		cursor.delete();
 	}
 }
 

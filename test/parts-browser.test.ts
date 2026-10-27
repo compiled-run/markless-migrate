@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { earlyThemeScript } from '../parts/next-themes.ts';
+import { registryModule } from '../src/convert/parts.ts';
 
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
@@ -30,10 +31,10 @@ after(async () => {
 async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = '', timezoneId?: string): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, ...(timezoneId ? { timezoneId } : {}) });
 	// `site`: the shadcn-ui port's own site parts (lib/site/parts.ts), which import the ports as the app's lib/parts.
-	const registry = `${ports.map((p, i) => (p === 'site' ? `import { SITE_PARTS as p${i} } from './site.ts';` : `import * as p${i} from './${p}.ts';`)).join('\n')}\nexport const PARTS = [${ports.map((p, i) => (p === 'site' ? `...p${i}` : `p${i}`)).join(', ')}];`;
+	const registry = registryModule(ports.filter((p) => p !== 'site'), '.', ports.includes('site') ? './site.ts' : undefined);
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/index.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/registry.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
 		// What choosing each option did on the old page, which convert writes beside the ports.
@@ -1425,5 +1426,32 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.mouse.up();
 	await page.getByRole('button', { name: 'Undo' }).click();
 	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-removed') === 'true');
+	await page.close();
+});
+
+test('shadcn-ui site: a chart\'s frame stays transparent until its page has loaded, then shows, whatever the capture caught it in', async () => {
+	const frame = (name: string, opacity: string) => `<iframe src="/frame/${name}" class="w-full border-none transition-opacity duration-300 ${opacity}" height="100" loading="lazy" title="chart-${name}"></iframe>`;
+	const page = await open(`<div style="height:5000px"></div>${frame('slow', 'opacity-100')}<div style="height:5000px"></div>${frame('loaded', 'opacity-0')}`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		if (route.request().url().endsWith('/slow')) await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg class="recharts-surface"></svg>' });
+	});
+	const classOf = (i: number) => page.locator('iframe').nth(i).evaluate((f) => f.className);
+	const loaded = (i: number) => page.waitForFunction((i) => document.querySelectorAll('iframe')[i]!.contentDocument?.querySelector('svg') != null, i);
+	const mount = () => page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('iframe[loading]'));
+
+	await page.locator('iframe').nth(1).scrollIntoViewIfNeeded();
+	await loaded(1);
+	await mount();
+	assert.match(await classOf(1), / opacity-100$/, 'a frame already loaded when it is mounted shows');
+
+	await page.locator('iframe').nth(0).scrollIntoViewIfNeeded();
+	await mount();
+	assert.match(await classOf(0), / opacity-0$/, 'a frame still loading is transparent');
+	release();
+	await loaded(0);
+	await page.waitForFunction(() => document.querySelector('iframe')!.className.endsWith(' opacity-100'));
 	await page.close();
 });

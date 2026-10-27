@@ -1,17 +1,19 @@
-import { mannWhitneyGreater, median, SIGNIFICANCE } from './load.ts';
+import { mannWhitneyGreater, median, psiFailures, SIGNIFICANCE } from './load.ts';
 import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, RUN_METRIC_LABEL, runMetric, type NetworkCell, type NetworkRun, type RouteNetwork, type RunMetric } from './slow-network.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
-import type { Failure } from './types.ts';
+import type { Failure, RouteResult } from './types.ts';
 
 /** The times that gate a route: a page that paints or answers later on any browser and network is slower there. */
 export const GATED: readonly RunMetric[] = ['firstFrame', 'lcp', 'answered'];
 const BAND_QUANTILE = 0.9;
+/** Old runs a band needs: fewer cannot be split in two halves of two. */
+const MIN_OLD_RUNS = 4;
 /** The instrument's own step: a first frame is read from screenshots this far apart, and a click is sent no more often than this, so a smaller difference cannot be seen. */
 export const resolution = (metric: RunMetric): number => (metric === 'firstFrame' ? FRAME_EVERY_MS : metric === 'answered' ? CLICK_EVERY_MS : 0);
 
 /** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
 export function noiseBand(old: readonly number[]): number | undefined {
-	if (old.length < 4) return undefined;
+	if (old.length < MIN_OLD_RUNS) return undefined;
 	const n = old.length;
 	const small = n >> 1;
 	const gaps: number[] = [];
@@ -153,6 +155,28 @@ export function networkFailures(route: string, network: RouteNetwork | { readonl
 		}
 	}
 	return out;
+}
+
+/** Why the route's slow network was not measured: a browser and network where a side's runs failed (a server that stopped answering, a stalled machine) and left too few to compare; undefined when every measured cell has its verdict. */
+export function networkUnmeasured(network: RouteNetwork | { readonly unavailable: string } | undefined): string | undefined {
+	if (!network || 'unavailable' in network) return undefined;
+	for (const [i, old] of network.old.cells.entries()) {
+		const next = network.new.cells[i];
+		if (!next || old.unavailable || next.unavailable) continue;
+		const cell = `${old.browser} ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
+		const usable = (c: NetworkCell) => c.runs.filter((r) => !r.error).length;
+		const why = (c: NetworkCell) => c.runs.find((r) => r.error)?.error ?? 'no run was taken';
+		if (usable(old) < MIN_OLD_RUNS && !(old.settled || next.settled)) return `slow network not measured in ${cell}: ${usable(old)} of ${old.runs.length} old runs finished (${why(old)})`;
+		if (!usable(next) && !(next.runs.length && next.runs.every(unanswered))) return `slow network not measured in ${cell}: none of ${next.runs.length} new runs finished (${why(next)})`;
+	}
+	return undefined;
+}
+
+/** A route green but for a page load whose old or new runs never finished (the lab's or the slow network's) is not checked, never green. */
+export function unmeasuredNotChecked(route: RouteResult): RouteResult {
+	const lab = route.load?.skipped && route.load.ok && !psiFailures(route.route, route.load.psi) ? `page load (lab) not measured: ${route.load.skipped}` : undefined;
+	const why = route.ok && !route.infrastructure ? (lab ?? networkUnmeasured(route.load?.network)) : undefined;
+	return why ? { ...route, ok: false, dimensions: { ...route.dimensions, load: 'skipped' }, infrastructure: { cause: 'not measured', message: why } } : route;
 }
 
 const SUMMARY_METRICS: readonly RunMetric[] = ['answered', 'visibleToAnswer', 'firstFrame', 'lcp', 'bytesByAnswer', 'jsExecutedByAnswer'];

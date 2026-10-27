@@ -1,6 +1,7 @@
 // The check workflow's two ends: `split <targets.json> <n> <dir>` deals a --write-targets file into n shard files and
-// prints the matrix; `merge <dir of report.json files> <out dir>` joins the shards' reports into one report.json and a
-// markdown summary (counts, leading causes, every route).
+// prints the matrix; `merge <dir of report.json files> <out dir> [<shard files dir>]` joins the shards' reports into one
+// report.json and a markdown summary (counts, leading causes, every route); `representatives <targets.json> <old origin>
+// <out.json>` writes the pages check's template grouping measures page load on, one per group of the whole site.
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -29,6 +30,11 @@ export function split(targets: Targets, n: number): Targets[] {
 	(targets.redirects ?? []).forEach((r, i) => shards[i % n]!.redirects.push(r));
 	shards[0]!.unchecked.push(...(targets.unchecked ?? []));
 	return shards;
+}
+
+/** Every target of a shard that wrote no report (its job timed out, was cancelled or failed), as not checked. */
+export function unreported(shards: ReadonlyMap<number, Targets>, reported: ReadonlySet<number>): ReportRoute[] {
+	return [...shards].filter(([n]) => !reported.has(n)).flatMap(([n, t]) => [...t.routes, ...(t.endpoints ?? []), ...(t.redirects ?? [])].map((route) => ({ route, ok: false, infrastructure: { cause: 'shard not finished', message: `shard ${n} wrote no report (its job timed out, was cancelled or failed), so this route was not checked` } })));
 }
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red');
@@ -78,14 +84,26 @@ async function main(): Promise<void> {
 	}
 	if (command === 'merge' && a && b) {
 		const routes: ReportRoute[] = [];
-		const walk = async (dir: string): Promise<void> => {
+		const reported = new Set<number>();
+		const walk = async (dir: string, shard?: number): Promise<void> => {
 			for (const entry of await readdir(dir, { withFileTypes: true })) {
 				const path = join(dir, entry.name);
-				if (entry.isDirectory()) await walk(path);
-				else if (entry.name === 'report.json') routes.push(...((JSON.parse(await readFile(path, 'utf8')) as { routes: ReportRoute[] }).routes ?? []));
+				if (entry.isDirectory()) await walk(path, shard ?? (/^check-(\d+)$/.exec(entry.name) ? Number(entry.name.slice(6)) : undefined));
+				else if (entry.name === 'report.json') {
+					routes.push(...((JSON.parse(await readFile(path, 'utf8')) as { routes: ReportRoute[] }).routes ?? []));
+					if (shard !== undefined) reported.add(shard);
+				}
 			}
 		};
 		await walk(a);
+		if (c) {
+			const shards = new Map<number, Targets>();
+			for (const name of await readdir(c)) {
+				const n = /^shard-(\d+)\.json$/.exec(name)?.[1];
+				if (n) shards.set(Number(n), JSON.parse(await readFile(join(c, name), 'utf8')) as Targets);
+			}
+			routes.push(...unreported(shards, reported));
+		}
 		await mkdir(b, { recursive: true });
 		await writeFile(join(b, 'report.json'), `${JSON.stringify({ routes }, null, '\t')}\n`);
 		const text = summary(routes);
@@ -93,7 +111,17 @@ async function main(): Promise<void> {
 		console.log(text.split('\n')[0]);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir>');
+	if (command === 'representatives' && a && b && c) {
+		const { groupTemplates } = await import('../src/check/templates.ts');
+		const { defaultEnv } = await import('../src/check/browser.ts');
+		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
+		const groups = await groupTemplates(defaultEnv(b), targets.routes);
+		const chosen = new Set(groups.map((g) => g.representative));
+		await writeFile(c, `${JSON.stringify({ routes: targets.routes.filter((r) => chosen.has(r)), endpoints: [], redirects: [], unchecked: [] }, null, '\t')}\n`);
+		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
+		return;
+	}
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json>');
 	process.exit(2);
 }
 
