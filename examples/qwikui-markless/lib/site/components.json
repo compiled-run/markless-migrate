@@ -1,3 +1,4 @@
 [
-	{"selector": "div[data-combobox-root]:has(input[data-id=\"search\"])", "component": "search-box.tsrx", "in": "page"}
+	{"selector": "div[data-combobox-root]:has(input[data-id=\"search\"])", "component": "search-box.tsrx", "in": "page"},
+	{"selector": "div[data-pagefind-ignore=\"all\"][class=\"tab-size max-h-[494px] max-w-full overflow-auto rounded-sm bg-linear-to-b from-slate-900 to-slate-800 p-6 text-sm dark:from-background dark:to-accent/30 border\"]", "component": "theme-css.tsrx", "in": "page"}
 ]

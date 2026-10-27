@@ -1,5 +1,6 @@
 import type { Part } from '../parts/index.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
+import { themeCssLines } from './theme-css/highlight.ts';
 
 // qwikui.com's own client components (apps/website/src/components) on Markless. Each control is found by the handler it
 // ran on the old page (data-mm-qwik, from the old build's q-manifest.json) and what that handler closed over
@@ -127,12 +128,19 @@ const mobileNav: Part = {
 	},
 };
 
-// copy-css-config.tsx: Copy code opens the config dialog beside it; its X closes it.
+// copy-css-config.tsx: Copy code sets the theme from storage (the default, light, when there is none), opens the config
+// dialog beside it and shows the theme's CSS, highlighted, in it (theme-css.tsrx); its X closes it.
+let themeCss = '';
 const cssConfig: Part = {
 	click(target) {
 		const open = target.closest(on('click', 'copy-css-config.tsx_copy_css_config_component_Button_onClick'));
 		const dialog = open?.parentElement?.querySelector<HTMLDialogElement>(':scope > dialog');
 		if (open && dialog) {
+			setTheme(localStorage.getItem('theme') ?? 'light');
+			void themeCssLines(theme).then(({ css, lines }) => {
+				themeCss = css;
+				dialog.querySelector('[data-mm-theme-css]')?.dispatchEvent(new CustomEvent('mmthemecss', { detail: lines }));
+			});
 			show(dialog);
 			return true;
 		}
@@ -161,7 +169,8 @@ const codeCopy: Part = {
 	click(target) {
 		const button = target.closest<HTMLElement>(on('click', 'code-copy.tsx_CodeCopy_component_Button_onClick'));
 		if (!button) return false;
-		void navigator.clipboard?.writeText(capturedOf(button)[0] ?? '');
+		const inConfig = button.closest('dialog')?.querySelector('[data-mm-theme-css]');
+		void navigator.clipboard?.writeText(inConfig ? themeCss : (capturedOf(button)[0] ?? ''));
 		button.title = 'Copied to Clipboard';
 		copyIcon(button, true);
 		clearTimeout(copyTimers.get(button));
