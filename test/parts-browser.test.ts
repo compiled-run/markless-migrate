@@ -602,6 +602,28 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('shadcn-ui site: a block viewer shows the view its Preview/Code tab selects, and a viewport button goes back to the preview', async () => {
+	const tab = (v: string, on: boolean) => `<button type="button" role="tab" aria-controls="radix-x-content-${v}" aria-selected="${on}" data-state="${on ? 'active' : 'inactive'}">${v}</button>`;
+	const page = await open(
+		`<div id="sidebar-07" data-view="preview"><div role="tablist">${tab('preview', true)}${tab('code', false)}</div><div role="group"><button type="button" role="radio" title="Tablet" aria-checked="false">T</button></div></div>
+		<script>
+		// The tabs' own state, as the converter binds it (Markless state set on press).
+		document.querySelector('[role=tablist]').addEventListener('mousedown', (e) => { const t = e.target.closest('[role=tab]'); if (!t) return; setTimeout(() => { for (const x of document.querySelectorAll('[role=tab]')) { x.setAttribute('aria-selected', String(x === t)); x.dataset.state = x === t ? 'active' : 'inactive'; } }); });
+		</script>`,
+		['site'],
+		'body',
+	);
+	const view = () => page.locator('#sidebar-07').getAttribute('data-view');
+	await page.getByRole('tab', { name: 'code' }).click();
+	await page.waitForTimeout(50);
+	assert.equal(await view(), 'code');
+	await page.getByRole('radio', { name: 'T' }).click();
+	await page.waitForTimeout(50);
+	assert.equal(await view(), 'preview', 'onValueChange: setView("preview")');
+	assert.equal(await page.getByRole('tab', { name: 'preview' }).getAttribute('aria-selected'), 'true', 'the tabs follow the view');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);

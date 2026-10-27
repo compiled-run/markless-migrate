@@ -205,6 +205,42 @@ const refreshPreview: Part = {
 	},
 };
 
+// components/block-viewer.tsx: the Preview/Code tabs set the viewer's view, which its wrapper carries as data-view (CSS
+// shows one of the two); a viewport button sets it back to the preview. The tabs are the converter's state: their
+// aria-selected is watched.
+const watchedViewers = new WeakSet<Element>();
+const tabValueOf = (tab: Element | null) => /-content-(preview|code)$/.exec(tab?.getAttribute('aria-controls') ?? '')?.[1];
+function watchViewer(viewer: HTMLElement): void {
+	const sync = () => {
+		const view = tabValueOf(viewer.querySelector('[role="tab"][aria-selected="true"]'));
+		if (view && viewer.dataset.view !== view) viewer.dataset.view = view;
+	};
+	sync();
+	if (watchedViewers.has(viewer)) return;
+	watchedViewers.add(viewer);
+	new MutationObserver(sync).observe(viewer, { subtree: true, attributes: true, attributeFilter: ['aria-selected'] });
+}
+const blockView = (target: Element): boolean => {
+	const viewer = target.closest<HTMLElement>('[data-view]');
+	if (!viewer || !viewer.querySelector('[role="tab"][aria-controls$="-content-code"]')) return false;
+	watchViewer(viewer);
+	return false;
+};
+const blockViewer: Part = {
+	pointerdown: blockView,
+	focusin: blockView,
+	keydown: blockView,
+	click(target) {
+		blockView(target);
+		const viewer = target.closest<HTMLElement>('[data-view]');
+		if (!viewer || !target.closest('[role="radio"]')) return false;
+		const preview = [...viewer.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) => tabValueOf(t) === 'preview');
+		if (preview && preview.getAttribute('aria-selected') !== 'true') preview.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+		viewer.dataset.view = 'preview';
+		return false;
+	},
+};
+
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
 // active. A page shown in place (or by Back) keeps the list where both pages have one, so the list is synced again then.
@@ -391,4 +427,4 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, blockViewer, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
