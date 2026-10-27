@@ -91,8 +91,26 @@ function colorSchemeAsOnLoad(): void {
 	if (stored === 'light' || stored === 'dark' || !stored) style.colorScheme = stored || 'light';
 	else style.removeProperty('color-scheme');
 }
+// A page qwikui.com loads whole runs no transition into its new state; here the sidebar and header stay, and their links'
+// classes change in place. Transitions are held from the click on a link until two frames after the page arrives.
+const ARRIVING = 'data-mm-arriving';
+function holdTransitions(): void {
+	if (!document.head.querySelector(`style[${ARRIVING}]`)) {
+		const style = document.createElement('style');
+		style.setAttribute(ARRIVING, '');
+		style.append(document.createTextNode(`[${ARRIVING}] *, [${ARRIVING}] *::before, [${ARRIVING}] *::after { transition: none !important; }`));
+		document.head.appendChild(style);
+	}
+	document.documentElement.setAttribute(ARRIVING, '');
+	setTimeout(() => document.documentElement.removeAttribute(ARRIVING), 3000);
+}
 function onArrival(): void {
-	requestAnimationFrame(() => requestAnimationFrame(colorSchemeAsOnLoad));
+	requestAnimationFrame(() =>
+		requestAnimationFrame(() => {
+			colorSchemeAsOnLoad();
+			document.documentElement.removeAttribute(ARRIVING);
+		}),
+	);
 }
 let watchingArrivals = false;
 function watchArrivals(): void {
@@ -106,7 +124,18 @@ function watchArrivals(): void {
 			if (location.pathname !== before) onArrival();
 		};
 	}
-	window.addEventListener('popstate', onArrival);
+	window.addEventListener('popstate', () => {
+		holdTransitions();
+		onArrival();
+	});
+	document.addEventListener(
+		'click',
+		(event) => {
+			const link = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+			if (link && link.origin === location.origin && link.pathname !== location.pathname && !link.target && !event.defaultPrevented) holdTransitions();
+		},
+		true,
+	);
 }
 
 const themeControls: Part = {
