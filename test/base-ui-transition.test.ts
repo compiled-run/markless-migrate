@@ -79,3 +79,18 @@ test('Base UI Dialog opened again while its exit still runs stays open once that
 	assert.deepEqual(await sheetShown(page), { visible: true, ending: false, opacity: '1' });
 	await page.close();
 });
+
+test("an opening Base UI popup has transition: none while it carries data-starting-style, as getDisabledMountTransitionStyles sets it on the Popup, and only on the Popup", async () => {
+	const page = await open('<div id="positioner" style="transition:opacity 1s"><div id="popup" class="x" style="color:red"></div></div>', ['base-ui/dialog']);
+	const seen = await page.evaluate(async () => {
+		const { enter } = await import('/parts/base-ui/transition.ts' as string);
+		const popup = document.getElementById('popup')!;
+		const positioner = document.getElementById('positioner')!;
+		enter(popup, [positioner], true);
+		const starting = `${popup.style.transition}|${positioner.style.transition}|${popup.hasAttribute('data-starting-style')}`;
+		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+		return `${starting} -> ${popup.style.transition}|${popup.hasAttribute('data-starting-style')}|${popup.style.color}`;
+	});
+	assert.equal(seen, 'none|opacity 1s|true -> |false|red');
+	await page.close();
+});

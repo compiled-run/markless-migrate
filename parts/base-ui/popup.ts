@@ -221,7 +221,8 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	}
 	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
 	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
-	if (!options.shown) enter(popup, around);
+	// Menu, Select, Popover, Tooltip and Combobox popups start with transitions off; a Dialog's (not anchored) does not.
+	if (!options.shown) enter(popup, around, options.anchored !== false);
 	setTrigger(trigger, true, pressable);
 	showCompanions(key, true);
 	open.push(p);
