@@ -72,10 +72,10 @@ export function listen(): void {
 	for (const part of PARTS) part.idle?.();
 }
 
-/** Runs every part's mount for the elements carrying `attribute`, once each; the converter calls it when they become visible. */
+/** Runs every part's mount for the elements carrying `attribute` (or matching `tag[attribute]`), once each; the converter calls it when they become visible. */
 const mounted = new WeakSet<Element>();
 export function mount(attribute: string): void {
-	for (const el of document.querySelectorAll(`[${attribute}]`)) {
+	for (const el of document.querySelectorAll(attribute.includes('[') ? attribute : `[${attribute}]`)) {
 		if (mounted.has(el)) continue;
 		mounted.add(el);
 		for (const part of PARTS) part.mount?.(el);
