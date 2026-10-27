@@ -5,14 +5,11 @@ import { chooseItem, listOpen, setListOpen } from '../parts/qwik-ui/combobox.ts'
 import { close, show } from '../parts/qwik-ui/modal.ts';
 import { chooseItem as chooseOption, openList } from '../parts/qwik-ui/select.ts';
 
-// The docs pages' example components (apps/website/src/routes/docs/**/examples), each control found by the handler it ran
-// on the old page (data-mm-qwik). Library behaviour comes from the ports in ../parts.
+// The docs pages' examples (routes/docs/**/examples/*.tsx), each control found by the handler it ran (data-mm-qwik).
 const on = (event: string, handler: string) => `[data-mm-qwik~="${event}:${handler}"]`;
-// A Modal.Root renders a <div> around its dialog.
 const dialogAfter = (el: Element) => el.nextElementSibling?.querySelector<HTMLDialogElement>(':scope > dialog[id$="-root"]');
 
-// headless modal programmatic.tsx: a button outside the Modal sets its bind:show signal; styled modal hero.tsx and sheet.tsx:
-// Save sets it false.
+// modal programmatic.tsx, hero.tsx, sheet.tsx.
 const modalDemos: Part = {
 	click(target) {
 		const opener = target.closest(on('click', 'programmatic.tsx_programmatic_component_Fragment_button_onClick'));
@@ -29,8 +26,7 @@ const modalDemos: Part = {
 	},
 };
 
-// A Qwik UI Progress.Root and its indicator as progress-root.tsx and progress-indicator.tsx render them for value, min
-// and max. The server repeats the props it was given (value, min, max) on the root; Qwik's re-render keeps only value.
+// Qwik's re-render of a Progress.Root keeps only the value attribute of the props the server repeated on it.
 function setProgress(root: Element, next: { value?: number; min?: number; max?: number }): void {
 	const min = next.min ?? Number(root.getAttribute('aria-valuemin') ?? 0);
 	const max = next.max ?? Number(root.getAttribute('aria-valuemax') ?? 100);
@@ -52,7 +48,6 @@ function setProgress(root: Element, next: { value?: number; min?: number; max?: 
 	if (indicator) indicator.style.transform = `translateX(-${100 - progress * 100}%)`;
 }
 
-// Inserts what a client-rendered example shows once its button set its signal, right after the button.
 function renderAfter(button: Element, html: string): void {
 	if (button.nextElementSibling?.hasAttribute('data-mm-rendered')) return;
 	const t = document.createElement('template');
@@ -63,8 +58,7 @@ function renderAfter(button: Element, html: string): void {
 
 const PROGRESS_30 = '<div role="progressbar" aria-label="progress" aria-valuemax="100" aria-valuemin="0" aria-valuenow="30" aria-valuetext="30%" data-progress="loading" data-value="30" data-max="100" data-min="0" value="30" class="progress"><div title="progress_indicator" data-progress="loading" data-value="30" data-max="100" data-min="0" class="progress-indicator" style="transform: translateX(-70%);"></div></div>';
 
-// progress min.tsx and max.tsx: - and + step the bound and the number shown beside them; reactive.tsx sets bind:value to 70;
-// csr.tsx renders a 30% bar.
+// progress min.tsx, max.tsx, reactive.tsx, csr.tsx.
 const progressDemos: Part = {
 	click(target) {
 		const step = target.closest<HTMLElement>(
@@ -103,7 +97,6 @@ const progressDemos: Part = {
 	},
 };
 
-// A Carousel.Root of colour slides as carousel/root.tsx and slide.tsx first render it in the browser.
 const COLORS = ['red', 'green', 'blue', 'yellow', 'purple', 'orange', 'pink'];
 const SCROLL_MARK = (edge: string, hidden: boolean) => `<div data-qui-scroll-start="" data-orientation="horizontal"${hidden ? ' hidden=""' : ''} data-${edge}=""></div>`;
 const carouselMarkup = (id: string) =>
@@ -114,8 +107,7 @@ const carouselMarkup = (id: string) =>
 const PLAY = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
 const PAUSE = '<rect height="16" width="4" x="6" y="4"></rect><rect height="16" width="4" x="14" y="4"></rect>';
 
-// carousel reactive.tsx: bind:selectedIndex shown on a button, and set to 4 by another; player.tsx: bind:autoplay drawn as
-// the player's icon and an isPlaying line, and toggled by a button; csr.tsx: a button renders and removes a carousel.
+// carousel reactive.tsx, player.tsx, csr.tsx.
 const carouselBeside = (el: Element) => el.parentElement?.querySelector(':scope > [data-qui-carousel]');
 const carouselDemos: Part = {
 	idle() {
@@ -157,8 +149,6 @@ const carouselDemos: Part = {
 	},
 };
 
-// Collapsible and Accordion items as collapsible-root.tsx, accordion-item.tsx and their trigger and content render them in
-// the browser (an accordion item's trigger sits in an <h3>, its content is a region).
 const CHEVRON = '<svg data-qwikest-icon="" fill="none" height="1em" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6"></path></svg>';
 const item = (id: string, trigger: string, content: string, accordion: boolean) => {
 	const button = `<button aria-disabled="false" data-closed="" aria-expanded="false" class="collapsible-trigger" id="${id}-trigger" aria-controls="${id}-content">${trigger}</button>`;
@@ -168,10 +158,7 @@ const isOpen = (root: Element) => root.hasAttribute('data-open');
 let made = 0;
 const freshId = () => `mm-demo-${++made}`;
 
-// collapsible programmatic.tsx: a checkbox bound to bind:open, with an "is open" line; animation.tsx: a button toggles
-// bind:open; csr.tsx: a button renders one. accordion programmatic.tsx: a button toggles the first item through
-// bind:value; dynamic.tsx: Add Item and Remove Item splice the items at the indexes typed (from 2 to 6 items, each
-// content showing its index); csr.tsx: a button renders three items.
+// collapsible programmatic.tsx, animation.tsx, csr.tsx; accordion programmatic.tsx, dynamic.tsx, csr.tsx.
 const collapsibleDemos: Part = {
 	idle() {
 		document.addEventListener('qui-collapsible-open', (event) => {
@@ -239,18 +226,15 @@ const collapsibleDemos: Part = {
 const ICON = (inner: string, cls = '') => `<svg data-qwikest-icon="" fill="none" height="1em" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
 const CHECK = ICON('<polyline points="20 6 9 17 4 12"></polyline>');
 const FRUITS = ['Apple', 'Apricot', 'Bilberry', 'Blackberry', 'Blackcurrant', 'Currant', 'Cherry', 'Coconut'];
-// A Combobox.Item as combobox-item.tsx renders it.
 const comboboxItem = (id: string, i: number, label: string) =>
 	`<div role="option" tabindex="-1" id="${id}-${i}" aria-selected="false" aria-disabled="false" data-item="" aria-labelledby="${id}-${i}-item-label" class="combobox-item" _index="${i}"><span tabindex="-1" id="${id}-${i}-item-label">${label}</span><span data-item-indicator="" aria-hidden="true">${CHECK}</span></div>`;
-// A Combobox.Root with a label, control and popover as combobox/*.tsx first render it in the browser; the panel's placement
-// is what convert writes for the server-rendered ones (bottom, the example's gutter).
+// The panel's placement is what convert writes for the server-rendered ones.
 const comboboxMarkup = (id: string, label: string, items: readonly string[]) =>
 	`<div role="group" data-combobox-root="" data-closed="" aria-invalid="false" class="combobox-root"><label id="${id}-label" class="combobox-label">${label}</label><div data-combobox-control="" class="combobox-control"><input role="combobox" aria-activedescendant="" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-combobox-input="" id="${id}-input" aria-controls="${id}-panel" aria-labelledby="${id}-label" aria-describedby="${id}-description \n        ${id}-error-message" class="combobox-input"><button type="button" aria-expanded="false" data-closed="" tabindex="-1" class="combobox-trigger">${ICON('<path d="m6 9 6 6 6-6"></path>', 'combobox-icon')}</button></div><div id="${id}-root"><div popover="manual" hidden="" data-floating="absolute" id="${id}-panel" data-closed="" role="listbox" aria-expanded="false" class="combobox-popover" data-mm-placement="bottom" data-mm-gutter="8">${items.map((x, i) => comboboxItem(id, i, x)).join('')}</div></div></div>`;
 const rootBefore = (el: Element, selector: string) => {
 	for (let at = el.previousElementSibling; at; at = at.previousElementSibling) if (at.matches(selector)) return at;
 	return null;
 };
-// The answer form.tsx shows once a submit carried a value: what the named field held, as JSON.
 function showSubmitted(form: HTMLFormElement, name: string): void {
 	const value = new FormData(form).get(name);
 	let shown = form.querySelector<HTMLElement>(':scope > [data-mm-submitted]');
@@ -264,11 +248,8 @@ function showSubmitted(form: HTMLFormElement, name: string): void {
 	shown.querySelector('code')!.textContent = JSON.stringify(value);
 }
 
-// combobox programmatic.tsx: Change to Abby writes bind:value; add-items.tsx: Add Fruits adds three items once;
-// reactive-open.tsx: a button toggles bind:open; refs.tsx: the trigger's own click paints it red (the port still opens the
-// list); form.tsx: submitting shows the chosen fruit; csr.tsx: a button renders a combobox.
-// The open state reactive-open.tsx's button reads, as it was before the press reached the window (where a press outside
-// an open list closes it).
+// combobox programmatic.tsx, add-items.tsx, reactive-open.tsx, refs.tsx, form.tsx, csr.tsx.
+// reactive-open.tsx reads the open state before the window's press-outside handler closes the list.
 const openAtPress = new WeakMap<Element, boolean>();
 const comboboxDemos: Part = {
 	pointerdown(target) {
@@ -328,14 +309,12 @@ const comboboxDemos: Part = {
 
 const USERS = ['Tim', 'Ryan', 'Jim', 'Jessie', 'Abby'];
 const selectItem = (id: string, i: number, label: string) => `<div tabindex="-1" aria-selected="false" aria-disabled="false" data-item="" role="option" id="${id}-${i}"><span tabindex="-1">${label}</span></div>`;
-// A Select.Root as select/*.tsx first render it in the browser; the panel's placement is what convert writes for the
-// server-rendered ones. Its shown value is the trigger's own text here (the server-rendered ones' is Markless state).
+// A client-rendered select shows its value itself (data-mm-own-value); the server-rendered ones' is Markless state.
 const selectMarkup = (id: string) =>
 	`<div role="group" data-qui-select-root="" data-closed="" aria-invalid="false" class="select" data-mm-own-value=""><div id="${id}-label">Logged in users</div><button data-closed="" aria-expanded="false" aria-haspopup="listbox" class="select-trigger" id="${id}-trigger" aria-labelledby="${id}-value ${id}-label " aria-describedby="${id}-description \n      ${id}-error-message" aria-controls="${id}-panel"><span data-closed="" data-value="" id="${id}-value">Select an option</span></button><div id="${id}-root"><div popover="manual" hidden="" data-floating="absolute" id="${id}-panel" data-closed="" role="listbox" aria-labelledby="${id}-trigger" class="select-popover" data-mm-placement="bottom" data-mm-gutter="0">${USERS.map((u, i) => selectItem(id, i, u)).join('')}</div></div></div>`;
 const optionsOf = (root: Element) => [...(document.getElementById(root.querySelector('[aria-haspopup="listbox"]')?.getAttribute('aria-controls') ?? '')?.querySelectorAll('[role="option"]') ?? [])];
 
-// select controlled-value.tsx: Change to Abby writes bind:value; bind-open.tsx: a button sets bind:open; add-users.tsx: Add
-// Users adds three items once; form.tsx: submitting shows what the form carried; csr.tsx: a button renders a select.
+// select controlled-value.tsx, bind-open.tsx, add-users.tsx, form.tsx, csr.tsx.
 const selectDemos: Part = {
 	idle() {
 		document.addEventListener('mmchoose', (event) => {
@@ -395,15 +374,11 @@ const selectDemos: Part = {
 	},
 };
 
-// toggle bind-pressed.tsx: "I can only press" sets bind:pressed true; toggle-group value-bind.tsx: "I can only press
-// 'right'" sets bind:value to right. The pressed state and the line it shows are Markless state, so the control is used.
-// tabs on-click.tsx: the first tab's own click writes "Jack" into it. popover programmatic.tsx: the button's click, and
-// its "o" key, toggle the manual popover; toggle-event.tsx: the panel's toggle event shows its new state in a line.
-// tooltip placement.tsx: the select re-creates the tooltip on the side chosen.
+// toggle bind-pressed.tsx, toggle-group value-bind.tsx (pressed state is Markless's, so the control is used), tabs
+// on-click.tsx, popover programmatic.tsx and toggle-event.tsx, tooltip placement.tsx.
 const pressUnlessPressed = (control: Element | null | undefined) => {
 	if (control instanceof HTMLElement && control.getAttribute('aria-pressed') !== 'true') control.click();
 };
-// bind:anchor is the invoking button: the popover port places a panel against the element its data-mm-anchor names.
 function programmaticPanel(invoker: Element): HTMLElement | null {
 	const panel = document.getElementById(`${invoker.closest('[id$="-root"]')?.id.replace(/-root$/, '') ?? ''}-panel`);
 	if (panel && !panel.dataset.mmAnchor) {
@@ -465,9 +440,7 @@ const otherDemos: Part = {
 	},
 };
 
-// tabs dynamic.tsx: a store of labels drawn by index (key={i}): Add Tab before and after add "Added Tab" at either end, a
-// tab's x removes its label (one stays); the tab and panel elements stay in place and their text moves, one element more
-// or fewer at the end.
+// tabs dynamic.tsx keys tabs by index: the elements stay and their labels move.
 function relabel(root: Element, labels: readonly string[]): void {
 	const list = root.querySelector('[role="tablist"]')!;
 	let tabs = [...list.querySelectorAll<HTMLElement>(':scope > [role="tab"]')];
@@ -523,9 +496,7 @@ const tabsDemo: Part = {
 	},
 };
 
-// confetti-button.tsx: canvas-confetti bursts from the button's top (the intro's in the JavaScript logo's shape), and the
-// intro's button says its click ran. contributing the-problem.tsx and inline.tsx: "render on the client" renders four
-// items (numbered in the order their tasks ran: 4, 1, 2, 3; and 1 to 4 in a wrapper).
+// confetti-button.tsx; contributing the-problem.tsx (items numbered as their tasks ran: 4, 1, 2, 3) and inline.tsx.
 const JS_LOGO = [
 	'M0 0h1052v1052H0z',
 	'M965.9 801.1c-7.7-48-39-88.3-131.7-125.9-32.2-14.8-68.1-25.399-78.8-49.8-3.8-14.2-4.3-22.2-1.9-30.8 6.9-27.9 40.2-36.6 66.6-28.6 17 5.7 33.1 18.801 42.8 39.7 45.4-29.399 45.3-29.2 77-49.399-11.6-18-17.8-26.301-25.4-34-27.3-30.5-64.5-46.2-124-45-10.3 1.3-20.699 2.699-31 4-29.699 7.5-58 23.1-74.6 44-49.8 56.5-35.6 155.399 25 196.1 59.7 44.8 147.4 55 158.6 96.9 10.9 51.3-37.699 67.899-86 62-35.6-7.4-55.399-25.5-76.8-58.4-39.399 22.8-39.399 22.8-79.899 46.1 9.6 21 19.699 30.5 35.8 48.7 76.2 77.3 266.899 73.5 301.1-43.5 1.399-4.001 10.6-30.801 3.199-72.101zm-394-317.6h-98.4c0 85-.399 169.4-.399 254.4 0 54.1 2.8 103.7-6 118.9-14.4 29.899-51.7 26.2-68.7 20.399-17.3-8.5-26.1-20.6-36.3-37.699-2.8-4.9-4.9-8.7-5.601-9-26.699 16.3-53.3 32.699-80 49 13.301 27.3 32.9 51 58 66.399 37.5 22.5 87.9 29.4 140.601 17.3 34.3-10 63.899-30.699 79.399-62.199 22.4-41.3 17.6-91.3 17.4-146.6.5-90.2 0-180.4 0-270.9z',
@@ -557,11 +528,8 @@ const pageDemos: Part = {
 	},
 };
 
-// The examples whose lines count a component's callbacks (onChange$, onOpenChange$, onInput$): accordion on-change.tsx,
-// collapsible open-change.tsx, select change-value.tsx and open-change.tsx, combobox change.tsx, input.tsx and
-// open-change.tsx, tooltip onChange.tsx. Each line is found by its text in the example's section.
+// The examples whose lines count a component's onChange$, onOpenChange$ or onInput$ calls.
 const sectionOf = (el: Element) => el.closest('section');
-// The innermost element of the tag whose text starts so: an example's line, not a box around it.
 const lineIn = (section: Element | null, start: string, tag = 'p') => [...(section?.querySelectorAll(tag) ?? [])].reverse().find((el) => el.textContent?.trimStart().startsWith(start));
 const countIn = (line: Element | undefined) => Number(/\d+/.exec(line?.textContent ?? '')?.[0] ?? 0) + 1;
 const callbackDemos: Part = {
@@ -616,7 +584,7 @@ const callbackDemos: Part = {
 	},
 };
 
-// dynamic.tsx's newItem: one object, made once per demo, so every add inserts the same item.
+// dynamic.tsx's newItem is one object per demo, so every add inserts the same item.
 const newItemId = new WeakMap<Element, string>();
 
 export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos, selectDemos, otherDemos, tabsDemo, pageDemos, callbackDemos];

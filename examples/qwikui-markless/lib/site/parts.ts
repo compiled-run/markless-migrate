@@ -92,9 +92,12 @@ function colorSchemeAsOnLoad(): void {
 	if (stored === 'light' || stored === 'dark' || !stored) style.colorScheme = stored || 'light';
 	else style.removeProperty('color-scheme');
 }
-// A page qwikui.com loads whole runs no transition into its new state; here the sidebar and header stay, and their links'
-// classes change in place. Transitions are held from the click on a link until two frames after the page arrives.
+// qwikui.com redraws its sidebar per navigation (no link transitions, scroll at the top); here it stays, so both are imitated.
 const ARRIVING = 'data-mm-arriving';
+function release(): void {
+	document.documentElement.removeAttribute(ARRIVING);
+	document.head.querySelector(`style[${ARRIVING}]`)?.remove();
+}
 function holdTransitions(): void {
 	if (!document.head.querySelector(`style[${ARRIVING}]`)) {
 		const style = document.createElement('style');
@@ -103,13 +106,14 @@ function holdTransitions(): void {
 		document.head.appendChild(style);
 	}
 	document.documentElement.setAttribute(ARRIVING, '');
-	setTimeout(() => document.documentElement.removeAttribute(ARRIVING), 3000);
+	setTimeout(release, 3000);
 }
 function onArrival(): void {
+	for (const nav of document.querySelectorAll('nav.navigation-docs')) nav.scrollTop = 0;
 	requestAnimationFrame(() =>
 		requestAnimationFrame(() => {
 			colorSchemeAsOnLoad();
-			document.documentElement.removeAttribute(ARRIVING);
+			release();
 		}),
 	);
 }
