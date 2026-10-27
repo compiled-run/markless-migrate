@@ -47,7 +47,8 @@ function markState(dialog: HTMLDialogElement, on: boolean): void {
 	triggerOfDialog(dialog)?.setAttribute('aria-expanded', String(on));
 }
 
-function show(dialog: HTMLDialogElement): void {
+/** Opens a Qwik UI modal as its trigger does; the site's own controls bound to its `show` signal call it too. */
+export function show(dialog: HTMLDialogElement): void {
 	if (dialog.open) return;
 	markState(dialog, true);
 	dialog.showModal();
@@ -57,7 +58,8 @@ function show(dialog: HTMLDialogElement): void {
 	(auto ?? focusables(dialog)[0])?.focus();
 }
 
-function close(dialog: HTMLDialogElement): void {
+/** Closes a Qwik UI modal through its exit animation. */
+export function close(dialog: HTMLDialogElement): void {
 	if (!dialog.open || dialog.hasAttribute('data-closing')) return;
 	markState(dialog, false);
 	dialog.setAttribute('data-closing', '');
