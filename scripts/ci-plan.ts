@@ -6,6 +6,9 @@ import { dirname, join, normalize, relative } from 'node:path';
 
 export type E2eJob = { suite: string; shard?: string; browsers?: string };
 
+/** Firefox stays on every pull request (a port must never be slower in Firefox): these measure all three browsers on small fixed pages. */
+export const EVERY_PULL_REQUEST = new Set(['slow-network', 'late-fonts']);
+
 export const E2E: readonly E2eJob[] = [
 	{ suite: 'convert-compiles' },
 	{ suite: 'dev-builds' },
@@ -141,7 +144,7 @@ export function plan(root: string, changed: readonly string[] | undefined): Plan
 		const inputs = known.get(key)!;
 		return changed.some((path) => reaches(inputs, path));
 	};
-	const suites = new Set(E2E.map((job) => job.suite).filter((suite) => selected(`test/e2e/${suite}.test.ts`)));
+	const suites = new Set(E2E.map((job) => job.suite).filter((suite) => EVERY_PULL_REQUEST.has(suite) || selected(`test/e2e/${suite}.test.ts`)));
 	return { unitFiles: unit.filter(selected), e2e: E2E.filter((job) => suites.has(job.suite)), reason: `${changed.length} changed files` };
 }
 

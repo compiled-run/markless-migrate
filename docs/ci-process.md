@@ -8,13 +8,14 @@ CI is green on `main` or the next push to `main` is the fix. A failing check is 
 | --- | --- | --- | --- | --- |
 | Typecheck | the whole repository typechecks | always | always | always |
 | Unit tests | `test/*.test.ts` | the files the change can reach, in up to 4 shards | all, 4 shards | none when the merge queue already passed this commit, else all |
-| E2E suites | `test/e2e/*.test.ts`, one job per suite or shard; slow-network and late-fonts measure Chromium, Firefox and WebKit on small fixtures | the suites the change can reach | all | as unit tests |
+| E2E suites | `test/e2e/*.test.ts`, one job per suite or shard | the suites the change can reach, plus slow-network and late-fonts on every pull request | all | as unit tests |
+| Firefox sample | slow-network and late-fonts measure Chromium, Firefox and WebKit on small fixed pages, and prove the checker turns a page that is slower only in Firefox red | always | always | as unit tests |
 | Warm caches | refreshes the Playwright caches that only `main` saves | no | no | when the merge queue already tested the commit |
 | `check.yml`, `convert.yml`, `page-load.yml` | the real-site check, convert and Lighthouse runs on deployed ports, every route, Chromium, Firefox and WebKit across the slow networks | when their own workflow or scripts change | no | dispatched |
 
 `CI passed` is the required check. It is red unless typecheck passed and the unit and e2e lanes passed, or were skipped because the plan gave them nothing to run.
 
-`scripts/ci-plan.ts` decides what a pull request runs. A test file's inputs are its static imports, followed through the repository, the workspace fixture packages it imports by name, and the paths its test-side files name in string literals or in the leading string segments of `join(...)` and `resolve(...)` calls. A change to dependencies, `tsconfig.json`, `ci.yml`, `.github/actions/` or `scripts/ci-*` runs everything. On the last 60 merged pull requests this would have run 55% of the e2e jobs and 41% of the unit files. A dependency the plan cannot see (a path built at run time from variables alone) is still run by the merge queue before the pull request merges, so a miss costs a merge-queue ejection, not a red `main`. `test/ci-plan.test.ts` fails if a suite file in `test/e2e/` has no CI job.
+`scripts/ci-plan.ts` decides what a pull request runs. A test file's inputs are its static imports, followed through the repository, the workspace fixture packages it imports by name, and the paths its test-side files name in string literals or in the leading string segments of `join(...)` and `resolve(...)` calls. A change to dependencies, `tsconfig.json`, `ci.yml`, `.github/actions/` or `scripts/ci-*` runs everything. On the last 60 merged pull requests this would have run 60% of the e2e jobs (the Firefox sample included) and 42% of the unit files. A dependency the plan cannot see (a path built at run time from variables alone) is still run by the merge queue before the pull request merges, so a miss costs a merge-queue ejection, not a red `main`. `test/ci-plan.test.ts` fails if a suite file in `test/e2e/` has no CI job.
 
 Merging goes through the merge queue (`gh pr merge <number> --squash`, or the button). It tests the pull request on top of `main` and everything ahead of it in the queue, with every test.
 
