@@ -26,12 +26,18 @@ async function fetchSearch(query: string): Promise<readonly SearchResult[]> {
 // command-menu.tsx's SearchResults: a text result of one word is left out, and a result whose content an earlier one has.
 const unique = (data: readonly SearchResult[]) => data.filter((item, index, self) => !(item.type === 'text' && item.content.trim().split(/\s+/).length <= 1) && index === self.findIndex((t) => t.content === item.content));
 
+/** A listed result with the option id and cmdk value its row shows; plain fields keep the row a template the browser fills. */
+export interface PaletteItem extends SearchResult {
+	readonly optionId: string;
+	readonly value: string;
+}
+
 /** What the palette lists under Search Results for `query`: none while the query is blank (SearchResults renders nothing). */
-export async function searchDocs(query: string): Promise<readonly SearchResult[]> {
+export async function searchDocs(query: string): Promise<readonly PaletteItem[]> {
 	if (query.length === 0) return [];
 	await new Promise((resolve) => setTimeout(resolve, 100));
 	const results = unique(await fetchSearch(query));
-	return query.trim() ? results : [];
+	return query.trim() ? results.map((item) => ({ ...item, optionId: `command-menu-result-${item.id}`, value: `${item.content} ${item.type}`.trim() })) : [];
 }
 
 let typing = 0;

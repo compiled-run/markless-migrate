@@ -38,6 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+        with:
+          browsers: chromium firefox webkit
       - name: Measure
         env:
           PSI_API_KEY: ${{ secrets.PSI_API_KEY }}

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cleanDocument, frameworkBuilds, lateHead } from '../src/convert/clean.ts';
-import { body, find, attr, head, outer, parseDocument } from '../src/convert/dom.ts';
+import { body, find, attr, head, outer, parseDocument, type Element } from '../src/convert/dom.ts';
 import { nextPattern } from '../src/convert/endpoints.ts';
 import { factor } from '../src/convert/factor.ts';
-import { bindParts, useResolver } from '../src/convert/parts.ts';
+import { bindMount, bindParts, useMounts, useResolver } from '../src/convert/parts.ts';
 import { emitElement, emitHtml } from '../src/convert/tsrx.ts';
 
 const NEXT_PAGE = `<!DOCTYPE html><html><head><link rel="stylesheet" href="/_next/static/a.css" data-precedence="next"><script src="/_next/static/chunks/main.js" async></script></head>
@@ -145,4 +145,17 @@ test('a value that differs by page inside an @if arm of a shared region compiles
 	const component = f.components[0]!;
 	const result = await compileTsrxModule({ filename: component.file, source: component.source, symbols: [] });
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
+});
+
+test('a site part mounts the elements a mounts.json entry names, by attribute or by element and attribute', () => {
+	const doc = parseDocument('<body><iframe loading="lazy" src="/a"></iframe><img loading="lazy" src="/b.png"><div data-docs-sidebar-content=""></div></body>');
+	const [iframe, img, div] = body(doc).childNodes.filter((n) => 'tagName' in n) as Element[];
+	useMounts(['data-docs-sidebar-content', 'iframe[loading]']);
+	try {
+		assert.deepEqual(bindMount(iframe!)?.extra, ['onVisible={() => mount("iframe[loading]")}']);
+		assert.equal(bindMount(img!), undefined, 'an image with the attribute is not an iframe');
+		assert.deepEqual(bindMount(div!)?.extra, ['onVisible={() => mount("data-docs-sidebar-content")}']);
+	} finally {
+		useMounts([]);
+	}
 });

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
+import { registryModule } from '../src/convert/parts.ts';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
 const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
@@ -18,14 +19,13 @@ before(async () => {
 });
 after(() => browser.close());
 
-// The registry lists the ports sorted, as writeParts writes it.
+// The registry is convert's: the ports in module order.
 async function open(body: string, ports: readonly string[]): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
-	const sorted = [...ports].sort();
-	const registry = `${sorted.map((p, i) => `import * as p${i} from './${p}.ts';`).join('\n')}\nexport const PARTS = [${sorted.map((_, i) => `p${i}`).join(', ')}];`;
+	const registry = registryModule(ports, '.');
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/index.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'input']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/registry.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'input']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });

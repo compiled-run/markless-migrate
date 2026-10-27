@@ -5,6 +5,7 @@ import type { Dimension, Failure, FailureDimension, Report, RouteResult } from '
 import { DIMENSIONS, notCompared } from './types.ts';
 import { settleCoverage } from './coverage.ts';
 import { grantAutomatic, type AutomaticRule } from './automatic.ts';
+import { unmeasuredNotChecked } from './slow-network-verdicts.ts';
 
 export const ACCEPTED_FILE = 'accepted.json';
 
@@ -126,7 +127,7 @@ export function applyAccepted(report: Report, accepted: readonly Accept[], off: 
 		return { ...f, id, ...(hit ? { accepted: { reason: hit.reason, by: hit.by, date: hit.date } } : {}) };
 	};
 	const date = report.startedAt.slice(0, 10);
-	const routes = report.routes.map((route) => settle(route, grantAutomatic(route.failures.map(mark), off, date)));
+	const routes = report.routes.map((route) => unmeasuredNotChecked(settle(route, grantAutomatic(route.failures.map(mark), off, date))));
 	const logins = report.logins?.map((login) => {
 		const failures = login.failures.map(mark);
 		return { ...login, failures, ok: failures.every((f) => f.accepted) };
