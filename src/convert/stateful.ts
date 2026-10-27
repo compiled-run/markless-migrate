@@ -214,7 +214,7 @@ export class SelectPlan {
 				const others = childrenOf(trigger).slice(1);
 				const rest = others.map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
 				// What the trigger showed after a choice, as convert recorded it, holds the rest's text too (an icon's).
-				const tail = others.map((n) => (isText(n) ? n.value : textOf(n))).join('');
+				const tail = others.map((n) => (isText(n) ? n.value : 'tagName' in n ? textOf(n as Element) : '')).join('');
 				const shown = tail ? `{ const d = (event as CustomEvent<string>).detail; ${name} = d.endsWith(${lit(tail)}) ? d.slice(0, d.length - ${tail.length}) : d; }` : `(${name} = (event as CustomEvent<string>).detail)`;
 				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => ${shown}}`], children: `{${name}}${emit(rest)}` });
 				count++;
