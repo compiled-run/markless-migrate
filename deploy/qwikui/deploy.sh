@@ -27,9 +27,11 @@ case "${1:-}" in
 		(cd "$APP" && NITRO_PRESET=vercel npm run build)
 		(cd "$APP" && vercel deploy --prebuilt --prod --archive=tgz --yes --scope "$SCOPE")
 		# The deployment answers at its production URL only once the build's own chunks are what that URL serves.
-		chunk=$(cd "$APP/.vercel/output/static" && ls build/*.js 2>/dev/null | head -n 1)
-		curl -fsS "https://mm-qwikui-markless.vercel.app/" | grep -q "${chunk:?no chunk in the build}" || { echo "https://mm-qwikui-markless.vercel.app/ does not serve this build's chunks yet" >&2; exit 1; }
-		echo "https://mm-qwikui-markless.vercel.app/ serves $chunk"
+		# The public root must load chunks this build has, and only those.
+		served=$(curl -fsS "https://mm-qwikui-markless.vercel.app/" | grep -o '/build/[A-Za-z0-9_.-]*\.js' | sort -u)
+		[ -n "$served" ] || { echo "https://mm-qwikui-markless.vercel.app/ loads no chunk" >&2; exit 1; }
+		for c in $served; do [ -f "$APP/.vercel/output/static$c" ] || { echo "https://mm-qwikui-markless.vercel.app/ serves $c, which this build does not have" >&2; exit 1; }; done
+		echo "https://mm-qwikui-markless.vercel.app/ serves this build: $(echo $served | wc -w) chunks, all in it"
 		;;
 	*) echo "usage: $0 old|new" >&2; exit 1 ;;
 esac

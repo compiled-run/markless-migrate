@@ -1,6 +1,5 @@
 import type { Part } from '../parts/index.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
-import { themeCssLines } from './theme-css/highlight.ts';
 
 // qwikui.com's own client components (apps/website/src/components) on Markless. Each control is found by the handler it
 // ran on the old page (data-mm-qwik, from the old build's q-manifest.json) and what that handler closed over
@@ -137,7 +136,7 @@ const cssConfig: Part = {
 		const dialog = open?.parentElement?.querySelector<HTMLDialogElement>(':scope > dialog');
 		if (open && dialog) {
 			setTheme(localStorage.getItem('theme') ?? 'light');
-			void themeCssLines(theme).then(({ css, lines }) => {
+			void import('./theme-css/highlight.ts').then(({ themeCssLines }) => themeCssLines(theme)).then(({ css, lines }) => {
 				themeCss = css;
 				dialog.querySelector('[data-mm-theme-css]')?.dispatchEvent(new CustomEvent('mmthemecss', { detail: lines }));
 			});
