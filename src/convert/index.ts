@@ -1575,6 +1575,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const noteDropped = (what: string) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1);
 	const layers = layerTable(new Map([...prepared].map(([route, p]) => [route, p.layers])));
 	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, ownAfter.size > 0);
+	// Markless wires no handler and no state the Document renders: a page's own body children that hold some (a header
+	// with a site component, a control on Markless state) are rendered by the page, in their place around its root.
+	const wired = (x: Element) => {
+		if (pageComponentOf(x, siteComponents)) return true;
+		const b = withAppend(x, undefined);
+		return Boolean(b?.declare?.length || b?.extra?.some((e) => /^on[A-Z]/.test(e)));
+	};
+	for (const [route, extras] of bodyParts.extras) if (!ownExtras.has(route) && extras.some((el) => [...walk(el)].some(wired))) ownExtras.set(route, extras);
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
 		const file = route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(url.pathname, folders);
@@ -1610,18 +1618,26 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 			for (let j = from; j < bodyParts.after.length; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
 		}
-		const extras = (ownExtras.get(route) ?? [])
-			.map((el) => {
-				const markup = emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped });
-				if (!notifyPlan.rendersToasts(el)) return markup;
-				toasters += markup;
-				return '';
-			})
-			.join('');
+		const emitOwn = (el: Element) => {
+			const markup = emitElement(el, {
+				declarations,
+				bind: (x) => {
+					const own = withAppend(x, bindParts(x, usedPorts));
+					return x === el && !own?.replace ? mergeBindings(own, { extra: [ROOT_HANDLERS] }) : own;
+				},
+				dropped: noteDropped,
+			});
+			if (!notifyPlan.rendersToasts(el)) return markup;
+			toasters += markup;
+			return '';
+		};
+		const ownedExtras = ownExtras.get(route) ?? [];
+		const leading = ownedExtras.filter((el) => p.before.includes(el)).map(emitOwn).join('');
+		const extras = ownedExtras.filter((el) => !p.before.includes(el)).map(emitOwn).join('');
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
 		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}${copied}`;
-		const markup = tail || toasters ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }${tail ? `@if (${PAGE_SHOWN}) { <>${tail}</> }` : ''}${toasters}</>` : rootMarkup;
+		const markup = tail || toasters || leading ? `<>${leading ? `@if (${PAGE_SHOWN}) { <>${leading}</> }` : ''}@if (${PAGE_SHOWN}) { ${rootMarkup} }${tail ? `@if (${PAGE_SHOWN}) { <>${tail}</> }` : ''}${toasters}</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
