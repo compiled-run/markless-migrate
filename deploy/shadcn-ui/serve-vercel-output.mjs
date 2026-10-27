@@ -1,4 +1,4 @@
-// Serves a Vercel Build Output API directory locally: config redirects, then static files, then the Node server function,
+// Serves a Vercel Build Output API directory locally: config redirects, headers and rewrites, then static files, then the Node server function,
 // gzipped as `next start` serves the old side, so a slow-network check compares the two over the same encoding.
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -13,6 +13,14 @@ const handler = (await import(pathToFileURL(join(dir, 'functions/__server.func/i
 const filesystemAt = config.routes.findIndex((r) => r.handle === 'filesystem');
 const before = config.routes.slice(0, filesystemAt < 0 ? 0 : filesystemAt).filter((r) => r.src);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml', '.ico': 'image/x-icon' };
+
+// A route's `has` or `missing` condition, as Vercel reads it: the named header, cookie, query parameter or host, matching `value` if given.
+function holds(c, req, url) {
+	const cookie = (k) => String(req.headers.cookie ?? '').split(/;\s*/).find((x) => x.startsWith(`${k}=`))?.slice(k.length + 1);
+	const actual = c.type === 'header' ? req.headers[c.key.toLowerCase()] : c.type === 'cookie' ? cookie(c.key) : c.type === 'query' ? url.searchParams.get(c.key) : c.type === 'host' ? url.hostname : undefined;
+	if (actual === undefined || actual === null) return false;
+	return c.value === undefined || new RegExp(`^(?:${c.value})$`).test(String(actual));
+}
 
 const COMPRESSIBLE = /^(text\/|application\/(javascript|json|xml|manifest\+json|ld\+json)|image\/svg\+xml)/;
 // Gzip what a browser accepts it for, as the compression middleware next start uses does (at least 1 kB, or of unknown length).
@@ -32,15 +40,17 @@ function send(req, res, status, headers, stream, length) {
 createServer(async (req, res) => {
 	try {
 		const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
-		const path = decodeURIComponent(url.pathname);
+		let path = decodeURIComponent(url.pathname);
 		const headers = {};
 		for (const r of before) {
 			const m = new RegExp(`^${r.src}$`).exec(path);
-			if (!m) continue;
+			if (!m || !(r.has ?? []).every((c) => holds(c, req, url)) || (r.missing ?? []).some((c) => holds(c, req, url))) continue;
+			const fill = (to) => to.replace(/\$(\d+)/g, (_, i) => m[Number(i)] ?? '').replace(/\$([a-zA-Z_]\w*)/g, (_, k) => m.groups?.[k] ?? '');
 			if (r.headers && !r.status) Object.assign(headers, r.headers);
-			if (r.status && r.headers?.Location) {
-				const location = r.headers.Location.replace(/\$(\d+)/g, (_, i) => m[Number(i)] ?? '').replace(/\$([a-zA-Z_]\w*)/g, (_, k) => m.groups?.[k] ?? '');
-				return void res.writeHead(r.status, { location }).end();
+			if (r.status && r.headers?.Location) return void res.writeHead(r.status, { location: fill(r.headers.Location) }).end();
+			if (r.dest) {
+				path = fill(r.dest);
+				if (!r.continue) break;
 			}
 		}
 		for (const candidate of [path, `${path}.html`, join(path, 'index.html')]) {
