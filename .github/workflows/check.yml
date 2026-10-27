@@ -38,13 +38,12 @@ on:
         description: Seconds one route may take (a page's journey budget grows with its controls)
         required: false
         default: '3600'
-  # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on thirteen runners, two routes each:
-  # with the slow network measured in Chromium alone a 4-route runner took 220 minutes, and Firefox and WebKit triple that part.
-  pull_request:
-    paths:
-      - .github/workflows/check.yml
-      - scripts/check-shards.ts
-      - deploy/shadcn-ui/ci-serve.sh
+  # Nightly on main, when the workflow or its scripts changed since the last green night: the 25-route build of ui.shadcn.com,
+  # on thirteen runners, two routes each (with the slow network in Chromium alone a 4-route runner took 220 minutes, and Firefox
+  # and WebKit triple that part). It ran on every pull request touching these files until 2026-10-27, about 1,000 runner-minutes
+  # a run while the org's other jobs queued; to try a change before merging, dispatch this workflow on the branch.
+  schedule:
+    - cron: '23 4 * * *'
 
 permissions:
   contents: read
@@ -66,17 +65,34 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the last green nightly run.
+      actions: read
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - id: night
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/check.yml/runs?event=schedule&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty' || true)
+          if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null && git diff --quiet "$last" HEAD -- .github/workflows/check.yml .github/actions scripts/check-shards.ts deploy/shadcn-ui/ci-serve.sh; then
+            echo "nothing the check workflow runs changed since the green night at $last"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ steps.night.outputs.skip }}" = true ]; then mkdir -p shards; echo 'matrix=[]' >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
@@ -85,6 +101,7 @@ jobs:
 
   check:
     needs: plan
+    if: needs.plan.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
     timeout-minutes: 345
@@ -180,7 +197,7 @@ jobs:
 
   merge:
     needs: [plan, check]
-    if: always() && needs.plan.result == 'success'
+    if: always() && needs.plan.result == 'success' && needs.check.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

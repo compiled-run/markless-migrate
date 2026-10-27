@@ -98,7 +98,7 @@ jobs:
         if: inputs.plan-from == ''
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Keep the old site's build
-        if: inputs.plan-from == '' && steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        if: inputs.plan-from == '' && github.event_name != 'pull_request' && steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
         uses: actions/cache/save@v4
         with:
           path: |
@@ -173,7 +173,7 @@ jobs:
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        if: github.event_name != 'pull_request' && steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
         uses: actions/cache/save@v4
         with:
           path: |
@@ -239,7 +239,7 @@ jobs:
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        if: github.event_name != 'pull_request' && steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
         uses: actions/cache/save@v4
         with:
           path: |
