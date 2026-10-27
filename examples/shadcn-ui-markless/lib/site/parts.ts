@@ -348,7 +348,14 @@ const chartFrame: Part = {
 		if (!(el instanceof HTMLIFrameElement) || !el.classList.contains('transition-opacity') || !(el.classList.contains('opacity-0') || el.classList.contains('opacity-100'))) return;
 		el.addEventListener('load', () => showFrame(el, true));
 		const loaded = frameLoaded(el);
-		if (loaded !== undefined) showFrame(el, loaded);
+		if (loaded) showFrame(el, true);
+		else if (loaded === false) {
+			// The old frame starts transparent: one captured shown goes there without fading out.
+			el.style.transition = 'none';
+			showFrame(el, false);
+			void getComputedStyle(el).opacity;
+			el.style.removeProperty('transition');
+		}
 	},
 };
 

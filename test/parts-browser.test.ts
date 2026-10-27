@@ -1492,6 +1492,29 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.close();
 });
 
+test('shadcn-ui site: a chart\'s frame captured shown but still loading when it is mounted goes transparent at once, without fading out', async () => {
+	const css = '<style>.transition-opacity{transition-property:opacity;transition-duration:300ms}.opacity-0{opacity:0}.opacity-100{opacity:1}</style>';
+	const page = await open(`${css}<div style="height:5000px"></div><iframe src="/frame/slow" class="w-full border-none transition-opacity duration-300 opacity-100" height="100" loading="lazy" title="chart"></iframe>`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg></svg>' });
+	});
+	await page.locator('iframe').scrollIntoViewIfNeeded();
+	await page.evaluate(() => {
+		const w = window as unknown as { faded: number; mountParts: (a: string) => void };
+		w.faded = 0;
+		document.querySelector('iframe')!.addEventListener('transitionrun', () => w.faded++);
+		w.mountParts('iframe[loading]');
+	});
+	await page.waitForTimeout(400);
+	assert.match(await page.locator('iframe').evaluate((f) => f.className), / opacity-0$/);
+	assert.equal(await page.evaluate(() => (window as unknown as { faded: number }).faded), 0, 'the old frame starts transparent: nothing fades out');
+	release();
+	await page.close();
+});
+
 test('shadcn-ui site: a chart\'s frame stays transparent until its page has loaded, then shows, whatever the capture caught it in', async () => {
 	const frame = (name: string, opacity: string) => `<iframe src="/frame/${name}" class="w-full border-none transition-opacity duration-300 ${opacity}" height="100" loading="lazy" title="chart-${name}"></iframe>`;
 	const page = await open(`<div style="height:5000px"></div>${frame('slow', 'opacity-100')}<div style="height:5000px"></div>${frame('loaded', 'opacity-0')}`, ['site']);
