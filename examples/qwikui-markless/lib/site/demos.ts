@@ -1,6 +1,7 @@
 import type { Part } from '../parts/index.ts';
 import { autoplaying, goTo, setAutoplay } from '../parts/qwik-ui/carousel.ts';
 import { openItem } from '../parts/qwik-ui/collapsible.ts';
+import { chooseItem, listOpen, setListOpen } from '../parts/qwik-ui/combobox.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
 
 // The docs pages' example components (apps/website/src/routes/docs/**/examples), each control found by the handler it ran
@@ -234,7 +235,97 @@ const collapsibleDemos: Part = {
 		return false;
 	},
 };
+const ICON = (inner: string, cls = '') => `<svg data-qwikest-icon="" fill="none" height="1em" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
+const CHECK = ICON('<polyline points="20 6 9 17 4 12"></polyline>');
+const FRUITS = ['Apple', 'Apricot', 'Bilberry', 'Blackberry', 'Blackcurrant', 'Currant', 'Cherry', 'Coconut'];
+// A Combobox.Item as combobox-item.tsx renders it.
+const comboboxItem = (id: string, i: number, label: string) =>
+	`<div role="option" tabindex="-1" id="${id}-${i}" aria-selected="false" aria-disabled="false" data-item="" aria-labelledby="${id}-${i}-item-label" class="combobox-item" _index="${i}"><span tabindex="-1" id="${id}-${i}-item-label">${label}</span><span data-item-indicator="" aria-hidden="true">${CHECK}</span></div>`;
+// A Combobox.Root with a label, control and popover as combobox/*.tsx first render it in the browser; the panel's placement
+// is what convert writes for the server-rendered ones (bottom, the example's gutter).
+const comboboxMarkup = (id: string, label: string, items: readonly string[]) =>
+	`<div role="group" data-combobox-root="" data-closed="" aria-invalid="false" class="combobox-root"><label id="${id}-label" class="combobox-label">${label}</label><div data-combobox-control="" class="combobox-control"><input role="combobox" aria-activedescendant="" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-combobox-input="" id="${id}-input" aria-controls="${id}-panel" aria-labelledby="${id}-label" aria-describedby="${id}-description \n        ${id}-error-message" class="combobox-input"><button type="button" aria-expanded="false" data-closed="" tabindex="-1" class="combobox-trigger">${ICON('<path d="m6 9 6 6 6-6"></path>', 'combobox-icon')}</button></div><div id="${id}-root"><div popover="manual" hidden="" data-floating="absolute" id="${id}-panel" data-closed="" role="listbox" aria-expanded="false" class="combobox-popover" data-mm-placement="bottom" data-mm-gutter="8">${items.map((x, i) => comboboxItem(id, i, x)).join('')}</div></div></div>`;
+const rootBefore = (el: Element, selector: string) => {
+	for (let at = el.previousElementSibling; at; at = at.previousElementSibling) if (at.matches(selector)) return at;
+	return null;
+};
+// The answer form.tsx shows once a submit carried a value: what the named field held, as JSON.
+function showSubmitted(form: HTMLFormElement, name: string): void {
+	const value = new FormData(form).get(name);
+	let shown = form.querySelector<HTMLElement>(':scope > [data-mm-submitted]');
+	if (!value) return void shown?.remove();
+	if (!shown) {
+		shown = document.createElement('div');
+		shown.setAttribute('data-mm-submitted', '');
+		shown.innerHTML = '<strong>You submitted:</strong><code></code>';
+		form.append(shown);
+	}
+	shown.querySelector('code')!.textContent = JSON.stringify(value);
+}
+
+// combobox programmatic.tsx: Change to Abby writes bind:value; add-items.tsx: Add Fruits adds three items once;
+// reactive-open.tsx: a button toggles bind:open; refs.tsx: the trigger's own click paints it red (the port still opens the
+// list); form.tsx: submitting shows the chosen fruit; csr.tsx: a button renders a combobox.
+// The open state reactive-open.tsx's button reads, as it was before the press reached the window (where a press outside
+// an open list closes it).
+const openAtPress = new WeakMap<Element, boolean>();
+const comboboxDemos: Part = {
+	pointerdown(target) {
+		const toggle = target.closest(on('click', 'reactive-open.tsx_reactive_open_component_Fragment_button_onClick'));
+		const root = toggle && rootBefore(toggle, '[data-combobox-root]');
+		if (root) openAtPress.set(root, listOpen(root));
+		return false;
+	},
+	submit(target, event) {
+		if (!(target instanceof HTMLFormElement) || !target.matches(on('submit', 'form.tsx_form_component_handleSubmit'))) return false;
+		event.preventDefault();
+		const name = target.querySelector('select')?.name;
+		if (name) showSubmitted(target, name);
+		return true;
+	},
+	click(target) {
+		if (target.closest(on('click', 'refs.tsx_refs_component_handleClick'))) {
+			(target.closest('button') as HTMLElement).style.backgroundColor = 'red';
+			return false;
+		}
+		const abby = target.closest(on('click', 'programmatic.tsx_programmatic_component_Fragment_button_onClick'));
+		const chosen = abby && rootBefore(abby, '[data-combobox-root]');
+		if (chosen) {
+			const item = [...document.querySelectorAll(`#${CSS.escape(chosen.querySelector('input')!.getAttribute('aria-controls')!)} [role="option"]`)].find((i) => i.textContent?.trim() === 'Abby');
+			if (item) chooseItem(item);
+			return true;
+		}
+		const add = target.closest(on('click', 'add-items.tsx_add_items_component_Fragment_button_onClick'));
+		const grown = add && rootBefore(add, '[data-combobox-root]');
+		if (grown) {
+			const panel = document.getElementById(grown.querySelector('input')!.getAttribute('aria-controls')!);
+			if (panel && !panel.hasAttribute('data-mm-added')) {
+				panel.setAttribute('data-mm-added', '');
+				const id = panel.id.replace(/-panel$/, '');
+				const t = document.createElement('template');
+				t.innerHTML = ['Durian', 'Jackfruit', 'Ackee'].map((x, i) => comboboxItem(id, FRUITS.length + i, x)).join('');
+				panel.append(t.content);
+			}
+			return true;
+		}
+		const toggle = target.closest(on('click', 'reactive-open.tsx_reactive_open_component_Fragment_button_onClick'));
+		const opened = toggle && rootBefore(toggle, '[data-combobox-root]');
+		if (opened) {
+			setListOpen(opened, !(openAtPress.get(opened) ?? listOpen(opened)));
+			openAtPress.delete(opened);
+			return true;
+		}
+		// The select and combobox pages' csr.tsx share a handler name; the page tells them apart.
+		const render = target.closest(on('click', 'csr.tsx_csr_component_Fragment_button_onClick'));
+		if (render?.textContent?.trim() === 'CSR mode' && location.pathname.startsWith('/docs/headless/combobox')) {
+			renderAfter(render, comboboxMarkup(freshId(), 'Personal Trainers', FRUITS));
+			return true;
+		}
+		return false;
+	},
+};
+
 // dynamic.tsx's newItem: one object, made once per demo, so every add inserts the same item.
 const newItemId = new WeakMap<Element, string>();
 
-export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos];
+export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos];
