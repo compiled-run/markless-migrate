@@ -38,8 +38,8 @@ on:
         description: Seconds one route may take (a page's journey budget grows with its controls)
         required: false
         default: '3600'
-  # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on eight runners: a route takes about
-  # 40 to 55 minutes with slow network on, so the two runners this used before ran past the 345-minute job limit.
+  # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on thirteen runners, two routes each:
+  # with the slow network measured in Chromium alone a 4-route runner took 220 minutes, and Firefox and WebKit triple that part.
   pull_request:
     paths:
       - .github/workflows/check.yml
@@ -54,7 +54,7 @@ env:
   APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
   BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-subset-build-6f528da/shadcn-ui-markless-output.tar.gz' }}
   TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
-  SHARDS: ${{ inputs.shards || '8' }}
+  SHARDS: ${{ inputs.shards || '13' }}
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
 
@@ -98,7 +98,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      # The slow network is measured in all three: a port slower only in Firefox or WebKit is red, not skipped.
       - uses: ./.github/actions/setup
+        with:
+          browsers: chromium firefox webkit
       # The old site's own build scripts call bun (ui.shadcn.com's registry:build).
       - uses: oven-sh/setup-bun@v2
       - uses: actions/download-artifact@v4
