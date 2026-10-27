@@ -47,6 +47,16 @@ export interface Port {
 	 * build's q-manifest.json), marked with `mark` because the library writes nothing else on them (Qwik UI's Modal.Close).
 	 */
 	readonly handlers?: readonly { readonly origin: RegExp; readonly mark: string }[];
+	/**
+	 * Props a Qwik library keeps only in a component's context in the page's paused state (an object with its `localId`),
+	 * written on the element whose id `element` gives: `props` maps each prop to the attribute the port reads.
+	 */
+	readonly qwikContext?: QwikContextProps;
+}
+
+export interface QwikContextProps {
+	readonly element: (localId: string) => string;
+	readonly props: Readonly<Record<string, string>>;
 }
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
@@ -162,7 +172,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'qwik-ui/popover', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Panel', 'Popover.Anchor'], events: ['click'], locate: () => true, markup: (el) => attr(el, 'popovertarget') !== undefined || (quiFloating(el) && attr(el, 'role') === undefined) },
 	{ module: 'qwik-ui/carousel', library: QWIK_UI, exports: ['Carousel.Root', 'Carousel.Scroller', 'Carousel.Slide', 'Carousel.Next', 'Carousel.Previous', 'Carousel.Pagination', 'Carousel.Bullet', 'Carousel.Player', 'Carousel.Stepper', 'Carousel.Step', 'Carousel.Title'], events: ['click', 'keydown', 'focusin', 'pointerdown'], locate: () => true, markup: (el) => attr(el, 'data-qui-carousel') !== undefined },
 	{ module: 'qwik-ui/toggle-group', library: QWIK_UI, exports: ['ToggleGroup.Root', 'ToggleGroup.Item'], events: ['keydown', 'click'], locate: () => true, markup: (el) => attr(el, 'data-qui-togglegroup-root') !== undefined },
-	{ module: 'qwik-ui/modal', library: QWIK_UI, exports: ['Modal.Root', 'Modal.Trigger', 'Modal.Panel', 'Modal.Close', 'Modal.Title', 'Modal.Description'], events: ['click', 'pointerdown', 'keydown'], locate: () => true, markup: (el) => el.tagName === 'dialog' && /-root$/.test(attr(el, 'id') ?? ''), handlers: [{ origin: /\/kit-headless\/src\/components\/modal\/modal-close\.tsx$/, mark: 'data-mm-close' }] },
+	{ module: 'qwik-ui/modal', library: QWIK_UI, exports: ['Modal.Root', 'Modal.Trigger', 'Modal.Panel', 'Modal.Close', 'Modal.Title', 'Modal.Description'], events: ['click', 'pointerdown', 'keydown'], locate: () => true, markup: (el) => el.tagName === 'dialog' && /-root$/.test(attr(el, 'id') ?? ''), handlers: [{ origin: /\/kit-headless\/src\/components\/modal\/modal-close\.tsx$/, mark: 'data-mm-close' }], qwikContext: { element: (id) => `${id}-root`, props: { closeOnBackdropClick: 'data-mm-backdrop-close' } } },
 	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
@@ -305,6 +315,7 @@ function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding |
 
 /** Every library handler a port finds its elements by (Port.handlers). */
 export const QWIK_HANDLER_MARKS: readonly { readonly origin: RegExp; readonly mark: string }[] = PORTS.flatMap((p) => p.handlers ?? []);
+export const QWIK_CONTEXT_PROPS: readonly QwikContextProps[] = PORTS.flatMap((p) => (p.qwikContext ? [p.qwikContext] : []));
 
 let markupLibraries: ReadonlySet<string> = new Set();
 /** The libraries the old source imports whose parts are placed by their own markup (Port.markup). */
