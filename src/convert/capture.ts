@@ -25,6 +25,8 @@ export interface CapturedPage {
 	readonly lateFonts?: readonly { readonly id: string; readonly key: string; readonly urls?: readonly string[]; readonly face?: { readonly family: string; readonly src: string; readonly descriptors: Readonly<Record<string, string>> } }[];
 	/** The web fonts a first screen draws that the page does not preload and that do not swap: the file each was fetched from. */
 	readonly firstScreenFonts?: readonly string[];
+	/** The same for the `font-display: swap` faces. */
+	readonly swapFirstScreenFonts?: readonly string[];
 	/** The font files the page preloads that no first screen draws. */
 	readonly offscreenFontPreloads?: readonly string[];
 	/** The font files the page preloads that a first screen draws, every face naming which is `font-display: swap`. */
@@ -39,7 +41,7 @@ export interface CapturedPage {
 	readonly fonts?: number;
 }
 
-/** The version of the font facts a capture records: lateFonts, firstScreenFonts, offscreenFontPreloads and swapFontPreloads. */
+/** The version of the font facts a capture records: lateFonts, the first-screen fonts, offscreenFontPreloads and swapFontPreloads. */
 export const FONT_FACTS = 4;
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
@@ -105,6 +107,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	const images: Record<string, ImageFacts> = {};
 	let lateFonts: NonNullable<CapturedPage['lateFonts']>[number][] = [];
 	let firstScreenFonts: string[] = [];
+	let swapFirstScreenFonts: string[] = [];
 	let offscreenFontPreloads: string[] = [];
 	let swapFontPreloads: string[] = [];
 	for (const viewport of viewports) {
@@ -137,14 +140,16 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 				offscreenFontPreloads = preloads.preloaded.filter((u) => !drawn.has(u));
 				swapFontPreloads = preloads.swap.filter((u) => drawn.has(u));
 				lateFonts = faces.filter((f) => !f.firstScreen && !shownOnPhone.includes(f.id)).map((f) => ({ id: f.id, key: f.key, urls: f.urls, face: f.face }));
-				firstScreenFonts = faces.filter((f) => !f.preloaded && (f.firstScreen || shownOnPhone.includes(f.id)) && f.face.descriptors.display !== 'swap').map((f) => f.url);
+				const first = faces.filter((f) => !f.preloaded && (f.firstScreen || shownOnPhone.includes(f.id)));
+				firstScreenFonts = first.filter((f) => f.face.descriptors.display !== 'swap').map((f) => f.url);
+				swapFirstScreenFonts = first.filter((f) => f.face.descriptors.display === 'swap').map((f) => f.url);
 				images[viewport.name] = await withWidths(page, images[viewport.name]!, viewport);
 			}
 		} finally {
 			await context.close().catch(() => {});
 		}
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;

@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { LATE_FONT } from '../parts/late-fonts.ts';
 import { capturePage } from '../src/convert/capture.ts';
 import { attr, parseDocument, walk } from '../src/convert/dom.ts';
-import { applyLateFonts, fontPreloads, fontPreloadsInFirstScreen, withoutFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
+import { applyLateFonts, swapFontPreloadsLow, fontPreloads, fontPreloadsInFirstScreen, withoutFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
 
 const PAGE = (head = '', mark = '') => `<!doctype html><html><head>${head}<style>
 @font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+2014}
@@ -135,7 +135,7 @@ test("a font preload no first screen needs is dropped from the page's head; the 
 	assert.deepEqual(withoutFontPreloads(tags, [`${o}/mono.woff2`, 'https://cdn.example/x.woff2'], o), [tags[0], tags[1], tags[3]]);
 });
 
-test('a preloaded font every face of which swaps is found, so text paints in a fallback first; a font that hides its text until it arrives keeps its preload', async () => {
+test('a preloaded font every face of which swaps is found, since its text paints in a fallback first; a font that hides its text until it arrives is not', async () => {
 	const page = `<!doctype html><html><head>
 <link rel="preload" href="/sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/icons.woff2" as="font" type="font/woff2" crossorigin>
@@ -172,10 +172,27 @@ h3{font-family:Auto}
 		assert.deepEqual(found.swap, [`${origin}/sans.woff2`], 'icons block, one Mixed face blocks (auto), optional may never be used unless preloaded');
 		const captured = await capturePage(browser, origin, '/', dir);
 		assert.deepEqual(captured.swapFontPreloads, [`${origin}/sans.woff2`]);
-		assert.deepEqual(captured.firstScreenFonts, [`${origin}/auto.woff2`], 'a first-screen face only a stylesheet names that swaps is not preloaded either; one that hides its text until it arrives is');
+		assert.deepEqual(captured.firstScreenFonts, [`${origin}/auto.woff2`], 'a first-screen face only a stylesheet names that hides its text until it arrives');
+		assert.deepEqual(captured.swapFirstScreenFonts, [`${origin}/swapped.woff2`], 'and one that swaps, kept apart');
 	} finally {
 		await browser.close();
 		server.close();
 		await rm(dir, { recursive: true, force: true });
 	}
+});
+
+test('a swap font\'s preloads go after the last stylesheet at low priority, the page\'s own and the added ones; an icon font\'s stays where it was', () => {
+	const o = 'https://site.example';
+	const font = (href: string) => ({ tag: 'link' as const, attrs: { rel: 'preload', href, as: 'font', crossorigin: '' } as Record<string, string> });
+	const sheet = (href: string) => ({ tag: 'link' as const, attrs: { rel: 'stylesheet', href } as Record<string, string> });
+	const charset = { tag: 'meta' as const, attrs: { charset: 'utf-8' } as Record<string, string> };
+	const icons = font('/icons.woff2');
+	const tags = [charset, icons, font('/sans.woff2'), sheet('/a.css'), sheet('/b.css'), { tag: 'title' as const, attrs: {} as Record<string, string> }];
+	const out = swapFontPreloadsLow(tags, [`${o}/sans.woff2`], o, [font('/mono.woff2')]);
+	assert.deepEqual(
+		out.map((t) => [t.attrs.href ?? t.tag, t.attrs.fetchpriority]),
+		[['meta', undefined], ['/icons.woff2', undefined], ['/a.css', undefined], ['/b.css', undefined], ['/sans.woff2', 'low'], ['/mono.woff2', 'low'], ['title', undefined]],
+	);
+	assert.equal(tags[2]!.attrs.fetchpriority, undefined, 'the given tags are not changed');
+	assert.deepEqual(swapFontPreloadsLow([charset, font('/sans.woff2')], [`${o}/sans.woff2`], o).map((t) => t.attrs.fetchpriority), [undefined, 'low'], 'with no stylesheet, last');
 });

@@ -145,8 +145,7 @@ export function applyLateFonts(doc: Document, late: readonly string[]): number {
 export const MAX_FONT_PRELOADS = 4;
 
 /**
- * Preload links for the web fonts the page's first screen draws that only its stylesheet names and that hide their text
- * until they arrive (a `font-display: swap` face paints in a fallback first, so it is not passed here), so they are fetched
+ * Preload links for the web fonts the page's first screen draws that only its stylesheet names, so they are fetched
  * with the stylesheet rather than after it: same-origin woff2 files, at most `MAX_FONT_PRELOADS` with any the page already preloads.
  */
 export function fontPreloads(urls: readonly string[], origin: string, already: number): { href: string }[] {
@@ -228,6 +227,20 @@ export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: strin
 export function withoutFontPreloads<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], files: readonly string[], origin: string): T[] {
 	const gone = new Set(files);
 	return tags.filter((t) => !(t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && t.attrs.href && gone.has(new URL(t.attrs.href, origin).href)));
+}
+
+/**
+ * The head with the font preloads of the given files (absolute URLs), and `added`, after its last stylesheet at low
+ * priority: a `font-display: swap` font's text paints in a fallback, so the first paint does not wait for the file.
+ */
+export function swapFontPreloadsLow<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], files: readonly string[], origin: string, added: readonly T[] = []): T[] {
+	const swap = new Set(files);
+	const isSwap = (t: T) => t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && !!t.attrs.href && swap.has(new URL(t.attrs.href, origin).href);
+	const moved = [...tags.filter(isSwap), ...added].map((t) => ({ ...t, attrs: { ...t.attrs, fetchpriority: 'low' } }) as T);
+	const rest = tags.filter((t) => !isSwap(t));
+	const last = rest.findLastIndex((t) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? ''));
+	rest.splice(last < 0 ? rest.length : last + 1, 0, ...moved);
+	return rest;
 }
 
 /** The late faces as the page adds them, their files on the page's own origin given by path. */
