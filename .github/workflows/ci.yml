@@ -1,18 +1,72 @@
 name: CI
 
+# A pull request runs the unit files and e2e suites its change can reach (scripts/ci-plan.ts). The merge queue runs
+# every one of them on the exact commit that lands, so nothing merges without the whole suite; see docs/ci-process.md.
 on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the merge queue's run of a pushed commit.
+      actions: read
+    outputs:
+      unit_files: ${{ steps.plan.outputs.unit_files }}
+      unit_shards: ${{ steps.plan.outputs.unit_shards }}
+      e2e: ${{ steps.plan.outputs.e2e }}
+      queue_tested: ${{ steps.queue.outputs.tested }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # The merge queue lands the exact commit it tested, so its green run already ran every test on this one.
+      - id: queue
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=merge_group&status=success&per_page=1" --jq '.workflow_runs[0].id // empty' || true)
+          if [ -n "$run" ]; then echo "tested=true" >> "$GITHUB_OUTPUT"; echo "merge queue run $run already tested ${GITHUB_SHA}"; fi
+      - id: plan
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          QUEUE_TESTED: ${{ steps.queue.outputs.tested }}
+        run: node scripts/ci-plan.ts
+
+  # Caches are saved from main only (docs/ci-process.md, Caches), so a push the queue already tested still refreshes them.
+  warm-caches:
+    name: Warm caches (${{ matrix.browsers }})
+    needs: plan
+    if: needs.plan.outputs.queue_tested == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        browsers: [chromium, chromium firefox webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browsers }}
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -30,52 +84,35 @@ jobs:
       - run: pnpm typecheck
 
   unit:
-    name: Unit tests (${{ matrix.shard }}/4)
+    name: Unit tests (${{ matrix.shard }})
+    needs: plan
+    if: needs.plan.outputs.unit_shards != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        # Four shards: with journeys after in-place arrival and each route's 3.5 s look at what moves on its own, shard 1 of 3 measured 30 min, its whole budget.
-        shard: [1, 2, 3, 4]
+        # Up to four shards: with journeys after in-place arrival and each route's 3.5 s look at what moves on its own, shard 1 of 3 measured 30 min, its whole budget.
+        shard: ${{ fromJSON(needs.plan.outputs.unit_shards) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       # The slowest unit test takes about 6 minutes on a runner; one stuck past 10 fails by name instead of holding the shard until it is cancelled.
       # A shard takes at most 15 minutes; one still running at 20 prints what each Node process under it is stuck on, then fails.
-      - run: bash scripts/ci-watchdog.sh node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/4 test/*.test.ts
+      - env:
+          UNIT_FILES: ${{ needs.plan.outputs.unit_files }}
+        run: bash scripts/ci-watchdog.sh node --test --test-timeout=600000 --test-shard=${{ matrix.shard }} $UNIT_FILES
 
   e2e:
     name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
+    needs: plan
+    if: needs.plan.outputs.e2e != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - suite: convert-compiles
-          - suite: dev-builds
-          - suite: embeds
-          - suite: markless-site
-          - suite: motion
-          - suite: nav-parity
-          - suite: page-load
-          - suite: proxy
-          - suite: radix-dialog-port
-          - suite: responsiveness
-          - suite: waste
-          - { suite: slow-network, browsers: chromium firefox webkit }
-          - { suite: late-fonts, browsers: chromium firefox webkit }
-          - { suite: next-app, shard: 1/6 }
-          - { suite: next-app, shard: 2/6 }
-          - { suite: next-app, shard: 3/6 }
-          - { suite: next-app, shard: 4/6 }
-          - { suite: next-app, shard: 5/6 }
-          - { suite: next-app, shard: 6/6 }
-          - { suite: vite-site, shard: 1/4 }
-          - { suite: vite-site, shard: 2/4 }
-          - { suite: vite-site, shard: 3/4 }
-          - { suite: vite-site, shard: 4/4 }
+        include: ${{ fromJSON(needs.plan.outputs.e2e) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -85,10 +122,23 @@ jobs:
         env:
           E2E_SHARD: ${{ matrix.shard }}
 
+  # A lane may be skipped only because the plan gave it nothing to run.
   passed:
     name: CI passed
     if: always()
-    needs: [typecheck, unit, e2e]
+    needs: [plan, typecheck, unit, e2e]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          TYPECHECK: ${{ needs.typecheck.result }}
+          UNIT: ${{ needs.unit.result }}
+          E2E: ${{ needs.e2e.result }}
+          UNIT_SHARDS: ${{ needs.plan.outputs.unit_shards }}
+          E2E_JOBS: ${{ needs.plan.outputs.e2e }}
+        run: |
+          echo "plan=$PLAN typecheck=$TYPECHECK unit=$UNIT e2e=$E2E"
+          [ "$PLAN" = success ] && [ "$TYPECHECK" = success ] || exit 1
+          [ "$UNIT" = success ] || { [ "$UNIT" = skipped ] && [ "$UNIT_SHARDS" = '[]' ]; } || exit 1
+          [ "$E2E" = success ] || { [ "$E2E" = skipped ] && [ "$E2E_JOBS" = '[]' ]; } || exit 1
