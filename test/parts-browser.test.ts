@@ -543,6 +543,19 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+// Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
+test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
+	for (const bound of [true, false]) {
+		const layer = dialogLayer('ad').replace(/alert-dialog/g, 'dialog').replace('role="alertdialog"', 'role="dialog"').replace('<button data-slot="dialog-cancel">Cancel</button>', `<input${bound ? ' m:on="input:0"' : ''}>`);
+		const page = await open(`<div data-async-container><main><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Search</button></main>${layer}<div id="later"></div><!--markless:page-end--></div>`, ['radix/dialog']);
+		await page.getByText('Search').click();
+		assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+		const order = await page.evaluate(() => [...document.querySelector('[data-async-container]')!.children].map((e) => e.id || e.getAttribute('data-slot') || e.tagName.toLowerCase()).join(','));
+		assert.equal(order, bound ? 'main,dialog-overlay,ad,later' : 'main,later,dialog-overlay,ad');
+		await page.close();
+	}
+});
+
 test('shadcn-ui site: a code block\'s copy button writes what it copied on the old page and shows Copied with the check for 2 s', async () => {
 	const icon = '<svg class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
 	const button = `<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button>`;
