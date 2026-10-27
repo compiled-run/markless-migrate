@@ -7,8 +7,8 @@ import { navigate } from '@markless/router';
 // left are sorted by score and moved after the rest of their group, and the groups by their best item, as cmdk appends
 // them; here the move is CSS order on a column. The first item left is selected (aria-selected, data-selected). Arrows,
 // Home, End and Alt with an arrow move the selection; moving the pointer over an item selects it; Enter or a click
-// chooses it, and what choosing does is the old page's (captured: where it went or what it copied), or for an item the page
-// renders itself, the address in its data-mm-href. The input and list
+// chooses it, and what choosing does is the old page's: the address in the item's data-mm-href (where it went on that
+// page, or for an item the page renders itself, its own), or what it copied. The input and list
 // carry aria-activedescendant as cmdk computes it. A command in a layer starts again each time its layer opens.
 
 export type Filter = (value: string, search: string, keywords: readonly string[]) => number;
