@@ -71,6 +71,7 @@ export const NAVIGATION_HINTS = {
 	styles: 'After an in-place navigation a key element is styled differently than on a fresh load: an attribute or stylesheet of the previous page stayed, or this page\'s did not apply.',
 	scripts: 'A script file this page runs on a fresh load never ran after an in-place navigation to it. The router must run a swapped-in page\'s scripts as a fresh load would: head additions first, external files one at a time in document order, then inline scripts (Markless 25196c52 fixed this for htmx.org). If the file is the port\'s own, load it from the page\'s markup rather than from code that runs once at the first load.',
 	globals: 'A global this page\'s scripts define on a fresh load is missing after an in-place navigation: the library that defines it did not run (htmx is not defined).',
+	requests: 'These requests to the app failed only when the page was reached in place: a router fragment, a chunk or a stylesheet the navigation asks for is not served (a route or a file the build left out, or a deployment that no longer has the files the page it replaced named).',
 	errors: 'The page logs this error only after an in-place navigation: usually a script ran before the library it calls, ran twice, or expected DOMContentLoaded to fire again.',
 	scroll: 'An in-place navigation leaves the page at another scroll position than a fresh load (top, or the URL\'s #fragment).',
 	url: 'Following the link did not end on the page it points to.',
@@ -126,6 +127,8 @@ interface Fresh {
 	readonly noise: VisualNoise;
 	readonly scripts: readonly ScriptRun[];
 	readonly errors: readonly string[];
+	/** Requests to the app the fresh load failed. */
+	readonly failed: readonly string[];
 	/** The page's own controls clicked in turn after the fresh load: its persisted-state control twice (on, then back), then one control in the content. */
 	readonly steps: readonly Step[];
 	/** DOM lines, styles and globals that changed on their own within a second of the fresh load. */
@@ -360,6 +363,8 @@ interface Tab {
 	readonly page: Page;
 	readonly scripts: { phase: number; run: ScriptRun }[];
 	readonly errors: { phase: number; text: string }[];
+	/** Requests to the app that failed (an answer of 400 or more, or none), by phase. */
+	readonly failed: { phase: number; text: string }[];
 	/** Documents the main frame loaded. */
 	documents: number;
 	phase: number;
@@ -379,6 +384,7 @@ async function openTab(browser: Browser, env: SideEnv, viewport: Viewport, route
 		page,
 		scripts: [],
 		errors: [],
+		failed: [],
 		documents: 0,
 		phase: 0,
 		pending: () => inflight.size,
@@ -393,6 +399,13 @@ async function openTab(browser: Browser, env: SideEnv, viewport: Viewport, route
 		if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) tab.errors.push({ phase: tab.phase, text: strip(m.text()) });
 	});
 	page.on('pageerror', (e) => tab.errors.push({ phase: tab.phase, text: strip(e.message) }));
+	const own = (url: string) => URL.parse(url)?.origin === host;
+	page.on('response', (r) => {
+		if (r.status() >= 400 && own(r.url())) tab.failed.push({ phase: tab.phase, text: `${r.status()} ${strip(r.url())}` });
+	});
+	page.on('requestfailed', (r) => {
+		if (own(r.url()) && !/ERR_ABORTED/.test(r.failure()?.errorText ?? '')) tab.failed.push({ phase: tab.phase, text: `failed ${strip(r.url())}` });
+	});
 	const cdp = await context.newCDPSession(page);
 	const documents = new Set<string>();
 	page.on('framenavigated', (f) => {
@@ -465,7 +478,7 @@ async function freshLoad(browser: Browser, env: SideEnv, viewport: Viewport, rou
 		const later = await snap(tab.page);
 		const changed = (await tab.page.evaluate(ownTexts)).flatMap((t, i) => (texts[i] && texts[i]!.text !== t.text ? [t.box] : []));
 		const noise = visualNoise(shot, [await shoot(tab.page)], changed);
-		const base = { snap: snapshot, shot, noise, scripts: tab.scripts.map((s) => s.run), errors: tab.errors.map((e) => e.text), volatile: volatileKeys(snapshot, later), steps: [] };
+		const base = { snap: snapshot, shot, noise, scripts: tab.scripts.map((s) => s.run), errors: tab.errors.map((e) => e.text), failed: tab.failed.map((e) => e.text), volatile: volatileKeys(snapshot, later), steps: [] };
 		if (toggle === false) return base;
 		const content = await tab.page.evaluate(pickControl);
 		const controls = [...(toggle ? [toggle, { ...toggle, label: `${toggle.label} again` }] : []), ...(content ? [content] : [])];
@@ -625,6 +638,13 @@ export function scriptFailures(route: string, how: string, fresh: readonly Scrip
 	return [{ route, dimension: 'navigation', check: `${how}: script files run`, expected: missing.slice(0, 6).join('\n'), actual: '(never ran in this document)', hint: NAVIGATION_HINTS.scripts }];
 }
 
+/** Requests to the app that failed while a page was reached in place (a router fragment, a chunk, a stylesheet), beyond what a fresh load of it fails. */
+export function requestFailures(route: string, how: string, freshFailed: readonly string[], failed: readonly string[]): Failure[] {
+	const own = new Set(freshFailed);
+	const added = [...new Set(failed.filter((e) => !own.has(e)))];
+	return added.length ? [{ route, dimension: 'navigation', check: `${how}: requests that failed`, expected: freshFailed.length ? freshFailed.slice(0, 3).join('\n') : '(none)', actual: added.slice(0, 6).join('\n'), hint: NAVIGATION_HINTS.requests }] : [];
+}
+
 export function errorFailures(route: string, how: string, freshErrors: readonly string[], errors: readonly string[]): Failure[] {
 	const own = new Set(freshErrors);
 	const added = [...new Set(errors.filter((e) => !own.has(e)))];
@@ -708,6 +728,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				shotAt(shotFailure(job.to, way, atTo, await shoot(tab.page)), job.to);
 				failures.push(...scriptFailures(job.to, way, atTo.scripts, tab.scripts.map((s) => s.run.hash)));
 				failures.push(...errorFailures(job.to, way, atTo.errors, errorsAt(1)));
+				failures.push(...requestFailures(job.to, way, atTo.failed, tab.failed.filter((e) => e.phase === 1).map((e) => e.text)));
 				failures.push(...flashFailures(job.to, way, frames));
 				const layout = layoutFailures(job.to, way, viewport.name, frames, painted);
 				failures.push(...layout.failures);

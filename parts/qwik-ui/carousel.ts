@@ -4,6 +4,8 @@
 // sum of the slides before the stop and their gaps (adjusted for center and end alignment, clamped to what scrolls), marks
 // the slides in view data-active and the rest inert, disables Previous and Next at the ends, and marks the current
 // bullet and step. A mouse drag on the viewport moves the track and snaps to the nearest slide when released.
+// What a Root's bind:selectedIndex and bind:autoplay signals would hear is dispatched on the root (qui-carousel-index,
+// qui-carousel-autoplay); goTo and setAutoplay are those signals written.
 const ROOT = '[data-qui-carousel]';
 
 interface Carousel {
@@ -113,6 +115,7 @@ function go(c: Carousel, index: number, focusBullet = false): void {
 		else step.removeAttribute('aria-current');
 	}
 	setTransform(c, position(c, index));
+	c.root.dispatchEvent(new CustomEvent('qui-carousel-index', { bubbles: true, detail: index }));
 }
 
 function step(c: Carousel, dir: 1 | -1, focusBullet = false): void {
@@ -126,20 +129,36 @@ function step(c: Carousel, dir: 1 | -1, focusBullet = false): void {
 }
 
 const players = new WeakMap<HTMLElement, ReturnType<typeof setInterval>>();
+// isAutoplaySig: it turns on under reduced motion too, where no interval runs (use-carousel.tsx's useAutoplay).
+const autoplay = new WeakMap<HTMLElement, boolean>();
 function setPlaying(c: Carousel, on: boolean): void {
 	clearInterval(players.get(c.root));
 	players.delete(c.root);
+	autoplay.set(c.root, on);
 	if (on && !matchMedia('(prefers-reduced-motion: reduce)').matches) players.set(c.root, setInterval(() => go(c, (indexOf(c) + 1) % Math.max(1, c.slides.length)), num(c.root, 'autoplayintervalms', 0) || 1000));
 	c.root.setAttribute('aria-live', on ? 'off' : 'polite');
 	for (const p of c.root.querySelectorAll('[data-qui-carousel-player]')) p.setAttribute('aria-label', on ? 'stop automatic slide show' : 'start automatic slide show');
+	c.root.dispatchEvent(new CustomEvent('qui-carousel-autoplay', { bubbles: true, detail: on }));
 }
+
+export function goTo(root: Element, index: number): void {
+	const c = carouselOf(root);
+	if (c) go(c, index);
+}
+
+export function setAutoplay(root: Element, on: boolean): void {
+	const c = carouselOf(root);
+	if (c) setPlaying(c, on);
+}
+
+export const autoplaying = (root: Element): boolean => autoplay.get(root as HTMLElement) ?? false;
 
 export function click(target: Element): boolean {
 	const c = carouselOf(target);
 	if (!c) return false;
 	if (target.closest('[data-qui-carousel-next]')) step(c, 1);
 	else if (target.closest('[data-qui-carousel-prev]')) step(c, -1);
-	else if (target.closest('[data-qui-carousel-player]')) setPlaying(c, !players.has(c.root));
+	else if (target.closest('[data-qui-carousel-player]')) setPlaying(c, !autoplay.get(c.root));
 	else {
 		const bullet = target.closest('[role="tablist"] [role="tab"]');
 		const stepEl = target.closest<HTMLElement>('[data-qui-carousel-step]');

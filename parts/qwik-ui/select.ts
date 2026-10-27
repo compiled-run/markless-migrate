@@ -6,6 +6,7 @@
 // typing jumps to an item by its text. Choosing marks the item selected, shows its indicator, sends its text to the
 // trigger's value (Markless state, convert's SelectPlan, through `mmchoose`) and syncs the hidden native select.
 // A press outside the panel and the trigger closes it. With aria-multiselectable, choosing toggles and keeps it open.
+// Each open and close is dispatched on the root (qui-select-open), what onOpenChange$ hears.
 import { enabled, hidePanel, mark, newTyping, outside, place, showPanel, step, typeahead, unplace, type Typing } from './floating.ts';
 
 const ROOT = '[data-qui-select-root]';
@@ -46,6 +47,7 @@ function setOpen(s: Select, on: boolean): void {
 	if (on === isOpen(s)) return;
 	mark([s.root, s.trigger, s.value, s.panel], on);
 	s.trigger.setAttribute('aria-expanded', String(on));
+	s.root.dispatchEvent(new CustomEvent('qui-select-open', { bubbles: true, detail: on }));
 	if (on) {
 		s.panel.setAttribute('aria-expanded', 'true');
 		showPanel(s.panel);
@@ -64,16 +66,23 @@ function indicate(item: HTMLElement, on: boolean): void {
 	for (const icon of indicator?.children ?? []) (icon as HTMLElement).hidden = !on;
 }
 
+// The order a multiple select's items were chosen in: its display value lists them so (selectedIndexSetSig, a Set).
+const chosenOrder = new WeakMap<HTMLElement, HTMLElement[]>();
+
 function choose(s: Select, item: HTMLElement): void {
 	if (!enabled(item)) return;
 	const many = multiple(s);
+	const order = (chosenOrder.get(s.root) ?? itemsOf(s).filter((i) => i.getAttribute('aria-selected') === 'true')).filter((i) => i !== item);
 	for (const i of itemsOf(s)) {
 		const on = i === item ? (many ? i.getAttribute('aria-selected') !== 'true' : true) : many ? i.getAttribute('aria-selected') === 'true' : false;
 		i.setAttribute('aria-selected', String(on));
 		i.toggleAttribute('data-selected', on);
 		indicate(i, on);
 	}
-	if (!many) s.trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: labelOf(item) }));
+	if (item.getAttribute('aria-selected') === 'true') order.push(item);
+	chosenOrder.set(s.root, order);
+	// A multiple select's DisplayValue is the site's: the docs' examples join the bound display values with ", ".
+	s.trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: many ? order.map(labelOf).join(', ') : labelOf(item) }));
 	syncNative(s);
 }
 
@@ -94,6 +103,18 @@ function openWithHighlight(s: Select, key: string): void {
 	const first = items.find(enabled);
 	const last = [...items].reverse().find(enabled);
 	highlight(s, already ?? selected ?? (key === 'ArrowUp' ? last : first));
+}
+
+/** What a Root's bind:value writes: the item becomes the chosen one. */
+export function chooseItem(item: Element): void {
+	const s = selectOf(item.closest(ROOT) ?? document.querySelector(`${ROOT}:has([aria-controls="${CSS.escape(item.parentElement?.id ?? '')}"])`));
+	if (s && item instanceof HTMLElement) choose(s, item);
+}
+
+/** What a Root's bind:open writes: the list opens, nothing highlighted. */
+export function openList(root: Element): void {
+	const s = selectOf(root);
+	if (s) setOpen(s, true);
 }
 
 export function click(target: Element, event: MouseEvent): boolean {

@@ -29,6 +29,7 @@ export interface CleanContext {
 export interface QwikHandlers {
 	readonly symbols: ReadonlyMap<string, { readonly origin: string; readonly name: string }>;
 	readonly marks: readonly { readonly origin: RegExp; readonly mark: string }[];
+	readonly contexts?: readonly { readonly element: (localId: string) => string; readonly props: Readonly<Record<string, string>> }[];
 }
 
 function localPath(url: string, origin: string): string | undefined {
@@ -54,6 +55,7 @@ function count(dropped: Dropped, rule: string): void {
 export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped): void {
 	const doomed: Node[] = [];
 	const paused = ctx.qwik ? pausedState(doc) : undefined;
+	const contextAttrs = paused && ctx.qwik?.contexts ? contextProps(paused, ctx.qwik.contexts) : undefined;
 	for (const el of walk(doc)) {
 		const tag = el.tagName;
 		if (ELEMENTS.has(tag)) {
@@ -106,6 +108,7 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 		}
 		// Named before the markers go: a handler's captures are found by the element's q:id.
 		if (ctx.qwik) nameQwikHandlers(el, ctx.qwik, paused);
+		for (const [name, value] of contextAttrs?.get(attr(el, 'id') ?? '') ?? []) setAttr(el, name, value);
 		for (const name of [...el.attrs.map((a) => a.name)]) {
 			if (ATTRIBUTES.has(name)) {
 				removeAttr(el, name);
@@ -175,6 +178,30 @@ function capturedStrings(el: Element, paused: PausedState): string[] {
 	const ref = paused.refs[attr(el, 'q:id') ?? ''];
 	if (!ref) return [];
 	return ref.split(/\s+/).map((id) => paused.objs[parseInt(id.replace(/!$/, ''), 36)]).filter(plainString);
+}
+
+// Qwik's mark for a prop left undefined.
+const UNDEFINED = '\u0001';
+
+/** The attributes each element gets from a component context in the paused state, by the element's id. */
+function contextProps(paused: PausedState, specs: NonNullable<QwikHandlers['contexts']>): Map<string, [string, string][]> {
+	const out = new Map<string, [string, string][]>();
+	const value = (id: unknown) => (typeof id === 'string' ? paused.objs[parseInt(id.replace(/!$/, ''), 36)] : undefined);
+	for (const obj of paused.objs) {
+		if (!obj || typeof obj !== 'object' || !('localId' in obj)) continue;
+		const localId = value((obj as Record<string, unknown>).localId);
+		if (!plainString(localId)) continue;
+		for (const spec of specs) {
+			for (const [prop, name] of Object.entries(spec.props)) {
+				if (!(prop in obj)) continue;
+				const v = value((obj as Record<string, unknown>)[prop]);
+				if (v === UNDEFINED || !['boolean', 'number', 'string'].includes(typeof v)) continue;
+				const id = spec.element(localId);
+				out.set(id, [...(out.get(id) ?? []), [name, String(v)]]);
+			}
+		}
+	}
+	return out;
 }
 
 function nameQwikHandlers(el: Element, qwik: QwikHandlers, paused?: PausedState): void {

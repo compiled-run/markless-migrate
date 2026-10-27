@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withFailures } from '../src/check/compare.ts';
-import { applyNavigation, compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult } from '../src/check/nav-parity.ts';
+import { applyNavigation, compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult, requestFailures } from '../src/check/nav-parity.ts';
 import { flashFailures, layoutFailures, layoutFlash, themeFlashes } from '../src/check/swap-frames.ts';
 import { DIMENSIONS, notCompared, type RouteResult } from '../src/check/types.ts';
 
@@ -122,4 +122,13 @@ test('layoutFlash: a frame whose landmarks are where neither page has them, befo
 	const { failures } = layoutFailures('/docs/button', 'in place from /docs', 'desktop', { before, after, frames: at([before, partial, after]) }, []);
 	assert.equal(failures[0]?.check, 'in place from /docs: layout during the swap');
 	assert.equal(failures[0]?.actual, '1 frame showed a layout of its own (main1, aside1 where neither page has them)');
+});
+
+test('requestFailures: a request of the app that failed while reaching a page in place is red, unless a fresh load fails it too', () => {
+	const fresh = ['404 /favicon.ico'];
+	const failed = ['404 /_markless/fragment/docs/tabs/', '404 /favicon.ico', '404 /build/chunk-abc.js'];
+	const found = requestFailures('/docs/tabs/', 'in place from /', fresh, failed);
+	assert.deepEqual(found.map((f) => [f.dimension, f.check]), [['navigation', 'in place from /: requests that failed']]);
+	assert.equal(found[0]!.actual, '404 /_markless/fragment/docs/tabs/\n404 /build/chunk-abc.js');
+	assert.deepEqual(requestFailures('/docs/tabs/', 'in place from /', fresh, ['404 /favicon.ico']), []);
 });

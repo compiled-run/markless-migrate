@@ -54,15 +54,15 @@ test('a mark at a new version uses again only the controls whose content it read
 	const shown = (capture: Awaited<ReturnType<typeof captureReveals>>) => Object.fromEntries(capture.reveals.map((r) => [r.key, r.added.map((a) => a.html).join('')]));
 	try {
 		const desktop = [VIEWPORTS[0]!];
-		const first = await captureReveals(browser, origin, '/', dir, new Map(), desktop, [], undefined, [hinted(1)]);
+		const first = await captureReveals(browser, origin, '/', dir, desktop, [], undefined, [hinted(1)]);
 		assert.deepEqual(shown(first), { a: '<div class="hinted">a on load 1</div>', b: '<div class="plain">b on load 1</div>' });
 		assert.equal(loads, 1);
-		await captureReveals(browser, origin, '/', dir, new Map(), desktop, [], undefined, [hinted(1)]);
+		await captureReveals(browser, origin, '/', dir, desktop, [], undefined, [hinted(1)]);
 		assert.equal(loads, 1, 'a capture holding every mark at its version is used as it is');
-		const bumped = await captureReveals(browser, origin, '/', dir, new Map(), desktop, [], undefined, [hinted(2)]);
+		const bumped = await captureReveals(browser, origin, '/', dir, desktop, [], undefined, [hinted(2)]);
 		assert.equal(loads, 2, 'one fresh load for the controls the bumped mark reads');
 		assert.deepEqual(shown(bumped), { a: '<div class="hinted">a on load 2</div>', b: '<div class="plain">b on load 1</div>' });
-		await captureReveals(browser, origin, '/', dir, new Map(), desktop, [], undefined, [hinted(2)]);
+		await captureReveals(browser, origin, '/', dir, desktop, [], undefined, [hinted(2)]);
 		assert.equal(loads, 2, 'the capture taken again records the mark at its new version');
 	} finally {
 		await rm(dir, { recursive: true, force: true });

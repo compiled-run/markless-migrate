@@ -296,11 +296,6 @@ async function fresh(browser: Browser, origin: string, route: string, viewport: 
 	return { context, page, baseline: await bodyHash(page) };
 }
 
-/** Content a control portaled into the body alike on several pages, by control key: used again instead of using the control on every page. */
-export type RevealMemo = Map<string, { readonly html: string; readonly reveal: Reveal; count: number }>;
-
-const REUSE_AFTER = 3;
-
 type Open = { context: BrowserContext; page: Page; baseline: string };
 
 /** Uses one candidate the way captureReveals does, then puts the page back (loading it again when using the control left it changed). */
@@ -316,7 +311,7 @@ async function useCandidate(open: Open, candidate: Candidate, again: () => Promi
 }
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks()): Promise<RevealCapture> {
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) {
@@ -344,28 +339,13 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			for (const candidate of found) {
 				if (!candidate.visible || done.has(candidate.key)) continue;
-				const known = memo.get(`${viewport.name} ${candidate.key}`);
-				if (known && known.count >= REUSE_AFTER) {
-					done.add(candidate.key);
-					reveals.push({ ...known.reveal, path: candidate.path, sig: candidate.sig, nth: candidate.nth });
-					continue;
-				}
 				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
 				open = used.open;
 				const added = used.added;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
 				else {
 					done.add(candidate.key);
-					if (added.length) {
-						const shown: Reveal = { key: candidate.key, path: candidate.path, sig: candidate.sig, nth: candidate.nth, action: candidate.action, viewport: viewport.name, added };
-						reveals.push(shown);
-						const html = added.map((a) => a.html).join('');
-						const entry = memo.get(`${viewport.name} ${candidate.key}`);
-						if (added.every((a) => a.into === 'body')) {
-							if (entry && entry.html === html) entry.count++;
-							else memo.set(`${viewport.name} ${candidate.key}`, { html, reveal: shown, count: 1 });
-						}
-					}
+					if (added.length) reveals.push({ key: candidate.key, path: candidate.path, sig: candidate.sig, nth: candidate.nth, action: candidate.action, viewport: viewport.name, added });
 				}
 			}
 		} finally {
@@ -407,20 +387,20 @@ export interface ListedControls {
 }
 
 /** Every pass over one route's controls (ARIA-marked, listed, child-rendered hovers, listed openers, scroll areas), joined. */
-export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo, options: ListedControls = {}): Promise<RevealCapture> {
+export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls = {}): Promise<RevealCapture> {
 	const failed = (error: Error): RevealCapture => ({ route, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
 	// A listed control with routes is the site's on those routes only.
 	const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(route)).map(([selector, action]) => [selector, action] as const);
-	const own = await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, extra).catch(failed);
+	const own = await captureReveals(browser, origin, route, dir, VIEWPORTS, extra).catch(failed);
 	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
-	const listed = extra.length ? await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
+	const listed = extra.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
 	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
 	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
-	const child = await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
+	const child = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
 	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);
-	const opened = opens.length ? await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
-	const scroll = await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
+	const opened = opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
+	const scroll = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
 	const keys = new Set(base.map((r) => r.key));
 	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals];
 	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };

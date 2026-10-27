@@ -336,11 +336,11 @@ export default function Users({{ url, http }}: PageProps) @{{
 	const prefs = layoutPrefs(http.request.headers.get('cookie'));
 	const initial = fromSearch(url.search);
 	let sorting = state('');
-	let username = state(initial.username);
-	let status = state(initial.status);
-	let role = state(initial.role);
-	let page = state(initial.page);
-	let pageSize = state(initial.pageSize);
+	let username = state<string>(initial.username);
+	let status = state<string>(initial.status);
+	let role = state<string>(initial.role);
+	let page = state<number>(initial.page);
+	let pageSize = state<number>(initial.pageSize);
 	let selected = state('');
 	let hidden = state('');
 	const m = menus();

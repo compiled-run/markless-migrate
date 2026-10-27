@@ -53,9 +53,11 @@ function registered(thread: Pick<Thread, 'rootId' | 'items' | 'settings'>): {
 } {
 	const { rootId, items, settings } = thread;
 	const comments: Item[] = [];
-	const children = new Map<number, number[]>([[rootId, []]]);
+	const children = new Map<number, number[]>();
+	children.set(rootId, []);
 	const parents = new Map<number, number>();
-	const queue: [number, number][] = (items[rootId]?.kids ?? []).map((id) => [id, rootId]);
+	const queue: [number, number][] = [];
+	for (const id of items[rootId]?.kids ?? []) queue.push([id, rootId]);
 	while (queue.length) {
 		const [id, parent] = queue.shift()!;
 		const item = items[id];

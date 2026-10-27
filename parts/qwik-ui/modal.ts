@@ -1,8 +1,9 @@
 // @qwik-ui/headless Modal (modal/*): the trigger (aria-haspopup="dialog") toggles its dialog, which opens with
 // showModal(), locks the page's scroll as @fluejs/noscroll does (an attribute on <body>, its stylesheet, the scrollbar's
 // width kept as padding) and keeps Tab inside it (focus-trap, Escape left to the dialog). Escape closes it; a press on the
-// backdrop (the dialog element itself, outside its box) closes it unless it is an alert dialog. Closing marks it
-// data-closing and modal-closing, waits for its animation (else its transition) to end, then closes it.
+// backdrop (the dialog element itself, outside its box) closes it unless it is an alert dialog or its Root has
+// closeOnBackdropClick false (data-mm-backdrop-close, from the modal's context in the page's paused state). Closing marks
+// it data-closing and modal-closing, waits for its animation (else its transition) to end, then closes it.
 // A close control has no marker in Qwik UI's markup: convert marks the buttons that closed the dialog on the old page
 // (data-mm-close).
 const DIALOG = 'dialog[id$="-root"]';
@@ -13,6 +14,8 @@ const ADJUSTED = 'data-noscroll-target-scroll-scrollbar-width-adjustment';
 const dialogOfTrigger = (trigger: Element) => trigger.parentElement?.querySelector<HTMLDialogElement>(`:scope > ${DIALOG}`) ?? null;
 const triggerOfDialog = (dialog: Element) => dialog.parentElement?.querySelector<HTMLElement>(`:scope > ${TRIGGER}`) ?? null;
 const openDialogs: HTMLDialogElement[] = [];
+// focus-trap's returnFocusOnDeactivate: what had focus when the dialog opened gets it back once it has closed.
+const returnTo = new WeakMap<HTMLDialogElement, HTMLElement>();
 
 function lockStyles(): void {
 	if (document.head.querySelector('style[data-noscroll-global-styles]')) return;
@@ -50,6 +53,8 @@ function markState(dialog: HTMLDialogElement, on: boolean): void {
 /** Opens a Qwik UI modal as its trigger does; the site's own controls bound to its `show` signal call it too. */
 export function show(dialog: HTMLDialogElement): void {
 	if (dialog.open) return;
+	const before = document.activeElement;
+	if (before instanceof HTMLElement && before !== document.body) returnTo.set(dialog, before);
 	markState(dialog, true);
 	dialog.showModal();
 	if (!openDialogs.length) lock(true);
@@ -73,6 +78,9 @@ export function close(dialog: HTMLDialogElement): void {
 		dialog.close();
 		openDialogs.splice(openDialogs.indexOf(dialog), 1);
 		if (!openDialogs.length) lock(false);
+		const back = returnTo.get(dialog);
+		// After the pointer's own default focus, which a press on the backdrop that closed the dialog still runs.
+		if (back) setTimeout(() => back.isConnected && !dialog.open && back.focus());
 	};
 	if (!animation && !transition) return finish();
 	const done = (event: Event) => {

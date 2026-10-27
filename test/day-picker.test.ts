@@ -149,6 +149,12 @@ test('a preset button sets the selection and the month it falls in', () => {
 	assert.equal(dayPickerModel(base, set).months[0]!.caption, 'February 2026');
 });
 
+test('a preset button used on a copy of the view, as a converted page hands it, sets what it sets on the view itself', () => {
+	const view = dayPickerView(base, JAN_15);
+	const effect = { s: [{ t: 20 }], m: 'selected' } as const;
+	assert.deepEqual(dayPickerSet(base, structuredClone(view), effect, 'copy'), dayPickerSet(base, view, effect, 'live'));
+});
+
 test("a dropdown's selected attribute stays on the first month React rendered; a remount's render writes none", () => {
 	const dropdown: DayPickerConfig = { ...base, caption: 'dropdown' };
 	const marked = (config: DayPickerConfig) => dayPickerModel(config, dayPickerNext(config, dayPickerView(config, JAN_15), { t: 'nav', dir: 1 })).months[0]!.monthOptions.find((o) => o.selected === '')?.value;

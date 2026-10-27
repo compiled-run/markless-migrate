@@ -1,3 +1,4 @@
+import { previousFilesGone } from './skew.ts';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -81,7 +82,7 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		return result.wired ? 0 : 1;
 	}
 	if (sub === 'check') {
-		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
+		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, previous: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
 		if (!values.new) throw new Error('cache check needs --new <origin>');
 		const plan = await readCachingPlan(join(cwd, STATE_DIR));
 		if (!plan) throw new Error('cache check needs .migrate/caching.json: run cache plan first');
@@ -103,7 +104,14 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 			slower = failures.length > 0;
 			out(`\nPage load of ${route}, deployed:\n${psiLines(psi).map((l) => `  ${l}`).join('\n')}\n${failures.map((f) => `  FAIL ${f.check}: ${f.actual}\n`).join('')}${key ? '' : `\n${PSI_NOTICE}\n`}`);
 		}
-		return report.findings.length || slower ? 1 : 0;
+		// A tab opened on the deployment this one replaces asks for that deployment's files by their names.
+		let gone = 0;
+		if (values.previous) {
+			const files = await previousFilesGone(values.previous, values.new, routes.filter((r) => r.html !== false).map((r) => r.route));
+			gone = files.length;
+			out(`\nFiles the previous deployment's pages load, at once or on use, still served by this one: ${files.length ? `${files.length} are not` : 'all'}\n${files.slice(0, 20).map((f) => `  FAIL ${f.status || 'no answer'} ${f.path} (loaded by ${f.route} on ${values.previous})\n`).join('')}${files.length ? '  A tab opened before this deploy loses its next chunk or stylesheet: keep each content-hashed file of earlier deployments in this one (they cannot collide), or pin a tab to its deployment (Vercel Skew Protection).\n' : ''}`);
+		}
+		return report.findings.length || slower || gone ? 1 : 0;
 	}
 	throw new Error(`cache needs plan, apply or check\n\n${CACHE_USAGE}`);
 }

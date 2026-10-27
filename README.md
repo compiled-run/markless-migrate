@@ -35,7 +35,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
 markless-migrate guard build [--dir .output]
 markless-migrate guard page --old http://localhost:3000 --new http://localhost:5173 [--route /about]...
-markless-migrate cache plan|apply|check [--old <origin>] [--app <dir>] [--new <origin>] [--route <path>]...
+markless-migrate cache plan|apply|check [--old <origin>] [--app <dir>] [--new <origin>] [--previous <origin>] [--route <path>]...
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -730,7 +730,9 @@ and a document share an entry or a page answering the fragment header differentl
 when HTML is kept by browsers (immutable, `max-age` of a day or more) or a changing page is kept until
 the next deploy; when a static page is not kept, or a page the old site's CDN kept is not (including one
 the port made personal); when a cached page's fragment URL is not kept (every prefetch and in-place
-navigation would run a function); and when a content-hashed file the page loads is not kept by browsers. It
+navigation would run a function); and when a content-hashed file the page loads is not kept by browsers. With `--previous <deployment>` (the one this deploy replaces) it also follows every file that deployment's pages load, at once or
+on use (each script's static and dynamic imports), and is red for each one the new deployment answers with an error: a tab opened
+before the deploy asks for its next chunk or stylesheet by those names. It
 reports the CDN hit rate on the second pass, function invocations per page view and TTFB. Platform
 facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
 

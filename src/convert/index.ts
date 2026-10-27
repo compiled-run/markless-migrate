@@ -6,8 +6,8 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, type RevealMemo, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
-import { captureChoices, copyBinding, type Choice } from './choices.ts';
+import { captureRouteReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
@@ -23,7 +23,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -631,6 +631,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			const chosen = values && text !== undefined ? values[text] : undefined;
 			if (chosen?.value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value: chosen.value }];
 			if (chosen?.shown !== undefined && chosen.shown !== text) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-text'), { name: 'data-mm-text', value: chosen.shown }];
+			markChosenHref(el, values);
 		}
 		selectIndicators(top);
 		comboboxIndicators(top);
@@ -980,7 +981,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const log = options.log ?? (() => {});
 	const app = options.app;
 	const state = join(app, '.migrate');
-	const planned = JSON.parse(await readFile(join(state, 'inventory.json'), 'utf8')) as { routes: { route: string; status: number }[]; allRoutes?: { route: string; status?: number; contentType?: string }[] };
+	const planned = JSON.parse(await readFile(join(state, 'inventory.json'), 'utf8')) as { routes: { route: string; status: number }[]; allRoutes?: { route: string; status?: number; contentType?: string; redirectsTo?: string }[] };
 	// allRoutes carries each route's content type; routes only those the browser inventoried.
 	const types = new Map((planned.allRoutes ?? []).map((r) => [r.route, r]));
 	const inventory = { routes: [...new Map([...planned.routes.map((r) => [r.route, { route: r.route, status: r.status, contentType: types.get(r.route)?.contentType }] as const), ...(planned.allRoutes ?? []).filter((r) => r.status !== undefined).map((r) => [r.route, { route: r.route, status: r.status!, contentType: r.contentType }] as const)]).values()] };
@@ -1054,7 +1055,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
 		const reachOf = (r: Reveal): EmptyReach | undefined => (!r.sig ? undefined : r.added.some((a) => a.html.includes('data-trigger="ComboBox"')) ? 'beside' : r.added.some((a) => /<input\b(?=[^>]*\bdata-rac\b)(?=[^>]*aria-autocomplete="list")(?![^>]*role="combobox")/.test(a.html)) ? 'opens' : undefined);
 		const racCalendar = (html: string) => /role="application"[^>]*data-rac=|data-rac=[^>]*role="application"/.test(html);
-		const memo: RevealMemo = new Map();
 		let revealedCount = 0;
 		let toggledCount = 0;
 		// Everything one route's old page is read for, each capture taking a slot of the limit; set in the maps in route order once all are in.
@@ -1085,7 +1085,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
 			if (reveal && routes.includes(route)) {
-				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), memo, { extra, opens }));
+				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens }));
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
 				await scenesRead;
 				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
@@ -1224,25 +1224,28 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
-		// Options revealed without a link (a command palette's items): what choosing each did, once per control.
-		const seenKeys = new Set<string>();
-		const choosing: { route: string; reveal: Reveal; first: boolean }[] = [];
+		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options shown.
+		const choosing = new Map<string, { route: string; reveal: Reveal }>();
+		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
 		for (const [route, reveals] of revealed)
 			for (const reveal of reveals) {
 				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
 				// A Base UI listbox's values are its page's: generated ids repeat across pages.
 				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-				if (seenKeys.has(reveal.key) && !listbox) continue;
-				choosing.push({ route, reveal, first: !seenKeys.has(reveal.key) });
-				seenKeys.add(reveal.key);
+				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
+				if (!choosing.has(run)) choosing.set(run, { route, reveal });
+				shownOn.push({ route, reveal, run });
 			}
-		const chosenBy = await Promise.all(choosing.map(({ route, reveal }) => captureChoices(browser, options.old, route, reveal, at('choices'), log, limit)));
-		choosing.forEach(({ route, reveal, first }, i) => {
-			const found = chosenBy[i]!;
-			if (first && Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
-			const chosen = Object.entries(found).filter(([, c]) => c.value !== undefined || c.shown !== undefined);
+		const runs = [...choosing];
+		const chosenBy = new Map(await Promise.all(runs.map(async ([run, { route, reveal }]) => [run, await captureChoices(browser, options.old, route, reveal, at('choices'), log, limit)] as const)));
+		for (const { route, reveal, run } of shownOn) {
+			const found = chosenBy.get(run)!;
+			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);
+			if (copied.length && !choices[reveal.key]) choices[reveal.key] = Object.fromEntries(copied);
+			// Where an option went is its page's (written on the option), as is what it gave a form.
+			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined);
 			if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
-		});
+		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
 			const forms = await eachLimited(limit, routes, (route) => captureForms(browser, options.old, route, at('toggles')).catch(() => ({ route, forms: [] })));
@@ -1296,7 +1299,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (!frameworkBuilds((await ref.load()).server).some((b) => b.framework === 'Qwik')) break;
 		const symbols = await readQwikSymbols(options.old);
 		if (symbols) {
-			qwikHandlers = { symbols, marks: QWIK_HANDLER_MARKS };
+			qwikHandlers = { symbols, marks: QWIK_HANDLER_MARKS, contexts: QWIK_CONTEXT_PROPS };
 			log(`Qwik handlers named from the old build's q-manifest.json: ${symbols.size} symbols`);
 		}
 		break;
@@ -1880,7 +1883,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (route.status !== 200 || route.route.includes('?') || (route.contentType ?? 'text/html').includes('html')) continue;
 			if (!(await stat(join(publicDir, route.route)).then((x) => x.isFile(), () => false))) builtPaths.add(route.route);
 		}
-		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], log });
+		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string>; overrides?: Record<string, unknown> };
