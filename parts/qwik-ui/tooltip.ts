@@ -1,7 +1,7 @@
 // @qwik-ui/headless Tooltip (tooltip/*): pointing at the trigger or focusing it shows the panel at once (a manual popover
 // placed on the trigger's top by default) and its data-state goes opening, then open after the delay the old page used
 // (data-mm-delay, else at once); leaving or blurring it hides the panel and the state goes closing, then closed.
-// Escape closes an open tooltip.
+// Escape closes an open tooltip. Each show and hide is dispatched on the trigger (qui-tooltip-open), what onOpenChange$ hears.
 import { hidePanel, place, showPanel, unplace } from './floating.ts';
 
 const TRIGGER = '[aria-describedby][data-state]';
@@ -23,18 +23,24 @@ function state(trigger: HTMLElement, now: string, then: string): void {
 	else trigger.setAttribute('data-state', then);
 }
 
+const shown = (trigger: HTMLElement) => /^open/.test(trigger.getAttribute('data-state') ?? '');
+
 function show(trigger: HTMLElement, panel: HTMLElement): void {
+	const was = shown(trigger);
 	showPanel(panel);
 	place(trigger, panel, 'top');
 	state(trigger, 'opening', 'open');
 	openTrigger = trigger;
+	if (!was) trigger.dispatchEvent(new CustomEvent('qui-tooltip-open', { bubbles: true, detail: 'open' }));
 }
 
 function hideTip(trigger: HTMLElement, panel: HTMLElement): void {
+	const was = shown(trigger);
 	unplace(panel);
 	hidePanel(panel);
 	state(trigger, 'closing', 'closed');
 	if (openTrigger === trigger) openTrigger = undefined;
+	if (was) trigger.dispatchEvent(new CustomEvent('qui-tooltip-open', { bubbles: true, detail: 'closed' }));
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {

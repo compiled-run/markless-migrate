@@ -308,3 +308,30 @@ test('select: a multiple select tells its display value as the chosen items in t
 	assert.deepEqual(await p.evaluate(() => (window as unknown as { told: string[] }).told), ['Blueberry', 'Blueberry, Apple', 'Apple']);
 	await p.close();
 });
+
+test("select, combobox and tooltip tell each open and close (and a combobox each choice) on themselves, as onOpenChange$ and onChange$ hear them", async () => {
+	const TIP = `<div><button aria-describedby="t1" data-state="closed">tip</button><div hidden data-floating="absolute" role="tooltip" id="t1-panel" popover="manual">Tip</div></div>`;
+	const COMBO = `<div role="group" data-combobox-root data-closed><div data-combobox-control><input role="combobox" id="c1-input" aria-controls="c1-panel" aria-expanded="false"><button type="button" tabindex="-1">v</button></div><div hidden data-floating="absolute" id="c1-panel" role="listbox" popover="manual"><div role="option" data-item id="c1-0" aria-selected="false"><span id="c1-0-item-label">Apple</span></div></div></div>`;
+	const p = await open(`${SELECT_PAGE}${COMBO}${TIP}`, ['qwik-ui/select', 'qwik-ui/combobox', 'qwik-ui/tooltip']);
+	await p.evaluate(() => {
+		const w = window as unknown as { heard: unknown[] };
+		w.heard = [];
+		for (const type of ['qui-select-open', 'qui-combobox-open', 'qui-combobox-change', 'qui-tooltip-open']) document.addEventListener(type, (e) => w.heard.push([type, (e as CustomEvent).detail]));
+	});
+	await p.click('#s1-trigger');
+	await p.keyboard.press('Escape');
+	await p.click('[data-combobox-control] button');
+	await p.click('#c1-0');
+	await p.hover('text=tip');
+	await p.mouse.move(900, 700);
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [
+		['qui-select-open', true],
+		['qui-select-open', false],
+		['qui-combobox-open', true],
+		['qui-combobox-change', 'Apple'],
+		['qui-combobox-open', false],
+		['qui-tooltip-open', 'open'],
+		['qui-tooltip-open', 'closed'],
+	]);
+	await p.close();
+});
