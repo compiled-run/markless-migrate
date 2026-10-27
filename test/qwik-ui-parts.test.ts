@@ -205,3 +205,36 @@ test("a site handler's captured strings come from the page's paused state, so it
 	assert.equal(attr(b!, 'data-mm-qwik-captures'), '["base-gray"]');
 	assert.equal(attr(a!, 'q:id'), undefined);
 });
+
+const GROUP = `<div role="group" data-qui-togglegroup-root data-orientation="horizontal" dir="ltr">${['L', 'C', 'R'].map((x, i) => `<button type="button" data-qui-togglegroup-item id="g${x}" aria-pressed="false" aria-disabled="false" tabindex="${i ? -1 : 0}">${x}</button>`).join('')}</div>`;
+
+test('toggle group: arrows move focus along the orientation without pressing, stopping at the ends', async () => {
+	const p = await open(GROUP, ['qwik-ui/toggle-group']);
+	await p.focus('#gL');
+	await p.keyboard.press('ArrowRight');
+	assert.equal(await focused(p), 'gC');
+	await p.keyboard.press('ArrowDown');
+	assert.equal(await focused(p), 'gC', 'Down does nothing horizontally');
+	await p.keyboard.press('ArrowRight');
+	await p.keyboard.press('ArrowRight');
+	assert.equal(await focused(p), 'gR', 'no wrapping without loop');
+	assert.equal(await p.getAttribute('#gR', 'aria-pressed'), 'false');
+	await p.close();
+});
+
+const CAROUSEL = `<div role="group" data-qui-carousel aria-roledescription="carousel" slidesperview="1" move="1"><div data-qui-carousel-viewport style="overflow:hidden;width:200px"><div data-qui-carousel-scroller data-align="start" style="display:flex;gap:10px;transition:none">${[0, 1, 2].map((i) => `<div data-qui-carousel-slide id="k-${i}" aria-roledescription="slide" style="flex:0 0 200px;height:50px"${i ? ' inert' : ' data-active'}>${i}</div>`).join('')}</div></div><button data-qui-carousel-prev aria-label="previous slide" disabled aria-disabled="true">prev</button><button data-qui-carousel-next aria-label="next slide">next</button><div role="tablist">${[0, 1, 2].map((i) => `<button role="tab" aria-label="Slide ${i + 1}" aria-controls="k-${i}" tabindex="${i ? -1 : 0}"${i ? '' : ' data-active aria-selected="true"'}>${i}</button>`).join('')}</div></div>`;
+
+test('carousel: Next moves the track one slide and its gap, marks the slide active and the bullet selected; it stops at the end', async () => {
+	const p = await open(CAROUSEL, ['qwik-ui/carousel']);
+	await p.getByText('next').click();
+	assert.equal(await p.locator('[data-qui-carousel-scroller]').evaluate((e) => (e as HTMLElement).style.transform), 'translate3d(-210px, 0px, 0px)');
+	assert.equal(await p.locator('#k-1').evaluate((e) => e.hasAttribute('data-active') && !(e as HTMLElement).inert), true);
+	assert.equal(await p.locator('#k-0').evaluate((e) => (e as HTMLElement).inert), true);
+	assert.equal(await p.getByRole('tab', { name: 'Slide 2' }).getAttribute('aria-selected'), 'true');
+	assert.equal(await p.getByText('prev').isDisabled(), false);
+	await p.getByText('next').click();
+	assert.equal(await p.getByText('next').isDisabled(), true, 'Next is disabled at the last stop');
+	await p.getByRole('tab', { name: 'Slide 1' }).click();
+	assert.equal(await p.locator('[data-qui-carousel-scroller]').evaluate((e) => (e as HTMLElement).style.transform), 'translate3d(0px, 0px, 0px)');
+	await p.close();
+});
