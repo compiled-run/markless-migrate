@@ -193,6 +193,16 @@ export class SelectPlan {
 	add(root: Element, isBaseSelect: (el: Element) => boolean, emit?: (html: string) => string): number {
 		let count = 0;
 		for (const trigger of walk(root)) {
+			// Qwik UI's Select: its trigger in the root it renders (data-qui-select-root), its DisplayValue span marked data-value.
+			const quiValue = attr(trigger, 'aria-haspopup') === 'listbox' && closestOf(trigger, (el) => attr(el, 'data-qui-select-root') !== undefined) ? [...walk(trigger)].find((el) => el !== trigger && attr(el, 'data-value') !== undefined) : undefined;
+			if (quiValue) {
+				const name = `sel${this.n++}`;
+				const declare = [`let ${name} = state(${lit(textOf(quiValue))});`];
+				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => (${name} = (event as CustomEvent<string>).detail)}`] });
+				this.bindings.set(quiValue, { declare, children: `{${name}}` });
+				count++;
+				continue;
+			}
 			if (attr(trigger, 'data-slot') !== 'select-trigger' || !isBaseSelect(trigger)) continue;
 			const value = [...walk(trigger)].find((el) => attr(el, 'data-slot') === 'select-value');
 			// A React Aria Select whose trigger renders the chosen text itself (a render function, no SelectValue): its
@@ -216,6 +226,11 @@ export class SelectPlan {
 		}
 		return count;
 	}
+}
+
+function closestOf(el: Element, test: (el: Element) => boolean): Element | undefined {
+	for (let at: Element | undefined = el; at && 'tagName' in at; at = at.parentNode as Element | undefined) if (test(at)) return at;
+	return undefined;
 }
 
 function textOf(el: Element): string {

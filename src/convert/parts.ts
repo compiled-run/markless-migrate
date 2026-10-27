@@ -35,6 +35,16 @@ export interface Port {
 	locate(el: Element): boolean;
 	/** Other modules under `parts/` it imports. */
 	readonly needs?: readonly string[];
+	/**
+	 * For a library whose parts carry no `data-slot` (@qwik-ui/headless): the element its own markup contract marks as
+	 * this port's, which places the port on a site whose source imports the library.
+	 */
+	readonly markup?: (el: Element) => boolean;
+	/**
+	 * Elements the port finds by the library handler they run on the old page (a Qwik handler's source file, from the old
+	 * build's q-manifest.json), marked with `mark` because the library writes nothing else on them (Qwik UI's Modal.Close).
+	 */
+	readonly handlers?: readonly { readonly origin: RegExp; readonly mark: string }[];
 }
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
@@ -69,6 +79,10 @@ function narrow(el: Element, candidates: readonly PartUsage[]): PartUsage[] {
 	const signed = Object.entries(SIGNATURES).filter(([, test]) => test(el)).map(([lib]) => lib);
 	return candidates.filter((c) => (signed.length ? signed.includes(c.library) : !(c.library in SIGNATURES)));
 }
+
+// @qwik-ui/headless writes no data-slot; each part is known by the markup Qwik UI renders for it (data-qui-*, its ids).
+const quiFloating = (el: Element) => attr(el, 'data-floating') !== undefined && attr(el, 'popover') !== undefined;
+const QWIK_UI = '@qwik-ui/headless';
 
 export const PORTS: readonly Port[] = [
 	// Radix Tabs are Markless state (convert's TabsPlan); the part is only the roving focus the triggers' keydown calls.
@@ -137,6 +151,14 @@ export const PORTS: readonly Port[] = [
 	// What a native element does plus React Aria's hover, press and focus states (and the focus-within ones of the
 	// groups around them): Markless state or the browser does the rest.
 	{ module: 'react-aria/interactions', library: 'react-aria-components', exports: ['Button', 'Link', 'Input', 'TextArea', 'Group', 'SearchField', 'Label', 'Checkbox', 'Radio', 'RadioGroup', 'Switch', 'ToggleButton', 'ToggleButtonGroup', 'Tabs', 'TabList', 'Tab', 'TabPanel', 'Breadcrumbs', 'Breadcrumb', 'Keyboard'], events: [], locate: () => true },
+	{ module: 'qwik-ui/tabs', library: QWIK_UI, exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Tab', 'Tabs.Panel'], events: ['click', 'keydown', 'focusin', 'pointerover'], locate: () => true, markup: (el) => attr(el, 'data-qui-tabs-root') !== undefined },
+	{ module: 'qwik-ui/collapsible', library: QWIK_UI, exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Trigger', 'Accordion.Content', 'Accordion.Header'], events: ['click', 'keydown'], locate: () => true, markup: (el) => attr(el, 'data-collapsible') !== undefined || attr(el, 'data-accordion') !== undefined },
+	{ module: 'qwik-ui/select', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Select.Root', 'Select.Trigger', 'Select.DisplayValue', 'Select.Popover', 'Select.Item', 'Select.ItemLabel', 'Select.ItemIndicator', 'Select.Label', 'Select.Group', 'Select.GroupLabel'], events: ['click', 'keydown', 'pointerover'], locate: () => true, markup: (el) => attr(el, 'data-qui-select-root') !== undefined },
+	{ module: 'qwik-ui/combobox', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Combobox.Root', 'Combobox.Input', 'Combobox.Trigger', 'Combobox.Popover', 'Combobox.Item', 'Combobox.ItemLabel', 'Combobox.ItemIndicator', 'Combobox.Empty', 'Combobox.Control', 'Combobox.Label'], events: ['keydown', 'input', 'pointerdown', 'click', 'pointerover', 'focusin'], locate: () => true, markup: (el) => attr(el, 'data-combobox-root') !== undefined },
+	{ module: 'qwik-ui/dropdown', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Dropdown.Root', 'Dropdown.Trigger', 'Dropdown.Popover', 'Dropdown.Item', 'Dropdown.CheckboxItem', 'Dropdown.RadioGroup', 'Dropdown.RadioItem', 'Dropdown.ItemIndicator', 'Dropdown.Group', 'Dropdown.GroupLabel', 'Dropdown.Separator'], events: ['click', 'keydown', 'pointerover'], locate: () => true, markup: (el) => attr(el, 'data-qui-dropdown') !== undefined },
+	{ module: 'qwik-ui/tooltip', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Panel', 'Tooltip.Arrow'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: () => true, markup: (el) => attr(el, 'role') === 'tooltip' && quiFloating(el) },
+	{ module: 'qwik-ui/popover', library: QWIK_UI, needs: ['qwik-ui/floating'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Panel', 'Popover.Anchor'], events: ['click'], locate: () => true, markup: (el) => attr(el, 'popovertarget') !== undefined || (quiFloating(el) && attr(el, 'role') === undefined) },
+	{ module: 'qwik-ui/modal', library: QWIK_UI, exports: ['Modal.Root', 'Modal.Trigger', 'Modal.Panel', 'Modal.Close', 'Modal.Title', 'Modal.Description'], events: ['click', 'pointerdown', 'keydown'], locate: () => true, markup: (el) => el.tagName === 'dialog' && /-root$/.test(attr(el, 'id') ?? ''), handlers: [{ origin: /\/kit-headless\/src\/components\/modal\/modal-close\.tsx$/, mark: 'data-mm-close' }] },
 	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
@@ -272,10 +294,28 @@ function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding |
 	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(config))}}`, ...keys] };
 }
 
+/** Every library handler a port finds its elements by (Port.handlers). */
+export const QWIK_HANDLER_MARKS: readonly { readonly origin: RegExp; readonly mark: string }[] = PORTS.flatMap((p) => p.handlers ?? []);
+
+let markupLibraries: ReadonlySet<string> = new Set();
+/** The libraries the old source imports whose parts are placed by their own markup (Port.markup). */
+export function useMarkupLibraries(next: Iterable<string>): void {
+	markupLibraries = new Set(next);
+}
+
+/** The ports an element's own markup places, for a library the source imports. */
+export function markupPorts(el: Element): string[] {
+	return PORTS.filter((p) => p.markup && markupLibraries.has(p.library) && p.markup(el)).map((p) => p.module);
+}
+
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
 	const found = docsearchBinding(el, uses);
 	if (found) return found;
+	for (const module of markupPorts(el)) {
+		if (uses instanceof Set) uses.add(module);
+		else if (!uses.some((u) => u.part === module)) uses.push({ part: module, import: () => '' });
+	}
 	const s = slot(el);
 	if (!s || !resolver) return undefined;
 	const candidates = narrow(el, resolver.candidates(s));

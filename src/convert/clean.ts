@@ -1,7 +1,7 @@
 import { RUNTIME_MARKERS } from '../check/residue.ts';
 export { frameworkBuilds } from '../client/builds.ts';
 import { frameworkInlineScript } from '../client/builds.ts';
-import { attr, childrenOf, isElement, remove, removeAttr, walk, type Document, type Element, type Node, type ParentNode } from './dom.ts';
+import { attr, childrenOf, isElement, remove, removeAttr, setAttr, walk, type Document, type Element, type Node, type ParentNode } from './dom.ts';
 
 /** Why the converter left a piece of the old page out, per rule, with how often it applied. */
 export type Dropped = Map<string, number>;
@@ -22,6 +22,13 @@ export interface CleanContext {
 	/** Every script URL of the old site already classified as framework code by its own text. */
 	readonly frameworkScripts: ReadonlySet<string>;
 	readonly origin: string;
+	/** A Qwik build's handler symbols (q-manifest.json), with the library handlers ports find their elements by. */
+	readonly qwik?: QwikHandlers;
+}
+
+export interface QwikHandlers {
+	readonly symbols: ReadonlyMap<string, { readonly origin: string; readonly name: string }>;
+	readonly marks: readonly { readonly origin: RegExp; readonly mark: string }[];
 }
 
 function localPath(url: string, origin: string): string | undefined {
@@ -46,6 +53,7 @@ function count(dropped: Dropped, rule: string): void {
  */
 export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped): void {
 	const doomed: Node[] = [];
+	const paused = ctx.qwik ? pausedState(doc) : undefined;
 	for (const el of walk(doc)) {
 		const tag = el.tagName;
 		if (ELEMENTS.has(tag)) {
@@ -55,7 +63,8 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 		}
 		if (tag === 'q:template') {
 			doomed.push(el);
-			count(dropped, "<q:template>: content Qwik keeps for a slot the page does not project");
+			if (projectIntoHost(el)) count(dropped, '<q:template>: its content moved into the slot host Qwik projects it into, hidden until a part shows it');
+			else count(dropped, "<q:template>: content Qwik keeps for a slot the page does not project");
 			continue;
 		}
 		if (tag === 'script') {
@@ -70,7 +79,10 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 			} else if (src ? isFrameworkCode(src, ctx) : GLOBALS.some((re) => re.test(text)) || FIZZ.test(text)) {
 				doomed.push(el);
 				count(dropped, src ? 'script: the old framework build' : "inline script: the old framework's server state or streaming runtime");
-			} else removeQwikAttributes(el, dropped);
+			} else {
+				if (ctx.qwik) nameQwikHandlers(el, ctx.qwik, paused);
+				removeQwikAttributes(el, dropped);
+			}
 			continue;
 		}
 		if (tag === 'link') {
@@ -92,6 +104,8 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 			count(dropped, "<template>: the old framework's streaming placeholder");
 			continue;
 		}
+		// Named before the markers go: a handler's captures are found by the element's q:id.
+		if (ctx.qwik) nameQwikHandlers(el, ctx.qwik, paused);
 		for (const name of [...el.attrs.map((a) => a.name)]) {
 			if (ATTRIBUTES.has(name)) {
 				removeAttr(el, name);
@@ -102,6 +116,84 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 	}
 	for (const node of doomed) remove(node);
 	stripComments(doc);
+}
+
+/**
+ * Qwik keeps a slot's content it has not projected yet in a <q:template> right after the slot's host (a select item's
+ * check icon beside its empty indicator span). The content goes into the empty host, each element hidden, so the
+ * part that shows it (on selection) only switches an attribute; Markless renders every node.
+ */
+function projectIntoHost(template: Element): boolean {
+	const parent = template.parentNode as ParentNode | null;
+	if (!parent) return false;
+	const siblings = childrenOf(parent);
+	const at = siblings.indexOf(template);
+	const host = siblings.slice(0, at).reverse().find((n) => isElement(n) || ('value' in n && String((n as { value: string }).value).trim() !== '')) as Element | undefined;
+	if (!host || !isElement(host) || childrenOf(host).some((n) => isElement(n) || ('value' in n && String((n as { value: string }).value).trim() !== ''))) return false;
+	const content = childrenOf(template).filter((n) => isElement(n));
+	if (!content.length) return false;
+	for (const node of content) {
+		const el = node as Element;
+		el.attrs = [...el.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }];
+		(el as unknown as { parentNode: ParentNode }).parentNode = host;
+		childrenOf(host).push(el);
+	}
+	childrenOf(template).length = 0;
+	return true;
+}
+
+// A Qwik handler attribute holds QRLs, `<chunk>#<symbol>[<captures>]`, one per handler, separated by whitespace.
+const SYMBOL = /#(\w+)/;
+
+/**
+ * What the handlers an element runs on the old page say about it, by their source (q-manifest.json): a library handler
+ * a port finds its elements by marks it; the app's own handlers are named, `<event>:<handler>`, for the site's parts.
+ */
+interface PausedState {
+	readonly refs: Readonly<Record<string, string>>;
+	readonly objs: readonly unknown[];
+}
+
+/** A paused Qwik container's state (`<script type="qwik/json">`): each element's captured objects by its q:id. */
+function pausedState(doc: Document): PausedState | undefined {
+	for (const el of walk(doc)) {
+		if (el.tagName !== 'script' || attr(el, 'type') !== 'qwik/json') continue;
+		try {
+			const state = JSON.parse(childrenOf(el).map((n) => ('value' in n ? (n as { value: string }).value : '')).join('')) as Partial<PausedState>;
+			return state.refs && state.objs ? { refs: state.refs, objs: state.objs } : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+// Qwik writes a value of another kind (a signal, a QRL, a store) as a string led by a control character.
+const plainString = (v: unknown): v is string => typeof v === 'string' && v !== '' && v.charCodeAt(0) >= 0x20;
+
+function capturedStrings(el: Element, paused: PausedState): string[] {
+	const ref = paused.refs[attr(el, 'q:id') ?? ''];
+	if (!ref) return [];
+	return ref.split(/\s+/).map((id) => paused.objs[parseInt(id.replace(/!$/, ''), 36)]).filter(plainString);
+}
+
+function nameQwikHandlers(el: Element, qwik: QwikHandlers, paused?: PausedState): void {
+	const own: string[] = [];
+	for (const a of el.attrs) {
+		const event = /^on(?:-window|-document)?:([\w-]+)$/.exec(a.name)?.[1];
+		if (!event) continue;
+		for (const qrl of a.value.split(/\s+/)) {
+			const symbol = qwik.symbols.get(SYMBOL.exec(qrl)?.[1] ?? '');
+			if (!symbol) continue;
+			const mark = qwik.marks.find((m) => m.origin.test(symbol.origin));
+			if (mark) setAttr(el, mark.mark, '');
+			else if (!symbol.origin.startsWith('../') && !symbol.origin.includes('node_modules')) own.push(`${a.name.startsWith('on:') ? '' : `${a.name.slice(3, a.name.indexOf(':'))}-`}${event}:${symbol.name}`);
+		}
+	}
+	if (!own.length) return;
+	setAttr(el, 'data-mm-qwik', [...new Set(own)].join(' '));
+	const captured = paused ? capturedStrings(el, paused) : [];
+	if (captured.length) setAttr(el, 'data-mm-qwik-captures', JSON.stringify(captured));
 }
 
 function removeQwikAttributes(el: Element, dropped: Dropped): void {
