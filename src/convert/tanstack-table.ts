@@ -7,7 +7,8 @@ import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
-import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { LATE_FONT } from '../../parts/late-fonts.ts';
 import { emitChildren, lit, mergeBindings, type Binding } from './tsrx.ts';
 
 // What a page's TanStack Table (v9, @tanstack/react-table's useTable) was given and how it showed each state, read from
@@ -956,6 +957,10 @@ export class TablePlan {
 		if (heads.length !== visible.length) return `its head shows ${heads.length} cells for ${visible.length} columns`;
 		const bodyRows = kids(tbody);
 		if (bodyRows.length !== initial.rows.length || bodyRows.some((tr) => tr.tagName !== 'tr' || kids(tr).length !== visible.length)) return 'its body rows are not one cell per column';
+		// Any row may show any record once the table sorts, filters or pages, so a late font one row draws waits on the body.
+		const late = bodyRows.flatMap((tr) => [...walk(tr)]).filter((el) => attr(el, LATE_FONT) !== undefined);
+		for (const el of late) removeAttr(el, LATE_FONT);
+		if (late.length) setAttr(tbody, LATE_FONT, '');
 
 		const v = `${name}v`;
 		const declare = [`const ${name} = ${placed.shared}();`, `const ${v} = computed(() => ttView(${spec}, ${name}.s, ${placed.cells}));`];
