@@ -6,7 +6,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
 import { attr, body, find, parseDocument, walk } from '../src/convert/dom.ts';
-import { markupPorts, QWIK_HANDLER_MARKS, registryModule, useMarkupLibraries } from '../src/convert/parts.ts';
+import { markupPorts, QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, registryModule, useMarkupLibraries } from '../src/convert/parts.ts';
 import { SelectPlan } from '../src/convert/stateful.ts';
 
 // A Qwik UI select as Qwik serves it, cut to one item: the item's indicator host is empty and the check icon waits in
@@ -175,6 +175,31 @@ test('modal: opens modal and locks the page, Tab stays inside, Escape and its cl
 	await p.getByText('Close').click();
 	assert.equal(await p.getAttribute('dialog', 'data-state'), 'closed');
 	await p.close();
+});
+
+test("modal: a press on the backdrop closes it and focus goes back to its trigger, as focus-trap's deactivation returns it; with closeOnBackdropClick false it stays open", async () => {
+	const p = await open(`${MODAL}<div tabindex="-1" id="holder"><button aria-haspopup="dialog" aria-expanded="false">Keep</button><dialog id="m2-root" data-mm-backdrop-close="false"><input id="other"></dialog></div>`, ['qwik-ui/modal']);
+	await p.getByText('Open').click();
+	await p.mouse.click(5, 400);
+	assert.equal(await p.locator('#m1-root').evaluate((d) => (d as HTMLDialogElement).open), false);
+	await p.waitForFunction(() => document.activeElement?.textContent === 'Open', null, { timeout: 2000 }).catch(() => {});
+	assert.equal(await focused(p), 'Open');
+	await p.getByText('Keep').click();
+	await p.mouse.click(5, 400);
+	assert.equal(await p.locator('#m2-root').evaluate((d) => (d as HTMLDialogElement).open), true);
+	await p.keyboard.press('Escape');
+	assert.equal(await focused(p), 'Keep');
+	await p.close();
+});
+
+test("a Qwik UI modal's own props come from its context in the page's paused state: closeOnBackdropClick false is written on its dialog", () => {
+	const objs = Object.assign(new Array(100).fill(''), { 1: 'm2', 2: false, 3: '\u0001', 4: 'm1', 5: { localId: '4', closeOnBackdropClick: '3', alert: '3' }, 6: { localId: '1', closeOnBackdropClick: '2', alert: '3' } });
+	const html = page(`<dialog id="m1-root" q:id="a"></dialog><dialog id="m2-root" q:id="b"></dialog><script type="qwik/json">${JSON.stringify({ refs: {}, ctx: {}, objs })}</script>`);
+	const doc = parseDocument(html);
+	cleanDocument(doc, { builds: frameworkBuilds(html).map((b) => b.path), frameworkScripts: new Set(), origin: 'http://old', qwik: { symbols: new Map(), marks: QWIK_HANDLER_MARKS, contexts: QWIK_CONTEXT_PROPS } }, new Map());
+	const [m1, m2] = [...walk(doc)].filter((el) => el.tagName === 'dialog');
+	assert.equal(attr(m1!, 'data-mm-backdrop-close'), undefined);
+	assert.equal(attr(m2!, 'data-mm-backdrop-close'), 'false');
 });
 
 test("Qwik's manifest names each handler's source: a library handler a port needs marks its element, the site's own are named", () => {
