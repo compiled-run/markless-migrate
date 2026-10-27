@@ -3,6 +3,7 @@ import { autoplaying, goTo, setAutoplay } from '../parts/qwik-ui/carousel.ts';
 import { openItem } from '../parts/qwik-ui/collapsible.ts';
 import { chooseItem, listOpen, setListOpen } from '../parts/qwik-ui/combobox.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
+import { chooseItem as chooseOption, openList } from '../parts/qwik-ui/select.ts';
 
 // The docs pages' example components (apps/website/src/routes/docs/**/examples), each control found by the handler it ran
 // on the old page (data-mm-qwik). Library behaviour comes from the ports in ../parts.
@@ -277,7 +278,7 @@ const comboboxDemos: Part = {
 		return false;
 	},
 	submit(target, event) {
-		if (!(target instanceof HTMLFormElement) || !target.matches(on('submit', 'form.tsx_form_component_handleSubmit'))) return false;
+		if (!(target instanceof HTMLFormElement) || !target.matches(on('submit', 'form.tsx_form_component_handleSubmit')) || !target.querySelector('[data-combobox-root]')) return false;
 		event.preventDefault();
 		const name = target.querySelector('select')?.name;
 		if (name) showSubmitted(target, name);
@@ -325,7 +326,76 @@ const comboboxDemos: Part = {
 	},
 };
 
+const USERS = ['Tim', 'Ryan', 'Jim', 'Jessie', 'Abby'];
+const selectItem = (id: string, i: number, label: string) => `<div tabindex="-1" aria-selected="false" aria-disabled="false" data-item="" role="option" id="${id}-${i}"><span tabindex="-1">${label}</span></div>`;
+// A Select.Root as select/*.tsx first render it in the browser; the panel's placement is what convert writes for the
+// server-rendered ones. Its shown value is the trigger's own text here (the server-rendered ones' is Markless state).
+const selectMarkup = (id: string) =>
+	`<div role="group" data-qui-select-root="" data-closed="" aria-invalid="false" class="select" data-mm-own-value=""><div id="${id}-label">Logged in users</div><button data-closed="" aria-expanded="false" aria-haspopup="listbox" class="select-trigger" id="${id}-trigger" aria-labelledby="${id}-value ${id}-label " aria-describedby="${id}-description \n      ${id}-error-message" aria-controls="${id}-panel"><span data-closed="" data-value="" id="${id}-value">Select an option</span></button><div id="${id}-root"><div popover="manual" hidden="" data-floating="absolute" id="${id}-panel" data-closed="" role="listbox" aria-labelledby="${id}-trigger" class="select-popover" data-mm-placement="bottom" data-mm-gutter="0">${USERS.map((u, i) => selectItem(id, i, u)).join('')}</div></div></div>`;
+const optionsOf = (root: Element) => [...(document.getElementById(root.querySelector('[aria-haspopup="listbox"]')?.getAttribute('aria-controls') ?? '')?.querySelectorAll('[role="option"]') ?? [])];
+
+// select controlled-value.tsx: Change to Abby writes bind:value; bind-open.tsx: a button sets bind:open; add-users.tsx: Add
+// Users adds three items once; form.tsx: submitting shows what the form carried; csr.tsx: a button renders a select.
+const selectDemos: Part = {
+	idle() {
+		document.addEventListener('mmchoose', (event) => {
+			const root = (event.target as Element).closest('[data-mm-own-value]');
+			const shown = root?.querySelector('[data-value]');
+			if (shown) shown.textContent = (event as CustomEvent<string>).detail;
+		});
+	},
+	submit(target, event) {
+		if (!(target instanceof HTMLFormElement) || !target.matches(on('submit', 'form.tsx_form_component_handleSubmit')) || !target.querySelector('[data-qui-select-root]')) return false;
+		event.preventDefault();
+		const name = target.querySelector('select')?.name ?? '';
+		const data = { [name]: new FormData(target).getAll(name) };
+		let shown = target.nextElementSibling?.hasAttribute('data-mm-submitted') ? target.nextElementSibling : null;
+		if (!shown) {
+			const t = document.createElement('template');
+			t.innerHTML = '<strong data-mm-submitted="">You submitted:</strong><code data-mm-submitted=""></code>';
+			target.after(t.content);
+			shown = target.nextElementSibling!;
+		}
+		shown.nextElementSibling!.textContent = JSON.stringify(data);
+		return true;
+	},
+	click(target) {
+		const abby = target.closest(on('click', 'controlled-value.tsx_controlled_value_component_Fragment_button_onClick'));
+		const valued = abby && rootBefore(abby, '[data-qui-select-root]');
+		if (valued) {
+			const item = optionsOf(valued).find((i) => i.textContent?.trim() === 'Abby');
+			if (item) chooseOption(item);
+			return true;
+		}
+		const opener = target.closest(on('click', 'bind-open.tsx_bind_open_component_Fragment_button_onClick'));
+		const opened = opener?.nextElementSibling;
+		if (opened?.matches('[data-qui-select-root]')) {
+			openList(opened);
+			return true;
+		}
+		const add = target.closest(on('click', 'add-users.tsx_add_users_component_Fragment_button_onClick'));
+		const grown = add && rootBefore(add, '[data-qui-select-root]');
+		if (grown) {
+			const panel = optionsOf(grown)[0]?.parentElement;
+			if (panel && !panel.hasAttribute('data-mm-added')) {
+				panel.setAttribute('data-mm-added', '');
+				const id = panel.id.replace(/-panel$/, '');
+				const t = document.createElement('template');
+				t.innerHTML = ['John', 'Jane', 'Bob'].map((u, i) => selectItem(id, USERS.length + i, u)).join('');
+				panel.append(t.content);
+			}
+			return true;
+		}
+		const render = target.closest(on('click', 'csr.tsx_csr_component_Fragment_button_onClick'));
+		if (render?.textContent?.trim() === 'CSR mode' && location.pathname.startsWith('/docs/headless/select')) {
+			renderAfter(render, selectMarkup(freshId()));
+			return true;
+		}
+		return false;
+	},
+};
+
 // dynamic.tsx's newItem: one object, made once per demo, so every add inserts the same item.
 const newItemId = new WeakMap<Element, string>();
 
-export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos];
+export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos, collapsibleDemos, comboboxDemos, selectDemos];
