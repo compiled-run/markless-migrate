@@ -45,6 +45,9 @@ on:
       - .github/workflows/check.yml
       - scripts/check-shards.ts
       - deploy/shadcn-ui/ci-serve.sh
+      - deploy/shadcn-ui/gzip.mjs
+      - deploy/shadcn-ui/serve-gzipped.mjs
+      - deploy/shadcn-ui/serve-vercel-output.mjs
 
 permissions:
   contents: read
@@ -173,6 +176,7 @@ jobs:
             ${{ env.APP }}/.migrate/check-progress
             ${{ runner.temp }}/check.txt
             ${{ runner.temp }}/new-serve.log
+            ${{ runner.temp }}/new-gzip.log
             ${{ runner.temp }}/old-serve.log
             ${{ runner.temp }}/old-build.log
           if-no-files-found: warn
