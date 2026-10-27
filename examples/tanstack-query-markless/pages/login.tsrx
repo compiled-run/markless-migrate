@@ -26,9 +26,9 @@ export default function Login({ url, http }: PageProps) @{
 				<button
 					class="text-sm bg-blue-500 text-white border inline-block py-1 px-2 rounded-sm"
 					onClick={async () => {
-						await logout();
 						loggedIn = false;
 						username = '';
+						await logout();
 					}}
 				>
 					Log out
@@ -45,9 +45,9 @@ export default function Login({ url, http }: PageProps) @{
 					onSubmit={async (event) => {
 						event.preventDefault();
 						const name = draft;
-						await login(name);
 						username = name;
 						loggedIn = true;
+						await login(name);
 						if (redirectTo) await navigate(redirectTo);
 					}}
 				>
