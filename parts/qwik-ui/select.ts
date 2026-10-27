@@ -6,6 +6,7 @@
 // typing jumps to an item by its text. Choosing marks the item selected, shows its indicator, sends its text to the
 // trigger's value (Markless state, convert's SelectPlan, through `mmchoose`) and syncs the hidden native select.
 // A press outside the panel and the trigger closes it. With aria-multiselectable, choosing toggles and keeps it open.
+// Each open and close is dispatched on the root (qui-select-open), what onOpenChange$ hears.
 import { enabled, hidePanel, mark, newTyping, outside, place, showPanel, step, typeahead, unplace, type Typing } from './floating.ts';
 
 const ROOT = '[data-qui-select-root]';
@@ -46,6 +47,7 @@ function setOpen(s: Select, on: boolean): void {
 	if (on === isOpen(s)) return;
 	mark([s.root, s.trigger, s.value, s.panel], on);
 	s.trigger.setAttribute('aria-expanded', String(on));
+	s.root.dispatchEvent(new CustomEvent('qui-select-open', { bubbles: true, detail: on }));
 	if (on) {
 		s.panel.setAttribute('aria-expanded', 'true');
 		showPanel(s.panel);

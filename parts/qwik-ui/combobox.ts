@@ -4,7 +4,8 @@
 // (wrapping only with data-mm-loop), Home and End go to the ends, Enter chooses (closing a single combobox), Escape and Tab
 // close. The trigger toggles the list and keeps focus in the input; a pointer over an item highlights it once the
 // pointer has entered the panel; a click chooses it. Choosing writes the item's text into the input. A press outside
-// the panel and the control closes it.
+// the panel and the control closes it. Each open and close, and each choice, is dispatched on the root
+// (qui-combobox-open, qui-combobox-change), what onOpenChange$ and onChange$ hear.
 import { enabled, hidePanel, mark, outside, place, showPanel, step, unplace } from './floating.ts';
 
 const ROOT = '[data-combobox-root]';
@@ -45,6 +46,7 @@ function setOpen(c: Combobox, on: boolean): void {
 	if (c.inline || on === isOpen(c)) return;
 	mark([c.root, c.trigger, c.panel], on);
 	c.input.setAttribute('aria-expanded', String(on));
+	c.root.dispatchEvent(new CustomEvent('qui-combobox-open', { bubbles: true, detail: on }));
 	c.trigger?.setAttribute('aria-expanded', String(on));
 	c.panel.setAttribute('aria-expanded', String(on));
 	if (on) {
@@ -92,6 +94,7 @@ function choose(c: Combobox, item: HTMLElement): void {
 		for (const option of native.options) option.selected = option.value !== '' && (chosen.has(option.value) || chosen.has(option.text.trim()));
 		native.dispatchEvent(new Event('input'));
 	}
+	c.root.dispatchEvent(new CustomEvent('qui-combobox-change', { bubbles: true, detail: labelOf(item) }));
 	if (!many && !c.inline) setOpen(c, false);
 }
 
