@@ -54,6 +54,15 @@ test('waste needs page URLs and a known profile; check takes --js-budget, --refe
 	assert.match(usage, /First-click waste, on by default/);
 });
 
+test('check on CI stops before checking anything when a browser the slow network is measured in is not installed', async () => {
+	const result = await spawnNode([CLI, 'check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--route', '/'], { env: { ...process.env, CI: 'true', PLAYWRIGHT_BROWSERS_PATH: '/nonexistent-playwright-browsers' }, timeoutMs: 60_000 });
+	assert.equal(result.status, 2);
+	assert.match(result.stderr, /chromium and firefox and webkit are not installed on this CI machine/);
+	const network = await spawnNode([CLI, 'network', 'http://127.0.0.1:1/', '--browser', 'firefox'], { env: { ...process.env, CI: 'true', PLAYWRIGHT_BROWSERS_PATH: '/nonexistent-playwright-browsers' }, timeoutMs: 60_000 });
+	assert.equal(network.status, 2);
+	assert.match(network.stderr, /firefox is not installed on this CI machine/);
+});
+
 test('an unknown command is a usage error', async () => {
 	assert.equal((await run('frobnicate')).status, 2);
 });

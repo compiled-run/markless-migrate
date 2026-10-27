@@ -6,7 +6,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
 import { attr, body, find, parseDocument, walk } from '../src/convert/dom.ts';
-import { markupPorts, QWIK_HANDLER_MARKS, useMarkupLibraries } from '../src/convert/parts.ts';
+import { markupPorts, QWIK_HANDLER_MARKS, registryModule, useMarkupLibraries } from '../src/convert/parts.ts';
 import { SelectPlan } from '../src/convert/stateful.ts';
 
 // A Qwik UI select as Qwik serves it, cut to one item: the item's indicator host is empty and the check icon waits in
@@ -63,10 +63,10 @@ after(async () => {
 
 async function open(markup: string, ports: readonly string[]): Promise<Page> {
 	const p = await browser.newPage({ viewport: { width: 1000, height: 800 } });
-	const registry = `${ports.map((m, i) => `import * as p${i} from './${m}.ts';`).join('\n')}\nexport const PARTS = [${ports.map((_, i) => `p${i}`).join(', ')}];`;
+	const registry = registryModule(ports, '.');
 	await p.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>[hidden]{display:none!important}[role=listbox][data-closed]{display:none}</style></head><body>${markup}<script type="module">import { behave, listen } from '/parts/index.ts'; listen(); window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>[hidden]{display:none!important}[role=listbox][data-closed]{display:none}</style></head><body>${markup}<script type="module">import { listen } from '/parts/registry.ts'; listen(); window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');

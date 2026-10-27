@@ -49,14 +49,14 @@ export default function CommandMenu({ fill }: { readonly fill: string }) @{
 									data-slot="command-item"
 									class="relative flex cursor-default items-center gap-2 px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground h-9 rounded-md border border-transparent px-3! font-normal data-[selected=true]:border-input data-[selected=true]:bg-input/50"
 									data-type={item.type}
-									id={`command-menu-result-${item.id}`}
+									id={item.optionId}
 									cmdk-item=""
 									role="option"
 									aria-disabled="false"
 									aria-selected="false"
 									data-disabled="false"
 									data-selected="false"
-									data-value={`${item.content} ${item.type}`.trim()}
+									data-value={item.value}
 									data-mm-href={item.url}
 								>
 									<div class="line-clamp-1 text-sm">{item.content}</div>

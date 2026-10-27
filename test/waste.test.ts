@@ -20,6 +20,7 @@ test('a source is owned by its package, a Markless package is the framework, and
 	assert.deepEqual(ownerOf('webpack://app/node_modules/cmdk/dist/index.mjs').owner, { kind: 'package', name: 'cmdk' });
 	assert.deepEqual(ownerOf('../../../../lib/parts/radix/dialog.ts').owner, { kind: 'library port', name: 'lib/parts/radix/dialog' });
 	assert.deepEqual(ownerOf('../../../../lib/parts/registry.ts').owner, { kind: 'parts registry', name: 'lib/parts/registry.ts' });
+	assert.deepEqual(ownerOf('../../../../lib/parts/registries/5d64ceb324d0.ts').owner, { kind: 'parts registry', name: 'lib/parts/registries/5d64ceb324d0.ts' });
 	assert.deepEqual(ownerOf('../../../../pages/docs/components/base/tabs.tsrx?markless-symbols').owner, { kind: 'page', name: 'pages/docs/components/base/tabs.tsrx' });
 	assert.deepEqual(ownerOf('\0rolldown/runtime.js').owner, { kind: 'generated', name: 'rolldown/runtime.js' });
 	assert.deepEqual(ownerOf('src/lib/parts-list.ts').owner, { kind: 'app', name: 'src/lib/parts-list.ts' });
