@@ -13,7 +13,7 @@ import { homedir } from 'node:os';
 import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
+import { measureSlowNetwork, missingBrowsersError, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { networkHtml } from './check/slow-network-html.ts';
 import { DEFAULT_JS_BUDGET, measureWaste, wasteFlags, wasteHtml, wasteLines, type WasteFlags, type WasteReport } from './check/waste.ts';
@@ -470,6 +470,14 @@ function slowNetworkOptions(values: SlowNetworkFlags): SlowNetworkOptions | unde
 	return options && { ...options, cacheDir: join(process.cwd(), STATE_DIR, 'slow-network') };
 }
 
+/** Fails before any route is checked when CI would otherwise skip a browser's slow-network cells. */
+function requireNetworkBrowsers(load: CheckOptions['load'], values: { only?: string; header?: string[]; cookie?: string[] }): void {
+	const network = load?.network;
+	if (!network || values.only === 'embeds' || values.only === 'coverage' || values.only === 'probes' || values.header?.length || values.cookie?.length) return;
+	const error = missingBrowsersError(network.browsers ?? ['chromium']);
+	if (error) fail(error);
+}
+
 function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean } & SlowNetworkFlags & WasteFlags): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
 	const count = (flag: 'load-runs' | 'psi-runs') => {
@@ -683,6 +691,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 	const navigation = navigationOptions(values, routes);
 	const load = loadOptions(values);
+	requireNetworkBrowsers(load, values);
 	const { old, new: next } = values;
 	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), beforeBuild: async () => void (await applyIfPlanned(cwd, resolve(cwd, values['new-source'] ?? '.'))), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
@@ -914,6 +923,7 @@ async function main(argv: string[]): Promise<number> {
 			const partial = !coverageOnly && Boolean(values.route?.length || values.targets || values.changed || loadOnly || embedsOnly);
 			const navigation = navigationOptions(values, partial ? planned : undefined);
 			const load = loadOptions(values);
+			requireNetworkBrowsers(load, values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 			const newDir = resolve(values['new-source'] ?? cwd);
@@ -1201,6 +1211,8 @@ async function main(argv: string[]): Promise<number> {
 			const timeout = whole('timeout', values.timeout);
 			const controls = values.control ?? [];
 			if (controls.length > 1 && controls.length !== positionals.length) fail('--control takes one selector for all pages, or one per page in order');
+			const missing = missingBrowsersError(browsers);
+			if (missing) fail(missing);
 			const sides = await measureSlowNetwork(positionals, {
 				profiles,
 				browsers,

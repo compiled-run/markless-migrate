@@ -461,6 +461,14 @@ export function browserInstalled(name: NetworkBrowser): boolean {
 	}
 }
 
+/** On CI a browser the slow-network lane measures but this machine lacks is an error, not a skipped cell: the port could be slower there. */
+export function missingBrowsersError(browsers: readonly NetworkBrowser[], env: NodeJS.ProcessEnv = process.env, installed: (name: NetworkBrowser) => boolean = browserInstalled): string | undefined {
+	if (!env.CI || /^(false|0)$/i.test(env.CI)) return undefined;
+	const missing = browsers.filter((b) => !installed(b));
+	if (!missing.length) return undefined;
+	return `the slow network is measured in ${browsers.join(', ')}, but ${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} not installed on this CI machine (pnpm exec playwright install --with-deps ${missing.join(' ')}); on CI a browser left out fails the check instead of skipping its cells. --slow-network-browser narrows the browsers on purpose`;
+}
+
 export interface SlowNetworkOptions extends NetworkRunOptions {
 	readonly profiles?: readonly string[];
 	readonly browsers?: readonly NetworkBrowser[];

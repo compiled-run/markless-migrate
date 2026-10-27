@@ -159,10 +159,11 @@ export function fontPreloads(urls: readonly string[], origin: string, already: n
 /**
  * Runs in the page: the font files it preloads that a face of its stylesheets names, and those of them the first screen
  * draws, by the font matching a browser does (the first family in an element's list with a face whose range has the
- * character). A preload the first screen does not draw takes bandwidth the stylesheets and scripts need.
+ * character). A preload the first screen does not draw takes bandwidth the stylesheets and scripts need. `swap` holds the
+ * preloaded files every face naming which is `font-display: swap`: their text paints in a fallback, so first paint does not need them.
  */
-export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: string[] } {
-	type Face = { family: string; ranges: [number, number][]; urls: string[] };
+export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: string[]; swap: string[] } {
+	type Face = { family: string; ranges: [number, number][]; urls: string[]; display: string };
 	const faces: Face[] = [];
 	const parseRanges = (value: string): [number, number][] =>
 		value
@@ -180,7 +181,7 @@ export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: strin
 				const family = rule.style.getPropertyValue('font-family').replace(/^["']|["']$/g, '').trim();
 				const range = rule.style.getPropertyValue('unicode-range');
 				const urls = [...rule.style.getPropertyValue('src').matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => new URL(m[1]!, rule.parentStyleSheet?.href ?? location.href).href);
-				faces.push({ family, ranges: range ? parseRanges(range) : [[0, 0x10ffff]], urls });
+				faces.push({ family, ranges: range ? parseRanges(range) : [[0, 0x10ffff]], urls, display: rule.style.getPropertyValue('font-display') || 'auto' });
 			} else if ('cssRules' in rule && (rule as CSSGroupingRule).cssRules) visit((rule as CSSGroupingRule).cssRules);
 		}
 	};
@@ -218,13 +219,28 @@ export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: strin
 			}
 		}
 	}
-	return { preloaded, drawn: preloaded.filter((u) => drawn.has(u)) };
+	const swap = preloaded.filter((u) => faces.every((f) => !f.urls.includes(u) || f.display === 'swap'));
+	return { preloaded, drawn: preloaded.filter((u) => drawn.has(u)), swap };
 }
 
-/** The head without the font preloads whose files (absolute URLs) no first screen of the page draws. */
-export function withoutOffscreenFontPreloads<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], offscreen: readonly string[], origin: string): T[] {
-	const gone = new Set(offscreen);
+/** The head without the font preloads of the given files (absolute URLs). */
+export function withoutFontPreloads<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], files: readonly string[], origin: string): T[] {
+	const gone = new Set(files);
 	return tags.filter((t) => !(t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && t.attrs.href && gone.has(new URL(t.attrs.href, origin).href)));
+}
+
+/**
+ * The head with the font preloads of the given files (absolute URLs), and `added`, after its last stylesheet at low
+ * priority: a `font-display: swap` font's text paints in a fallback, so the first paint does not wait for the file.
+ */
+export function swapFontPreloadsLow<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], files: readonly string[], origin: string, added: readonly T[] = []): T[] {
+	const swap = new Set(files);
+	const isSwap = (t: T) => t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && !!t.attrs.href && swap.has(new URL(t.attrs.href, origin).href);
+	const moved = [...tags.filter(isSwap), ...added].map((t) => ({ ...t, attrs: { ...t.attrs, fetchpriority: 'low' } }) as T);
+	const rest = tags.filter((t) => !isSwap(t));
+	const last = rest.findLastIndex((t) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? ''));
+	rest.splice(last < 0 ? rest.length : last + 1, 0, ...moved);
+	return rest;
 }
 
 /** The late faces as the page adds them, their files on the page's own origin given by path. */

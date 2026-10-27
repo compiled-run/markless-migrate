@@ -332,6 +332,21 @@ const sharedTabs: Part = {
 	},
 };
 
+// components/chart-iframe.tsx: a chart's frame is opacity-0 until its onLoad, then opacity-100 (the capture holds either).
+const frameLoaded = (frame: HTMLIFrameElement): boolean | undefined => {
+	const doc = frame.contentDocument;
+	return doc ? doc.URL !== 'about:blank' && doc.readyState === 'complete' : undefined;
+};
+const showFrame = (frame: HTMLIFrameElement, shown: boolean) => frame.classList.replace(shown ? 'opacity-0' : 'opacity-100', shown ? 'opacity-100' : 'opacity-0');
+const chartFrame: Part = {
+	mount(el) {
+		if (!(el instanceof HTMLIFrameElement) || !el.classList.contains('transition-opacity') || !(el.classList.contains('opacity-0') || el.classList.contains('opacity-100'))) return;
+		el.addEventListener('load', () => showFrame(el, true));
+		const loaded = frameLoaded(el);
+		if (loaded !== undefined) showFrame(el, loaded);
+	},
+};
+
 // registry/*/ui/sidebar.tsx's SidebarProvider: ⌘B or Ctrl+B toggles the sidebar, as its trigger does.
 const sidebarShortcut: Part = {
 	keydown(_target, event) {
@@ -354,4 +369,4 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
