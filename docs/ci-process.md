@@ -6,6 +6,10 @@ CI is green on `main` or the next push to `main` is the fix. A failing check is 
 
 `check` measures the slow network in Chromium, Firefox and WebKit by default. Every workflow job that runs `check` installs all three (`.github/actions/setup` with `browsers: chromium firefox webkit`), and with `CI` set, `check` exits 2 before checking anything if one of them is missing. `--slow-network-browser` narrows the browsers on purpose.
 
+## The real-site check workflow
+
+`check.yml` checks a 25-route build of ui.shadcn.com on thirteen runners, with the slow network in Chromium, Firefox and WebKit, and is dispatched against any port. Its self-test ran on every pull request that touched the workflow or its scripts, about 1,000 runner-minutes a run, while the org's other jobs queued behind it. It now runs nightly on `main` when `check.yml`, `.github/actions`, `scripts/check-shards.ts` or `deploy/shadcn-ui/ci-serve.sh` changed since the last green night, and on dispatch. To try a change before merging, run `gh workflow run check.yml --ref <branch>`. `convert.yml` keeps its two-runner self-test on pull requests, but saves the old site's 1.4 GB build only from `main` or a dispatch: a pull request's copy is visible to that pull request alone.
+
 ## Quarantine
 
 A nondeterministic failure whose cause is not fixed yet is listed here with its evidence, an owner and an expiry date at most two weeks out. The test keeps running. A red run of a listed test may be rerun once, and the rerun is noted on the PR. A listed failure in any other test, or a second red on rerun, is treated as a real failure. On the expiry date the entry is either fixed or reviewed and renewed with what was learned.
