@@ -68,3 +68,31 @@ test('a difference finer than the instrument can see is no verdict: a frame read
 	assert.equal(frame.ok, true);
 	assert.equal(verdicts.find((v) => v.metric === 'answered')!.band >= 250, true);
 });
+
+test('two sides served with different compression are one red finding, not a slowdown in every cell', () => {
+	const served = (origin: string, encoding: string, cssBytes: number) => [
+		{ url: `${origin}/`, type: 'document', start: 0, end: 2000, bytes: 56_000, encoding },
+		{ url: `${origin}/app.css`, type: 'stylesheet', start: 2100, end: 9000, bytes: cssBytes, encoding },
+		{ url: `${origin}/font.woff2`, type: 'font', start: 2100, end: 4000, bytes: 30_000, encoding: 'identity' },
+	];
+	const cells = (origin: string, encoding: string, cssBytes: number, answered: number) =>
+		(['chromium', 'firefox', 'webkit'] as const).map((b) => summarizeCell('regular-3g', b, [0, 10, 20, 30, 40].map((d) => run(answered + d, 1000 + d, served(origin, encoding, cssBytes)))));
+	const old = cells('https://old.example', 'gzip', 80_000, 5000);
+	const next = cells('https://new.example', 'identity', 620_000, 12_000);
+	const failures = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: old }, new: { url: 'https://new.example/docs', cells: next } });
+	assert.equal(failures.length, 1, failures.map((f) => f.check).join('\n'));
+	const [f] = failures;
+	assert.equal(f!.dimension, 'load');
+	assert.match(f!.check, /slow network: the two sides are served with different compression/);
+	assert.match(f!.expected, /gzip.*\/ \(document\).*\/app\.css \(stylesheet\)/);
+	assert.match(f!.actual, /as is/);
+	assert.doesNotMatch(f!.actual, /font\.woff2/);
+
+	const same = cells('https://new.example', 'gzip', 80_000, 12_000);
+	const slower = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: old }, new: { url: 'https://new.example/docs', cells: same } });
+	assert.ok(slower.length > 1 && slower.every((x) => /: (First painted frame|Largest paint|First click answered)/.test(x.check)), 'same encoding: each slower cell is its own finding');
+
+	const unknown = (cs: typeof old) => cs.map((c) => ({ ...c, runs: c.runs.map((r) => ({ ...r, requests: r.requests.map(({ encoding: _, ...q }) => q) })) }));
+	const cached = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: unknown(old) }, new: { url: 'https://new.example/docs', cells: next } });
+	assert.ok(cached.every((x) => !/different compression/.test(x.check)), 'runs that did not record their encoding are not compared');
+});

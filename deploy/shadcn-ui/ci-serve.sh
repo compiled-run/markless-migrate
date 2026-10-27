@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Serves one side of the ui.shadcn.com check on a CI runner, never a Vercel deployment:
 #   ci-serve.sh old          builds the old site (fetch-old.sh) and serves it on http://localhost:4000
-#   ci-serve.sh new <url>    serves a built port (a .tar.gz of the app's .output, node-server preset) on http://127.0.0.1:3000
+#   ci-serve.sh new <url>    serves a built port (a .tar.gz of the app's .output, node-server preset) on http://127.0.0.1:3000, gzipped as next start serves the old side
 # Both start in the background and return once the site answers.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +42,9 @@ case "${1:-}" in
 		if [ -n "$vercel" ]; then
 			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		else
-			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+			(cd "$dest" && PORT=3001 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+			wait_for http://127.0.0.1:3001/
+			nohup node "$DIR/serve-gzipped.mjs" 3001 3000 > "$RUNNER_TEMP/new-gzip.log" 2>&1 &
 		fi
 		wait_for http://127.0.0.1:3000/
 		;;

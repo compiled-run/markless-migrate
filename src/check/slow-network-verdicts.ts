@@ -99,6 +99,14 @@ export function settledNotSlower(old: readonly NetworkRun[], next: readonly Netw
 	return true;
 }
 
+const pathOf = (url: string) => {
+	try {
+		const u = new URL(url);
+		return `${u.pathname}${u.search}`;
+	} catch {
+		return url;
+	}
+};
 const KB = (bytes: number) => `${(bytes / 1000).toFixed(1)} kB`;
 
 /** The requests the run finished before its answer (or its first painted frame), largest first, each with the seconds of the link its bytes took. */
@@ -108,18 +116,10 @@ export function criticalPath(run: NetworkRun | undefined, metric: RunMetric, byt
 	if (by === undefined) return '';
 	const before = run.requests.filter((r) => r.end <= by).sort((a, b) => b.bytes - a.bytes);
 	const total = before.reduce((sum, r) => sum + r.bytes, 0);
-	const path = (url: string) => {
-		try {
-			const u = new URL(url);
-			return `${u.pathname}${u.search}`;
-		} catch {
-			return url;
-		}
-	};
 	const what = metric === 'answered' ? 'the answer' : metric === 'lcp' ? 'the largest paint' : 'the first painted frame';
 	return `before ${what} the new page finished ${Math.round(total / 1000)} kB (${(total / bytesPerSecond).toFixed(1)} s of the link): ${before
 		.slice(0, count)
-		.map((r) => `${r.type} ${path(r.url)} ${KB(r.bytes)} (${(r.bytes / bytesPerSecond).toFixed(1)} s)`)
+		.map((r) => `${r.type} ${pathOf(r.url)} ${KB(r.bytes)} (${(r.bytes / bytesPerSecond).toFixed(1)} s)`)
 		.join(', ')}`;
 }
 
@@ -128,9 +128,47 @@ const runList = (runs: readonly NetworkRun[], metric: RunMetric) => values(runs,
 export const NETWORK_HINT =
 	'The new page paints or answers its first click later than the old one in this browser on this network, beyond how far the old page differs from itself. Every byte it needs first shares one slow link: the requests listed came before the answer, largest first. Fetch less before the first paint and the first click (fonts the first view does not show, stylesheets for other pages, code for controls below the fold), and keep the HTML small.';
 
+const TEXT_TYPES = new Set(['document', 'stylesheet', 'script']);
+
+/** The document, stylesheets and scripts both sides fetched at one path, where one side compressed the response and the other sent it as is. */
+export function encodingMismatch(old: RouteNetwork['old'], next: RouteNetwork['new']): { path: string; type: string; old: string; new: string }[] {
+	const encodings = (side: RouteNetwork['old']) => {
+		const seen = new Map<string, { type: string; encoding: string }>();
+		for (const cell of side.cells) for (const run of cell.runs) for (const r of run.requests) if (r.encoding && TEXT_TYPES.has(r.type)) seen.set(pathOf(r.url), { type: r.type, encoding: r.encoding });
+		return seen;
+	};
+	const before = encodings(old);
+	const out: { path: string; type: string; old: string; new: string }[] = [];
+	for (const [path, n] of encodings(next)) {
+		const o = before.get(path);
+		if (o && o.type === n.type && (o.encoding === 'identity') !== (n.encoding === 'identity')) out.push({ path, type: n.type, old: o.encoding, new: n.encoding });
+	}
+	return out;
+}
+
+const listed = (items: readonly { path: string; type: string }[]) => `${items.slice(0, 5).map((m) => `${m.path} (${m.type})`).join(', ')}${items.length > 5 ? ` and ${items.length - 5} more` : ''}`;
+const encodingName = (e: string) => (e === 'identity' ? 'as is' : e);
+
+export const ENCODING_HINT =
+	"Every slow-network time compares bytes on one link, so both sides must be served the same way: here one compresses its HTML, CSS and JavaScript and the other sends them as is, and each cell's times would compare the servers, not the pages. Serve the port as the old site is served (put a server that compresses in front of a node-server build, or serve the deployment's own output), then check again; the cells' times are judged once the two sides match.";
+
 /** The route's red cells: each browser and network where a gated time of the new page is worse beyond the old page's own noise. */
 export function networkFailures(route: string, network: RouteNetwork | { readonly unavailable: string } | undefined): Failure[] {
 	if (!network || 'unavailable' in network) return [];
+	const mismatch = encodingMismatch(network.old, network.new);
+	if (mismatch.length) {
+		const by = (side: 'old' | 'new') => [...new Set(mismatch.map((m) => m[side]))].map(encodingName).join(' or ');
+		return [
+			{
+				route,
+				dimension: 'load',
+				check: 'page load: slow network: the two sides are served with different compression',
+				expected: `the new page's files sent as the old page's are, ${by('old')}: ${listed(mismatch)}`,
+				actual: `the new page sent them ${by('new')}, so no browser and network cell is judged until both sides are served alike`,
+				hint: ENCODING_HINT,
+			},
+		];
+	}
 	const out: Failure[] = [];
 	for (const [i, old] of network.old.cells.entries()) {
 		const next = network.new.cells[i];

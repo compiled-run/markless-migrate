@@ -42,6 +42,25 @@ for (const name of NETWORK_BROWSERS) {
 	});
 }
 
+for (const name of NETWORK_BROWSERS) {
+	test(`${name}: each request records how it was encoded, so two sides served differently are told apart`, { skip: browserInstalled(name) || process.env.CI ? false : `${name} is not installed` }, async () => {
+		const [plain, zipped] = await Promise.all([serve(8_000), serve(8_000, 0, true, 0, 0, true)]);
+		try {
+			const hosts = { 'plain.test': new URL(plain.origin).host, 'zipped.test': new URL(zipped.origin).host };
+			const encodings = async (host: string) => {
+				const run = await networkRun(`http://${host}/`, LINK, name, { timeoutMs: 30_000, hosts, afterAnswerMs: 0 });
+				assert.equal(run.error, undefined);
+				return ['/', '/app.js'].map((p) => run.requests.find((r) => new URL(r.url).pathname === p)?.encoding);
+			};
+			assert.deepEqual(await encodings('plain.test'), ['identity', 'identity']);
+			assert.deepEqual(await encodings('zipped.test'), ['gzip', 'gzip']);
+		} finally {
+			plain.server.close();
+			zipped.server.close();
+		}
+	});
+}
+
 test('in Chromium the first painted frame is where FCP says the page painted, also when a stylesheet holds the paint back', async () => {
 	const blocked = await serve(48_000, 0, true, 64_000);
 	try {

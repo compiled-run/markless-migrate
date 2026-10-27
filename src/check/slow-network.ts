@@ -26,6 +26,8 @@ export interface NetworkRequest {
 	readonly end: number;
 	/** Response headers and body as they came over the network (compressed). */
 	readonly bytes: number;
+	/** The response's Content-Encoding, `identity` when it came as is; absent from runs that did not record it. */
+	readonly encoding?: string;
 }
 
 /** One cold load of one page over one network in one browser, then clicks on one control until it answers. */
@@ -349,13 +351,13 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 		const answered = new Promise<void>((resolve) => (answeredAt = resolve));
 		await page.exposeFunction('__mmNetAnswered', () => answeredAt?.());
 		await page.addInitScript(observe);
-		const finished: Promise<{ request: Request; bytes: number; script: boolean; text?: string } | undefined>[] = [];
+		const finished: Promise<{ request: Request; bytes: number; encoding: string; script: boolean; text?: string } | undefined>[] = [];
 		const capturing = options.capture && name === 'chromium';
 		page.on('requestfinished', (request) => {
 			const kept = capturing && /^(script|document)$/.test(request.resourceType()) ? request.response().then((r) => r?.text()).catch(() => undefined) : undefined;
 			finished.push(
-				Promise.all([request.sizes(), kept])
-					.then(([s, text]) => ({ request, bytes: s.responseHeadersSize + s.responseBodySize, script: request.resourceType() === 'script', ...(text !== undefined ? { text } : {}) }))
+				Promise.all([request.sizes(), kept, request.response().then((r) => r?.headerValue('content-encoding'))])
+					.then(([s, text, encoding]) => ({ request, bytes: s.responseHeadersSize + s.responseBodySize, encoding: encoding?.trim().toLowerCase() || 'identity', script: request.resourceType() === 'script', ...(text !== undefined ? { text } : {}) }))
 					.catch(() => undefined),
 			);
 		});
@@ -419,7 +421,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			const timing = got.request.timing();
 			const start = Math.round(own ? own.start : timing.startTime - timings.origin);
 			const end = Math.round(own ? own.end : timing.startTime - timings.origin + Math.max(timing.responseEnd, 0));
-			const request = { url: got.request.url(), type: got.request.resourceType(), start, end, bytes: got.bytes };
+			const request = { url: got.request.url(), type: got.request.resourceType(), start, end, bytes: got.bytes, encoding: got.encoding };
 			requests.push(request);
 			if (got.text !== undefined && got.script) scripts.push({ ...request, text: got.text });
 			if (got.text !== undefined && request.type === 'document' && !document) document = { url: request.url, text: got.text };
