@@ -38,6 +38,10 @@ on:
         description: Seconds one route may take (a page's journey budget grows with its controls)
         required: false
         default: '3600'
+      max_parallel:
+        description: Shards run at once (the org runs 60 jobs; leave room for every repository's CI)
+        required: false
+        default: '20'
   # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on thirteen runners, two routes each:
   # with the slow network measured in Chromium alone a 4-route runner took 220 minutes, and Firefox and WebKit triple that part.
   pull_request:
@@ -59,7 +63,7 @@ env:
   NEW: http://127.0.0.1:3000
 
 concurrency:
-  group: check-${{ inputs.build || github.ref }}
+  group: check-${{ inputs.build || github.ref }}-${{ inputs.targets }}-${{ inputs.flags }}
   cancel-in-progress: false
 
 jobs:
@@ -91,7 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       # The org runs 60 jobs at once: a check leaves room for every other repository's CI.
-      max-parallel: 20
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '20') }}
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
@@ -197,7 +201,8 @@ jobs:
       - name: Merge
         run: |
           set -euo pipefail
-          node scripts/check-shards.ts merge shards merged
+          # A shard that wrote no report has each of its routes listed as not checked.
+          node scripts/check-shards.ts merge shards merged shards/check-shards
           reported=$(find shards -name report.json | wc -l)
           { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

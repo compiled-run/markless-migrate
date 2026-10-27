@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { networkFailures, noiseBand, networkVerdicts } from '../src/check/slow-network-verdicts.ts';
-import { summarizeCell, type NetworkRun, type RouteNetwork } from '../src/check/slow-network.ts';
+import { applyAccepted } from '../src/check/accepted.ts';
+import { networkFailures, networkUnmeasured, noiseBand, networkVerdicts } from '../src/check/slow-network-verdicts.ts';
+import { summarizeCell, type NetworkCell, type NetworkRun, type RouteNetwork } from '../src/check/slow-network.ts';
+import { DIMENSIONS, type RouteResult } from '../src/check/types.ts';
 
 const run = (answered: number, firstFrame = 1000, requests: NetworkRun['requests'] = []): NetworkRun => ({ firstFrame, answered, clicks: 2, bytes: 1, jsDownloaded: 1, requests });
 
@@ -67,4 +69,29 @@ test('a difference finer than the instrument can see is no verdict: a frame read
 	assert.equal(frame.band, 100, "the screenshots' interval, wider than the old page's own spread");
 	assert.equal(frame.ok, true);
 	assert.equal(verdicts.find((v) => v.metric === 'answered')!.band >= 250, true);
+});
+
+test('an old site that stops answering leaves the slow network not measured, and a route otherwise green not checked, never green', () => {
+	const down: NetworkRun = { clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], error: 'page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:4000/' };
+	const measured = summarizeCell('regular-3g', 'webkit', [run(3000), run(3010), run(3020), run(3030), run(3040)]);
+	const outage = summarizeCell('regular-3g', 'webkit', [run(3000), down, down, down, down]);
+	const network = (old: NetworkCell, next: NetworkCell): RouteNetwork => ({ old: { url: 'http://localhost:4000/', cells: [measured, old] }, new: { url: 'http://127.0.0.1:3000/', cells: [measured, next] } });
+	assert.equal(networkFailures('/', network(outage, measured)).length, 0, 'no verdict to be red with');
+	assert.match(networkUnmeasured(network(outage, measured)) ?? '', /^slow network not measured in webkit Regular 3G .*: 1 of 5 old runs finished \(page\.goto: net::ERR_CONNECTION_REFUSED/);
+	assert.match(networkUnmeasured(network(measured, summarizeCell('regular-3g', 'webkit', [down, down, down, down, down]))) ?? '', /none of 5 new runs finished/);
+	assert.equal(networkUnmeasured(network(measured, measured)), undefined);
+	const never: NetworkRun = { firstFrame: 1000, clicks: 40, bytes: 1, jsDownloaded: 1, requests: [], error: 'the control never answered a click within 180 s' };
+	assert.equal(networkUnmeasured(network(measured, summarizeCell('regular-3g', 'webkit', [never, never, never, never]))), undefined, 'a new page that never answers is red, not unmeasured');
+	const zero = { downloaded: 0, source: 0, executed: 0 };
+	const lab = { runs: 5, old: { runs: [] }, new: { runs: [] }, verdicts: [], ok: true };
+	const green = (over: Partial<RouteResult>): RouteResult => ({ route: '/', ok: true, dimensions: Object.fromEntries(DIMENSIONS.map((d) => [d, 'pass'])) as RouteResult['dimensions'], failures: [], weight: { old: zero, new: zero }, visualDiffs: [], shots: [], ...over });
+	const report = applyAccepted({ version: 1, old: 'http://localhost:4000', new: 'http://127.0.0.1:3000', startedAt: '2026-10-27T00:00:00Z', ok: true, routes: [green({ load: { ...lab, network: network(outage, measured) } }), green({ route: '/a', load: { ...lab, network: network(measured, measured) } }), green({ route: '/b', load: { ...lab, skipped: 'no Lighthouse run of the old page finished (timeout)' } })] }, []);
+	const [unmeasured, fine, labDown] = report.routes;
+	assert.equal(unmeasured!.ok, false);
+	assert.equal(unmeasured!.infrastructure?.cause, 'not measured');
+	assert.equal(unmeasured!.dimensions.load, 'skipped');
+	assert.equal(fine!.ok, true);
+	assert.equal(labDown!.ok, false);
+	assert.match(labDown!.infrastructure?.message ?? '', /^page load \(lab\) not measured: no Lighthouse run of the old page finished/);
+	assert.equal(report.ok, false);
 });
