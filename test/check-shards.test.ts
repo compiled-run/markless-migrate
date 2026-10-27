@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { split, summary } from '../scripts/check-shards.ts';
+import { split, summary, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -22,4 +22,13 @@ test('the merged summary counts each state and lists the leading causes of the r
 	assert.match(text, /\| 1 \| css: computed style of link "…" \|/);
 	assert.match(text, /\| `\/a` \| green \|/);
 	assert.ok(text.indexOf('`/a`') < text.indexOf('`/b`'));
+});
+
+test('a shard that wrote no report has each of its targets listed as not checked, so the merge never counts it green or drops it', () => {
+	const shards = new Map(split({ routes: ['/a', '/b', '/c'], endpoints: ['/robots.txt'], redirects: ['/a/'] }, 2).map((s, i) => [i + 1, s] as const));
+	const missing = unreported(shards, new Set([2]));
+	assert.deepEqual(missing.map((r) => r.route), ['/a', '/c', '/robots.txt', '/a/']);
+	assert.ok(missing.every((r) => !r.ok && /^shard 1 wrote no report/.test(r.infrastructure?.message ?? '')));
+	assert.match(summary(missing), /^4 not checked, of 4/);
+	assert.deepEqual(unreported(shards, new Set([1, 2])), []);
 });
