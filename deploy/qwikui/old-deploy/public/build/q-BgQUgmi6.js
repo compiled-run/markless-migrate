@@ -1,0 +1,1 @@
+import{I as s,z as n,o as a}from"./q-CsvfasCP.js";import{c as i}from"./q-DW7wgCba.js";const c=({...r})=>s("div",{class:i("grid gap-2",r.class),...r,children:n(a,null,3,"3j_0")},null,0,"3j_1");export{c as s_r5w9SixYJh0};

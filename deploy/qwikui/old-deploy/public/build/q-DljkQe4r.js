@@ -1,0 +1,1 @@
+import{I as n,z as c,o as l}from"./q-CsvfasCP.js";import{c as o}from"./q-DW7wgCba.js";const t=s=>n("div",{...s,class:o("p-6 pt-0",s.class),children:c(l,null,3,"5E_8")},null,0,"5E_9");export{t as s_YhUsqqj2cIE};

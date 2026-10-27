@@ -1,0 +1,1 @@
+import{z as s,o as t}from"./q-CsvfasCP.js";import{c as a}from"./q-DW7wgCba.js";import{C as r}from"./q-MZVu-WoJ.js";const i=({...o})=>s(r,{...o,class:a("absolute -bottom-10 flex w-full justify-center gap-4",o.class),children:s(t,null,3,"FW_15")},0,"FW_16");export{i as s_Lo7x2TIU0Rg};

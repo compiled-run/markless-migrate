@@ -1,0 +1,1 @@
+import{h as r}from"./q-CsvfasCP.js";import{g as h}from"./q-CsvfasCP.js";const p=async()=>{const[e,o,i,a]=r();if(await o(),!i.value)for(;!e.value;)await new Promise(t=>setTimeout(t,10));a.value?.hidePopover()};export{h as _hW,p as s_RKDCpUxCUPw};

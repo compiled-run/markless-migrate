@@ -1,0 +1,1 @@
+import{b as t,z as a,o as i}from"./q-CsvfasCP.js";import{c as n}from"./q-DW7wgCba.js";import{p as r}from"./q-Dm7V3QUV.js";import{H as p}from"./q-DS1eJM9B.js";const f=o=>{const s=t(o,["position"]);return a(p,{...s,class:n(r({position:o.position}),s.class),children:a(i,null,3,"s3_0")},0,"s3_1")};export{f as s_htaEq4woDKo};

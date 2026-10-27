@@ -1,0 +1,1 @@
+import{H as n}from"./q-DBlqwDqW.js";import{z as o,c as r,o as l}from"./q-CsvfasCP.js";const i=e=>o(n,{role:"region",...e,children:o(l,null,3,"eG_0"),[r]:{role:r}},0,"eG_1");export{i as s_eMnbTrUnbgs};

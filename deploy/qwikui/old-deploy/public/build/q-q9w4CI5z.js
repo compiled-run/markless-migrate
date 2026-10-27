@@ -1,0 +1,1 @@
+import{B as r}from"./q-DDtaMfdi.js";import{s}from"./q-JFFmWO-j.js";import{z as t,c as o}from"./q-CsvfasCP.js";const a=()=>t(r,{size:"icon",children:t(s,null,3,"ta_0"),[o]:{size:o}},1,"ta_1");export{a as s_Dd7P8QmPgLc};

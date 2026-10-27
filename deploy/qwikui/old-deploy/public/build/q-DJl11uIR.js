@@ -1,0 +1,1 @@
+import{b as t,I as n,z as a,o as l}from"./q-CsvfasCP.js";import{b as r}from"./q-DDtaMfdi.js";import{c as i}from"./q-DW7wgCba.js";const m=o=>{const s=t(o,["size","look"]);return n("button",{...s,class:i(r({size:o.size,look:o.look}),s.class),children:a(l,null,3,"fL_0")},null,0,"fL_1")};export{m as s_Kw6sQ6bJxhI};

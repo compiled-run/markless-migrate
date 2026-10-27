@@ -1,0 +1,24 @@
+const n=`import { component$ } from '@builder.io/qwik';
+import { Modal } from '@qwik-ui/headless';
+
+export default component$(() => {
+  // uncomment this
+  // useVisibleTask$(
+  //   () => {
+  //     showSig.value = true;
+  //   },
+  //   { strategy: 'document-ready' },
+  // );
+
+  return (
+    <Modal.Root>
+      <Modal.Trigger>Open Modal</Modal.Trigger>
+      <Modal.Panel>
+        <Modal.Title />
+        <Modal.Description />
+        {/* other content */}
+      </Modal.Panel>
+    </Modal.Root>
+  );
+});
+`;export{n as P};

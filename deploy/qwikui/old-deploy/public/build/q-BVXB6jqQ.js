@@ -1,0 +1,1 @@
+import{u as o,M as n,D as s}from"./q-D_NppxYb.js";import{d as a,z as r,o as l}from"./q-CsvfasCP.js";const i=t=>{let e=o();return t.disableParentContext?e=t.components:e={...e,...t.components},a(n,{wrapper:s,...e}),r(l,null,3,"3T_1")};export{i as s_LTWkBzipM4I};

@@ -1,0 +1,1 @@
+import{z as s,k as o,D as c}from"./q-CsvfasCP.js";import{g as d}from"./q-CsvfasCP.js";const t=r=>{let e=r.replace(/^Public/,"").replace(/(p|P)rops/,"");const l=/[a-z][A-Z]/.exec(e)?.index;return l!=null&&(e=e.slice(0,l+1)+"."+e.slice(l+1)),s(c,{children:o("h3",null,{class:"mt-8 mb-6 scroll-mt-20 text-xl font-semibold"},e,1,null)},1,"1o_0")};export{d as _hW,t as s_TbPgIIdCdLM};

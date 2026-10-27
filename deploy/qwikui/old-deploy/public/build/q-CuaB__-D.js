@@ -1,0 +1,1 @@
+import{B as o}from"./q-DDtaMfdi.js";import{u as t}from"./q-JFFmWO-j.js";import{z as r,c as s}from"./q-CsvfasCP.js";const c=()=>r(o,{children:[r(t,{class:"mr-2",[s]:{class:s}},3,"0C_0")," Login with Email"]},1,"0C_1");export{c as s_s58i0DFMw9M};

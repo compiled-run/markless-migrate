@@ -1,0 +1,1 @@
+import{L as s}from"./q-B2MBr3mn.js";import{T as a}from"./q-D0QGA4Gc.js";import{k as o,z as r,c as e}from"./q-CsvfasCP.js";const i=()=>o("div",null,{class:"grid w-full gap-1.5"},[r(s,{for:"message",children:"Your message",[e]:{for:e}},3,"ec_0"),r(a,{placeholder:"Type your message here.",id:"message",[e]:{placeholder:e,id:e}},3,"ec_1")],1,"ec_2");export{i as s_QOIPzM4HbRM};

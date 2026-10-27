@@ -1,0 +1,100 @@
+const n=`:root {
+  --select-width: 14rem;
+}
+
+.select {
+  min-width: var(--select-width);
+}
+
+.select-trigger {
+  width: 100%;
+  height: 100%;
+  border: 2px dotted oklch(from var(--primary) l c h / 1);
+  min-height: 44px;
+  max-width: var(--select-width);
+  padding-block: 0.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.select-trigger:hover {
+  background-color: oklch(from var(--primary) l c h / 0.08);
+}
+
+.select-trigger:focus-visible {
+  outline: 2px solid oklch(from var(--primary) l c h / 1);
+  outline-offset: 2px;
+}
+
+.select-trigger[data-invalid] {
+  border: 2px dotted #d2122e;
+}
+
+.select-popover {
+  width: 100%;
+  max-width: calc(var(--select-width));
+  background-color: oklch(from var(--background) l c h);
+  padding: 0.5rem;
+  border: 2px dotted oklch(from var(--foreground) l c h / 0.6);
+  border-radius: calc(var(--border-radius) / 2);
+  color: oklch(from var(--foreground) l c h);
+}
+
+.select-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.select-item span {
+  user-select: none;
+}
+
+.select-item svg {
+  margin-inline-end: 0.25rem;
+}
+
+.select-group-label {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: oklch(from var(--foreground) l c h / 0.8);
+  padding-top: 0.5rem;
+}
+
+.select-max-height {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.select-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-inline: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background-color: oklch(from var(--muted) l c h);
+  margin-block: 0.25rem;
+}
+
+.select-pill > span {
+  padding: 0.15rem;
+  background: oklch(from var(--foreground) l c h / 0.3);
+  border-radius: 50%;
+}
+
+.select-pill svg {
+  stroke: white;
+}
+
+[data-highlighted] {
+  background-color: oklch(from var(--primary) l c h / 0.08);
+  outline: 2px dotted oklch(from var(--primary) l c h / 1);
+}
+
+[data-disabled] {
+  opacity: 0.6;
+  background: oklch(from var(--foreground) l c h / 0.05);
+}
+`;export{n as S};

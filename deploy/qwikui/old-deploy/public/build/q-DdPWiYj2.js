@@ -1,0 +1,1 @@
+import{d as n,z as r,o as s}from"./q-CsvfasCP.js";import{s as a}from"./q-DG_P7RFg.js";const l=o=>{const t={orientation:o.orientation??"horizontal"};return n(a,t),r(s,null,3,"FW_0")};export{l as s_gdgBhlX0bl4};

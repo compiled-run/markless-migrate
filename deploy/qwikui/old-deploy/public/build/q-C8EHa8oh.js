@@ -1,0 +1,19 @@
+import{_ as o}from"./q-BKZ00VYc.js";import{t as r,N as e}from"./q-CsvfasCP.js";const i=r(e(()=>o(()=>import("./q-sAHVYdwl.js"),[]),"s_VRbzYBAgXkc")),a=`import { component$ } from '@builder.io/qwik';
+import { Popover } from '@qwik-ui/headless';
+export default component$(() => {
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <Popover.Root key={i}>
+          <Popover.Trigger class="popover-trigger">
+            Popover Trigger {i + 1}
+          </Popover.Trigger>
+          <Popover.Panel style={{ top: i === 1 ? '25px' : '0' }} class="popover-panel">
+            Popover {i + 1}
+          </Popover.Panel>
+        </Popover.Root>
+      ))}
+    </>
+  );
+});
+`;export{a as A,i as a};

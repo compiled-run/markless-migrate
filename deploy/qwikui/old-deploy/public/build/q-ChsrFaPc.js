@@ -1,0 +1,1 @@
+import{h as a}from"./q-CsvfasCP.js";import{g as n}from"./q-CsvfasCP.js";const l=e=>{const[t]=a();let o=1;const r=t.itemsMapSig.value.size;if(!t.loop&&e-1<0)return e;for(;o<=r;){const s=(e-o+r)%r;if(!t.itemsMapSig.value.get(s)?.disabled)return s;if(o++,!t.loop&&e-o<0)break}return e};export{n as _hW,l as s_IPyRwAROMfM};

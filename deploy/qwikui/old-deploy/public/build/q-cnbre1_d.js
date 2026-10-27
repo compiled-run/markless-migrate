@@ -1,0 +1,51 @@
+const n=`.progress {
+  height: 1.75rem;
+  width: 100%;
+  overflow: hidden;
+  border-radius: calc(var(--border-radius) / 2);
+  border: 2px dotted oklch(from var(--primary) l c h);
+}
+
+.progress-indicator {
+  height: 100%;
+  width: 100%;
+  background-color: oklch(from var(--primary) l c h);
+}
+
+@keyframes loading-flash {
+  0% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .progress-indicator.indeterminate {
+    width: 30%;
+    animation: indeterminate-slide 2s infinite cubic-bezier(0.37, 0, 0.63, 1);
+  }
+}
+
+@keyframes indeterminate-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.progress-example-input {
+  border-radius: calc(var(--border-radius) / 2);
+  border: 2px dotted oklch(from var(--primary) l c h);
+  margin-left: 0.5rem;
+  max-width: 3rem;
+  padding: 0.25rem;
+  outline: none;
+}
+`;export{n as P};

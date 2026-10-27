@@ -1,0 +1,1 @@
+import{h as p}from"./q-CsvfasCP.js";import{g as s}from"./q-CsvfasCP.js";const l=a=>{const[e,n]=p();e.isOpenSig.value=a.newState==="open",e.panelRef?.value&&e.panelRef?.value.classList.contains(":popover-open")&&e.panelRef?.value.parentElement&&!n.value&&e.panelRef.value.parentElement.appendChild(e.panelRef.value)};export{s as _hW,l as s_UPEZLOIB50c};

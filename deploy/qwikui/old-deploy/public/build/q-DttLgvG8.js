@@ -1,0 +1,1 @@
+import{z as s,c as o}from"./q-CsvfasCP.js";import{c as l}from"./q-DW7wgCba.js";import{P as a,a as e}from"./q-CrCFaAUI.js";const n=r=>s(e,{class:l("relative h-4 w-full overflow-hidden rounded-sm border bg-muted",r.class),...r,children:s(a,{class:"h-full w-full flex-1 bg-primary transition-all",[o]:{class:o}},3,"vp_0")},0,"vp_1");export{n as s_hSYvETFwrd0};

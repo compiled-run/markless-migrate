@@ -1,0 +1,1 @@
+import{I as t,c}from"./q-CsvfasCP.js";import{c as o}from"./q-DW7wgCba.js";const e=({...a})=>t("input",{type:"radio",...a,class:o("h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-50",a.class)},{type:c},0,"3j_2");export{e as s_gxV3Db00Kfo};

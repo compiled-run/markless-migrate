@@ -1,0 +1,1 @@
+import{h as t}from"./q-CsvfasCP.js";import{g as p}from"./q-CsvfasCP.js";const m=r=>{const[s,o]=t();return r&&(Array.isArray(r)?[...r].some(e=>e.size<o):r.size<o)?s:""};export{p as _hW,m as s_ajQoS7jTAlI};

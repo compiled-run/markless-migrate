@@ -1,0 +1,1 @@
+import{S as e,g as n}from"./q-D2n-TDvV.js";import{j as a,d as l,I as s,c,z as p,o as u}from"./q-CsvfasCP.js";const x=r=>{const o=a(e),t=`${o.localId}-group-label`;return l(n,{groupLabelId:t}),s("div",{"aria-labelledby":t,role:"group",...r,ref:o.groupRef,children:p(u,null,3,"ny_0")},{role:c},0,"ny_1")};export{x as s_WSZQV9BoBq8};

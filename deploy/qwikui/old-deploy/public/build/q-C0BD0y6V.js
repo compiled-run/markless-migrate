@@ -1,0 +1,1 @@
+import{z as r,o as s}from"./q-CsvfasCP.js";import{c as t}from"./q-DW7wgCba.js";import{H as o}from"./q-BW4i9X2f.js";const m=e=>r(o,{...e,class:t("inline-flex items-center justify-center rounded-lg border-base bg-muted p-1 text-muted-foreground shadow-sm",e.class),children:r(s,null,3,"dw_1")},0,"dw_2");export{m as s_k9B0T0rhYc0};

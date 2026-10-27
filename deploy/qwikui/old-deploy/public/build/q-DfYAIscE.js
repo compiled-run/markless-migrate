@@ -1,0 +1,1 @@
+import{z as s,o as m}from"./q-CsvfasCP.js";import{c as r}from"./q-DW7wgCba.js";import{H as t}from"./q-Dna2o4Aw.js";const l=({...o})=>s(t,{...o,class:r("text-sm",o.class),children:s(m,null,3,"3G_3")},0,"3G_4");export{l as s_1YcOoGD0Ed0};

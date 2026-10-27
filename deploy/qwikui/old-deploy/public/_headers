@@ -1,0 +1,17 @@
+# https://developers.cloudflare.com/pages/platform/headers/
+
+# Static assets - long-term caching
+/build/*
+  Cache-Control: public, max-age=31536000, s-maxage=31536000, immutable
+
+# Documentation pages - cache at edge, allow quick browser updates
+/docs/*
+  Cache-Control: public, max-age=600, s-maxage=86400, stale-while-revalidate=604800
+
+# Root and other static pages - cache at edge for faster HTML loads
+/*
+  Cache-Control: public, max-age=900, s-maxage=86400, stale-while-revalidate=604800
+
+# Override for API routes or dynamic content (if any)
+/api/*
+  Cache-Control: no-cache

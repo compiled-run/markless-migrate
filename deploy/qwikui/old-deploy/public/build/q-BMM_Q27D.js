@@ -1,0 +1,20 @@
+const n=`/* Strips the user agent styles from the popover when in floating mode */
+@layer qwik-ui {
+  [data-floating] {
+    margin: unset;
+    padding: unset;
+    overflow: unset;
+    position: absolute;
+  }
+}
+
+/** override the polyfill's layer, which gets dynamically imported later on. */
+@layer popover-polyfill {
+  [data-floating] {
+    margin: unset;
+    padding: unset;
+    overflow: unset;
+    position: absolute;
+  }
+}
+`;export{n as F};

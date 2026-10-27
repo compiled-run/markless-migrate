@@ -1,0 +1,1 @@
+import{z as n,k as s,o as l}from"./q-CsvfasCP.js";import{H as o}from"./q-BFK5eDLL.js";const e=({...r})=>n(o,{...r,children:[s("span",null,{class:"text-red-500"},"Description:",3,null),n(l,null,3,"SS_5")]},0,"SS_6");export{e as s_iveFtwrgnWA};

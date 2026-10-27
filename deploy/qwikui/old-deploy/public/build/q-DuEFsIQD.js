@@ -1,0 +1,1 @@
+import{h as c}from"./q-CsvfasCP.js";const u=()=>{const[e]=c(),l=e.numSlidesSig.value,n=e.slidesPerViewSig.value,i=e.moveSig.value,s=l-n,o=[];for(let t=0;t<=s;t+=i)o.push(t);return s%i!==0&&o.push(s),o};export{u as s_AyLIRug0zZY};

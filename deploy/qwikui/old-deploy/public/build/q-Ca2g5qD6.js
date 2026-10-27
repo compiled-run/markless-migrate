@@ -1,0 +1,78 @@
+import{t as c,N as i,z as r,O as t,S as l,U as a,D as s}from"./q-CsvfasCP.js";import{u as p}from"./q-D_NppxYb.js";import{s as d}from"./q-BnEU7A_-.js";import{_ as h}from"./q-BKZ00VYc.js";const C=c(i(()=>h(()=>import("./q-Ceqlq2TY.js"),[]),"s_pholOXnuRms")),b=[{text:"Collapsible",id:"collapsible",level:1},{text:"Installation",id:"installation",level:2},{text:"1. Run the following cli command or copy/paste the component code into your project",id:"1-run-the-following-cli-command-or-copypaste-the-component-code-into-your-project",level:3},{text:"Usage",id:"usage",level:2}],B={title:"Qwik UI | Styled Collapsible Component",meta:[{name:"description",content:"An interactive section that shows or hides its connected information. Copy/paste into your project from the documentation or by using the CLI. Easily customize the CVA variants according to your brand requirements."}],styles:[],links:[],scripts:[],frontmatter:{}},u={title:"Qwik UI | Styled Collapsible Component",description:"An interactive section that shows or hides its connected information. Copy/paste into your project from the documentation or by using the CLI. Easily customize the CVA variants according to your brand requirements."},y=c(a(n=>{const e={a:"a",code:"code",h1:"h1",h2:"h2",h3:"h3",p:"p",pre:"pre",span:"span",...p(),...n.components},{StatusBanner:o}=e;return o||A("StatusBanner"),l(s,{children:[l(o,{status:d.styled.Collapsible}),`
+`,l(e.h1,{id:"collapsible",children:[l(e.a,{"aria-hidden":"true",tabindex:"-1",href:"#collapsible",children:l(e.span,{class:"icon icon-link"})}),"Collapsible"]}),`
+`,l(e.p,{children:"An interactive section that shows or hides its connected information."}),`
+`,l(C,{}),`
+`,l(e.h2,{id:"installation",children:[l(e.a,{"aria-hidden":"true",tabindex:"-1",href:"#installation",children:l(e.span,{class:"icon icon-link"})}),"Installation"]}),`
+`,l(e.h3,{id:"1-run-the-following-cli-command-or-copypaste-the-component-code-into-your-project",children:[l(e.a,{"aria-hidden":"true",tabindex:"-1",href:"#1-run-the-following-cli-command-or-copypaste-the-component-code-into-your-project",children:l(e.span,{class:"icon icon-link"})}),"1. Run the following cli command or copy/paste the component code into your project"]}),`
+`,l(s,{children:l(e.pre,{class:"shiki poimandres",style:{backgroundColor:"#1b1e28",color:"#a6accd"},tabindex:"0",rawCodeString:"qwik-ui add collapsible",children:l(e.code,{children:l(e.span,{class:"line",children:[l(e.span,{style:{color:"#91B4D5"},children:"qwik-ui"}),l(e.span,{style:{color:"#ADD7FF"},children:" add"}),l(e.span,{style:{color:"#ADD7FF"},children:" collapsible"})]})})})}),`
+`,l(s,{children:l(e.pre,{class:"shiki poimandres",style:{backgroundColor:"#1b1e28",color:"#a6accd"},tabindex:"0",rawCodeString:`import { component$, Slot, type PropsOf } from '@builder.io/qwik';
+import { Collapsible as HeadlessCollapsible } from '@qwik-ui/headless';
+import { cn } from '@qwik-ui/utils';
+
+const Root = (props: PropsOf<typeof HeadlessCollapsible.Root>) => (
+  <HeadlessCollapsible.Root {...props}>{props.children}</HeadlessCollapsible.Root>
+);
+
+const Trigger = component$<PropsOf<typeof HeadlessCollapsible.Trigger>>(
+  ({ ...props }) => {
+    return (
+      <HeadlessCollapsible.Trigger {...props}>
+        <Slot />
+      </HeadlessCollapsible.Trigger>
+    );
+  },
+);
+
+const Content = component$<PropsOf<typeof HeadlessCollapsible.Content>>((props) => {
+  return (
+    <HeadlessCollapsible.Content {...props} class={cn(props.class)}>
+      <Slot />
+    </HeadlessCollapsible.Content>
+  );
+});
+
+export const Collapsible = {
+  Root,
+  Trigger,
+  Content,
+};`,children:l(e.code,{children:[l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7"},children:"import "}),l(e.span,{style:{color:"#A6ACCD"},children:"{"}),l(e.span,{style:{color:"#ADD7FF"},children:" component$"}),l(e.span,{style:{color:"#A6ACCD"},children:","}),l(e.span,{style:{color:"#ADD7FF"},children:" Slot"}),l(e.span,{style:{color:"#A6ACCD"},children:","}),l(e.span,{style:{color:"#A6ACCD"},children:" type"}),l(e.span,{style:{color:"#ADD7FF"},children:" PropsOf"}),l(e.span,{style:{color:"#A6ACCD"},children:" }"}),l(e.span,{style:{color:"#A6ACCD"},children:" from"}),l(e.span,{style:{color:"#A6ACCD"},children:" '"}),l(e.span,{style:{color:"#5DE4C7"},children:"@builder.io/qwik"}),l(e.span,{style:{color:"#A6ACCD"},children:"'"}),l(e.span,{style:{color:"#A6ACCD"},children:";"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7"},children:"import "}),l(e.span,{style:{color:"#A6ACCD"},children:"{"}),l(e.span,{style:{color:"#ADD7FF"},children:" Collapsible"}),l(e.span,{style:{color:"#A6ACCDC0"},children:" as"}),l(e.span,{style:{color:"#ADD7FF"},children:" HeadlessCollapsible"}),l(e.span,{style:{color:"#A6ACCD"},children:" }"}),l(e.span,{style:{color:"#A6ACCD"},children:" from"}),l(e.span,{style:{color:"#A6ACCD"},children:" '"}),l(e.span,{style:{color:"#5DE4C7"},children:"@qwik-ui/headless"}),l(e.span,{style:{color:"#A6ACCD"},children:"'"}),l(e.span,{style:{color:"#A6ACCD"},children:";"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7"},children:"import "}),l(e.span,{style:{color:"#A6ACCD"},children:"{"}),l(e.span,{style:{color:"#ADD7FF"},children:" cn"}),l(e.span,{style:{color:"#A6ACCD"},children:" }"}),l(e.span,{style:{color:"#A6ACCD"},children:" from"}),l(e.span,{style:{color:"#A6ACCD"},children:" '"}),l(e.span,{style:{color:"#5DE4C7"},children:"@qwik-ui/utils"}),l(e.span,{style:{color:"#A6ACCD"},children:"'"}),l(e.span,{style:{color:"#A6ACCD"},children:";"})]}),`
+`,l(e.span,{class:"line"}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#91B4D5"},children:"const"}),l(e.span,{style:{color:"#ADD7FF"},children:" Root"}),l(e.span,{style:{color:"#91B4D5"},children:" ="}),l(e.span,{style:{color:"#A6ACCD"},children:" ("}),l(e.span,{style:{color:"#E4F0FB"},children:"props"}),l(e.span,{style:{color:"#91B4D5"},children:":"}),l(e.span,{style:{color:"#A6ACCDC0"},children:" PropsOf"}),l(e.span,{style:{color:"#A6ACCD"},children:"<"}),l(e.span,{style:{color:"#91B4D5"},children:"typeof"}),l(e.span,{style:{color:"#E4F0FB"},children:" HeadlessCollapsible"}),l(e.span,{style:{color:"#A6ACCD"},children:"."}),l(e.span,{style:{color:"#E4F0FB"},children:"Root"}),l(e.span,{style:{color:"#A6ACCD"},children:">) "}),l(e.span,{style:{color:"#91B4D5"},children:"=>"}),l(e.span,{style:{color:"#A6ACCD"},children:" ("})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"  <"}),l(e.span,{style:{color:"#5DE4C7"},children:"HeadlessCollapsible.Root"}),l(e.span,{style:{color:"#E4F0FB"},children:" {"}),l(e.span,{style:{color:"#91B4D5"},children:"..."}),l(e.span,{style:{color:"#E4F0FB"},children:"props}>{props"}),l(e.span,{style:{color:"#A6ACCD"},children:"."}),l(e.span,{style:{color:"#E4F0FB"},children:"children}</"}),l(e.span,{style:{color:"#5DE4C7"},children:"HeadlessCollapsible.Root"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:");"})}),`
+`,l(e.span,{class:"line"}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#91B4D5"},children:"const"}),l(e.span,{style:{color:"#E4F0FB"},children:" Trigger"}),l(e.span,{style:{color:"#91B4D5"},children:" ="}),l(e.span,{style:{color:"#E4F0FBD0"},children:" component$"}),l(e.span,{style:{color:"#A6ACCD"},children:"<"}),l(e.span,{style:{color:"#A6ACCDC0"},children:"PropsOf"}),l(e.span,{style:{color:"#A6ACCD"},children:"<"}),l(e.span,{style:{color:"#91B4D5"},children:"typeof"}),l(e.span,{style:{color:"#E4F0FB"},children:" HeadlessCollapsible"}),l(e.span,{style:{color:"#A6ACCD"},children:"."}),l(e.span,{style:{color:"#E4F0FB"},children:"Trigger"}),l(e.span,{style:{color:"#A6ACCD"},children:">>("})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#A6ACCD"},children:"  ({ "}),l(e.span,{style:{color:"#91B4D5"},children:"..."}),l(e.span,{style:{color:"#E4F0FB"},children:"props"}),l(e.span,{style:{color:"#A6ACCD"},children:" }) "}),l(e.span,{style:{color:"#91B4D5"},children:"=>"}),l(e.span,{style:{color:"#A6ACCD"},children:" {"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7C0"},children:"    return"}),l(e.span,{style:{color:"#A6ACCD"},children:" ("})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"      <"}),l(e.span,{style:{color:"#5DE4C7"},children:"HeadlessCollapsible.Trigger"}),l(e.span,{style:{color:"#E4F0FB"},children:" {"}),l(e.span,{style:{color:"#91B4D5"},children:"..."}),l(e.span,{style:{color:"#E4F0FB"},children:"props}>"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"        <"}),l(e.span,{style:{color:"#5DE4C7"},children:"Slot"}),l(e.span,{style:{color:"#E4F0FB"},children:" />"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"      </"}),l(e.span,{style:{color:"#5DE4C7"},children:"HeadlessCollapsible.Trigger"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:"    );"})}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:"  },"})}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:");"})}),`
+`,l(e.span,{class:"line"}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#91B4D5"},children:"const"}),l(e.span,{style:{color:"#E4F0FB"},children:" Content"}),l(e.span,{style:{color:"#91B4D5"},children:" ="}),l(e.span,{style:{color:"#E4F0FBD0"},children:" component$"}),l(e.span,{style:{color:"#A6ACCD"},children:"<"}),l(e.span,{style:{color:"#A6ACCDC0"},children:"PropsOf"}),l(e.span,{style:{color:"#A6ACCD"},children:"<"}),l(e.span,{style:{color:"#91B4D5"},children:"typeof"}),l(e.span,{style:{color:"#E4F0FB"},children:" HeadlessCollapsible"}),l(e.span,{style:{color:"#A6ACCD"},children:"."}),l(e.span,{style:{color:"#E4F0FB"},children:"Content"}),l(e.span,{style:{color:"#A6ACCD"},children:">>(("}),l(e.span,{style:{color:"#E4F0FB"},children:"props"}),l(e.span,{style:{color:"#A6ACCD"},children:") "}),l(e.span,{style:{color:"#91B4D5"},children:"=>"}),l(e.span,{style:{color:"#A6ACCD"},children:" {"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7C0"},children:"  return"}),l(e.span,{style:{color:"#A6ACCD"},children:" ("})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"    <"}),l(e.span,{style:{color:"#5DE4C7"},children:"HeadlessCollapsible.Content"}),l(e.span,{style:{color:"#E4F0FB"},children:" {"}),l(e.span,{style:{color:"#91B4D5"},children:"..."}),l(e.span,{style:{color:"#E4F0FB"},children:"props} "}),l(e.span,{style:{color:"#91B4D5",fontStyle:"italic"},children:"class"}),l(e.span,{style:{color:"#91B4D5"},children:"="}),l(e.span,{style:{color:"#E4F0FB"},children:"{"}),l(e.span,{style:{color:"#E4F0FBD0"},children:"cn"}),l(e.span,{style:{color:"#A6ACCD"},children:"("}),l(e.span,{style:{color:"#E4F0FB"},children:"props"}),l(e.span,{style:{color:"#A6ACCD"},children:"."}),l(e.span,{style:{color:"#E4F0FB"},children:"class"}),l(e.span,{style:{color:"#A6ACCD"},children:")"}),l(e.span,{style:{color:"#E4F0FB"},children:"}>"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"      <"}),l(e.span,{style:{color:"#5DE4C7"},children:"Slot"}),l(e.span,{style:{color:"#E4F0FB"},children:" />"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"    </"}),l(e.span,{style:{color:"#5DE4C7"},children:"HeadlessCollapsible.Content"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:"  );"})}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:"});"})}),`
+`,l(e.span,{class:"line"}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7"},children:"export"}),l(e.span,{style:{color:"#91B4D5"},children:" const"}),l(e.span,{style:{color:"#E4F0FB"},children:" Collapsible"}),l(e.span,{style:{color:"#91B4D5"},children:" ="}),l(e.span,{style:{color:"#A6ACCD"},children:" {"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"  Root"}),l(e.span,{style:{color:"#A6ACCD"},children:","})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"  Trigger"}),l(e.span,{style:{color:"#A6ACCD"},children:","})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"  Content"}),l(e.span,{style:{color:"#A6ACCD"},children:","})]}),`
+`,l(e.span,{class:"line",children:l(e.span,{style:{color:"#A6ACCD"},children:"};"})})]})})}),`
+`,l(e.h2,{id:"usage",children:[l(e.a,{"aria-hidden":"true",tabindex:"-1",href:"#usage",children:l(e.span,{class:"icon icon-link"})}),"Usage"]}),`
+`,l(e.p,{children:"The styled Collapsible component doesn't isn't really styled because it's meant to be a wrapper around some items in a list or menu."}),`
+`,l(s,{children:l(e.pre,{class:"shiki poimandres",style:{backgroundColor:"#1b1e28",color:"#a6accd"},tabindex:"0",rawCodeString:"import { Collapsible } from '~/components/ui';",children:l(e.code,{children:l(e.span,{class:"line",children:[l(e.span,{style:{color:"#5DE4C7"},children:"import "}),l(e.span,{style:{color:"#A6ACCD"},children:"{"}),l(e.span,{style:{color:"#ADD7FF"},children:" Collapsible"}),l(e.span,{style:{color:"#A6ACCD"},children:" }"}),l(e.span,{style:{color:"#A6ACCD"},children:" from"}),l(e.span,{style:{color:"#A6ACCD"},children:" '"}),l(e.span,{style:{color:"#5DE4C7"},children:"~/components/ui"}),l(e.span,{style:{color:"#A6ACCD"},children:"'"}),l(e.span,{style:{color:"#A6ACCD"},children:";"})]})})})}),`
+`,l(s,{children:l(e.pre,{class:"shiki poimandres",style:{backgroundColor:"#1b1e28",color:"#a6accd"},tabindex:"0",rawCodeString:`<Collapsible.Root>
+  <Collapsible.Trigger>Is it accessible?</Collapsible.Trigger>
+  <Collapsible.Content>Yes. It adheres to the WAI-ARIA design pattern.</Collapsible.Content>
+</Collapsible.Root>`,children:l(e.code,{children:[l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"<"}),l(e.span,{style:{color:"#5DE4C7"},children:"Collapsible.Root"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"  <"}),l(e.span,{style:{color:"#5DE4C7"},children:"Collapsible.Trigger"}),l(e.span,{style:{color:"#E4F0FB"},children:">Is it accessible?</"}),l(e.span,{style:{color:"#5DE4C7"},children:"Collapsible.Trigger"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"  <"}),l(e.span,{style:{color:"#5DE4C7"},children:"Collapsible.Content"}),l(e.span,{style:{color:"#E4F0FB"},children:">Yes. It adheres to the WAI-ARIA design pattern.</"}),l(e.span,{style:{color:"#5DE4C7"},children:"Collapsible.Content"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]}),`
+`,l(e.span,{class:"line",children:[l(e.span,{style:{color:"#E4F0FB"},children:"</"}),l(e.span,{style:{color:"#5DE4C7"},children:"Collapsible.Root"}),l(e.span,{style:{color:"#E4F0FB"},children:">"})]})]})})})]})},"_createMdxContent_0",[]));function A(n,e,o){throw new Error("/Users/jacksm5pro/dev/open-source/mm-upstreams/qwik-ui/apps/website/src/routes/docs/styled/collapsible/index.mdx: Expected component `"+n+"` to be defined: you likely forgot to import, pass, or provide it.")}const g=(n={})=>{const e=r(t,{children:r(y,n,3,null)},3,"ztu_bb1a");return typeof MDXLayout=="function"?l(MDXLayout,{children:e}):e};export{g as default,u as frontmatter,B as head,b as headings};

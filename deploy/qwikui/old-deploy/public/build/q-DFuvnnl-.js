@@ -1,0 +1,1 @@
+import{j as s,z as o,o as a}from"./q-CsvfasCP.js";import{c as e}from"./q-DW7wgCba.js";import{s as l}from"./q-DG_P7RFg.js";import{C as n}from"./q-BR-U4162.js";const p=({...r})=>{const t=s(l);return o(n,{...r,class:e("flex",t.orientation==="horizontal"?"-ml-4":"-mt-4"),children:o(a,null,3,"FW_3")},0,"FW_4")};export{p as s_DaoevsJmghA};

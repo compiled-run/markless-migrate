@@ -1,0 +1,151 @@
+const n=`:root {
+  --modal-animation: forwards cubic-bezier(0.6, 0.6, 0, 1);
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.modal-animation::backdrop,
+.modal-panel.sheet::backdrop,
+.modal-panel.bottom-sheet::backdrop {
+  animation: modalFadeIn 0.75s var(--modal-animation);
+}
+
+.modal-animation[data-closing]::backdrop,
+.modal-panel.sheet[data-closing]::backdrop,
+.modal-panel.bottom-sheet[data-closing]::backdrop {
+  animation: modalFadeOut 0.35s var(--modal-animation);
+}
+
+.modal-animation::backdrop {
+  background: oklch(from 0, 0%, 0%, 0.5);
+}
+
+@keyframes modalOpen {
+  from {
+    opacity: 0;
+    transform: scale(150%);
+  }
+  to {
+    opacity: 1;
+    transform: scale(100%);
+  }
+}
+
+@keyframes modalClose {
+  from {
+    opacity: 1;
+    transform: translateY(0%);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-200%);
+  }
+}
+
+.modal-animation {
+  animation: modalOpen 0.75s var(--modal-animation);
+}
+
+.modal-animation[data-closing] {
+  animation: modalClose 0.35s var(--modal-animation);
+}
+
+@keyframes sheetOpen {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0%);
+  }
+}
+
+@keyframes sheetClose {
+  from {
+    opacity: 1;
+    transform: translateX(0%);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.modal-panel.sheet::backdrop {
+  background: oklch(from 0, 0%, 0%, 0.5);
+}
+
+.modal-panel.sheet {
+  right: 0;
+  margin-right: 0;
+  height: 100vh;
+  animation: sheetOpen 0.75s var(--modal-animation);
+  margin-left: auto;
+}
+
+.modal-panel.sheet[data-closing] {
+  animation: sheetClose 0.35s var(--modal-animation);
+}
+
+@keyframes bottomSheetOpen {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0%);
+  }
+}
+
+@keyframes bottomSheetClose {
+  from {
+    opacity: 1;
+    transform: translateY(0%);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+.modal-panel.bottom-sheet {
+  height: auto;
+  top: unset;
+  bottom: 0;
+  margin-bottom: 0;
+  width: 100%;
+  max-width: unset;
+  animation: bottomSheetOpen 0.75s var(--modal-animation);
+}
+
+.modal-panel.bottom-sheet[data-closing] {
+  animation: bottomSheetClose 0.35s var(--modal-animation);
+}
+
+.modal-transition {
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+
+.modal-transition[data-open] {
+  opacity: 1;
+}
+`;export{n as A};

@@ -1,0 +1,1 @@
+import{z as s,o}from"./q-CsvfasCP.js";import{c as n}from"./q-DW7wgCba.js";import{H as r}from"./q-BFK5eDLL.js";const f=i=>s(r,{...i,class:n("mt-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-hidden",i.class),children:s(o,null,3,"dw_5")},0,"dw_6");export{f as s_wJX8SdRttk4};

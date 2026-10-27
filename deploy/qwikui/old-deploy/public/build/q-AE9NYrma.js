@@ -1,0 +1,1 @@
+import{I as e,z as l,o as s}from"./q-CsvfasCP.js";import{c as i}from"./q-DW7wgCba.js";const c=n=>e("li",{...n,class:i("inline-flex items-center gap-1.5",n.class),children:l(s,null,3,"eg_4")},null,0,"eg_5");export{c as s_R720ne9M0w0};

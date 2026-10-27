@@ -1,0 +1,53 @@
+{
+	"trailingSlash": true,
+	"redirects": [
+		{
+			"source": "/repro",
+			"destination": "https://stackblitz.com/~/github.com/qwikifiers/qwik-ui-stackblitz",
+			"statusCode": 307
+		},
+		{
+			"source": "/repro/",
+			"destination": "https://stackblitz.com/~/github.com/qwikifiers/qwik-ui-stackblitz",
+			"statusCode": 307
+		}
+	],
+	"headers": [
+		{
+			"source": "/build/:path*",
+			"headers": [
+				{
+					"key": "Cache-Control",
+					"value": "public, max-age=31536000, s-maxage=31536000, immutable"
+				}
+			]
+		},
+		{
+			"source": "/docs/:path*",
+			"headers": [
+				{
+					"key": "Cache-Control",
+					"value": "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800"
+				}
+			]
+		},
+		{
+			"source": "/:path*",
+			"headers": [
+				{
+					"key": "Cache-Control",
+					"value": "public, max-age=900, s-maxage=86400, stale-while-revalidate=604800"
+				}
+			]
+		},
+		{
+			"source": "/api/:path*",
+			"headers": [
+				{
+					"key": "Cache-Control",
+					"value": "no-cache"
+				}
+			]
+		}
+	]
+}

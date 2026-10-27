@@ -1,0 +1,1 @@
+import{I as s,z as t,o as a}from"./q-CsvfasCP.js";import{c as n}from"./q-DW7wgCba.js";const r=l=>s("span",{...l,class:n("ml-auto text-xs tracking-widest opacity-60",l.class),children:t(a,null,3,"dl_14")},null,0,"dl_15");export{r as s_jH4fWlfUl3I};

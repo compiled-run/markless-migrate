@@ -1,0 +1,1 @@
+import{b as s,I as a,c as l,z as t,o as c}from"./q-CsvfasCP.js";import{a as n}from"./q-C6XNngnn.js";import{c as e}from"./q-DW7wgCba.js";const d=o=>{const r=s(o,["look"]);return a("div",{...r,role:"alert",class:e(n({look:o.look}),r.class),children:t(c,null,3,"pc_0")},{role:l},0,"pc_1")};export{d as s_FdgArYnqRT4};

@@ -1,0 +1,1 @@
+import{z as t,o as s}from"./q-CsvfasCP.js";import{c as r}from"./q-DW7wgCba.js";import{H as a}from"./q-mAoLnhAg.js";const c=({...o})=>t(a,{...o,class:r("text-lg font-semibold tracking-tight",o.class),children:t(s,null,3,"s3_2")},0,"s3_3");export{c as s_p6oXVN7GaYk};

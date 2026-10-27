@@ -1,0 +1,1 @@
+import{A as s,j as a,I as n,c as o,z as r,o as i}from"./q-CsvfasCP.js";import{s as c}from"./q-D2n-TDvV.js";const m=e=>{s();const t=a(c);return n("span",{"aria-hidden":"true",...e,children:t.isSelectedSig.value&&r(i,null,3,"bD_0")},{"aria-hidden":o},0,"bD_1")};export{m as s_Y2OfVA3Xqho};

@@ -1,0 +1,1 @@
+import{_ as s}from"./q-BKZ00VYc.js";import{t,N as e}from"./q-CsvfasCP.js";const l=t(e(()=>s(()=>import("./q-D6crDxYl.js"),[]),"s_p3c5aN0IFQ4"));function r(){window.symbols=[],document.addEventListener("qsymbol",o=>window.symbols.push(o.detail.symbol))}export{r as collectSymbols,l as default};

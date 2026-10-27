@@ -1,0 +1,1 @@
+import{h as r}from"./q-CsvfasCP.js";import{g as w}from"./q-CsvfasCP.js";const t=async e=>{const[a]=r();switch(e.key){case"ArrowDown":await a("next");break;case"ArrowUp":await a("prev");break;case"Home":await a("first");break;case"End":await a("last");break}};export{w as _hW,t as s_wkdINL10t1M};

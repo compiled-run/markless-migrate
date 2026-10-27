@@ -1,0 +1,37 @@
+const n=`/* reset */
+input {
+  all: unset;
+}
+
+.label-container {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 35px;
+  color: oklch(from var(--foreground) l c h);
+  display: flex;
+  flex-direction: column;
+}
+
+.input {
+  width: 200px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0 10px;
+  height: 35px;
+  font-size: 15px;
+  line-height: 1;
+  background-color: oklch(from var(--background) l c h);
+  border: 2px dotted oklch(from var(--foreground) l c h);
+  border-radius: 0;
+}
+
+input:focus {
+  outline: 2px solid oklch(from var(--foreground) l c h);
+}
+
+input::selection {
+  background-color: var(--black-a9);
+  color: white;
+}
+`;export{n as L};

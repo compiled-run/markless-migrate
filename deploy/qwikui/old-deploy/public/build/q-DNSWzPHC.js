@@ -1,0 +1,1 @@
+const r=".separator-top{border-top:2px dotted oklch(from var(--foreground) l c h);margin-block:.5rem}.separator-right{border-right:2px dotted oklch(from var(--foreground) l c h);margin-inline:.5rem}.separator-left{border-left:2px dotted oklch(from var(--foreground) l c h);margin-inline:.5rem}";export{r as s};

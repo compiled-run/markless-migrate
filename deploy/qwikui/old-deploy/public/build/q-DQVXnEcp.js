@@ -1,0 +1,1 @@
+import{T as a}from"./q-TfnoM2LW.js";import{A as t,k as s,z as i,E as l,c as r}from"./q-CsvfasCP.js";const u=n=>(t(),n.headings.length===0?null:s("div",null,{class:"space-y-2"},[s("div",null,{class:"font-medium"},"On This Page",3,null),i(a,{get headings(){return n.headings},[r]:{headings:l(e=>e.headings,[n])}},3,"sb_0")],1,"sb_1"));export{u as s_8rsjD5GyeNE};

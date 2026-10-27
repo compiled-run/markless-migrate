@@ -1,0 +1,1 @@
+import{I as l,z as n,o as a}from"./q-CsvfasCP.js";import{c}from"./q-DW7wgCba.js";const o=({...s})=>l("div",{...s,class:c("text-sm [&_p]:leading-relaxed",s.class),children:n(a,null,3,"pc_4")},null,0,"pc_5");export{o as s_0IGJg0SgZHE};

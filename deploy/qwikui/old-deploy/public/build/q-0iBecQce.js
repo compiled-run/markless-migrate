@@ -1,0 +1,1 @@
+import{I as t,z as n,o}from"./q-CsvfasCP.js";import{c as r}from"./q-DW7wgCba.js";const a=s=>t("p",{...s,class:r("text-sm text-muted-foreground",s.class),children:n(o,null,3,"5E_6")},null,0,"5E_7");export{a as s_VeI0Fugp00Q};

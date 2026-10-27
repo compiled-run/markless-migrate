@@ -1,0 +1,1 @@
+import{A as r}from"./q-C6XNngnn.js";import{r as s}from"./q-JFFmWO-j.js";import{z as o,c as t}from"./q-CsvfasCP.js";const n=()=>o(r.Root,{children:[o(s,{class:"h-4 w-4",[t]:{class:t}},3,"bz_0"),o(r.Title,{children:"Heads up!"},3,"bz_1"),o(r.Description,{children:"You can add components to your app using the cli."},3,"bz_2")]},1,"bz_3");export{n as s_OJrLbBIm5R0};

@@ -1,0 +1,21 @@
+import{_ as e}from"./q-BKZ00VYc.js";import{t as o,N as t}from"./q-CsvfasCP.js";const a=o(t(()=>e(()=>import("./q-VdvIQROh.js"),[]),"s_XxV0f0g7dxQ")),s=`import { component$ } from '@builder.io/qwik';
+import { Separator } from '~/components/ui';
+export default component$(() => {
+  return (
+    <div>
+      <div class="space-y-1">
+        <h4 class="text-sm leading-none font-medium">Qwik UI</h4>
+        <p class="text-sm text-muted-foreground">An open-source UI component library.</p>
+      </div>
+      <Separator class="my-4" />
+      <div class="flex h-5 items-center space-x-4 text-sm">
+        <div>Customizable</div>
+        <Separator orientation="vertical" />
+        <div>Accessible</div>
+        <Separator orientation="vertical" />
+        <div>Optimized for you</div>
+      </div>
+    </div>
+  );
+});
+`;export{s as H,a};

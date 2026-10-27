@@ -1,0 +1,124 @@
+const n=`.collapsible {
+  min-width: 14rem;
+}
+
+.collapsible-trigger {
+  width: 100%;
+  border: 2px dotted oklch(from var(--foreground) l c h / 1);
+  border-radius: calc(var(--border-radius) / 2);
+  padding: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: -2px;
+}
+
+.collapsible-trigger[data-disabled] {
+  opacity: 0.3;
+}
+
+.collapsible-trigger:hover {
+  background-color: oklch(from var(--primary) l c h / 0.08);
+}
+
+.collapsible-trigger svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.collapsible-trigger[data-open] {
+  border-bottom: none;
+}
+
+.collapsible-trigger[data-open] svg {
+  transform: rotate(180deg);
+}
+
+.collapsible:not(:first-child) .collapsible-trigger {
+  border-top: none;
+}
+
+.collapsible-content {
+  width: 100%;
+  font-weight: 500;
+  background: oklch(from var(--primary) l c h / 0.2);
+  border-radius: calc(var(--border-radius) / 2);
+  max-width: var(--select-width);
+  color: oklch(from var(--foreground) l c h);
+  overflow: hidden;
+
+  /* offset the dotted border */
+}
+
+.collapsible-content-outline {
+  padding: 0.5rem;
+  border: 2px dotted oklch(from var(--primary) l c h / 1);
+}
+
+/* chevron transition */
+.collapsible-transition {
+  transition: transform 500ms ease;
+}
+
+@keyframes collapsible-open {
+  0% {
+    height: 0;
+  }
+  100% {
+    height: var(--qwikui-collapsible-content-height);
+  }
+}
+
+@keyframes collapsible-closed {
+  0% {
+    height: var(--qwikui-collapsible-content-height);
+  }
+  100% {
+    height: 0;
+  }
+}
+
+.collapsible-animation[data-open] {
+  animation: 550ms cubic-bezier(0.87, 0, 0.13, 1) 0s 1 normal forwards collapsible-open;
+}
+
+.collapsible-animation[data-closed] {
+  animation: 350ms cubic-bezier(0.87, 0, 0.13, 1) 0s 1 normal forwards collapsible-closed;
+}
+
+.dynamic-input {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.dynamic-input label {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  margin-block: 0.5rem;
+  align-items: center;
+}
+
+.dynamic-input input {
+  margin-bottom: 0.5rem;
+  width: 5rem;
+  background: oklch(from var(--accent) l c h);
+  border: 2px dotted oklch(from var(--foreground) l c h);
+  padding-left: 0.5rem;
+}
+
+.dynamic-input .add input {
+  background: oklch(from var(--primary) l c h / 0.2);
+}
+
+.dynamic-input .delete input {
+  background: oklch(from var(--accent) l c h / 1);
+}
+
+.dynamic-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-block: 0.5rem;
+}
+`;export{n as A};

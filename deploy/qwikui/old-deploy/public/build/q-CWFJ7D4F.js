@@ -1,0 +1,1 @@
+import{z as o,c as r}from"./q-CsvfasCP.js";import{H as e}from"./q-DCrkDRPe.js";import{H as p}from"./q-Doibqie7.js";import{H as s}from"./q-C2LLvR4N.js";const l=()=>o(s,{children:[o(e,{class:"popover-trigger",children:"Popover Trigger",[r]:{class:r}},3,"xI_0"),o(p,{class:"popover-panel",children:"My Hero!",[r]:{class:r}},3,"xI_1")]},1,"xI_2");export{l as s_dIiw0pV9I1E};

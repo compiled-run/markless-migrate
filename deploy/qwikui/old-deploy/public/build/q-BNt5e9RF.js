@@ -1,0 +1,1 @@
+import{C as t}from"./q-D6od4gBH.js";import{L as n}from"./q-B2MBr3mn.js";import{k as s,z as e,c as r}from"./q-CsvfasCP.js";const i=()=>s("div",null,null,s("div",null,{class:"flex items-center space-x-2"},[e(t,{id:"terms",[r]:{id:r}},3,"IT_0"),e(n,{for:"terms",children:"Accept terms and conditions",[r]:{for:r}},3,"IT_1")],1,null),1,"IT_2");export{i as s_uzChcCNy4kg};

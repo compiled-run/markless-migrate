@@ -1,0 +1,1 @@
+import{_ as a}from"./q-BKZ00VYc.js";import{t as s,N as e}from"./q-CsvfasCP.js";import{C as t}from"./q-Duw0-koT.js";function u(r){switch(r){case t.Beta:return"primary";case t.Draft:return"outline";default:return null}}const m=s(e(()=>a(()=>import("./q-CPzFNQLL.js"),[]),"s_q5vs1UJCxH0"));export{m as S,u as g};

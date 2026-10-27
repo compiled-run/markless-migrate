@@ -1,0 +1,1 @@
+import{I as r}from"./q-DKvwRtcr.js";import{z as e,c as t,D as a}from"./q-CsvfasCP.js";const c=()=>e(a,{children:e(r,{type:"email",placeholder:"Email",[t]:{type:t,placeholder:t}},3,"Rt_0")},1,"Rt_1");export{c as s_ksFGcfkjPqg};

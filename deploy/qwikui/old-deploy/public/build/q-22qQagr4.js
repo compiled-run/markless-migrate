@@ -1,0 +1,1 @@
+import{h as o}from"./q-CsvfasCP.js";import{g as l}from"./q-CsvfasCP.js";const s=async t=>{const[a]=o();if(!a.panelRef?.value)return;const e=a.panelRef.value;t.newState==="open"&&(delete e.dataset.closed,e.dataset.open=""),t.newState==="closed"&&(delete e.dataset.open,e.dataset.closed="")};export{l as _hW,s as s_zBnSnbjGX8Y};

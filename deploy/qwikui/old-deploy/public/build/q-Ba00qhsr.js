@@ -1,0 +1,1 @@
+import{k as i,E as s}from"./q-CsvfasCP.js";const n=l=>i("div",null,{class:s(t=>["tooltip-arrow",t.class],[l]),style:s(t=>({width:`${t.width??10}px`,height:`${t.height??5}px`}),[l])},null,3,"ZK_0");export{n as s_p85Ayd7fGxM};

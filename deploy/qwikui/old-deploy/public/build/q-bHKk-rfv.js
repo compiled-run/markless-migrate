@@ -1,0 +1,1 @@
+import{I as e,z as r,o as l}from"./q-CsvfasCP.js";import{c as n}from"./q-DW7wgCba.js";const t=({...s})=>e("div",{...s,class:n("relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full",s.class),children:r(l,null,3,"js_0")},null,0,"js_1");export{t as s_gb0sblwr0wM};

@@ -1,0 +1,44 @@
+import{_ as s}from"./q-BKZ00VYc.js";import{t,N as o}from"./q-CsvfasCP.js";const i=t(o(()=>s(()=>import("./q-CzR2sAoN.js").then(e=>e.h),[]),"s_5O2aQBFnSh0")),n=`import { component$, useStyles$ } from '@builder.io/qwik';
+import { Separator } from '@qwik-ui/headless';
+
+export default component$(() => {
+  useStyles$(styles);
+
+  return (
+    <>
+      <div>
+        <div>
+          <div>
+            <h1 class="text-lg">Qwik UI Headless</h1>
+            <p class="text-sm">Accessible, Unstyled Qwik UI Components</p>
+          </div>
+          <Separator orientation="horizontal" class="separator-top" />
+          <menu class="flex gap-2">
+            <li>
+              <a class="border-none" href="/docs/headless/introduction/">
+                Introduction
+              </a>
+            </li>
+            <Separator orientation="vertical" class="separator-right" />
+            <li>
+              {' '}
+              <a class="border-none" href="/docs/headless/install/">
+                Installation
+              </a>
+            </li>
+            <Separator orientation="vertical" class="separator-left" />
+            <li>
+              <a class="border-none" href="/docs/headless/contributing/">
+                Contributing
+              </a>
+            </li>
+          </menu>
+        </div>
+      </div>
+    </>
+  );
+});
+
+// internal
+import styles from '../snippets/separator.css?inline';
+`;export{n as H,i as a};

@@ -1,0 +1,1 @@
+import{k as i,E as r}from"./q-CsvfasCP.js";const t=n=>{if(n._index===void 0)throw new Error("Qwik UI: Example inline component cannot find its proper index.");return i("div",null,null,["Item ",r(e=>e._index+1,[n])],3,"Zb_7")};export{t as s_54zeGc1JlqE};

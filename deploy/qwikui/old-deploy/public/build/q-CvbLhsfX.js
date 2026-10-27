@@ -1,0 +1,1 @@
+import{H as r}from"./q-BDgmstHq.js";import{k as e,z as s,E as t,c as a}from"./q-CsvfasCP.js";const l=o=>e("div",null,{class:"shadow-3xl mb-6 rounded-md border shadow-lg"},s(r,{get code(){return o.code},[a]:{code:t(d=>d.code,[o])}},3,"JV_0"),1,"JV_1");export{l as s_2TzozkAPp0k};

@@ -1,0 +1,1 @@
+import{_ as o}from"./q-BKZ00VYc.js";import{t as i,N as s}from"./q-CsvfasCP.js";const e=[{title:"Your call has been confirmed.",description:"1 hour ago"},{title:"You have a new message!",description:"1 hour ago"},{title:"Your subscription is expiring soon!",description:"2 hours ago"}],a=i(s(()=>o(()=>import("./q-Cc8BQsS6.js"),[]),"s_nGBz6Cv8UCg"));export{a as H,e as n};

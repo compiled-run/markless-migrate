@@ -1,0 +1,38 @@
+import{_ as e}from"./q-BKZ00VYc.js";import{t as a,N as s}from"./q-CsvfasCP.js";const l=a(s(()=>e(()=>import("./q-BufS2VNR.js"),[]),"s_x5Y3T3QgIng")),i=`import { component$, useSignal, useStyles$ } from '@builder.io/qwik';
+import { Tabs } from '@qwik-ui/headless';
+import styles from '.././index.css?inline';
+
+export default component$(() => {
+  useStyles$(styles);
+  const selectedIndexSig = useSignal(0);
+  return (
+    <>
+      <div class="tabs-example mr-auto">
+        <h3>Danish Composers</h3>
+        <Tabs.Root
+          onSelectedIndexChange$={(index) => {
+            selectedIndexSig.value = index;
+          }}
+        >
+          <Tabs.List>
+            <Tabs.Tab>Maria</Tabs.Tab>
+            <Tabs.Tab>Carl</Tabs.Tab>
+            <Tabs.Tab>Ida</Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel>
+            <p>Maria Theresia Ahlefeldt (16 January 1755 - 20 December 1810) ...</p>
+          </Tabs.Panel>
+          <Tabs.Panel>
+            <p>Carl Joachim Andersen (29 April 1847 - 7 May 1909) ...</p>
+          </Tabs.Panel>
+          <Tabs.Panel>
+            <p>Ida Henriette da Fonseca (July 27, 1802 - July 6, 1858) ...</p>
+          </Tabs.Panel>
+        </Tabs.Root>
+        <br />
+        <p class="mt-4">Selected Index: {selectedIndexSig.value}</p>
+      </div>
+    </>
+  );
+});
+`;export{i as O,l as a};

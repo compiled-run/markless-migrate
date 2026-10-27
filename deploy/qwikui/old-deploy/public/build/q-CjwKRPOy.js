@@ -1,0 +1,1 @@
+import{z as r,o as t}from"./q-CsvfasCP.js";import{c as e}from"./q-DW7wgCba.js";import{H as s}from"./q-CICssOgC.js";const m=o=>r(s,{...o,class:e("rounded-base relative flex items-center",o.class),children:r(t,null,3,"3G_7")},0,"3G_8");export{m as s_YSt6QMFat60};

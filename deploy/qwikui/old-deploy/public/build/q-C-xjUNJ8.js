@@ -1,0 +1,1 @@
+import{T as r}from"./q-D0QGA4Gc.js";import{z as a,c as e}from"./q-CsvfasCP.js";const t=()=>a(r,{placeholder:"Type your message here.",disabled:!0,[e]:{placeholder:e,disabled:e}},3,"aG_0");export{t as s_b8S0FeOdTFA};

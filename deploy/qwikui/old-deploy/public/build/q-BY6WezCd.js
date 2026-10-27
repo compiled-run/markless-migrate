@@ -1,0 +1,1 @@
+import{I as o,z as s,o as a}from"./q-CsvfasCP.js";import{c as n}from"./q-DW7wgCba.js";const c=r=>o("div",{...r,class:n("rounded-base border bg-card text-card-foreground shadow-sm",r.class),children:s(a,null,3,"5E_0")},null,0,"5E_1");export{c as s_pkePTtwVVxk};

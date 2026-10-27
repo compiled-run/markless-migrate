@@ -1,0 +1,1 @@
+import{d as r}from"./q-JFFmWO-j.js";import{k as c,z as s,c as t}from"./q-CsvfasCP.js";import{H as a}from"./q-BHIPtOot.js";const i=({...e})=>c("span",null,{class:"absolute right-2 flex h-3.5 w-3.5 items-center justify-center"},s(a,{...e,children:s(r,{class:"h-4 w-4",[t]:{class:t}},3,"3N_13")},0,"3N_14"),1,"3N_15");export{i as s_f1t0hynI2HE};

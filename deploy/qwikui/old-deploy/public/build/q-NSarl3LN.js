@@ -1,0 +1,1 @@
+import{z as s,o as r}from"./q-CsvfasCP.js";import{c as i}from"./q-DW7wgCba.js";import{H as l}from"./q-DBlqwDqW.js";const c=o=>s(l,{...o,class:i(o.class),children:s(r,null,3,"1f_3")},0,"1f_4");export{c as s_BFb5Iii0NZk};

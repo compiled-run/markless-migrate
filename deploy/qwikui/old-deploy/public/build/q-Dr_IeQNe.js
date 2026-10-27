@@ -1,0 +1,1 @@
+import{B as r}from"./q-DDtaMfdi.js";import{z as o,c as t,D as s}from"./q-CsvfasCP.js";const l=()=>o(s,{children:o(r,{look:"ghost",children:"Ghost",[t]:{look:t}},3,"9t_0")},1,"9t_1");export{l as s_T2pYBm5F0lc};

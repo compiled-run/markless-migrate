@@ -1,0 +1,1 @@
+import{P as r}from"./q-BKtBQUpc.js";import{z as n,D as e,E as m,c as a}from"./q-CsvfasCP.js";const g=o=>{const s=Object.keys(o.subComponent)[0];return n(e,{children:o.subComponent[s].map(t=>n(e,{children:n(r,{parsedProps:t,get config(){return o.config},[a]:{config:m(c=>c.config,[o])}},3,"1o_2")},1,"1o_3"))},1,"1o_4")};export{g as s_voKs0000oaE};

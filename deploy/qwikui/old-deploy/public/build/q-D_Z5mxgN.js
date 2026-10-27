@@ -1,0 +1,1 @@
+import{b as t,z as r,o as a}from"./q-CsvfasCP.js";import{c as i}from"./q-DW7wgCba.js";import{t as l}from"./q-CMVhF0tz.js";import{H as e}from"./q-BkQzG9vk.js";const z=o=>{const s=t(o,["size","look"]);return r(e,{...s,class:i(l({size:o.size,look:o.look}),s.class),children:r(a,null,3,"UN_0")},0,"UN_1")};export{z as s_fa1oCbI0jEk};

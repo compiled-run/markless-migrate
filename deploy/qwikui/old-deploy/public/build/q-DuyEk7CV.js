@@ -1,0 +1,1 @@
+function t(s){const r=Array.isArray(s)?[...s]:s?[s]:[];for(;r.length;){const n=r.shift();if(!n)continue;if(Array.isArray(n)){r.unshift(...n);continue}const e=i.get(n.type);if(e)e(n.props);else{const o=Array.isArray(n.children)?[...n.children]:[n.children];r.unshift(...o)}}}const i=new Map;function c(s,r){i.set(s,r)}export{c as f,t as p};

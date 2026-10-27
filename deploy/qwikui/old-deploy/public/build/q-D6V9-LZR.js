@@ -1,0 +1,1 @@
+import{I as e}from"./q-DKvwRtcr.js";import{L as i}from"./q-B2MBr3mn.js";import{k as o,z as t,c as r}from"./q-CsvfasCP.js";const p=()=>o("div",null,{class:"grid w-full max-w-sm items-center gap-1.5"},[t(i,{for:"picture",children:"Picture",[r]:{for:r}},3,"It_0"),t(e,{id:"picture",type:"file",[r]:{id:r,type:r}},3,"It_1")],1,"It_2");export{p as s_rcFgojXCaAM};

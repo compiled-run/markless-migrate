@@ -1,0 +1,1 @@
+import{B as s}from"./q-DDtaMfdi.js";import{T as r}from"./q-D0QGA4Gc.js";import{k as o,z as e,c as a}from"./q-CsvfasCP.js";const m=()=>o("div",null,{class:"grid w-full gap-2"},[e(r,{placeholder:"Type your message here.",[a]:{placeholder:a}},3,"Ea_0"),e(s,{class:"ml-auto w-40",children:"Send message",[a]:{class:a}},3,"Ea_1")],1,"Ea_2");export{m as s_KonY2TvePPI};

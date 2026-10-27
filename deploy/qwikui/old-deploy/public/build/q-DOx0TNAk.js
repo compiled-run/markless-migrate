@@ -1,0 +1,1 @@
+import{z as r,o as s}from"./q-CsvfasCP.js";import{c as a}from"./q-DW7wgCba.js";import{H as n}from"./q-B1RNbpfY.js";const b=o=>r(n,{...o,class:a("rounded-base w-48 border bg-background p-2",o.class),children:r(s,null,3,"3G_12")},0,"3G_13");export{b as s_1x4MwAx034I};

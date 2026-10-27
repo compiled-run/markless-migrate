@@ -1,0 +1,1 @@
+import{h as o}from"./q-CsvfasCP.js";import{g as n}from"./q-CsvfasCP.js";const e=s=>{const[r]=o();return s&&!/^(([^<>()[\].,;:\s@"]+(\.[^<>()[\].,;:\s@"]+)*)|(".+"))@(([^<>()[\].,;:\s@"]+\.)+[^<>()[\].,;:\s@"]{2,})$/i.test(s)?r:""};export{n as _hW,e as s_mosat2y64qI};

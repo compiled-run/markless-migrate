@@ -1,0 +1,1 @@
+import{k as l,E as e}from"./q-CsvfasCP.js";const a=r=>l("tr",null,{class:"border-b"},[l("td",null,{class:"py-4"},l("kbd",null,{class:"rounded-base inline-block w-max border border-b-2 border-primary px-2 capitalize"},e(n=>n.keyTitle,[r]),3,null),3,null),l("td",null,null,l("article",null,{class:"ml-6"},e(n=>n.description,[r]),3,null),3,null)],3,"pO_1");export{a as s_QIo0jqRIcbE};

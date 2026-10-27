@@ -1,0 +1,1 @@
+import{I as s,z as c,o as n}from"./q-CsvfasCP.js";import{c as o}from"./q-DW7wgCba.js";const e=l=>s("div",{...l,class:o("flex flex-col space-y-1.5 p-6",l.class),children:c(n,null,3,"5E_2")},null,0,"5E_3");export{e as s_A0S6Mdz78dI};

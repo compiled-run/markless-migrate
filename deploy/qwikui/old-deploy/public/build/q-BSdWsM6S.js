@@ -1,0 +1,1 @@
+import{a as o}from"./q-JFFmWO-j.js";import{I as s,c as r,z as t}from"./q-CsvfasCP.js";const n=e=>s("li",{role:"presentation","aria-hidden":"true",...e,children:t(o,{class:"size-3.5 stroke-muted-foreground stroke-2",[r]:{class:r}},3,"eg_8")},{role:r,"aria-hidden":r},0,"eg_9");export{n as s_MQNH2cr5924};

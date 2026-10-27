@@ -1,0 +1,107 @@
+const n=`.modal-panel,
+.modal-trigger {
+  border-radius: calc(var(--border-radius));
+}
+
+.modal-trigger {
+  padding: 0.5rem;
+  width: 100%;
+  border: 2px dotted oklch(from var(--foreground) l c h);
+  height: 44px;
+  width: fit-content;
+}
+
+.modal-trigger:hover,
+.modal-close:hover {
+  background-color: oklch(from var(--primary) l c h / 0.08);
+}
+
+.modal-panel {
+  padding: 1rem;
+  gap: 0.5rem;
+  border: 2px dotted oklch(from var(--primary) l c h);
+  color: oklch(from var(--foreground) l c h);
+  background-color: oklch(from var(--background) l c h);
+  max-width: 28rem;
+  width: 100%;
+  overflow: hidden;
+  margin: auto;
+}
+
+.modal-panel::backdrop {
+  backdrop-filter: blur(3px) brightness(50%);
+}
+
+.modal-panel > * {
+  padding-block: 0.5rem;
+}
+
+.modal-panel input {
+  margin-bottom: 1rem;
+  border-radius: calc(var(--border-radius));
+  background: oklch(from var(--foreground) l c h / 0.05);
+}
+
+.modal-panel h2 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  padding: 0;
+}
+
+.modal-panel input {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: calc(var(--border-radius));
+  border: 2px dotted oklch(from var(--ring) l c h);
+}
+
+.modal-panel footer {
+  padding-top: 0;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modal-panel button {
+  padding: 0.5rem;
+  border-radius: calc(var(--border-radius));
+  border: 2px dotted oklch(from var(--muted) l c h);
+}
+
+.modal-panel button:first-of-type {
+  border-color: oklch(from var(--foreground) l c h);
+}
+
+.modal-panel button:last-of-type {
+  border-color: oklch(from var(--primary) l c h);
+}
+
+.modal-backdrop::backdrop {
+  /* changing background */
+  background: rgba(0, 0, 0, 0.4);
+
+  /* providing multiple filters */
+  backdrop-filter: grayscale(90%) blur(10px);
+}
+
+.modal-panel .modal-alert-close {
+  position: absolute;
+  top: 0;
+  right: 0.5rem;
+  transform: scale(3) rotate(45deg);
+  border: none;
+  outline: none;
+}
+
+/* some css fun here lol */
+.modal-panel .modal-alert-close:focus-visible::after {
+  content: '';
+  position: absolute;
+  left: 0.35rem;
+  right: 0.55rem;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  border: 1px solid oklch(from var(--foreground) l c h);
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+`;export{n as M};

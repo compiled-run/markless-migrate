@@ -1,0 +1,1 @@
+import{z as m,o as r}from"./q-CsvfasCP.js";import{c as s}from"./q-DW7wgCba.js";import{C as n}from"./q-BvEw7ZiB.js";const l=({...o})=>m(n,{...o,class:s("",o.class),children:m(r,null,3,"3G_16")},0,"3G_17");export{l as s_m8kNS8GGdm4};

@@ -1,0 +1,1 @@
+const a="[role=menuitemcheckbox]>[data-indicator],[role=menuitemradio]>[data-indicator]{display:none}[role=menuitemcheckbox][data-checked]>[data-indicator],[role=menuitemradio][data-checked]>[data-indicator]{display:block}";export{a as s};

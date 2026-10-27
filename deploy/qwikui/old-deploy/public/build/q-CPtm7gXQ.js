@@ -1,0 +1,1 @@
+import{h as r}from"./q-CsvfasCP.js";import{g as p}from"./q-CsvfasCP.js";import{s as o}from"./q-Plj9-94d.js";const n=async e=>{const[t]=r(),s=await t.resolve();return(await o(typeof s=="function"?s():s,e,{abortPipeEarly:!0})).issues?.[0].message||""};export{p as _hW,n as s_wBmGt9LExAk};

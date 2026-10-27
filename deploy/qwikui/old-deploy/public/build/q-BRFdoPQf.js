@@ -1,0 +1,1 @@
+import{z as o}from"./q-CsvfasCP.js";import{H as r}from"./q-BlB4oLAe.js";import{a as n,H as c}from"./q-D_Au0Yj2.js";import{H as i}from"./q-584dNHyf.js";import{H as e}from"./q-BfDu4USj.js";const a=()=>o(e,{children:o(r,{children:[o(n,{children:o(c,{children:"Click on me!"},3,"9p_0")},1,"9p_1"),o(i,{children:"Content"},3,"9p_2")]},1,"9p_3")},1,"9p_4");export{a as s_dODnWBBxo1w};

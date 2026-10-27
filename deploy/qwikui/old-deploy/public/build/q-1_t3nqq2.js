@@ -1,0 +1,1 @@
+import{I as a,z as c,o}from"./q-CsvfasCP.js";import{c as s}from"./q-DW7wgCba.js";const l=({...n})=>a("h5",{...n,class:s("mb-1 leading-none font-medium tracking-tight",n.class),children:c(o,null,3,"pc_2")},null,0,"pc_3");export{l as s_hy0QDDaTV7U};

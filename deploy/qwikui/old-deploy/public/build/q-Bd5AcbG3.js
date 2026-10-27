@@ -1,0 +1,1 @@
+import{B as r}from"./q-DDtaMfdi.js";import{I as s}from"./q-DKvwRtcr.js";import{k as l,z as e,c as t}from"./q-CsvfasCP.js";const o=()=>l("div",null,{class:"flex w-full max-w-sm items-center space-x-2"},[e(s,{type:"email",placeholder:"Email",[t]:{type:t,placeholder:t}},3,"bV_0"),e(r,{type:"submit",children:"Subscribe",[t]:{type:t}},3,"bV_1")],1,"bV_2");export{o as s_X0ttEZpt2HI};

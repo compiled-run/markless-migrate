@@ -1,0 +1,90 @@
+const n=`.collapsible {
+  min-width: 14rem;
+}
+
+.collapsible-trigger {
+  width: 100%;
+  border: 2px dotted oklch(from var(--foreground) l c h / 1);
+  border-radius: calc(var(--border-radius) / 2);
+  padding: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.collapsible-trigger[data-disabled] {
+  opacity: 0.3;
+}
+
+.collapsible-trigger:hover {
+  background-color: oklch(from var(--primary) l c h / 0.08);
+}
+
+.collapsible-trigger svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.collapsible-trigger[data-open] {
+  border-bottom: none;
+}
+
+.collapsible-trigger[data-open] svg {
+  transform: rotate(180deg);
+}
+
+.collapsible-content {
+  width: 100%;
+  font-weight: 500;
+  background: oklch(from var(--primary) l c h / 0.2);
+  border-radius: calc(var(--border-radius) / 2);
+  max-width: var(--select-width);
+  color: oklch(from var(--foreground) l c h);
+  overflow: hidden;
+  margin-top: -2px;
+}
+
+.collapsible:has(.collapsible-content:not([hidden])) .collapsible-trigger {
+  border-bottom: 2px dotted;
+}
+
+.collapsible-content-outline {
+  padding: 0.5rem;
+  border: 2px dotted oklch(from var(--primary) l c h / 1);
+}
+
+/* animations only */
+.collapsible-transition {
+  transition: transform 500ms ease;
+}
+
+@keyframes collapsible-open {
+  0% {
+    height: 0;
+    margin-top: 0;
+  }
+  100% {
+    height: var(--qwikui-collapsible-content-height);
+    margin-top: -2px;
+  }
+}
+
+@keyframes collapsible-closed {
+  0% {
+    height: var(--qwikui-collapsible-content-height);
+    margin-top: -2px;
+  }
+  100% {
+    height: 0;
+    margin-top: 0;
+  }
+}
+
+.collapsible-animation[data-open] {
+  animation: 550ms cubic-bezier(0.87, 0, 0.13, 1) 0s 1 normal forwards collapsible-open;
+}
+
+.collapsible-animation[data-closed] {
+  animation: 350ms cubic-bezier(0.87, 0, 0.13, 1) 0s 1 normal forwards collapsible-closed;
+}
+`;export{n as C};

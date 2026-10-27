@@ -1,0 +1,1 @@
+import{z as n,k as a,o as t}from"./q-CsvfasCP.js";import{c}from"./q-DW7wgCba.js";import{H as s}from"./q-584dNHyf.js";const d=o=>n(s,{...o,class:c("overflow-hidden text-sm data-closed:animate-accordion-up data-open:animate-accordion-down",o.class),children:a("div",null,{class:"pt-0 pb-4"},n(t,null,3,"Lv_7"),1,null)},0,"Lv_8");export{d as s_0QhOn2JOjCY};

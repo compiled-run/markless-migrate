@@ -1,0 +1,31 @@
+import{t as o,N as l,z as s,O as c,S as e,U as d,D as h}from"./q-CsvfasCP.js";import{u as p}from"./q-D_NppxYb.js";import{_ as u}from"./q-BKZ00VYc.js";import{C as m}from"./q-B0Yj9KhA.js";const f=o(l(()=>u(()=>import("./q-C2azahqK.js"),[]),"s_es1xQN10cEE")),g="/assets/C4F59D54-autocomplete.png",x=[{text:"Headless kit",id:"headless-kit",level:1},{text:"It's fast, like really fast",id:"its-fast-like-really-fast",level:2},{text:"Accessibility",id:"accessibility",level:2},{text:"Bring your own styles",id:"bring-your-own-styles",level:2},{text:"Environment agnostic",id:"environment-agnostic",level:2},{text:"Developer experience",id:"developer-experience",level:2},{text:"FAQ",id:"faq",level:2},{text:"Credits",id:"credits",level:2}],I={title:"Qwik UI | Introduction",meta:[],styles:[],links:[],scripts:[],frontmatter:{}},A={title:"Qwik UI | Introduction"},y=o(d(i=>{const n={a:"a",em:"em",h1:"h1",h2:"h2",li:"li",p:"p",span:"span",strong:"strong",ul:"ul",...p(),...i.components},{FeatureList:t,Note:r}=n;return t||a("FeatureList"),r||a("Note"),e(h,{children:[e(n.h1,{id:"headless-kit",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#headless-kit",children:e(n.span,{class:"icon icon-link"})}),"Headless kit"]}),`
+`,e(n.p,{children:["Qwik UI is a tool to help you build better design systems. It includes components with ",e(n.strong,{children:"no default styles"})," and a ",e(n.a,{href:"../../styled/introduction/",children:"styled kit"})," with configurable presets. Both are fully customizable and accessible."]}),`
+`,e(n.p,{children:["You are currently exploring the headless kit, which manages the essential structure, behavior, and state of advanced UI components. It also happens to be the world's fastest UI library, squeezing out every bit of performance. ",e(n.em,{children:"(Like lemonade from lemons that had a run-in with a steamroller.)"})," 🥤"]}),`
+`,e(r,{status:"warning",children:e(n.p,{children:["Qwik UI is currently in its ",e(n.strong,{children:"beta"}),` phase. We appreciate your support and patience as
+we continue to add new features and make improvements. Expect some breaking changes
+until we reach version 1.0.`]})}),`
+`,e(n.h2,{id:"its-fast-like-really-fast",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#its-fast-like-really-fast",children:e(n.span,{class:"icon icon-link"})}),"It's fast, like really fast"]}),`
+`,e(n.p,{children:["The claim of being the world's fastest UI library is genuine, not just marketing hype. In Qwik UI, every component starts as ",e(n.strong,{children:"lightweight HTML"})," and activates smaller pieces upon ",e(n.strong,{children:"user interaction"}),". Each event is handled independently, without affecting the entire component."]}),`
+`,e(n.h2,{id:"accessibility",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#accessibility",children:e(n.span,{class:"icon icon-link"})}),"Accessibility"]}),`
+`,e(n.p,{children:["Components in Qwik UI follow the ",e(n.a,{href:"https://www.w3.org/WAI/ARIA/apg/patterns/",children:"WAI-ARIA Design Patterns"})," when possible. The project manages ARIA attributes, focus management, and keyboard handling."]}),`
+`,e(n.p,{children:"However, following these guidelines alone does not guarantee full accessibility. The headless kit tests with assistive technologies to ensure that people with disabilities can fully use your applications."}),`
+`,e(n.h2,{id:"bring-your-own-styles",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#bring-your-own-styles",children:e(n.span,{class:"icon icon-link"})}),"Bring your own styles"]}),`
+`,e(n.p,{children:"Out of the box, components ship with zero or necessary behavioral styles, giving you complete control over your design. You can style them using any solution."}),`
+`,e(t,{features:["Vanilla CSS","SASS and PostCSS","CSS-in-JS","Whatever you want!"]}),`
+`,e(m,{intro:!0}),`
+`,e(n.h2,{id:"environment-agnostic",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#environment-agnostic",children:e(n.span,{class:"icon icon-link"})}),"Environment agnostic"]}),`
+`,e(n.p,{children:["Whether you're building a ",e(n.em,{children:"SSG"})," marketing page, ",e(n.em,{children:"SSR"})," e-commerce site, or ",e(n.em,{children:"CSR"})," dashboard, Qwik UI knows when each function should run on the server or the client for you."]}),`
+`,e(n.h2,{id:"developer-experience",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#developer-experience",children:e(n.span,{class:"icon icon-link"})}),"Developer experience"]}),`
+`,e(n.p,{children:["Our goal is to provide the ",e(n.strong,{children:"best developer experience"}),". Qwik UI offers fully-typed, discoverable, and composable components."]}),`
+`,e("img",{src:g,class:"h-60 rounded-sm object-cover object-left px-2 md:h-[revert]",width:"1920",height:"600"}),`
+`,e(n.h2,{id:"faq",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#faq",children:e(n.span,{class:"icon icon-link"})}),"FAQ"]}),`
+`,e(f,{}),`
+`,e(n.h2,{id:"credits",children:[e(n.a,{"aria-hidden":"true",tabindex:"-1",href:"#credits",children:e(n.span,{class:"icon icon-link"})}),"Credits"]}),`
+`,e(n.p,{children:["We believe in a ",e(n.em,{children:"learner's mindset"})," and have drawn inspiration from many projects, learning from their successes and challenges."]}),`
+`,e(n.ul,{children:[`
+`,e(n.li,{children:e(n.a,{href:"https://kobalte.dev/docs/core/overview/introduction",children:"Kobalte"})}),`
+`,e(n.li,{children:e(n.a,{href:"https://react-spectrum.adobe.com/react-aria/",children:"React Aria"})}),`
+`,e(n.li,{children:e(n.a,{href:"https://www.melt-ui.com/docs/introduction",children:"Melt UI"})}),`
+`,e(n.li,{children:e(n.a,{href:"https://www.radix-ui.com/",children:"Radix UI"})}),`
+`,e(n.li,{children:e(n.a,{href:"https://ariakit.org/",children:"Ariakit"})}),`
+`]})]})},"_createMdxContent_0",[]));function a(i,n,t){throw new Error("/Users/jacksm5pro/dev/open-source/mm-upstreams/qwik-ui/apps/website/src/routes/docs/headless/introduction/index.mdx: Expected component `"+i+"` to be defined: you likely forgot to import, pass, or provide it.")}const S=(i={})=>{const n=s(c,{children:s(y,i,3,null)},3,"OsfLoPQi");return typeof MDXLayout=="function"?e(MDXLayout,{children:n}):n};export{S as default,A as frontmatter,I as head,x as headings};

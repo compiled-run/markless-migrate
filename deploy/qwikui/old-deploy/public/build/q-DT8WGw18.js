@@ -1,0 +1,1 @@
+import{b as r,z as t,o as n}from"./q-CsvfasCP.js";import{c as l}from"./q-DW7wgCba.js";import{H as m}from"./q-HwbZkYt3.js";const i=s=>{const o=r(s,["inset"]);return t(m,{...o,class:l("px-2 py-1.5 text-sm font-semibold",s.inset&&"pl-8",o.class),children:t(n,null,3,"dl_12")},0,"dl_13")};export{i as s_Hmu839fCAfs};

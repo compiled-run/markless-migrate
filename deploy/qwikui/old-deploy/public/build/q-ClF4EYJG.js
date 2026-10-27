@@ -1,0 +1,1 @@
+import{S as l}from"./q-CJPhtElM.js";import{k as c,z as a,c as s}from"./q-CsvfasCP.js";const o=()=>c("div",null,{class:"flex flex-col space-y-3"},[a(l,{class:"h-32 w-64 rounded-3xl",[s]:{class:s}},3,"Rq_0"),c("div",null,{class:"space-y-2"},[a(l,{class:"h-4 w-64",[s]:{class:s}},3,"Rq_1"),a(l,{class:"h-4 w-48",[s]:{class:s}},3,"Rq_2")],1,null)],1,"Rq_3");export{o as s_IKYEJF9Dafs};

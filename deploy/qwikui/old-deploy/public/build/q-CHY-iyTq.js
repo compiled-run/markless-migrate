@@ -1,0 +1,1 @@
+import{z as s,o as r,D as t}from"./q-CsvfasCP.js";import{c as e}from"./q-DW7wgCba.js";import{H as l}from"./q-CwSz_NoQ.js";const m=({...o})=>s(t,{children:s(l,{...o,class:e("px-2 py-1.5 text-sm font-semibold",o.class),children:s(r,null,3,"3N_1")},0,"3N_2")},1,"3N_3");export{m as s_k1bgVK7Qrtg};

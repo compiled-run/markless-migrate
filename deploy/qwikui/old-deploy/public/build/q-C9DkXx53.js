@@ -1,0 +1,1 @@
+import{I as s,z as e,o as n}from"./q-CsvfasCP.js";import{c as t}from"./q-DW7wgCba.js";const c=({...l})=>s("div",{...l,class:t("absolute -z-10 flex h-full w-full items-center justify-center rounded-full bg-muted",l.class),children:e(n,null,3,"js_3")},null,0,"js_4");export{c as s_FcGamYkwb5s};

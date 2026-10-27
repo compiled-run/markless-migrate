@@ -1,0 +1,1 @@
+import{j as s,z as o,o as n}from"./q-CsvfasCP.js";import{c as a}from"./q-DW7wgCba.js";import{s as i}from"./q-DG_P7RFg.js";import{C as e}from"./q-D2RqKr5d.js";const d=({...t})=>{const r=s(i);return o(e,{...t,class:a(r.orientation==="horizontal"?"pl-4":"pt-4"),children:o(n,null,3,"FW_5")},0,"FW_6")};export{d as s_MY7U5oLiwnw};

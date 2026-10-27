@@ -1,0 +1,1 @@
+import{A as r}from"./q-COAvqRIq.js";import{z as t,c as a}from"./q-CsvfasCP.js";const o=()=>t(r.Root,{children:[t(r.Image,{src:"https://github.com/mhevery.png",alt:"@mhevery",[a]:{src:a,alt:a}},3,"7Q_0"),t(r.Fallback,{children:"MA"},3,"7Q_1")]},1,"7Q_2");export{o as s_veRMQf00ZCE};

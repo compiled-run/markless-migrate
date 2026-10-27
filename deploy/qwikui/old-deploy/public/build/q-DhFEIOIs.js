@@ -1,0 +1,1 @@
+import{z as r,o as e}from"./q-CsvfasCP.js";import{c as s}from"./q-DW7wgCba.js";import{H as a}from"./q-DXJzTFus.js";const m=o=>r(a,{...o,class:s("font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70",o.class),children:r(e,null,3,"PA_0")},0,"PA_1");export{m as s_hp8tORKmgY4};

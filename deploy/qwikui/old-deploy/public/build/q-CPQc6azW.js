@@ -1,0 +1,1 @@
+import{B as t}from"./q-DDtaMfdi.js";import{t as a}from"./q-JFFmWO-j.js";import{z as s,c as r}from"./q-CsvfasCP.js";const n=()=>s(t,{disabled:!0,children:[s(a,{class:"mr-2 h-5 w-5 animate-spin",[r]:{class:r}},3,"pf_0")," Login with Email"],[r]:{disabled:r}},1,"pf_1");export{n as s_ljFnS7u4SyE};

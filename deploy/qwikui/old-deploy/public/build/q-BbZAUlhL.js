@@ -1,0 +1,1 @@
+var w=(function(r){return r.ArrowLeft="ArrowLeft",r.ArrowRight="ArrowRight",r.ArrowUp="ArrowUp",r.ArrowDown="ArrowDown",r.Home="Home",r.End="End",r.PageUp="PageUp",r.PageDown="PageDown",r.Enter="Enter",r})({});export{w as K};

@@ -1,0 +1,19 @@
+import{_ as o}from"./q-BKZ00VYc.js";import{t as e,N as r}from"./q-CsvfasCP.js";const a=e(r(()=>o(()=>import("./q-DJXb3sR8.js"),[]),"s_iU2GREqCo0c")),g=`import { component$ } from '@builder.io/qwik';
+import { ToggleGroup } from '~/components/ui';
+
+export default component$(() => {
+  return (
+    <ToggleGroup.Root>
+      <ToggleGroup.Item value="left" aria-label="Left aligned">
+        Left
+      </ToggleGroup.Item>
+      <ToggleGroup.Item value="center" aria-label="Center aligned">
+        Center
+      </ToggleGroup.Item>
+      <ToggleGroup.Item value="right" aria-label="Right aligned">
+        Right
+      </ToggleGroup.Item>
+    </ToggleGroup.Root>
+  );
+});
+`;export{g as H,a};

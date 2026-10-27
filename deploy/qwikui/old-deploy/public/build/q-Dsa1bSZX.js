@@ -1,0 +1,1 @@
+import{h as n}from"./q-CsvfasCP.js";import{g as d}from"./q-CsvfasCP.js";const r=()=>{const[t]=n(),o=document.getElementById(t.node.id);if(o){const e=o.getBoundingClientRect().top+window.scrollY-90;window.scrollTo({top:e,behavior:"auto"})}};export{d as _hW,r as s_OdzfBtayFCw};

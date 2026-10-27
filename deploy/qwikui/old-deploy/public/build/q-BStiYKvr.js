@@ -1,0 +1,1 @@
+import{B as e}from"./q-DDtaMfdi.js";import{z as t,c as n,D as o}from"./q-CsvfasCP.js";const i=()=>t(o,{children:[t(e,{size:"sm",children:"Button",[n]:{size:n}},3,"tR_0"),t(e,{children:"Button"},3,"tR_1"),t(e,{size:"lg",children:"Button",[n]:{size:n}},3,"tR_2")]},1,"tR_3");export{i as s_fh4D60evQXo};
