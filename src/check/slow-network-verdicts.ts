@@ -130,11 +130,16 @@ export const NETWORK_HINT =
 
 const TEXT_TYPES = new Set(['document', 'stylesheet', 'script']);
 
-/** The document, stylesheets and scripts both sides fetched at one path, where one side compressed the response and the other sent it as is. */
+// A compressing server leaves a body under 1 kB as is (next start's threshold); headers come on top of that in `bytes`.
+const LEFT_AS_IS = 2048;
+
+/** The document, stylesheets and scripts both sides fetched at one path, where one side compressed the response and the other sent as is one large enough to compress. */
 export function encodingMismatch(old: RouteNetwork['old'], next: RouteNetwork['new']): { path: string; type: string; old: string; new: string }[] {
 	const encodings = (side: RouteNetwork['old']) => {
 		const seen = new Map<string, { type: string; encoding: string }>();
-		for (const cell of side.cells) for (const run of cell.runs) for (const r of run.requests) if (r.encoding && TEXT_TYPES.has(r.type)) seen.set(pathOf(r.url), { type: r.type, encoding: r.encoding });
+		for (const cell of side.cells)
+			for (const run of cell.runs)
+				for (const r of run.requests) if (r.encoding && TEXT_TYPES.has(r.type) && (r.encoding !== 'identity' || r.bytes >= LEFT_AS_IS)) seen.set(pathOf(r.url), { type: r.type, encoding: r.encoding });
 		return seen;
 	};
 	const before = encodings(old);
@@ -150,26 +155,24 @@ const listed = (items: readonly { path: string; type: string }[]) => `${items.sl
 const encodingName = (e: string) => (e === 'identity' ? 'as is' : e);
 
 export const ENCODING_HINT =
-	"Every slow-network time compares bytes on one link, so both sides must be served the same way: here one compresses its HTML, CSS and JavaScript and the other sends them as is, and each cell's times would compare the servers, not the pages. Serve the port as the old site is served (put a server that compresses in front of a node-server build, or serve the deployment's own output), then check again; the cells' times are judged once the two sides match.";
+	"Every slow-network time compares bytes on one link, so both sides must be served the same way: here one compresses its HTML, CSS and JavaScript and the other sends them as is, and each cell's times would compare the servers, not the pages. Serve the port as the old site is served (put a server that compresses in front of a node-server build, or serve the deployment's own output), then check again.";
 
 /** The route's red cells: each browser and network where a gated time of the new page is worse beyond the old page's own noise. */
 export function networkFailures(route: string, network: RouteNetwork | { readonly unavailable: string } | undefined): Failure[] {
 	if (!network || 'unavailable' in network) return [];
+	const out: Failure[] = [];
 	const mismatch = encodingMismatch(network.old, network.new);
 	if (mismatch.length) {
 		const by = (side: 'old' | 'new') => [...new Set(mismatch.map((m) => m[side]))].map(encodingName).join(' or ');
-		return [
-			{
-				route,
-				dimension: 'load',
-				check: 'page load: slow network: the two sides are served with different compression',
-				expected: `the new page's files sent as the old page's are, ${by('old')}: ${listed(mismatch)}`,
-				actual: `the new page sent them ${by('new')}, so no browser and network cell is judged until both sides are served alike`,
-				hint: ENCODING_HINT,
-			},
-		];
+		out.push({
+			route,
+			dimension: 'load',
+			check: 'page load: slow network: the two sides are served with different compression',
+			expected: `the new page's files sent as the old page's are, ${by('old')}: ${listed(mismatch)}`,
+			actual: `the new page sent them ${by('new')}, so each browser and network cell below compares the servers as much as the pages`,
+			hint: ENCODING_HINT,
+		});
 	}
-	const out: Failure[] = [];
 	for (const [i, old] of network.old.cells.entries()) {
 		const next = network.new.cells[i];
 		if (!next || old.unavailable || next.unavailable) continue;

@@ -69,28 +69,31 @@ test('a difference finer than the instrument can see is no verdict: a frame read
 	assert.equal(verdicts.find((v) => v.metric === 'answered')!.band >= 250, true);
 });
 
-test('two sides served with different compression are one red finding, not a slowdown in every cell', () => {
+test('two sides served with different compression add one red finding naming the files, beside the cells they slow', () => {
 	const served = (origin: string, encoding: string, cssBytes: number) => [
 		{ url: `${origin}/`, type: 'document', start: 0, end: 2000, bytes: 56_000, encoding },
 		{ url: `${origin}/app.css`, type: 'stylesheet', start: 2100, end: 9000, bytes: cssBytes, encoding },
 		{ url: `${origin}/font.woff2`, type: 'font', start: 2100, end: 4000, bytes: 30_000, encoding: 'identity' },
 	];
-	const cells = (origin: string, encoding: string, cssBytes: number, answered: number) =>
-		(['chromium', 'firefox', 'webkit'] as const).map((b) => summarizeCell('regular-3g', b, [0, 10, 20, 30, 40].map((d) => run(answered + d, 1000 + d, served(origin, encoding, cssBytes)))));
+	const cells = (origin: string, encoding: string, cssBytes: number, answered: number, extra: NetworkRun['requests'] = []) =>
+		(['chromium', 'firefox', 'webkit'] as const).map((b) => summarizeCell('regular-3g', b, [0, 10, 20, 30, 40].map((d) => run(answered + d, 1000 + d, [...served(origin, encoding, cssBytes), ...extra]))));
 	const old = cells('https://old.example', 'gzip', 80_000, 5000);
 	const next = cells('https://new.example', 'identity', 620_000, 12_000);
 	const failures = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: old }, new: { url: 'https://new.example/docs', cells: next } });
-	assert.equal(failures.length, 1, failures.map((f) => f.check).join('\n'));
-	const [f] = failures;
+	const encoding = failures.filter((f) => /different compression/.test(f.check));
+	assert.equal(encoding.length, 1, failures.map((f) => f.check).join('\n'));
+	const [f] = encoding;
 	assert.equal(f!.dimension, 'load');
-	assert.match(f!.check, /slow network: the two sides are served with different compression/);
+	assert.equal(f!.check, 'page load: slow network: the two sides are served with different compression');
 	assert.match(f!.expected, /gzip.*\/ \(document\).*\/app\.css \(stylesheet\)/);
 	assert.match(f!.actual, /as is/);
-	assert.doesNotMatch(f!.actual, /font\.woff2/);
+	assert.doesNotMatch(f!.actual + f!.expected, /font\.woff2/);
+	assert.ok(failures.some((x) => /firefox Regular 3G.*First click answered/.test(x.check)), 'the cells are still judged');
 
-	const same = cells('https://new.example', 'gzip', 80_000, 12_000);
-	const slower = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: old }, new: { url: 'https://new.example/docs', cells: same } });
-	assert.ok(slower.length > 1 && slower.every((x) => /: (First painted frame|Largest paint|First click answered)/.test(x.check)), 'same encoding: each slower cell is its own finding');
+	// A file under the size a compressing server leaves as is (an analytics stub, a 404) is no difference in how the sides are served.
+	const stub = (origin: string, encoding: string, bytes: number) => [{ url: `${origin}/_vercel/insights/script.js`, type: 'script', start: 600, end: 900, bytes, encoding }];
+	const small = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: cells('https://old.example', 'gzip', 80_000, 5000, stub('https://old.example', 'identity', 700)) }, new: { url: 'https://new.example/docs', cells: cells('https://new.example', 'gzip', 80_000, 5000, stub('https://new.example', 'gzip', 1_400)) } });
+	assert.deepEqual(small.map((x) => x.check), []);
 
 	const unknown = (cs: typeof old) => cs.map((c) => ({ ...c, runs: c.runs.map((r) => ({ ...r, requests: r.requests.map(({ encoding: _, ...q }) => q) })) }));
 	const cached = networkFailures('/docs', { old: { url: 'https://old.example/docs', cells: unknown(old) }, new: { url: 'https://new.example/docs', cells: next } });
