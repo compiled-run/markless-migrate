@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { codeOnly, fileSignals } from '../src/cache/signals.ts';
-import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml } from '../src/convert/endpoints.ts';
+import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml, trailingPolicy } from '../src/convert/endpoints.ts';
 import { parseModule, walk, type N } from '../src/source/js.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 import { body, parseDocument } from '../src/convert/dom.ts';
@@ -76,4 +76,17 @@ test('TypeScript under ts-morph is copied whole and not parsed by the server tra
 	assert.match(config, /traceDeps: \["dedent","ts-morph","@ts-morph\/common\*"\]/);
 	assert.match(config, /ignore: \(path: string\) => \["@ts-morph\/common\/dist\/typescript\.js"\]/);
 	assert.doesNotMatch(viteConfig(['dedent']), /traceOpts/);
+});
+
+test("the old site's trailing-slash answer is kept: from next.config, else from the redirects plan saw its host answer", () => {
+	assert.deepEqual(trailingPolicy('module.exports = { trailingSlash: true }', []), { mode: 'add', status: 308, pagesOnly: false });
+	assert.deepEqual(trailingPolicy('module.exports = {}', []), { mode: 'strip', status: 308, pagesOnly: false });
+	const seen = [
+		{ route: '/docs/intro', status: 307, redirectsTo: '/docs/intro/' },
+		{ route: '/docs/tabs', status: 307, redirectsTo: '/docs/tabs/' },
+		{ route: '/old', status: 301, redirectsTo: '/new' },
+	];
+	assert.deepEqual(trailingPolicy(undefined, seen), { mode: 'add', status: 307, pagesOnly: true }, "a static host's own answer: only where a page with the slash exists");
+	assert.deepEqual(trailingPolicy(undefined, [{ route: '/docs/', status: 308, redirectsTo: '/docs' }]), { mode: 'strip', status: 308, pagesOnly: true });
+	assert.equal(trailingPolicy(undefined, [{ route: '/old', status: 301, redirectsTo: '/new' }]), undefined);
 });
