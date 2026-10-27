@@ -102,3 +102,18 @@ test("select-all does what the old page's control did: React Aria's clears every
 	assert.equal(ttView(s, ttAct(s, filtered, { k: 'select', next: { all: 'allOff' } })).q.selected, 0);
 	assert.equal(ttView(s, ttAct(s, filtered, { k: 'select', next: { all: 'pageOff' } })).q.selected, 4);
 });
+
+test('controls used on a copy of the state, as a converted page hands it, end in the same state as on the state itself', () => {
+	const steps = [EMAIL, { k: 'row', r: '2' }, { k: 'filter', c: 'email', v: 'e' }, { k: 'vis', c: 'amount' }, EMAIL, { k: 'select', next: { none: 'pageOn', some: 'pageOn', all: 'pageOff' } }] as const;
+	const live = spec();
+	const copied = spec();
+	let a = INITIAL;
+	let b = INITIAL;
+	for (const step of steps) {
+		a = ttAct(live, a, step);
+		b = ttAct(copied, structuredClone(b), step);
+		ttView(copied, b);
+		assert.equal(JSON.stringify(b), JSON.stringify(a));
+		assert.equal(order(copied, structuredClone(b)), order(live, a));
+	}
+});

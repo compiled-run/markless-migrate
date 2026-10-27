@@ -961,7 +961,8 @@ export class TablePlan {
 		const declare = [`const ${name} = ${placed.shared}();`, `const ${v} = computed(() => ttView(${spec}, ${name}.s, ${placed.cells}));`];
 		const bindings = new Map<Tree, Binding>();
 		const add = (el: Tree, b: Binding) => bindings.set(el, mergeBindings(bindings.get(el), { declare, ...b })!);
-		const act = (action: string) => `${name}.s = ttAct(${spec}, ${name}.s, ${action})`;
+		// ttAct keeps the state it is handed in its table instance: Markless refuses a live state object there, so it gets a copy.
+		const act = (action: string) => `${name}.s = ttAct(${spec}, structuredClone(${name}.s), ${action})`;
 		const notes: string[] = [];
 
 		// Cells move in the hidden state; every other state shows every column.
@@ -1198,7 +1199,7 @@ export class TablePlan {
 				if (reads.every((r) => kids(r.el).length === own.length)) own.forEach((child, i) => visit(child, reads.map((r) => ({ el: kids(r.el)[i]!, shown: r.shown }))));
 			};
 			visit(el, recorded.flatMap(({ s, items: own }) => (own[c.nth] ? [{ el: own[c.nth]!, shown: s.columns[c.column!]?.visible !== false }] : [])));
-			add(el, { extra: [`onClick={() => { ${name}.s = ttAct(${spec}, ${name}.s, { k: "vis", c: ${lit(c.column!)} }); }}`] });
+			add(el, { extra: [`onClick={() => { ${name}.s = ttAct(${spec}, structuredClone(${name}.s), { k: "vis", c: ${lit(c.column!)} }); }}`] });
 		}
 		return bindings.size ? { bind: (el) => bindings.get(el), declare } : undefined;
 	}

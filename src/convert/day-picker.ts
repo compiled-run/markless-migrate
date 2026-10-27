@@ -995,7 +995,7 @@ export class DayPickerPlan {
 					...(effect.selected ? { s: effect.selected.map((t, k) => (t ? pairWhen(t, paired.selected?.[k] ?? undefined, note, 'a preset selection')! : null)) } : {}),
 					...(follows ? { m: 'selected' as const } : effect.month ? { m: pairWhen(effect.month, paired.month, note, 'a preset month')! } : {}),
 				};
-				this.bindings.set(button, mergeBindings(this.bindings.get(button), { declare: planned.declare, extra: [`onClick={() => (${v} = dayPickerSet(${planned.c}, ${v}, ${JSON.stringify(set)}, ${planned.id}))}`] })!);
+				this.bindings.set(button, mergeBindings(this.bindings.get(button), { declare: planned.declare, extra: [`onClick={() => (${v} = dayPickerSet(${planned.c}, structuredClone(${v}), ${JSON.stringify(set)}, ${planned.id}))}`] })!);
 			}
 			this.bindings.set(root, planned.root);
 			count++;
