@@ -280,3 +280,16 @@ test("carousel: the player turns autoplay on and off under reduced motion too, a
 	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [['qui-carousel-autoplay', true], ['qui-carousel-autoplay', false], ['qui-carousel-index', 1]]);
 	await p.close();
 });
+
+test('accordion: each open and close is told on its item, as a bound signal hears it', async () => {
+	const p = await open(ACCORDION, ['qwik-ui/collapsible']);
+	await p.evaluate(() => {
+		const w = window as unknown as { heard: unknown[] };
+		w.heard = [];
+		document.addEventListener('qui-collapsible-open', (e) => w.heard.push([(e.target as Element).id, (e as CustomEvent).detail]));
+	});
+	await p.click('#i1-trigger');
+	await p.click('#i2-trigger');
+	assert.deepEqual(await p.evaluate(() => (window as unknown as { heard: unknown[] }).heard), [['i1', true], ['i1', false], ['i2', true]]);
+	await p.close();
+});

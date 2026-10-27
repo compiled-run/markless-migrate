@@ -4,6 +4,8 @@
 // Before each toggle the content's height is measured into --qwikui-collapsible-content-height (and the accordion's
 // variable); content that animates keeps `hidden` off while it closes and gets it once its animation or transition ends.
 // Up and Down move focus between an accordion's enabled triggers, wrapping, Home and End to its ends.
+// Each open or close is dispatched on the item (qui-collapsible-open), what its bind:open or the accordion's bind:value
+// would hear; openItem is that signal written.
 const ROOT = '[data-collapsible]';
 const ACCORDION = '[data-accordion]';
 
@@ -40,6 +42,7 @@ function setOpen(root: HTMLElement, on: boolean): void {
 		el?.toggleAttribute('data-closed', !on);
 	}
 	trigger?.setAttribute('aria-expanded', String(on));
+	root.dispatchEvent(new CustomEvent('qui-collapsible-open', { bubbles: true, detail: on }));
 	if (!content) return;
 	const pending = waiting.get(content);
 	if (pending) {
@@ -75,6 +78,17 @@ const rootOfTrigger = (target: Element) => {
 	return trigger && root && triggerOf(root) === trigger ? { trigger, root } : undefined;
 };
 
+function openOnly(root: HTMLElement, on: boolean): void {
+	const accordion = root.closest<HTMLElement>(ACCORDION);
+	if (on && accordion && accordion.dataset.mmMultiple === undefined) for (const other of accordion.querySelectorAll<HTMLElement>(ROOT)) if (other !== root && other.closest(ACCORDION) === accordion && isOpen(other)) setOpen(other, false);
+	setOpen(root, on);
+}
+
+/** Opens or closes an item as its bound signal would: in a one-open accordion, opening it closes the others. */
+export function openItem(root: Element, on: boolean): void {
+	if (root instanceof HTMLElement && root.matches(ROOT) && isOpen(root) !== on) openOnly(root, on);
+}
+
 export function click(target: Element): boolean {
 	const found = rootOfTrigger(target);
 	if (!found) return false;
@@ -83,8 +97,7 @@ export function click(target: Element): boolean {
 	const accordion = root.closest<HTMLElement>(ACCORDION);
 	const opening = !isOpen(root);
 	if (!opening && (root.dataset.mmCollapsible === 'false' || accordion?.dataset.mmCollapsible === 'false')) return true;
-	if (opening && accordion && accordion.dataset.mmMultiple === undefined) for (const other of accordion.querySelectorAll<HTMLElement>(ROOT)) if (other !== root && other.closest(ACCORDION) === accordion && isOpen(other)) setOpen(other, false);
-	setOpen(root, opening);
+	openOnly(root, opening);
 	return true;
 }
 
