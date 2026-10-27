@@ -9,7 +9,8 @@ import { atRest } from './at-rest.ts';
 import { captureRouteReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
-import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
+import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
+import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
@@ -22,7 +23,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -852,10 +853,20 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 	}
 }
 
+// The old Qwik build's handler symbols, from its q-manifest.json, while its pages are prepared.
+let qwikHandlers: QwikHandlers | undefined;
+
+/** A Qwik build's symbols by name, with each one's source file and handler name, from the manifest it serves. */
+async function readQwikSymbols(origin: string): Promise<QwikHandlers['symbols'] | undefined> {
+	const manifest = await fetch(new URL('/q-manifest.json', origin)).then((r) => (r.ok ? (r.json() as Promise<{ symbols?: Record<string, { origin?: string; displayName?: string }> }>) : undefined), () => undefined);
+	if (!manifest?.symbols) return undefined;
+	return new Map(Object.entries(manifest.symbols).flatMap(([symbol, s]) => (s.origin && s.displayName ? [[symbol, { origin: s.origin, name: s.displayName }] as const] : [])));
+}
+
 function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
 	currentRoute = capture.route;
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
-	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
+	const ctx = { builds, frameworkScripts: new Set<string>(), origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
@@ -987,6 +998,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
+	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
 	layerChoices = choices;
@@ -1052,6 +1064,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			tables?: readonly CapturedTable[];
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
+			floating?: readonly QwikFloating[];
 		}
 		const readRoute = async (route: string): Promise<RouteFacts> => {
 			const ref = await pageOf.get(route)!;
@@ -1145,6 +1158,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				if (facts.dated) facts.clock = (await limit(() => captureClock(browser, options.old, route, at('clock')))).marks;
 				if (facts.chart) facts.charts = (await limit(() => captureCharts(browser, options.old, route, at('toggles')))).charts;
 			}
+			// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
+			if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(() => captureQwikFloating(browser, options.old, route, at('toggles')))).panels;
 			if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(() => captureScrollers(browser, options.old, route, at('toggles')))).scrollers;
 			if (reveal && ref.status === 200) {
 				const settled = Object.values((await page()).settled);
@@ -1196,6 +1211,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.tables) tablesRead.set(route, f.tables);
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
+			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options shown.
 		const choosing = new Map<string, { route: string; reveal: Reveal }>();
@@ -1235,6 +1251,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
 	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
+	useMarkupLibraries(hasLibraries ? ((JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[] }).libraries ?? []).map((l) => l.name) : []);
 	useDocSearch(hasUsage ? ((JSON.parse(await readFile(usagePath, 'utf8')) as { docsearch?: Parameters<typeof useDocSearch>[0] }).docsearch) : undefined);
 	useOrigin(new URL(options.old).origin);
 	placementResolver = resolver;
@@ -1265,6 +1282,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const tables = new TablePlan();
 	for (const [route, captured] of tablesRead) tables.expect(route, captured);
 	layerTables = tables;
+	qwikHandlers = undefined;
+	for (const ref of captures) {
+		if (ref.status !== 200 || qwikHandlers) continue;
+		if (!frameworkBuilds((await ref.load()).server).some((b) => b.framework === 'Qwik')) break;
+		const symbols = await readQwikSymbols(options.old);
+		if (symbols) {
+			qwikHandlers = { symbols, marks: QWIK_HANDLER_MARKS, contexts: QWIK_CONTEXT_PROPS };
+			log(`Qwik handlers named from the old build's q-manifest.json: ${symbols.size} symbols`);
+		}
+		break;
+	}
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -1283,6 +1311,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const r of revealed.get(ref.route) ?? []) if (r.sig) racChips(prepared.get(ref.route)!.root.parentNode as Element, r);
 	}
 	templatePorts.routes = undefined;
+	let placedFloating = 0;
+	for (const [route, panels] of floatingRead) {
+		const p = prepared.get(route);
+		if (p) placedFloating += applyQwikFloating(p.root.parentNode as Element, panels);
+	}
+	if (placedFloating) log(`Qwik UI floating panels placed as the old page placed them: ${placedFloating}`);
 	if (images.lazy + images.eager + images.responsive + images.someScreens) log(`images: ${images.lazy} lazy (in no first screen), ${images.eager} eager (in a first screen), ${images.responsive} given a width per device, ${images.preloadsDropped} head preloads dropped, ${images.someScreens} drawn only in one range of widths (lazy, preloaded there)`);
 
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
