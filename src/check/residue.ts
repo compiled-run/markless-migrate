@@ -30,6 +30,13 @@ export const RUNTIME_MARKERS = {
 		['data-hk', 'Solid', ['Solid']],
 		['ng-version', 'Angular', ['Angular']],
 		['ng-server-context', 'Angular', ['Angular']],
+		['q:container', 'Qwik', ['Qwik']],
+		['q:version', 'Qwik', ['Qwik']],
+		['q:manifest-hash', 'Qwik', ['Qwik']],
+		['q:instance', 'Qwik', ['Qwik']],
+		['q:key', 'Qwik', ['Qwik']],
+		['q:id', 'Qwik', ['Qwik']],
+		['q:head', 'Qwik', ['Qwik']],
 	],
 	elements: [
 		['astro-island', 'Astro'],
@@ -40,6 +47,12 @@ export const RUNTIME_MARKERS = {
 	scriptIds: [
 		['__NEXT_DATA__', 'Next.js', ['Next.js']],
 		['__NUXT_DATA__', 'Nuxt', ['Vue']],
+		['qwikloader', 'Qwik', ['Qwik']],
+	],
+	/** Script types (or Qwik's `q:func`) a framework's paused state is serialised under. */
+	scriptTypes: [
+		['qwik/json', 'Qwik', ['Qwik']],
+		['qwik/vnode', 'Qwik', ['Qwik']],
 	],
 	/** Globals an inline script sets to hand the server's state to the client runtime. */
 	scriptGlobals: [
@@ -48,6 +61,7 @@ export const RUNTIME_MARKERS = {
 		['window.__remixContext', 'Remix', ['React']],
 		['window.__reactRouterContext', 'React Router', ['React']],
 		['__staticRouterHydrationData', 'React Router', ['React']],
+		['window.qwikevents', 'Qwik', ['Qwik']],
 	],
 	/** `<meta name="generator">` contents, by the name they start with. */
 	generators: [
@@ -74,7 +88,7 @@ export const RUNTIME_MARKERS = {
 		['Squarespace', 'Squarespace'],
 		['Webflow', 'Webflow'],
 	],
-} as const satisfies Readonly<Record<'attributes' | 'elements' | 'scriptIds' | 'scriptGlobals' | 'generators', readonly Marker[]>>;
+} as const satisfies Readonly<Record<'attributes' | 'elements' | 'scriptIds' | 'scriptTypes' | 'scriptGlobals' | 'generators', readonly Marker[]>>;
 
 export interface RuntimeMarker {
 	readonly marker: string;
@@ -88,6 +102,7 @@ const byName = (list: readonly Marker[]) => new Map(list.map(([name, framework, 
 const ATTRIBUTES = byName(RUNTIME_MARKERS.attributes);
 const ELEMENTS = byName(RUNTIME_MARKERS.elements);
 const SCRIPT_IDS = byName(RUNTIME_MARKERS.scriptIds);
+const SCRIPT_TYPES = byName(RUNTIME_MARKERS.scriptTypes);
 const GLOBALS = RUNTIME_MARKERS.scriptGlobals.map(([name, framework, owners]: Marker) => ({ re: new RegExp(`(?<![\\w$.])${name.replace(/[.$]/g, '\\$&')}(?![\\w$])`), marker: name, framework, owners }));
 const GENERATORS: readonly Marker[] = RUNTIME_MARKERS.generators;
 
@@ -109,6 +124,8 @@ export function runtimeMarkers(html: string, where: RuntimeMarker['where']): Run
 		}
 		const id = attrs.get('id');
 		if (tag === 'script' && id && SCRIPT_IDS.has(id)) add(`<script id="${id}">`, SCRIPT_IDS.get(id)!);
+		const type = tag === 'script' ? (attrs.get('type') || attrs.get('q:func')) : undefined;
+		if (type && SCRIPT_TYPES.has(type)) add(`<script type="${type}">`, SCRIPT_TYPES.get(type)!);
 		const content = attrs.get('content')?.trim() ?? '';
 		const generator = tag === 'meta' && attrs.get('name')?.toLowerCase() === 'generator' ? GENERATORS.find(([name]) => content.toLowerCase().startsWith(name.toLowerCase())) : undefined;
 		if (generator) add(`<meta name="generator" content="${content}">`, { framework: generator[1], owners: generator[2] });

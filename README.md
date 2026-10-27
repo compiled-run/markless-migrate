@@ -119,7 +119,7 @@ load, loads with stored state preset) are counted as unchecked, never as passed.
 implemented / checked: a behaviour is implemented when `.migrate/usage-map.json` names the file (or the
 `@markless/ui` family) that implements it and the new app has it.
 
-No other framework's runtime is kept: React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery or a framework's
+No other framework's runtime is kept: React, Vue, Svelte, Qwik, htmx, Alpine, _hyperscript, jQuery or a framework's
 component bundle never ships in the port; what the pages use of it is implemented in Markless. JavaScript-only
 libraries (Chart.js, Leaflet, Monaco, Sortable, Rive...) are kept as they are during the migration and listed as
 kept libraries; `upgrade` measures them afterwards (below). Only
@@ -658,7 +658,7 @@ results.json, apart from differences a person accepted:
 
 | Rule | Accepted when |
 | --- | --- |
-| the old framework's own code, which the new page no longer loads | an `assets` failure for a script the old page loaded and the new page does not request, whose code carries a UI framework's runtime (React, Next.js, Vue, Svelte, Angular, Solid, Preact, htmx, Alpine.js, by markers only that runtime has). A script the new page requests and does not get is still red, and so is one without a runtime, which another site may embed |
+| the old framework's own code, which the new page no longer loads | an `assets` failure for a script the old page loaded and the new page does not request, whose code carries a UI framework's runtime (React, Next.js, Vue, Svelte, Angular, Solid, Preact, Qwik, htmx, Alpine.js, by markers only that runtime has). A script the new page requests and does not get is still red, and so is one without a runtime, which another site may embed |
 | markup the old framework adds for itself, with the accessibility tree and announcements otherwise the same | a missing accessibility tree line that is exactly the role and text of a framework's own markup the old page has and the new page lacks (Next.js's `next-route-announcer`, Gatsby's, SvelteKit's and Nuxt's announcers), and only while no other line of that route's tree and no announcement after an interaction differs |
 | live content inside a third-party embed that both pages show | screenshot differences that all lie inside iframes or images from another origin that both pages load from the same address at the same place, or a third-party image at the same address that came back a different size |
 | the same image at another resolution, which the new page lists in a srcset | an `assets` image-size failure or screenshot differences that all lie inside images the new page draws from another width of the old page's file (the same image optimizer source, such as next/image's `url`, or the same path), with the same aspect ratio and at least as many pixels as the box it fills, whose 8 px blocks average to nearly the same colour on both screenshots (resampling moves single pixels, another picture moves the blocks), in the page's screenshots and in every state's; `convert` writes these srcsets so each device downloads the width its box needs |

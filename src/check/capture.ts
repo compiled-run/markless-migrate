@@ -1,3 +1,4 @@
+import { frameworkBuilds } from '../client/builds.ts';
 import { frameworkMarkup, frameworkRuntime, scriptLibraries, sealedBy, thirdPartyEmbeds } from './automatic.ts';
 import type { Browser, Page, Response } from 'playwright';
 import { decodeImages, readPage } from './collect.ts';
@@ -259,6 +260,15 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
 		}
 		const builtTexts = [html, ...stylesheets.map((s) => s.text), ...coverage.map((entry) => entry.source ?? '')];
+		// A script served from the build path the page's framework declares is that framework's code, though one chunk alone
+		// (a Qwik handler's) carries no marker of its runtime.
+		const builds = frameworkBuilds(html);
+		for (const url of ownScripts) {
+			const local = toLocal(url, origin);
+			const path = URL.parse(url)?.pathname;
+			const build = path && !runtimes.has(local) ? builds.find((b) => b.path.test(path)) : undefined;
+			if (build) runtimes.set(local, `${build.framework} build`);
+		}
 		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}), ...(libraries.has(a.url) ? { libraries: libraries.get(a.url)! } : {}) }));
 		const internals = await page.evaluate(frameworkMarkup).catch(() => []);
 		const embeds = await page.evaluate(thirdPartyEmbeds).catch(() => []);

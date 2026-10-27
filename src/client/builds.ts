@@ -10,7 +10,36 @@ const BUILD_PATHS: readonly (readonly [framework: string, pageMarker: RegExp, pa
 	['Astro', /astro-island/, /^\/_astro\//],
 ];
 
+const QWIK_CONTAINER = /<html\b[^>]*\sq:container=/;
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Qwik's chunks (`q-<hash>.js`) under the container's `q:base`, and the bundle graph its preloader fetches. */
+function qwikBuild(servedHtml: string): RegExp {
+	const base = /<html\b[^>]*\sq:base="([^"]*)"/.exec(servedHtml)?.[1] || '/build/';
+	const dir = new URL(base, 'http://x/').pathname.replace(/\/?$/, '/');
+	return new RegExp(`^${escape(dir)}q-[\\w-]+\\.js$|^/assets/[\\w-]+-bundle-graph\\.json$`);
+}
+
 /** The framework builds a served page belongs to. */
 export function frameworkBuilds(servedHtml: string): { framework: string; path: RegExp }[] {
-	return BUILD_PATHS.filter(([, marker]) => marker.test(servedHtml)).map(([framework, , path]) => ({ framework, path }));
+	const found = BUILD_PATHS.filter(([, marker]) => marker.test(servedHtml)).map(([framework, , path]) => ({ framework, path }));
+	if (QWIK_CONTAINER.test(servedHtml)) found.push({ framework: 'Qwik', path: qwikBuild(servedHtml) });
+	return found;
+}
+
+const IMPORTED = /\bimport\s*\(\s*["']([^"']+)["']|\bfrom\s*["']([^"']+)["']/g;
+// Qwik Insights' listener for the symbols Qwik's runtime loads, which only that runtime dispatches.
+const QWIK_SYMBOLS = /addEventListener\(\s*["']qsymbol["']/;
+// The functions a paused Qwik container serialises for its state (`q:func="qwik/json"`).
+const QWIK_FUNCS = /\bdocument\[\s*["']qFuncs_/;
+
+/** The framework whose own code an inline script is (it imports that framework's build, or listens for what only it dispatches), if any. */
+export function frameworkInlineScript(text: string, builds: readonly { framework: string; path: RegExp }[], origin = 'http://x'): string | undefined {
+	if (QWIK_SYMBOLS.test(text) || QWIK_FUNCS.test(text)) return 'Qwik';
+	for (const m of text.matchAll(IMPORTED)) {
+		const url = URL.parse(m[1] ?? m[2]!, origin);
+		const found = url && url.origin === new URL(origin).origin ? builds.find((b) => b.path.test(url.pathname)) : undefined;
+		if (found) return found.framework;
+	}
+	return undefined;
 }

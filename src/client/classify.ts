@@ -7,7 +7,7 @@ import { walk, type N } from '../source/js.ts';
  * Each runtime is recognised by what its code defines (its public API object, its internal symbols), read from the
  * syntax tree, so a page whose text merely talks about htmx or React is not mistaken for one.
  */
-export type Runtime = 'react' | 'vue' | 'svelte' | 'angular' | 'solid' | 'preact' | 'htmx' | 'alpine' | 'hyperscript' | 'jquery' | 'turbo' | 'sinon' | 'webpack';
+export type Runtime = 'react' | 'vue' | 'svelte' | 'angular' | 'solid' | 'preact' | 'qwik' | 'htmx' | 'alpine' | 'hyperscript' | 'jquery' | 'turbo' | 'sinon' | 'webpack';
 
 export const RUNTIME_NAMES: Readonly<Record<Runtime, string>> = {
 	react: 'React',
@@ -16,6 +16,7 @@ export const RUNTIME_NAMES: Readonly<Record<Runtime, string>> = {
 	angular: 'Angular',
 	solid: 'Solid',
 	preact: 'Preact',
+	qwik: 'Qwik',
 	htmx: 'htmx',
 	alpine: 'Alpine.js',
 	hyperscript: '_hyperscript',
@@ -30,6 +31,10 @@ const ALPINE_API = ['start', 'data', 'store', 'plugin', 'directive', 'magic', 'b
 const REACT_SYMBOLS = new Set(['react.element', 'react.transitional.element', 'react.portal', 'react.fragment']);
 const REACT_KEYS = new Set(['__reactFiber$', '__reactContainer$', '__reactProps$', '__reactEvents$']);
 const VUE_KEYS = new Set(['__v_isRef', '__v_isVNode', '__v_skip', '__vue_app__', '__VUE__', '_isVue']);
+// Qwik's loader registers events on `qwikevents` and marks the document with `__q_context__`; its core reads containers
+// by `q:container` and their state from `qwik/json`.
+const QWIK_KEYS = new Set(['qwikevents', '__q_context__']);
+const QWIK_STRINGS = /^(?:q:container|qwik\/json|qwik\/vnode)$|\[q\\:container\]/;
 
 const keyName = (n: N | undefined): string | undefined => (!n ? undefined : n.type === 'Identifier' ? n.name : n.type === 'Literal' && typeof n.value === 'string' ? n.value : undefined);
 const propertyName = (m: N): string | undefined => (m.computed ? keyName(m.property?.type === 'Literal' ? m.property : undefined) : keyName(m.property));
@@ -81,7 +86,7 @@ export interface Classified {
 }
 
 // Every check below needs one of these in the text, so a script without any is classified without being parsed.
-const RUNTIME_TOKENS = /react\.|__react|__v_is|__v_skip|__vue|__VUE|_isVue|__svelte|\$\$\.fragment|__PREACT|ɵɵ|_\$HY|_hyperscript|defineExtension|directive|jquery|fakeServerWithClock|turbo-|__webpack_require__|__rspack_require__|data-webpack|data-rspack/;
+const RUNTIME_TOKENS = /qwikevents|__q_context__|q\\?:container|qwik\/(?:json|vnode)|react\.|__react|__v_is|__v_skip|__vue|__VUE|_isVue|__svelte|\$\$\.fragment|__PREACT|ɵɵ|_\$HY|_hyperscript|defineExtension|directive|jquery|fakeServerWithClock|turbo-|__webpack_require__|__rspack_require__|data-webpack|data-rspack/;
 const LIBRARY_TOKENS = new RegExp(`/\\*|\\.(${Object.keys(LIBRARY_GLOBALS).join('|')})\\s*=`);
 
 /** Every runtime a script defines (a bundle may hold several: Docusaurus ships React and its router together). */
@@ -117,8 +122,12 @@ export function classifyScript(source: string): Classified {
 				if (name && VUE_KEYS.has(name)) found.add('vue');
 				if (name === '__svelte') found.add('svelte');
 				if (name === '__PREACT_DEVTOOLS__') found.add('preact');
+				if (name && QWIK_KEYS.has(name)) found.add('qwik');
 				break;
 			}
+			case 'Literal':
+				if (typeof n.value === 'string' && QWIK_STRINGS.test(n.value)) found.add('qwik');
+				break;
 			case 'Identifier':
 				if (typeof n.name === 'string' && n.name.startsWith('ɵɵ')) found.add('angular');
 				if (n.name === '_$HY') found.add('solid');
