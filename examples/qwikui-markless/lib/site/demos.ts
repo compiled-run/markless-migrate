@@ -1,4 +1,5 @@
 import type { Part } from '../parts/index.ts';
+import { autoplaying, goTo, setAutoplay } from '../parts/qwik-ui/carousel.ts';
 import { close, show } from '../parts/qwik-ui/modal.ts';
 
 // The docs pages' example components (apps/website/src/routes/docs/**/examples), each control found by the handler it ran
@@ -99,4 +100,58 @@ const progressDemos: Part = {
 	},
 };
 
-export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos];
+// A Carousel.Root of colour slides as carousel/root.tsx and slide.tsx first render it in the browser.
+const COLORS = ['red', 'green', 'blue', 'yellow', 'purple', 'orange', 'pink'];
+const SCROLL_MARK = (edge: string, hidden: boolean) => `<div data-qui-scroll-start="" data-orientation="horizontal"${hidden ? ' hidden=""' : ''} data-${edge}=""></div>`;
+const carouselMarkup = (id: string) =>
+	`<div role="group" aria-roledescription="carousel" aria-live="polite" data-qui-carousel="" aria-label="content slideshow" _numslides="7" class="carousel-root" style="--slides-per-view: 1; --gap: 0px; --scroll-snap-align: start; --orientation: row; --max-slide-height: undefinedpx;"><div class="carousel-buttons"><button aria-disabled="true" disabled="" data-qui-carousel-prev="" aria-label="previous slide">Prev</button><button aria-disabled="false" data-qui-carousel-next="" aria-label="next slide">Next</button></div><div data-qui-carousel-viewport=""><div data-qui-carousel-scroller="" data-draggable="" data-align="start" data-orientation="horizontal" class="carousel-scroller">${COLORS.map(
+		(color, i) =>
+			`${SCROLL_MARK('start', i > 0)}<div${i ? ' inert=""' : ''} aria-roledescription="slide" data-orientation="horizontal" data-qui-carousel-slide=""${i ? '' : ' data-active=""'} aria-label="${i + 1} of 7" id="${id}-${i}" class="carousel-slide">${color}${SCROLL_MARK('center', true)}</div>${SCROLL_MARK('end', true)}`,
+	).join('')}</div></div></div>`;
+const PLAY = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+const PAUSE = '<rect height="16" width="4" x="6" y="4"></rect><rect height="16" width="4" x="14" y="4"></rect>';
+
+// carousel reactive.tsx: bind:selectedIndex shown on a button, and set to 4 by another; player.tsx: bind:autoplay drawn as
+// the player's icon and an isPlaying line, and toggled by a button; csr.tsx: a button renders and removes a carousel.
+const carouselBeside = (el: Element) => el.parentElement?.querySelector(':scope > [data-qui-carousel]');
+const carouselDemos: Part = {
+	idle() {
+		document.addEventListener('qui-carousel-index', (event) => {
+			const shown = [...((event.target as Element).parentElement?.children ?? [])].find((el) => el.tagName === 'BUTTON' && el.textContent?.startsWith('Selected Index: '));
+			if (shown) shown.textContent = `Selected Index: ${(event as CustomEvent<number>).detail}`;
+		});
+		document.addEventListener('qui-carousel-autoplay', (event) => {
+			const root = event.target as Element;
+			const line = [...(root.parentElement?.children ?? [])].find((el) => el.tagName === 'P' && el.textContent?.startsWith('isPlaying: '));
+			if (!line) return;
+			const on = (event as CustomEvent<boolean>).detail;
+			line.textContent = `isPlaying: ${on}`;
+			const icon = root.querySelector('[data-qui-carousel-player] svg');
+			if (icon) icon.innerHTML = on ? PAUSE : PLAY;
+		});
+	},
+	click(target) {
+		const index = target.closest(on('click', 'reactive.tsx_reactive_component_Fragment_button_onClick'));
+		const indexed = index && carouselBeside(index);
+		if (indexed) {
+			goTo(indexed, 4);
+			return true;
+		}
+		const toggle = target.closest(on('click', 'player.tsx_player_component_Fragment_button_onClick'));
+		const played = toggle && carouselBeside(toggle);
+		if (played) {
+			setAutoplay(played, !autoplaying(played));
+			return true;
+		}
+		const render = target.closest(on('click', 'csr.tsx_csr_component_Fragment_button_onClick'));
+		if (render?.textContent?.trim() === 'Render Carousel') {
+			const shown = render.nextElementSibling;
+			if (shown?.hasAttribute('data-mm-rendered')) shown.remove();
+			else renderAfter(render, carouselMarkup(`mm-csr-carousel`));
+			return true;
+		}
+		return false;
+	},
+};
+
+export const DEMO_PARTS: readonly Part[] = [modalDemos, progressDemos, carouselDemos];
