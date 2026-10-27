@@ -1656,6 +1656,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 
 	const siteParts = await stat(join(app, 'lib', 'site', 'parts.ts')).then(() => true, () => false);
+	// The library parts of what pages hold outside their roots count before the registry and root handlers are written.
+	for (const els of bodyParts.extras.values()) for (const el of els) for (const x of walk(el)) bindParts(x, usedPorts);
 	const handlers = bodyHandlers(usedPorts, siteParts).join(' ');
 	const appDir = (from: string) => relative(dirname(join(app, from)), app).replace(/^(?!\.)/, './');
 	for (const [file, source] of written) written.set(file, withSiteImports(withPartImports(handlers ? source.replaceAll(ROOT_HANDLERS, handlers) : source.replaceAll(` ${ROOT_HANDLERS}`, ''), partsDir(file)), siteComponents, appDir(file)));
@@ -1716,7 +1718,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });
 		await writeFile(join(app, 'public', layer.path), layer.html);
 	}
-	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers)));
+	// What a page holds outside its own root (a header that differs per page) is bound as the root is: its library parts
+	// recorded and the site's page components in place.
+	const extrasBind = (el: Element): Binding | undefined => {
+		const standIn = pageComponentOf(el, siteComponents);
+		return standIn ? { replace: `<${componentName(standIn)} />` } : bindParts(el, usedPorts);
+	};
+	const extrasFile = join('components', 'converted', 'body-extras.tsrx');
+	await writeFile(join(app, extrasFile), appUrlDeclaration(withSiteImports(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers, extrasBind), siteComponents, appDir(extrasFile))));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
 	for (const line of tables.notes.slice(tableNotesPlaced)) log(`  ${line}; it renders as the old page showed it`);
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page; ${layers.served.length} served as files and mounted on use`);
