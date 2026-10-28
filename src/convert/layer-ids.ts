@@ -77,7 +77,9 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 		const up = chain(l.key);
 		const down = [...own.keys()].filter((k) => k !== l.key && chain(k).includes(l.key));
 		const loose = !l.inPage && !up.length ? [page] : [];
-		return new Map([...loose.flatMap((m) => [...m]), ...keys, ...down.flatMap((k) => [...own.get(k)!]), ...up.reverse().flatMap((k) => [...own.get(k)!]), ...own.get(l.key)!]);
+		// An item that is a submenu's key (React Aria keys a submenu by its trigger's id) is named as that key.
+		const opened = down.filter((k) => keys.has(k)).map((k) => [k, keys.get(k)!] as const);
+		return new Map([...loose.flatMap((m) => [...m]), ...keys, ...down.flatMap((k) => [...own.get(k)!]), ...up.reverse().flatMap((k) => [...own.get(k)!]), ...own.get(l.key)!, ...opened]);
 	});
 	return { page, each, of: (key) => each[layers.findIndex((l) => l.key === key)] ?? page };
 }
