@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attr, childrenOf, elementChildren, type Element } from './dom.ts';
+import { attr, childrenOf, elementChildren, walk, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
 import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
@@ -408,6 +408,15 @@ export async function writeParts(app: string, modules: ReadonlySet<string>, choi
 	}
 	if (added) await writeFile(join(app, 'package.json'), `${JSON.stringify(manifest, null, '\t')}\n`);
 	return { files, site };
+}
+
+/**
+ * Ports a layer's trigger runs that nothing on the page names: a React Aria PreviewTrigger (a hover card) renders no
+ * element of its own, only the content it opens says so (data-trigger), so its page runs the tooltip port for it.
+ */
+export function triggerPorts(kept: readonly Element[]): string[] {
+	const all = kept.flatMap((top) => [top, ...walk(top)]);
+	return all.some((el) => attr(el, 'data-trigger') === 'PreviewTrigger' && attr(el, 'data-rac') !== undefined) ? ['react-aria/tooltip'] : [];
 }
 
 /** These ports and the ports they build on whose handlers they rely on (a context menu's items run the menu port's). */
