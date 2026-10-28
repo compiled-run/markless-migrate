@@ -203,3 +203,16 @@ test('a layer every page portals goes in the Document only when it is plain mark
 	assert.deepEqual(table.everywhere, [name(plain)]);
 	for (const route of ['/a', '/b']) assert.deepEqual([...table.own(route)].sort(), [name('CommandMenu'), name('String(month)')].sort());
 });
+
+test("a Base UI combobox list captured with nothing selected gets the indicator another list on the page showed, hidden on every item", async () => {
+	const { comboboxIndicators, comboboxIndicatorIn } = await import('../src/convert/index.ts');
+	const { parseFragment } = await import('parse5');
+	const { attr: attrOf, walk: walkOf } = await import('../src/convert/dom.ts');
+	const list = (selected: boolean) => parseFragment(`<div data-slot="combobox-list"><div role="option" aria-selected="false">Next.js</div><div role="option" aria-selected="${selected}">SvelteKit${selected ? '<span data-selected="" aria-hidden="true" class="check"><svg></svg></span>' : ''}</div></div>`).childNodes[0] as unknown as import('../src/convert/dom.ts').Element;
+	const plain = list(false);
+	const chosen = list(true);
+	comboboxIndicators(plain, comboboxIndicatorIn([plain, chosen]));
+	const marks = [...walkOf(plain)].filter((el) => attrOf(el, 'data-mm-indicator') !== undefined);
+	assert.equal(marks.length, 2, 'every item has one');
+	assert.ok(marks.every((el) => attrOf(el, 'hidden') === '' && attrOf(el, 'data-selected') === undefined && attrOf(el, 'class') === 'check'));
+});

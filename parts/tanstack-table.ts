@@ -49,7 +49,13 @@ export type TableAction =
 	/** Selects or clears the page's rows or every row (`pageOn`, `allOn`, `pageOff`, `allOff`), by how many of the page's are. */
 	| { readonly k: 'select'; readonly next: Readonly<Record<string, string>> }
 	| { readonly k: 'vis'; readonly c: string }
-	| { readonly k: 'page'; readonly d: number };
+	| { readonly k: 'page'; readonly d: number }
+	| { readonly k: 'page'; readonly to: 'first' | 'last' }
+	/** Sets a value a row's own control keeps (its select's shown value): the row's `c<c>`. */
+	| { readonly k: 'cell'; readonly r: string; readonly c: number; readonly v: string };
+
+// What rows' own controls set, by row id and value index: kept in the table's state beside table-core's own keys.
+const CELLS = 'mmCells';
 
 // No subscriptions: Markless re-derives the view when the state changes, so atoms only hold values.
 const REACTIVITY = {
@@ -131,7 +137,7 @@ export function ttView(spec: TableSpec, state: TableState, cells?: Cells): Table
 	const pagination = state.pagination as { pageIndex?: number } | undefined;
 	const has = (name: string) => typeof t[name] === 'function';
 	const view: TableView = {
-		rows: rows.map((r) => ({ ...Object.fromEntries((cells?.[r.id as string] ?? []).map((value, i) => [`c${i}`, value])), id: r.id as string, sel: has('getSelectedRowModel') ? (r.getIsSelected() as boolean) : false })),
+		rows: rows.map((r) => ({ ...Object.fromEntries((cells?.[r.id as string] ?? []).map((value, i) => [`c${i}`, value])), ...Object.fromEntries(Object.entries(((state[CELLS] ?? {}) as Record<string, Record<string, string>>)[r.id as string] ?? {}).map(([i, value]) => [`c${i}`, value])), id: r.id as string, sel: has('getSelectedRowModel') ? (r.getIsSelected() as boolean) : false })),
 		q: {
 			filteredSelected: has('getFilteredSelectedRowModel') ? t.getFilteredSelectedRowModel().rows.length : 0,
 			selected: has('getSelectedRowModel') ? t.getSelectedRowModel().rows.length : 0,
@@ -155,6 +161,10 @@ export function ttView(spec: TableSpec, state: TableState, cells?: Cells): Table
 
 /** The state after a control's use, as the old page's handler changed it through the table's API. */
 export function ttAct(spec: TableSpec, state: TableState, action: TableAction): TableState {
+	if (action.k === 'cell') {
+		const kept = (state[CELLS] ?? {}) as Record<string, Record<string, string>>;
+		return { ...state, [CELLS]: { ...kept, [action.r]: { ...kept[action.r], [action.c]: action.v } } };
+	}
 	const own = instanceOf(spec, state);
 	const t = own.table;
 	t.getRowModel();
@@ -184,7 +194,8 @@ export function ttAct(spec: TableSpec, state: TableState, action: TableAction): 
 			t.getColumn(action.c).toggleVisibility();
 			break;
 		case 'page':
-			if (action.d === -1) t.previousPage();
+			if ('to' in action) t.setPageIndex(action.to === 'first' ? 0 : t.getPageCount() - 1);
+			else if (action.d === -1) t.previousPage();
 			else if (action.d === 1) t.nextPage();
 			else t.setPageIndex((old: number) => old + action.d);
 			break;
@@ -196,5 +207,11 @@ export function ttAct(spec: TableSpec, state: TableState, action: TableAction): 
 	t.getRowModel();
 	if (Object.keys(own.pending).length) next = { ...next, ...own.pending };
 	own.pending = {};
+	// A row that leaves the page unmounts on the old page: what its own controls kept starts over when it comes back.
+	const kept = next[CELLS] as Record<string, Json> | undefined;
+	if (kept) {
+		const shown = new Set((t.getRowModel().rows as Table[]).map((r) => r.id as string));
+		next = { ...next, [CELLS]: Object.fromEntries(Object.entries(kept).filter(([id]) => shown.has(id))) };
+	}
 	return next;
 }

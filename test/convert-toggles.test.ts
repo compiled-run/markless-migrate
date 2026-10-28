@@ -173,6 +173,16 @@ test('a Radix collapsible whose trigger renders its child (asChild, data-slot="b
 	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
 });
 
+test('a Radix collapsible content mounted while closed (forceMount) keeps its children shown and binds only data-state', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="collapsible-trigger" aria-controls="c1" aria-expanded="false" data-state="closed">Expand</button><div id="c1" data-slot="collapsible-content" data-state="closed" class="data-[state=closed]:max-h-64"><figure>code</figure></div></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div id="c1" data-slot="collapsible-content" class="data-\[state=closed\]:max-h-64" data-state=\{acc0 === 0 \? "open" : "closed"\}><figure>code<\/figure><\/div>/);
+	assert.doesNotMatch(out, /hidden=/);
+});
+
 test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) is still the shared one, shown in its at-rest look', async () => {
 	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
 	const marks: Record<string, string> = { '/a': '', '/b': ' aria-hidden="true" data-aria-hidden="true"', '/c': ' data-base-ui-inert=""' };
@@ -299,4 +309,18 @@ test('a Base UI disclosure whose content holds disclosures of its own keeps that
 	assert.match(out, /<div data-open="" id="base-ui-pa" hidden=\{!\(ins0 \|\| ins0x\)\}>/);
 	assert.match(out, /<button id="base-ui-b" [^>]*aria-expanded=\{ins1 \? "true" : "false"\}/);
 	assert.match(out, /@if \(ins1 \|\| ins1x\) \{ <><div data-open="">button\.tsx<\/div><\/> \}/);
+});
+
+test("a Base UI Select whose trigger renders the chosen value as bare text (button-group's currency) shows the chosen option's value, its icon kept", async () => {
+	const { SelectPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><button type="button" role="combobox" aria-haspopup="listbox" data-slot="select-trigger">$<svg aria-hidden="true"><path d="m6 9 6 6 6-6"></path>▼</svg></button></body>');
+	const plan = new SelectPlan();
+	assert.equal(plan.add(body(doc), () => true, (html) => html), 1);
+	const trigger = find(doc, (el) => attr(el, 'data-slot') === 'select-trigger')!;
+	const binding = plan.bind(trigger)!;
+	assert.match(binding.declare!.join(' '), /let sel0 = state\("\$"\);/);
+	assert.match(binding.children!, /^\{sel0\}<svg/);
+	// The select part hands over what the trigger showed after the choice, its icon's text included.
+	const handler = binding.extra!.find((e) => e.startsWith('onMmchoose'))!;
+	assert.match(handler, /"▼"/);
 });

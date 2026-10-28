@@ -1,4 +1,9 @@
 // Radix Collapsible and Accordion on Markless state: panel-motion.ts measures their content and ends its exit.
+import { measureOpenRadix } from '../panel-motion.ts';
+
+export function idle(): void {
+	measureOpenRadix();
+}
 
 /** Accordion keyboard: arrows, Home and End move focus between its enabled triggers. Focus only. */
 export function accordionKeys(event: KeyboardEvent): void {

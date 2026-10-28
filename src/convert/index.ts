@@ -71,7 +71,7 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
@@ -148,6 +148,8 @@ export interface ConvertOptions {
 	readonly only?: readonly string[];
 	/** For a preview of some pages: the old deployment that answers every page not converted. */
 	readonly fallthrough?: string;
+	/** A deployment of the old site whose sitemap orders the content collection's pages (search ties), when it lists them. */
+	readonly pageOrderFrom?: string;
 	/** Which library part renders each element, from the old source; by default plan's libraries.json. */
 	readonly resolver?: PartResolver;
 	/** Use every control that holds content back on the old pages, to carry that content (default on). */
@@ -428,12 +430,21 @@ function selectIndicators(top: Element): void {
  * Base UI Combobox mounts an item's indicator only while it is selected: every other item of a captured list gets a
  * hidden copy of a selected one's, so choosing one only switches `hidden`.
  */
-function comboboxIndicators(top: Element): void {
+const comboboxIndicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
+/** A selected Base UI Combobox item's indicator from any captured list: shadcn's ComboboxItem renders the same one in every list. */
+export function comboboxIndicatorIn(tops: readonly Element[]): Element | undefined {
+	for (const top of tops) for (const list of [top, ...walkAll(top)]) if (attr(list, 'data-slot') === 'combobox-list') for (const o of walkAll(list)) if (attr(o, 'role') === 'option' && comboboxIndicatorOf(o)) return comboboxIndicatorOf(o);
+	return undefined;
+}
+let comboboxIndicatorFallback: Element | undefined;
+
+export function comboboxIndicators(top: Element, fallback: Element | undefined = comboboxIndicatorFallback): void {
 	for (const list of [top, ...walkAll(top)]) {
 		if (attr(list, 'data-slot') !== 'combobox-list') continue;
 		const items = walkAll(list).filter((o) => attr(o, 'role') === 'option');
-		const indicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
-		const template = items.map(indicatorOf).find((i) => i !== undefined);
+		const indicatorOf = comboboxIndicatorOf;
+		// A list no item was selected in when captured takes the indicator another list of the site showed.
+		const template = items.map(indicatorOf).find((i) => i !== undefined) ?? fallback;
 		if (!template) continue;
 		for (const o of items) {
 			const own = indicatorOf(o);
@@ -870,6 +881,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	renameIds([...walk(root)], names.page);
+	comboboxIndicatorFallback = comboboxIndicatorIn(pendingLayers.flatMap((l) => l.kept)) ?? comboboxIndicatorFallback;
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
 		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
@@ -985,9 +997,14 @@ const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'm
  * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
  */
 export function pageRoot(kids: readonly Element[]): Element {
-	const holding = kids.filter((el) => isMain(el) || [...walk(el)].some(isMain));
-	return (holding.length ? holding : kids).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
+	const own = kids.filter((el) => !isDialog(el));
+	const pool = own.length ? own : kids;
+	const holding = pool.filter((el) => isMain(el) || [...walk(el)].some(isMain));
+	return (holding.length ? holding : pool).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
+
+// A dialog open on load is a layer the page portaled to the body, not the page.
+const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
 function headModule(byRoute: Map<string, Prepared>): string {
 	const table: HeadTag[] = [];
@@ -1506,6 +1523,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const raw of captured.pickers) if (raw.opener) {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
+			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
+			if (field && trigger) dayPickers.field(route, field, trigger, raw.opener);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
@@ -1940,7 +1959,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (route.status !== 200 || route.route.includes('?') || (route.contentType ?? 'text/html').includes('html')) continue;
 			if (!(await stat(join(publicDir, route.route)).then((x) => x.isFile(), () => false))) builtPaths.add(route.route);
 		}
-		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
+		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), ...(options.pageOrderFrom ? { pageOrderFrom: options.pageOrderFrom } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string>; overrides?: Record<string, unknown> };
