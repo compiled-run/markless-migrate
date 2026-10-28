@@ -148,7 +148,7 @@ jobs:
     strategy:
       fail-fast: false
       # The org runs 60 jobs at once: a convert leaves room for every other repository's CI.
-      max-parallel: 20
+      max-parallel: 10
       matrix:
         shard: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
@@ -293,6 +293,9 @@ jobs:
           set -euo pipefail
           tar -xzf "$(find "$RUNNER_TEMP/converted" -name app.tar.gz | head -n 1)" -C "$APP"
           MARKLESS="$GITHUB_WORKSPACE/markless" bash "$APP/scripts/link-markless.sh" > "$RUNNER_TEMP/link.txt" 2>&1 || { tail -n 60 "$RUNNER_TEMP/link.txt"; exit 1; }
+      # After the install: cache apply reads the fragment URL prefix from the installed @markless/router.
+      - name: Apply the caching plan
+        run: cd "$APP" && node "$GITHUB_WORKSPACE/src/cli.ts" cache apply --prerender
       - name: Build
         run: |
           set -uo pipefail

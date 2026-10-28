@@ -164,6 +164,11 @@ export class DisclosurePlan {
 					],
 				});
 				for (const el of [i.item, i.header]) if (el) this.bindings.set(el, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+				// forceMount: Radix keeps a closed content mounted and shown, so only its data-state follows.
+				if (attr(i.trigger, 'aria-expanded') === 'false' && attr(i.content, 'hidden') === undefined) {
+					this.bindings.set(i.content, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+					return;
+				}
 				const revealed = content(i.content);
 				this.bindings.set(i.content, {
 					declare,
@@ -478,7 +483,7 @@ export class InsertedDisclosurePlan {
 	 * `roots`: the pages, where a Base UI disclosure open on load (its content in the page, named by aria-controls)
 	 * closes and opens again on the same state.
 	 */
-	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly nodes?: readonly Element[]; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
 		const byTrigger = new Map<Element, (typeof items)[number][]>();
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
 		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
@@ -578,6 +583,11 @@ export class InsertedDisclosurePlan {
 				const panel = panels.get(trigger);
 				if (panel) this.bindings.set(panel, { declare, omit: ['hidden', 'data-open', 'data-closed'], extra: [`hidden={!${shown}}`, `data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
 				for (const i of byTrigger.get(trigger) ?? []) {
+					// Content placed in the page (it holds disclosures of its own) shows while open, its own disclosures bound inside.
+					if (i.nodes) {
+						for (const node of i.nodes) if (!this.bindings.has(node)) this.bindings.set(node, { declare, omit: ['hidden'], extra: [`hidden={!${shown}}`] });
+						continue;
+					}
 					const list = inserts.get(i.parent) ?? inserts.set(i.parent, []).get(i.parent)!;
 					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if ${shown} { <>${i.markup}</> }`;
 					if (markup && !list.some((l) => l.before === i.before && l.markup === markup)) list.push({ before: i.before, markup, declare });

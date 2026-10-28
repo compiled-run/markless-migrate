@@ -39,16 +39,10 @@ on:
         required: false
         default: '3600'
       max_parallel:
-        description: Shards run at once, 1 to 20 (the org runs 60 jobs; leave room for every repository's CI)
+        description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI)
         required: false
-        default: '20'
-  # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on thirteen runners, two routes each:
-  # with the slow network measured in Chromium alone a 4-route runner took 220 minutes, and Firefox and WebKit triple that part.
-  pull_request:
-    paths:
-      - .github/workflows/check.yml
-      - scripts/check-shards.ts
-      - deploy/shadcn-ui/ci-serve.sh
+        default: '10'
+  # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
   contents: read
@@ -81,10 +75,10 @@ jobs:
           node-version: 24
       - name: Cap the shards run at once
         env:
-          MAX_PARALLEL: ${{ inputs.max_parallel || '20' }}
+          MAX_PARALLEL: ${{ inputs.max_parallel || '10' }}
         run: |
-          case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 20, got '$MAX_PARALLEL'"; exit 1 ;; esac
-          if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 20 ]; then echo "::error::max_parallel must be from 1 to 20, got $MAX_PARALLEL"; exit 1; fi
+          case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 10, got '$MAX_PARALLEL'"; exit 1 ;; esac
+          if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 10 ]; then echo "::error::max_parallel must be from 1 to 10, got $MAX_PARALLEL"; exit 1; fi
       - id: split
         run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
@@ -101,7 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       # The org runs 60 jobs at once: a check leaves room for every other repository's CI.
-      max-parallel: ${{ fromJSON(inputs.max_parallel || '20') }}
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '10') }}
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
