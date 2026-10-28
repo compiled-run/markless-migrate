@@ -13,10 +13,10 @@ const LINK: NetworkProfile = { name: 'test', label: 'test link', downBytesPerSec
 async function serve(near = false): Promise<{ origin: string; server: Server }> {
 	const late = lateFontsConfig([{ family: 'Arabic', src: 'url(/arabic.woff2) format("woff2")', descriptors: { unicodeRange: 'U+0600-06FF', display: 'swap' } }, { href: '/mono.woff2' }]);
 	const page = `<!doctype html><html><head><title>Tabs</title><script>${LATE_FONTS_SCRIPT}</script><script type="application/json" ${late.attribute}>${late.text}</script>
-<style>@font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");font-display:swap}@font-face{font-family:Mono;src:url(/mono.woff2) format("woff2");font-display:swap}dialog{font-family:Mono,monospace}body{font-family:Latin,sans-serif;margin:0}button{all:unset}.rtl{font-family:Arabic,sans-serif}</style>
+<style>@font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");font-display:swap}@font-face{font-family:Mono;src:url(/mono.woff2) format("woff2");font-display:swap}.pop{font-family:Mono,monospace}body{font-family:Latin,sans-serif;margin:0}button{all:unset}.rtl{font-family:Arabic,sans-serif}</style>
 <link rel="modulepreload" href="/app.js"><script type="module" src="/app.js"></script></head>
 <body><main><h1>Tabs</h1><div role="tablist"><button role="tab" aria-selected="true">One</button><button role="tab" aria-selected="false">Two</button></div>
-<dialog><kbd>K</kbd></dialog><div style="height:${near ? 200 : 4000}px"></div><section ${LATE_FONT} class="rtl" dir="rtl"><p>زر حذف</p></section></main></body></html>`;
+<div role="dialog" hidden class="pop"><kbd>K</kbd></div><div style="height:${near ? 200 : 4000}px"></div><section ${LATE_FONT} class="rtl" dir="rtl"><p>زر حذف</p></section></main></body></html>`;
 	const app = `function neverCalled() { return ${JSON.stringify('x'.repeat(48_000))}; }
 for (const tab of document.querySelectorAll('[role=tab]')) tab.addEventListener('click', () => { for (const t of document.querySelectorAll('[role=tab]')) t.setAttribute('aria-selected', String(t === tab)); });`;
 	const server = createServer((req, res) => {
@@ -48,7 +48,7 @@ for (const name of NETWORK_BROWSERS) {
 		}
 	});
 
-	test(`${name}: a font only a closed pop-up draws is fetched once the scripts have arrived, before any press opens it`, { skip: browserInstalled(name) || process.env.CI ? false : `${name} is not installed` }, async () => {
+	test(`${name}: a font only a hidden pop-up draws is fetched once the scripts have arrived, before any press opens it`, { skip: browserInstalled(name) || process.env.CI ? false : `${name} is not installed` }, async () => {
 		const { origin, server } = await serve();
 		try {
 			const run = await networkRun('http://late.test/', LINK, name, { timeoutMs: 30_000, hosts: { 'late.test': new URL(origin).host } });
