@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ChartPlan, template } from '../src/convert/charts.ts';
-import { attr, body, find, parseDocument } from '../src/convert/dom.ts';
+import { animationLag, ChartPlan, template } from '../src/convert/charts.ts';
+import { attr, body, find, parseDocument, textContent } from '../src/convert/dom.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
+
+const textOf = (el: Parameters<typeof textContent>[0]) => textContent(el).trim();
 
 test('states drawn alike but for text and attribute values are one template over a table of the values', () => {
 	assert.deepEqual(template(['<div class="a"><span>March</span><b>237</b></div>', '<div class="a"><span>April</span><b>73</b></div>'], 't[i]'), { markup: '<div class="a"><span>{t[i][0]}</span><b>{t[i][1]}</b></div>', rows: [['March', '237'], ['April', '73']] });
@@ -44,7 +46,23 @@ test('a card whose controls change the chart: a state() for the SVG shown, set b
 	assert.ok(out.includes('<><svg class="recharts-surface" style={chart0v === 0 ? "" : "display: none;"} data-mm-b="0 1 2'), 'each SVG the old page drew, the ones not shown hidden');
 	assert.ok(out.includes('<svg class="recharts-surface" style={chart0v === 1 ? "" : "display: none;"} data-mm-b="0 1 2'));
 	assert.match(out, /<button data-active=\{chart0v === 1 \? "true" : "false"\} data-mm-variant="1">Mobile<\/button>/);
-	assert.match(out, /<div data-slot="card" onClick=\{\(event\) => \{ const k = \(event\.target as Element\)\.closest\('\[data-mm-variant\]'\)/);
+	assert.match(out, /<div data-slot="card" data-mm-morph="" onClick=\{\(event\) => \{ const k = \(event\.target as Element\)\.closest\('\[data-mm-variant\]'\)/, 'the card fetches the update animation when the pointer or focus comes to it');
+});
+
+test('a card whose controls change the chart: each mark carries what recharts animates it with, and the chart how many frames the old page waited', () => {
+	const doc = parseDocument('<body><div data-slot="card"><div data-slot="card-header"><button>Desktop</button><button>Mobile</button></div><div class="recharts-wrapper"><svg class="recharts-surface"><g class="recharts-line"><path class="recharts-curve recharts-line-curve" d="M0,1L2,3"></path></g></svg><div class="recharts-tooltip-wrapper"></div></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const buttons = [find(root, (el) => el.tagName === 'button' && textOf(el) === 'Desktop')!, find(root, (el) => el.tagName === 'button' && textOf(el) === 'Mobile')!];
+	const geo = '{"k":"line","t":"monotone","l":"horizontal","a":[0,1500,"ease"]}';
+	const drawn = (d: string) => `<svg class="recharts-surface"><g class="recharts-line"><path class="recharts-curve recharts-line-curve" d="${d}" data-mm-geo='${geo}'></path></g></svg>`;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 3 });
+	const plan = new ChartPlan();
+	const facts = { sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [5, 5, 90, 40] as const, lag: 4, variants: [one(drawn('M0,1L2,3')), one(drawn('M0,3L2,1'))], drivers: [{ sig: 'b0', nth: 0, kind: 'press' as const, variant: 0 }, { sig: 'b1', nth: 0, kind: 'press' as const, variant: 1 }] };
+	plan.add(root, [facts], (sig) => (sig === 'w' ? wrapper : sig === 'b0' ? buttons[0] : sig === 'b1' ? buttons[1] : undefined), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.equal(out.split(`data-mm-geo={${JSON.stringify(geo)}}`).length - 1, 2, 'the page\'s own drawing takes the capture\'s marks too');
+	assert.equal(out.match(/\\"z\\":4/g)?.length, 2, "both drawings know the lag");
 });
 
 test('each width the old page drew a chart at is its own SVG, shown by a container query in the widths nearest it', () => {
@@ -61,4 +79,11 @@ test('each width the old page drew a chart at is its own SVG, shown by a contain
 	assert.ok(wide?.startsWith('14 15') && wide.endsWith('32 33'), `the wide one above: ${wide}`);
 	assert.match(out, /<div style="width:100%;height:100%;container-type:inline-size">/, 'the chart\'s container is the one the queries read');
 	assert.match(out, /<div class="recharts-wrapper" style="position: relative; width: 100%; height: 100%;"/);
+});
+
+test('the update animation\'s lag is read off a film of the marks from the input: two frames before the first of three that each move them', () => {
+	// The input, then: frame 1 shows the new data at its old place (the commit), frames 2-5 hold, 6 on move.
+	assert.equal(animationLag(['a', 'b', 'b', 'b', 'b', 'b', 'c', 'd', 'e', 'f']), 4);
+	assert.equal(animationLag(['a', 'a', 'a', 'a', 'a', 'a', 'b', 'c', 'd']), 4, 'a switch whose first shape is the old one');
+	assert.equal(animationLag(['a', 'a', 'b', 'b', 'a', 'a']), undefined, 'no run of motion: no animation');
 });

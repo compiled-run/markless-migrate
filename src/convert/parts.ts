@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attr, childrenOf, elementChildren, type Element } from './dom.ts';
+import { attr, childrenOf, elementChildren, walk, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
 import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
@@ -16,9 +16,9 @@ export const APP_PARTS_DIR = 'lib/parts';
 export const PARTS_REGISTRIES = 'registries';
 
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
-export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6', '@internationalized/date': '3.12.3', '@tanstack/table-core': '9.0.0' };
+export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6', '@internationalized/date': '3.12.3', '@tanstack/table-core': '9.0.0', 'd3-shape': '3.2.0' };
 // A package only some ports import is added to the app only when one of them is used.
-const DEPENDENCY_USERS: Readonly<Record<string, readonly string[]>> = { '@internationalized/date': ['react-aria/calendar'], '@tanstack/table-core': ['tanstack-table'] };
+const DEPENDENCY_USERS: Readonly<Record<string, readonly string[]>> = { '@internationalized/date': ['react-aria/calendar'], '@tanstack/table-core': ['tanstack-table'], 'd3-shape': ['recharts-motion'] };
 
 export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input' | 'submit';
 
@@ -128,7 +128,7 @@ export const PORTS: readonly Port[] = [
 	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
 	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
-	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
+	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion'] },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).
 	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown', 'focusin'], locate: (el) => radix(el) },
 	// Radix ScrollArea: the scrollbars it mounts on hover are rendered hidden in the area (convert's companions).
@@ -408,6 +408,15 @@ export async function writeParts(app: string, modules: ReadonlySet<string>, choi
 	}
 	if (added) await writeFile(join(app, 'package.json'), `${JSON.stringify(manifest, null, '\t')}\n`);
 	return { files, site };
+}
+
+/**
+ * Ports a layer's trigger runs that nothing on the page names: a React Aria PreviewTrigger (a hover card) renders no
+ * element of its own, only the content it opens says so (data-trigger), so its page runs the tooltip port for it.
+ */
+export function triggerPorts(kept: readonly Element[]): string[] {
+	const all = kept.flatMap((top) => [top, ...walk(top)]);
+	return all.some((el) => attr(el, 'data-trigger') === 'PreviewTrigger' && attr(el, 'data-rac') !== undefined) ? ['react-aria/tooltip'] : [];
 }
 
 /** These ports and the ports they build on whose handlers they rely on (a context menu's items run the menu port's). */

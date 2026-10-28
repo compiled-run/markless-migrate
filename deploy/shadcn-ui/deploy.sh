@@ -13,6 +13,22 @@ APP="$ROOT/examples/shadcn-ui-markless"
 SCOPE=jack-shelton
 OLD_URL=https://mm-shadcn-ui-old.vercel.app
 NEW_URL=https://mm-shadcn-ui-new.vercel.app
+# A concurrent CLI process refreshing the shared login leaves this one's token stale for a moment; Vercel answers that as
+# "no access to the specified account" before doing anything, so the same command is safe to run again.
+vercel() {
+	local err code=0 try
+	err=$(mktemp)
+	for try in 1 2 3; do
+		code=0
+		command vercel "$@" 2> "$err" || code=$?
+		[ "$code" -ne 0 ] && [ "$try" -lt 3 ] && grep -q 'do not have access to the specified account' "$err" || break
+		echo "vercel: stale login (try $try), retrying" >&2
+		sleep $((try * 15))
+	done
+	cat "$err" >&2
+	rm -f "$err"
+	return "$code"
+}
 link() { [ -f "$1/.vercel/project.json" ] || (cd "$1" && vercel link --yes --project "$2" --scope "$SCOPE" >/dev/null && rm -f .env.local); }
 
 case "${1:-}" in
@@ -31,7 +47,8 @@ case "${1:-}" in
 		link "$APP" mm-shadcn-ui-new
 		rm -rf "$APP/.vercel/output"
 		(cd "$APP" && node "$ROOT/src/cli.ts" cache apply --prerender)
-		(cd "$APP" && NITRO_PRESET=vercel VITE_APP_URL="$VITE_APP_URL" npm run build)
+		# The build passes Node's default 4 GB heap (out of memory on 2026-10-28); the convert workflow's build gives it 13 GB.
+		(cd "$APP" && NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=12288}" NITRO_PRESET=vercel VITE_APP_URL="$VITE_APP_URL" npm run build)
 		# Built without VITE_APP_URL, "Open in v0" hands v0 a path with no host.
 		if grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.vercel/output"; then echo 'FAIL: pages link v0 to a hostless URL: build with VITE_APP_URL set' >&2; exit 1; fi
 		# A cached page or fragment URL without its ISR function runs the server function on every click: refuse before uploading.

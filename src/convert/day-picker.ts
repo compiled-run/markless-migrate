@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Locator, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
@@ -52,8 +52,24 @@ export interface LayerOpener {
 	/** Its place among the elements of its tag and data-slot. */
 	readonly k: number;
 	readonly before: string;
-	readonly picks: readonly { readonly days: readonly Triple[]; readonly html: string; readonly open: boolean }[];
+	readonly picks: readonly { readonly days: readonly Triple[]; readonly html: string; readonly open: boolean; readonly value?: string }[];
+	/** The text field beside the trigger that shows the date (a date picker with an input), as the page used it. */
+	readonly field?: PickerField;
 }
+
+/** A date picker's text field: where it is, what it showed, and the calendar after each sample was typed into it. */
+export interface PickerField {
+	readonly sig: string;
+	readonly nth: number;
+	readonly value: string;
+	/** Whether ArrowDown in the field opened the trigger's layer. */
+	readonly opens?: boolean;
+	readonly typed: readonly { readonly text: string; readonly shown: string; readonly predicted: Triple | null; readonly selected: string | null; readonly caption: string | null }[];
+}
+
+// Typed into a date picker's field at capture, one keystroke at a time: dates in several forms, text no Date reads, and
+// phrases only a natural-language parser reads, which tell a field that reads with one from a field that reads with Date.
+const FIELD_SAMPLES = ['May 28, 2025', '2025-05-28', '05/28/2025', '28 May 2025', 'December 31, 2024', 'not a date', 'Feb 3 2026', 'tomorrow', 'in 3 days'];
 
 interface RawEffect {
 	readonly sig: string;
@@ -77,7 +93,7 @@ export const LATER = Date.UTC(2027, 4, 20, 12, 0, 0);
 export const BEHIND = 'America/Los_Angeles';
 
 // Bumped when what is read changes, so a cached read is taken again.
-const READ_VERSION = 8;
+const READ_VERSION = 12;
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`day-picker:${READ_VERSION}:${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Reads every DayPicker on a route at the capture clock and at LATER, and whether its keys move the browser's focus. */
@@ -147,6 +163,7 @@ async function openerPickers(page: Page, opener: { readonly sig: string; readonl
 	if (k < 0) return [];
 	const trigger = page.locator('[data-mm-opener]');
 	try {
+		const field = probe ? await page.evaluate(markField) : undefined;
 		await trigger.scrollIntoViewIfNeeded().catch(() => {});
 		await trigger.click({ timeout: 2000 });
 		await page.waitForTimeout(500);
@@ -173,16 +190,84 @@ async function openerPickers(page: Page, opener: { readonly sig: string; readonl
 			await page.waitForTimeout(400);
 			const html = await trigger.evaluate((e) => e.innerHTML);
 			const open = await trigger.evaluate((e) => e.getAttribute('aria-expanded') === 'true' || e.getAttribute('data-state') === 'open');
-			picks.push({ days: [...(picks.at(-1)?.days ?? []), day], html, open });
+			const value = field ? await page.locator('[data-mm-field]').inputValue() : undefined;
+			picks.push({ days: [...(picks.at(-1)?.days ?? []), day], html, open, ...(value !== undefined ? { value } : {}) });
 			if (!open) break;
 		}
-		return [{ ...own[0]!, movesFocus: focuses, opener: { sig: opener.sig, nth: opener.nth, k, before, picks } }];
+		const typed = field && count === 1 ? await typeField(page, trigger) : undefined;
+		return [{ ...own[0]!, movesFocus: focuses, opener: { sig: opener.sig, nth: opener.nth, k, before, picks, ...(field && typed ? { field: { sig: field.sig, nth: field.nth, value: field.value, ...(typed.opens ? { opens: true } : {}), typed: typed.typed } } : {}) } }];
 	} catch {
 		return [];
 	} finally {
 		await page.keyboard.press('Escape').catch(() => {});
 		await page.waitForTimeout(300);
-		await page.evaluate(() => document.querySelector('[data-mm-opener]')?.removeAttribute('data-mm-opener')).catch(() => {});
+		await page.evaluate(() => document.querySelectorAll('[data-mm-opener], [data-mm-field]').forEach((e) => (e.removeAttribute('data-mm-opener'), e.removeAttribute('data-mm-field')))).catch(() => {});
+	}
+}
+
+/** The one text field within a few levels of the marked trigger (outside it), marked: its signature, place and value. */
+function markField(): { sig: string; nth: number; value: string } | undefined {
+	const trigger = document.querySelector<HTMLElement>('[data-mm-opener]');
+	const text = (e: HTMLInputElement) => !['hidden', 'checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(e.type);
+	let at: HTMLElement | null = trigger;
+	for (let level = 0; at && level < 4; level++) {
+		at = at.parentElement;
+		const inputs = [...(at?.querySelectorAll<HTMLInputElement>('input') ?? [])].filter((e) => text(e) && !trigger!.contains(e));
+		if (!inputs.length) continue;
+		if (inputs.length > 1) return undefined;
+		const input = inputs[0]!;
+		const sigOf = (el: globalThis.Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+		const sig = sigOf(input);
+		const nth = [...document.body.querySelectorAll('*')].filter((e) => sigOf(e) === sig).indexOf(input);
+		input.setAttribute('data-mm-field', '');
+		return { sig, nth, value: input.value };
+	}
+	return undefined;
+}
+
+/** Each sample typed into the marked field with the layer closed, then the layer opened: what its calendar selected and showed. */
+async function typeField(page: Page, trigger: Locator): Promise<{ typed: PickerField['typed']; opens: boolean } | undefined> {
+	const input = page.locator('[data-mm-field]');
+	// Base UI's trigger can keep aria-expanded="false" while its popover is open: the calendar in a layer says it.
+	const isOpen = () => page.evaluate(() => (window as unknown as { __mmPickerRoots: () => HTMLElement[] }).__mmPickerRoots().some((r) => r.closest('[data-radix-popper-content-wrapper], [data-base-ui-portal]') && r.checkVisibility()));
+	const close = async () => {
+		if (!(await isOpen())) return;
+		await page.keyboard.press('Escape');
+		await page.waitForTimeout(300);
+	};
+	const typed: PickerField['typed'][number][] = [];
+	try {
+		for (const text of FIELD_SAMPLES) {
+			await close();
+			await input.click({ timeout: 2000 });
+			await page.keyboard.press('ControlOrMeta+a');
+			await page.keyboard.type(text, { delay: 15 });
+			await page.waitForTimeout(200);
+			const shown = await input.inputValue();
+			// What the page's own reading would select: the last prefix typed that a Date reads, in the page's time zone.
+			const predicted = await page.evaluate((text) => {
+				let last: Date | undefined;
+				for (let i = 1; i <= text.length; i++) {
+					const d = new Date(text.slice(0, i));
+					if (!Number.isNaN(d.getTime())) last = d;
+				}
+				return last ? ([last.getFullYear(), last.getMonth(), last.getDate()] as [number, number, number]) : null;
+			}, text);
+			await trigger.click({ timeout: 2000 });
+			await page.waitForTimeout(500);
+			const read = await page.evaluate(() => {
+				const root = (window as unknown as { __mmPickerRoots: () => HTMLElement[] }).__mmPickerRoots().find((r) => r.closest('[data-radix-popper-content-wrapper], [data-base-ui-portal]'));
+				return { selected: root?.querySelector('td[data-selected="true"]')?.getAttribute('data-day') ?? null, caption: root?.querySelector('[role="grid"]')?.getAttribute('aria-label') ?? null };
+			});
+			typed.push({ text, shown, predicted, ...read });
+		}
+		await close();
+		await input.focus();
+		await page.keyboard.press('ArrowDown');
+		await page.waitForTimeout(400);
+		return { typed, opens: await isOpen() };
+	} catch {
+		return undefined;
 	}
 }
 
@@ -1104,8 +1189,11 @@ export class DayPickerPlan {
 		const v = `${holder}.v`;
 		const closes = raw.opener.picks.some((p) => !p.open);
 		// The trigger's label is learned on the whole locale, and its pattern's names are kept in the calendar's.
-		const label = known?.label ?? labelOf(raw.opener, asCaptured(configOf(raw, captured.later[i], () => {}, captured.behind?.[i])));
-		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, label?.pattern ?? '', (c) => `(${holder}.v ?? dayPickerView(${c}))`);
+		const whole = asCaptured(configOf(raw, captured.later[i], () => {}, captured.behind?.[i]));
+		const label = known?.label ?? labelOf(raw.opener, whole);
+		const field = raw.opener.field ? fieldOf(raw.opener, whole) : undefined;
+		const keep = [label?.pattern, typeof field === 'object' ? field.pattern : undefined].filter(Boolean).join(' ');
+		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, keep, (c) => `(${holder}.v ?? dayPickerView(${c}))`);
 		if (!planned) return undefined;
 		if (!known) {
 			this.shared.push(`export const dpShared${k} = shared(() => {\n\tconst view = state<{ v: DayPickerView | null }>({ v: null });\n\treturn view;\n});`);
@@ -1129,13 +1217,14 @@ export class DayPickerPlan {
 	 * days picked on it) where a day is picked, its own children before. Undefined when the pattern is not one of date-fns's
 	 * this knows, or nothing changed.
 	 */
-	opener(route: string, trigger: Element, opener: { readonly sig: string; readonly nth: number }): Binding | undefined {
+	opener(route: string, trigger: Element, opener: { readonly sig: string; readonly nth: number; readonly field?: PickerField }): Binding | undefined {
 		const known = this.openers.get(`${route}|${opener.sig}#${opener.nth}`);
 		if (!known) return undefined;
 		const { k, c } = known;
 		const learned = known.label;
 		if (!learned) {
-			this.notes.push(`${route} date picker ${opener.sig}: its label's pattern is not one this knows`);
+			// A trigger beside a field shows no date: the field does.
+			if (!opener.field) this.notes.push(`${route} date picker ${opener.sig}: its label's pattern is not one this knows`);
 			return undefined;
 		}
 		const holder = `dps${k}`;
@@ -1148,6 +1237,56 @@ export class DayPickerPlan {
 		return binding;
 	}
 
+
+	/**
+	 * A date picker's text field, on the view its calendar shares: what is typed selects the day `new Date` reads (where
+	 * the capture showed the page doing so for every sample), a pick writes the day in the pattern the page wrote it in,
+	 * and ArrowDown opens the popover where it did.
+	 */
+	field(route: string, input: Element, trigger: Element, opener: LayerOpener): Binding | undefined {
+		const known = this.openers.get(`${route}|${opener.sig}#${opener.nth}`);
+		const field = opener.field;
+		if (!known || !field) return undefined;
+		const learned = fieldOf(opener, known.config);
+		if (typeof learned === 'string') {
+			this.notes.push(`${route} date picker ${opener.sig}: its field is not ported: ${learned}`);
+			return undefined;
+		}
+		const { k, c } = known;
+		const holder = `dps${k}`;
+		const view = `(${holder}.v ?? dayPickerView(${c}))`;
+		const id = JSON.stringify(`${route}#${k}`);
+		const binding: Binding = {
+			declare: [`const ${holder} = dpShared${k}();`],
+			omit: ['value'],
+			extra: [
+				`value={dayPickerField(${c}, ${view}, ${JSON.stringify(learned.pattern)}, ${JSON.stringify(field.value)})}`,
+				`onInput={(event) => { ${holder}.v = dayPickerTyped(${c}, ${view}, (event.target as HTMLInputElement).value, ${id}); }}`,
+				...(field.opens ? [`onKeyDown={(event) => { dayPickerFieldKey(event, ${JSON.stringify(`dpf${k}`)}); }}`] : []),
+			],
+		};
+		this.bindings.set(input, mergeBindings(this.bindings.get(input), binding)!);
+		if (field.opens) this.bindings.set(trigger, mergeBindings(this.bindings.get(trigger), { extra: [`data-mm-field-opener="dpf${k}"`] })!);
+		return binding;
+	}
+}
+
+/** The pattern a date picker's field writes a picked day in, when the page read typed text as `new Date` does; or why not. */
+export function fieldOf(opener: LayerOpener, config: DayPickerConfig): { readonly pattern: string } | string {
+	const field = opener.field!;
+	let selected: string | null | undefined;
+	for (const t of field.typed) {
+		if (t.shown !== t.text) return `typing "${t.text}" left "${t.shown}" in it`;
+		const iso = t.predicted ? `${t.predicted[0]}-${String(t.predicted[1] + 1).padStart(2, '0')}-${String(t.predicted[2]).padStart(2, '0')}` : selected;
+		if (iso !== undefined && t.selected !== iso) return `typing "${t.text}" selected ${t.selected}, not ${iso ?? 'nothing'}`;
+		selected = t.selected;
+	}
+	if (field.typed.length < FIELD_SAMPLES.length) return 'not every sample was typed';
+	const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+	const picks = opener.picks.filter((p) => p.value !== undefined);
+	if (!picks.length) return 'no pick wrote it';
+	const label = labelOf({ ...opener, before: '', picks: picks.map((p) => ({ ...p, html: escape(p.value!) })) }, config);
+	return label && label.join === LABEL_JOINS[0] ? { pattern: label.pattern } : 'what a pick wrote is in no pattern this knows';
 }
 
 const textContent = (el: Element): string => childrenOf(el).map((n) => (isText(n) ? (n as Text).value : isElement(n) ? textContent(n) : '')).join('');
