@@ -164,6 +164,11 @@ export class DisclosurePlan {
 					],
 				});
 				for (const el of [i.item, i.header]) if (el) this.bindings.set(el, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+				// forceMount: Radix keeps a closed content mounted and shown, so only its data-state follows.
+				if (attr(i.trigger, 'aria-expanded') === 'false' && attr(i.content, 'hidden') === undefined) {
+					this.bindings.set(i.content, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+					return;
+				}
 				const revealed = content(i.content);
 				this.bindings.set(i.content, {
 					declare,
@@ -205,14 +210,18 @@ export class SelectPlan {
 			}
 			if (attr(trigger, 'data-slot') !== 'select-trigger' || !isBaseSelect(trigger)) continue;
 			const value = [...walk(trigger)].find((el) => attr(el, 'data-slot') === 'select-value');
-			// A React Aria Select whose trigger renders the chosen text itself (a render function, no SelectValue): its
-			// leading text is the state, the rest of its children stay as they are.
+			// A trigger that renders the chosen text itself (React Aria's render function, Base UI's Value rendering bare
+			// text): its leading text is the state, the rest of its children stay as they are.
 			const lead = childrenOf(trigger)[0];
-			if (!value && emit && attr(trigger, 'data-rac') !== undefined && lead && isText(lead) && lead.value.trim()) {
+			if (!value && emit && lead && isText(lead) && lead.value.trim()) {
 				const name = `sel${this.n++}`;
 				const declare = [`let ${name} = state(${lit(lead.value)});`];
-				const rest = childrenOf(trigger).slice(1).map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
-				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => (${name} = (event as CustomEvent<string>).detail)}`], children: `{${name}}${emit(rest)}` });
+				const others = childrenOf(trigger).slice(1);
+				const rest = others.map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
+				// What the trigger showed after a choice, as convert recorded it, holds the rest's text too (an icon's).
+				const tail = others.map((n) => (isText(n) ? n.value : 'tagName' in n ? textOf(n as Element) : '')).join('');
+				const shown = tail ? `{ const d = (event as CustomEvent<string>).detail; ${name} = d.endsWith(${lit(tail)}) ? d.slice(0, d.length - ${tail.length}) : d; }` : `(${name} = (event as CustomEvent<string>).detail)`;
+				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => ${shown}}`], children: `{${name}}${emit(rest)}` });
 				count++;
 				continue;
 			}

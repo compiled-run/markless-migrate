@@ -153,6 +153,40 @@ test('the scene part plays a use at its recorded times and a second control from
 	}
 });
 
+test("a streamed use keeps its recorded gaps after the page stalls: frames come one gap apart, not all at once", async () => {
+	const at = (t: number, lines: string[]) => ({ t, tree: block([13, 14, 15], lines) });
+	const { data } = planned({ ...REPLAY, edges: [{ ...REPLAY.edges[0]!, frames: [at(10, []), at(60, ['a']), at(110, ['a', 'b']), at(160, ['a', 'b', 'c'])] }] });
+	const part = ts.transpileModule(await readFile(join(ROOT, 'parts/scene.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/scene.js' ? route.fulfill({ contentType: 'text/javascript', body: part }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		const gaps = await page.evaluate(
+			async ([data]) => {
+				const { playScene } = (await import('/scene.js' as string)) as typeof import('../parts/scene.ts');
+				document.body.innerHTML = '<div data-slot="preview"><button>Replay</button></div>';
+				const region = document.querySelector('[data-slot="preview"]')!;
+				region.setAttribute('data-mm-scene', JSON.stringify(data));
+				const times: number[] = [];
+				region.addEventListener('click', (event) => playScene(event, () => times.push(performance.now())));
+				region.querySelector('button')!.click();
+				// The page is busy past every frame's time.
+				const until = performance.now() + 250;
+				while (performance.now() < until);
+				await new Promise((r) => setTimeout(r, 400));
+				return times.slice(1).map((t, i) => Math.round(t - times[i]!));
+			},
+			[data] as const,
+		);
+		// The last set is the use settling, with its last frame.
+		assert.equal(gaps.length, 4, String(gaps));
+		for (const gap of gaps.slice(0, 3)) assert.ok(gap >= 40, `gaps ${gaps.join(', ')}`);
+	} finally {
+		await browser.close();
+	}
+});
+
 test('a demo whose uses would replace an element another plan puts on Markless state is not played', () => {
 	const region = parseFragment(html(REPLAY.states[0]!)).childNodes[0] as unknown as Element;
 	const plan = new ScenePlan((e) => e.tagName === 'span');

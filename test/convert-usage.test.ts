@@ -67,6 +67,9 @@ test("the offsets a wrapper passes on with a slot of its own are its own, else t
 	assert.deepEqual(offsets('dropdown-menu-sub-content'), ['0', '-3'], "the sub-content's own parameter defaults");
 	assert.deepEqual(offsets('context-menu-sub-content'), ['0', '4'], 'none written: the defaults of the content it renders');
 	assert.deepEqual(offsets('dropdown-menu-content'), [undefined, undefined], 'a slot written on the library part itself is not forwarded');
+	// Radix's wrapper writes the same slot on its own part: its submenu keeps Radix's offsets, not Base UI's site's.
+	assert.equal(resolver.forwardedProp?.('dropdown-menu-sub-content', 'alignOffset', 'radix-ui'), undefined);
+	assert.equal(resolver.forwardedProp?.('dropdown-menu-sub-content', 'alignOffset', '@base-ui/react'), '-3');
 	await rm(dir, { recursive: true, force: true });
 });
 
