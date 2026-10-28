@@ -31,6 +31,8 @@ async function open(kind: keyof typeof BROWSERS, path = '/typeset', viewport = {
 	// The designer starts once the page is idle (onIdle): the history is seeded from the URL and the preview gets its params.
 	await page.waitForLoadState('networkidle');
 	for (let i = 0; i < 3; i++) await page.evaluate(() => new Promise<void>((done) => (globalThis.requestIdleCallback ?? setTimeout)(() => done())));
+	// The preview is ready once its own idle work ran: its params are on <html> and its keys are listened for.
+	await page.frameLocator('iframe[title="typeset preview"]').locator('html[style*="--preview-size"]').waitFor({ state: 'attached' });
 	return page;
 }
 
