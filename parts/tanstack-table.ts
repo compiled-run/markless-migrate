@@ -13,7 +13,7 @@ export interface TableSpec {
 	readonly features: Readonly<Record<string, unknown>>;
 	readonly data: readonly Readonly<Record<string, Json>>[];
 	readonly rowIds: readonly string[];
-	readonly columns: readonly { readonly id: string; readonly accessor: boolean; readonly def: Readonly<Record<string, Json>> }[];
+	readonly columns: readonly { readonly id: string; readonly accessor: boolean; readonly def: Readonly<Record<string, unknown>> }[];
 	readonly options: Readonly<Record<string, Json>>;
 }
 
@@ -37,9 +37,11 @@ export interface TableView {
 		readonly allSel: Selection;
 		/** Whether the page shows no row. */
 		readonly empty: boolean;
+		/** Whether any column is filtered. */
+		readonly filtering: boolean;
 	};
-	/** Each column's sort direction ('' when unsorted) and whether it is shown. */
-	readonly c: Readonly<Record<string, { readonly s: string; readonly v: boolean }>>;
+	/** Each column's sort direction ('' when unsorted), whether it is shown, and the text of its filter. */
+	readonly c: Readonly<Record<string, { readonly s: string; readonly v: boolean; readonly f: string }>>;
 }
 
 export type TableAction =
@@ -49,6 +51,7 @@ export type TableAction =
 	/** Selects or clears the page's rows or every row (`pageOn`, `allOn`, `pageOff`, `allOff`), by how many of the page's are. */
 	| { readonly k: 'select'; readonly next: Readonly<Record<string, string>> }
 	| { readonly k: 'vis'; readonly c: string }
+	| { readonly k: 'clear' }
 	| { readonly k: 'page'; readonly d: number }
 	| { readonly k: 'page'; readonly to: 'first' | 'last' }
 	/** Sets a value a row's own control keeps (its select's shown value): the row's `c<c>`. */
@@ -152,8 +155,9 @@ export function ttView(spec: TableSpec, state: TableState, cells?: Cells): Table
 			pageSel: has('getIsAllPageRowsSelected') ? selection(t.getIsAllPageRowsSelected(), t.getIsSomePageRowsSelected()) : 'none',
 			allSel: has('getIsAllRowsSelected') ? selection(t.getIsAllRowsSelected(), t.getIsSomeRowsSelected()) : 'none',
 			empty: rows.length === 0,
+			filtering: ((state.columnFilters ?? []) as unknown[]).length > 0,
 		},
-		c: Object.fromEntries((t.getAllLeafColumns() as Table[]).map((c) => [c.id as string, { s: (typeof c.getIsSorted === 'function' && (c.getIsSorted() as string | false)) || '', v: typeof c.getIsVisible === 'function' ? (c.getIsVisible() as boolean) : true }])),
+		c: Object.fromEntries((t.getAllLeafColumns() as Table[]).map((c) => [c.id as string, { s: (typeof c.getIsSorted === 'function' && (c.getIsSorted() as string | false)) || '', v: typeof c.getIsVisible === 'function' ? (c.getIsVisible() as boolean) : true, f: typeof c.getFilterValue === 'function' && typeof c.getFilterValue() === 'string' ? (c.getFilterValue() as string) : '' }])),
 	};
 	views.set(spec, { state, ...(cells ? { cells } : {}), view });
 	return view;
@@ -190,6 +194,9 @@ export function ttAct(spec: TableSpec, state: TableState, action: TableAction): 
 			else if (to === 'allOff') t.setRowSelection({});
 			break;
 		}
+		case 'clear':
+			t.resetColumnFilters();
+			break;
 		case 'vis':
 			t.getColumn(action.c).toggleVisibility();
 			break;

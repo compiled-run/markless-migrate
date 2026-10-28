@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseFragment } from 'parse5';
 import { attr, body, find, parseDocument, walk, type Element } from '../src/convert/dom.ts';
-import { recordPageSize, TablePlan, templateOf, type CapturedTable, type TableSnapshot } from '../src/convert/tanstack-table.ts';
+import { ownFunction, recordPageSize, TablePlan, templateOf, type CapturedTable, type TableSnapshot } from '../src/convert/tanstack-table.ts';
 import { emitChildren, emitElement, mergeBindings, type Binding } from '../src/convert/tsrx.ts';
 
 // A table region as the old page showed it in each recorded state, built from one description so the states differ only
@@ -138,7 +138,7 @@ test('a hideable column takes its header out and hides its cells; the count and 
 	assert.match(out, /<div class="count">\{tt0t0\}\{" of "\}\{tt0t1\}\{" row\(s\) selected\."\}<\/div>/);
 	assert.ok(declarations.includes('const tt0t0 = computed(() => tt0v.q.filteredSelected);') && declarations.includes('const tt0t1 = computed(() => tt0v.q.filtered);'), declarations.join('\n'));
 	assert.match(out, /<button data-slot="button" disabled=\{tt0v\.q\.canNext \? false : true\} onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "page", d: 1 \}\); \}\}>Next<\/button>/);
-	assert.match(out, /<input placeholder="Filter names\.\.\." value="" onInput=\{\(event\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "filter", c: "name", v: \(event\.target as HTMLInputElement\)\.value \}\); \}\} \/>/);
+	assert.match(out, /<input placeholder="Filter names\.\.\." value=\{tt0v\.c\["name"\]\.f\} onInput=\{\(event\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "filter", c: "name", v: \(event\.target as HTMLInputElement\)\.value \}\); \}\} \/>/);
 	assert.match(plan.sharedModule('../../lib/parts')!, /export const ttShared0 = shared\(\(\) => \{\n\tconst table = state<\{ s: TableState \}>\(\{ s: \{"rowSelection":\{\},"columnFilters":\[\],"columnVisibility":\{\},"pagination":\{"pageIndex":0,"pageSize":10\}\} \}\);/);
 	assert.match(plan.specsModule()!, /import \{ columnFilteringFeature, columnVisibilityFeature, createFilteredRowModel, createPaginatedRowModel, filterFn_includesString, rowPaginationFeature, rowSelectionFeature \} from '@tanstack\/table-core';/);
 	assert.match(plan.specsModule()!, /features: \{ columnFilteringFeature, columnVisibilityFeature, rowSelectionFeature, rowPaginationFeature, filteredRowModel: createFilteredRowModel\(\), paginatedRowModel: createPaginatedRowModel\(\), filterFns: \{ includesString: filterFn_includesString \} \}/);
@@ -297,4 +297,54 @@ test('pages are recorded at the page size the table loaded with when its rows fi
 	assert.equal(recordPageSize(25, 10), 8);
 	assert.equal(recordPageSize(30, 10), 10);
 	assert.equal(recordPageSize(9, undefined), 3);
+});
+
+test('a column\'s own filter or sort function is the old page\'s code when it reads only its arguments and the language\'s globals', () => {
+	assert.deepEqual(ownFunction('(row, id, value) => value.includes(row.getValue(id))'), { code: '(row, id, value) => value.includes(row.getValue(id))' });
+	assert.deepEqual(ownFunction('(e,t,r)=>r.includes(e.getValue(t))'), { code: '(e,t,r)=>r.includes(e.getValue(t))' });
+	assert.ok('code' in ownFunction('function(e, t, r) { const v = e.getValue(t); return Array.isArray(r) ? r.includes(v) : String(v) === r; }'));
+	// A method's own source (filterFn(row, id, value) { ... }) is a function expression once named as one.
+	assert.deepEqual(ownFunction('filterFn(row, id, value) { return value.includes(row.getValue(id)); }'), { code: 'function filterFn(row, id, value) { return value.includes(row.getValue(id)); }' });
+	assert.match((ownFunction('(row, id, value) => labels.some((l) => l.value === row.getValue(id))') as { why: string }).why, /reads labels/);
+});
+
+test('a column the old page gave its own filter function runs that code in the port; one reading the old app\'s values leaves the table unported', () => {
+	const withFn = (source: string) => (t: CapturedTable): CapturedTable => ({ ...t, columns: t.columns.map((c) => (c.id === 'name' ? { ...c, def: { ...c.def, filterFn: { $fn: source } } } : c)) });
+	const own = convert(radixRegion, undefined, withFn('(e,t,r)=>r.includes(e.getValue(t))'));
+	assert.equal(own.placed, 1, own.plan.notes.join('\n'));
+	assert.match(own.plan.specsModule()!, /"filterFn":\(e,t,r\)=>r\.includes\(e\.getValue\(t\)\)/);
+	const foreign = convert(radixRegion, undefined, withFn('(e,t,r)=>labels.includes(e.getValue(t))'));
+	assert.equal(foreign.placed, 0);
+	assert.match(foreign.plan.notes.join('\n'), /column "name"'s filterFn reads labels/);
+});
+
+test("a column header's menu items sort its column one way whatever its direction was, on the state its page shares", () => {
+	const table = capture(radixRegion);
+	const menu = `<div role="menu"><div role="menuitem">Asc</div><div role="menuitem">Desc</div></div>`;
+	const header = { sig: 'button|button|Name', nth: 0 };
+	const sorted: CapturedTable = {
+		...table,
+		controls: [...table.controls, { sig: 'item|Asc', nth: 0, kind: 'sort', column: 'name', next: { '': 'asc', asc: 'asc', desc: 'asc' }, menu: header }, { sig: 'item|Desc', nth: 1, kind: 'sort', column: 'name', next: { '': 'desc', asc: 'desc', desc: 'desc' }, menu: header }],
+	};
+	const plan = new TablePlan();
+	plan.expect('/t', [sorted]);
+	plan.emitHtml = (html) => emitChildren(parseFragment(html) as unknown as Element);
+	const kept = [body(parseDocument(`<body>${menu}</body>`)).childNodes[0] as Element];
+	const layer = plan.layer('/t', header, kept)!;
+	const out = emitElement(kept[0]!, { bind: layer.bind });
+	assert.match(out, /<div role="menuitem" onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "sort", c: "name", next: \{"":"asc","asc":"asc","desc":"asc"\} \}\); \}\}>Asc<\/div><div role="menuitem" onClick=\{[^}]*next: \{"":"desc","asc":"desc","desc":"desc"\} \}\); \}\}>Desc<\/div>/);
+});
+
+test("a toolbar's Reset, shown only while a column is filtered, is an arm in its place that clears every filter; the other children keep their own bindings", () => {
+	const withReset = (t: CapturedTable): CapturedTable => ({
+		...t,
+		controls: [...t.controls, { sig: 'button|button|Reset', nth: 0, kind: 'clear' }],
+		snapshots: t.snapshots.map((s) => {
+			const filtering = s.name === 'filtered' || s.name === 'empty';
+			return { ...s, q: { ...s.q, filtering }, html: filtering ? s.html.replace('<table>', '<button data-slot="button">Reset</button><table>') : s.html };
+		}),
+	});
+	const { out, plan } = convert(radixRegion, undefined, withReset);
+	assert.doesNotMatch(plan.notes.join('\n'), /follows no quantity/, plan.notes.join('\n'));
+	assert.match(out, /value=\{tt0v\.c\["name"\]\.f\}[^]*?\/>@if \(tt0v\.q\.filtering\) \{ <><button data-slot="button" onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "clear" \}\); \}\}>Reset<\/button><\/> \}<table>/);
 });

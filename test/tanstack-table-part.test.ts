@@ -132,3 +132,11 @@ test('controls used on a copy of the state, as a converted page hands it, end in
 		assert.equal(order(copied, structuredClone(b)), order(live, a));
 	}
 });
+
+test('whether any column is filtered is a quantity of the view (a toolbar shows Reset while one is)', () => {
+	const s = spec();
+	assert.equal(ttView(s, INITIAL).q.filtering, false);
+	const typed = ttAct(s, INITIAL, { k: 'filter', c: 'email', v: 'abe' });
+	assert.equal(ttView(s, typed).q.filtering, true);
+	assert.equal(ttView(s, ttAct(s, typed, { k: 'filter', c: 'email', v: '' })).q.filtering, false);
+});
