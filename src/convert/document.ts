@@ -209,6 +209,22 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 }
 
 /**
+ * A page's markup: its root, then what it renders after it (body children, layers) in the old body's order. A toaster
+ * renders outside a branch (its repeat nests a repeat), the rest in branches on `shown`, one per run between toasters.
+ */
+export function pageBody(root: string, after: readonly { readonly markup: string; readonly toaster?: boolean }[], shown: string): string {
+	if (!after.some((a) => a.markup)) return root;
+	const runs: { markup: string; toaster: boolean }[] = [];
+	for (const a of after) {
+		if (!a.markup) continue;
+		const last = runs.at(-1);
+		if (last && !last.toaster && !a.toaster) last.markup += a.markup;
+		else runs.push({ markup: a.markup, toaster: Boolean(a.toaster) });
+	}
+	return `<>@if (${shown}) { ${root} }${runs.map((r) => (r.toaster ? r.markup : `@if (${shown}) { <>${r.markup}</> }`)).join('')}</>`;
+}
+
+/**
  * The body children every page has after its own content (the toast regions), as one component each page renders
  * after its root and before the layers it portals: what a page opens lands after them, as a portal at the end of the
  * old body did. Undefined when there are none.
