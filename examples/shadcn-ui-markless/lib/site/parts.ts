@@ -4,7 +4,7 @@ import { THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
-import { parseParams, previewValues, TYPESET_COMMAND_MESSAGE, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
+import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -378,8 +378,8 @@ const previewFontVariables: Part = {
 };
 
 // app/(view)/preview/typeset: the specimen /typeset shows in its iframe. TypesetPreviewProvider puts the params (its URL's,
-// then each the parent posts) on <html> as CSS variables, and forward-scripts.tsx hands R, ⇧R, D and the undo keys to
-// the parent as commands.
+// then each the parent posts) on <html> as CSS variables; forward-scripts.tsx's scripts, which the converted page serves
+// in its head, hand R, ⇧R, D and the undo keys to the parent.
 const isTypesetPreview = () => document.querySelector('.preview-params > .typeset, .preview-params > div > .typeset') !== null;
 function applyPreview(params: TypesetParams): void {
 	const style = document.documentElement.style;
@@ -399,17 +399,6 @@ const typesetPreview: Part = {
 			if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
 			applyPreview(parseParams(search));
 		});
-	},
-	shortcut(target, event) {
-		if (window.parent === window || isEditable(target) || !isTypesetPreview()) return;
-		let command: string | undefined;
-		const key = event.key.toLowerCase();
-		if (event.metaKey || event.ctrlKey) command = (key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey) ? 'redo' : key === 'z' ? 'undo' : undefined;
-		else if (key === 'r') command = event.shiftKey ? 'reset' : 'shuffle';
-		else if (key === 'd' && !event.altKey) command = 'toggle-theme';
-		if (!command) return;
-		event.preventDefault();
-		window.parent.postMessage({ type: TYPESET_COMMAND_MESSAGE, command }, location.origin);
 	},
 };
 
