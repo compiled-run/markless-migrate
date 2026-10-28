@@ -73,10 +73,30 @@ APP="$WORK/migrate/examples/shadcn-ui-markless"
 rm -rf "$WORK/converted" && gh run download "$run" -R "$REPO" -n converted-app -D "$WORK/converted"
 tar -xzf "$(find "$WORK/converted" -name app.tar.gz | head -n 1)" -C "$APP"
 (cd "$WORK/migrate" && pnpm install --frozen-lockfile)
-# link-markless installs the app's dependencies, which deploy.sh's cache apply reads.
-MARKLESS="$WORK/markless" ${HEAVY[@]+"${HEAVY[@]}"} bash "$APP/scripts/link-markless.sh"
 out="$WORK/deploy-$(date +%Y-%m-%d).txt"
-HEAVY_GB=14 VITE_APP_URL=https://mm-shadcn-ui-new.vercel.app ${HEAVY[@]+"${HEAVY[@]}"} bash "$WORK/migrate/deploy/shadcn-ui/deploy.sh" preview | tee "$out"
+started="$WORK/build-started"
+rm -f "$started" "$out"
+# One admission for the whole local build: it peaks at 23-41 GB, so it waits for that much free memory.
+# link-markless installs the app's dependencies, which deploy.sh's cache apply reads.
+HEAVY_GB=32 VITE_APP_URL=https://mm-shadcn-ui-new.vercel.app MARKLESS="$WORK/markless" \
+	${HEAVY[@]+"${HEAVY[@]}"} bash -c "touch '$started' && bash '$APP/scripts/link-markless.sh' && bash '$WORK/migrate/deploy/shadcn-ui/deploy.sh' preview" > "$out" 2>&1 &
+build=$!
+# A build still waiting for memory at DEADLINE (default 06:00) gives up its place in the queue, and the night is skipped.
+deadline=$(date -j -f %H:%M "${DEADLINE:-06:00}" +%s)
+[ "$deadline" -gt "$(date +%s)" ] || deadline=$((deadline + 86400))
+while kill -0 "$build" 2> /dev/null && [ ! -e "$started" ]; do
+	if [ "$(date +%s)" -ge "$deadline" ]; then
+		kill "$build"
+		wait "$build" 2> /dev/null || true
+		trap - ERR
+		report "Nightly preview $(date +%Y-%m-%d) skipped: the build was still waiting for memory at ${DEADLINE:-06:00} (convert run https://github.com/$REPO/actions/runs/$run)."
+		echo 'skipped: no memory for the build before the deadline'
+		exit 0
+	fi
+	sleep 60
+done
+wait "$build"
+cat "$out"
 URL=$(grep -o 'https://mm-shadcn-ui-[a-z0-9]*-jack-shelton\.vercel\.app' "$out" | tail -n 1)
 [ -n "$URL" ]
 checks=$(grep -A3 '^Caching on ' "$out" || true)
