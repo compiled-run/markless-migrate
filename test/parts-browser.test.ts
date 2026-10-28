@@ -426,6 +426,17 @@ test('cmdk: aria-activedescendant names an item a key or the pointer selected; a
 	await page.close();
 });
 
+test('cmdk: as each mounted command scrolls its selected item into view, the page ends where the last one below the fold put it; one in a hidden layer moves nothing', async () => {
+	const page = await open(`<div style="height:3000px">top</div>${COMMAND}<div style="height:2000px"></div><div data-mm-layer="k" hidden>${COMMAND.replaceAll('id="', 'id="h')}</div>`, ['cmdk']);
+	const got = await page.evaluate(() => {
+		const item = document.getElementById('cal')!.getBoundingClientRect();
+		return { scrollY: Math.round(scrollY), bottom: Math.round(item.bottom), inner: innerHeight };
+	});
+	assert.ok(got.scrollY > 2000, `the page scrolled to the command (${got.scrollY})`);
+	assert.equal(got.bottom, got.inner, 'block: nearest brings the selected item to the bottom edge');
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
