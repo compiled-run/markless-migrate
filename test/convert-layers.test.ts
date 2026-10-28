@@ -153,3 +153,15 @@ test('a layer captured open loses the interaction state the server never renders
 	<pre><span data-highlighted-line="">x</span><mark data-highlighted-chars="">y</mark></pre><div data-selected="" aria-selected="true" cmdk-item="">First</div></div>`,
 	);
 });
+
+test('a layer every page portals goes in the Document only when it is plain markup: one with a site component or state stays in each page', () => {
+	const plain = '<div data-mm-layer="tip" hidden>tip</div>';
+	const shell = `<div data-mm-layer="search" hidden data-mm-served="${LAYER_FILL}"><CommandMenu fill="${LAYER_FILL}" /></div>`;
+	const search = { key: 'search', markup: '<div data-mm-layer="search" hidden>palette</div>', shell, fill: '<div cmdk-group="">Pages</div>', imports: ["import CommandMenu from '../../../lib/site/command-menu.tsrx';"] };
+	const calendar = { key: 'cal', markup: '<div data-mm-layer="cal" hidden>{String(month)}</div>', shell: '', fill: '', declare: ['let month = state(0);'] };
+	const tip = { key: 'tip', markup: plain, shell: plain, fill: '' };
+	const table = layerTable(new Map([['/a', [search, calendar, tip]], ['/b', [search, calendar, tip]]]));
+	const name = (markup: string) => table.files.find((f) => f.source.includes(markup))!.file.replace(/^layers\/layer-(\d+)\.tsrx$/, 'Layer$1');
+	assert.deepEqual(table.everywhere, [name(plain)]);
+	for (const route of ['/a', '/b']) assert.deepEqual([...table.own(route)].sort(), [name('CommandMenu'), name('String(month)')].sort());
+});
