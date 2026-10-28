@@ -190,3 +190,15 @@ test("the converter checks its render against the capture with an instant on the
 	const config = asCaptured({ ...base, month: { at: Date.UTC(2025, 5, 1) }, selected: [{ at: Date.UTC(2025, 5, 1) }, null] });
 	assert.deepEqual([config.month, config.selected], [{ y: 2025, m: 5, d: 1 }, [{ y: 2025, m: 5, d: 1 }, null]]);
 });
+
+test('weeks and days are keyed as DayPicker keys them: a week by its number, a day by its date and the month it shows in', () => {
+	const jan = dayPickerView(base, day(2026, 2, 15));
+	const feb = dayPickerNext(base, jan, { t: 'nav', dir: 1 });
+	const keys = (view: DayPickerView) => dayPickerModel(base, view).months[0]!.weeks.map((w) => ({ week: w.key, days: w.days.map((d) => d.key) }));
+	const [a, b] = [keys(jan), keys(feb)];
+	const janDays = new Set(a.flatMap((w) => w.days));
+	assert.ok(b.flatMap((w) => w.days).every((k) => !janDays.has(k)), 'no day keeps its cell across a month change');
+	// March's last week and April's first are the same week (March 29 to April 4), shown in both grids.
+	assert.equal(a.at(-1)!.week, b[0]!.week);
+	assert.notEqual(a[0]!.week, b[0]!.week);
+});
