@@ -6,7 +6,7 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -398,7 +398,7 @@ const replacedParts = new Map<Element, Binding>();
 const unplaced: string[] = [];
 const triggerKeys = new Map<Element, string>();
 // Content disclosures mounted inside the page on opening, by trigger: rendered by Markless in an arm where they went.
-const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; panelId?: string; panelDepth?: number }[] = [];
+const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; nodes?: readonly Element[]; panelId?: string; panelDepth?: number }[] = [];
 
 /**
  * Radix Select mounts the indicator only in the checked option: every other option of a captured listbox gets a hidden
@@ -773,6 +773,23 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			continue;
 		}
 		if (panel) {
+			// Content holding controls revealed in turn (a file tree's nested folders) goes into the page, so those are bound too.
+			const into = reveal.added.find((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)?.into as readonly number[] | undefined;
+			const holds = into && reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v));
+			if (holds) {
+				for (const a of reveal.added) {
+					if (typeof a.into === 'string' || elementAt(root, a.into) !== panel) continue;
+					for (const el of childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)) {
+						el.parentNode = panel as never;
+						panel.childNodes.push(el as never);
+						for (const x of [el, ...walkAll(el)]) {
+							const id = attr(x, 'id');
+							if (id) byId.set(id, x);
+						}
+					}
+				}
+				continue;
+			}
 			// Only what went into this panel: a tab that also switches its page's other lists (shadcn's package manager
 			// choice) fills their panels in the same use.
 			const markup = reveal.added
@@ -799,6 +816,10 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			} else {
 				const kept = besideTrigger(added.html);
 				if (!kept.length) continue;
+				if (!trigger) {
+					unplaced.push(`${reveal.key}: its control is not on the converted page`);
+					continue;
+				}
 				const parent = elementAt(root, added.into);
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
@@ -806,7 +827,17 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				const menu = trigger !== undefined && attr(trigger, 'data-slot') === 'navigation-menu-trigger';
 				const inPlace = !menu && attr(trigger ?? ({ attrs: [] } as unknown as Element), 'data-slot') !== 'scroll-area' && trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
 				const panel = panelOf(kept, attr(trigger!, 'aria-controls'));
-				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
+				const into = Array.isArray(added.into) ? (added.into as readonly number[]) : undefined;
+				// Content holding controls captured in turn (a Base UI file tree's nested folders) goes into the page, hidden while closed.
+				const holds = inPlace && into && reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v));
+				if (holds) {
+					const before = added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null;
+					const at = before ? parent!.childNodes.indexOf(before as never) : parent!.childNodes.length;
+					for (const el of kept) el.parentNode = parent as never;
+					parent!.childNodes.splice(at, 0, ...(kept as never[]));
+					for (const el of kept) for (const x of [el, ...walkAll(el)]) if (attr(x, 'id')) byId.set(attr(x, 'id')!, x);
+					inserted.push({ trigger: trigger!, parent: parent!, before, markup: '', nodes: kept, ...panel });
+				} else if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
 				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
 				// there, shown with the layer (data-mm-shown-with names the trigger's key).
 				else if (trigger && parent && (menu || attr(trigger, 'aria-haspopup') !== undefined || attr(trigger, 'data-slot') === 'scroll-area')) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
@@ -1124,6 +1155,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const before = reveals;
 				const base = await limit(() => captureBaseSubmenus(browser, options.old, route, at('reveals'), before));
 				if (base.length) reveals = [...before.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !before.some((r) => same(r, s) || r.key === s.key))];
+				// Controls inside content another revealed in place (a file tree's nested folders), after the ones holding them.
+				const outer = reveals;
+				const nested = await limit(() => captureNestedReveals(browser, options.old, route, at('reveals'), outer));
+				if (nested.length) reveals = [...outer, ...nested.filter((n) => !outer.some((r) => r.key === n.key))];
 			}
 			// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 			const comboboxes = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
@@ -1449,6 +1484,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let disclosureGroups = 0;
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
+	// A closed control whose panel is empty and got no captured content opens nothing on the port: never silently.
+	for (const [route, p] of prepared) {
+		const ids = new Map<string, Element>();
+		for (const el of walk(p.root)) if (attr(el, 'id')) ids.set(attr(el, 'id')!, el);
+		const missing = [...walk(p.root)].filter((t) => {
+			if (attr(t, 'aria-expanded') !== 'false') return false;
+			const panel = ids.get(attr(t, 'aria-controls') ?? '');
+			return panel !== undefined && !elementChildren(panel).length && !panelContent.has(panel);
+		});
+		if (missing.length) log(`  ${route}: ${missing.length} control(s) open a panel no capture filled: ${missing.slice(0, 5).map((t) => JSON.stringify(sigOf(t))).join(', ')}${missing.length > 5 ? ', …' : ''}`);
+	}
 	const insertedDisclosures = new InsertedDisclosurePlan();
 	let pickerCount = 0;
 	for (const [route, p] of prepared) {

@@ -281,3 +281,22 @@ test('a sonner toaster renders its lists and toasts from one state, each control
 	assert.deepEqual(plan.bind(show)?.declare, ['let tst0 = state(SONNER_EMPTY);']);
 	assert.ok(plan.hosts(region));
 });
+
+test('a Base UI disclosure whose content holds disclosures of its own keeps that content in the page, shown while open, its own bound inside', async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-closed=""><button id="base-ui-a" aria-expanded="false" data-base-ui-collapsible-trigger="">components</button><div data-open="" id="base-ui-pa"><div data-closed=""><button id="base-ui-b" aria-expanded="false" data-base-ui-collapsible-trigger="">ui</button></div></div></div></body>');
+	const els = [...walk(body(doc))];
+	const outerTrigger = els.find((e) => attr(e, 'id') === 'base-ui-a')!;
+	const content = els.find((e) => attr(e, 'id') === 'base-ui-pa')!;
+	const innerTrigger = els.find((e) => attr(e, 'id') === 'base-ui-b')!;
+	const plan = new InsertedDisclosurePlan();
+	const groups = plan.add([
+		{ trigger: outerTrigger, parent: outerTrigger.parentNode as Element, before: null, markup: '', nodes: [content], panelId: 'base-ui-pa' },
+		{ trigger: innerTrigger, parent: innerTrigger.parentNode as Element, before: null, markup: '<div data-open="">button.tsx</div>', panelId: 'base-ui-pb' },
+	]);
+	assert.equal(groups, 2);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-open="" id="base-ui-pa" hidden=\{!\(ins0 \|\| ins0x\)\}>/);
+	assert.match(out, /<button id="base-ui-b" [^>]*aria-expanded=\{ins1 \? "true" : "false"\}/);
+	assert.match(out, /@if \(ins1 \|\| ins1x\) \{ <><div data-open="">button\.tsx<\/div><\/> \}/);
+});
