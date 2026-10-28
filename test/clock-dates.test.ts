@@ -48,3 +48,11 @@ test('"May" names its month in either form: a chart region writes it as its othe
 		else process.env.TZ = zone;
 	}
 });
+
+test('a chart whose axis keeps other ticks behind UTC is still a region of fixed instants: its dates hold at the later clock and move behind UTC', () => {
+	const ticks = (dates: string[]) => dates.map((d, i) => text(`9.${i}`, d, true));
+	const marks = clockMarks(ticks(['Apr 6', 'Apr 11', 'Jun 30']), ticks(['Apr 1', 'Apr 6', 'Apr 11', 'Jun 29']), ticks(['Apr 6', 'Apr 11', 'Jun 30']), { t0: DEFAULT_FREEZE.time, t1: LATER });
+	assert.deepEqual(marks, [{ sig: '', nth: 0, chart: 0, rules: [{ '*': 2026 }] }]);
+	assert.deepEqual(clockMarks(ticks(['Apr 1', 'Jun 30']), ticks(['Apr 1', 'Jun 30']), ticks(['Apr 1', 'Jun 30']), { t0: DEFAULT_FREEZE.time, t1: LATER }), [], 'dates that do not move behind UTC are the page\'s');
+	assert.deepEqual(clockMarks(ticks(['Apr 1', 'Jun 30']), ticks(['Apr 3', 'Jun 29']), ticks(['Apr 2', 'Jul 1']), { t0: DEFAULT_FREEZE.time, t1: LATER }), [], 'dates that move with the clock are no fixed instants');
+});

@@ -19,6 +19,13 @@ interface Facts {
 	readonly q?: readonly number[];
 	/** The arrow keys' order: [state, x, y]. */
 	readonly k?: readonly (readonly [number, number, number])[];
+	/** Frames from a control's use to the one recharts' update animation begins at, on the old page. */
+	readonly z?: number;
+	/** Per state, where recharts anchors the tooltip along the category axis (a drawing laid out again). */
+	readonly pa?: readonly (number | null)[];
+	/** The drawing's axes, every tick they could show, and its layout, where it is cartesian (recharts-layout). */
+	readonly a?: readonly unknown[];
+	readonly l?: string;
 }
 
 const WRAPPER = '[data-mm-chart]';
@@ -89,16 +96,19 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 		const scale = m.a || 1;
 		let x: number;
 		let y: number;
+		const [vx, vy, vw, vh] = f.v;
+		const fixed = f.pa?.[shown] ?? null;
 		if ('key' in place) {
 			const entry = f.k![place.key]!;
 			x = entry[1];
 			y = entry[2];
+			if (fixed !== null && f.m === 'x') x = follow(fixed, tip.offsetWidth / scale, vx, vw);
+			if (fixed !== null && f.m === 'y') y = follow(fixed, tip.offsetHeight / scale, vy, vh);
 		} else {
 			const [fx, fy] = f.p[shown] ?? [null, null];
-			const [vx, vy, vw, vh] = f.v;
 			const [ax, ay] = anchor(f, shown, place.x, place.y);
-			x = fx ?? follow(ax, tip.offsetWidth / scale, vx, vw);
-			y = fy ?? follow(ay, tip.offsetHeight / scale, vy, vh);
+			x = fx ?? follow(fixed !== null && f.m === 'x' ? fixed : ax, tip.offsetWidth / scale, vx, vw);
+			y = fy ?? follow(fixed !== null && f.m === 'y' ? fixed : ay, tip.offsetHeight / scale, vy, vh);
 		}
 		// The old page's translate is in its SVG's pixels; this SVG is scaled to its container.
 		const at = new DOMPoint(x, y).matrixTransform(m);
@@ -128,12 +138,14 @@ function pick(f: Facts, svg: Element, target: Element, x: number, y: number, cli
 	return inside(f.g, ((Math.atan2(cy - y, x - cx) * 180) / Math.PI + 360) % 360);
 }
 
-function at(wrapper: HTMLElement, event: PointerEvent): void {
+function at(wrapper: HTMLElement, event: MouseEvent): void {
 	const surface = surfaceOf(wrapper);
 	const f = surface && factsOf(surface);
 	const m = surface?.getScreenCTM();
 	if (!surface || !f || !m || !f.p.length) return;
-	const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
+	// recharts' getRelativeCoordinate rounds the pointer to whole pixels.
+	const inSvg = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
+	const p = { x: Math.round(inSvg.x), y: Math.round(inSvg.y) };
 	const inBox = p.x >= 0 && p.y >= 0 && p.x <= f.w && p.y <= f.h;
 	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y, event) : -1, { x: p.x, y: p.y });
 }
@@ -141,11 +153,14 @@ function at(wrapper: HTMLElement, event: PointerEvent): void {
 function wire(wrapper: HTMLElement): void {
 	if (wired.has(wrapper)) return;
 	wired.add(wrapper);
-	wrapper.addEventListener('pointermove', (e) => at(wrapper, e));
+	// recharts follows mousemove, whose coordinates the browser gives in whole pixels; a touch or a pen, pointermove.
+	wrapper.addEventListener('mousemove', (e) => at(wrapper, e));
+	wrapper.addEventListener('pointermove', (e) => e.pointerType !== 'mouse' && at(wrapper, e));
 	wrapper.addEventListener('pointerleave', () => show(wrapper, surfaceOf(wrapper), -1));
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
+	intent(target);
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper) return false;
 	wire(wrapper);
@@ -155,8 +170,136 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 
 // A pointer already over the chart when the page loads moves inside it without a pointerover: the chart is wired once it is visible.
 export function mount(el: Element): void {
-	if (el instanceof HTMLElement && el.matches(WRAPPER)) wire(el);
+	if (!(el instanceof HTMLElement) || !el.matches(WRAPPER)) return;
+	wire(el);
+	watch(el);
+	track(el);
 }
+
+// The drawing laid out for the chart's own size and the visitor's time zone (recharts-layout), where either differs
+// from the capture's: a width the old page was not captured at, or dates read a day earlier behind UTC.
+type Layout = typeof import('./recharts-layout.ts');
+type Clock = typeof import('./clock.ts');
+let layoutLoad: Promise<[Layout, Clock]> | undefined;
+let layoutIn: [Layout, Clock] | undefined;
+const loadLayout = () => (layoutLoad ??= Promise.all([import('./recharts-layout.ts'), import('./clock.ts')]).then((m) => (layoutIn = m)));
+const laid = new WeakMap<SVGSVGElement, string>();
+const sized = new WeakSet<Element>();
+
+function clockOf(wrapper: Element): { rules: unknown[]; year: number } | undefined {
+	try {
+		const rules = JSON.parse(wrapper.closest('[data-mm-clock]')?.getAttribute('data-mm-clock') ?? '[]') as { '*'?: number }[];
+		const year = rules.find((r) => r['*'] !== undefined)?.['*'];
+		return year === undefined ? undefined : { rules, year };
+	} catch {
+		return undefined;
+	}
+}
+
+// Behind UTC, the dates recharts formats from UTC midnights read a day earlier, so their axis keeps other ticks.
+const behind = (year: number) => [0, 6].some((month) => new Date(Date.UTC(year, month, 1)).getTimezoneOffset() > 0);
+
+function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wrapper)): void {
+	const f = svg && factsOf(svg);
+	if (!svg || (!f?.a && !f?.l)) return;
+	const box = wrapper.getBoundingClientRect();
+	const W = Math.round(box.width);
+	const H = Math.round(box.height);
+	const clock = clockOf(wrapper);
+	const west = !!clock && behind(clock.year);
+	const key = `${W}x${H}${west ? 'w' : ''}`;
+	if (laid.get(svg) === key || (!laid.has(svg) && f.w === W && f.h === H && !west)) return;
+	const run = ([layout, c]: [Layout, Clock]) => {
+		const local = west ? (axis: { l: readonly string[] }) => { const may = c.monthNamesIn(axis.l.join('\n')); return axis.l.map((l) => c.rewrite(l, clock!.rules as never, Date.now(), may)); } : undefined;
+		layout.fit(svg, W, H, local, c.claim);
+		laid.set(svg, key);
+		parsed.delete(svg);
+		for (const path of svg.querySelectorAll('path[data-mm-geo]')) finals.delete(path);
+	};
+	if (layoutIn) run(layoutIn);
+	else void loadLayout().then(run);
+}
+
+function track(wrapper: HTMLElement): void {
+	if (sized.has(wrapper)) return;
+	sized.add(wrapper);
+	// ResponsiveContainer gives the chart its container's size in whole pixels (convert writes the wrapper at 100%).
+	const container = wrapper.style.width === '100%' && wrapper.style.height === '100%' ? wrapper.parentElement : null;
+	const resized = () => {
+		if (container) {
+			const box = container.getBoundingClientRect();
+			wrapper.style.width = `${Math.round(box.width)}px`;
+			wrapper.style.height = `${Math.round(box.height)}px`;
+		}
+		const svg = surfaceOf(wrapper);
+		if (svg) shown.set(wrapper, svg);
+		fit(wrapper, svg);
+	};
+	resized();
+	new ResizeObserver(resized).observe(container ?? wrapper);
+}
+
+// recharts' update animation runs in its own module, fetched once a card whose controls switch its chart is about to be used.
+type Motion = typeof import('./recharts-motion.ts');
+let motion: Promise<Motion> | undefined;
+let motionIn: Motion | undefined;
+const loadMotion = () => (motion ??= import('./recharts-motion.ts').then((m) => (motionIn = m)));
+const watched = new WeakSet<Element>();
+/** The drawing each chart shows, which a control's switch moves from. */
+const shown = new WeakMap<Element, SVGSVGElement>();
+/** Each mark's own path, as convert wrote it: where its animation ends. */
+const finals = new WeakMap<Element, string>();
+
+/**
+ * A control switching the chart shows another of its SVGs: recharts keeps the chart mounted, so its entry animation does
+ * not play again and its marks move from the old shape to the new one. Until the animation module is in, the new SVG
+ * keeps the old one's paths, and the frames it took count towards the old page's wait.
+ */
+function watch(wrapper: HTMLElement): void {
+	if (watched.has(wrapper)) return;
+	watched.add(wrapper);
+	new MutationObserver((records) => {
+		const now = surfaceOf(wrapper);
+		const widths = new Set(now?.getAttribute('data-mm-b')?.split(' '));
+		// The drawing on screen until now: every drawing of the old control state is hidden at once, at every width.
+		const hidden = records.filter((r) => r.target !== now && r.target instanceof SVGSVGElement && r.target.parentElement === wrapper && r.target.getAttribute('data-mm-b')?.split(' ').some((b) => widths.has(b)) && !/display:\s*none/.test(r.oldValue ?? '')).map((r) => r.target as SVGSVGElement);
+		const before = shown.get(wrapper);
+		const from = before && hidden.includes(before) ? before : hidden[0];
+		if (now) shown.set(wrapper, now);
+		if (!now || !from) return;
+		fit(wrapper, now);
+		wrapper.setAttribute('data-mm-moved', '');
+		if (!now.querySelector('[data-mm-geo]') || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const lag = factsOf(now)?.z ?? 0;
+		if (motionIn) return motionIn.morph(wrapper, from, now, lag, 0, finals);
+		let frames = 0;
+		let counting = true;
+		const count = () => {
+			if (!counting) return;
+			frames++;
+			requestAnimationFrame(count);
+		};
+		requestAnimationFrame(count);
+		// Before the module is in: the old shape, which the new SVG's paths hold until it moves them.
+		const old = [...from.querySelectorAll('path[data-mm-geo]')];
+		now.querySelectorAll('path[data-mm-geo]').forEach((path, i) => {
+			const d = old[i]?.getAttribute('d');
+			if (!finals.has(path)) finals.set(path, path.getAttribute('d') ?? '');
+			if (d) path.setAttribute('d', d);
+		});
+		void loadMotion().then(
+			(m) => {
+				counting = false;
+				m.morph(wrapper, from, now, lag, frames, finals);
+			},
+			() => (counting = false),
+		);
+	}).observe(wrapper, { attributes: true, attributeFilter: ['style'], attributeOldValue: true, subtree: true });
+}
+
+const intent = (target: Element) => {
+	if (target.closest('[data-mm-morph]')) void loadMotion();
+};
 
 function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {
 	const entry = factsOf(surface)?.k?.[key];
@@ -164,6 +307,7 @@ function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {
 }
 
 export function focusin(target: Element): boolean {
+	intent(target);
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
 	step(wrapper, target, 0);

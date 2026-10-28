@@ -159,6 +159,30 @@ function signature(el: Element): string {
 	return `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 }
 
+/** A control the site lists as a download: saves the file its use saved on the old page (its template), as the old code did, by a Blob URL on an anchor. False when none is listed. */
+export function download(target: Element): boolean {
+	if (!document.querySelector('template[data-mm-download]')) return false;
+	for (let control: Element | null = target; control && control !== document.body; control = control.parentElement) {
+		const sig = signature(control);
+		if (!document.querySelector(`template[data-mm-download^="${CSS.escape(`${sig}#`)}"]`)) continue;
+		let nth = 0;
+		for (const el of document.body.querySelectorAll('*')) {
+			if (el === control) break;
+			if (signature(el) === sig) nth++;
+		}
+		const file = document.querySelector(`template[data-mm-download="${CSS.escape(`${sig}#${nth}`)}"]`);
+		if (!file) return false;
+		const url = URL.createObjectURL(new Blob([file.getAttribute('data-mm-text') ?? ''], { type: file.getAttribute('data-mm-type') ?? '' }));
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = file.getAttribute('data-mm-name') ?? '';
+		link.click();
+		URL.revokeObjectURL(url);
+		return true;
+	}
+	return false;
+}
+
 /** What a copy control wrote on the old page, from the page's own template; undefined for a control that copied nothing. */
 export function clipboardFor(control: Element): Promise<string> | undefined {
 	const sig = signature(control);
