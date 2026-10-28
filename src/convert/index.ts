@@ -6,7 +6,7 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -1176,7 +1176,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
 			if (reveal && routes.includes(route)) {
-				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens }));
+				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
+				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens, loadDialog }));
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
 				await scenesRead;
 				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
