@@ -1859,8 +1859,8 @@ test('recharts: a control switching the chart moves each mark from its old shape
 	// The pointer over the card fetches the animation before its control is used; the module is in once it and
 	// d3-shape's modules have all loaded (the same module record the part imported).
 	await page.hover('button');
+	await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => e.name.endsWith('/parts/recharts-motion.ts')));
 	await page.evaluate('import("/parts/recharts-motion.ts")');
-	await page.waitForTimeout(50);
 	type Sample = { ts: number; d: string[] };
 	const run = await page.evaluate(
 		() =>
