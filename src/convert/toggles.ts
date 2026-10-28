@@ -405,7 +405,7 @@ async function written(page: Page, before: Map<string, string>): Promise<CookieW
 
 /** Uses each control the site lists as switching attributes in place and records every attribute and cookie one use changes. */
 export async function captureSwitches(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[]): Promise<SwitchCapture> {
-	const file = join(dir, `${createHash('sha256').update(`switches:v2:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`switches:v3:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SwitchCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const switches: Switch[] = [];
@@ -448,8 +448,10 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 					for (const r of w.__mmObserved ?? []) {
 						const el = r.target as Element;
 						const attr = r.attributeName!;
-						// What a resize redraws (a chart's SVG and its responsive container) is the layout's, not the switch's.
+						// What a resize redraws (a chart's SVG and its responsive container) is the layout's, not the switch's; a React
+						// Aria element's hover, press and focus states are its interactions port's.
 						if (!el.isConnected || attr === 'tabindex' || el.closest('svg') || el.closest('[class*="recharts"]')) continue;
+						if (el.hasAttribute('data-rac') && /^data-(hovered|pressed|focused|focus-visible|focus-within)$/.test(attr)) continue;
 						const key = `${order.get(el)}|${sigOf(el)}|${attr}`;
 						const after = el.getAttribute(attr) ?? undefined;
 						const was = seen.get(key);
