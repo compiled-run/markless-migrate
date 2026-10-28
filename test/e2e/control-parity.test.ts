@@ -49,11 +49,14 @@ const CASES: Record<string, { old: string; new: string }> = {
 		old: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><button>Copy</button><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
 		new: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
 	},
+	scroller: { old: '', new: '' },
 	stars: { old: page(`${menuBody}<button>Star 127k</button>`, menuScript()), new: page(`${menuBody}<button>Star 126k</button>`, menuScript()) },
 	noisy: { old: '', new: page(`${menuBody}<button id="n">Count</button>`, menuScript()) },
 };
 // Each load of the original draws the counter at another width (the page's randomness is frozen, so the server varies it).
 let loads = 0;
+// A sidebar its own script scrolls to another place on each load, as the docs sidebar centred while the page streams.
+const sidebar = (top: number) => page(`<aside aria-label="Docs" id="side" style="position: fixed; left: 0; top: 60px; width: 200px; height: 300px; overflow: auto">${Array.from({ length: 40 }, (_, i) => `<a href="/doc-${i}" style="display: block; height: 30px">Doc ${i}</a>`).join('')}</aside><button style="margin-left: 240px">Main</button>`, `document.getElementById('side').scrollTop = ${top};`);
 const noisyOld = () => page(`${menuBody}<button id="n" style="padding: 1px ${(loads++ % 2) * 10 + 2}px">Count</button>`, menuScript());
 
 let browser: Browser;
@@ -63,7 +66,7 @@ before(async () => {
 	server = createServer((req, res) => {
 		const [, side, name] = new URL(req.url ?? '/', 'http://x').pathname.split('/');
 		const shape = CASES[name ?? ''];
-		const html = shape && (side === 'old' ? (name === 'noisy' ? noisyOld() : shape.old) : side === 'new' ? shape.new : undefined);
+		const html = name === 'scroller' ? sidebar(side === 'old' ? (loads++ % 2) * 200 + 150 : 0) : shape && (side === 'old' ? (name === 'noisy' ? noisyOld() : shape.old) : side === 'new' ? shape.new : undefined);
 		return html ? res.writeHead(200, { 'content-type': 'text/html' }).end(html) : res.writeHead(404).end('<!doctype html><title>404</title>');
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
@@ -174,4 +177,8 @@ test('one of many namesake buttons missing on the port: one finding, not one for
 	const found = checks(await check('copies', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 0 }));
 	assert.equal(found.filter((f) => f.startsWith('controls at each width')).length, 1, found.join('\n'));
 	assert.ok(found.filter((f) => f.startsWith('control box') || f.startsWith('container box')).length <= 1, found.join('\n'));
+});
+
+test('a sidebar its script scrolls to a different place on each load: its links are compared from the top, so nothing is red', async () => {
+	assert.deepEqual(checks(await check('scroller', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 0 })), []);
 });

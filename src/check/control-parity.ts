@@ -158,7 +158,8 @@ async function open(browser: Browser, env: SideEnv, viewport: Viewport, route: s
 	page.on('dialog', (d) => void d.dismiss().catch(() => {}));
 	try {
 		await loadPage(page, new URL(route, env.origin).href);
-		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		// A slow live answer (a directory's health JSON) can still change the layout: wait for the network to rest.
+		await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
 		await page.waitForTimeout(Math.min(settleMs, 300));
 		await settleScroll(page);
 		await page.evaluate(installParity);
@@ -329,6 +330,10 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		const read = async (side: Name) => {
 			const o = await open(browser, sides[side], at(width), route, settleMs);
 			try {
+				// Where a page leaves its inner scrollers (a sidebar centred on its link while the page streams) varies by load.
+				await o.page.evaluate(() => {
+					for (const e of document.querySelectorAll('*')) if (e !== document.scrollingElement && e.scrollTop && e.scrollHeight > e.clientHeight + 1) e.scrollTop = 0;
+				});
 				const list = await parity<ParityControl[]>(o.page, 'controls');
 				const grid = await parity<GridPoint[]>(o.page, 'grid', null);
 				return { list, grid, page: o };
