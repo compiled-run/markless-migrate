@@ -136,7 +136,9 @@ function arm(control) {
 	requestAnimationFrame(tick);
 	const url = location.pathname + location.search;
 	const checks = new Map([...document.querySelectorAll('input[type=checkbox], input[type=radio]')].map((i) => [i, i.checked]));
-	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el, floating, checks };
+	// What is shown, element by element: a node hidden or shown by a style, a class or a selector is a change as much as one added.
+	const shown = new Map([...document.body.querySelectorAll('*')].slice(0, 30000).map((e) => [e, e.checkVisibility({ opacityProperty: true, visibilityProperty: true })]));
+	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el, floating, checks, shown };
 	return { hit, hits, x: cx, y: cy };
 }
 
@@ -176,9 +178,19 @@ function read(prefix) {
 		}
 		return region ? describe(region) : 'the page';
 	};
-	const skip = [st.el, ...st.openBefore, ...(prefix ?? []).map((sel) => document.querySelector(sel)).filter(Boolean)];
+	// What changes on its own is measured with nothing used: the body is then no control to leave out.
+	const skip = [st.el === document.body ? null : st.el, ...st.openBefore, ...(prefix ?? []).map((sel) => document.querySelector(sel)).filter(Boolean)];
 	const affected = new Set();
-	const attrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? (el.getAttribute(n) ?? '') !== (v ?? '') : el.getAttribute(n) !== v))).map(([el]) => el));
+	// A style that differs only in animation or transition timing (Radix tabs drop animation-duration: 0s after mount) shows nothing new.
+	const motionless = (v) => (v ?? '').split(';').map((d) => d.trim()).filter((d) => d && !/^(animation|transition)/.test(d)).sort().join(';');
+	const attrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? motionless(el.getAttribute(n)) !== motionless(v) : el.getAttribute(n) !== v))).map(([el]) => el));
+	for (const [e, before] of st.shown ?? []) {
+		if (!e.isConnected || e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) === before) continue;
+		if (skip.some((s) => s && (s === e || s.contains(e))) || e.closest('[data-dc-prefix]')) continue;
+		const host = e.parentElement ?? e;
+		if (!host.checkVisibility()) continue;
+		affected.add(regionOf(host));
+	}
 	for (const [i, before] of st.checks ?? []) if (i.isConnected && i.checked !== before && !(st.el === i.parentElement || st.el.contains(i))) affected.add(regionOf(i.parentElement ?? i));
 	for (const node of [...st.touched, ...attrs]) {
 		const doc = node.ownerDocument ?? node;
@@ -267,7 +279,8 @@ const errors = { old: [], new: [] };
 let context;
 async function fresh(width = WIDTH) {
 	await context?.close().catch(() => {});
-	context = await browser.newContext({ viewport: { width, height: 900 } });
+	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
+	context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
 	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
 	for (const side of ['old', 'new']) {
 		pages[side] = await context.newPage();
@@ -564,7 +577,7 @@ async function measureAmbient(side, route) {
 	await p.evaluate(arm, { role: '__none__', name: '', nth: 0 }).catch(() => null);
 	await p.evaluate(() => {
 		const o = new MutationObserver(() => {});
-		globalThis.__dc = { observer: o, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(), el: document.body };
+		globalThis.__dc = { observer: o, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(), el: document.body, shown: new Map([...document.body.querySelectorAll('*')].slice(0, 30000).map((e) => [e, e.checkVisibility({ opacityProperty: true, visibilityProperty: true })])) };
 	});
 	await p.evaluate(armQuiet);
 	await p.waitForTimeout(1500);
