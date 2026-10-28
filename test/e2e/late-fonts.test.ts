@@ -11,16 +11,17 @@ const LINK: NetworkProfile = { name: 'test', label: 'test link', downBytesPerSec
 // A tab whose handler arrives in a 48 kB module, a first screen in a Latin face, and far below it a right-to-left demo
 // whose Arabic face (32 kB) the page's stylesheet does not declare: the converted page names it in its late-font list.
 async function serve(near = false): Promise<{ origin: string; server: Server }> {
-	const late = lateFontsConfig([{ family: 'Arabic', src: 'url(/arabic.woff2) format("woff2")', descriptors: { unicodeRange: 'U+0600-06FF', display: 'swap' } }]);
+	const late = lateFontsConfig([{ family: 'Arabic', src: 'url(/arabic.woff2) format("woff2")', descriptors: { unicodeRange: 'U+0600-06FF', display: 'swap' } }, { href: '/mono.woff2' }]);
 	const page = `<!doctype html><html><head><title>Tabs</title><script>${LATE_FONTS_SCRIPT}</script><script type="application/json" ${late.attribute}>${late.text}</script>
-<style>@font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");font-display:swap}body{font-family:Latin,sans-serif;margin:0}button{all:unset}.rtl{font-family:Arabic,sans-serif}</style>
+<style>@font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");font-display:swap}@font-face{font-family:Mono;src:url(/mono.woff2) format("woff2");font-display:swap}dialog{font-family:Mono,monospace}body{font-family:Latin,sans-serif;margin:0}button{all:unset}.rtl{font-family:Arabic,sans-serif}</style>
 <link rel="modulepreload" href="/app.js"><script type="module" src="/app.js"></script></head>
 <body><main><h1>Tabs</h1><div role="tablist"><button role="tab" aria-selected="true">One</button><button role="tab" aria-selected="false">Two</button></div>
-<div style="height:${near ? 200 : 4000}px"></div><section ${LATE_FONT} class="rtl" dir="rtl"><p>زر حذف</p></section></main></body></html>`;
+<dialog><kbd>K</kbd></dialog><div style="height:${near ? 200 : 4000}px"></div><section ${LATE_FONT} class="rtl" dir="rtl"><p>زر حذف</p></section></main></body></html>`;
 	const app = `function neverCalled() { return ${JSON.stringify('x'.repeat(48_000))}; }
 for (const tab of document.querySelectorAll('[role=tab]')) tab.addEventListener('click', () => { for (const t of document.querySelectorAll('[role=tab]')) t.setAttribute('aria-selected', String(t === tab)); });`;
 	const server = createServer((req, res) => {
 		if (req.url === '/latin.woff2') res.writeHead(200, { 'content-type': 'font/woff2' }).end(Buffer.alloc(2_000, 1));
+		else if (req.url === '/mono.woff2') res.writeHead(200, { 'content-type': 'font/woff2' }).end(Buffer.alloc(8_000, 3));
 		else if (req.url === '/arabic.woff2') res.writeHead(200, { 'content-type': 'font/woff2' }).end(Buffer.alloc(32_000, 2));
 		else if (req.url === '/app.js') res.writeHead(200, { 'content-type': 'text/javascript' }).end(app);
 		else if (req.url === '/') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page);
@@ -42,6 +43,20 @@ for (const name of NETWORK_BROWSERS) {
 			assert.ok(arabic, `the late font is still fetched: ${run.requests.map((r) => r.url).join(' ')}`);
 			// The proxy marks the script's end once its last byte is written; the browser may ask for the font in the same millisecond.
 			assert.ok(arabic.start >= app.end - 20, `the Arabic font started at ${arabic.start} ms, before the script finished at ${app.end} ms`);
+		} finally {
+			server.close();
+		}
+	});
+
+	test(`${name}: a font only a closed pop-up draws is fetched once the scripts have arrived, before any press opens it`, { skip: browserInstalled(name) || process.env.CI ? false : `${name} is not installed` }, async () => {
+		const { origin, server } = await serve();
+		try {
+			const run = await networkRun('http://late.test/', LINK, name, { timeoutMs: 30_000, hosts: { 'late.test': new URL(origin).host } });
+			assert.equal(run.error, undefined);
+			const app = run.requests.find((r) => r.url.endsWith('/app.js'))!;
+			const mono = run.requests.find((r) => r.url.endsWith('/mono.woff2'));
+			assert.ok(mono, `the pop-up's font is fetched before any press: ${run.requests.map((r) => r.url).join(' ')}`);
+			assert.ok(mono.start >= app.end - 20, `the pop-up's font started at ${mono.start} ms, before the script finished at ${app.end} ms`);
 		} finally {
 			server.close();
 		}

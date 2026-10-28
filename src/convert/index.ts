@@ -1005,7 +1005,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const swapFonts = fontPreloads(capture.swapFirstScreenFonts ?? [], origin, 0).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
 	tags.splice(0, tags.length, ...swapFontPreloadsLow(tags, capture.swapFontPreloads ?? [], origin, swapFonts));
 	fontPreloadCount += swapFonts.length;
-	const faces = lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin);
+	const idle = (capture.offscreenFontPreloads ?? []).map((u) => {
+		const url = new URL(u, origin);
+		return { href: url.origin === new URL(origin).origin ? url.pathname + url.search : url.href };
+	});
+	const faces = [...lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin), ...idle];
+	if (idle.length) lateFontPages.add(capture.route);
 	if (faces.length) {
 		const config = lateFontsConfig(faces);
 		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
