@@ -14,14 +14,17 @@ if [ "${1:-}" = install ]; then
 	PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 	mkdir -p "$WORK"
 	# The night's script comes from main, copied out of the clone it checks out again mid-run.
+	# launchd keeps no shell PATH, and fnm's per-shell node directory vanishes with its shell: name the real one.
+	path="$(dirname "$(realpath "$(command -v node)")"):$(dirname "$(command -v vercel)"):$(dirname "$(command -v gh)"):/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<< "$1"; }
 	boot="[ -d '$WORK/migrate/.git' ] || git clone -q https://github.com/$REPO.git '$WORK/migrate'; git -C '$WORK/migrate' fetch -q origin && git -C '$WORK/migrate' show origin/main:deploy/shadcn-ui/nightly-preview.sh > '$WORK/run.sh' && WORK='$WORK' bash '$WORK/run.sh'"
 	cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 	<key>Label</key><string>$LABEL</string>
-	<key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>$boot</string></array>
-	<key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string><key>HOME</key><string>$HOME</string></dict>
+	<key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>$(xml "$boot")</string></array>
+	<key>EnvironmentVariables</key><dict><key>PATH</key><string>$(xml "$path")</string><key>HOME</key><string>$HOME</string></dict>
 	<key>StartCalendarInterval</key><dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
 	<key>StandardOutPath</key><string>$WORK/launchd.log</string>
 	<key>StandardErrorPath</key><string>$WORK/launchd.log</string>
@@ -70,10 +73,30 @@ APP="$WORK/migrate/examples/shadcn-ui-markless"
 rm -rf "$WORK/converted" && gh run download "$run" -R "$REPO" -n converted-app -D "$WORK/converted"
 tar -xzf "$(find "$WORK/converted" -name app.tar.gz | head -n 1)" -C "$APP"
 (cd "$WORK/migrate" && pnpm install --frozen-lockfile)
-# link-markless installs the app's dependencies, which deploy.sh's cache apply reads.
-MARKLESS="$WORK/markless" ${HEAVY[@]+"${HEAVY[@]}"} bash "$APP/scripts/link-markless.sh"
 out="$WORK/deploy-$(date +%Y-%m-%d).txt"
-HEAVY_GB=14 VITE_APP_URL=https://mm-shadcn-ui-new.vercel.app ${HEAVY[@]+"${HEAVY[@]}"} bash "$WORK/migrate/deploy/shadcn-ui/deploy.sh" preview | tee "$out"
+started="$WORK/build-started"
+rm -f "$started" "$out"
+# One admission for the whole local build: it peaks at 23-41 GB, so it waits for that much free memory.
+# link-markless installs the app's dependencies, which deploy.sh's cache apply reads.
+HEAVY_GB=32 VITE_APP_URL=https://mm-shadcn-ui-new.vercel.app MARKLESS="$WORK/markless" \
+	${HEAVY[@]+"${HEAVY[@]}"} bash -c "touch '$started' && bash '$APP/scripts/link-markless.sh' && bash '$WORK/migrate/deploy/shadcn-ui/deploy.sh' preview" > "$out" 2>&1 &
+build=$!
+# A build still waiting for memory at DEADLINE (default 06:00) gives up its place in the queue, and the night is skipped.
+deadline=$(date -j -f %H:%M "${DEADLINE:-06:00}" +%s)
+[ "$deadline" -gt "$(date +%s)" ] || deadline=$((deadline + 86400))
+while kill -0 "$build" 2> /dev/null && [ ! -e "$started" ]; do
+	if [ "$(date +%s)" -ge "$deadline" ]; then
+		kill "$build"
+		wait "$build" 2> /dev/null || true
+		trap - ERR
+		report "Nightly preview $(date +%Y-%m-%d) skipped: the build was still waiting for memory at ${DEADLINE:-06:00} (convert run https://github.com/$REPO/actions/runs/$run)."
+		echo 'skipped: no memory for the build before the deadline'
+		exit 0
+	fi
+	sleep 60
+done
+wait "$build"
+cat "$out"
 URL=$(grep -o 'https://mm-shadcn-ui-[a-z0-9]*-jack-shelton\.vercel\.app' "$out" | tail -n 1)
 [ -n "$URL" ]
 checks=$(grep -A3 '^Caching on ' "$out" || true)
