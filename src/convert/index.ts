@@ -1674,6 +1674,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(needs(racCalendars.bind(el), 'react-aria/calendar'), binding);
 		binding = mergeBindings(racTables.bind(el), binding);
 		binding = mergeBindings(tables.bind(el), binding);
+		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
 		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? needs(formBinding, 'form') : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};

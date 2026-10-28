@@ -154,6 +154,7 @@ const escapeAttr = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;
 export class ScenePlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private readonly names = new Map<Element, string>();
+	private readonly arms = new Map<Element, string[]>();
 	private n = 0;
 	readonly refused: string[] = [];
 	private readonly bound: (el: Element) => boolean;
@@ -165,6 +166,11 @@ export class ScenePlan {
 
 	bind(el: Element): Binding | undefined {
 		return this.bindings.get(el);
+	}
+
+	/** The markup of the arms a demo's uses mount, as HTML: the ports what they show needs (a MessageScroller) are its page's too. */
+	markupOf(region: Element): readonly string[] {
+		return this.arms.get(region) ?? [];
 	}
 
 	/** The state a demo's element declares: part of its identity, so no shared component holds it for two pages. */
@@ -317,6 +323,7 @@ export class ScenePlan {
 			return `<${rep.tag}${attrs} data-mm-sid="${rep.id}"${nodeAt(rep.id, frames[0]!) ? '' : ' hidden'}>${kids}</${rep.tag}>`;
 		};
 		const openings = new Map<number, string>();
+		const shown: string[] = [];
 		const emitScene = (markup: string) =>
 			emitChildren(parseFragment(markup) as unknown as Element, {
 				bind: (el) => {
@@ -341,7 +348,11 @@ export class ScenePlan {
 			}
 			return groups
 				.filter((g) => g.frames.length)
-				.map((g) => `@if (${condition(g.frames, name)}) { <>${emitScene(html(g.rep, g.frames))}</> }`)
+				.map((g) => {
+					const markup = html(g.rep, g.frames);
+					shown.push(markup);
+					return `@if (${condition(g.frames, name)}) { <>${emitScene(markup)}</> }`;
+				})
 				.join('');
 		};
 		const present = (id: number, frames: readonly number[]) => frames.filter((f) => nodeAt(id, f));
@@ -431,6 +442,7 @@ export class ScenePlan {
 			extra: [...(own?.extra ?? []), `data-mm-scene={${lit(JSON.stringify(data))}}`, `onClick={(event) => playScene(event, ${set})}`, ...(fields ? [`onInput={(event) => playScene(event, ${set})}`, `onKeyDown={(event) => playScene(event, ${set})}`] : [])],
 		});
 		this.names.set(region, name);
+		this.arms.set(region, shown);
 		this.n++;
 		return undefined;
 	}
