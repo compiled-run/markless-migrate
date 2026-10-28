@@ -265,3 +265,25 @@ test('Radix DropdownMenu.Sub: a press outside the menu and its open submenu clos
 	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
 	await page.close();
 });
+
+test('Radix ContextMenu.Sub on a page listing only the context menu port: resting on the sub-trigger opens it, ArrowLeft closes it, ArrowDown moves in the menu', async () => {
+	const page = await open(
+		`<main><div data-slot="context-menu-trigger" data-state="closed" data-mm-key="ctx" style="position:fixed;left:0;top:0;width:600px;height:300px">Right click here</div></main>
+<div data-mm-layer="ctx" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="context-menu-content" role="menu" id="ctx-content" data-state="closed" tabindex="-1" data-radix-menu-content=""><div role="menuitem" tabindex="-1">Back</div><div role="menuitem" id="csub" aria-haspopup="menu" aria-expanded="false" aria-controls="csub-content" data-state="closed" tabindex="-1" data-slot="context-menu-sub-trigger">More Tools</div></div></div>
+<div data-mm-layer="csub" hidden data-radix-popper-content-wrapper><div data-slot="context-menu-sub-content" role="menu" id="csub-content" aria-labelledby="csub" data-state="closed" tabindex="-1" data-radix-menu-content="" data-side="right" data-align="start"><div role="menuitem" tabindex="-1">Save Page</div></div></div>`,
+		['radix/context-menu'],
+	);
+	await page.mouse.click(20, 20, { button: 'right' });
+	await settled(page);
+	await press(page, 'ArrowDown');
+	assert.equal(await active(page), 'Back');
+	await hoverItem(page, 'More Tools');
+	await page.waitForTimeout(150);
+	assert.equal(await page.locator('#csub').getAttribute('aria-expanded'), 'true');
+	await press(page, 'ArrowRight');
+	assert.equal(await active(page), 'Save Page');
+	await press(page, 'ArrowLeft');
+	assert.equal(await page.locator('#csub').getAttribute('aria-expanded'), 'false');
+	assert.equal(await active(page), 'More Tools');
+	await page.close();
+});
