@@ -52,6 +52,8 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # The org runs 60 jobs at once for every repository; ten pull requests' 23 suites each took all 60 and queued Markless's CI behind them.
+      max-parallel: 10
       matrix:
         include:
           - suite: convert-compiles
