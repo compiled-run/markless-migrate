@@ -210,19 +210,29 @@ const refreshPreview: Part = {
 // (examples/<base>/*-rtl.tsx, extracted into rtl-translations.json by scripts/rtl-translations.ts). The example is told
 // by its text: the table whose Arabic strings the preview shows. Each node's first text is kept, so every language is
 // written from it: the table's strings, the direction and data-lang of what was marked Arabic.
-type RtlTable = Record<string, { readonly dir: 'ltr' | 'rtl'; readonly locale?: string; readonly values: Record<string, string> }>;
+type RtlTable = Record<string, { readonly dir: 'ltr' | 'rtl'; readonly locale?: string; readonly values: Record<string, string>; readonly place?: readonly (readonly [string, string])[] }>;
 const LANGUAGES: Record<string, string> = { English: 'en', 'Arabic (العربية)': 'ar', 'Hebrew (עברית)': 'he' };
 let rtlTables: Promise<Record<string, RtlTable>> | undefined;
-const loadTables = () => (rtlTables ??= import('./rtl-translations.json').then((m) => (m as { default: Record<string, RtlTable> }).default));
+const loadTables = () => (rtlTables ??= import('./rtl-translations.json').then((m) => (m as unknown as { default: Record<string, RtlTable> }).default));
 const firstText = new WeakMap<Node, string>();
+// What was last written on a text: a text that reads otherwise was written since by the page (a count), and is read again.
+const written = new WeakMap<Node, string>();
 const firstAttrs = new WeakMap<Element, Record<string, string | null>>();
-const RTL_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'dir', 'data-lang'] as const;
+const PLACED = ['data-side', 'data-align', 'data-mm-side', 'data-mm-align', 'data-mm-placement'] as const;
+const RTL_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'dir', 'data-lang', ...PLACED] as const;
 const rtlTableOf = new WeakMap<Element, RtlTable | null>();
+const firstPlaced = new WeakSet<Element>();
 
 function previewParts(preview: Element): Element[] {
-	// What the example opens is in the layers its controls name (a dialog, a menu), each keyed by the control's id or aria-controls.
-	const keys = new Set([...preview.querySelectorAll('[id], [aria-controls]')].flatMap((e) => [e.id, e.getAttribute('aria-controls') ?? ''].filter(Boolean)));
-	return [preview, ...[...document.querySelectorAll('[data-mm-layer]')].filter((l) => keys.has(l.getAttribute('data-mm-layer') ?? ''))];
+	// What the example opens is in the layers its controls name (a dialog, a menu, a submenu a menu opens), each keyed by
+	// the control's id, aria-controls or capture key.
+	const parts = [preview];
+	const layers = [...document.querySelectorAll('[data-mm-layer]')];
+	for (let i = 0; i < parts.length; i++) {
+		const keys = new Set([...parts[i]!.querySelectorAll('[id], [aria-controls], [data-mm-key]')].flatMap((e) => [e.id, e.getAttribute('aria-controls'), e.getAttribute('data-mm-key')].filter((k): k is string => Boolean(k))));
+		for (const layer of layers) if (!parts.includes(layer) && keys.has(layer.getAttribute('data-mm-layer') ?? '')) parts.push(layer);
+	}
+	return parts;
 }
 
 function textNodes(root: Element): Text[] {
@@ -234,12 +244,14 @@ function textNodes(root: Element): Text[] {
 
 function chooseTable(tables: Record<string, RtlTable>, parts: readonly Element[]): RtlTable | undefined {
 	const shown = new Set(parts.flatMap((p) => textNodes(p).map((t) => (firstText.get(t) ?? t.data).trim())).filter(Boolean));
+	// The libraries' examples share their strings: a tie goes to the page's own library's (its place props differ).
+	const library = /^\/docs\/components\/(radix|base|aria)\//.exec(location.pathname)?.[1];
 	let best: RtlTable | undefined;
 	let score = 0;
-	for (const table of Object.values(tables)) {
+	for (const [name, table] of Object.entries(tables)) {
 		const values = Object.values(table.ar?.values ?? {});
-		const hits = values.filter((v) => shown.has(v.trim())).length;
-		if (hits > score) [best, score] = [table, hits];
+		const hits = values.filter((v) => shown.has(v.trim())).length * 2 + (name.startsWith(`${library}/`) ? 1 : 0);
+		if (hits > 1 && hits > score) [best, score] = [table, hits];
 	}
 	return best;
 }
@@ -253,23 +265,45 @@ function writeLanguage(preview: Element, table: RtlTable | undefined, language: 
 	const words = [...from.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
 	const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	const inside = words.length ? new RegExp(`(^|\\s)(${words.map(escape).join('|')})(?=\\s|$)`, 'gu') : undefined;
+	// Numbers the example formats in its locale (useTranslation's formatNumber): Arabic-Indic digits in Arabic only.
+	const digits = (text: string) => (language === 'ar' ? text : text.replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\u066b/g, '.').replace(/\u066c/g, ','));
 	const translate = (text: string) => {
 		const key = text.trim();
 		const whole = from.get(key);
 		if (whole !== undefined) return text.replace(key, whole);
-		return inside ? text.replace(inside, (_, space: string, word: string) => space + (from.get(word) ?? word)) : text;
+		return digits(inside ? text.replace(inside, (_, space: string, word: string) => space + (from.get(word) ?? word)) : text);
 	};
+	// Where the example places its popups by direction (side, align, React Aria's placement): the attribute the part that
+	// opens it reads, from its value as captured in Arabic to this language's. React Aria's is captured physical.
+	const physical = (v: string, d: string) => v.replace(/\bstart\b/, d === 'rtl' ? 'right' : 'left').replace(/\bend\b/, d === 'rtl' ? 'left' : 'right');
+	const placed = new Map<string, Map<string, string>>();
+	(table?.ar?.place ?? []).forEach(([prop, was], i) => {
+		const now = target?.place?.[i]?.[1];
+		if (now === undefined) return;
+		// What the source asked for (data-mm-side, data-mm-align) and where it went as captured are both read.
+		const [names, a, b] = prop === 'placement' ? [['data-mm-placement'], physical(was, 'rtl'), physical(now, dir)] : [[`data-${prop}`, `data-mm-${prop}`], was, now];
+		if (a !== b) for (const name of names) (placed.get(name) ?? placed.set(name, new Map()).get(name)!).set(a, b);
+	});
 	for (const part of parts) {
 		for (const node of textNodes(part)) {
-			if (!firstText.has(node)) firstText.set(node, node.data);
+			if (!firstText.has(node) || (written.has(node) && written.get(node) !== node.data)) firstText.set(node, node.data);
 			const next = translate(firstText.get(node)!);
 			if (node.data !== next) node.data = next;
+			written.set(node, next);
 		}
 		for (const el of [part, ...part.querySelectorAll('*')]) {
 			const first = firstAttrs.get(el) ?? Object.fromEntries(RTL_ATTRS.map((a) => [a, el.getAttribute(a)]));
 			firstAttrs.set(el, first);
 			for (const name of ['placeholder', 'aria-label', 'title', 'alt'] as const) if (first[name] !== null) el.setAttribute(name, translate(first[name]!));
 			if (first.dir === 'rtl') el.setAttribute('dir', dir);
+			if (part !== preview)
+				for (const name of PLACED) {
+					const was = first[name];
+					if (was == null || !placed.has(name) && !firstPlaced.has(el)) continue;
+					const to = placed.get(name)?.get(was) ?? was;
+					if (el.getAttribute(name) !== to) el.setAttribute(name, to);
+					firstPlaced.add(el);
+				}
 			if (first['data-lang'] === 'ar') {
 				if (dir === 'rtl') el.setAttribute('data-lang', language);
 				else el.removeAttribute('data-lang');
@@ -277,6 +311,22 @@ function writeLanguage(preview: Element, table: RtlTable | undefined, language: 
 		}
 	}
 }
+
+// The language each preview shows other than its first; what the page renders in its parts later (a layer opened, a
+// count changed) is written in that language too.
+const shownLanguage = new Map<Element, string>();
+let rewriting = false;
+const rewrite = new MutationObserver(() => {
+	if (rewriting) return;
+	rewriting = true;
+	queueMicrotask(() => {
+		rewriting = false;
+		void loadTables().then(() => {
+			for (const [preview, language] of shownLanguage) if (preview.isConnected) writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+			rewrite.takeRecords();
+		});
+	});
+});
 
 const watchedSelectors = new WeakSet<Element>();
 function watchLanguage(selector: Element): void {
@@ -293,6 +343,12 @@ function watchLanguage(selector: Element): void {
 		void loadTables().then((tables) => {
 			if (!rtlTableOf.has(preview)) rtlTableOf.set(preview, chooseTable(tables, previewParts(preview)) ?? null);
 			writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+			if (language === 'ar') shownLanguage.delete(preview);
+			else if (!shownLanguage.size) {
+				shownLanguage.set(preview, language);
+				rewrite.observe(document.body, { childList: true, characterData: true, subtree: true });
+			} else shownLanguage.set(preview, language);
+			rewrite.takeRecords();
 		});
 	}).observe(label, { childList: true, characterData: true, subtree: true });
 }
