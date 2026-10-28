@@ -63,6 +63,7 @@ jobs:
           - suite: proxy
           - suite: radix-dialog-port
           - suite: responsiveness
+          - suite: shadcn-typeset
           - suite: waste
           - { suite: slow-network, browsers: chromium firefox webkit }
           - { suite: late-fonts, browsers: chromium firefox webkit }

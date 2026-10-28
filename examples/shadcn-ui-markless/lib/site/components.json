@@ -1,3 +1,4 @@
 [
-	{"selector": "[cmdk-root]:has([cmdk-input][placeholder=\"Search documentation...\"])", "component": "command-menu.tsrx"}
+	{"selector": "[cmdk-root]:has([cmdk-input][placeholder=\"Search documentation...\"])", "component": "command-menu.tsrx"},
+	{"selector": "div[data-slot=\"designer\"]:has(iframe[title=\"typeset preview\"])", "component": "typeset.tsrx", "in": "page", "layers": true}
 ]

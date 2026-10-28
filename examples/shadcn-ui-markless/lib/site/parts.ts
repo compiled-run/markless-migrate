@@ -1,23 +1,15 @@
 import type { Part } from '../parts/index.ts';
-import { markSwitched, resolvedTheme, switchedFor, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { markSwitched, switchedFor, watchSystemTheme } from '../parts/next-themes.ts';
+import { THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
+import { parseParams, previewValues, TYPESET_COMMAND_MESSAGE, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
 
-// components/theme-provider.tsx: <NextThemesProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange enableColorScheme>
-const THEME: ThemeOptions = { attribute: 'class', themes: ['light', 'dark'], storageKey: 'theme', defaultTheme: 'system', enableSystem: true, enableColorScheme: true, disableTransitionOnChange: true };
 watchSystemTheme(THEME);
-// hooks/use-meta-color.ts
-const META_THEME_COLORS = { light: '#ffffff', dark: '#0a0a0a' };
-
-function toggleTheme(): void {
-	const next = resolvedTheme(THEME) === 'dark' ? 'light' : 'dark';
-	setTheme(next, THEME);
-	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? META_THEME_COLORS.dark : META_THEME_COLORS.light);
-}
 
 const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isContentEditable) || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
@@ -369,4 +361,51 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
+// app/(view)/preview/font-variables.tsx: the preview layout's wrapper, whose classes are the preview fonts' next/font
+// variables, puts them on <html> too, where the pages' CSS variables read them.
+const previewFontVariables: Part = {
+	idle() {
+		for (const el of document.body.children) {
+			const names = [...el.classList];
+			if (names.length && names.every((n) => /^[a-z0-9_]+-module__[\w-]+__variable$/.test(n))) document.documentElement.classList.add(...names);
+		}
+	},
+};
+
+// app/(view)/preview/typeset: the specimen /typeset shows in its iframe. TypesetPreviewProvider puts the params (its URL's,
+// then each the parent posts) on <html> as CSS variables, and forward-scripts.tsx hands R, ⇧R, D and the undo keys to
+// the parent as commands.
+const isTypesetPreview = () => document.querySelector('.preview-params > .typeset, .preview-params > div > .typeset') !== null;
+function applyPreview(params: TypesetParams): void {
+	const style = document.documentElement.style;
+	for (const [name, value] of Object.entries(previewValues(params))) {
+		if (value) style.setProperty(name, value);
+		else style.removeProperty(name);
+	}
+}
+const typesetPreview: Part = {
+	idle() {
+		if (!isTypesetPreview()) return;
+		applyPreview(parseParams(location.search));
+		window.addEventListener('message', (event) => {
+			const data = event.data as { type?: unknown; data?: Partial<Record<TypesetKey, string>> } | null;
+			if (data?.type !== TYPESET_PARAMS_MESSAGE || !data.data) return;
+			const search = updateSearch(location.search, data.data);
+			if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
+			applyPreview(parseParams(search));
+		});
+	},
+	shortcut(target, event) {
+		if (window.parent === window || isEditable(target) || !isTypesetPreview()) return;
+		let command: string | undefined;
+		const key = event.key.toLowerCase();
+		if (event.metaKey || event.ctrlKey) command = (key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey) ? 'redo' : key === 'z' ? 'undo' : undefined;
+		else if (key === 'r') command = event.shiftKey ? 'reset' : 'shuffle';
+		else if (key === 'd' && !event.altKey) command = 'toggle-theme';
+		if (!command) return;
+		event.preventDefault();
+		window.parent.postMessage({ type: TYPESET_COMMAND_MESSAGE, command }, location.origin);
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview];
