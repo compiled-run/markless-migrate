@@ -22,6 +22,7 @@ import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
+import { captureMenuToggles, type MenuToggles } from './menu-toggles.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
@@ -390,6 +391,57 @@ let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The TanStack tables whose visibility menus are layers (convert's TablePlan): their items bind the table's shared state.
 let layerTables: TablePlan | undefined;
+// The checkbox and radio items each menu layer of a route switched on the old page (captureMenuToggles), by its key.
+let layerToggles = new Map<string, ReadonlyMap<string, MenuToggles>>();
+
+/**
+ * A menu layer's checkable items as its menu's port switches them (parts/menu-checkable.ts), so the layer stays static
+ * markup: each item carries the attributes of its two states (data-mm-on, data-mm-off), the children only one state
+ * shows twice, marked data-mm-when and the other state's hidden, and whether its state outlives the menu (data-mm-toggle).
+ */
+export function markMenuCheckables(toggles: MenuToggles | undefined, kept: readonly Element[], taken: (el: Element) => boolean = () => false): number {
+	if (!toggles) return 0;
+	// Counted inside the menu, as the capture counted them.
+	const menu = kept.flatMap((top) => [top, ...walkAll(top)]).find((el) => attr(el, 'role') === 'menu');
+	if (!menu) return 0;
+	const bySig = new Map<string, Element[]>();
+	for (const el of walkAll(menu)) (bySig.get(sigOf(el)) ?? bySig.set(sigOf(el), []).get(sigOf(el))!).push(el);
+	const set = (el: Element, name: string, value: string) => (el.attrs = [...el.attrs.filter((a) => a.name !== name), { name, value }]);
+	const nodes = (html: string) => (parseFragment(html) as unknown as Element).childNodes as unknown as Element[];
+	let marked = 0;
+	toggles.groups.forEach((group, g) => {
+		const els = group.controls.map((c) => bySig.get(c.sig)?.[c.nth]);
+		// React Aria's menu port switches its own items; a TanStack table's column items are its state's.
+		if (els.some((el) => !el || attr(el, 'data-rac') !== undefined || taken(el) || attr(el, 'data-mm-toggle') !== undefined)) return;
+		group.controls.forEach((c, k) => {
+			const el = els[k]!;
+			const names = [...new Set([...Object.keys(c.on.attrs), ...Object.keys(c.off.attrs)])].filter((a) => c.on.attrs[a] !== c.off.attrs[a] && a !== 'tabindex');
+			const pick = (state: typeof c.on) => JSON.stringify(Object.fromEntries(names.map((a) => [a, state.attrs[a] ?? null])));
+			set(el, 'data-mm-toggle', group.lasts);
+			set(el, 'data-mm-on', pick(c.on));
+			set(el, 'data-mm-off', pick(c.off));
+			if (group.kind === 'radio') set(el, 'data-mm-radio', String(g));
+			// The children the two states differ in, both kept: the item renders its own state's (the one captured).
+			const other = nodes(c.initial ? c.off.inner : c.on.inner);
+			const own = el.childNodes as unknown as Element[];
+			if (c.on.inner !== c.off.inner && other.length === own.length) {
+				const out: Element[] = [];
+				own.forEach((child, n) => {
+					const alt = other[n]!;
+					if (!isElement(child) || !isElement(alt) || outer(child) === outer(alt)) return void out.push(child);
+					set(child, 'data-mm-when', c.initial ? 'on' : 'off');
+					set(alt, 'data-mm-when', c.initial ? 'off' : 'on');
+					set(alt, 'hidden', '');
+					alt.parentNode = el as never;
+					out.push(child, alt);
+				});
+				el.childNodes = out as never;
+			}
+			marked++;
+		});
+	});
+	return marked;
+}
 // The React Aria calendars the popovers of the route being prepared show (convert's RacCalendarPlan, set per route).
 let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<string, CapturedCalendars>; readonly messages: (locale: string) => CalendarMessages | undefined; route: string } | undefined;
 // What choosing each option of a control's layer did (Base UI Select's hidden input value, the text its trigger showed),
@@ -653,6 +705,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
+	markMenuCheckables(layerToggles.get(currentRoute)?.get(reveal.key), kept, (el) => tableMenu?.bind(el) !== undefined);
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -1087,6 +1140,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
+	const menuTogglesRead = new Map<string, ReadonlyMap<string, MenuToggles>>();
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
@@ -1154,6 +1208,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
 			floating?: readonly QwikFloating[];
+			menuToggles?: readonly MenuToggles[];
 		}
 		const readRoute = async (route: string): Promise<RouteFacts> => {
 			const ref = await pageOf.get(route)!;
@@ -1191,6 +1246,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const outer = reveals;
 				const nested = await limit(() => captureNestedReveals(browser, options.old, route, at('reveals'), outer));
 				if (nested.length) reveals = [...outer, ...nested.filter((n) => !outer.some((r) => r.key === n.key))];
+				// The checkbox and radio items of the menus, as pressing them switched them.
+				const opened = reveals;
+				const menus = await limit(() => captureMenuToggles(browser, options.old, route, at('toggles'), opened)).catch(() => []);
+				if (menus.length) facts.menuToggles = menus;
 			}
 			// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 			const comboboxes = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
@@ -1305,6 +1364,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
+			if (f.menuToggles?.length) menuTogglesRead.set(route, new Map(f.menuToggles.map((m) => [m.key, m])));
 		});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options shown.
 		const choosing = new Map<string, { route: string; reveal: Reveal }>();
@@ -1375,6 +1435,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const tables = new TablePlan();
 	for (const [route, captured] of tablesRead) tables.expect(route, captured);
 	layerTables = tables;
+	layerToggles = menuTogglesRead;
 	qwikHandlers = undefined;
 	for (const ref of captures) {
 		if (ref.status !== 200 || qwikHandlers) continue;
