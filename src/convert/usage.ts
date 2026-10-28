@@ -37,9 +37,10 @@ export interface PartResolver {
 	slotProp?(library: string, exportName: string, slot: string, prop: string): string | undefined;
 	/**
 	 * A prop where a wrapper renders another wrapper with this literal `data-slot` (a submenu's content rendering the
-	 * menu's content with its own offsets): the value written there, else the default of the wrapper it renders.
+	 * menu's content with its own offsets): the value written there, else the default of the wrapper it renders. With a
+	 * library, only sites that end on that library's parts count.
 	 */
-	forwardedProp?(slot: string, prop: string): string | undefined;
+	forwardedProp?(slot: string, prop: string, library?: string): string | undefined;
 }
 
 interface LibrariesFile {
@@ -205,7 +206,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 			}
 		}
 	}
-	const forwarded = source ? await forwardedSlots(file, source) : { slots: new Map<string, PartUsage[]>(), props: () => undefined };
+	const forwarded = source ? await forwardedSlots(file, source) : { slots: new Map<string, PartUsage[]>(), props: (): string | undefined => undefined };
 	for (const [slot, uses] of forwarded.slots) for (const u of uses) {
 		const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
 		if (!list.some((x) => x.library === u.library && x.export === u.export)) list.push(u);
@@ -241,7 +242,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		candidates: (slot) => bySlot.get(slot) ?? [],
 		libraries: () => counts,
 		prop: (library, exportName, prop) => props.get(`${library} ${exportName} ${prop}`),
-		forwardedProp: (slot, prop) => forwarded.props(slot, prop),
+		forwardedProp: (slot, prop, library) => forwarded.props(slot, prop, library),
 	};
 }
 
@@ -250,7 +251,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
  * where DropdownMenuTrigger renders `<Menu.Trigger data-slot="dropdown-menu-trigger" {...props} />` is a Menu.Trigger
  * the page marks menubar-trigger (the spread after the component's own slot wins), through any chain of such wrappers.
  */
-async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ slots: Map<string, PartUsage[]>; props: (slot: string, prop: string) => string | undefined }> {
+async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ slots: Map<string, PartUsage[]>; props: (slot: string, prop: string, library?: string) => string | undefined }> {
 	const forwards = new Map<string, PartUsage[]>();
 	const spreadsLast = (props: Readonly<Record<string, string>>) => {
 		const keys = Object.keys(props);
@@ -322,9 +323,10 @@ async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ sl
 		const fn = mod?.bindings.get(name);
 		return mod && fn ? paramDefault(mod, mod.line(fn.start), prop) : undefined;
 	};
-	const props = (slot: string, prop: string) => {
+	const props = (slot: string, prop: string, library?: string) => {
 		const votes = new Map<string, number>();
 		for (const e of sites.get(slot) ?? []) {
+			if (library !== undefined && !forwards.get(e.target)?.some((u) => u.library === library)) continue;
 			const mod = modules.get(e.file)!;
 			const value = slotSiteProp(mod, e.line, slot, prop) ?? defaultOf(e.target, prop);
 			if (value !== undefined) votes.set(value, (votes.get(value) ?? 0) + 1);
