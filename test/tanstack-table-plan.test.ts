@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { parseFragment } from 'parse5';
 import { attr, body, find, parseDocument, walk, type Element } from '../src/convert/dom.ts';
 import { TablePlan, templateOf, type CapturedTable, type TableSnapshot } from '../src/convert/tanstack-table.ts';
-import { emitChildren, emitElement } from '../src/convert/tsrx.ts';
+import { emitChildren, emitElement, mergeBindings, type Binding } from '../src/convert/tsrx.ts';
 
 // A table region as the old page showed it in each recorded state, built from one description so the states differ only
 // where the table's state reaches.
@@ -21,7 +21,7 @@ function radixRegion(s: Shape): string {
 		const checked = state === 'checked' ? 'true' : state === 'indeterminate' ? 'mixed' : 'false';
 		return `<button type="button" role="checkbox" aria-checked="${checked}" data-state="${state}" data-slot="checkbox">${state === 'unchecked' ? '' : `<span data-slot="checkbox-indicator" data-state="${state}"><svg class="check"></svg></span>`}</button>`;
 	};
-	const names: Record<string, string> = { a: 'alpha', b: 'beta', c: 'gamma' };
+	const names: Record<string, string> = { a: 'alpha', b: 'beta', c: 'gamma', d: 'delta' };
 	const rows = s.rows.length
 		? s.rows.map((r) => `<tr data-slot="table-row" data-state="${r.sel ? 'selected' : 'false'}"><td>${box(r.sel)}</td>${s.hidden ? '' : `<td><div class="lowercase">${names[r.id]}</div></td>`}<td><button id="menu-${r.id}" aria-haspopup="menu">Open</button></td></tr>`).join('')
 		: '<tr><td colspan="3" class="h-24">No results.</td></tr>';
@@ -71,8 +71,8 @@ function capture(region: (s: Shape) => string): CapturedTable {
 	};
 }
 
-function convert(region: (s: Shape) => string, page: (html: string) => string = (html) => html) {
-	const table = capture(region);
+function convert(region: (s: Shape) => string, page: (html: string) => string = (html) => html, edit: (t: CapturedTable) => CapturedTable = (t) => t, other: (el: Element) => Binding | undefined = () => undefined) {
+	const table = edit(capture(region));
 	const doc = parseDocument(`<body>${page(table.snapshots[0]!.html)}</body>`);
 	const root = body(doc);
 	const els = [...walk(root)];
@@ -88,7 +88,7 @@ function convert(region: (s: Shape) => string, page: (html: string) => string = 
 	plan.expect('/t', [table]);
 	const placed = plan.add('/t', (sig, nth) => (sig === 'row' ? boxes[nth + 1] : located[sig]));
 	plan.emitHtml = (html) => emitChildren(parseFragment(html) as unknown as Element);
-	const bind = (el: Element) => plan.bind(el);
+	const bind = (el: Element) => mergeBindings(plan.bind(el), other(el));
 	plan.emitter = (el, declarations) => emitElement(el, { declarations, bind });
 	const declarations: string[] = [];
 	return { plan, placed, out: emitElement(root, { declarations, bind }), declarations };
@@ -220,13 +220,62 @@ test('a row pressed anywhere (React Aria) holding a label around its checkbox co
 
 test('a table whose rows are no one template renders as the old page showed it, every part of it, and compiles', async () => {
 	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
-	// One row draws its name inside a <b>: the rows differ in more than values.
-	const { plan, out, declarations } = convert((s) => radixRegion(s).replace('<div class="lowercase">beta</div>', '<div class="lowercase"><b>beta</b></div>'));
+	// One row carries an attribute the others lack: the rows differ in more than values.
+	const { plan, out, declarations } = convert((s) => radixRegion(s).replace('<tr data-slot="table-row" data-state="false"><td><button type="button" role="checkbox" aria-checked="false" data-state="unchecked" data-slot="checkbox"></button></td><td><div class="lowercase">beta', '<tr data-slot="table-row" data-state="false" data-odd=""><td><button type="button" role="checkbox" aria-checked="false" data-state="unchecked" data-slot="checkbox"></button></td><td><div class="lowercase">beta'));
 	assert.match(plan.notes.join('\n'), /its rows are not one template/);
 	assert.doesNotMatch(out, /\brow\.|tt0/, 'nothing in the table reads a row or the table state');
 	assert.deepEqual(declarations, []);
 	assert.match(out, /<tbody><tr data-slot="table-row" data-state="false">/);
 	const source = `export default function Page() @{\n\t${out}\n}\n`;
+	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
+	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
+});
+
+test('rows holding differently shaped content are one template, an arm per shape on the row\'s own key, and compile', async () => {
+	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	// Beta draws its name inside a <b> (dashboard-01's status icon, one per status).
+	const { plan, placed, out, declarations } = convert((s) => radixRegion(s).replace('<div class="lowercase">beta</div>', '<div class="lowercase"><b>beta</b></div>'));
+	assert.equal(placed, 1, plan.notes.join('\n'));
+	assert.doesNotMatch(plan.notes.join('\n'), /not one template/);
+	const arms = /<div class="lowercase">@if \(row\.c(\d+) === "0"\) \{ <>\{row\.c(\d+)\}<\/> \}@if \(row\.c\1 === "1"\) \{ <><b>beta<\/b><\/> \}<\/div>/.exec(out);
+	assert.ok(arms, out);
+	const values = (plan as unknown as { placed: { values: Record<string, string[]> }[] }).placed[0]!.values;
+	assert.deepEqual(['a', 'b', 'c'].map((id) => values[id]![Number(arms[1])]), ['0', '1', '0'], 'alpha and gamma hold text, beta a <b>');
+	assert.deepEqual(['a', 'c'].map((id) => values[id]![Number(arms[2])]), ['alpha', 'gamma'], 'each row fills its own arm');
+	const source = `import { computed } from '@markless/core';\nimport { ttView, ttAct } from './tt.ts';\nimport { tts_x, ttc_x } from './specs.ts';\nimport { ttShared0 } from './shared.ts';\nexport default function Page() @{\n\t${declarations.join('\n\t')}\n\t${out}\n}\n`;
+	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
+	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
+});
+
+test('a row only the every-row state shows has its own values, read on a page row of its shape', () => {
+	// Delta is on no page the old page loaded: the every-row state shows it, its name inside a <b> as beta's.
+	const region = (s: Shape) => radixRegion(s).replace('<div class="lowercase">beta</div>', '<div class="lowercase"><b>beta</b></div>').replace('<div class="lowercase">delta</div>', '<div class="lowercase"><b>delta</b></div>');
+	const all: Shape = { rows: ['a', 'b', 'c', 'd'].map((id) => ({ id, sel: false })), page: 'none', count: '0 of 4 row(s) selected.', canNext: false };
+	const { plan, placed } = convert(region, undefined, (t) => ({ ...t, rowIds: [...t.rowIds, 'd'], data: [...t.data, { name: 'd' }], snapshots: [...t.snapshots, { ...t.snapshots[0]!, name: 'rows:all', html: region(all), rows: all.rows.map((r) => ({ id: r.id, sel: false })) }] }));
+	assert.equal(placed, 1, plan.notes.join('\n'));
+	const values = (plan as unknown as { placed: { values: Record<string, string[]> }[] }).placed[0]!.values;
+	assert.deepEqual(values.d, values.b!.map((v) => (v === 'beta' ? 'delta' : v === 'menu-b' ? 'menu-d' : v)), JSON.stringify(values));
+});
+
+test('a control each row keeps its own state for (a reviewer select) keeps it by row id, and compiles', async () => {
+	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	// The page's select plan gives every select a state() of its own, as it does a select outside a table.
+	const region = (s: Shape) => radixRegion(s).replace(/<div class="lowercase">(\w+)<\/div>/g, (_, n: string) => `<div class="lowercase"><span data-slot="select-value">${n === 'beta' ? 'Assign' : n}</span></div>`);
+	const names = new Map<Element, string>();
+	const other = (el: Element): Binding | undefined => {
+		if (attr(el, 'data-slot') !== 'select-value') return undefined;
+		const name = names.get(el) ?? names.set(el, `sel${names.size}`).get(el)!;
+		const text = (el.childNodes[0] as unknown as { value: string }).value;
+		return { declare: [`let ${name} = state(${JSON.stringify(text)});`], extra: [`onMmchoose={(event) => (${name} = (event as CustomEvent<string>).detail)}`], children: `{${name}}` };
+	};
+	const { plan, placed, out, declarations } = convert(region, undefined, undefined, other);
+	assert.equal(placed, 1, plan.notes.join('\n'));
+	const m = /<span data-slot="select-value" onMmchoose=\{\(event\) => \(tt0\.s = ttAct\(tts_\w+, structuredClone\(tt0\.s\), \{ k: "cell", r: row\.id, c: (\d+), v: \(event as CustomEvent<string>\)\.detail \}\)\)\}>\{row\.c(\d+)\}<\/span>/.exec(out);
+	assert.ok(m && m[1] === m[2], out);
+	const values = (plan as unknown as { placed: { values: Record<string, string[]> }[] }).placed[0]!.values;
+	assert.deepEqual(['a', 'b', 'c'].map((id) => values[id]![Number(m[1])]), ['alpha', 'Assign', 'gamma'], 'each row starts with what its own select showed');
+	assert.ok(!declarations.some((d) => /\bsel\d/.test(d)), 'no row keeps a state of its own');
+	const source = `import { computed, state } from '@markless/core';\nimport { ttView, ttAct } from './tt.ts';\nimport { tts_x, ttc_x } from './specs.ts';\nimport { ttShared0 } from './shared.ts';\nexport default function Page() @{\n\t${declarations.join('\n\t')}\n\t${out}\n}\n`;
 	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
 });

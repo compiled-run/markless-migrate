@@ -25,13 +25,16 @@ export interface TableControl {
 	 * `sort`: sets the column's sorting from its current direction (`next`, keyed by '', 'asc' or 'desc'); `filter`: an
 	 * input whose value is the column's filter; `row`: toggles a row's selection; `select`: selects or clears the page's
 	 * rows or every row, from whether none, some or all of the page's are (`next`, keyed by 'none', 'some' or 'all');
-	 * `visibility`: toggles the column's visibility (a menu item, `menu` naming its trigger); `page`: moves `delta` pages.
+	 * `visibility`: toggles the column's visibility (a menu item, `menu` naming its trigger); `page`: moves `delta` pages,
+	 * or goes `to` an end.
 	 */
 	readonly kind: 'sort' | 'filter' | 'row' | 'select' | 'visibility' | 'page';
 	readonly column?: string;
 	readonly row?: string;
 	readonly next?: Readonly<Record<string, string>>;
 	readonly delta?: number;
+	/** `page`: goes to the first or the last page, from any page. */
+	readonly to?: 'first' | 'last';
 	readonly menu?: { readonly sig: string; readonly nth: number };
 }
 
@@ -74,10 +77,12 @@ export interface TableCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'tables-5';
+const VERSION = 'tables-8';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Whether a settled page may hold a TanStack table: one with a table element. */
+const ALL_ROWS = 'rows:all';
+
 export const mayHoldTable = (html: string): boolean => /<table[\s>]/.test(html);
 
 // --- In the page -----------------------------------------------------------------------------------------------------
@@ -454,16 +459,18 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 			await el.fill('').catch(() => {});
 			continue;
 		}
-		if (c.disabled && middle) await set(page, i, middle);
-		else if (c.disabled) continue;
+		if (c.disabled && !middle) continue;
+		// The second page shows other rows, whose controls come before this one: it is found again there.
+		const found = async () => (c.disabled ? (await set(page, i, middle!), (await page.evaluate(controlsOf, i)).findIndex((x) => x.sig === c.sig && x.nth === c.nth)) : k);
+		let at = await found();
 		let before = await stateOf(page, i);
-		if (!(await click(page, k))) {
+		if (at < 0 || !(await click(page, at))) {
 			// What a use before left over the page (a menu's underlay that outlived Escape) goes with a fresh load.
 			await reload(page);
-			if (c.disabled && middle) await set(page, i, middle);
 			await page.evaluate(controlsOf, i);
+			at = await found();
 			before = await stateOf(page, i);
-			if (!(await click(page, k))) {
+			if (at < 0 || !(await click(page, at))) {
 				log(`  table control ${c.sig}#${c.nth}: could not be pressed`);
 				continue;
 			}
@@ -484,7 +491,7 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 			for (let n = 0; n < 3; n++) {
 				const from = dirOf(after.sorting, column);
 				if (from in next) break;
-				await click(page, k);
+				await click(page, at);
 				await settle(page);
 				after = await stateOf(page, i);
 				next[from] = dirOf(after.sorting, column);
@@ -498,8 +505,31 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 			if (toggled.length === 1 && pageIds.length > 1) out.push({ sig: c.sig, nth: c.nth, kind: 'row', row: toggled[0]! });
 			else if (now.length === pageIds.length || now.length === spec.rowIds.length) selects.push(c);
 		} else if (keys.length === 1 && keys[0] === 'pagination') {
-			const delta = ((after.pagination as { pageIndex: number }).pageIndex) - ((before.pagination as { pageIndex: number }).pageIndex);
-			if (delta) out.push({ sig: c.sig, nth: c.nth, kind: 'page', delta });
+			const index = (s: Record<string, Json>) => (s.pagination as { pageIndex: number }).pageIndex;
+			const delta = index(after) - index(before);
+			const count = Number((await page.evaluate(readTable, i)).q.pageCount);
+			// Used again from another page: a control that goes to the first or last page goes there from anywhere.
+			const third = middle && Math.ceil(spec.rowIds.length / middle.pagination.pageSize) > 2 ? { pagination: { pageIndex: 2, pageSize: middle.pagination.pageSize } } : undefined;
+			const again = middle && index(before) !== middle.pagination.pageIndex ? middle : third;
+			let to: 'first' | 'last' | undefined;
+			if (delta && again) {
+				await set(page, i, again);
+				// Another page shows other rows, whose controls come before this one.
+				const there = (await page.evaluate(controlsOf, i)).findIndex((x) => x.sig === c.sig && x.nth === c.nth);
+				const from = await stateOf(page, i);
+				const counted = Number((await page.evaluate(readTable, i)).q.pageCount);
+				if (there >= 0 && (await click(page, there))) {
+					await settle(page);
+					const moved = index(await stateOf(page, i));
+					if (moved - index(from) !== delta) to = index(after) === count - 1 && moved === counted - 1 ? 'last' : index(after) === 0 && moved === 0 ? 'first' : undefined;
+					if (moved - index(from) !== delta && !to) {
+						log(`  table control ${c.sig}#${c.nth}: moves the page by neither a step nor to an end, which is not ported`);
+						continue;
+					}
+				}
+			}
+			if (to) out.push({ sig: c.sig, nth: c.nth, kind: 'page', to });
+			else if (delta) out.push({ sig: c.sig, nth: c.nth, kind: 'page', delta });
 		} else if (keys.length) log(`  table control ${c.sig}#${c.nth}: changed ${keys.join(', ')}, which is not ported`);
 		await closeMenus(page);
 	}
@@ -636,8 +666,12 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 		const size = Math.max(1, Math.floor(ids.length / 3));
 		const count = Math.ceil(ids.length / size);
 		states.push(['page:first', { pagination: { pageIndex: 0, pageSize: size } }], ['page:last', { pagination: { pageIndex: count - 1, pageSize: size }, rowSelection: { [ids[0]!]: true } }]);
+		// A page with pages both before and after it: what follows only one way (a last-page button) is told apart there.
+		if (count > 2) states.push(['page:middle', { pagination: { pageIndex: 1, pageSize: size } }]);
 		selected.set('page:last', ids.slice(0, 1));
 	}
+	// Every row on one page: the markup of the rows no other state shows, each read as its own values.
+	if (spec.features.includes('rowPaginationFeature')) states.push([ALL_ROWS, { pagination: { pageIndex: 0, pageSize: ids.length } }]);
 	const hideable = spec.columns.filter((c) => c.def.enableHiding !== false).map((c) => c.id);
 	if (spec.features.includes('columnVisibilityFeature') && hideable.length) states.push(['hidden', { columnVisibility: Object.fromEntries(hideable.map((id) => [id, false])) }]);
 	const menus = [...new Map(controls.filter((c) => c.menu).map((c) => [`${c.menu!.sig}#${c.menu!.nth}`, c.menu!])).entries()];
@@ -971,7 +1005,7 @@ export class TablePlan {
 		const notes: string[] = [];
 
 		// Cells move in the hidden state; every other state shows every column.
-		const shown = snaps.filter((s) => s.name !== 'hidden' && s.root);
+		const shown = snaps.filter((s) => s.name !== 'hidden' && s.name !== ALL_ROWS && s.root);
 		const tableExprs = [...STATES, ...COUNTS].map((key) => `${v}.q.${key}`);
 		// Text updates only where it reads a name: each quantity a text shows is a computed() of its own.
 		const texts = new Map<string, string>();
@@ -1105,7 +1139,7 @@ export class TablePlan {
 				c.kind === 'sort' ? `{ k: "sort", c: ${lit(c.column!)}, next: ${JSON.stringify(c.next)} }`
 				: c.kind === 'filter' ? `{ k: "filter", c: ${lit(c.column!)}, v: (event.target as HTMLInputElement).value }`
 				: c.kind === 'row' ? '{ k: "row", r: row.id }'
-				: c.kind === 'page' ? `{ k: "page", d: ${c.delta} }`
+				: c.kind === 'page' ? (c.to ? `{ k: "page", to: ${lit(c.to)} }` : `{ k: "page", d: ${c.delta} }`)
 				: `{ k: ${lit(c.kind)}, next: ${JSON.stringify(c.next)} }`;
 			add(el, { extra: c.kind === 'filter' ? [`onInput={(event) => { ${act(action)}; }}`] : [clickOf(el, holdsLabel, act(action)), ...checkboxKeys(el, act(action)), ...pressKeys(el, act(action))] });
 			// Base UI's checkbox: the hidden input beside it (its label's target) uses it too and hands focus to it.
@@ -1122,17 +1156,28 @@ export class TablePlan {
 		const rowsBinding = () => (rows ??= { binding: emitRows() }).binding;
 		this.rows.set(name, rowsBinding);
 		this.lazy.set(tbody, rowsBinding);
+		// Every row the table has: the page's own, then those only the every-row state showed.
+		const every = snaps.find((s) => s.name === ALL_ROWS);
+		const pageIds = table.rowIds.slice(0, bodyRows.length);
+		const extra = every?.root && at(every.root, bodyPath) ? kids(at(every.root, bodyPath)!).flatMap((tr, k) => (every.rows[k] && !pageIds.includes(every.rows[k]!.id) ? [{ id: every.rows[k]!.id, tr }] : [])) : [];
 		const emitRows = (): Binding | undefined => {
 			const local: string[] = [];
-			const template = templateOf(bodyRows.map((tr) => this.emitter(tr, local)));
-			if (typeof template === 'string') {
+			const all = [...bodyRows, ...extra.map((x) => x.tr)];
+			const ids = [...pageIds, ...extra.map((x) => x.id)];
+			const emitted = rowMarkups(all, bodyRows.length, this.bindings, (el) => this.emitter(el, local), this.emitHtml);
+			const own = typeof emitted === 'string' ? emitted : rowStates(emitted, local);
+			const template = typeof own === 'string' ? own : templateOf(own.rows);
+			if (typeof template === 'string' || typeof own === 'string') {
 				this.notes.push(`${route} table ${table.sig.slice(0, 40)}: its rows are not one template, ${template}`);
 				return undefined;
 			}
-			table.rowIds.forEach((id, i) => (placed.values[id] = template.values[i]!));
+			// What a row's own control keeps is a value of the row after the template's, set through the table's state.
+			const kept = template.values[0]!.length;
+			ids.forEach((id, i) => (placed.values[id] = [...template.values[i]!, ...own.inits[i]!]));
 			// A row's values are fields of its row in the view: a plain read of the row updates, a composite one would not.
-			const markup = template.markup.replace(/\u0000(\d+)\u0000/g, (_, slot: string) => `row.c${slot}`);
-			return { declare: [...declare, ...local], children: `@for (const row of ${v}.rows; key row.id) { ${markup} }${emptyBody ? ` @empty { ${this.emitHtml(innerOf(emptyBody))} }` : ''}` };
+			const slots = template.markup.replace(/\u0000(\d+)\u0000/g, (_, slot: string) => `row.c${slot}`);
+			const markup = rowStateCode(slots, (k, value) => act(`{ k: "cell", r: row.id, c: ${kept + Number(k)}, v: ${value} }`), (k) => `row.c${kept + Number(k)}`);
+			return { declare: [...declare, ...own.declare], children: `@for (const row of ${v}.rows; key row.id) { ${markup} }${emptyBody ? ` @empty { ${this.emitHtml(innerOf(emptyBody))} }` : ''}` };
 		};
 
 		for (const note of notes) this.notes.push(`${route} table ${table.sig.slice(0, 40)}: ${note}`);
@@ -1236,6 +1281,164 @@ export class TablePlan {
 	}
 }
 
+// An element's own shape (its tag and attribute names), and what it holds by shape: its children's own shapes and texts.
+const ownShape = (el: Tree) => `${el.tagName}[${el.attrs.map((a) => a.name).sort().join(',')}]`;
+const holds = (el: Tree) => childrenOf(el).map((n) => (isElement(n) ? ownShape(n) : isText(n) && n.value.trim() ? '#t' : '')).filter(Boolean).join('|');
+
+/** Where rows hold differently shaped content (a status icon per status), and which rows hold each shape. */
+function variantsOf(rows: readonly Tree[]): { readonly path: number[]; readonly groups: number[][] }[] {
+	const out: { path: number[]; groups: number[][] }[] = [];
+	const visit = (nodes: readonly Tree[], path: number[]): void => {
+		const shapes = nodes.map(holds);
+		if (shapes.some((h) => h !== shapes[0])) {
+			const groups = new Map<string, number[]>();
+			shapes.forEach((h, r) => (groups.get(h) ?? groups.set(h, []).get(h)!).push(r));
+			out.push({ path, groups: [...groups.values()] });
+			return;
+		}
+		kids(nodes[0]!).forEach((_, i) => visit(nodes.map((n) => kids(n)[i]!), [...path, i]));
+	};
+	visit(rows, []);
+	return out;
+}
+
+/** Writes `from`'s attribute values and texts on `to`, alike in shape, except inside `skip`; the undo, or undefined when they differ. */
+function transplant(to: Tree, from: Tree, skip: ReadonlySet<Tree> = new Set()): (() => void) | undefined {
+	const writes: [target: { value: string }, value: string][] = [];
+	const visit = (a: Tree, b: Tree): boolean => {
+		if (ownShape(a) !== ownShape(b)) return false;
+		for (const x of a.attrs) {
+			const value = attr(b, x.name)!;
+			if (value !== x.value) writes.push([x, value]);
+		}
+		if (skip.has(a)) return true;
+		const ak = childrenOf(a);
+		const bk = childrenOf(b);
+		if (ak.length !== bk.length) return false;
+		return ak.every((n, i) => {
+			const m = bk[i]!;
+			if (isText(n) && isText(m)) {
+				if (n.value !== m.value) writes.push([n, m.value]);
+				return true;
+			}
+			return isElement(n) && isElement(m) ? visit(n, m) : n.nodeName === m.nodeName;
+		});
+	};
+	if (!visit(to, from)) return undefined;
+	const old = writes.map(([t]) => t.value);
+	for (const [t, v] of writes) t.value = v;
+	return () => writes.forEach(([t], i) => (t.value = old[i]!));
+}
+
+/**
+ * The state each row's own controls keep (a select's shown value, a state() per row on the page) as values of their
+ * rows, which the table's state can change: in each row's markup, the k-th such state it reads is `\u0005k\u0005`, and
+ * `inits[row][k]` its first value. A string when a row's states differ from another's in kind.
+ */
+function rowStates(rows: readonly string[], declared: readonly string[]): { readonly rows: string[]; readonly inits: string[][]; readonly declare: string[] } | string {
+	const states = new Map<string, string>();
+	for (const line of declared) {
+		const m = /^let (\w+) = state\((".*")\);$/.exec(line);
+		if (m) states.set(m[1]!, JSON.parse(m[2]!) as string);
+	}
+	if (!states.size) return { rows: [...rows], inits: rows.map(() => []), declare: [...declared] };
+	const name = new RegExp(`\\b(${[...states.keys()].join('|')})\\b`, 'g');
+	const inits: string[][] = [];
+	const out = rows.map((markup, r) => {
+		const order: string[] = [];
+		const named = markup.replace(name, (n) => {
+			if (!order.includes(n)) order.push(n);
+			return `\u0005${order.indexOf(n)}\u0005`;
+		});
+		inits[r] = order.map((n) => states.get(n)!);
+		return named;
+	});
+	if (inits.some((i) => i.length !== inits[0]!.length)) return 'their rows keep different states';
+	return { rows: out, inits, declare: declared.filter((line) => !states.has(/^let (\w+) = state\(/.exec(line)?.[1] ?? '')) };
+}
+
+/** A row's kept state in a template: each assignment to it a call that writes it (`write`), each other mention a read. */
+function rowStateCode(markup: string, write: (k: string, value: string) => string, read: (k: string) => string): string {
+	let out = '';
+	let from = 0;
+	const re = /\u0005(\d+)\u0005/g;
+	for (let m = re.exec(markup); m; m = re.exec(markup)) {
+		out += markup.slice(from, m.index);
+		const end = m.index + m[0].length;
+		const assign = /^\s*=(?!=)\s*/.exec(markup.slice(end));
+		if (!assign) {
+			out += read(m[1]!);
+			from = end;
+			continue;
+		}
+		const start = end + assign[0].length;
+		let depth = 0;
+		let j = start;
+		for (; j < markup.length; j++) {
+			const c = markup[j]!;
+			if ('([{'.includes(c)) depth++;
+			else if (')]}'.includes(c)) {
+				if (depth === 0) break;
+				depth--;
+			} else if ((c === ',' || c === ';') && depth === 0) break;
+		}
+		out += write(m[1]!, markup.slice(start, j));
+		from = j;
+		re.lastIndex = j;
+	}
+	return out + markup.slice(from);
+}
+
+/**
+ * Each row's markup with every shape its places hold across the rows as an arm on the row's own key, so every row is the
+ * same template: a page row as it is emitted, a row only another state showed written on the page's first row.
+ */
+function rowMarkups(rows: readonly Tree[], pageCount: number, bindings: Map<Tree, Binding>, emit: (el: Tree) => string, emitHtml: (html: string) => string): string[] | string {
+	const variants = variantsOf(rows);
+	const childrenMarkup = (el: Tree) => childrenOf(el).map((n) => (isElement(n) ? emit(n) : isText(n) ? emitHtml(n.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')) : '')).join('');
+	const out: string[] = [];
+	for (let r = 0; r < rows.length; r++) {
+		const host = r < pageCount ? rows[r]! : rows[0]!;
+		const undo: (() => void)[] = [];
+		try {
+			const places = variants.map((v) => at(host, v.path)!);
+			if (r >= pageCount) {
+				const done = transplant(host, rows[r]!, new Set(places));
+				if (!done) return `row ${r} has a shape no page row has`;
+				undo.push(done);
+			}
+			for (const [k, v] of variants.entries()) {
+				const mine = v.groups.findIndex((g) => g.includes(r));
+				const arms = v.groups.map((g, gi) => {
+					const page = g.find((x) => x < pageCount);
+					let content: string;
+					if (page === undefined) content = emitHtml(innerOf(at(rows[gi === mine ? r : g[0]!]!, v.path)!));
+					else {
+						const el = at(rows[gi === mine && r < pageCount ? r : page]!, v.path)!;
+						if (gi === mine && r >= pageCount) {
+							const done = transplant(el, at(rows[r]!, v.path)!);
+							if (!done) return undefined;
+							undo.push(done);
+						}
+						content = childrenMarkup(el);
+					}
+					return `@if (\u0003${mine}\u0003 === ${JSON.stringify(String(gi))}) { <>${content}</> }`;
+				});
+				if (arms.some((a) => a === undefined)) return `row ${r} holds a shape no page row holds alike`;
+				const place = places[k]!;
+				const own = bindings.get(place);
+				if (own?.children !== undefined || own?.replace !== undefined) return 'a place whose shape differs between rows already changes with the table';
+				bindings.set(place, mergeBindings(own, { children: arms.join('') })!);
+				undo.push(() => (own ? bindings.set(place, own) : bindings.delete(place)));
+			}
+			out.push(emit(host));
+		} finally {
+			undo.reverse().forEach((u) => u());
+		}
+	}
+	return out;
+}
+
 /**
  * A control's click. A label around its input is clicked twice per use (its own click, then the one it forwards to the
  * input): only the input's counts, in the label and in a control holding it.
@@ -1267,7 +1470,7 @@ function checkboxKeys(el: Tree, use: string): string[] {
 }
 
 interface Token {
-	readonly kind: 'code' | 'attr' | 'expr' | 'text';
+	readonly kind: 'code' | 'attr' | 'expr' | 'text' | 'key';
 	readonly text: string;
 	readonly value: string;
 }
@@ -1278,13 +1481,16 @@ const decode = (t: string) => t.replace(/&(#\d+|#x[0-9a-f]+|\w+);/gi, (m, e: str
 /** tsrx markup as tokens: `="value"` attributes, whole `{"value"}` expressions, text between tags, and the code between them. */
 function tokenize(markup: string): Token[] {
 	const out: Token[] = [];
-	const re = /="((?:[^"\\]|\\.)*)"|\{("(?:[^"\\]|\\.)*")\}|>([^<>{}@]+)(?=<)/g;
+	const re = /="((?:[^"\\]|\\.)*)"|\{("(?:[^"\\]|\\.)*")\}|>([^<>{}@]+)(?=<)|\u0003([^\u0003]*)\u0003/g;
 	let last = 0;
 	const code = (to: number) => {
 		if (to > last) out.push({ kind: 'code', text: markup.slice(last, to), value: '' });
 	};
 	for (let m = re.exec(markup); m; m = re.exec(markup)) {
-		if (m[3] !== undefined) {
+		if (m[4] !== undefined) {
+			code(m.index);
+			out.push({ kind: 'key', text: m[0], value: m[4] });
+		} else if (m[3] !== undefined) {
 			code(m.index + 1);
 			out.push({ kind: 'text', text: m[3], value: decode(m[3]) });
 		} else {
@@ -1305,18 +1511,26 @@ export function templateOf(rows: readonly string[]): { readonly markup: string; 
 	const tokens = rows.map(tokenize);
 	if (tokens.some((t) => t.length !== tokens[0]!.length)) return 'their markup has different shapes';
 	const values: string[][] = rows.map(() => []);
+	// A row's key is read by every arm it decides: one slot each.
+	const keys = new Map<string, number>();
 	let markup = '';
 	for (let i = 0; i < tokens[0]!.length; i++) {
 		const all = tokens.map((t) => t[i]!);
 		const first = all[0]!;
 		if (all.every((t) => t.text === first.text)) {
-			markup += first.text;
+			markup += first.kind === 'key' ? JSON.stringify(first.value) : first.text;
 			continue;
 		}
 		if (all.some((t) => t.kind !== first.kind || t.kind === 'code')) return `they differ in ${JSON.stringify(first.text.slice(0, 80))}`;
+		const seen = first.kind === 'key' ? keys.get(JSON.stringify(all.map((t) => t.value))) : undefined;
+		if (seen !== undefined) {
+			markup += `\u0000${seen}\u0000`;
+			continue;
+		}
 		const slot = values[0]!.length;
+		if (first.kind === 'key') keys.set(JSON.stringify(all.map((t) => t.value)), slot);
 		all.forEach((t, r) => values[r]!.push(t.value));
-		markup += first.kind === 'attr' ? `={\u0000${slot}\u0000}` : `{\u0000${slot}\u0000}`;
+		markup += first.kind === 'attr' ? `={\u0000${slot}\u0000}` : first.kind === 'key' ? `\u0000${slot}\u0000` : `{\u0000${slot}\u0000}`;
 	}
 	return { markup, values };
 }
