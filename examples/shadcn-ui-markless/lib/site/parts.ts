@@ -195,6 +195,16 @@ const viewCode: Part = {
 	},
 };
 
+// components/block-viewer.tsx's Refresh Preview: setIframeKey mounts the block's frame afresh, which loads its page again.
+const refreshPreview: Part = {
+	click(target) {
+		const frame = target.closest('button[title="Refresh Preview"]')?.closest('[data-view]')?.querySelector('iframe');
+		if (!frame) return false;
+		frame.src = frame.src;
+		return true;
+	},
+};
+
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
 // active. A page shown in place (or by Back) keeps the list where both pages have one, so the list is synced again then.
@@ -348,7 +358,14 @@ const chartFrame: Part = {
 		if (!(el instanceof HTMLIFrameElement) || !el.classList.contains('transition-opacity') || !(el.classList.contains('opacity-0') || el.classList.contains('opacity-100'))) return;
 		el.addEventListener('load', () => showFrame(el, true));
 		const loaded = frameLoaded(el);
-		if (loaded !== undefined) showFrame(el, loaded);
+		if (loaded) showFrame(el, true);
+		else if (loaded === false) {
+			// The old frame starts transparent: one captured shown goes there without fading out.
+			el.style.transition = 'none';
+			showFrame(el, false);
+			void getComputedStyle(el).opacity;
+			el.style.removeProperty('transition');
+		}
 	},
 };
 
@@ -374,4 +391,4 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];

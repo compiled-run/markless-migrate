@@ -12,8 +12,8 @@ import { registryModule } from '../src/convert/parts.ts';
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
 const SITE = join(import.meta.dirname, '..', 'examples', 'shadcn-ui-markless', 'lib', 'site', 'parts.ts');
-// Placement is not under test here; the ports only need @floating-ui/dom's functions to exist.
-const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
+// Placement is not under test here; the ports only need @floating-ui/dom's functions to exist (each reference placed against is noted).
+const FLOATING_STUB = `export const computePosition = async (reference) => ((globalThis.placedAgainst ??= []).push(reference?.id ?? ''), { x: 0, y: 0, placement: 'bottom', middlewareData: {} });
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
 
@@ -260,6 +260,21 @@ test('the site\'s D theme shortcut, a document listener on the old page, runs wi
 	await page.close();
 });
 
+test("another document's theme switch (the storage event next-themes' ThemeProvider listens for) applies here too", async () => {
+	const page = await open('<main>page</main>', ['site']);
+	await page.evaluate(() => {
+		localStorage.setItem('theme', 'dark');
+		window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: 'dark' }));
+	});
+	assert.deepEqual(await page.evaluate(() => [document.documentElement.classList.contains('dark'), document.documentElement.style.colorScheme]), [true, 'dark']);
+	await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'other', newValue: 'light' })));
+	assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), true, 'another key is not the theme');
+	await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: null })));
+	assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), 'a cleared theme is the default, the system one');
+	assert.equal(await page.evaluate(() => localStorage.getItem('theme')), 'system', 'stored again, as setTheme(defaultTheme) does');
+	await page.close();
+});
+
 test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base UI's useTypeahead stops it: the site's D shortcut does not see it", async () => {
 	const page = await open(
 		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
@@ -281,6 +296,40 @@ test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base
 	await page.keyboard.press('Escape');
 	await page.keyboard.press('d');
 	assert.equal(await themeFlips(page), 1, 'with the menu closed the shortcut answers');
+	await page.close();
+});
+
+test("a Base UI menu's radio and checkbox items keep it open when chosen (closeOnClick is false for them), a plain item closes it", async () => {
+	const page = await open(
+		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="dd"><div data-side="bottom" data-align="start" role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="dd" data-slot="dropdown-menu-content" data-closed><div role="menuitemradio" aria-checked="false" tabindex="-1">Inter</div><div role="menuitemcheckbox" aria-checked="false" tabindex="-1">Bold</div><div role="menuitem" tabindex="-1">Reset</div></div></div></div>`,
+		['base-ui/menu'],
+	);
+	const shown = () => page.evaluate(() => !(document.querySelector('[data-mm-layer="dd"]') as HTMLElement).hidden);
+	await page.locator('#dd').click();
+	assert.equal(await shown(), true);
+	await page.getByText('Inter').click();
+	assert.equal(await shown(), true, 'a radio item chosen with the pointer');
+	await page.getByText('Bold').click();
+	assert.equal(await shown(), true, 'a checkbox item chosen with the pointer');
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Inter');
+	await page.keyboard.press('Enter');
+	assert.equal(await shown(), true, 'a radio item chosen with Enter');
+	await page.getByText('Reset').click();
+	await page.waitForFunction(() => (document.querySelector('[data-mm-layer="dd"]') as HTMLElement).hidden, null, { timeout: 2000 });
+	await page.close();
+});
+
+test("a Base UI menu whose Positioner takes another anchor than its trigger (the portal names it) is placed against that element", async () => {
+	const page = await open(
+		`<main style="padding:100px"><div id="card"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></div></main>
+		<div data-base-ui-portal hidden data-mm-layer="dd" data-mm-anchor="card"><div data-side="top" data-align="center" role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="dd" data-slot="dropdown-menu-content" data-closed><div role="menuitemradio" aria-checked="false" tabindex="-1">Inter</div></div></div></div>`,
+		['base-ui/menu'],
+	);
+	await page.locator('#dd').click();
+	await page.waitForFunction(() => ((globalThis as { placedAgainst?: string[] }).placedAgainst ?? []).length > 0);
+	assert.deepEqual([...new Set(await page.evaluate(() => (globalThis as { placedAgainst?: string[] }).placedAgainst))], ['card']);
 	await page.close();
 });
 
@@ -586,6 +635,19 @@ test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s che
 	assert.deepEqual(await look(), ['lucide lucide-check', 'polyline:20 6 9 17 4 12', 'line:12 hidden'], 'the check is drawn, not just the terminal hidden');
 	await page.waitForTimeout(2100);
 	assert.deepEqual(await look(), ['lucide lucide-terminal', 'polyline:4 17 10 11 4 5', 'line:12']);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s frame again', async () => {
+	const page = await open(`<div id="sidebar-03" data-view="preview"><div><button data-slot="button" title="Refresh Preview"><span class="sr-only">Refresh Preview</span></button></div><iframe height="100"></iframe></div>`, ['site']);
+	let loads = 0;
+	await page.route('http://parts.test/frame/**', (route) => (loads++, route.fulfill({ contentType: 'text/html', body: '<p>block</p>' })));
+	await page.evaluate(() => (document.querySelector('iframe')!.src = '/frame/sidebar-03'));
+	await page.waitForFunction(() => document.querySelector('iframe')!.contentDocument?.querySelector('p'));
+	const before = loads;
+	await page.getByRole('button', { name: 'Refresh Preview' }).click();
+	await page.waitForTimeout(500);
+	assert.equal(loads, before + 1, 'setIframeKey mounts the frame afresh, which loads its page again');
 	await page.close();
 });
 
@@ -1137,6 +1199,26 @@ test('a press outside a Radix or Base UI select closes it with focus back on its
 	}
 });
 
+test('a Base UI select opened inside a Base UI drawer is part of it: choosing an option, whose list is portaled outside the drawer, leaves the drawer open', async () => {
+	const page = await open(
+		`<main><button type="button" id="code" data-slot="drawer-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false">Get Code</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="code"><div role="presentation" data-slot="drawer-viewport"><div role="dialog" tabindex="-1" data-slot="drawer-popup" data-swipe-direction="right" data-closed><button type="button" id="fw" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Next.js</span></button></div></div></div>
+		<div data-base-ui-portal hidden data-mm-layer="fw"><div data-side="bottom" data-align="end" role="presentation" style="position:absolute" data-closed><div tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox">${['Next.js', 'Vite'].map((f) => `<div role="option" aria-selected="${f === 'Next.js'}" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`,
+		['base-ui/dialog', 'base-ui/select'],
+		'body',
+	);
+	await page.getByText('Get Code').click();
+	await page.waitForTimeout(50);
+	await page.locator('#fw').click();
+	await page.locator('[role="option"]', { hasText: 'Vite' }).click();
+	await page.waitForTimeout(50);
+	assert.equal(await page.locator('[role="option"]', { hasText: 'Vite' }).getAttribute('aria-selected'), 'true');
+	assert.equal(await page.locator('[role="dialog"]').isVisible(), true, 'the drawer stays open');
+	await page.mouse.click(5, 790);
+	await page.waitForFunction(() => (document.querySelector('[data-mm-layer="code"]') as HTMLElement).hidden, null, { timeout: 2000 });
+	await page.close();
+});
+
 test('a Radix dropdown menu closed by a press outside returns focus to its trigger, as its modal FocusScope does', async () => {
 	const page = await open(
 		`<main style="padding:200px"><button type="button" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
@@ -1502,6 +1584,29 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.mouse.up();
 	await page.getByRole('button', { name: 'Undo' }).click();
 	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-removed') === 'true');
+	await page.close();
+});
+
+test('shadcn-ui site: a chart\'s frame captured shown but still loading when it is mounted goes transparent at once, without fading out', async () => {
+	const css = '<style>.transition-opacity{transition-property:opacity;transition-duration:300ms}.opacity-0{opacity:0}.opacity-100{opacity:1}</style>';
+	const page = await open(`${css}<div style="height:5000px"></div><iframe src="/frame/slow" class="w-full border-none transition-opacity duration-300 opacity-100" height="100" loading="lazy" title="chart"></iframe>`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg></svg>' });
+	});
+	await page.locator('iframe').scrollIntoViewIfNeeded();
+	await page.evaluate(() => {
+		const w = window as unknown as { faded: number; mountParts: (a: string) => void };
+		w.faded = 0;
+		document.querySelector('iframe')!.addEventListener('transitionrun', () => w.faded++);
+		w.mountParts('iframe[loading]');
+	});
+	await page.waitForTimeout(400);
+	assert.match(await page.locator('iframe').evaluate((f) => f.className), / opacity-0$/);
+	assert.equal(await page.evaluate(() => (window as unknown as { faded: number }).faded), 0, 'the old frame starts transparent: nothing fades out');
+	release();
 	await page.close();
 });
 

@@ -59,8 +59,17 @@ export function setTheme(theme: string, options: ThemeOptions): void {
 	apply(theme, options);
 }
 
-/** ThemeProvider's media query listener: with the system theme chosen, a change of the OS's scheme is applied. */
+/**
+ * ThemeProvider's listeners: another document of the site switching the theme (the storage event) switches it here, and
+ * with the system theme chosen a change of the OS's scheme is applied.
+ */
 export function watchSystemTheme(options: ThemeOptions): void {
+	window.addEventListener('storage', (event) => {
+		if (event.key !== options.storageKey) return;
+		// A cleared theme goes back to the default, stored again (setTheme); any other is only applied (setThemeState).
+		if (event.newValue) apply(event.newValue, options);
+		else setTheme(options.defaultTheme, options);
+	});
 	if (!options.enableSystem) return;
 	matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 		if (storedTheme(options) === 'system') apply('system', options);
