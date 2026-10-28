@@ -674,6 +674,19 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('a control listed as a download saves the file its use saved on the old page: name, type and content', async () => {
+	const page = await open(
+		`<div data-slot="code-block"><button aria-label="Download">D</button></div><template data-mm-download="button||D#0" data-mm-name="route.ts" data-mm-type="text/plain" data-mm-text="import { streamText } from &quot;ai&quot;"></template>`,
+		[],
+		'body',
+	);
+	const [saved] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download' }).click()]);
+	assert.equal(saved.suggestedFilename(), 'route.ts');
+	const path = await saved.path();
+	assert.equal(await readFile(path, 'utf8'), 'import { streamText } from "ai"');
+	await page.close();
+});
+
 test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
 	const page = await open('<main id="main"></main>', ['site'], 'body');
 	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
