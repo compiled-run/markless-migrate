@@ -8,9 +8,9 @@ const TRIGGER = '[data-slot="tooltip-trigger"]';
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-mm-key]:not([data-state]), [id]:not([data-state])', (slot) => /^tooltip-trigger$/.test(slot));
 const shown = new Map<HTMLElement, Popup>();
 
-function show(trigger: HTMLElement): boolean {
+function show(trigger: HTMLElement, portal?: HTMLElement): boolean {
 	if (shown.has(trigger)) return true;
-	const p = openPopup(trigger, { popupSelector: '[data-slot="tooltip-content"]', onDismiss: (x) => hide(x.trigger) });
+	const p = openPopup(trigger, { popupSelector: '[data-slot="tooltip-content"]', onDismiss: (x) => hide(x.trigger), ...(portal ? { portal, key: `rendered:${portal.id}` } : {}) });
 	if (!p) return false;
 	trigger.removeAttribute('aria-expanded');
 	shown.set(trigger, p);
@@ -49,4 +49,9 @@ export function focusout(target: Element): boolean {
 	hide(trigger);
 	return true;
 }
+/** A tooltip a site component renders itself (its portal in the page, hidden until shown). */
+export function showRendered(trigger: HTMLElement, portal: HTMLElement): boolean {
+	return show(trigger, portal);
+}
+export const hideRendered = hide;
 void popupOf;

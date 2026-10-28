@@ -1,4 +1,5 @@
 import { closePopup, openPopup, popupOf, type Popup } from './popup.ts';
+import { closesOnClick } from './menu.ts';
 
 // Base UI ContextMenu: a right press on the trigger area opens the menu at the pointer, focused; the menu port's item
 // rules (highlight, arrows, choosing closes) apply, and Escape or a press outside closes it.
@@ -33,6 +34,6 @@ export function click(target: Element): boolean {
 	const p = item && popupOf(item);
 	// A submenu's trigger opens its submenu (the menu port) instead of choosing.
 	if (!item || !p || p !== current || item.hasAttribute('data-disabled') || item.matches('[aria-haspopup="menu"]')) return false;
-	close(p);
+	if (closesOnClick(item)) close(p);
 	return true;
 }
