@@ -50,6 +50,14 @@ const CASES: Record<string, { old: string; new: string }> = {
 		new: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
 	},
 	scroller: { old: '', new: '' },
+	copy: {
+		old: page(`<div role="tabpanel" aria-label="pnpm" id="panel" style="animation-duration: 0s"><pre>pnpm add x</pre><button id="copy" aria-label="Copy"><svg width="16" height="16"><path d="M1 1h8v8H1z"/></svg></button></div>`, `document.getElementById('copy').addEventListener('click', (e) => { document.getElementById('panel').removeAttribute('style'); e.currentTarget.querySelector('svg').innerHTML = '<path d="M2 8l4 4 8-8"/>'; });`),
+		new: page(`<div role="tabpanel" aria-label="pnpm" id="panel"><pre>pnpm add x</pre><button id="copy" aria-label="Copy"><svg width="16" height="16"><path id="a" d="M1 1h8v8H1z"/><path id="b" d="M2 8l4 4 8-8" display="none"/></svg></button></div>`, `document.getElementById('copy').addEventListener('click', () => { document.getElementById('a').setAttribute('display', 'none'); document.getElementById('b').removeAttribute('display'); });`),
+	},
+	badge: {
+		old: page(`<button id="save">Save</button><p id="slot"></p>`, `document.getElementById('save').addEventListener('click', () => { document.getElementById('slot').innerHTML = '<span>Saved</span>'; });`),
+		new: page(`<button id="save">Save</button><p id="slot"><span class="badge">Saved</span></p>`, `document.getElementById('save').addEventListener('click', () => document.body.classList.add('saved'));`, '.badge { display: none } .saved .badge { display: inline }'),
+	},
 	bubble: {
 		old: page(`<label>Airplane mode <button role="switch" aria-checked="false" id="sw">Airplane mode</button></label><input type="checkbox" aria-hidden="true" tabindex="-1" style="position: absolute; opacity: 0; width: 1px; height: 1px">`, `document.getElementById('sw').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-checked') !== 'true'; e.currentTarget.setAttribute('aria-checked', String(on)); const i = document.querySelector('input'); if (on) i.setAttribute('checked', ''); else i.removeAttribute('checked'); });`),
 		new: page(`<label>Airplane mode <button role="switch" aria-checked="false" id="sw">Airplane mode</button></label><input type="checkbox" aria-hidden="true" tabindex="-1" style="position: absolute; opacity: 0; width: 1px; height: 1px">`, `document.getElementById('sw').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-checked') !== 'true'; e.currentTarget.setAttribute('aria-checked', String(on)); document.querySelector('input').checked = on; });`),
@@ -205,4 +213,12 @@ test('a switch whose hidden native input one side checks by attribute and the ot
 
 test('a textarea is named by its label, so what is typed into it does not rename it', async () => {
 	assert.deepEqual(checks(await check('notes', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 4, maxInputs: 2 })), []);
+});
+
+test('a Copy button that swaps its icon on one side and hides a path on the other, beside a panel that drops an animation-duration: the same answer', async () => {
+	assert.deepEqual(checks(await check('copy', { ...FAST, widths: [1280], maxUses: 2, maxKeys: 3 })), []);
+});
+
+test('a badge one side inserts and the other shows by a class on the body: the same region changes', async () => {
+	assert.deepEqual(checks(await check('badge', { ...FAST, widths: [1280], maxUses: 2, maxKeys: 3 })).filter((f) => f.startsWith('keyboard')), []);
 });

@@ -77,12 +77,14 @@ export function installParity(): void {
 		readonly url: string;
 		readonly openBefore: Set<Element>;
 		readonly checks: Map<HTMLInputElement, boolean>;
+		/** What is shown, element by element: a node hidden or shown by a style, a class or a selector changes the page as much as one added. */
+		readonly shown: Map<Element, boolean>;
 		firstInput?: number;
 	}
 	let armed: Armed | undefined;
 	const observe = (st: Armed, doc: Document) => st.observer.observe(doc, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
 	const startWatch = (el: Element): Armed => {
-		const st: Armed = { el, observer: undefined as unknown as MutationObserver, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(shownPopups()), checks: new Map([...document.querySelectorAll<HTMLInputElement>('input[type=checkbox], input[type=radio]')].map((i) => [i, i.checked])) };
+		const st: Armed = { el, observer: undefined as unknown as MutationObserver, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(shownPopups()), checks: new Map([...document.querySelectorAll<HTMLInputElement>('input[type=checkbox], input[type=radio]')].map((i) => [i, i.checked])), shown: new Map([...document.body.querySelectorAll('*')].slice(0, 30000).map((e) => [e, e.checkVisibility({ opacityProperty: true, visibilityProperty: true })])) };
 		(st as { observer: MutationObserver }).observer = new MutationObserver((records) => {
 			for (const rec of records) {
 				if (rec.type === 'attributes') {
@@ -225,7 +227,15 @@ export function installParity(): void {
 			st.observer.disconnect();
 			const affected = new Set<string>();
 			const flipped = [...st.checks].filter(([i, was]) => i.isConnected && i.checked !== was).map(([i]) => i.parentElement ?? i);
-			const changedAttrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? (el.getAttribute(n) ?? '') !== (v ?? '') : el.getAttribute(n) !== v))).map(([el]) => el));
+			// A style that differs only in animation or transition timing (Radix tabs drop animation-duration: 0s after mount) shows nothing new.
+			const motionless = (v: string | null) => (v ?? '').split(';').map((d) => d.trim()).filter((d) => d && !/^(animation|transition)/.test(d)).sort().join(';');
+			const changedAttrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? motionless(el.getAttribute(n)) !== motionless(v) : el.getAttribute(n) !== v))).map(([el]) => el));
+			for (const [e, before] of st.shown) {
+				if (!e.isConnected || e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) === before) continue;
+				if ((st.el !== document.body && (st.el === e || st.el.contains(e))) || [...st.openBefore].some((p) => p.contains(e)) || e.closest(`[${MARK}-prefix]`)) continue;
+				const host = e.parentElement ?? e;
+				if (host.checkVisibility()) affected.add(regionOf(host));
+			}
 			for (const el of flipped) if (st.el !== document.body && !(st.el === el || st.el.contains(el))) affected.add(regionOf(el));
 			for (const node of [...st.touched, ...changedAttrs]) {
 				const doc = node.ownerDocument ?? (node as Document);
