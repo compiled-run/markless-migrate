@@ -1,4 +1,5 @@
 import { layersFor, showCompanions } from '../reveal.ts';
+import { resetItems } from '../menu-checkable.ts';
 import { place, type BaseOptions } from './positioner.ts';
 import { enter, exit } from './transition.ts';
 import { raiseOver } from '../stacking.ts';
@@ -322,6 +323,8 @@ export function closePopup(p: Popup, returnFocus = true, keep = false, focus: Fo
 			if (p.backdrop) p.backdrop.hidden = true;
 		} else p.portal.hidden = true;
 		if (p.controls) p.trigger.removeAttribute('aria-controls');
+		// A menu's own item state unmounts with it.
+		if (p.popup.matches('[role="menu"]')) resetItems(p.popup);
 	});
 }
 

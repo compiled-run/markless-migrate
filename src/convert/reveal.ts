@@ -288,7 +288,7 @@ async function settleScroll(page: Page): Promise<void> {
 }
 
 /** Waits for what a gesture started: a short pause, then the requests it made and the animations it ran. */
-async function quiet(page: Page, ms: number): Promise<void> {
+export async function quiet(page: Page, ms: number): Promise<void> {
 	await page.waitForTimeout(ms);
 	await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
 	await finishAnimations(page).catch(() => {});
@@ -326,7 +326,7 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 	return (await bodyHash(page)) === baseline;
 }
 
-async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport) {
+export async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport) {
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, 300);
