@@ -31,7 +31,7 @@ function listControls() {
 	const nameOf = (el) => {
 		const by = el.getAttribute('aria-labelledby');
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
-		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...(el.labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const LAYOUT = 'header, nav, aside, footer, [role=banner], [role=navigation], [role=complementary], [role=contentinfo]';
 	const seen = new Map();
@@ -71,7 +71,7 @@ function arm(control) {
 	const nameOf = (el) => {
 		const by = el.getAttribute('aria-labelledby');
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
-		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...(el.labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const visible = [...document.querySelectorAll(SEL)].filter((el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !el.closest('[hidden], [inert], [aria-hidden=true]') && el.getBoundingClientRect().width >= 2);
 	// A calendar marks its build date's day "Today, …": the same day on the other side may lack the mark.
@@ -104,6 +104,8 @@ function arm(control) {
 		for (const rec of records) {
 			if (rec.type === 'attributes') {
 				if (rec.attributeName?.startsWith('data-dc-')) continue;
+				// React writes a hidden native input's checked and value as attributes, a port as properties: properties are read instead.
+				if (rec.target instanceof HTMLInputElement && (rec.attributeName === 'checked' || rec.attributeName === 'value')) continue;
 				const m = was.get(rec.target) ?? was.set(rec.target, new Map()).get(rec.target);
 				if (!m.has(rec.attributeName)) m.set(rec.attributeName, rec.oldValue);
 				continue;
@@ -133,7 +135,8 @@ function arm(control) {
 	};
 	requestAnimationFrame(tick);
 	const url = location.pathname + location.search;
-	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el, floating };
+	const checks = new Map([...document.querySelectorAll('input[type=checkbox], input[type=radio]')].map((i) => [i, i.checked]));
+	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el, floating, checks };
 	return { hit, hits, x: cx, y: cy };
 }
 
@@ -147,7 +150,7 @@ function read(prefix) {
 	const cnameOf = (el) => {
 		const by = el.getAttribute('aria-labelledby');
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
-		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...(el.labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const focusKey = () => {
 		const a = document.activeElement;
@@ -176,6 +179,7 @@ function read(prefix) {
 	const skip = [st.el, ...st.openBefore, ...(prefix ?? []).map((sel) => document.querySelector(sel)).filter(Boolean)];
 	const affected = new Set();
 	const attrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? (el.getAttribute(n) ?? '') !== (v ?? '') : el.getAttribute(n) !== v))).map(([el]) => el));
+	for (const [i, before] of st.checks ?? []) if (i.isConnected && i.checked !== before && !(st.el === i.parentElement || st.el.contains(i))) affected.add(regionOf(i.parentElement ?? i));
 	for (const node of [...st.touched, ...attrs]) {
 		const doc = node.ownerDocument ?? node;
 		if (doc !== document) {
@@ -212,7 +216,7 @@ function regionGrid(points) {
 	const nameOf = (el) => {
 		const by = el.getAttribute('aria-labelledby');
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
-		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...(el.labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const keyOf = (x, y) => {
 		const e = document.elementFromPoint(x, y);
