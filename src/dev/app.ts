@@ -5,8 +5,8 @@ import { join, relative, sep } from 'node:path';
 const LINKED = ['.markless-local'];
 /** The tools' caches under node_modules stay the dev app's own, so it never shares them with a build of the app; every package there is linked. */
 const OWN_CACHES = new Set(['.vite', '.nitro', '.cache', '.vite-plus', '.markless']);
-/** What it copies once: convert rewrites these in place. */
-const COPIED = ['package.json', 'tsconfig.json', 'markless-router-env.d.ts'];
+/** What it copies once: convert rewrites these in place (the Vite config only when the old app's source is given). */
+const COPIED = ['package.json', 'tsconfig.json', 'markless-router-env.d.ts', 'vite.config.ts', 'migrate-cache.ts'];
 /** The app's hand-written code, copied on every start and on each save: linked, Vite would load it from the app and its imports of `lib/parts` would reach the app's parts, not the dev app's. */
 export const SITE_DIR = 'lib/site';
 /** The config `vp dev` runs the dev app with: the app's own, and the folders its files really are in. */
@@ -14,7 +14,7 @@ export const DEV_CONFIG = 'vite.dev.config.ts';
 
 /**
  * Where the dev app's files really are: the dev app, the app, and its packages after every link (a node_modules linked
- * to another worktree, a package linked into a store). Vite serves and loads only files under `server.fs.allow`, and
+ * to another worktree, a package linked into pnpm's store, with the dependencies beside it there). Vite serves and loads only files under `server.fs.allow`, and
  * it resolves a package to its real path, so a package outside the app's folder failed to load in the dev server.
  */
 async function readableRoots(app: string, dev: string): Promise<string[]> {
@@ -28,7 +28,10 @@ async function readableRoots(app: string, dev: string): Promise<string[]> {
 		const entries = name.startsWith('@') ? (await readdir(join(modules, name)).catch(() => [])).map((n) => join(name, n)) : [name];
 		for (const entry of entries) {
 			const target = await realpath(join(modules, entry)).catch(() => undefined);
-			if (target && !within(target)) roots.add(target);
+			if (!target || within(target)) continue;
+			// The outermost node_modules it is in: a pnpm store keeps a package's own dependencies beside it there.
+			const store = target.indexOf(`${sep}node_modules${sep}`);
+			roots.add(store >= 0 ? target.slice(0, store + `${sep}node_modules`.length) : target);
 		}
 	}
 	return [...roots];
