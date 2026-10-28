@@ -205,6 +205,104 @@ const refreshPreview: Part = {
 	},
 };
 
+// components/component-preview-tabs.tsx's RTL preview: a LanguageProvider (Arabic first) around the example, whose
+// language selector sets the preview's dir and data-lang and the example's text from its translations table
+// (examples/<base>/*-rtl.tsx, extracted into rtl-translations.json by scripts/rtl-translations.ts). The example is told
+// by its text: the table whose Arabic strings the preview shows. Each node's first text is kept, so every language is
+// written from it: the table's strings, the direction and data-lang of what was marked Arabic.
+type RtlTable = Record<string, { readonly dir: 'ltr' | 'rtl'; readonly locale?: string; readonly values: Record<string, string> }>;
+const LANGUAGES: Record<string, string> = { English: 'en', 'Arabic (العربية)': 'ar', 'Hebrew (עברית)': 'he' };
+let rtlTables: Promise<Record<string, RtlTable>> | undefined;
+const loadTables = () => (rtlTables ??= import('./rtl-translations.json').then((m) => (m as { default: Record<string, RtlTable> }).default));
+const firstText = new WeakMap<Node, string>();
+const firstAttrs = new WeakMap<Element, Record<string, string | null>>();
+const RTL_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'dir', 'data-lang'] as const;
+const rtlTableOf = new WeakMap<Element, RtlTable | null>();
+
+function previewParts(preview: Element): Element[] {
+	// What the example opens is in the layers its controls name (a dialog, a menu), each keyed by the control's id or aria-controls.
+	const keys = new Set([...preview.querySelectorAll('[id], [aria-controls]')].flatMap((e) => [e.id, e.getAttribute('aria-controls') ?? ''].filter(Boolean)));
+	return [preview, ...[...document.querySelectorAll('[data-mm-layer]')].filter((l) => keys.has(l.getAttribute('data-mm-layer') ?? ''))];
+}
+
+function textNodes(root: Element): Text[] {
+	const out: Text[] = [];
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	for (let n = walker.nextNode(); n; n = walker.nextNode()) out.push(n as Text);
+	return out;
+}
+
+function chooseTable(tables: Record<string, RtlTable>, parts: readonly Element[]): RtlTable | undefined {
+	const shown = new Set(parts.flatMap((p) => textNodes(p).map((t) => (firstText.get(t) ?? t.data).trim())).filter(Boolean));
+	let best: RtlTable | undefined;
+	let score = 0;
+	for (const table of Object.values(tables)) {
+		const values = Object.values(table.ar?.values ?? {});
+		const hits = values.filter((v) => shown.has(v.trim())).length;
+		if (hits > score) [best, score] = [table, hits];
+	}
+	return best;
+}
+
+function writeLanguage(preview: Element, table: RtlTable | undefined, language: string): void {
+	const parts = previewParts(preview);
+	const target = table?.[language];
+	const dir = target?.dir ?? (language === 'en' ? 'ltr' : 'rtl');
+	const from = new Map<string, string>(Object.entries(table?.ar?.values ?? {}).map(([key, v]) => [v.trim(), target?.values[key] ?? v]));
+	// A string the example writes beside numbers ("{n} من {m} صف(وف) محدد."): each of the table's strings standing as words, longest first.
+	const words = [...from.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
+	const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const inside = words.length ? new RegExp(`(^|\\s)(${words.map(escape).join('|')})(?=\\s|$)`, 'gu') : undefined;
+	const translate = (text: string) => {
+		const key = text.trim();
+		const whole = from.get(key);
+		if (whole !== undefined) return text.replace(key, whole);
+		return inside ? text.replace(inside, (_, space: string, word: string) => space + (from.get(word) ?? word)) : text;
+	};
+	for (const part of parts) {
+		for (const node of textNodes(part)) {
+			if (!firstText.has(node)) firstText.set(node, node.data);
+			const next = translate(firstText.get(node)!);
+			if (node.data !== next) node.data = next;
+		}
+		for (const el of [part, ...part.querySelectorAll('*')]) {
+			const first = firstAttrs.get(el) ?? Object.fromEntries(RTL_ATTRS.map((a) => [a, el.getAttribute(a)]));
+			firstAttrs.set(el, first);
+			for (const name of ['placeholder', 'aria-label', 'title', 'alt'] as const) if (first[name] !== null) el.setAttribute(name, translate(first[name]!));
+			if (first.dir === 'rtl') el.setAttribute('dir', dir);
+			if (first['data-lang'] === 'ar') {
+				if (dir === 'rtl') el.setAttribute('data-lang', language);
+				else el.removeAttribute('data-lang');
+			}
+		}
+	}
+}
+
+const watchedSelectors = new WeakSet<Element>();
+function watchLanguage(selector: Element): void {
+	if (watchedSelectors.has(selector)) return;
+	watchedSelectors.add(selector);
+	const preview = selector.closest('[data-slot="component-preview"]')?.querySelector(':scope > [data-slot="preview"]');
+	const label = selector.querySelector('[data-slot="select-value"]');
+	if (!preview || !label) return;
+	let shown = 'ar';
+	new MutationObserver(() => {
+		const language = LANGUAGES[(label.textContent ?? '').trim()];
+		if (!language || language === shown) return;
+		shown = language;
+		void loadTables().then((tables) => {
+			if (!rtlTableOf.has(preview)) rtlTableOf.set(preview, chooseTable(tables, previewParts(preview)) ?? null);
+			writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+		});
+	}).observe(label, { childList: true, characterData: true, subtree: true });
+}
+const rtlWatch = (target: Element): boolean => {
+	const selector = target.closest('[data-slot="component-preview"]')?.querySelector('[data-name="language-selector"]');
+	if (selector) watchLanguage(selector);
+	return false;
+};
+const rtlPreview: Part = { pointerdown: rtlWatch, focusin: rtlWatch, keydown: rtlWatch };
+
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
 // active. A page shown in place (or by Back) keeps the list where both pages have one, so the list is synced again then.
@@ -391,4 +489,4 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
