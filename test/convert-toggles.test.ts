@@ -173,6 +173,16 @@ test('a Radix collapsible whose trigger renders its child (asChild, data-slot="b
 	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
 });
 
+test('a Radix collapsible content mounted while closed (forceMount) keeps its children shown and binds only data-state', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="collapsible-trigger" aria-controls="c1" aria-expanded="false" data-state="closed">Expand</button><div id="c1" data-slot="collapsible-content" data-state="closed" class="data-[state=closed]:max-h-64"><figure>code</figure></div></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div id="c1" data-slot="collapsible-content" class="data-\[state=closed\]:max-h-64" data-state=\{acc0 === 0 \? "open" : "closed"\}><figure>code<\/figure><\/div>/);
+	assert.doesNotMatch(out, /hidden=/);
+});
+
 test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) is still the shared one, shown in its at-rest look', async () => {
 	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
 	const marks: Record<string, string> = { '/a': '', '/b': ' aria-hidden="true" data-aria-hidden="true"', '/c': ' data-base-ui-inert=""' };
@@ -280,4 +290,23 @@ test('a sonner toaster renders its lists and toasts from one state, each control
 	assert.match(out, /<button data-slot="button" onClick=\{\(\) => sonnerAdd\(\{"id":"tst0","position":"top-center","gap":14,"visibleToasts":3,"expand":false,"hotkey":\["altKey","KeyT"\],"style":"--width: 356px; --gap: 14px;"\}, \{"view":1,"duration":4000,"dismissible":true,"promise":true,"style":"","phases":\[\{"at":0,"type":"loading","attrs":\{"tabindex":"0","data-sonner-toast":"","data-type":"loading"\}\}/);
 	assert.deepEqual(plan.bind(show)?.declare, ['let tst0 = state(SONNER_EMPTY);']);
 	assert.ok(plan.hosts(region));
+});
+
+test('a Base UI disclosure whose content holds disclosures of its own keeps that content in the page, shown while open, its own bound inside', async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-closed=""><button id="base-ui-a" aria-expanded="false" data-base-ui-collapsible-trigger="">components</button><div data-open="" id="base-ui-pa"><div data-closed=""><button id="base-ui-b" aria-expanded="false" data-base-ui-collapsible-trigger="">ui</button></div></div></div></body>');
+	const els = [...walk(body(doc))];
+	const outerTrigger = els.find((e) => attr(e, 'id') === 'base-ui-a')!;
+	const content = els.find((e) => attr(e, 'id') === 'base-ui-pa')!;
+	const innerTrigger = els.find((e) => attr(e, 'id') === 'base-ui-b')!;
+	const plan = new InsertedDisclosurePlan();
+	const groups = plan.add([
+		{ trigger: outerTrigger, parent: outerTrigger.parentNode as Element, before: null, markup: '', nodes: [content], panelId: 'base-ui-pa' },
+		{ trigger: innerTrigger, parent: innerTrigger.parentNode as Element, before: null, markup: '<div data-open="">button.tsx</div>', panelId: 'base-ui-pb' },
+	]);
+	assert.equal(groups, 2);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-open="" id="base-ui-pa" hidden=\{!\(ins0 \|\| ins0x\)\}>/);
+	assert.match(out, /<button id="base-ui-b" [^>]*aria-expanded=\{ins1 \? "true" : "false"\}/);
+	assert.match(out, /@if \(ins1 \|\| ins1x\) \{ <><div data-open="">button\.tsx<\/div><\/> \}/);
 });
