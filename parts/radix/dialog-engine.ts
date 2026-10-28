@@ -48,6 +48,22 @@ function animationName(el: HTMLElement): string {
 	return getComputedStyle(el).animationName || 'none';
 }
 
+// The old page's cmdk paints its first items with the dialog and the rest a frame later: here the groups past the first
+// screenful of items wait one paint the same way.
+const FIRST_FRAME_ITEMS = 20;
+
+function listAfterPaint(el: HTMLElement): void {
+	const later: [HTMLElement, string][] = [];
+	let items = 0;
+	for (const group of el.querySelectorAll<HTMLElement>('[cmdk-list] [cmdk-group]')) {
+		if (items >= FIRST_FRAME_ITEMS) later.push([group, group.style.display]);
+		items += group.querySelectorAll('[cmdk-item]').length;
+	}
+	if (!later.length) return;
+	for (const [group] of later) group.style.display = 'none';
+	requestAnimationFrame(() => setTimeout(() => later.forEach(([group, display]) => (group.style.display = display))));
+}
+
 // Radix Presence: an element leaving stays shown while an exit animation it did not have before runs, and is hidden when
 // that animation of its own ends or is cancelled.
 function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => void, onPresentChange?: (open: boolean) => void): void {
@@ -66,6 +82,7 @@ function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => vo
 		} else if (was === 'unmounted') {
 			forgetMarks(el);
 			portal(el);
+			listAfterPaint(el);
 			el.hidden = false;
 			p.prevAnimationName = animationName(el);
 			onMount();
