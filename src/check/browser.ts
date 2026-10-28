@@ -367,7 +367,9 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	await registerStructure();
 	const storageState = env.frontDoor ? withOldSession(env.storageState, env.frontDoor.storageState) : env.storageState;
 	// A visitor's browser lets a click write to the clipboard; headless Linux refuses unless asked, so both sides get the same grant.
-	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), permissions: ['clipboard-read', 'clipboard-write'], ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(env.colorScheme ? { colorScheme: env.colorScheme } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	// WebKit and Firefox know no clipboard permissions and refuse a context that asks for them.
+	const clipboard = browser.browserType().name() === 'chromium' ? ['clipboard-read', 'clipboard-write'] : [];
+	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), permissions: clipboard, ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(env.colorScheme ? { colorScheme: env.colorScheme } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
 	env.scope?.track(context);
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
