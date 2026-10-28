@@ -559,6 +559,18 @@ test('Interaction states: a pressable without data-rac gets none, a disabled Tex
 	await page.close();
 });
 
+test('Interaction states: a Group (an input group) is hovered with the field in it, each by its own useHover, and leaving clears both', async () => {
+	const page = await open('<div id="grp" data-slot="input-group" data-rac="" role="group" style="padding:20px;width:300px"><textarea id="gta" data-rac="" style="width:200px"></textarea></div><div id="away" style="height:100px"></div>');
+	await page.hover('#gta');
+	assert.deepEqual([await page.getAttribute('#grp', 'data-hovered'), await page.getAttribute('#gta', 'data-hovered')], ['true', 'true']);
+	await page.mouse.move(5, 5);
+	await page.hover('#grp', { position: { x: 5, y: 5 } });
+	assert.deepEqual([await page.getAttribute('#grp', 'data-hovered'), await page.getAttribute('#gta', 'data-hovered')], ['true', null], 'the group alone, over its padding');
+	await page.hover('#away');
+	assert.deepEqual([await page.getAttribute('#grp', 'data-hovered'), await page.getAttribute('#gta', 'data-hovered')], [null, null]);
+	await page.close();
+});
+
 test('PreviewTrigger: a hover opens the card after the trigger\'s own delay, leaving closes it after its close delay; the default waits 600 ms', async () => {
 	const page = await open(preview);
 	await page.mouse.move(2, 2);
