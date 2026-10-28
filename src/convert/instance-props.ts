@@ -27,6 +27,7 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
 	// Its Positioner's offsets as this instance gave them (an input with an icon addon moves its list by alignOffset).
 	{ port: 'base-ui/combobox', selector: '[data-slot="combobox-content"]', props: [{ name: 'alignOffset' }, { name: 'sideOffset' }], hints: ['data-slot="combobox-content"'], version: 2 },
+	{ port: 'react-aria/overlay', selector: '[data-rac][data-trigger][data-placement], [role="tooltip"][data-rac][data-placement]', props: [{ name: 'placement' }, { name: 'offset' }, { name: 'crossOffset' }], hints: ['data-rac', 'data-placement'] },
 ];
 
 /** Each spec as a mark of its own, so a spec that reads more takes again only the captures holding its hints. */

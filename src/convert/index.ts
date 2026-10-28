@@ -338,6 +338,8 @@ function placement(kept: readonly Element[]): string {
 // trigger's anchor point sat (--trigger-anchor-point: at the start, the middle or the end of --trigger-width); the
 // offsets are the source's where it renders the part with this element's data-slot.
 function racPlacement(el: Element, resolver: PartResolver): string {
+	// The instance's own placement and offsets, read off the old page (instance props), are the overlay's.
+	if (attr(el, 'data-mm-placement') !== undefined) return '';
 	const style = attr(el, 'style') ?? '';
 	const side = attr(el, 'data-placement') ?? 'bottom';
 	const [x = 0, y = 0] = (/--trigger-anchor-point:\s*(-?[\d.]+)px\s+(-?[\d.]+)px/.exec(style) ?? []).slice(1).map(Number);
