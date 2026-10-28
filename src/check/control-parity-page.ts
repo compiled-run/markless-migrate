@@ -22,7 +22,12 @@ export function installParity(): void {
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '');
 		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...((el as HTMLInputElement).labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
-	const shownControls = () => [...document.querySelectorAll(SEL)].filter((el) => visible(el) && el.getBoundingClientRect().width >= 2 && el.getBoundingClientRect().height >= 2);
+	// A copy kept mounted off to the side (a closed drawer's content) is hidden as much as one with display: none.
+	const shownControls = () =>
+		[...document.querySelectorAll(SEL)].filter((el) => {
+			const r = el.getBoundingClientRect();
+			return visible(el) && r.width >= 2 && r.height >= 2 && r.right > 0 && r.left < innerWidth;
+		});
 	const keyOf = (el: Element, among: readonly Element[]) => {
 		const role = roleOf(el), name = nameOf(el);
 		const nth = among.filter((o) => roleOf(o) === role && nameOf(o) === name).indexOf(el);
@@ -279,6 +284,26 @@ export function installParity(): void {
 				...(first ? { first: { ms: first.ms, opacity: Math.round(first.opacity * 100) / 100, transform: first.transform, anims: [...new Set(st.frames.flatMap((f) => f.anims))].sort() } } : {}),
 				...(anchor ? { anchor } : {}),
 			};
+		},
+		/** Resolves once a newly shown pop-up has finished its animations and held its place for two frames (up to 2 s). */
+		settle() {
+			const pop = shownPopups().find((p) => !armed?.openBefore.has(p));
+			if (!pop) return Promise.resolve();
+			const t0 = performance.now();
+			let last = '';
+			let still = 0;
+			return new Promise<void>((done) => {
+				const tick = () => {
+					const r = pop.getBoundingClientRect();
+					const at = `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
+					const moving = pop.getAnimations({ subtree: true }).some((a) => a.playState === 'running');
+					still = at === last && !moving ? still + 1 : 0;
+					last = at;
+					if (still >= 2 || performance.now() - t0 > 2000) done();
+					else requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			});
 		},
 		keep() {
 			const el = document.querySelector(`[${MARK}]`);

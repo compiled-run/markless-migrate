@@ -402,6 +402,8 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 			if (how.film && o.cdp) motion = (await filmed(o.cdp, () => act(o.page))).motion;
 			else await act(o.page);
 			await o.page.waitForTimeout(settleMs);
+			// Where a pop-up opens is read where it settles, not mid-slide; its motion is compared on its own.
+			await parity(o.page, 'settle').catch(() => {});
 			const read = await parity<Use>(o.page, 'read').catch(() => undefined);
 			const u = new URL(o.page.url());
 			const r: Use = read ?? { affected: [], url: u.pathname + u.search !== route ? u.pathname + u.search : '' };

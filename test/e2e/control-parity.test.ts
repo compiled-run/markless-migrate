@@ -50,6 +50,14 @@ const CASES: Record<string, { old: string; new: string }> = {
 		new: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
 	},
 	scroller: { old: '', new: '' },
+	slide: {
+		old: page(menuBody, menuScript(), '[role=menu] { transition: translate 700ms linear 80ms; translate: 0 0 } @starting-style { [role=menu] { translate: -300px 0 } }'),
+		new: page(menuBody, menuScript(), '[role=menu] { transition: translate 700ms linear; translate: 0 0 } @starting-style { [role=menu] { translate: -300px 0 } }'),
+	},
+	aside: {
+		old: page(`<button>Copy</button><button>Copy</button>`),
+		new: page(`<div style="position: fixed; left: 100%; top: 0"><button>Copy</button></div><button>Copy</button><button>Copy</button>`),
+	},
 	copy: {
 		old: page(`<div role="tabpanel" aria-label="pnpm" id="panel" style="animation-duration: 0s"><pre>pnpm add x</pre><button id="copy" aria-label="Copy"><svg width="16" height="16"><path d="M1 1h8v8H1z"/></svg></button></div>`, `document.getElementById('copy').addEventListener('click', (e) => { document.getElementById('panel').removeAttribute('style'); e.currentTarget.querySelector('svg').innerHTML = '<path d="M2 8l4 4 8-8"/>'; });`),
 		new: page(`<div role="tabpanel" aria-label="pnpm" id="panel"><pre>pnpm add x</pre><button id="copy" aria-label="Copy"><svg width="16" height="16"><path id="a" d="M1 1h8v8H1z"/><path id="b" d="M2 8l4 4 8-8" display="none"/></svg></button></div>`, `document.getElementById('copy').addEventListener('click', () => { document.getElementById('a').setAttribute('display', 'none'); document.getElementById('b').removeAttribute('display'); });`),
@@ -221,4 +229,12 @@ test('a Copy button that swaps its icon on one side and hides a path on the othe
 
 test('a badge one side inserts and the other shows by a class on the body: the same region changes', async () => {
 	assert.deepEqual(checks(await check('badge', { ...FAST, widths: [1280], maxUses: 2, maxKeys: 3 })).filter((f) => f.startsWith('keyboard')), []);
+});
+
+test('a pop-up both sides slide in along the same curve, one 80 ms later: its place is read where it settles', async () => {
+	assert.deepEqual(checks(await check('slide', { ...FAST, widths: [1280], anchorWidths: [1280], maxKeys: 0 })).filter((f) => f.startsWith('pop-up place')), []);
+});
+
+test('a copy of a control kept off to the side of the page (a closed drawer\'s) is not one of its namesakes', async () => {
+	assert.deepEqual(checks(await check('aside', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 0 })), []);
 });
