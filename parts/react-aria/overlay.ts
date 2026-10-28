@@ -130,6 +130,8 @@ export interface OpenOptions {
 	readonly onDismiss: (o: Overlay, reason: 'escape' | 'outside') => void;
 	/** Whether the trigger is marked aria-expanded and aria-controls (a tooltip's is not). */
 	readonly markTrigger?: boolean;
+	/** --trigger-width when it is not the anchor's own width (a ComboBox's: its input and button together). */
+	readonly triggerWidth?: () => number;
 	/** Runs once the overlay's content is in: at once, or when a served layer's file has filled its shell. */
 	readonly onReady?: (o: Overlay) => void;
 }
@@ -157,7 +159,7 @@ export function openOverlay(trigger: HTMLElement, key: string, options: OpenOpti
 			// Off a point (a context menu's pointer) the capture's alignment says only where its right click fell in the area.
 			const point = options.anchor !== undefined && !(options.anchor instanceof Element);
 			const placement = (point ? options.placement : undefined) ?? from.mmPlacement ?? options.placement ?? content.getAttribute('data-placement') ?? 'bottom';
-			o.cleanup.push(placeOverlay(options.anchor ?? trigger, content, { placement, offset: num(from.mmOffset, options.offset ?? 8), crossOffset: num(from.mmCrossOffset, options.crossOffset ?? 0) }));
+			o.cleanup.push(placeOverlay(options.anchor ?? trigger, content, { placement, offset: num(from.mmOffset, options.offset ?? 8), crossOffset: num(from.mmCrossOffset, options.crossOffset ?? 0), ...(options.triggerWidth ? { triggerWidth: options.triggerWidth } : {}) }));
 		}
 		for (const el of new Set([content, surface])) animate(el, 'data-entering');
 		options.onReady?.(o);
