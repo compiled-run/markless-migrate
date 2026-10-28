@@ -10,7 +10,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { captureBaseSubmenus, type Reveal } from '../src/convert/reveal.ts';
 
-const PAGE = `<!doctype html><html><body><button id="t" aria-haspopup="menu" aria-expanded="false">Open</button><script>
+const PAGE = `<!doctype html><html><body><div style="height:1500px"></div><button id="t" aria-haspopup="menu" aria-expanded="false">Open</button><script>
 const t = document.getElementById('t');
 let n = 0;
 const portal = (html) => { const p = document.createElement('div'); p.setAttribute('data-base-ui-portal', ''); p.innerHTML = '<div role="presentation">' + html + '</div>'; document.body.append(p); return p; };
@@ -20,10 +20,17 @@ t.addEventListener('click', () => {
 		+ '<div role="menuitem" id="base-ui-_r_' + m + 'a_" aria-haspopup="menu" aria-expanded="false">Invite users</div>'
 		+ '<div role="menuitem" id="base-ui-_r_' + m + 'b_" aria-haspopup="menu" aria-expanded="false" aria-disabled="true" data-disabled="">Disabled</div>'
 		+ '<div role="menuitem" id="base-ui-_r_' + m + 'c_" aria-haspopup="menu" aria-expanded="false">Share</div></div>');
+	// The first item the pointer reaches takes focus, which scrolls the page when the menu is at the viewport's edge:
+	// the trigger leaves the still pointer, and the submenu opens only if its trigger is still hovered 100 ms on.
+	let scrolled = false;
+	root.querySelector('[role="menu"]').addEventListener('pointermove', () => {
+		if (!scrolled) setTimeout(() => scrollBy(0, -150), 20);
+		scrolled = true;
+	});
 	for (const [k, text] of [['a', 'Email'], ['c', 'Link']]) {
 		const item = root.querySelector('#base-ui-_r_' + m + k + '_');
 		item.addEventListener('pointermove', () => setTimeout(() => {
-			if (item.getAttribute('aria-expanded') === 'true') return;
+			if (item.getAttribute('aria-expanded') === 'true' || !item.matches(':hover')) return;
 			item.setAttribute('aria-expanded', 'true');
 			const sub = portal('<div role="menu" data-nested="" id="_r_' + m + k + 'p_" aria-labelledby="' + item.id + '"><div role="menuitem">' + text + '</div></div>');
 			sub.dataset.sub = '';
@@ -57,7 +64,7 @@ test('captureBaseSubmenus: each enabled submenu trigger of a revealed Base UI me
 	const dir = await mkdtemp(join(tmpdir(), 'base-submenus-'));
 	try {
 		const recorded = '<div data-base-ui-portal=""><div role="presentation"><div role="menu" aria-labelledby="t"><div role="menuitem">Team</div><div role="menuitem" id="base-ui-_r_xa_" aria-haspopup="menu" aria-expanded="false">Invite users</div><div role="menuitem" id="base-ui-_r_xb_" aria-haspopup="menu" aria-expanded="false" aria-disabled="true" data-disabled="">Disabled</div><div role="menuitem" id="base-ui-_r_xc_" aria-haspopup="menu" aria-expanded="false">Share</div></div></div></div>';
-		const menu: Reveal = { key: 't', path: [0], sig: 'button||Open', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: recorded }] };
+		const menu: Reveal = { key: 't', path: [1], sig: 'button||Open', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: recorded }] };
 		const [marked, ...found] = await captureBaseSubmenus(browser, origin, '/', dir, [menu]);
 		assert.equal(marked!.key, 't');
 		assert.equal(marked!.added[0]!.html, recorded.replace('id="base-ui-_r_xa_"', 'id="base-ui-_r_xa_" data-mm-key="t-sub-0"').replace('id="base-ui-_r_xc_"', 'id="base-ui-_r_xc_" data-mm-key="t-sub-2"'));

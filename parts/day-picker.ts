@@ -100,6 +100,8 @@ export interface DayPickerView {
 	readonly rm?: boolean;
 	/** How many times the view changed, which tells a written view from one Markless has not applied yet. */
 	readonly n?: number;
+	/** What a date picker's field shows: the text typed into it, or null once a day is picked (the day in its pattern). */
+	readonly x?: string | null;
 }
 
 export interface DayModel {
@@ -163,6 +165,9 @@ export interface MonthModel {
 	readonly monthLabel: string;
 	readonly yearLabel: string;
 	readonly yearText: string;
+	/** The dropdowns' values, which React sets as each select's value whatever its options' selected attributes say. */
+	readonly monthValue: string;
+	readonly yearValue: string;
 	readonly weeks: readonly WeekModel[];
 }
 export interface DayPickerModel {
@@ -358,6 +363,33 @@ export function dayPickerLabel(config: DayPickerConfig, view: DayPickerView, pat
 	const days = view.s.filter((d): d is number => d !== null);
 	if (!days.length || (config.mode === 'range' && view.r === false)) return undefined;
 	return days.slice(0, 2).map((d) => format(lib, d, pattern)).join(join);
+}
+
+/** The view after `text` was typed into a date picker's field: the day `new Date(text)` reads selected and shown, if any. */
+export function dayPickerTyped(config: DayPickerConfig, read: DayPickerView, text: string, key: string): DayPickerView {
+	return dayPickerRead(config, read, text, key, new Date(text));
+}
+
+/** The view after `text` was typed into a date picker's field and read as `date` (none, or an invalid one, keeps the day). */
+export function dayPickerRead(config: DayPickerConfig, read: DayPickerView, text: string, key: string, date: Date | null): DayPickerView {
+	const view = latest(key, read);
+	const at = date ? date.getTime() : Number.NaN;
+	const typed = { ...view, x: text, u: true };
+	return write(key, view, Number.isNaN(at) ? typed : dayPickerSet(config, typed, { s: [{ at }], m: 'selected' }));
+}
+
+/** What a date picker's field shows: `initial` until it is used, then what was typed, or the picked day in `pattern`. */
+export function dayPickerField(config: DayPickerConfig, view: DayPickerView, pattern: string, initial: string): string {
+	if (view.x === undefined) return initial;
+	return view.x ?? dayPickerLabel(config, view, pattern) ?? '';
+}
+
+/** ArrowDown in a date picker's field opens its popover (the trigger marked `opener`), as the page's own handler does. */
+export function dayPickerFieldKey(event: KeyboardEvent, opener: string): void {
+	if (event.key !== 'ArrowDown') return;
+	event.preventDefault();
+	const trigger = document.querySelector<HTMLElement>(`[data-mm-field-opener="${opener}"]`);
+	if (trigger && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
 }
 
 /** Closes the layer a calendar was picked in, as a date picker that sets its popover's open state on select does. */
@@ -732,6 +764,8 @@ export function dayPickerModel(config: DayPickerConfig, view: DayPickerView): Da
 				monthLabel: monthLabel(cm.month),
 				yearLabel: yearOptions.length ? format(lib, cm.month, 'yyyy') : '',
 				yearText: format(lib, cm.month, 'yyyy'),
+				monthValue: String(lib.month(cm.month)),
+				yearValue: String(lib.year(cm.month)),
 				// DayPicker's keys: a week by its number, a day by its date and month (another month's cells are new ones).
 				weeks: cm.weeks.map((w) => ({
 					key: `w${w.number}`,
@@ -879,7 +913,7 @@ function step(config: DayPickerConfig, view: DayPickerView, action: DayPickerAct
 	switch (action.t) {
 		// A click also focuses the button (its focusin's write may not have landed yet: Markless applies writes per frame).
 		case 'day':
-			return select(config, { ...used, f: [action.n, action.m], d: [action.n, action.m] }, action.n);
+			return select(config, { ...used, f: [action.n, action.m], d: [action.n, action.m], x: null }, action.n);
 		case 'focus':
 			return { ...used, f: [action.n, action.m], d: [action.n, action.m] };
 		case 'blur': {

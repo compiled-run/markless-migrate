@@ -1,7 +1,11 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { Browser, Page } from 'playwright';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import type { Browser, Locator, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
@@ -52,8 +56,26 @@ export interface LayerOpener {
 	/** Its place among the elements of its tag and data-slot. */
 	readonly k: number;
 	readonly before: string;
-	readonly picks: readonly { readonly days: readonly Triple[]; readonly html: string; readonly open: boolean }[];
+	readonly picks: readonly { readonly days: readonly Triple[]; readonly html: string; readonly open: boolean; readonly value?: string }[];
+	/** The text field beside the trigger that shows the date (a date picker with an input), as the page used it. */
+	readonly field?: PickerField;
 }
+
+/** A date picker's text field: where it is, what it showed, and the calendar after each sample was typed into it. */
+export interface PickerField {
+	readonly sig: string;
+	readonly nth: number;
+	readonly value: string;
+	/** Whether ArrowDown in the field opened the trigger's layer. */
+	readonly opens?: boolean;
+	readonly typed: readonly { readonly text: string; readonly shown: string; readonly predicted: Triple | null; readonly selected: string | null; readonly caption: string | null; readonly echo?: readonly string[] }[];
+	/** The texts beside the field (outside its group), by place: one that shows the selected day echoes it. */
+	readonly leaves?: readonly { readonly sig: string; readonly nth: number }[];
+}
+
+// Typed into a date picker's field at capture, one keystroke at a time: dates in several forms, text no Date reads, and
+// phrases only a natural-language parser reads, which tell a field that reads with one from a field that reads with Date.
+const FIELD_SAMPLES = ['May 28, 2025', '2025-05-28', '05/28/2025', '28 May 2025', 'December 31, 2024', 'not a date', 'Feb 3 2026', 'tomorrow', 'in 3 days'];
 
 interface RawEffect {
 	readonly sig: string;
@@ -77,7 +99,7 @@ export const LATER = Date.UTC(2027, 4, 20, 12, 0, 0);
 export const BEHIND = 'America/Los_Angeles';
 
 // Bumped when what is read changes, so a cached read is taken again.
-const READ_VERSION = 8;
+const READ_VERSION = 13;
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`day-picker:${READ_VERSION}:${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Reads every DayPicker on a route at the capture clock and at LATER, and whether its keys move the browser's focus. */
@@ -147,6 +169,7 @@ async function openerPickers(page: Page, opener: { readonly sig: string; readonl
 	if (k < 0) return [];
 	const trigger = page.locator('[data-mm-opener]');
 	try {
+		const field = probe ? await page.evaluate(markField) : undefined;
 		await trigger.scrollIntoViewIfNeeded().catch(() => {});
 		await trigger.click({ timeout: 2000 });
 		await page.waitForTimeout(500);
@@ -173,16 +196,88 @@ async function openerPickers(page: Page, opener: { readonly sig: string; readonl
 			await page.waitForTimeout(400);
 			const html = await trigger.evaluate((e) => e.innerHTML);
 			const open = await trigger.evaluate((e) => e.getAttribute('aria-expanded') === 'true' || e.getAttribute('data-state') === 'open');
-			picks.push({ days: [...(picks.at(-1)?.days ?? []), day], html, open });
+			const value = field ? await page.locator('[data-mm-field]').inputValue() : undefined;
+			picks.push({ days: [...(picks.at(-1)?.days ?? []), day], html, open, ...(value !== undefined ? { value } : {}) });
 			if (!open) break;
 		}
-		return [{ ...own[0]!, movesFocus: focuses, opener: { sig: opener.sig, nth: opener.nth, k, before, picks } }];
+		const typed = field && count === 1 ? await typeField(page, trigger) : undefined;
+		return [{ ...own[0]!, movesFocus: focuses, opener: { sig: opener.sig, nth: opener.nth, k, before, picks, ...(field && typed ? { field: { sig: field.sig, nth: field.nth, value: field.value, ...(typed.opens ? { opens: true } : {}), typed: typed.typed, leaves: field.leaves } } : {}) } }];
 	} catch {
 		return [];
 	} finally {
 		await page.keyboard.press('Escape').catch(() => {});
 		await page.waitForTimeout(300);
-		await page.evaluate(() => document.querySelector('[data-mm-opener]')?.removeAttribute('data-mm-opener')).catch(() => {});
+		await page.evaluate(() => document.querySelectorAll('[data-mm-opener], [data-mm-field], [data-mm-leaf]').forEach((e) => ['data-mm-opener', 'data-mm-field', 'data-mm-leaf'].forEach((a) => e.removeAttribute(a)))).catch(() => {});
+	}
+}
+
+/** The one text field within a few levels of the marked trigger (outside it), marked: its signature, place and value. */
+function markField(): { sig: string; nth: number; value: string; leaves: { sig: string; nth: number }[] } | undefined {
+	const trigger = document.querySelector<HTMLElement>('[data-mm-opener]');
+	const text = (e: HTMLInputElement) => !['hidden', 'checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(e.type);
+	let at: HTMLElement | null = trigger;
+	for (let level = 0; at && level < 4; level++) {
+		at = at.parentElement;
+		const inputs = [...(at?.querySelectorAll<HTMLInputElement>('input') ?? [])].filter((e) => text(e) && !trigger!.contains(e));
+		if (!inputs.length) continue;
+		if (inputs.length > 1) return undefined;
+		const input = inputs[0]!;
+		const sigOf = (el: globalThis.Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+		const all = [...document.body.querySelectorAll('*')];
+		const placeOf = (el: globalThis.Element) => ({ sig: sigOf(el), nth: all.filter((e) => sigOf(e) === sigOf(el)).indexOf(el) });
+		input.setAttribute('data-mm-field', '');
+		const group = at!;
+		const leaves = [...(group.parentElement ?? group).querySelectorAll('*')].filter((e) => !group.contains(e) && !e.children.length && (e.textContent ?? '').trim());
+		leaves.forEach((e, i) => e.setAttribute('data-mm-leaf', String(i)));
+		return { ...placeOf(input), value: input.value, leaves: leaves.map(placeOf) };
+	}
+	return undefined;
+}
+
+/** Each sample typed into the marked field with the layer closed, then the layer opened: what its calendar selected and showed. */
+async function typeField(page: Page, trigger: Locator): Promise<{ typed: PickerField['typed']; opens: boolean } | undefined> {
+	const input = page.locator('[data-mm-field]');
+	// Base UI's trigger can keep aria-expanded="false" while its popover is open: the calendar in a layer says it.
+	const isOpen = () => page.evaluate(() => (window as unknown as { __mmPickerRoots: () => HTMLElement[] }).__mmPickerRoots().some((r) => r.closest('[data-radix-popper-content-wrapper], [data-base-ui-portal]') && r.checkVisibility()));
+	const close = async () => {
+		if (!(await isOpen())) return;
+		await page.keyboard.press('Escape');
+		await page.waitForTimeout(300);
+	};
+	const typed: PickerField['typed'][number][] = [];
+	try {
+		for (const text of FIELD_SAMPLES) {
+			await close();
+			await input.click({ timeout: 2000 });
+			await page.keyboard.press('ControlOrMeta+a');
+			await page.keyboard.type(text, { delay: 15 });
+			await page.waitForTimeout(200);
+			const shown = await input.inputValue();
+			// What the page's own reading would select: the last prefix typed that a Date reads, in the page's time zone.
+			const predicted = await page.evaluate((text) => {
+				let last: Date | undefined;
+				for (let i = 1; i <= text.length; i++) {
+					const d = new Date(text.slice(0, i));
+					if (!Number.isNaN(d.getTime())) last = d;
+				}
+				return last ? ([last.getFullYear(), last.getMonth(), last.getDate()] as [number, number, number]) : null;
+			}, text);
+			await trigger.click({ timeout: 2000 });
+			await page.waitForTimeout(500);
+			const read = await page.evaluate(() => {
+				const root = (window as unknown as { __mmPickerRoots: () => HTMLElement[] }).__mmPickerRoots().find((r) => r.closest('[data-radix-popper-content-wrapper], [data-base-ui-portal]'));
+				return { selected: root?.querySelector('td[data-selected="true"]')?.getAttribute('data-day') ?? null, caption: root?.querySelector('[role="grid"]')?.getAttribute('aria-label') ?? null };
+			});
+			const echo = await page.evaluate(() => [...document.querySelectorAll('[data-mm-leaf]')].map((e) => (e.textContent ?? '').trim()));
+			typed.push({ text, shown, predicted, ...read, echo });
+		}
+		await close();
+		await input.focus();
+		await page.keyboard.press('ArrowDown');
+		await page.waitForTimeout(400);
+		return { typed, opens: await isOpen() };
+	} catch {
+		return undefined;
 	}
 }
 
@@ -857,7 +952,7 @@ function template(root: Element, ui: Readonly<Record<string, string>>, config: D
 						const options = `@for (const o of ${month}.${years ? 'yearOptions' : 'monthOptions'}; key o.key) { ${shell(option, { omit: ['value', 'disabled', 'selected'], extra: ['value={o.value}', 'disabled={o.disabled}', 'selected={o.selected}'], children: '{o.label}' })} }`;
 						const label = elementChildren(part).find((e) => e !== select);
 						const chevron = label ? elementChildren(label)[0] : undefined;
-						inner.push(shell(part, { children: shell(select, { children: options }) + (label ? shell(label, { children: `{${month}.${years ? 'yearLabel' : 'monthLabel'}}${chevron ? emitElement(chevron) : ''}` }) : '') }));
+						inner.push(shell(part, { children: shell(select, { omit: ['value'], extra: [`value={${month}.${years ? 'yearValue' : 'monthValue'}}`], children: options }) + (label ? shell(label, { children: `{${month}.${years ? 'yearLabel' : 'monthLabel'}}${chevron ? emitElement(chevron) : ''}` }) : '') }));
 					} else if (elementChildren(part).length === 0) inner.push(shell(part, { children: config.caption === 'dropdown-years' ? `{${month}.monthLabel}` : `{${month}.yearText}` }));
 					else return undefined;
 				}
@@ -939,6 +1034,17 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 export class DayPickerPlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
+	/** The old app's folder, whose own chrono-node reads a field's samples as its page did. */
+	private readonly source?: string;
+	constructor(source?: string) {
+		this.source = source;
+	}
+	/** Whether a field reads typed text with chrono-node: its module is then imported, and the app depends on the old app's version. */
+	chrono?: string;
+
+	private chronoReads(captured: CapturedPickers, opener: LayerOpener): () => readonly (Triple | null)[] | undefined {
+		return () => (this.source && opener.field ? chronoReads(this.source, opener.field.typed.map((t) => t.text), captured.at) : undefined);
+	}
 	private readonly configs = new Map<string, DayPickerConfig>();
 	readonly notes: string[] = [];
 
@@ -1104,8 +1210,11 @@ export class DayPickerPlan {
 		const v = `${holder}.v`;
 		const closes = raw.opener.picks.some((p) => !p.open);
 		// The trigger's label is learned on the whole locale, and its pattern's names are kept in the calendar's.
-		const label = known?.label ?? labelOf(raw.opener, asCaptured(configOf(raw, captured.later[i], () => {}, captured.behind?.[i])));
-		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, label?.pattern ?? '', (c) => `(${holder}.v ?? dayPickerView(${c}))`);
+		const whole = asCaptured(configOf(raw, captured.later[i], () => {}, captured.behind?.[i]));
+		const label = known?.label ?? labelOf(raw.opener, whole);
+		const field = raw.opener.field ? fieldOf(raw.opener, whole, this.chronoReads(captured, raw.opener)) : undefined;
+		const keep = [label?.pattern, typeof field === 'object' ? field.pattern : undefined].filter(Boolean).join(' ');
+		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, keep, (c) => `(${holder}.v ?? dayPickerView(${c}))`);
 		if (!planned) return undefined;
 		if (!known) {
 			this.shared.push(`export const dpShared${k} = shared(() => {\n\tconst view = state<{ v: DayPickerView | null }>({ v: null });\n\treturn view;\n});`);
@@ -1129,13 +1238,14 @@ export class DayPickerPlan {
 	 * days picked on it) where a day is picked, its own children before. Undefined when the pattern is not one of date-fns's
 	 * this knows, or nothing changed.
 	 */
-	opener(route: string, trigger: Element, opener: { readonly sig: string; readonly nth: number }): Binding | undefined {
+	opener(route: string, trigger: Element, opener: { readonly sig: string; readonly nth: number; readonly field?: PickerField }): Binding | undefined {
 		const known = this.openers.get(`${route}|${opener.sig}#${opener.nth}`);
 		if (!known) return undefined;
 		const { k, c } = known;
 		const learned = known.label;
 		if (!learned) {
-			this.notes.push(`${route} date picker ${opener.sig}: its label's pattern is not one this knows`);
+			// A trigger beside a field shows no date: the field does.
+			if (!opener.field) this.notes.push(`${route} date picker ${opener.sig}: its label's pattern is not one this knows`);
 			return undefined;
 		}
 		const holder = `dps${k}`;
@@ -1148,6 +1258,136 @@ export class DayPickerPlan {
 		return binding;
 	}
 
+
+	/**
+	 * A date picker's text field, on the view its calendar shares: what is typed selects the day `new Date` reads (where
+	 * the capture showed the page doing so for every sample), a pick writes the day in the pattern the page wrote it in,
+	 * and ArrowDown opens the popover where it did.
+	 */
+	field(route: string, captured: CapturedPickers, input: Element, trigger: Element, opener: LayerOpener, locate: (sig: string, nth: number) => Element | undefined): Binding | undefined {
+		const known = this.openers.get(`${route}|${opener.sig}#${opener.nth}`);
+		const field = opener.field;
+		if (!known || !field) return undefined;
+		const learned = fieldOf(opener, known.config, this.chronoReads(captured, opener));
+		if (typeof learned === 'string') {
+			this.notes.push(`${route} date picker ${opener.sig}: its field is not ported: ${learned}`);
+			return undefined;
+		}
+		const { k, c } = known;
+		const holder = `dps${k}`;
+		const view = `(${holder}.v ?? dayPickerView(${c}))`;
+		const id = JSON.stringify(`${route}#${k}`);
+		const pattern = JSON.stringify(learned.pattern);
+		const text = '(event.target as HTMLInputElement).value';
+		const read = learned.parser === 'chrono' ? `const text = ${text}; chronoDate(text, (date) => { ${holder}.v = dayPickerRead(${c}, ${view}, text, ${id}, date); });` : `${holder}.v = dayPickerTyped(${c}, ${view}, ${text}, ${id});`;
+		if (learned.parser === 'chrono') {
+			this.chrono = chronoVersion(this.source!);
+			this.notes.push(`${route} date picker ${opener.sig}: its field reads typed text with chrono-node ${this.chrono}, loaded once the page is idle or the field is focused`);
+		}
+		const binding: Binding = {
+			declare: [`const ${holder} = dpShared${k}();`],
+			omit: ['value'],
+			extra: [
+				`value={dayPickerField(${c}, ${view}, ${pattern}, ${JSON.stringify(field.value)})}`,
+				`onInput={(event) => { ${read} }}`,
+				...(field.opens ? [`onKeyDown={(event) => { dayPickerFieldKey(event, ${JSON.stringify(`dpf${k}`)}); }}`] : []),
+				...(learned.parser === 'chrono' ? ['onFocus={() => loadChrono()}', 'onIdle={() => loadChrono()}'] : []),
+			],
+		};
+		this.bindings.set(input, mergeBindings(this.bindings.get(input), binding)!);
+		if (field.opens) this.bindings.set(trigger, mergeBindings(this.bindings.get(trigger), { extra: [`data-mm-field-opener="dpf${k}"`] })!);
+		// Text beside the field that shows the selected day (a sentence naming it) follows the same view.
+		for (const i of learned.echoes) {
+			const place = field.leaves?.[i];
+			const echo = place && locate(place.sig, place.nth);
+			if (echo) this.bindings.set(echo, mergeBindings(this.bindings.get(echo), { declare: [`const ${holder} = dpShared${k}();`], children: `{dayPickerLabel(${c}, ${view}, ${pattern}) ?? ""}` })!);
+		}
+		return binding;
+	}
+}
+
+/** The old app's chrono-node version, as its own package declares it. */
+function chronoVersion(source: string): string {
+	// Its exports map hides package.json: the folder above the entry that holds chrono-node's own.
+	let dir = dirname(createRequire(join(source, 'package.json')).resolve('chrono-node'));
+	for (;;) {
+		const manifest = join(dir, 'package.json');
+		if (existsSync(manifest)) {
+			const { name, version } = JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string; version: string };
+			if (name === 'chrono-node') return version;
+		}
+		if (dirname(dir) === dir) throw new Error('chrono-node has no package.json');
+		dir = dirname(dir);
+	}
+}
+
+/**
+ * What the old app's chrono-node reads for each text typed one keystroke at a time (the last prefix it reads), on the
+ * capture's clock and time zone; undefined when the app has no chrono-node.
+ */
+export function chronoReads(source: string, texts: readonly string[], at: number, timezone = DEFAULT_FREEZE.timezone): readonly (Triple | null)[] | undefined {
+	let entry: string;
+	try {
+		entry = createRequire(join(source, 'package.json')).resolve('chrono-node');
+	} catch {
+		return undefined;
+	}
+	if (!existsSync(entry)) return undefined;
+	const script = `const { parseDate } = await import(${JSON.stringify(pathToFileURL(entry).href)});
+const [texts, at] = JSON.parse(process.argv[1]);
+console.log(JSON.stringify(texts.map((text) => { let last = null; for (let i = 1; i <= text.length; i++) { const d = parseDate(text.slice(0, i), new Date(at)); if (d) last = [d.getFullYear(), d.getMonth(), d.getDate()]; } return last; })));`;
+	const out = execFileSync(process.execPath, ['--input-type=module', '-e', script, JSON.stringify([texts, at])], { encoding: 'utf8', env: { ...process.env, TZ: timezone } });
+	return JSON.parse(out) as (Triple | null)[];
+}
+
+/** How a date picker's field reads typed text and writes a picked day, and which texts beside it show the selected day. */
+export interface LearnedField {
+	readonly pattern: string;
+	/** `date`: new Date(text); `chrono`: chrono-node's parseDate(text). */
+	readonly parser: 'date' | 'chrono';
+	readonly echoes: readonly number[];
+}
+
+/**
+ * The field's reading, when every sample the capture typed selected the day `new Date` reads (else, given `chrono`, the
+ * day the old app's chrono-node reads), and the pattern a pick wrote it in; or why not.
+ */
+export function fieldOf(opener: LayerOpener, config: DayPickerConfig, chrono?: () => readonly (Triple | null)[] | undefined): LearnedField | string {
+	const field = opener.field!;
+	if (field.typed.length < FIELD_SAMPLES.length) return 'not every sample was typed';
+	const isoOf = (t: Triple) => `${t[0]}-${String(t[1] + 1).padStart(2, '0')}-${String(t[2]).padStart(2, '0')}`;
+	const check = (predicted: (i: number) => Triple | null): string | undefined => {
+		let selected: string | null | undefined;
+		for (const [i, t] of field.typed.entries()) {
+			if (t.shown !== t.text) return `typing "${t.text}" left "${t.shown}" in it`;
+			const p = predicted(i);
+			const iso = p ? isoOf(p) : selected;
+			if (iso !== undefined && t.selected !== iso) return `typing "${t.text}" selected ${t.selected}, not ${iso ?? 'nothing'}`;
+			selected = t.selected;
+		}
+		return undefined;
+	};
+	let parser: LearnedField['parser'] = 'date';
+	const byDate = check((i) => field.typed[i]!.predicted);
+	if (byDate) {
+		const reads = chrono?.();
+		if (!reads || check((i) => reads[i] ?? null)) return byDate;
+		parser = 'chrono';
+	}
+	const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+	const picks = opener.picks.filter((p) => p.value !== undefined);
+	if (!picks.length) return 'no pick wrote it';
+	const label = labelOf({ ...opener, before: '', picks: picks.map((p) => ({ ...p, html: escape(p.value!) })) }, config);
+	if (!label || label.join !== LABEL_JOINS[0]) return 'what a pick wrote is in no pattern this knows';
+	const shown = (iso: string) => {
+		const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+		return dayPickerLabel(config, { t: 0, m: 0, s: [Math.round(Date.UTC(y, m - 1, d) / 86_400_000)], f: null, lf: null }, label.pattern);
+	};
+	const echoes = (field.leaves ?? []).flatMap((_, i) => {
+		const seen = field.typed.filter((t) => t.selected && t.echo);
+		return seen.length > 1 && new Set(seen.map((t) => t.echo![i])).size > 1 && seen.every((t) => t.echo![i] === shown(t.selected!)) ? [i] : [];
+	});
+	return { pattern: label.pattern, parser, echoes };
 }
 
 const textContent = (el: Element): string => childrenOf(el).map((n) => (isText(n) ? (n as Text).value : isElement(n) ? textContent(n) : '')).join('');

@@ -13,7 +13,7 @@ export interface TableSpec {
 	readonly features: Readonly<Record<string, unknown>>;
 	readonly data: readonly Readonly<Record<string, Json>>[];
 	readonly rowIds: readonly string[];
-	readonly columns: readonly { readonly id: string; readonly accessor: boolean; readonly def: Readonly<Record<string, Json>> }[];
+	readonly columns: readonly { readonly id: string; readonly accessor: boolean; readonly def: Readonly<Record<string, unknown>> }[];
 	readonly options: Readonly<Record<string, Json>>;
 }
 
@@ -37,9 +37,14 @@ export interface TableView {
 		readonly allSel: Selection;
 		/** Whether the page shows no row. */
 		readonly empty: boolean;
+		/** Whether any column is filtered. */
+		readonly filtering: boolean;
 	};
-	/** Each column's sort direction ('' when unsorted) and whether it is shown. */
-	readonly c: Readonly<Record<string, { readonly s: string; readonly v: boolean }>>;
+	/**
+	 * Each column's sort direction ('' when unsorted), whether it is shown, the text of its filter, the values its filter
+	 * list holds, and how many rows hold each value among those the other columns' filters keep.
+	 */
+	readonly c: Readonly<Record<string, { readonly s: string; readonly v: boolean; readonly f: string; readonly fs: readonly Json[]; readonly u: Readonly<Record<string, number>> }>>;
 }
 
 export type TableAction =
@@ -49,7 +54,17 @@ export type TableAction =
 	/** Selects or clears the page's rows or every row (`pageOn`, `allOn`, `pageOff`, `allOff`), by how many of the page's are. */
 	| { readonly k: 'select'; readonly next: Readonly<Record<string, string>> }
 	| { readonly k: 'vis'; readonly c: string }
-	| { readonly k: 'page'; readonly d: number };
+	| { readonly k: 'clear' }
+	| { readonly k: 'facet'; readonly c: string; readonly v: Json }
+	| { readonly k: 'facetClear'; readonly c: string }
+	| { readonly k: 'pageSize'; readonly n: number }
+	| { readonly k: 'page'; readonly d: number }
+	| { readonly k: 'page'; readonly to: 'first' | 'last' }
+	/** Sets a value a row's own control keeps (its select's shown value): the row's `c<c>`. */
+	| { readonly k: 'cell'; readonly r: string; readonly c: number; readonly v: string };
+
+// What rows' own controls set, by row id and value index: kept in the table's state beside table-core's own keys.
+const CELLS = 'mmCells';
 
 // No subscriptions: Markless re-derives the view when the state changes, so atoms only hold values.
 const REACTIVITY = {
@@ -131,7 +146,7 @@ export function ttView(spec: TableSpec, state: TableState, cells?: Cells): Table
 	const pagination = state.pagination as { pageIndex?: number } | undefined;
 	const has = (name: string) => typeof t[name] === 'function';
 	const view: TableView = {
-		rows: rows.map((r) => ({ ...Object.fromEntries((cells?.[r.id as string] ?? []).map((value, i) => [`c${i}`, value])), id: r.id as string, sel: has('getSelectedRowModel') ? (r.getIsSelected() as boolean) : false })),
+		rows: rows.map((r) => ({ ...Object.fromEntries((cells?.[r.id as string] ?? []).map((value, i) => [`c${i}`, value])), ...Object.fromEntries(Object.entries(((state[CELLS] ?? {}) as Record<string, Record<string, string>>)[r.id as string] ?? {}).map(([i, value]) => [`c${i}`, value])), id: r.id as string, sel: has('getSelectedRowModel') ? (r.getIsSelected() as boolean) : false })),
 		q: {
 			filteredSelected: has('getFilteredSelectedRowModel') ? t.getFilteredSelectedRowModel().rows.length : 0,
 			selected: has('getSelectedRowModel') ? t.getSelectedRowModel().rows.length : 0,
@@ -146,8 +161,9 @@ export function ttView(spec: TableSpec, state: TableState, cells?: Cells): Table
 			pageSel: has('getIsAllPageRowsSelected') ? selection(t.getIsAllPageRowsSelected(), t.getIsSomePageRowsSelected()) : 'none',
 			allSel: has('getIsAllRowsSelected') ? selection(t.getIsAllRowsSelected(), t.getIsSomeRowsSelected()) : 'none',
 			empty: rows.length === 0,
+			filtering: ((state.columnFilters ?? []) as unknown[]).length > 0,
 		},
-		c: Object.fromEntries((t.getAllLeafColumns() as Table[]).map((c) => [c.id as string, { s: (typeof c.getIsSorted === 'function' && (c.getIsSorted() as string | false)) || '', v: typeof c.getIsVisible === 'function' ? (c.getIsVisible() as boolean) : true }])),
+		c: Object.fromEntries((t.getAllLeafColumns() as Table[]).map((c) => [c.id as string, { s: (typeof c.getIsSorted === 'function' && (c.getIsSorted() as string | false)) || '', v: typeof c.getIsVisible === 'function' ? (c.getIsVisible() as boolean) : true, f: typeof c.getFilterValue === 'function' && typeof c.getFilterValue() === 'string' ? (c.getFilterValue() as string) : '', fs: typeof c.getFilterValue === 'function' && Array.isArray(c.getFilterValue()) ? (c.getFilterValue() as Json[]) : [], u: typeof c.getFacetedUniqueValues === 'function' ? Object.fromEntries(c.getFacetedUniqueValues() as Map<string, number>) : {} }])),
 	};
 	views.set(spec, { state, ...(cells ? { cells } : {}), view });
 	return view;
@@ -155,6 +171,10 @@ export function ttView(spec: TableSpec, state: TableState, cells?: Cells): Table
 
 /** The state after a control's use, as the old page's handler changed it through the table's API. */
 export function ttAct(spec: TableSpec, state: TableState, action: TableAction): TableState {
+	if (action.k === 'cell') {
+		const kept = (state[CELLS] ?? {}) as Record<string, Record<string, string>>;
+		return { ...state, [CELLS]: { ...kept, [action.r]: { ...kept[action.r], [action.c]: action.v } } };
+	}
 	const own = instanceOf(spec, state);
 	const t = own.table;
 	t.getRowModel();
@@ -180,11 +200,29 @@ export function ttAct(spec: TableSpec, state: TableState, action: TableAction): 
 			else if (to === 'allOff') t.setRowSelection({});
 			break;
 		}
+		case 'clear':
+			t.resetColumnFilters();
+			break;
+		// DataTableFacetedFilter: a value toggles in the column's filter list, and an empty list is no filter.
+		case 'facet': {
+			const column = t.getColumn(action.c);
+			const was = Array.isArray(column.getFilterValue()) ? (column.getFilterValue() as Json[]) : [];
+			const next = was.includes(action.v) ? was.filter((x) => x !== action.v) : [...was, action.v];
+			column.setFilterValue(next.length ? next : undefined);
+			break;
+		}
+		case 'facetClear':
+			t.getColumn(action.c).setFilterValue(undefined);
+			break;
+		case 'pageSize':
+			t.setPageSize(action.n);
+			break;
 		case 'vis':
 			t.getColumn(action.c).toggleVisibility();
 			break;
 		case 'page':
-			if (action.d === -1) t.previousPage();
+			if ('to' in action) t.setPageIndex(action.to === 'first' ? 0 : t.getPageCount() - 1);
+			else if (action.d === -1) t.previousPage();
 			else if (action.d === 1) t.nextPage();
 			else t.setPageIndex((old: number) => old + action.d);
 			break;
@@ -196,5 +234,11 @@ export function ttAct(spec: TableSpec, state: TableState, action: TableAction): 
 	t.getRowModel();
 	if (Object.keys(own.pending).length) next = { ...next, ...own.pending };
 	own.pending = {};
+	// A row that leaves the page unmounts on the old page: what its own controls kept starts over when it comes back.
+	const kept = next[CELLS] as Record<string, Json> | undefined;
+	if (kept) {
+		const shown = new Set((t.getRowModel().rows as Table[]).map((r) => r.id as string));
+		next = { ...next, [CELLS]: Object.fromEntries(Object.entries(kept).filter(([id]) => shown.has(id))) };
+	}
 	return next;
 }

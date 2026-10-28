@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -15,7 +15,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
-import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
@@ -23,7 +23,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -38,7 +38,7 @@ import { usedStylesheets } from './used-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
-import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
+import { keepRouting, nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { componentImport, componentName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
@@ -71,10 +71,12 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
+	const chronoNames = ['chronoDate', 'loadChrono'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (chronoNames.length) out = out.replace('\n', `\nimport { ${chronoNames.join(', ')} } from '${dir}/chrono-date.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
 	const racCalendar = ['racCalendarView', 'racCalendarModel', 'racCalendarEvent', 'racCalendarWake', 'racDateLabel'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -129,7 +131,8 @@ export default defineConfig({
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
 		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],${traceConfig(packages)}
 	},
-	plugins: [markless(), router()],
+	// \`markless-migrate dev\` turns off the dev server's execution log: it writes <html> attributes on every interaction.
+	plugins: [markless(process.env.MARKLESS_MIGRATE_DEV ? { executionLog: 'never' } : {}), router()],
 });
 `;
 
@@ -148,12 +151,16 @@ export interface ConvertOptions {
 	readonly only?: readonly string[];
 	/** For a preview of some pages: the old deployment that answers every page not converted. */
 	readonly fallthrough?: string;
+	/** A deployment of the old site whose sitemap orders the content collection's pages (search ties), when it lists them. */
+	readonly pageOrderFrom?: string;
 	/** Which library part renders each element, from the old source; by default plan's libraries.json. */
 	readonly resolver?: PartResolver;
 	/** Use every control that holds content back on the old pages, to carry that content (default on). */
 	readonly reveal?: boolean;
 	/** Take every capture of the old pages into .migrate/convert and stop there: no page is written. */
 	readonly captureOnly?: boolean;
+	/** For `markless-migrate dev`: the app already holds this convert's static files and server; only what is missing is fetched, and the server only learns the pages. */
+	readonly reuse?: boolean;
 }
 
 export interface HeadTag {
@@ -169,6 +176,8 @@ export interface ConvertedRoute {
 	readonly page: string;
 	readonly bytes: number;
 	readonly parts: readonly PartUse[];
+	/** The port modules (under `parts/`) its page's registry loads: a change to one can break this route. */
+	readonly ports?: readonly string[];
 }
 
 export interface ConvertReport {
@@ -228,6 +237,8 @@ interface Prepared {
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** The file each listed download control saved on the old page, by its signature#nth, as JSON ({ name, type, text }). */
+	readonly downloads: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
@@ -244,6 +255,7 @@ function elementAt(root: Element, path: readonly number[]): Element | undefined 
 }
 
 function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
+	if (added.into === 'download') return '';
 	if (added.into === 'clipboard') return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into="clipboard">{${JSON.stringify(added.html)}}</template>`;
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
@@ -322,8 +334,8 @@ function placement(kept: readonly Element[]): string {
 			const own = candidatesOf(el, placementResolver);
 			for (const c of own.length ? own : placementResolver.candidates(slot)) {
 				// A slot a wrapper renders another wrapper with (a submenu's content) has that site's offsets.
-				const side = placementResolver.forwardedProp?.(slot, 'sideOffset') ?? placementResolver.prop(c.library, c.export, 'sideOffset');
-				const align = placementResolver.forwardedProp?.(slot, 'alignOffset') ?? placementResolver.prop(c.library, c.export, 'alignOffset');
+				const side = placementResolver.forwardedProp?.(slot, 'sideOffset', c.library) ?? placementResolver.prop(c.library, c.export, 'sideOffset');
+				const align = placementResolver.forwardedProp?.(slot, 'alignOffset', c.library) ?? placementResolver.prop(c.library, c.export, 'alignOffset');
 				if (side === undefined && align === undefined) continue;
 				return `${side !== undefined ? ` data-mm-side-offset="${side}"` : ''}${align !== undefined ? ` data-mm-align-offset="${align}"` : ''}`;
 			}
@@ -335,7 +347,16 @@ function placement(kept: readonly Element[]): string {
 // React Aria's Popover and Tooltip: the side is the content's own data-placement; the alignment along it is where the
 // trigger's anchor point sat (--trigger-anchor-point: at the start, the middle or the end of --trigger-width); the
 // offsets are the source's where it renders the part with this element's data-slot.
-function racPlacement(el: Element, resolver: PartResolver): string {
+export function racPlacement(el: Element, resolver: PartResolver): string {
+	// What this instance was given (convert's instance props): taken off the element, written on its layer.
+	const given = (name: string) => {
+		const value = attr(el, name);
+		el.attrs = el.attrs.filter((a) => a.name !== name);
+		return value;
+	};
+	const ownPlacement = given('data-mm-placement');
+	const ownOffset = given('data-mm-offset');
+	const ownCross = given('data-mm-cross-offset');
 	const style = attr(el, 'style') ?? '';
 	const side = attr(el, 'data-placement') ?? 'bottom';
 	const [x = 0, y = 0] = (/--trigger-anchor-point:\s*(-?[\d.]+)px\s+(-?[\d.]+)px/.exec(style) ?? []).slice(1).map(Number);
@@ -350,8 +371,10 @@ function racPlacement(el: Element, resolver: PartResolver): string {
 		}
 		return undefined;
 	};
-	const offset = read('offset');
-	const cross = read('crossOffset');
+	const number = (v: string | undefined) => (v !== undefined && /^-?\d+(\.\d+)?$/.test(v) ? v : undefined);
+	const offset = number(ownOffset) ?? read('offset');
+	const cross = number(ownCross) ?? read('crossOffset');
+	if (ownPlacement && /^(top|bottom|left|right|start|end)( (top|bottom|left|right|start|end|center))?$/.test(ownPlacement)) return ` data-mm-placement="${ownPlacement}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 	return ` data-mm-placement="${side}${along}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 }
 
@@ -389,6 +412,7 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+let currentDownloads: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -428,12 +452,21 @@ function selectIndicators(top: Element): void {
  * Base UI Combobox mounts an item's indicator only while it is selected: every other item of a captured list gets a
  * hidden copy of a selected one's, so choosing one only switches `hidden`.
  */
-function comboboxIndicators(top: Element): void {
+const comboboxIndicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
+/** A selected Base UI Combobox item's indicator from any captured list: shadcn's ComboboxItem renders the same one in every list. */
+export function comboboxIndicatorIn(tops: readonly Element[]): Element | undefined {
+	for (const top of tops) for (const list of [top, ...walkAll(top)]) if (attr(list, 'data-slot') === 'combobox-list') for (const o of walkAll(list)) if (attr(o, 'role') === 'option' && comboboxIndicatorOf(o)) return comboboxIndicatorOf(o);
+	return undefined;
+}
+let comboboxIndicatorFallback: Element | undefined;
+
+export function comboboxIndicators(top: Element, fallback: Element | undefined = comboboxIndicatorFallback): void {
 	for (const list of [top, ...walkAll(top)]) {
 		if (attr(list, 'data-slot') !== 'combobox-list') continue;
 		const items = walkAll(list).filter((o) => attr(o, 'role') === 'option');
-		const indicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
-		const template = items.map(indicatorOf).find((i) => i !== undefined);
+		const indicatorOf = comboboxIndicatorOf;
+		// A list no item was selected in when captured takes the indicator another list of the site showed.
+		const template = items.map(indicatorOf).find((i) => i !== undefined) ?? fallback;
 		if (!template) continue;
 		for (const o of items) {
 			const own = indicatorOf(o);
@@ -655,6 +688,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	// A calendar the popover shows is Markless state of the layer's own component, which is then never a served file.
 	const captured = racLayer && reveal.sig ? racLayer.captured.get(racLayer.route) : undefined;
 	if (racLayer && captured && reveal.sig && racLayer.plan.addLayer(racLayer.route, captured, racLayer.messages, { sig: reveal.sig, nth: reveal.nth ?? 0 }, kept)) templatePorts.add('react-aria/calendar');
+	for (const port of triggerPorts(kept)) templatePorts.add(port);
 	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
@@ -712,7 +746,7 @@ function combined(first: PartResolver, then: PartResolver): PartResolver {
 		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
 		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
 		slotProp: (library, exportName, slot, prop) => first.slotProp?.(library, exportName, slot, prop) ?? then.slotProp?.(library, exportName, slot, prop),
-		forwardedProp: (slot, prop) => first.forwardedProp?.(slot, prop) ?? then.forwardedProp?.(slot, prop),
+		forwardedProp: (slot, prop, library) => first.forwardedProp?.(slot, prop, library) ?? then.forwardedProp?.(slot, prop, library),
 	};
 }
 
@@ -775,7 +809,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		if (panel) {
 			// Content holding controls revealed in turn (a file tree's nested folders) goes into the page, so those are bound too.
 			const into = reveal.added.find((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)?.into as readonly number[] | undefined;
-			const holds = into && reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v));
+			// So does content holding a Collapsible of its own (a Manual tab's long code block), which nothing reveals.
+			const holds = into && (reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v)) || holdsRadixDisclosure(reveal.added.filter((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel).flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement))));
 			if (holds) {
 				for (const a of reveal.added) {
 					if (typeof a.into === 'string' || elementAt(root, a.into) !== panel) continue;
@@ -804,6 +839,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+			} else if (added.into === 'download') {
+				if (reveal.sig !== undefined) currentDownloads[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
@@ -852,7 +889,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		l.trigger!.attrs = l.trigger!.attrs.map((a) => (a.name === 'id' ? { ...a, value: l.reveal.key } : a));
 		for (const top of l.kept) for (const el of [top, ...walkAll(top)]) el.attrs = el.attrs.map((a) => (/^aria-(labelledby|describedby)$/.test(a.name) ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t === id ? l.reveal.key : t)).join('') } : a));
 	}
-	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined })));
+	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined, ...(l.reveal.from !== undefined ? { from: l.reveal.from } : {}) })));
 	const placedWith = new Set<string>();
 	for (const c of companions) {
 		const at = `${c.key}|${outer(c.kept[0]!)}`;
@@ -870,6 +907,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	renameIds([...walk(root)], names.page);
+	comboboxIndicatorFallback = comboboxIndicatorIn(pendingLayers.flatMap((l) => l.kept)) ?? comboboxIndicatorFallback;
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
 		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
@@ -917,10 +955,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentDownloads = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const downloads = currentDownloads;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
@@ -975,7 +1015,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, downloads, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -985,9 +1025,14 @@ const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'm
  * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
  */
 export function pageRoot(kids: readonly Element[]): Element {
-	const holding = kids.filter((el) => isMain(el) || [...walk(el)].some(isMain));
-	return (holding.length ? holding : kids).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
+	const own = kids.filter((el) => !isDialog(el));
+	const pool = own.length ? own : kids;
+	const holding = pool.filter((el) => isMain(el) || [...walk(el)].some(isMain));
+	return (holding.length ? holding : pool).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
+
+// A dialog open on load is a layer the page portaled to the body, not the page.
+const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
 function headModule(byRoute: Map<string, Prepared>): string {
 	const table: HeadTag[] = [];
@@ -1131,7 +1176,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
 			if (reveal && routes.includes(route)) {
-				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens }));
+				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
+				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens, loadDialog }));
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
 				await scenesRead;
 				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
@@ -1335,7 +1381,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	// A calendar in a layer (a date picker's popover) is bound as its layer is rendered, in prepare.
-	const dayPickers = new DayPickerPlan();
+	const dayPickers = new DayPickerPlan(options.source);
 	layerPickers = (route, reveal, kept) => {
 		const captured = pickers.get(route);
 		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
@@ -1506,6 +1552,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const raw of captured.pickers) if (raw.opener) {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
+			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
+			if (field && trigger) dayPickers.field(route, captured, field, trigger, raw.opener, locate);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
@@ -1766,7 +1814,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
@@ -1862,7 +1910,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts, choices, tables.used ? ['tanstack-table'] : []);
+	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : [])], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
 	const tableSpecs = tables.specsModule();
 	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);
@@ -1902,19 +1950,22 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await mkdir(dirname(join(publicDir, path)), { recursive: true });
 		await writeFile(join(publicDir, path), css);
 	}
-	if (options.source) await copyStaticDir(join(options.source, 'public'), publicDir);
+	const kept = options.reuse && (await readdir(publicDir).then((names) => names.length > 0, () => false));
+	if (options.source && !kept) await copyStaticDir(join(options.source, 'public'), publicDir);
 	const paths = new Set<string>();
 	for (const p of prepared.values()) for (const path of p.resources) if (!path.startsWith('/_converted/')) paths.add(path);
 	// Resources a query picks are served by the routing middleware from the old build's answers, not as files.
 	const queried = [...paths].filter((p) => p.includes('?'));
-	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log);
+	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log, options.reuse);
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const endpoints: EndpointPort[] = [];
-	if (options.source) {
+	const serverKept = options.reuse && (await keepRouting(app, [...new Set(out.map((r) => new URL(r.route, options.old).pathname))]));
+	if (serverKept) log('server: kept as written before, with these pages');
+	if (options.source && !serverKept) {
 		const scanned = await readSource(options.source);
 		const handlerRoutes = scanned.routes.filter((r) => r.kind === 'endpoint' && r.file).map((r) => ({ route: r.path, file: r.file! }));
 		const rewrites = (scanned.redirects ?? []).filter((r) => r.kind === 'rewrite' && r.to.startsWith('/'));
@@ -1940,7 +1991,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (route.status !== 200 || route.route.includes('?') || (route.contentType ?? 'text/html').includes('html')) continue;
 			if (!(await stat(join(publicDir, route.route)).then((x) => x.isFile(), () => false))) builtPaths.add(route.route);
 		}
-		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
+		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), ...(options.pageOrderFrom ? { pageOrderFrom: options.pageOrderFrom } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string>; overrides?: Record<string, unknown> };
@@ -1950,7 +2001,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort()));
 	}
 	const report: ConvertReport = {
-		routes: out,
+		routes: out.map((r) => ({ ...r, ports: [...usedPorts.of([r.route])].sort() })),
 		dropped: Object.fromEntries(dropped),
 		shared: factored.components.map((c) => ({ component: c.file, pages: c.pages, bytes: c.source.length })),
 		assets: { copied: assets.copied.length, missing: assets.missing },

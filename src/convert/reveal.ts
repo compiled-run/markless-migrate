@@ -17,14 +17,22 @@ async function markAdded(page: Page): Promise<void> {
 	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: true }).catch(() => {});
 }
 
+// A cache of content gestures added and markAdded marked: kept while it holds every mark that applies to it.
+async function markedCache(file: string, route: string): Promise<Reveal[] | undefined> {
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[]; marks?: Marked }, () => undefined);
+	if (!cached || cached.route !== route) return undefined;
+	return missingMarks(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.marks ?? {}, addedMarks()).length ? undefined : cached.reveals;
+}
+const saveMarked = (file: string, route: string, reveals: readonly Reveal[]) => writeFile(file, JSON.stringify({ route, reveals, marks: marksOf(addedMarks()) }));
+
 /** How a control shows what it holds back. */
-/** `copy`: a click whose effect kept is what it writes to the clipboard. */
-export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy';
+/** `copy`: a click whose effect kept is what it writes to the clipboard. `download`: the file it saves (name, type, text). */
+export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy' | 'download';
 
 /** Where a revealed subtree went: under `body`, or under the element at `path` (child element indexes from the body). */
 export interface Revealed {
 	/** `body`, the path of the element it went under, or `replace`: the control took itself away and this is what its container then held. */
-	readonly into: 'body' | 'replace' | 'clipboard' | readonly number[];
+	readonly into: 'body' | 'replace' | 'clipboard' | 'download' | readonly number[];
 	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. For `replace`, how many levels above the control the replaced container is. */
 	readonly before: number;
 	readonly html: string;
@@ -40,6 +48,8 @@ export interface Reveal {
 	readonly action: RevealAction;
 	readonly viewport: string;
 	readonly added: readonly Revealed[];
+	/** The reveal whose content holds this one's trigger (a submenu captured from its menu). */
+	readonly from?: string;
 }
 
 export interface RevealCapture {
@@ -162,6 +172,31 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	}, candidate.path);
 	const el = target.asElement();
 	if (!el) return 'not found';
+	if (candidate.action === 'download') {
+		await page.evaluate(() => {
+			const w = window as unknown as { __mmSaved?: { name: string; blob: Blob | undefined }[] };
+			w.__mmSaved = [];
+			const blobs = new Map<string, Blob>();
+			const create = URL.createObjectURL.bind(URL);
+			URL.createObjectURL = (o: Blob | MediaSource) => {
+				const url = create(o);
+				if (o instanceof Blob) blobs.set(url, o);
+				return url;
+			};
+			URL.revokeObjectURL = () => {};
+			// The anchor's click saves the file: recorded, and the browser's save is left out.
+			HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+				if (this.hasAttribute('download')) w.__mmSaved!.push({ name: this.download, blob: blobs.get(this.href) });
+			};
+		});
+		await el.click({ timeout: 2000 }).catch(() => {});
+		await quiet(page, 300);
+		const saved = await page.evaluate(async () => {
+			const last = (window as unknown as { __mmSaved?: { name: string; blob: Blob | undefined }[] }).__mmSaved?.at(-1);
+			return last?.blob ? { name: last.name, type: last.blob.type, text: await last.blob.text() } : undefined;
+		});
+		return saved ? [{ into: 'download', before: -1, html: JSON.stringify(saved) }] : [];
+	}
 	if (candidate.action === 'copy') {
 		await page.evaluate(() => {
 			const w = window as unknown as { __mmClipboard?: string[] };
@@ -299,10 +334,17 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 	return (await bodyHash(page)) === baseline;
 }
 
-async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport) {
+/** Whether a settled document holds a dialog open at load (Radix data-state="open", Base UI data-open). */
+export const openDialogAtLoad = (html: string): boolean => [...html.matchAll(/<[a-z][^>]*\brole="(?:alert)?dialog"[^>]*>/g)].some(([tag]) => /\s(?:data-open(?:="")?|data-state="open")[\s>]/.test(tag));
+
+async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport, dismiss = false) {
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, 300);
+	for (let i = 0; dismiss && i < 3 && (await page.evaluate(() => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].some((d) => d.checkVisibility()))); i++) {
+		await page.keyboard.press('Escape');
+		await quiet(page, 300);
+	}
 	return { context, page, baseline: await bodyHash(page) };
 }
 
@@ -312,7 +354,7 @@ type Open = { context: BrowserContext; page: Page; baseline: string };
 async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
 	const previous = await selectedSibling(open.page, candidate.path);
 	const raw = await reveal(open.page, candidate);
-	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard') : raw;
+	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
 	if (!(await undo(open.page, previous, open.baseline))) {
 		await open.context.close().catch(() => {});
 		open = await again();
@@ -321,7 +363,7 @@ async function useCandidate(open: Open, candidate: Candidate, again: () => Promi
 }
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) {
@@ -330,7 +372,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
 		if (!stale.length) return cached;
 		// Only the controls whose content a newer mark reads are used again; every other reveal is kept as it was.
-		const taken = await retake(browser, origin, route, stale, extra, pass.controls, viewports);
+		const taken = await retake(browser, origin, route, stale, extra, pass.controls, viewports, pass.dismiss);
 		const capture: RevealCapture = { route, reveals: cached.reveals.map((r) => taken.get(r) ?? r), skipped: cached.skipped, marks: marksOf(marks) };
 		await writeFile(file, JSON.stringify(capture));
 		return capture;
@@ -343,13 +385,13 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		// A control another viewport could not show is the only reason to load the page again at this one.
 		if (!hidden) break;
 		hidden = false;
-		let open = await fresh(browser, origin, route, viewport);
+		let open = await fresh(browser, origin, route, viewport, pass.dismiss);
 		try {
 			const found = await candidates(open.page, extra, pass.controls);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			for (const candidate of found) {
 				if (!candidate.visible || done.has(candidate.key)) continue;
-				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
+				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport, pass.dismiss));
 				open = used.open;
 				const added = used.added;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
@@ -370,16 +412,16 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 
 // The cached reveals' controls used again on a fresh load at each one's viewport, found by key and else by tag, slot, text
 // and order: what each shows now, by the reveal it replaces. A control not found again, or showing nothing now, keeps its reveal.
-async function retake(browser: Browser, origin: string, route: string, stale: readonly Reveal[], extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[], viewports: readonly Viewport[]): Promise<Map<Reveal, Reveal>> {
+async function retake(browser: Browser, origin: string, route: string, stale: readonly Reveal[], extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[], viewports: readonly Viewport[], dismiss = false): Promise<Map<Reveal, Reveal>> {
 	const out = new Map<Reveal, Reveal>();
 	for (const viewport of viewports.filter((v) => stale.some((r) => r.viewport === v.name))) {
-		let open = await fresh(browser, origin, route, viewport);
+		let open = await fresh(browser, origin, route, viewport, dismiss);
 		try {
 			const found = await candidates(open.page, extra, controls);
 			for (const old of stale.filter((r) => r.viewport === viewport.name)) {
 				const candidate = found.find((c) => c.key === old.key && c.action === old.action) ?? found.find((c) => c.sig === old.sig && c.nth === old.nth && c.action === old.action);
 				if (!candidate?.visible) continue;
-				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
+				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport, dismiss));
 				open = used.open;
 				if (typeof used.added !== 'string' && used.added.length) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added });
 			}
@@ -394,6 +436,8 @@ async function retake(browser: Browser, origin: string, route: string, stale: re
 export interface ListedControls {
 	readonly extra?: readonly (readonly [selector: string, action: RevealAction, routes?: string])[];
 	readonly opens?: readonly { readonly selector: string; readonly routes?: string }[];
+	/** The settled page holds a dialog open at load (openDialogAtLoad): its page's controls are used again with it dismissed. */
+	readonly loadDialog?: boolean;
 }
 
 /** Every pass over one route's controls (ARIA-marked, listed, child-rendered hovers, listed openers, scroll areas), joined. */
@@ -405,7 +449,7 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
 	const listed = extra.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
 	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
-	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
+	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download'))), ...listed.reveals] : own.reveals;
 	const child = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
 	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);
@@ -414,8 +458,10 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	const keys = new Set(base.map((r) => r.key));
 	// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
 	const wide = await captureReveals(browser, origin, route, dir, [WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys).catch(failed);
-	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped] };
+	const dismissed = options.loadDialog ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: CONTROLS, tag: 'dismissed:', dismiss: true }, addedMarks(), keys).catch(failed) : undefined;
+	const dismissedOpens = options.loadDialog && opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'dismissed-open:', dismiss: true }, addedMarks(), keys).catch(failed) : undefined;
+	const more = [...child.reveals, ...(dismissed?.reveals ?? []), ...(dismissedOpens?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
@@ -427,8 +473,8 @@ const RAC_HOVER_MAX = 60;
 /** Hovers each React Aria control that may hold a tooltip or preview and records what it showed. Cached by route. */
 export async function captureRacHovers(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
 	const file = join(dir, `${createHash('sha256').update(`rac-hover:3:${route}|${RAC_HOVER}`).digest('hex').slice(0, 16)}.json`);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
-	if (cached && cached.route === route) return cached.reveals;
+	const cached = await markedCache(file, route);
+	if (cached) return cached;
 	const viewport = VIEWPORTS[0]!;
 	let open = await fresh(browser, origin, route, viewport);
 	const reveals: Reveal[] = [];
@@ -503,7 +549,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 		await open.context.close().catch(() => {});
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals }));
+	await saveMarked(file, route, reveals);
 	return reveals;
 }
 
@@ -517,7 +563,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 export async function captureRacSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`rac-submenus:3:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-submenus:4:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const SUB_ITEM = '[role^="menuitem"][aria-haspopup="menu"]';
 	// The submenu items of the open menus, or of the reveal's markup when given.
 	const itemsIn = (page: Page, html?: string): Promise<string[]> =>
@@ -525,8 +571,8 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 			([selector, markup]) => (markup === null ? [...document.querySelectorAll(`[data-trigger="MenuTrigger"] ${selector}, [data-trigger] [role="menu"] ${selector}`)] : [...Object.assign(document.createElement('template'), { innerHTML: markup }).content.querySelectorAll(selector)]).map((e) => e.id),
 			[SUB_ITEM, html ?? null] as const,
 		);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
-	if (cached && cached.route === route) return cached.reveals;
+	const cached = await markedCache(file, route);
+	if (cached) return cached;
 	const out: Reveal[] = [];
 	const viewport = VIEWPORTS[0]!;
 	for (const menu of menus) {
@@ -571,7 +617,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 					// The submenu's popover, outermost first, without what is inside another added node.
 					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
 				});
-				if (added.length) out.push({ key: want, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: html.split(id).join(want) })) });
+				if (added.length) out.push({ key: want, from: menu.key, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: html.split(id).join(want) })) });
 				// Back to the menu alone: away from the item, so the submenu closes, then the menu is the only layer.
 				await page.keyboard.press('Escape').catch(() => {});
 				await quiet(page, 300);
@@ -584,7 +630,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	await saveMarked(file, route, out);
 	return out;
 }
 
@@ -690,8 +736,8 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
  */
 export async function captureRacComboInputs(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
 	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:6:${route}`).digest('hex').slice(0, 16)}.json`);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
-	if (cached && cached.route === route) return cached.reveals;
+	const cached = await markedCache(file, route);
+	if (cached) return cached;
 	const out: Reveal[] = [];
 	const viewport = VIEWPORTS[0]!;
 	const list = async (page: Page) =>
@@ -751,7 +797,7 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	await saveMarked(file, route, out);
 	return out;
 }
 
@@ -768,7 +814,7 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 	const SUB_TRIGGER = '[data-base-ui-portal] [role="menu"]:not([data-nested]) [role^="menuitem"][aria-haspopup="menu"]';
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-base-ui-portal') && /role="menu"/.test(a.html) && /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html)));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`base-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`base-submenus:2:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -808,9 +854,14 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 				if (!(await opened()) && !(await open())) break;
 				const mine = (await triggersIn(page))[k];
 				if (!mine?.id) break;
-				const hovered = await page.locator(`[id="${mine.id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
-				// Base UI opens a submenu once the pointer has rested 100 ms on its trigger.
-				if (hovered) await quiet(page, 500);
+				const trigger = page.locator(`[id="${mine.id}"]`);
+				const hovered = await trigger.hover({ timeout: 2000 }).then(() => true, () => false);
+				// The first item hovered takes focus, which scrolls a menu at the viewport's edge away from the pointer: a
+				// second move finds the trigger again, then Base UI opens the submenu once the pointer has rested 100 ms on it.
+				if (hovered) {
+					await trigger.hover({ timeout: 2000, position: { x: 3, y: 3 } }).catch(() => {});
+					await quiet(page, 500);
+				}
 				const added = await page.evaluate((id) => document.querySelector(`[role="menu"][aria-labelledby="${CSS.escape(id)}"]`)?.closest('[data-base-ui-portal]')?.outerHTML, mine.id);
 				const named = (html: string) => [[mine.id, want.id], [mine.controls, want.controls]].reduce((h, [from, to]) => (from && to ? h.split(from).join(to) : h), html);
 				const key = `${menu.key}-sub-${k}`;

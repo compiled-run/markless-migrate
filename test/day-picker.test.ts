@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dayOfDate, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerView, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
-import { pruneLocale, whenOf } from '../src/convert/day-picker.ts';
+import { dayOfDate, dayPickerField, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerTyped, dayPickerView, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
+import { chronoReads, fieldOf, pruneLocale, whenOf, type LayerOpener } from '../src/convert/day-picker.ts';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -201,4 +204,65 @@ test('weeks and days are keyed as DayPicker keys them: a week by its number, a d
 	// March's last week and April's first are the same week (March 29 to April 4), shown in both grids.
 	assert.equal(a.at(-1)!.week, b[0]!.week);
 	assert.notEqual(a[0]!.week, b[0]!.week);
+});
+
+test("a date picker's field: typed text selects and shows the day new Date reads, a pick writes the day back in the field's pattern", () => {
+	const pattern = 'MMMM dd, yyyy';
+	let view = dayPickerView(base, JAN_15);
+	assert.equal(dayPickerField(base, view, pattern, 'June 01, 2025'), 'June 01, 2025');
+	for (const text of ['M', 'Ma', 'May', 'May 2', 'May 28', 'May 28,', 'May 28, 2', 'May 28, 2025']) view = dayPickerTyped(base, view, text, 'field');
+	assert.equal(dayPickerField(base, view, pattern, 'June 01, 2025'), 'May 28, 2025');
+	assert.equal(cell(base, view, '2025-05-28').selected, 'true');
+	assert.equal(dayPickerModel(base, view).months[0]!.caption, 'May 2025');
+	// Text no Date reads keeps the day last read.
+	view = dayPickerTyped(base, view, 'May 28, 2025 x', 'field');
+	assert.equal(dayPickerField(base, view, pattern, ''), 'May 28, 2025 x');
+	assert.equal(cell(base, view, '2025-05-28').selected, 'true');
+	view = dayPickerNext(base, view, { t: 'day', ...place(base, view, '2025-05-20') });
+	assert.equal(dayPickerField(base, view, pattern, ''), 'May 20, 2025');
+	view = dayPickerNext(base, view, { t: 'day', ...place(base, view, '2025-05-20') });
+	assert.equal(dayPickerField(base, view, pattern, 'June 01, 2025'), '');
+});
+
+test("a date picker's field is learned from the capture: new Date's reading of every sample, and the pattern a pick wrote", () => {
+	const typed = [
+		{ text: 'May 28, 2025', shown: 'May 28, 2025', predicted: [2025, 4, 28] as const, selected: '2025-05-28', caption: 'May 2025' },
+		{ text: '2025-05-28', shown: '2025-05-28', predicted: [2025, 4, 27] as const, selected: '2025-05-27', caption: 'May 2025' },
+		{ text: '05/28/2025', shown: '05/28/2025', predicted: [2025, 4, 28] as const, selected: '2025-05-28', caption: 'May 2025' },
+		{ text: '28 May 2025', shown: '28 May 2025', predicted: [2025, 4, 28] as const, selected: '2025-05-28', caption: 'May 2025' },
+		{ text: 'December 31, 2024', shown: 'December 31, 2024', predicted: [2024, 11, 31] as const, selected: '2024-12-31', caption: 'December 2024' },
+		{ text: 'not a date', shown: 'not a date', predicted: null, selected: '2024-12-31', caption: 'December 2024' },
+		{ text: 'Feb 3 2026', shown: 'Feb 3 2026', predicted: [2026, 1, 3] as const, selected: '2026-02-03', caption: 'February 2026' },
+		{ text: 'tomorrow', shown: 'tomorrow', predicted: null, selected: '2026-02-03', caption: 'February 2026' },
+		{ text: 'in 3 days', shown: 'in 3 days', predicted: null, selected: '2026-02-03', caption: 'February 2026' },
+	].map((t) => ({ ...t, predicted: t.predicted && ([...t.predicted] as [number, number, number]) }));
+	const opener: LayerOpener = { sig: 'button||', nth: 0, k: 0, before: '', picks: [{ days: [[2025, 5, 5]], html: '', open: false, value: 'June 05, 2025' }], field: { sig: 'input||', nth: 0, value: 'June 01, 2025', opens: true, typed } };
+	assert.deepEqual(fieldOf(opener, base), { pattern: 'MMMM dd, yyyy', parser: 'date', echoes: [] });
+	const ignored = { ...opener, field: { ...opener.field!, typed: typed.map((t, i) => (i === 1 ? { ...t, selected: '2025-05-28' } : t)) } };
+	assert.match(fieldOf(ignored, base) as string, /2025-05-28, not 2025-05-27/);
+	// A natural-language field read "tomorrow", which Date does not.
+	const chrono = { ...opener, field: { ...opener.field!, typed: typed.map((t) => (t.text === 'tomorrow' ? { ...t, selected: '2026-10-28' } : t.text === 'in 3 days' ? { ...t, selected: '2026-10-30' } : t)) } };
+	assert.match(fieldOf(chrono, base) as string, /typing "tomorrow" selected 2026-10-28, not 2026-02-03/);
+	// The old app's chrono-node reads it so: the field is read with chrono, and a sentence naming the day follows it.
+	const reads = chrono.field.typed.map((t) => (t.text === 'tomorrow' ? ([2026, 9, 28] as [number, number, number]) : t.text === 'in 3 days' ? ([2026, 9, 30] as [number, number, number]) : t.predicted));
+	const echoed = { ...chrono, field: { ...chrono.field, leaves: [{ sig: 'span||', nth: 0 }, { sig: 'label||', nth: 0 }], typed: chrono.field.typed.map((t) => ({ ...t, echo: [t.selected ? `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][Number(t.selected.slice(5, 7)) - 1]} ${t.selected.slice(8)}, ${t.selected.slice(0, 4)}` : '', 'Schedule Date'] })) } };
+	assert.deepEqual(fieldOf(echoed, base, () => reads), { pattern: 'MMMM dd, yyyy', parser: 'chrono', echoes: [0] });
+});
+
+test("chrono-node's reading of a typed text is the old app's own, keystroke by keystroke, on the capture's clock and time zone", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'chrono-app-'));
+	try {
+		await writeFile(join(app, 'package.json'), '{"name":"old"}');
+		const lib = join(app, 'node_modules', 'chrono-node');
+		await mkdir(lib, { recursive: true });
+		await writeFile(join(lib, 'package.json'), '{"name":"chrono-node","version":"2.8.4","main":"index.js"}');
+		// A stand-in that reads "tomorrow" and its prefix "tom" (as the day after `ref`), and nothing else.
+		await writeFile(join(lib, 'index.js'), 'exports.parseDate = (text, ref) => (text === "tom" || text === "tomorrow" ? new Date(ref.getTime() + 86400000 + (text === "tom" ? 86400000 : 0)) : null);');
+		const at = Date.UTC(2026, 0, 15, 23, 30);
+		assert.deepEqual(chronoReads(app, ['tomorrow', 'tomx', 'nope'], at, 'UTC'), [[2026, 0, 16], [2026, 0, 17], null]);
+		assert.deepEqual(chronoReads(app, ['tomorrow'], at, 'Asia/Tokyo'), [[2026, 0, 17]]);
+		assert.equal(chronoReads(tmpdir(), ['tomorrow'], at), undefined);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
 });
