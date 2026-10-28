@@ -1,0 +1,15 @@
+{
+	"routes": [
+		"/",
+		"/guide/features",
+		"/blog/announcing-vite8"
+	],
+	"endpoints": [
+		"/blog.rss"
+	],
+	"redirects": [
+		"/guide",
+		"/blog/"
+	],
+	"unchecked": []
+}
