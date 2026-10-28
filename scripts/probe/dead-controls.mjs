@@ -276,6 +276,8 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	}
 	await p.waitForTimeout(SETTLE);
 	const r = await p.evaluate(read, ['[data-dc-prefix]']).catch((e) => ({ error: e.message }));
+	// What changes on its own (an animated preview, a ticking demo) is no answer of the control's.
+	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
 	const opened = await p.evaluate(listControls).catch(() => []);
 	return { hit: armed.hit, ...r, opened, ...(film_ ? { motion: motionOf(film_.frames) } : {}) };
 }
@@ -286,6 +288,40 @@ async function act(p, c) {
 	if (c.options) return loc.selectOption(c.options[1] ?? c.options[0], { timeout: 3000 });
 	if (c.role === 'slider') { await loc.focus({ timeout: 3000 }); return p.keyboard.press('ArrowRight'); }
 	return loc.click({ timeout: 3000 });
+}
+
+const ambient = { old: undefined, new: undefined };
+async function measureAmbient(side, route) {
+	await load(side, route);
+	const p = pages[side];
+	await p.evaluate(arm, { role: '__none__', name: '', nth: 0 }).catch(() => null);
+	await p.evaluate(() => {
+		const o = new MutationObserver(() => {});
+		globalThis.__dc = { observer: o, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(), el: document.body };
+	});
+	await p.evaluate(armQuiet);
+	await p.waitForTimeout(1500);
+	const r = await p.evaluate(read, []).catch(() => ({ affected: [] }));
+	return new Set(r.affected ?? []);
+}
+
+// In the page: the observers of arm() with nothing used, to learn what changes on its own.
+function armQuiet() {
+	const st = globalThis.__dc;
+	const observe = (doc) => st.observer.observe(doc, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
+	st.observer = new MutationObserver((records) => {
+		for (const rec of records) {
+			if (rec.type === 'attributes') {
+				const m = st.was.get(rec.target) ?? st.was.set(rec.target, new Map()).get(rec.target);
+				if (!m.has(rec.attributeName)) m.set(rec.attributeName, rec.oldValue);
+				continue;
+			}
+			st.touched.add(rec.target);
+			if (rec.type === 'childList') for (const n of rec.addedNodes) st.touched.add(n);
+		}
+	});
+	observe(document);
+	for (const f of document.querySelectorAll('iframe')) { try { if (f.contentDocument) observe(f.contentDocument); } catch {} }
 }
 
 const changed = (r) => Boolean(r && (r.affected?.length || r.url || r.popup || r.motion?.distinct > 0));
@@ -320,6 +356,9 @@ for (const route of mine) {
 			}
 		}
 		const popups = [];
+		await fresh();
+		ambient.old = await measureAmbient('old', route);
+		ambient.new = await measureAmbient('new', route);
 		const perName = new Map();
 		const queue = controls
 			.filter((c) => !(c.layout && layoutDone.has(c.key)))
