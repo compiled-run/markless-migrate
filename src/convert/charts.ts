@@ -235,9 +235,19 @@ export function markGeometry(svg: Element): Element[] {
 		const easing = typeof a?.animationEasing === 'string' ? a.animationEasing : undefined;
 		if (curve && curve.type !== undefined && typeof curve.type !== 'string') continue;
 		const animated = a && a.isAnimationActive !== false && easing ? { a: [Number(a.animationBegin ?? 0), Number(a.animationDuration ?? 0), easing] } : {};
-		const geo = { k, ...(curve ? { t: curve.type ?? 'linear' } : {}), ...(layout ? { l: layout } : {}), ...(curve?.connectNulls ? { n: 1 } : {}), ...animated };
+		const radius = k === 'bar' ? up(el, (p) => p.radius !== undefined)?.radius : undefined;
+		const geo = { k, ...(curve ? { t: curve.type ?? 'linear' } : {}), ...(layout ? { l: layout } : {}), ...(curve?.connectNulls ? { n: 1 } : {}), ...(Array.isArray(radius) ? { r: radius.map(Number) } : {}), ...animated };
 		el.setAttribute('data-mm-geo', JSON.stringify(geo));
 		marked.push(el);
+	}
+	// A LabelList: where it puts each label against its series' bar or point, and which series (its layer's id).
+	for (const g of svg.querySelectorAll('g.recharts-label-list')) {
+		const list = up(g, (p) => 'position' in p || 'offset' in p || 'content' in p || 'formatter' in p || 'valueAccessor' in p);
+		const series = up(g, (p) => typeof p.id === 'string' && /^recharts-(bar|line|area|scatter)-/.test(p.id))?.id;
+		if (!list || typeof series !== 'string') continue;
+		const geo = { k: 'labels', s: series, ...(typeof list.position === 'string' ? { p: list.position } : {}), ...(typeof list.offset === 'number' ? { o: list.offset } : {}) };
+		g.setAttribute('data-mm-geo', JSON.stringify(geo));
+		marked.push(g);
 	}
 	return marked;
 }
@@ -707,7 +717,7 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
  * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
  */
 export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`charts5:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`charts6:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
 	// A capture from before the update animation (a chart with controls and no lag) or the layout model was read is taken again.
 	const stale = (c: ChartFacts) => (c.drivers.length && c.lag === undefined) || [c.variants, ...c.widths.map((w) => w.variants)].flat().some((v) => v.svg && !v.model);
@@ -1013,6 +1023,8 @@ export class ChartPlan {
 			const svgs: string[] = [];
 			chart.variants.forEach((reference, k) => {
 				const shown = entries.map((entry) => ({ entry, j: entry.variants.findIndex((_, j) => refOf(entry, j) === k) })).filter((x) => x.j >= 0);
+				const tallest = shown.reduce((a, b) => (b.entry.view[3] > a.entry.view[3] ? b : a), shown[0]!);
+				const grid = gridOf(parsedSvg(tallest.entry.variants[tallest.j]!.svg ?? ''), tallest.entry.view, tallest.entry.variants[tallest.j]!.model);
 				for (let b = 0; b < BUCKETS; b++) {
 					const [lo, hi] = bucketRange(b);
 					const mid = Number.isFinite(hi) ? (lo + hi) / 2 : lo + 20;
@@ -1045,7 +1057,7 @@ export class ChartPlan {
 					spare(tree, spares);
 					motion(tree, entry.view);
 					const style = attr(tree, 'style');
-					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(many && chart.lag ? { z: chart.lag } : {}) }))}}`];
+					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(grid ? { gy: grid } : {}), ...(many && chart.lag ? { z: chart.lag } : {}) }))}}`];
 					const hide = `${v} === ${k} ? ${lit(style ?? '')} : ${lit(`${style ? `${style.replace(/;?\s*$/, ';')} ` : ''}display: none;`)}`;
 					if (many && style === undefined) extra.unshift(`style={${hide}}`);
 					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
@@ -1139,7 +1151,7 @@ export class ChartPlan {
 			v: entry.view,
 			m: variant.mode,
 			...(variant.center ? { c: variant.center } : {}),
-			g: variant.segments.map((s) => s.map(round)),
+			g: exactSegments(variant, entry.view) ?? variant.segments.map((s) => s.map(round)),
 			...(variant.span ? { sp: variant.span.map(round) } : {}),
 			p: variant.states.map((s, k) => {
 				// recharts fixes the tooltip on the point's axis and follows the pointer on the other (both for a pie's sector, neither for a polar axis); the keys' reading is the settled one.
@@ -1281,6 +1293,43 @@ export function spare(svg: Tree, counts: ReadonlyMap<string, number>): void {
 			}
 		});
 	}
+}
+
+/**
+ * Where a horizontal grid could draw its lines, as fractions of the plot's height from its bottom, read off the
+ * tallest drawing (where recharts' getTicks keeps them all): a chart without a drawn number axis has no other record of
+ * its nice ticks, and a shorter drawing keeps fewer lines.
+ */
+export function gridOf(svg: Tree | undefined, view: readonly [number, number, number, number], model: ChartModel | undefined): number[] | undefined {
+	if (!svg || (model?.layout ?? 'horizontal') !== 'horizontal' || model?.axes.some((a) => a?.num && a.t === 'yAxis')) return undefined;
+	const group = [...walk(svg)].find((e) => classes(e).includes('recharts-cartesian-grid-horizontal'));
+	if (!group) return undefined;
+	const bottom = view[1] + view[3];
+	const lines = [...walk(group)].filter((e) => e.tagName === 'line').map((l) => num(attr(l, 'y1')));
+	return lines.length && view[3] > 0 ? lines.map((y) => (bottom - y) / view[3]) : undefined;
+}
+
+/**
+ * The tooltip's hit ranges along a category axis as recharts' calculateActiveTickIndex draws them: halfway between
+ * neighbouring categories' tick coordinates (as recharts adds and halves them, so a pointer on a boundary picks what
+ * recharts picks), the first and last to the plot's edges. The sweep read each category's state; its boundaries are
+ * only as fine as its steps.
+ */
+export function exactSegments(variant: ChartVariant, view: readonly [number, number, number, number]): [number, number, number][] | undefined {
+	const layout = variant.model?.layout ?? 'horizontal';
+	if (variant.mode !== (layout === 'horizontal' ? 'x' : 'y')) return undefined;
+	const axis = variant.model?.axes.find((a) => a && !a.num && a.t === (layout === 'horizontal' ? 'xAxis' : 'yAxis'));
+	if (!axis || !variant.segments.length) return undefined;
+	const [start, length] = layout === 'horizontal' ? [view[0], view[2]] : [view[1], view[3]];
+	// recharts searches the ticks sorted by coordinate (a reversed axis runs right to left).
+	const c = [...axis.c].sort((a, b) => a - b);
+	const out: [number, number, number][] = [];
+	for (let i = 0; i < c.length; i++) {
+		const state = variant.segments.find(([a, b]) => c[i]! >= Math.min(a, b) && c[i]! <= Math.max(a, b))?.[2];
+		if (state === undefined) return undefined;
+		out.push([i === 0 ? start : (c[i]! + c[i - 1]!) / 2, i === c.length - 1 ? start + length : (c[i]! + c[i + 1]!) / 2, state]);
+	}
+	return out;
 }
 
 /** The page's own SVG takes the marks' `data-mm-geo` from the capture of the same drawing, element for element. */
