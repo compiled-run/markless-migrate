@@ -1109,6 +1109,19 @@ test('a Radix select layer captured open is converted at rest with no option ari
 	await page.close();
 });
 
+test('a Base UI select icon carries data-popup-open while its select is open, as SelectIcon does', async () => {
+	const page = await open(baseSelect.replace('<span data-slot="select-value">Select a fruit</span>', '<span data-slot="select-value">Select a fruit</span><svg aria-hidden="true" width="8" height="8"><path d="m6 9 6 6 6-6"></path>&#9660;</svg>'), ['base-ui/select'], 'body');
+	const icon = () => page.locator('[data-slot="select-trigger"] svg').evaluate((s) => s.hasAttribute('data-popup-open'));
+	assert.equal(await icon(), false);
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	assert.equal(await icon(), true);
+	await page.keyboard.press('Escape');
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await icon(), false);
+	await page.close();
+});
+
 test('a press outside a Radix or Base UI select closes it with focus back on its trigger, as each library does', async () => {
 	for (const [markup, port] of [
 		[radixSelect(), 'radix/select'],
