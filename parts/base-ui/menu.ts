@@ -115,35 +115,100 @@ function closeSub(sub: Popup, onTrigger: boolean): void {
 	else if (had) parent.popup.focus({ preventScroll: true });
 }
 
-// safePolygon with blockPointerEvents: in the menu only the trigger takes the pointer; leaving it away from the submenu closes it.
+type Point = { x: number; y: number };
+const edge = (px: number, py: number, xi: number, yi: number, xj: number, yj: number) => yi >= py !== yj >= py && px <= ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+const inQuad = (px: number, py: number, q: readonly Point[]) => q.reduce((inside, a, k) => (edge(px, py, a.x, a.y, q[(k + 1) % 4]!.x, q[(k + 1) % 4]!.y) ? !inside : inside), false);
+const inBox = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => px >= Math.min(x1, x2) && px <= Math.max(x1, x2) && py >= Math.min(y1, y2) && py <= Math.max(y1, y2);
+
+/** Base UI's safePolygon (blockPointerEvents) from where the pointer left the trigger: true when the submenu closes. */
+function safePolygon(sub: Popup, x: number, y: number): (event: MouseEvent | undefined, leave: boolean, then: () => void) => boolean {
+	const B = 0.5;
+	let last: { x: number; y: number; t: number } | undefined;
+	let rest: ReturnType<typeof setTimeout> | undefined;
+	const slow = (cx: number, cy: number) => {
+		const t = performance.now();
+		const was = last;
+		last = { x: cx, y: cy, t };
+		if (!was || t === was.t) return false;
+		const dx = cx - was.x;
+		const dy = cy - was.y;
+		return dx * dx + dy * dy < (t - was.t) * (t - was.t) * 0.01;
+	};
+	return (event, leave, then) => {
+		clearTimeout(rest);
+		if (!event) return false;
+		const floating = sub.positioner ?? sub.popup;
+		const raw = floating.dataset.side ?? sub.popup.dataset.side ?? 'right';
+		const rtl = getComputedStyle(sub.popup).direction === 'rtl';
+		const side = raw === 'inline-end' ? (rtl ? 'left' : 'right') : raw === 'inline-start' ? (rtl ? 'right' : 'left') : raw;
+		const { clientX: cx, clientY: cy } = event;
+		const ref = sub.trigger.getBoundingClientRect();
+		const rect = floating.getBoundingClientRect();
+		const fromRight = x > rect.right - rect.width / 2;
+		const fromBottom = y > rect.bottom - rect.height / 2;
+		const wider = rect.width > ref.width;
+		const taller = rect.height > ref.height;
+		const left = (wider ? ref : rect).left;
+		const right = (wider ? ref : rect).right;
+		const top = (taller ? ref : rect).top;
+		const bottom = (taller ? ref : rect).bottom;
+		if ((side === 'top' && y >= ref.bottom - 1) || (side === 'bottom' && y <= ref.top + 1) || (side === 'left' && x >= ref.right - 1) || (side === 'right' && x <= ref.left + 1)) return true;
+		const trough =
+			side === 'top' ? inBox(cx, cy, left, ref.top + 1, right, rect.bottom - 1) : side === 'bottom' ? inBox(cx, cy, left, rect.top + 1, right, ref.bottom - 1) : side === 'left' ? inBox(cx, cy, rect.right - 1, bottom, ref.left + 1, top) : inBox(cx, cy, ref.right - 1, bottom, rect.left + 1, top);
+		if (trough) return false;
+		if (!leave && slow(cx, cy)) return true;
+		let quad: Point[];
+		if (side === 'top' || side === 'bottom') {
+			const off = wider ? B / 2 : B * 4;
+			const one = wider ? x + off : fromRight ? x + off : x - off;
+			const two = wider ? x - off : fromRight ? x + off : x - off;
+			const py = side === 'top' ? y + B + 1 : y - B;
+			const far = side === 'top' ? rect.bottom - B : rect.top + B;
+			const near = side === 'top' ? rect.top : rect.bottom;
+			const yl = fromRight ? far : wider ? far : near;
+			const yr = fromRight ? (wider ? far : near) : far;
+			quad = [{ x: one, y: py }, { x: two, y: py }, { x: rect.left, y: yl }, { x: rect.right, y: yr }];
+		} else {
+			const off = taller ? B / 2 : B * 4;
+			const one = taller ? y + off : fromBottom ? y + off : y - off;
+			const two = taller ? y - off : fromBottom ? y + off : y - off;
+			const px = side === 'left' ? x + B + 1 : x - B;
+			const far = side === 'left' ? rect.right - B : rect.left + B;
+			const near = side === 'left' ? rect.left : rect.right;
+			const xt = fromBottom ? far : taller ? far : near;
+			const xb = fromBottom ? (taller ? far : near) : far;
+			quad = side === 'left' ? [{ x: xt, y: rect.top }, { x: xb, y: rect.bottom }, { x: px, y: one }, { x: px, y: two }] : [{ x: px, y: one }, { x: px, y: two }, { x: xt, y: rect.top }, { x: xb, y: rect.bottom }];
+		}
+		if (!inQuad(cx, cy, quad)) return true;
+		rest = setTimeout(then, 40);
+		return false;
+	};
+}
+
+// blockPointerEvents: in the menu only the trigger takes the pointer while it heads for the submenu.
 function blockPointer(parent: Popup, sub: Popup): void {
 	// The scope is the menu the trigger is in (its [data-rootownerid] popup), not the page.
 	const scope = parent.popup;
 	const boxes = [sub.trigger, sub.positioner ?? sub.popup];
 	for (const el of boxes) el.style.pointerEvents = 'auto';
 	scope.style.pointerEvents = 'none';
-	const at = sub.trigger.getBoundingClientRect();
-	let exit = { x: at.left + at.width / 2, y: at.top + at.height / 2 };
 	let onTrigger = true;
-	const inside = (t: EventTarget | null) => t instanceof Node && (sub.trigger.contains(t) || sub.portal.contains(t));
-	const towards = (x: number, y: number) => {
-		const r = (sub.positioner ?? sub.popup).getBoundingClientRect();
-		const near = r.left >= exit.x ? r.left : r.right;
-		const [a, b, c] = [exit, { x: near, y: r.top }, { x: near, y: r.bottom }];
-		const side = (p: { x: number; y: number }, q: { x: number; y: number }) => (q.x - p.x) * (y - p.y) - (q.y - p.y) * (x - p.x);
-		const [d1, d2, d3] = [side(a, b), side(b, c), side(c, a)];
-		return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+	let check: ReturnType<typeof safePolygon> | undefined;
+	const shut = (at: number) => {
+		if (childOf.get(sub)) return;
+		closeSub(sub, false);
+		quietSince = at;
 	};
 	// Once the pointer is in the submenu, its menu takes the pointer again and leaving the submenu closes nothing.
 	let landed = false;
-	const away = (event: MouseEvent, target: EventTarget | null) => {
+	const away = (event: MouseEvent, target: EventTarget | null, leave: boolean) => {
 		if (target instanceof Node && sub.portal.contains(target) && !landed) {
 			landed = true;
 			scope.style.removeProperty('pointer-events');
 		}
-		if (landed || inside(target) || towards(event.clientX, event.clientY)) return;
-		closeSub(sub, false);
-		quietSince = event.timeStamp;
+		if (landed || (target instanceof Node && sub.trigger.contains(target))) return void check?.(undefined, leave, () => {});
+		if (!check) return;
+		if (check(event, leave, () => shut(event.timeStamp))) shut(event.timeStamp);
 	};
 	// The trigger's own leave, as Base UI's onMouseLeave starts safePolygon: it reaches the trigger whatever else takes the move.
 	const onLeave = (event: MouseEvent) => {
@@ -152,17 +217,18 @@ function blockPointer(parent: Popup, sub: Popup): void {
 		if (!onTrigger || (event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom)) return;
 		onTrigger = false;
 		leaveItem(parent);
-		away(event, event.relatedTarget);
+		check = safePolygon(sub, event.clientX, event.clientY);
+		// Chrome sends the pointermove before the mouseout: what the pointer left for is the move's target.
+		away(event, event.type === 'mouseout' ? event.relatedTarget : event.target, true);
 	};
 	const onMove = (event: PointerEvent) => {
 		if (sub.trigger.contains(event.target as Node)) {
 			onTrigger = true;
 			landed = false;
-			exit = { x: event.clientX, y: event.clientY };
 			return;
 		}
 		if (onTrigger) onLeave(event);
-		else away(event, event.target);
+		else away(event, event.target, false);
 	};
 	sub.trigger.addEventListener('mouseout', onLeave);
 	document.addEventListener('pointermove', onMove, true);

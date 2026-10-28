@@ -9,7 +9,11 @@ test('once the pointer is in a Base UI submenu, leaving it for the page keeps it
 	await page.getByText('Invite users').hover();
 	await page.waitForTimeout(250);
 	// Beside its trigger, as Base UI places it (the stub leaves it on the menu).
-	await page.evaluate(() => (document.querySelector<HTMLElement>('[data-mm-layer="dd-sub-1"] [role="presentation"]')!.style.translate = '400px 0'));
+	await page.evaluate(() => {
+		const positioner = document.querySelector<HTMLElement>('[data-mm-layer="dd-sub-1"] [role="presentation"]')!;
+		positioner.setAttribute('data-side', 'right');
+		positioner.style.translate = '400px 0';
+	});
 	const email = (await page.getByText('Email').boundingBox())!;
 	await page.mouse.move(email.x + 20, email.y + email.height / 2, { steps: 4 });
 	await settled(page);
