@@ -79,7 +79,7 @@ const SCROLL_HOVER: readonly (readonly [selector: string, action: RevealAction])
 /** A wide screen, for controls a page shows only from about 1440 px. */
 export const WIDE: Viewport = { name: 'wide', width: 1920, height: 1080, isMobile: false };
 
-// reveal:3: captures written before #282 could hold another page's content for a control several pages share.
+// reveal:3: older captures could hold another page's content for a control several pages share.
 const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:3:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
