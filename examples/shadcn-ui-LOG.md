@@ -238,8 +238,10 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   rows it stops at. react-hook-form focuses a row it adds; Formisch validates again on a row added or taken out once
   submitted. A submit that passes shows the old page's toast of the values submitted. Convert records it by letting the
   library pass whatever the values, and the values' JSON in it is the toast's own text, given by the form part's
-  `mmformsubmit` (the schema's output for react-hook-form and Formisch, the state's values for TanStack Form). Not
-  ported: TanStack Form's list demo (validated on blur).
+  `mmformsubmit` (the schema's output for react-hook-form and Formisch, the state's values for TanStack Form).
+  TanStack Form forms run on @tanstack/form-core itself (loaded with the schema on the form's first use): a field per
+  control, the list's field with its rows, the site's validators (on submit, blur or change). A field shows its errors
+  once it is touched and invalid, as the demos do. That covers its list demo, which validates on blur, too.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
