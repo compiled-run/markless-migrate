@@ -41,7 +41,8 @@ function listControls() {
 		if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || el.closest('[hidden], [inert], [aria-hidden=true]')) continue;
 		if (el.matches(':disabled, [aria-disabled=true]')) continue;
 		const r = el.getBoundingClientRect();
-		if (r.width < 2 || r.height < 2) continue;
+		// A copy kept mounted off to the side (a closed drawer's content) is hidden as much as one with display: none.
+		if (r.width < 2 || r.height < 2 || r.right <= 0 || r.left >= innerWidth) continue;
 		const role = roleOf(el), name = nameOf(el);
 		const k = `${role}|${name}`;
 		const nth = seen.get(k) ?? 0;
@@ -73,7 +74,7 @@ function arm(control) {
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
 		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...(el.labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
-	const visible = [...document.querySelectorAll(SEL)].filter((el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !el.closest('[hidden], [inert], [aria-hidden=true]') && el.getBoundingClientRect().width >= 2);
+	const visible = [...document.querySelectorAll(SEL)].filter((el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !el.closest('[hidden], [inert], [aria-hidden=true]') && el.getBoundingClientRect().width >= 2 && el.getBoundingClientRect().right > 0 && el.getBoundingClientRect().left < innerWidth);
 	// A calendar marks its build date's day "Today, …": the same day on the other side may lack the mark.
 	const untoday = (n) => n.replace(/^Today, /, '');
 	let same = visible.filter((el) => roleOf(el) === control.role && nameOf(el) === control.name);
@@ -404,6 +405,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 		return { hit: armed.hit, failed: e.message.split('\n')[0].slice(0, 160) };
 	}
 	await p.waitForTimeout(SETTLE);
+	await p.evaluate(settleGeometry).catch(() => {});
 	const r = await p.evaluate(read, ['[data-dc-prefix]']).catch((e) => ({ error: e.message }));
 	// What changes on its own (an animated preview, a ticking demo) is no answer of the control's.
 	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
@@ -417,6 +419,29 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 		close = { motion: motionOf(shot.frames), still };
 	}
 	return { hit: armed.hit, hits: armed.hits, ...r, opened, errors: errors[side].slice(errorsBefore), ...(film_ ? { motion: motionOf(film_.frames) } : {}), ...(close ? { close } : {}) };
+}
+
+// In the page: resolves once a newly shown pop-up has finished its animations and held its place for two frames (up to 2 s),
+// so where it opens is read where it settles, not mid-slide.
+function settleGeometry() {
+	const before = globalThis.__dc?.openBefore ?? new Set();
+	const pop = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].find((p) => !before.has(p) && p.checkVisibility());
+	if (!pop) return Promise.resolve();
+	const t0 = performance.now();
+	let last = '';
+	let still = 0;
+	return new Promise((done) => {
+		const tick = () => {
+			const r = pop.getBoundingClientRect();
+			const at = `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
+			const moving = pop.getAnimations({ subtree: true }).some((a) => a.playState === 'running');
+			still = at === last && !moving ? still + 1 : 0;
+			last = at;
+			if (still >= 2 || performance.now() - t0 > 2000) done();
+			else requestAnimationFrame(tick);
+		};
+		requestAnimationFrame(tick);
+	});
 }
 
 async function act(p, c) {
