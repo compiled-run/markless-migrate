@@ -1,7 +1,11 @@
 name: probe dead controls
+# Dispatched only (never on push or pull_request), so the Vercel bypass secret is never handed to a fork's run.
 on:
-  push:
-    branches: [probe/dead-controls]
+  workflow_dispatch:
+    inputs:
+      new:
+        description: The port's origin to probe against the original
+        default: https://mm-shadcn-ui-new.vercel.app
 permissions:
   contents: read
 jobs:
@@ -23,7 +27,7 @@ jobs:
           browsers: ${{ matrix.engine }}
       - name: Probe
         env:
-          NEW: https://mm-shadcn-ui-new.vercel.app
+          NEW: ${{ inputs.new }}
           BYPASS: ${{ secrets.SHADCN_BYPASS }}
         run: |
           mkdir -p out/strips
