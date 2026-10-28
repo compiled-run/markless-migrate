@@ -154,7 +154,9 @@ export function openOverlay(trigger: HTMLElement, key: string, options: OpenOpti
 		if (positioned) {
 			// The converter writes the source's placement and offsets on the layer (convert's racPlacement).
 			const from = nodes.find((n) => n.dataset.mmPlacement !== undefined)?.dataset ?? content.dataset;
-			const placement = from.mmPlacement ?? options.placement ?? content.getAttribute('data-placement') ?? 'bottom';
+			// Off a point (a context menu's pointer) the capture's alignment says only where its right click fell in the area.
+			const point = options.anchor !== undefined && !(options.anchor instanceof Element);
+			const placement = (point ? options.placement : undefined) ?? from.mmPlacement ?? options.placement ?? content.getAttribute('data-placement') ?? 'bottom';
 			o.cleanup.push(placeOverlay(options.anchor ?? trigger, content, { placement, offset: num(from.mmOffset, options.offset ?? 8), crossOffset: num(from.mmCrossOffset, options.crossOffset ?? 0) }));
 		}
 		for (const el of new Set([content, surface])) animate(el, 'data-entering');
