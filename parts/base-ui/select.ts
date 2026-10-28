@@ -8,6 +8,11 @@ import { place } from './positioner.ts';
 // Radix's trigger carries data-state; Base UI's never does (the converter renames generated ids, so they tell neither).
 const TRIGGER = '[role="combobox"][data-slot="select-trigger"]:not([data-state])';
 const OPTION = '[role="option"]';
+// A select's own popup: another Base UI popup (a dialog holding a cmdk list) has options that are not the select's.
+const popupOfSelect = (el: Element) => {
+	const p = popupOf(el);
+	return p?.trigger.matches(TRIGGER) ? p : undefined;
+};
 
 const options = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)];
 // isElementDisabled; a captured Base UI item carries data-disabled as well.
@@ -147,6 +152,8 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	if (!alignOver(trigger, p) && p.positioner) {
 		for (const prop of ['top', 'bottom', 'left', 'height', 'max-height', 'margin-top', 'margin-bottom']) p.positioner.style.removeProperty(prop);
 		(p.positioner.firstElementChild as HTMLElement | null)?.style.removeProperty('height');
+		// openPopup placed it off the listbox's own data-align (none: center) and keeps it there until stopped.
+		p.stop?.();
 		p.stop = place(trigger, p.positioner, p.popup, { side: 'bottom', align: 'start', sideOffset: 0, alignOffset: 0, positionMethod: 'fixed' });
 	}
 	// useListNavigation: the selected item, else from ArrowUp the last enabled one, else the first.
@@ -171,14 +178,14 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 export function click(target: Element): boolean {
 	if (target.closest(TRIGGER)) return true;
 	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
+	const p = option && popupOfSelect(option);
 	if (!option || !p) return false;
 	if (enabled(option)) choose(p, option, true);
 	return true;
 }
 export function pointerover(target: Element): boolean {
 	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
+	const p = option && popupOfSelect(option);
 	if (!option || !p) return false;
 	highlight(p, option);
 	return true;
@@ -197,7 +204,7 @@ const keysMove = () => {
 // useListNavigation's onPointerLeave: the pointer leaving an option for no other unhighlights it and focuses SelectPopup.
 export function pointerout(target: Element, event: PointerEvent): boolean {
 	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
+	const p = option && popupOfSelect(option);
 	if (!option || !p || !p.popup.matches('[role="listbox"]') || event.pointerType === 'touch' || keysMoved) return false;
 	const to = event.relatedTarget instanceof Element ? event.relatedTarget.closest(OPTION) : null;
 	if ((to && p.popup.contains(to)) || !option.hasAttribute('data-highlighted')) return false;

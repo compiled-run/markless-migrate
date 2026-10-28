@@ -27,6 +27,8 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/combobox', selector: 'input[role="combobox"][aria-haspopup="listbox"]:not([cmdk-input])', props: [{ name: 'autoHighlight' }], hints: ['aria-haspopup="listbox"'] },
 	{ port: 'base-ui/combobox', selector: '[role="listbox"][data-base-ui-focusable] [role="option"]', props: [{ name: 'value', attr: 'data-mm-value', as: 'form-value' }], hints: ['data-base-ui-focusable', 'role="option"'] },
 	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
+	// Its Positioner's offsets as this instance gave them (an input with an icon addon moves its list by alignOffset).
+	{ port: 'base-ui/combobox', selector: '[data-slot="combobox-content"]', props: [{ name: 'alignOffset' }, { name: 'sideOffset' }], hints: ['data-slot="combobox-content"'], version: 2 },
 	// The side and alignment a popup asked for: its data-side and data-align are where it went, after a flip away from an edge.
 	{ port: 'base-ui/popup', selector: '[data-base-ui-portal] > [role="presentation"][data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-base-ui-portal', 'data-side'] },
 	{ port: 'popper', selector: '[data-radix-popper-content-wrapper] > [data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-radix-popper-content-wrapper'] },

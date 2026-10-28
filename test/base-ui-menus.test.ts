@@ -20,13 +20,13 @@ before(async () => {
 });
 after(() => browser.close());
 
-async function open(body: string, ports: readonly string[], choices: Record<string, unknown> = {}): Promise<Page> {
+async function open(body: string, ports: readonly string[], choices: Record<string, unknown> = {}, floating = FLOATING_STUB): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 	const registry = registryModule(ports, '.');
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
 		if (path === '/') return route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=menuitem],[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/registry.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
-		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
+		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: floating });
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: `export const CHOICES = ${JSON.stringify(choices)};` });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
@@ -533,5 +533,43 @@ test("a click on a Base UI context menu's submenu trigger leaves the menu open a
 	await page.getByText('Save Page').click();
 	await settled(page);
 	assert.equal(await st(), 'menu=false sub=false');
+	await page.close();
+});
+
+test('a Base UI select placed below its trigger (no alignItemWithTrigger) stays aligned to its start, as its positioner says', async () => {
+	// Floating UI's autoUpdate runs a placement again later (a resize, a layout shift): only the select's own may.
+	const floating = `export const computePosition = async (anchor, floating, o) => ({ x: o.placement.endsWith('-start') ? 10 : 99, y: 0, placement: o.placement, middlewareData: {} });
+export const autoUpdate = (a, f, update) => { const t = setTimeout(update, 50); return () => clearTimeout(t); };
+export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
+	const page = await open(`<main style="padding:100px"><button type="button" id="cur" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="select-trigger">$</button></main>
+	<div data-base-ui-portal hidden data-mm-layer="cur"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="bottom" data-align="start" role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox"><div role="option" aria-selected="true" tabindex="-1" data-slot="select-item"><div>$ US Dollar</div></div><div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>€ Euro</div></div></div></div></div></div>`, ['base-ui/select'], {}, floating);
+	await page.locator('#cur').click();
+	await page.waitForTimeout(200);
+	assert.equal(await page.evaluate(() => document.querySelector<HTMLElement>('[data-mm-layer="cur"] > [data-side]')!.style.transform), 'translate(10px, 0px)');
+	await page.close();
+});
+
+// Floating UI as the part calls it: which element anchors the popup and the offsets it is placed with.
+const RECORDING_FLOATING = `export const computePosition = async (anchor, floating, o) => { window.placed = { anchor: anchor.getAttribute('data-slot') ?? anchor.tagName, placement: o.placement, middleware: o.middleware.map((m) => m && m.options) }; return { x: 0, y: 0, placement: o.placement, middlewareData: {} }; };
+export const autoUpdate = () => () => {};
+export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), size = () => ({}), shift = () => ({});
+export const offset = (options) => ({ options });`;
+const combo = (input: string, content: string) => `<main style="padding:100px">${input}</main><div data-base-ui-portal hidden data-mm-layer="c1"><div role="presentation" data-side="bottom" data-align="start" style="position:absolute"><div data-slot="combobox-content" data-side="bottom" data-align="start" ${content} data-closed><div role="listbox" id="c1-list"><div role="option" aria-selected="false" tabindex="-1">Next.js</div></div></div></div></div>`;
+
+test("a Base UI combobox with chips is placed off its chips, the anchor shadcn hands its content (data-chips)", async () => {
+	const page = await open(combo('<div data-slot="combobox-chips" style="width:320px"><span>chip</span><input id="c1" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="combobox-chip-input"></div>', 'data-chips="true"'), ['base-ui/combobox'], {}, RECORDING_FLOATING);
+	await page.locator('#c1').click();
+	await page.waitForTimeout(100);
+	assert.equal(await page.evaluate(() => (window as unknown as { placed: { anchor: string } }).placed.anchor), 'combobox-chips');
+	await page.close();
+});
+
+test("a Base UI combobox's own alignOffset (convert reads it per instance) moves its popup along its side", async () => {
+	const page = await open(combo('<div data-slot="input-group"><input id="c1" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="input-group-control"></div>', 'data-chips="false" data-mm-align-offset="-28" data-mm-side-offset="6"'), ['base-ui/combobox'], {}, RECORDING_FLOATING);
+	await page.locator('#c1').click();
+	await page.waitForTimeout(100);
+	const placed = await page.evaluate(() => (window as unknown as { placed: { anchor: string; middleware: unknown[] } }).placed);
+	assert.equal(placed.anchor, 'input-group-control');
+	assert.deepEqual(placed.middleware[0], { mainAxis: 6, crossAxis: -28, alignmentAxis: -28 });
 	await page.close();
 });
