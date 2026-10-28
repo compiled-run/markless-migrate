@@ -703,6 +703,24 @@ test('shadcn-ui site: a package manager list a page brings in place shows the ke
 	await page.close();
 });
 
+test('shadcn-ui site: a long code block in a Collapsible reads Collapse on both its triggers while open, Expand once closed', async () => {
+	// The Collapsible's state is the converter's (DisclosurePlan): here a click handler flips the root's data-state.
+	const page = await open(
+		`<div data-state="closed" data-slot="collapsible"><div data-slot="collapsible-trigger" aria-expanded="false"><button data-slot="button" type="button">Expand</button></div><div data-slot="collapsible-content" data-state="closed"><figure><pre>code</pre></figure></div><button data-slot="collapsible-trigger" type="button" aria-expanded="false">Expand</button></div>
+		<script>document.addEventListener('click', (e) => { if (!e.target.closest('[data-slot="collapsible-trigger"]')) return; const r = document.querySelector('[data-slot="collapsible"]'); setTimeout(() => r.setAttribute('data-state', r.getAttribute('data-state') === 'open' ? 'closed' : 'open')); });</script>`,
+		['site'],
+		'body',
+	);
+	const labels = () => page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.textContent).join(','));
+	await page.getByRole('button', { name: 'Expand' }).first().click();
+	await page.waitForTimeout(50);
+	assert.equal(await labels(), 'Collapse,Collapse');
+	await page.getByRole('button', { name: 'Collapse' }).last().click();
+	await page.waitForTimeout(50);
+	assert.equal(await labels(), 'Expand,Expand');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);

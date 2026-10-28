@@ -221,6 +221,30 @@ const codeCollapsible: Part = {
 	},
 };
 
+// components/code-collapsible-wrapper.tsx: a Radix Collapsible (on Markless state) whose two triggers read
+// {isOpened ? "Collapse" : "Expand"}; the labels follow the root's data-state.
+const labelled = new WeakSet<Element>();
+function syncLabels(root: Element): void {
+	const open = root.getAttribute('data-state') === 'open';
+	const content = root.querySelector(':scope > [data-slot="collapsible-content"]');
+	for (const el of root.querySelectorAll('button, [data-slot="collapsible-trigger"]')) {
+		if (content?.contains(el)) continue;
+		for (const n of el.childNodes) if (n instanceof Text && /^(Expand|Collapse)$/.test(n.data.trim())) n.data = n.data.replace(/Expand|Collapse/, open ? 'Collapse' : 'Expand');
+	}
+}
+const codeCollapsibleWrapper: Part = {
+	click(target) {
+		const root = target.closest('[data-slot="collapsible-trigger"]')?.closest('[data-slot="collapsible"]');
+		if (!root || !root.querySelector(':scope > [data-slot="collapsible-content"] > figure')) return false;
+		if (!labelled.has(root)) {
+			labelled.add(root);
+			new MutationObserver(() => syncLabels(root)).observe(root, { attributes: true, attributeFilter: ['data-state'] });
+		}
+		syncLabels(root);
+		return false;
+	},
+};
+
 // components/block-viewer.tsx's Refresh Preview: setIframeKey mounts the block's frame afresh, which loads its page again.
 const refreshPreview: Part = {
 	click(target) {
@@ -427,4 +451,4 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
