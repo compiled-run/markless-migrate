@@ -279,6 +279,34 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   Not ported: the spinner beside the input and "Searching..." in the empty state are the old page's `isLoading`, a
   status Markless shows only through `@pending`, which commits after 250 ms where the old page shows it at once; and
   a failed search shows no group instead of the previous results.
+- /typeset's designer is Markless code: `lib/site/typeset.tsrx` ports `app/(app)/(typeset)` (the customizer, the docs
+  panel, the preview with its specimen pills, the main menu and the Get Code drawer) as a page site component
+  (`"in": "page"` in `components.json`, #269). With `"layers": true` its `Layers` export renders what its controls
+  portal (the eight menus, both framework selects, the pill tooltips, the drawer) with the page's layers, and convert
+  leaves out the layers those controls opened on the old page and counts their ports for the page's registry. The
+  params, their URL form (nuqs 2: defaults leave the URL, `history: 'replace'`, the serializer's order), the undo
+  history over URL snapshots, shuffle and the install text are `lib/site/typeset-params.ts`; what the hooks did in the
+  browser (the URL, the history, hover previews debounced 50 ms, the iframe's `typeset-params` and `typeset-command`
+  messages, the shortcuts) is `typeset-runtime.ts`, handed to the page as `typesetcommand` events on its root, so every
+  state write stays in the component. The preview page's side is two site parts: `previewFontVariables` (the preview
+  layout's `PreviewFontVariables` puts the fonts' next/font classes on `<html>`) and `typesetPreview` (params from the
+  URL and from each message as `--preview-*` variables on `<html>`, its own keys forwarded to the designer).
+  Base UI fixes it needed are in the parts (#304): radio menu items keep the menu open, a select inside the drawer is
+  part of it, a popup placed against another anchor (the card, on phones), and next-themes' storage listener.
+  Compared step by step with mm-shadcn-ui-old (probes: font, size and default picks, hover and keyboard previews, the
+  checked item, Docs for Next.js and Vite, package managers, the Prompt text, locks and seeded shuffles, R, Shift+R,
+  Cmd+Z and Shift+Cmd+Z, the menu's disabled Undo/Redo and Reset, specimen pills and Open in New Tab, a shared link,
+  Shift+R and D pressed in the preview, Get Code with its own framework select, copy buttons, phone placement): the
+  same URL, labels, checked items, preview variables, texts and clipboard at every step, the prompt differing only in
+  the site's own origin. `test/e2e/shadcn-typeset.test.ts` drives each control on the component built alone
+  (`fixtures/shadcn-typeset`).
+  Not the original's yet: the specimens other than Docs are 404 inside the preview (no page links them, so plan never
+  listed them, #311); a shared link shows the defaults until the page is idle (the old page painted a skeleton until
+  its client render); the menus' rows are always in the page, hidden, where Base UI mounts a menu only while open.
+- Patterns convert could generate instead of a hand port (found on /typeset, the same on /create): the pages a control
+  loads into a frame (#311); URL state as nuqs keeps it, with its serializer and an undo history over it (#312);
+  `next/script` `beforeInteractive` inline scripts, which the port keeps inert in `self.__next_s` (#313); what a
+  client effect sets on `<html>` after load (#314); a Base UI radio menu's value as state, as Select's is (#315).
 
 ## Markless framework bugs found
 
@@ -385,6 +413,21 @@ parse (quotes and backticks in arm text).
 21. Seen with bug 7: a keyed `@for` whose row binds an attribute cannot sit in an `@if` arm
     (MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED "a repeated row inside it holds a attribute binding"), here with state
     decided by the component's own `state()`, `@if (open) { @for (const item of items; key item.id) { <p id={item.id}>...` .
+22. Seen porting /typeset (the port's 0.9.0 packs from Markless main): a click handler on a row of a keyed `@for` inside a child
+    component never runs; the same rows in the page component do. Repro `pages/rows-once.tsrx`:
+    `function List() @{ let picked = state('none'); <div><p>{picked}</p>@for (const item of ITEMS; key item) { <button
+    onClick={() => (picked = item)}>{item}</button> }</div> }` rendered by the page: clicking a row leaves `none`. No
+    diagnostic. The typeset port renders each row as a component of its own with literal props (`RadioRow`).
+23. Seen porting /typeset: a row attribute that compares `shared()` state with the row's item renders once and never
+    updates; the same comparison with the component's own `state()` updates. Repro `pages/rows-shared.tsrx`:
+    `@for (const item of ITEMS; key item) { <button data-active={p.value === item ? 'true' : 'false'}>...` with
+    `const p = picked()` (a page-scope `shared()`): after `p.value = 'c'` the first row still says `true`. The build
+    warns MARKLESS_KEYED_REPEAT_ROW_MINT_UNSUPPORTED, which reads as being about rows added later, not existing ones.
+24. Seen porting /typeset: a component used several times inside a component that is itself used several times reads
+    the last instance's prop in its handlers. Repro `pages/nested-props.tsrx`: `function Choice({ value }) @{ <button
+    onClick={() => (p.value = value)}>{value}</button> }`, three `Choice`s in a `Group`, two `Group`s: every button
+    sets `z`. The typeset port's package manager buttons (four in each of the panel's and the drawer's docs) read their
+    own text instead.
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 
@@ -2579,14 +2622,54 @@ UTC, so the place-by-place reading found nothing. Old and port agree on every ti
 Asia/Tokyo, America/Los_Angeles, Pacific/Honolulu and America/St_Johns on area-interactive, bar-interactive,
 line-interactive, dashboard-01 and area-default (1280 px), and the tooltips' dates at three points of each.
 
-Next, same part family, from the same captures: the layout at any width (recharts' band and bar sizes, which it
-truncates to whole pixels, so the drawing cannot simply scale, and the ticks `getTicks` keeps for the width).
+Any width (third change): the drawing the old page made at the nearest captured width is laid out again for the
+chart's container, as recharts would lay it out there, when the container's whole-pixel size differs (the wrapper
+gets that size, as ResponsiveContainer gives it). The plot box keeps its margins and axis sizes; the band and point
+scales are d3-scale's, recomputed (`at = start + step * i`, so a coordinate is the float recharts has); bars take
+`getBarPositions` (10% category gap, the size truncated to whole pixels, so a bar chart cannot simply be scaled); the
+number axis is affine in the plot box; lines and areas are drawn again through their mapped points with d3-shape;
+dots, the tooltip cursor (`getCursorRectangle`, `getCursorPoints`), an area's animation clip, the bars' growth
+origin, LabelList labels (`getCartesianPosition`, with the size it clamps their text to), custom dots, the axes
+(`getTicks` again) and the horizontal grid (`getTicks` over the number axis' ticks in the body's font, then the
+plot's edges, as CartesianGrid does; convert reads where its lines could go off the tallest drawing) follow. A chart
+with no category axis drawn uses recharts' implicit one, one category per bar or point. The tooltip's hit ranges are
+recharts' `calculateActiveTickIndex` (halfway between neighbouring tick coordinates, added and halved as recharts
+does, so a pointer exactly on a boundary goes where recharts sends it; the captured ranges were a sweep's,
+quarter-pixel steps off, and are now exact at the captured widths too) and its fixed axis is anchored at the
+active category's middle. The pointer is read from `mousemove` and rounded as `getRelativeCoordinate` does (the
+port used pointermove's fractional coordinates: tooltips sat up to 1 px off). What a tooltip's state puts into the
+drawing is laid out the same way as Markless inserts it. Morphs at a new width start from the drawing on screen
+(the same state's drawing for another width is hidden in the same mutation). Executed at load on
+`chart-area-interactive`: 87.5 KB at a captured width, 96.5 KB at 1100 px (the layout part, 9 KB), against the old
+page's 666 KB.
+
+Parity sweep against the old site served locally, 27 chart routes (33 charts) at 400, 700, 1000 and 1512 px (no
+captured width among them), each in UTC and America/Los_Angeles: every element's geometry at rest and with the
+pointer at 30% and 70% of the plot, and the tooltip's text and place. "Same" is every coordinate within 0.002 px
+(d3-shape writes three decimals) and the same tooltip at the same place. Morphs at 700, 1100 and 1512 px (line, bar,
+area, dashboard): every frame within 0.04 px of the original.
+
+| Chart | 8 runs (4 widths x 2 zones) |
+| --- | --- |
+| area: default, axes, gradient, interactive, stacked, stacked-expand, step | same |
+| bar: interactive, active, horizontal, label, label-custom, mixed, multiple, negative, stacked | same |
+| line: default, dots, dots-custom, interactive, label, multiple, step | same |
+| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month) |
+| docs `chart` page, its 7 charts | same |
+| pie-interactive | same (300 px at all four widths) |
+| dashboard-01 | same at 1000 and 1512 px; below 768 px the old page switches to the last 7 days on load (`useIsMobile`), the port keeps 3 months |
+
+Not yet: pie, radar and radial charts are laid out only at the sizes captured (they are 250 or 300 px squares, so
+this shows only in containers narrower than that: pie-interactive and pie-legend at 342 px show the 300 px drawing
+where the old page draws 292 px); weekday-only date ticks behind UTC; the dashboards' phone default range.
+
 
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
-  the interactive charts' pages are 3-5x the original's HTML, and other widths stretch the nearest. Next: the chart
-  laid out at any width and for the visitor's time zone (see "Charts: how they move, fit and date").
+  the interactive charts' pages are 3-5x the original's HTML; any other width is laid out again from the nearest.
+  One SVG laid out from the captured data would do. Polar charts at sizes not captured, weekday-only ticks behind UTC,
+  and the dashboards' range on phones (see "Charts: how they move, fit and date").
 - `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.

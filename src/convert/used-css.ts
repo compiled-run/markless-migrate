@@ -9,6 +9,8 @@ type Node = any;
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'", '#x27': "'" };
 
 const DELIMITER = /["'`<>={}(),;]/g;
+const WINDOW = 24;
+const LONGEST = 256;
 
 /**
  * Every word the given markup and code could put in a class or id attribute. Each whitespace-separated piece counts, and
@@ -24,13 +26,12 @@ export function classTokens(texts: Iterable<string>): Set<string> {
 			tokens.add(piece);
 			const cuts = [...piece.matchAll(DELIMITER)].map((m) => m.index!);
 			if (!cuts.length) continue;
-			if (cuts.length > 24) {
-				for (const t of piece.split(DELIMITER)) if (t) tokens.add(t);
-				continue;
-			}
+			// Markup with no space in it is one long piece: a slice spans at most WINDOW delimiters and LONGEST characters.
 			const starts = [0, ...cuts.map((i) => i + 1)];
 			const ends = [...cuts, piece.length];
-			for (const a of starts) for (const b of ends) if (b > a) tokens.add(piece.slice(a, b));
+			for (let a = 0; a < starts.length; a++) {
+				for (let b = a; b < ends.length && b <= a + WINDOW && ends[b]! - starts[a]! <= LONGEST; b++) if (ends[b]! > starts[a]!) tokens.add(piece.slice(starts[a], ends[b]));
+			}
 		}
 	}
 	return tokens;
