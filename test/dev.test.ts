@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { prepareDevApp } from '../src/dev/app.ts';
+import { DEV_CONFIG, prepareDevApp } from '../src/dev/app.ts';
 import { diffRuns, formatDiffs, type Finding, type RouteProbe } from '../src/dev/findings.ts';
 import { portsLoading, routeGlob, routesUsing, selectRoutes } from '../src/dev/routes.ts';
 
@@ -76,6 +77,33 @@ test("the dev app links the app's packages, plan state and capture folders, copi
 		await writeFile(join(app, 'lib', 'site', 'parts.ts'), 'changed');
 		await prepareDevApp(app, dev);
 		assert.equal(await readFile(join(dev, 'lib', 'site', 'parts.ts'), 'utf8'), 'changed', 'prepared again, it takes the site code as it is now');
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("the dev server may read the app's packages where they really are: a node_modules linked to another worktree, a package linked elsewhere, and pnpm's store where a package's dependencies sit beside it", async () => {
+	const root = await realpath(await mkdtemp(join(tmpdir(), 'dev-allow-')));
+	const app = join(root, 'worktree-a', 'app');
+	const elsewhere = join(root, 'worktree-b', 'node_modules');
+	const loose = join(root, 'store', 'nitro');
+	const dev = join(app, '.migrate', 'dev', 'app');
+	try {
+		await mkdir(join(elsewhere, '@markless', 'core'), { recursive: true });
+		await mkdir(loose, { recursive: true });
+		await symlink(loose, join(elsewhere, 'nitro'));
+		const pnpmStore = join(root, 'repo', 'node_modules');
+		await mkdir(join(pnpmStore, '.pnpm', 'srvx@1', 'node_modules', 'srvx'), { recursive: true });
+		await symlink(join(pnpmStore, '.pnpm', 'srvx@1', 'node_modules', 'srvx'), join(elsewhere, 'srvx'));
+		await mkdir(join(app, '.migrate', 'convert'), { recursive: true });
+		await writeFile(join(app, 'package.json'), '{}');
+		await symlink(elsewhere, join(app, 'node_modules'));
+		await prepareDevApp(app, dev);
+		await writeFile(join(dev, 'vite.config.ts'), 'export default { server: { fs: { allow: ["/own"] } }, plugins: [] };');
+		const config = (await import(pathToFileURL(join(dev, DEV_CONFIG)).href)) as { default: (env: object) => Promise<{ server: { fs: { allow: string[] } }; plugins: unknown[] }> };
+		const resolved = await config.default({ command: 'serve', mode: 'development' });
+		assert.deepEqual(resolved.plugins, [], "the app's own config is kept");
+		for (const dir of ['/own', elsewhere, loose, pnpmStore, dev]) assert.ok(resolved.server.fs.allow.includes(dir), `${dir} in ${resolved.server.fs.allow.join(', ')}`);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

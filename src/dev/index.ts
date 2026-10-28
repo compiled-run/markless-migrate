@@ -5,7 +5,7 @@ import { createServer } from 'node:net';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { prepareDevApp, SITE_DIR } from './app.ts';
+import { DEV_CONFIG, prepareDevApp, SITE_DIR } from './app.ts';
 import { diffRuns, formatDiffs, parseProbeLines, type RouteProbe } from './findings.ts';
 import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, writePortMap, type PortMap } from './routes.ts';
 
@@ -105,14 +105,21 @@ class AppServer {
 			if (built.code) throw new Error(`the build of the dev app failed: ${join(this.dev, '.migrate', 'dev', 'build.log')}`);
 			this.log(`built in ${seconds(since)}`);
 		}
-		const args = this.build ? [join(this.dev, '.output', 'server', 'index.mjs')] : [vp, 'dev', '--port', String(this.port), '--strictPort'];
+		// The bin, not node on it: a package manager's bin can be a shell script (pnpm's is).
+		const [command, ...args] = this.build ? [process.execPath, join(this.dev, '.output', 'server', 'index.mjs')] : [vp, 'dev', '--config', DEV_CONFIG, '--port', String(this.port), '--strictPort'];
 		// Its own process group, so stopping it stops the Vite process vp starts too.
-		this.child = spawn(process.execPath, args, { cwd: this.dev, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+		const child = spawn(command!, args, { cwd: this.dev, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+		this.child = child;
 		const logged: string[] = [];
 		const keep = (d: Buffer) => logged.push(String(d));
-		this.child.stdout!.on('data', keep);
-		this.child.stderr!.on('data', keep);
-		if (!(await answers(this.origin + first, 120_000))) throw new Error(`the dev app's server did not answer ${first}:\n${logged.join('').slice(-2000)}`);
+		child.stdout!.on('data', keep);
+		child.stderr!.on('data', keep);
+		const exited = new Promise<false>((done) => child.once('exit', () => done(false)));
+		if (!(await Promise.race([answers(this.origin + first, 120_000), exited]))) {
+			const text = logged.join('');
+			const firstError = text.split('\n').find((l) => /\b\w*Error\b/.test(l)) ?? '';
+			throw new Error(`the dev app's server did not answer ${first}: ${firstError.trim()}\n${text.slice(-2000)}`);
+		}
 		this.log(`${this.build ? 'production build' : 'dev server'} answers ${this.origin}${first} after ${seconds(since)}`);
 	}
 	stop(): void {
