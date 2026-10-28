@@ -81,7 +81,7 @@ function readItems(page: Page): Promise<Item[]> {
 		const menu = document.querySelector('[data-mm-menu-under-test]');
 		if (!menu) return [];
 		// The pointer's and focus's marks follow use, not the item's state (the menu's port writes them).
-		const kept = (a: Attr) => !/^(data-highlighted|data-hovered|data-pressed|data-focused|data-focus-visible|tabindex|data-mm-menu-under-test)$/.test(a.name);
+		const kept = (a: Attr) => !/^(data-highlighted|data-hovered|data-pressed|data-focused|data-focus-visible|tabindex|data-mm-menu-under-test|data-mm-press)$/.test(a.name);
 		const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		const canon = (n: Node): string => {
 			if (n.nodeType === Node.TEXT_NODE) return esc(n.textContent ?? '');
@@ -168,7 +168,7 @@ async function press(browser: Browser, origin: string, route: string, r: Reveal,
 export async function captureMenuToggles(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly MenuToggles[]> {
 	const menus = reveals.filter((r) => r.added.some((a) => /role="menuitem(checkbox|radio)"/.test(a.html)));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`menu-toggles:3:${route}|${JSON.stringify(menus.map((m) => [m.key, m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`menu-toggles:4:${route}|${JSON.stringify(menus.map((m) => [m.key, m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; menus: MenuToggles[] }, () => undefined);
 	if (cached && cached.route === route) return cached.menus;
 	const out: MenuToggles[] = [];

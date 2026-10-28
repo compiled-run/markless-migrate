@@ -88,6 +88,7 @@ test("captureMenuToggles: a menu's checkbox and radio items with their markup on
 		assert.equal(bar.on.attrs['aria-checked'], 'true');
 		assert.equal(bar.off.attrs['aria-checked'], 'false');
 		assert.match(bar.on.inner, /data-check/);
+		assert.equal(bar.on.attrs['data-mm-press'], undefined, 'the mark the capture presses by is not part of the state');
 		assert.equal(bar.on.attrs.id, bar.off.attrs.id, 'an id generated on each opening is not part of the state');
 		const reset = found.find((m) => m.key === 'reset')!;
 		assert.deepEqual(reset.groups.map((g) => [g.kind, g.lasts]), [['toggle', 'reset']]);
