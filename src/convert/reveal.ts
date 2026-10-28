@@ -76,6 +76,9 @@ const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[
 // Radix ScrollArea (type "hover") mounts its scrollbars when the pointer enters it: hovered in a pass of its own.
 const SCROLL_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [['[data-slot="scroll-area"]:not([data-base-ui-scroll-area-root])', 'hover']];
 
+/** A wide screen, for controls a page shows only from about 1440 px. */
+export const WIDE: Viewport = { name: 'wide', width: 1920, height: 1080, isMobile: false };
+
 const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:2:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
@@ -311,7 +314,7 @@ async function useCandidate(open: Open, candidate: Candidate, again: () => Promi
 }
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks()): Promise<RevealCapture> {
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) {
@@ -327,7 +330,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	}
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
-	const done = new Set<string>();
+	const done = new Set<string>(taken);
 	let hidden = true;
 	for (const viewport of viewports) {
 		// A control another viewport could not show is the only reason to load the page again at this one.
@@ -402,8 +405,10 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	const opened = opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
 	const scroll = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
 	const keys = new Set(base.map((r) => r.key));
-	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals];
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
+	// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
+	const wide = await captureReveals(browser, origin, route, dir, [WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys).catch(failed);
+	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
