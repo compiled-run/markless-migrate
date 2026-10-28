@@ -985,9 +985,14 @@ const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'm
  * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
  */
 export function pageRoot(kids: readonly Element[]): Element {
-	const holding = kids.filter((el) => isMain(el) || [...walk(el)].some(isMain));
-	return (holding.length ? holding : kids).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
+	const own = kids.filter((el) => !isDialog(el));
+	const pool = own.length ? own : kids;
+	const holding = pool.filter((el) => isMain(el) || [...walk(el)].some(isMain));
+	return (holding.length ? holding : pool).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
+
+// A dialog open on load is a layer the page portaled to the body, not the page.
+const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
 function headModule(byRoute: Map<string, Prepared>): string {
 	const table: HeadTag[] = [];
