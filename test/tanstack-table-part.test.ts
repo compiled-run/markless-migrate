@@ -140,3 +140,31 @@ test('whether any column is filtered is a quantity of the view (a toolbar shows 
 	assert.equal(ttView(s, typed).q.filtering, true);
 	assert.equal(ttView(s, ttAct(s, typed, { k: 'filter', c: 'email', v: '' })).q.filtering, false);
 });
+
+test('a faceted filter toggles values in its column\'s filter list, clears it, and the view counts each value among the rows the other filters keep', async () => {
+	const { columnFacetingFeature, createFacetedRowModel, createFacetedUniqueValues } = await import('@tanstack/table-core');
+	const s: TableSpec = { ...spec(), features: { ...features, columnFacetingFeature, facetedRowModel: createFacetedRowModel(), facetedUniqueValues: createFacetedUniqueValues() } as never, columns: spec().columns.map((c) => (c.id === 'status' ? { ...c, def: { ...c.def, filterFn: (row: { getValue: (id: string) => unknown }, id: string, value: unknown[]) => value.includes(row.getValue(id)) } } : c)) };
+	assert.deepEqual(ttView(s, INITIAL).c.status!.u, { success: 3, processing: 1, failed: 1 });
+	const one = ttAct(s, INITIAL, { k: 'facet', c: 'status', v: 'success' });
+	assert.deepEqual(one.columnFilters, [{ id: 'status', value: ['success'] }]);
+	assert.deepEqual(ttView(s, one).c.status!.fs, ['success']);
+	assert.equal(order(s, one), '0,1,3');
+	const two = ttAct(s, one, { k: 'facet', c: 'status', v: 'failed' });
+	assert.equal(order(s, two), '0,1,3,4');
+	assert.deepEqual(ttView(s, ttAct(s, two, { k: 'facet', c: 'status', v: 'success' })).c.status!.fs, ['failed']);
+	// The last value taken out leaves no filter, as the faceted filter sets undefined for an empty list.
+	assert.deepEqual(ttAct(s, one, { k: 'facet', c: 'status', v: 'success' }).columnFilters, []);
+	assert.deepEqual(ttAct(s, two, { k: 'facetClear', c: 'status' }).columnFilters, []);
+	// Another column's filter narrows the counts.
+	const typed = ttAct(s, INITIAL, { k: 'filter', c: 'email', v: 'abe' });
+	assert.deepEqual(ttView(s, typed).c.status!.u, { success: 1 });
+});
+
+test('a page-size choice pages the rows by it, keeping the first row shown on the page that holds it', () => {
+	const s = spec();
+	const two = ttAct(s, { ...INITIAL, pagination: { pageIndex: 0, pageSize: 2 } }, { k: 'page', d: 1 });
+	assert.equal(ttView(s, two).q.pageNumber, 2);
+	const three = ttAct(s, two, { k: 'pageSize', n: 3 });
+	assert.deepEqual(three.pagination, { pageIndex: 0, pageSize: 3 });
+	assert.equal(ttView(s, three).q.pageCount, 2);
+});

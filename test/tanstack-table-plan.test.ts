@@ -348,3 +348,57 @@ test("a toolbar's Reset, shown only while a column is filtered, is an arm in its
 	assert.doesNotMatch(plan.notes.join('\n'), /follows no quantity/, plan.notes.join('\n'));
 	assert.match(out, /value=\{tt0v\.c\["name"\]\.f\}[^]*?\/>@if \(tt0v\.q\.filtering\) \{ <><button data-slot="button" onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "clear" \}\); \}\}>Reset<\/button><\/> \}<table>/);
 });
+
+test('a page-size select sets the page size from the choice its select part reports, by the text the choice shows', () => {
+	const region = (s: Shape) => radixRegion(s).replace('<div class="count">', '<div class="size"><button type="button" role="combobox" data-slot="select-trigger">10</button></div><div class="count">');
+	const withSize = (t: CapturedTable): CapturedTable => ({ ...t, controls: [...t.controls, { sig: 'select', nth: 0, kind: 'pageSize', sizes: { '10': 10, '20': 20 } }] });
+	const doc = (html: string) => html;
+	const table = withSize(capture(region));
+	const root = body(parseDocument(`<body>${doc(table.snapshots[0]!.html)}</body>`));
+	const els = [...walk(root)];
+	const located: Record<string, Element | undefined> = { 'div||': els.find((el) => el.tagName === 'div'), 'table||': els.find((el) => el.tagName === 'table'), select: els.find((el) => attr(el, 'role') === 'combobox') };
+	const plan = new TablePlan();
+	plan.expect('/t', [table]);
+	assert.equal(plan.add('/t', (sig) => located[sig]), 1, plan.notes.join('\n'));
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div class="size" onMmchoose=\{\(event\) => \{ const n = \(\{"10":10,"20":20\} as Record<string, number>\)\[\(event as CustomEvent<string>\)\.detail\]; if \(n !== undefined\) \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "pageSize", n \}\); \} \}\}><button type="button" role="combobox"/);
+});
+
+test("a faceted filter: its trigger shows the chosen values' labels or their count, and its popover's options toggle and check them, with Clear filters once one is chosen", () => {
+	const values = ['alpha', 'beta', 'gamma'];
+	const labels: Record<string, string> = { alpha: 'Alpha', beta: 'Beta', gamma: 'Gamma' };
+	const badges = (chosen: readonly string[]) => (chosen.length ? `<div data-slot="separator"></div><span data-slot="badge">${chosen.length}</span><div class="list">${chosen.length > 2 ? `<span data-slot="badge">${chosen.length} selected</span>` : chosen.map((v) => `<span data-slot="badge">${labels[v]}</span>`).join('')}</div>` : '');
+	const trigger = (chosen: readonly string[]) => `<button type="button" aria-haspopup="dialog" data-slot="popover-trigger">Name${badges(chosen)}</button>`;
+	const popover = (chosen: readonly string[]) => `<div role="dialog" data-slot="popover-content"><div cmdk-root=""><div cmdk-list=""><div cmdk-group="">${values.map((v) => `<div cmdk-item="" role="option"><div class="${chosen.includes(v) ? 'box on' : 'box off'}"></div><span>${labels[v]}</span><span class="count">1</span></div>`).join('')}</div>${chosen.length ? '<div cmdk-separator=""></div><div cmdk-group=""><div cmdk-item="" role="option">Clear filters</div></div>' : ''}</div></div></div>`;
+	const key = 'trig#0';
+	const facets = { alpha: 1, beta: 1, gamma: 1 };
+	const withFacets = (t: CapturedTable): CapturedTable => {
+		const states: [string, string[]][] = [...values.map((v, k) => [`facet:${key}:${k}`, [v]] as [string, string[]]), [`facet:${key}:two`, values.slice(0, 2)], [`facet:${key}:three`, values.slice(0, 3)]];
+		const initial = t.snapshots.find((s) => s.name === 'initial')!;
+		return {
+			...t,
+			controls: [...t.controls, ...values.map((v, k) => ({ sig: `option|${labels[v]}1`, nth: k, kind: 'facet' as const, column: 'name', value: v, menu: { sig: 'trig', nth: 0 } })), { sig: 'option|Clear filters', nth: 3, kind: 'facetClear', column: 'name', menu: { sig: 'trig', nth: 0 } }],
+			snapshots: [
+				...t.snapshots.map((s) => ({ ...s, columns: { ...s.columns, name: { ...s.columns.name!, facets } }, html: s.html.replace('<table>', `${trigger([])}<table>`), ...(s.name === 'initial' ? { menus: { [key]: popover([]) } } : {}) })),
+				...states.map(([name, chosen]) => ({ ...initial, name, columns: { ...initial.columns, name: { ...initial.columns.name!, chosen, facets } }, html: initial.html.replace('<table>', `${trigger(chosen)}<table>`), menus: { [key]: popover(chosen) } })),
+			],
+		};
+	};
+	const table = withFacets(capture(radixRegion));
+	const root = body(parseDocument(`<body>${table.snapshots[0]!.html}</body>`));
+	const els = [...walk(root)];
+	const located: Record<string, Element | undefined> = { 'div||': els.find((el) => el.tagName === 'div'), 'table||': els.find((el) => el.tagName === 'table'), trig: els.find((el) => attr(el, 'aria-haspopup') === 'dialog') };
+	const plan = new TablePlan();
+	plan.expect('/t', [table]);
+	plan.emitHtml = (html) => emitChildren(parseFragment(html) as unknown as Element);
+	assert.equal(plan.add('/t', (sig) => located[sig]), 1, plan.notes.join('\n'));
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.match(out, /<button type="button" aria-haspopup="dialog" data-slot="popover-trigger">Name<div data-slot="separator" hidden=\{tt0v\.c\["name"\]\.fs\.length === 0\}><\/div><span data-slot="badge" hidden=\{tt0v\.c\["name"\]\.fs\.length === 0\}>\{tt0v\.c\["name"\]\.fs\.length\}<\/span>/);
+	assert.match(out, /@for \(const l of tt0v\.c\["name"\]\.fs\.map\(\(x\) => \(\{"alpha":"Alpha","beta":"Beta","gamma":"Gamma"\} as Record<string, string>\)\[String\(x\)\] \?\? ""\); key l\) \{ <span data-slot="badge" hidden=\{tt0v\.c\["name"\]\.fs\.length > 2\}>\{l\}<\/span> \}/);
+	assert.doesNotMatch(plan.notes.join('\n'), /faceted filter/);
+	const kept = [body(parseDocument(`<body>${popover([])}</body>`)).childNodes[0] as Element];
+	const layer = plan.layer('/t', { sig: 'trig', nth: 0 }, kept)!;
+	const pop = emitElement(kept[0]!, { bind: layer.bind });
+	assert.match(pop, /<div cmdk-item="" role="option" onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "facet", c: "name", v: "beta" \}\); \}\}><div class=\{tt0v\.c\["name"\]\.fs\.includes\("beta"\) \? "box on" : "box off"\}><\/div><span>Beta<\/span><span class="count">\{tt0v\.c\["name"\]\.u\["beta"\] \?\? 0\}<\/span><\/div>/);
+	assert.match(pop, /@if \(tt0v\.c\["name"\]\.fs\.length > 0\) \{ <><div cmdk-separator=""><\/div>\n?<div cmdk-group=""><div cmdk-item="" role="option" onClick=\{\(\) => \{ tt0\.s = ttAct\(tts_[0-9a-f]{10}, structuredClone\(tt0\.s\), \{ k: "facetClear", c: "name" \}\); \}\}>Clear filters<\/div><\/div><\/> \}<\/div>/);
+});
