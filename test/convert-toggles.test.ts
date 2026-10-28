@@ -173,6 +173,16 @@ test('a Radix collapsible whose trigger renders its child (asChild, data-slot="b
 	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
 });
 
+test('a Radix collapsible content mounted while closed (forceMount) keeps its children shown and binds only data-state', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="collapsible-trigger" aria-controls="c1" aria-expanded="false" data-state="closed">Expand</button><div id="c1" data-slot="collapsible-content" data-state="closed" class="data-[state=closed]:max-h-64"><figure>code</figure></div></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div id="c1" data-slot="collapsible-content" class="data-\[state=closed\]:max-h-64" data-state=\{acc0 === 0 \? "open" : "closed"\}><figure>code<\/figure><\/div>/);
+	assert.doesNotMatch(out, /hidden=/);
+});
+
 test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) is still the shared one, shown in its at-rest look', async () => {
 	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
 	const marks: Record<string, string> = { '/a': '', '/b': ' aria-hidden="true" data-aria-hidden="true"', '/c': ' data-base-ui-inert=""' };
