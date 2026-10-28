@@ -78,6 +78,33 @@ test('Base UI Popover: its trigger has Dialog.Trigger\'s markup, yet it opens as
 	await page.close();
 });
 
+test('Base UI Dialog holding a command list paints its first group with the dialog and the rest a frame later, with focus in its input', async () => {
+	const group = (g: number) => `<div cmdk-group="" role="presentation" style="display:block">${Array.from({ length: 30 }, (_, i) => `<div cmdk-item="" role="option">Item ${g}.${i}</div>`).join('')}</div>`;
+	const page = await open(
+		`<main><button type="button" data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="cd">Search</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="cd">${INTERNAL_BACKDROP}<div role="dialog" data-slot="dialog-popup" data-closed tabindex="-1"><div cmdk-root=""><input cmdk-input="" role="combobox"><div cmdk-list="" role="listbox">${group(0)}${group(1)}${group(2)}</div></div></div></div>`,
+		['base-ui/dialog'],
+	);
+	await page.evaluate(() => {
+		const frames: string[] = [];
+		(window as unknown as { frames_: string[] }).frames_ = frames;
+		const sample = () => {
+			const portal = document.querySelector<HTMLElement>('[data-base-ui-portal]')!;
+			const laid = [...portal.querySelectorAll('[cmdk-item]')].filter((item) => item.getBoundingClientRect().height > 0).length;
+			const shown = portal.hidden ? 'closed' : `${laid} items`;
+			if (frames.at(-1) !== shown) frames.push(shown);
+			requestAnimationFrame(sample);
+		};
+		sample();
+	});
+	await page.getByText('Search').click();
+	await page.waitForFunction(() => (window as unknown as { frames_: string[] }).frames_.includes('90 items'));
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { frames_: string[] }).frames_), ['closed', '30 items', '90 items']);
+	assert.deepEqual(await page.locator('[cmdk-group]').evaluateAll((els) => els.map((el) => (el as HTMLElement).style.display)), ['block', 'block', 'block'], 'each group keeps its own display');
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('role')), 'combobox');
+	await page.close();
+});
+
 // `kept`: the root's disablePointerDismissal, as convert reads it off the instance onto its trigger.
 const drawer = (modal: boolean, kept = false) => `<main style="height:3000px"><button type="button" data-slot="drawer-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dr"${kept ? ' data-mm-disable-pointer-dismissal="true"' : ''}>Open Drawer</button><button type="button">After</button></main>
 	<div data-base-ui-portal hidden data-mm-layer="dr">${modal ? `${INTERNAL_BACKDROP}<div role="presentation" data-slot="drawer-overlay" aria-hidden="true" data-base-ui-inert data-closed></div>` : ''}<div role="presentation" data-slot="drawer-viewport" data-closed><div role="dialog" tabindex="-1" data-base-ui-focusable data-slot="drawer-popup" data-swipe-direction="right" data-closed><button type="button">First</button><button data-slot="drawer-close" type="button">Close</button></div></div></div>`;

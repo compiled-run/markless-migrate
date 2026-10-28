@@ -2,6 +2,7 @@ import { hideOthers } from '../aria-hidden.ts';
 import { acquireScrollLock, closePopup, openPopup, popupOf, top, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
 import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
+import { itemsAfterFirstPaint } from '../first-frame.ts';
 
 // Base UI Dialog, AlertDialog and Drawer: a press on the trigger opens the popup with its backdrop, focus moves to the
 // first tabbable element inside (a drawer's popup itself); a modal one keeps Tab inside, hides the page behind from
@@ -34,6 +35,7 @@ function close(p: Popup, returnFocus = true): void {
 function open(trigger: HTMLElement, shown?: HTMLElement): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: shown ? `shown:${shown.id || 'dialog'}` : trigger.id || layerKey(trigger), portal: shown, shown: Boolean(shown) });
 	if (!p) return false;
+	if (!shown) itemsAfterFirstPaint(p.popup);
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
 	// disablePointerDismissal (convert reads it per instance; always set for an alert dialog): no outside-press or focus-out close.
 	const dismissible = !alert && trigger.getAttribute('data-mm-disable-pointer-dismissal') !== 'true';
