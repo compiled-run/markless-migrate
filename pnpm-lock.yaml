@@ -72,6 +72,9 @@ importers:
       '@markless/router':
         specifier: 0.7.0
         version: 0.7.0(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3)
+      '@tanstack/form-core':
+        specifier: 1.20.0
+        version: 1.20.0
       '@tanstack/table-core':
         specifier: 9.0.0
         version: 9.0.0
@@ -2005,8 +2008,14 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
 
+  '@tanstack/form-core@1.20.0':
+    resolution: {integrity: sha512-FGlKvcsusOf4756vtN1EoDI4h50r4/11eTcpF3NcnE04N/bSn2gP7cdhG6tYA0lJWzM9H1pNIzZ86uZ4MHB9eA==}
+
   '@tanstack/store@0.11.2':
     resolution: {integrity: sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q==}
+
+  '@tanstack/store@0.7.7':
+    resolution: {integrity: sha512-xa6pTan1bcaqYDS9BDpSiS63qa6EoDkPN9RsRaxHuDdVDNntzq3xNwR5YKTU/V3SkSyC9T4YVOPh2zRQN0nhIQ==}
 
   '@tanstack/table-core@9.0.0':
     resolution: {integrity: sha512-IyKCc4D7d/+I9euQntlVDQ7lnilmFRKpIROBeI5/866adFy+65xWvCFPz76NZ5j2lXe/RFDvFVV7bfETmwHEMA==}
@@ -6497,7 +6506,13 @@ snapshots:
       tailwindcss: 4.2.2
       vite: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)
 
+  '@tanstack/form-core@1.20.0':
+    dependencies:
+      '@tanstack/store': 0.7.7
+
   '@tanstack/store@0.11.2': {}
+
+  '@tanstack/store@0.7.7': {}
 
   '@tanstack/table-core@9.0.0':
     dependencies:

@@ -85,7 +85,7 @@ export interface FormLibraryCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'form-libraries-11';
+const VERSION = 'form-libraries-15';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** The error messages a field is given while its markup is recorded: unlike any message a schema writes. */
@@ -122,6 +122,8 @@ function findForms(): Found[] {
 		focusOf(name: string): Element | undefined;
 		/** Lets the next submit pass whatever the values (to see what passing shows). */
 		pass(): void;
+		/** Whether the field is touched (TanStack Form). */
+		touched?(name: string): boolean;
 	}
 	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const counts = new Map<string, number>();
@@ -176,6 +178,7 @@ function findForms(): Found[] {
 				order: () => Object.keys(c.fieldInfo),
 				focusOf: () => undefined,
 				pass: () => c.update({ ...c.options, validators: {} }),
+				touched: (name) => Boolean(c.getFieldMeta(name)?.isTouched),
 			};
 		if (isFormisch(c)) {
 			const root = c['~internal'];
@@ -374,20 +377,17 @@ async function probeSelect(page: Page, i: number, k: number, initial: Record<str
 	return field ? { field, kind: 'select', items } : undefined;
 }
 
-/** Whether the control losing focus takes its field's errors away: an error is set on the field, then the control focused and left. */
-async function blurClears(page: Page, i: number, k: number, field: string): Promise<boolean> {
-	await setErrors(page, i, field, MESSAGES.slice(0, 1));
-	await settle(page);
+/** Whether the control losing focus is handed to the library (TanStack Form's handleBlur): focused and left, its field is touched. */
+async function blurHandled(page: Page, i: number, k: number, field: string): Promise<boolean> {
+	const touched = () => page.evaluate(([i, field]) => (window as unknown as { __mmFL: { adapter: { touched?(n: string): boolean } }[] }).__mmFL[i]!.adapter.touched?.(field) ?? false, [i, field] as const);
+	if (await touched()) return false;
 	await page.evaluate((k) => {
 		const el = (window as unknown as { __mmFormControls: HTMLElement[] }).__mmFormControls[k]!;
 		el.focus();
 		el.blur();
 	}, k);
 	await settle(page);
-	const left = await page.evaluate(([i, field]) => (window as unknown as { __mmFL: { adapter: { errors(): Record<string, string[]> } }[] }).__mmFL[i]!.adapter.errors()[field] ?? [], [i, field] as const);
-	await setErrors(page, i, field, []);
-	await settle(page);
-	return left.length === 0;
+	return touched();
 }
 
 /** Uses each control of the form once, from the form as loaded, and records which field it sets and how. */
@@ -405,9 +405,9 @@ async function probeControls(page: Page, url: string, i: number, library: FormLi
 			await settle(page);
 			const after = await fieldValues(page, i);
 			const field = changedFields(initial, after).find((f) => after[f] === 'zq');
-			// Only TanStack Form hands a field's blur to the library (handleBlur); the others' manual errors may go on a
-			// blur that leaves the errors validation gives in place.
-			if (field) out.push({ sig: c.sig, nth: c.nth, field, kind: 'text', ...(library === 'tanstack-form' && (await blurClears(page, i, k, field)) ? { blurs: true } : {}) });
+			// Only TanStack Form hands a field's blur to the library (handleBlur), seen on the form as loaded (typing touched it).
+			const blurs = field && library === 'tanstack-form' ? (await ready(page, url), await page.evaluate(controlsOf, i), await blurHandled(page, i, k, field)) : false;
+			if (field) out.push({ sig: c.sig, nth: c.nth, field, kind: 'text', ...(blurs ? { blurs: true } : {}) });
 			else log(`  form control ${c.sig}#${c.nth}: typing set no field to what was typed`);
 			await el.fill('').catch(() => {});
 			continue;
@@ -479,6 +479,9 @@ async function probeResets(page: Page, url: string, i: number, controls: readonl
 		await ready(page, url);
 		const initial = await fieldValues(page, i);
 		if (!(await use(page, i, control)) || JSON.stringify(await fieldValues(page, i)) === JSON.stringify(initial)) continue;
+		// The field is left first: a blur that validates moves the buttons, and a press across the move reaches none.
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+		await settle(page);
 		await page.evaluate(buttonsOf, [i, submits] as const);
 		const button = (await page.evaluateHandle((k) => (window as unknown as { __mmFormButtons: Element[] }).__mmFormButtons[k]!, k)).asElement();
 		if (!button || !(await button.click({ timeout: 2000 }).then(() => true, () => false))) continue;
@@ -552,6 +555,17 @@ async function recordList(page: Page, url: string, i: number, list: CapturedList
 	}
 	if (((await listRows(page, i, list.path))?.length ?? 0) === 1) out.push({ name: 'rows', value: '1', html: await markup(page, i) });
 	await ready(page, url);
+	// A list that loads with one row shows a second once Add is pressed: what tells the rows apart.
+	if (((await listRows(page, i, list.path))?.length ?? 0) === 1) {
+		const buttons = await page.evaluate(buttonsOf, [i, submits] as const);
+		const k = buttons.findIndex((b) => b.sig === list.append.sig && b.nth === list.append.nth);
+		const button = k >= 0 ? (await page.evaluateHandle((k) => (window as unknown as { __mmFormButtons: Element[] }).__mmFormButtons[k]!, k)).asElement() : null;
+		if (button && (await button.click({ timeout: 2000 }).then(() => true, () => false))) {
+			await settle(page);
+			if (((await listRows(page, i, list.path))?.length ?? 0) === 2) out.push({ name: 'rows', value: '2', html: await markup(page, i) });
+		}
+		await ready(page, url);
+	}
 	if (list.max !== undefined) {
 		const buttons = await page.evaluate(buttonsOf, [i, submits] as const);
 		const k = buttons.findIndex((b) => b.sig === list.append.sig && b.nth === list.append.nth);
@@ -905,12 +919,14 @@ export class FormPlan {
 		for (const r of form.resets) mark(r.sig, r.nth, { 'data-mm-fl-reset': '' });
 		for (const [field, el] of Object.entries(form.focus)) if (!inList(field)) mark(el.sig, el.nth, { 'data-mm-fl-focus': field });
 		const listDefaults = lists.flatMap((l) => Array.from({ length: l.rows }, (_, row) => l.subs.map((sub) => [`${l.name}.${row}.${sub.name}`, valueAt([...l.path, row, ...sub.path]) ?? sub.item] as const)).flat());
-		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), ...(lists.length ? { lists } : {}), shape: form.defaults, defaults: Object.fromEntries([...fields.map((f) => [f.name, valueAt(f.path) ?? null] as const), ...listDefaults]) };
+		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), ...(lists.length ? { lists } : {}), ...(source.validators ? { validators: source.validators } : {}), shape: form.defaults, defaults: Object.fromEntries([...fields.map((f) => [f.name, valueAt(f.path) ?? null] as const), ...listDefaults]) };
 		const schemaName = `fs_${hash(source.module)}`;
 		const specName = `fl_${hash([entry, schemaName])}`;
 		this.schemas.set(schemaName, source.module);
 		this.entries.set(specName, `${lit(specName)}: { ...${JSON.stringify(entry)}, schema: () => import('./${SCHEMAS_DIR}/${schemaName}.ts').then((m) => m.schema) }`);
 		for (const p of source.packages) this.packages.set(p, this.sources.version(p) ?? 'latest');
+		// TanStack Form runs on its own core, released with the React adapter the old app used.
+		if (form.library === 'tanstack-form') this.packages.set('@tanstack/form-core', this.sources.version('@tanstack/react-form') ?? 'latest');
 		this.set(region, { declare, extra: [`data-mm-fl="${specName}"`, ...(handler.length ? [`onMmform={(event) => { const d = (event as CustomEvent<{ e: Record<string, string[]>; v: Record<string, unknown>; rows: Record<string, unknown[]> }>).detail; ${handler.join(' ')} }}`] : [])] });
 		return undefined;
 	}
@@ -931,22 +947,51 @@ export class FormPlan {
 		});
 		const subs = [...new Map(parsed.map((p) => [p.sub.join('.'), p.sub])).values()];
 		const count = Math.max(...parsed.map((p) => p.row)) + 1;
-		if (count < 2) return 'its list loads with one row, which shows no row template';
 		const controlOf = (row: number) => {
 			const c = form.controls.find((x) => parsed.some((p) => p.field === x.field && p.row === row));
 			return c ? locate(c.sig, c.nth) : undefined;
 		};
 		const first = controlOf(0);
-		const second = controlOf(1);
-		if (!first || !second) return 'its rows\' fields are not on the converted page';
-		// The rows are the children of the element holding the first two rows' fields that hold each.
-		let container: Tree | undefined = first;
-		while (container && !pathInside(container, second)) container = container.parentNode as Tree;
-		if (!container || !pathInside(region, container)) return 'its rows are not in its region';
-		const rowOf = (control: Tree) => kids(container!).find((k) => pathInside(k, control));
-		const rowEls = Array.from({ length: count }, (_, r) => (controlOf(r) ? rowOf(controlOf(r)!) : undefined));
-		if (rowEls.some((r) => !r) || new Set(rowEls).size !== count) return 'its rows are not one element each';
+		if (!first) return 'its rows\' fields are not on the converted page';
+		// A list loaded with one row is told apart from the second its Add shows; else the first two rows are.
+		const two = count < 2 ? snaps.find((x) => x.name === 'rows' && x.value === '2')?.root : undefined;
+		if (count < 2 && !two) return 'its list loads with one row and was not seen with two';
+		let container: Tree | undefined;
+		let rowEls: (Tree | undefined)[];
+		if (count >= 2) {
+			const second = controlOf(1);
+			if (!second) return 'its rows\' fields are not on the converted page';
+			container = first;
+			while (container && !pathInside(container, second)) container = container.parentNode as Tree;
+			if (!container || !pathInside(region, container)) return 'its rows are not in its region';
+			rowEls = Array.from({ length: count }, (_, r) => (controlOf(r) ? kids(container!).find((k) => pathInside(k, controlOf(r)!)) : undefined));
+		} else {
+			container = first.parentNode as Tree;
+			while (container && !pathInside(region, container)) container = container.parentNode as Tree;
+			// The row is the child of the element whose children the second row adds to.
+			const recContainer = (() => {
+				for (let el: Tree | undefined = first; el && el !== region; el = el.parentNode as Tree) {
+					const parent = el.parentNode as Tree;
+					const path = pathIn(region, parent);
+					const rec = path ? at(two!, path) : undefined;
+					// The container whose children holding a field number one more: a row, not a part a second row adds to the first.
+					const holding = (x: Tree) => kids(x).filter((k) => [...walk(k)].some((d) => /^(input|textarea)$/.test(d.tagName))).length;
+					if (rec && holding(rec) === holding(parent) + 1) return { parent, rec, row: el };
+				}
+				return undefined;
+			})();
+			if (!recContainer) return 'its second row was not found beside its first';
+			container = recContainer.parent;
+			rowEls = [recContainer.row];
+		}
+		if (rowEls.some((r) => !r) || new Set(rowEls).size !== rowEls.length) return 'its rows are not one element each';
 		const row0 = rowEls[0]!;
+		// What the template is emitted from: the first row as the page has it, or as it shows beside a second.
+		const rowPathInContainer = kids(container!).indexOf(row0);
+		const recordedRows = two ? kids(at(two, pathIn(region, container!)!)!) : undefined;
+		const rowA = recordedRows ? recordedRows[rowPathInContainer]! : row0;
+		const rowB = recordedRows ? recordedRows[rowPathInContainer + 1]! : rowEls[1]!;
+		const inRowA = (el: Tree) => (rowA === row0 ? el : at(rowA, pathIn(row0, el) ?? []));
 		const bindings = new Map<Tree, Binding>();
 		const add = (el: Tree, b: Binding) => bindings.set(el, mergeBindings(bindings.get(el), b)!);
 		// Where the first two rows differ: their index (or its count from one) in attributes and text.
@@ -988,14 +1033,15 @@ export class FormPlan {
 			}
 			return undefined;
 		};
-		const why = template(row0, rowEls[1]!);
+		const why = template(rowA, rowB);
 		if (why) return `its rows differ: ${why}`;
 		// A row's fields: their name follows the row.
 		for (const c of form.controls) {
 			const p = parsed.find((x) => x.field === c.field && x.row === 0);
 			const el = p && locate(c.sig, c.nth);
-			if (!p || !el || !pathInside(row0, el)) continue;
-			add(el, { extra: [`data-mm-fl-field={${lit(`${listName}.`)} + r.i + ${lit(`.${p.sub.join('.')}`)}}`, 'data-mm-fl-kind="text"', ...(c.blurs ? ['data-mm-fl-blur=""'] : [])] });
+			const own = p && el && pathInside(row0, el) ? inRowA(el) : undefined;
+			if (!p || !own) continue;
+			add(own, { extra: [`data-mm-fl-field={${lit(`${listName}.`)} + r.i + ${lit(`.${p.sub.join('.')}`)}}`, 'data-mm-fl-kind="text"', ...(c.blurs ? ['data-mm-fl-blur=""'] : [])] });
 		}
 		// What an error on a row's field changed, within the row, follows that row's errors.
 		const rowPath = pathIn(region, row0)!;
@@ -1010,13 +1056,13 @@ export class FormPlan {
 			const inside = (path: readonly number[]) => rowPath.every((k, i) => path[i] === k);
 			const E = `r.e${n}`;
 			for (const a of c1.attrs.filter((x) => inside(x.path))) {
-				const el = at(region, a.path);
+				const el = at(rowA, a.path.slice(rowPath.length));
 				if (!el) continue;
 				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
 				add(el, { omit: [a.name], extra: [`${a.name}={${E}.length ? ${value(a.to)} : ${value(a.from)}}`] });
 			}
 			for (const ins of c1.inserts.filter((x) => inside(x.path))) {
-				const parent = at(region, ins.path);
+				const parent = at(rowA, ins.path.slice(rowPath.length));
 				if (!parent) continue;
 				const many = c2.inserts.find((x) => x.path.join('/') === ins.path.join('/') && x.before === ins.before);
 				const listed = many && many.html !== ins.html;
@@ -1027,8 +1073,8 @@ export class FormPlan {
 			}
 		}
 		// What a row shows only while others are there (its Remove), from the list down to one row.
-		const alone = snaps.find((x) => x.name === 'rows' && x.value === '1')?.root;
-		const aloneRow = alone ? kids(at(alone, pathIn(region, container)!) ?? alone)[rowPath.at(-1)!] : undefined;
+		const alone = count < 2 ? undefined : snaps.find((x) => x.name === 'rows' && x.value === '1')?.root;
+		const aloneRow = count < 2 ? row0 : alone ? kids(at(alone, pathIn(region, container)!) ?? alone)[rowPath.at(-1)!] : undefined;
 		if (!aloneRow) return 'its list was not seen down to one row';
 		const removes: Tree[] = [];
 		const onlyWithOthers = (page: Tree, rec: Tree): void => {
@@ -1045,10 +1091,10 @@ export class FormPlan {
 				}
 			}
 		};
-		onlyWithOthers(row0, aloneRow);
+		onlyWithOthers(rowA, aloneRow);
 		if (!removes.length) return 'a row shows no Remove only while others are there';
 		for (const b of removes) add(b, { extra: [`data-mm-fl-remove=${lit(listName)}`] });
-		add(row0, { extra: ['data-mm-fl-row={r.i}'] });
+		add(rowA, { extra: ['data-mm-fl-row={r.i}'] });
 		// Add, disabled at the rows it stops at.
 		const append = locate(list.append.sig, list.append.nth);
 		if (!append || !pathInside(region, append)) return 'its Add is not on the converted page';
@@ -1063,7 +1109,7 @@ export class FormPlan {
 			this.emitting.add(row0);
 			const declarations: string[] = [];
 			try {
-				return { declare: declarations, replace: `@for (const r of ${rows}; key r.k) { ${this.emitter(row0, declarations)} }` };
+				return { declare: declarations, replace: `@for (const r of ${rows}; key r.k) { ${this.emitter(rowA, declarations)} }` };
 			} finally {
 				this.emitting.delete(row0);
 			}

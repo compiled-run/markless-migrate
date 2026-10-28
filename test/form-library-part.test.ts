@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as z from 'zod';
-import { formAct, formValues, initialState, issuesByField, type FormAction, type FormLibrary, type FormSpec, type FormState, type Issue, type Validate } from '../parts/form-library.ts';
+import { tanstackEngine } from '../parts/form-tanstack.ts';
+import { fieldsOf, formAct, formValues, initialState, issuesByField, type FormAction, type FormLibrary, type FormSpec, type FormState, type Issue, type Validate } from '../parts/form-library.ts';
 
 // shadcn's form demos, with the schemas their pages validate with; each sequence and what each field showed after every
 // step is what the old page showed for the same steps, read from its form library.
@@ -54,8 +55,18 @@ test('react-hook-form and Formisch: nothing before a submit, then every change v
 	}
 });
 
-test('TanStack Form: a submit shows every field\'s errors and focuses nothing; a change takes its field\'s submit errors away until the next submit', () => {
-	run(spec('tanstack-form', ['title', 'description']), bugReport, [
+// TanStack Form runs on its own core: the same sequences, through tanstackEngine.
+async function runTanstack(s: FormSpec, schema: z.ZodType, validators: readonly string[], steps: readonly (readonly [FormAction, string])[]): Promise<void> {
+	const engine = await tanstackEngine({ ...s, shape: formValues(s, s.defaults) }, schema as never, validators);
+	for (const [action, expected] of steps) {
+		const result = await engine.act(action);
+		const shown = fieldsOf(s, result.state).map((f) => (result.state.errors[f.name] ?? []).join('+')).join(' | ');
+		assert.equal(`${shown}${result.submit ? ` submit=${JSON.stringify(result.submit)}` : ''}`, expected, JSON.stringify(action));
+	}
+}
+
+test('TanStack Form: a submit shows every field\'s errors and focuses nothing; a change takes its field\'s submit errors away until the next submit', async () => {
+	await runTanstack(spec('tanstack-form', ['title', 'description']), bugReport, ['onSubmit'], [
 		[change('title', 'ab'), ' | '],
 		[SUBMIT, BOTH],
 		[change('title', 'abcde'), ' | Description must be at least 20 characters.'],
@@ -71,16 +82,25 @@ test('TanStack Form: a submit shows every field\'s errors and focuses nothing; a
 
 test('a field failing two checks: react-hook-form shows the first message, TanStack Form and Formisch every message', () => {
 	const steps = (library: FormLibrary) => (library === 'react-hook-form' ? 'Username must be at least 3 characters.' : 'Username must be at least 3 characters.+Username can only contain letters, numbers, and underscores.');
-	for (const library of ['react-hook-form', 'tanstack-form', 'formisch'] as const) {
+	for (const library of ['react-hook-form', 'formisch'] as const) {
 		const s = spec(library, ['username']);
 		run(s, profile, [
 			[change('username', 'a!'), ''],
-			[SUBMIT, `${steps(library)}${library === 'tanstack-form' ? '' : ' focus=username'}`],
-			[change('username', 'a!b'), library === 'tanstack-form' ? '' : 'Username can only contain letters, numbers, and underscores.'],
-			[change('username', 'ab'), library === 'tanstack-form' ? '' : 'Username must be at least 3 characters.'],
+			[SUBMIT, `${steps(library)} focus=username`],
+			[change('username', 'a!b'), 'Username can only contain letters, numbers, and underscores.'],
+			[change('username', 'ab'), 'Username must be at least 3 characters.'],
 			[change('username', 'abc'), ''],
 		]);
 	}
+});
+
+test('TanStack Form shows every message a field fails, and a change takes them away until the next submit', async () => {
+	await runTanstack(spec('tanstack-form', ['username']), profile, ['onSubmit'], [
+		[change('username', 'a!'), ''],
+		[SUBMIT, 'Username must be at least 3 characters.+Username can only contain letters, numbers, and underscores.'],
+		[change('username', 'a!b'), ''],
+		[change('username', 'ab'), ''],
+	]);
 });
 
 test('a field\'s value sits at its path in the values the schema validates, and an issue names the field by that path', () => {
@@ -89,13 +109,11 @@ test('a field\'s value sits at its path in the values the schema validates, and 
 	assert.deepEqual(issuesByField(s, [{ message: 'Enter a valid email address.', path: ['emails', 0, { key: 'address' }] }]), { 'emails.0.address': ['Enter a valid email address.'] });
 });
 
-test('a control whose blur the old page handled (TanStack Form\'s handleBlur) takes its field\'s errors away when it loses focus', () => {
-	const s = spec('tanstack-form', ['title', 'description']);
-	let state = formAct(s, initialState(s), SUBMIT, validator(bugReport)).state;
-	assert.deepEqual(state.errors.title, ['Bug title must be at least 5 characters.']);
-	state = formAct(s, state, { k: 'blur', field: 'title' }, validator(bugReport)).state;
-	assert.deepEqual(state.errors.title, []);
-	assert.deepEqual(state.errors.description, ['Description must be at least 20 characters.']);
+test('a control whose blur the old page handled (TanStack Form\'s handleBlur) takes its field\'s submit errors away when it loses focus', async () => {
+	await runTanstack(spec('tanstack-form', ['title', 'description']), bugReport, ['onSubmit'], [
+		[SUBMIT, BOTH],
+		[{ k: 'blur', field: 'title' }, ' | Description must be at least 20 characters.'],
+	]);
 });
 
 // shadcn's array demo: a list of email rows, each valid as an email; react-hook-form's zod schema and Formisch's valibot
@@ -124,4 +142,17 @@ test('a list: rows added and taken out move their values and errors; Formisch va
 		[{ k: 'reset' }, '_: _:'],
 	] as const;
 	for (const library of ['react-hook-form', 'formisch'] as const) runList(listSpec(library), steps(library));
+});
+
+test('TanStack Form\'s list validated on blur: a field shows the errors a blur found once touched, a row added starts untouched, Reset leaves one row', async () => {
+	const emails = z.object({ emails: z.array(z.object({ address: z.string().email('V') })).min(1).max(5) });
+	const s: FormSpec = { library: 'tanstack-form', fields: [], lists: [{ name: 'emails', path: ['emails'], subs: [{ name: 'address', path: ['address'], item: '' }], rows: 1 }], defaults: { 'emails.0.address': '' } };
+	await runTanstack(s, emails, ['onBlur'], [
+		[{ k: 'append', list: 'emails' }, ' | '],
+		[change('emails.1.address', 'bad'), ' | '],
+		[{ k: 'blur', field: 'emails.1.address' }, ' | V'],
+		[change('emails.1.address', 'a@b.co'), ' | V'],
+		[{ k: 'blur', field: 'emails.0.address' }, 'V | '],
+		[{ k: 'reset' }, ''],
+	]);
 });

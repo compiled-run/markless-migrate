@@ -1,8 +1,10 @@
-// react-hook-form 7, TanStack Form 1 and Formisch 0.4 as their forms run on the old site: when each validates (on submit,
-// then on every change after a submit for react-hook-form and Formisch; TanStack Form's submit errors leave a field when
-// it changes), which messages a field shows (react-hook-form's first, the others' every message), which field a failed
-// submit focuses, and Reset. Validation is the site's own schema through Standard Schema (zod, valibot). The region's
-// `mmform` handler (the converter's FormPlan) takes each field's shown errors and value.
+// react-hook-form 7 and Formisch 0.4 as their forms run on the old site: when each validates (on submit, then on every
+// change after a submit), which messages a field shows (react-hook-form's first, Formisch's every message), which field a
+// failed submit focuses, list rows, and Reset; TanStack Form runs on its own core (form-tanstack.ts). Validation is the
+// site's own schema through Standard Schema (zod, valibot). The region's `mmform` handler (the converter's FormPlan)
+// takes each field's shown errors and value.
+
+import { tanstackEngine } from './form-tanstack.ts';
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
@@ -37,6 +39,8 @@ export interface FormSpec {
 	readonly defaults: Readonly<Record<string, Json>>;
 	/** The values as the form was given them, whose key order the values it submits keep (TanStack Form's state). */
 	readonly shape?: Json;
+	/** TanStack Form's validators the schema is given for, by cause (onSubmit, onBlur, onChange). */
+	readonly validators?: readonly string[];
 }
 
 export interface FormState {
@@ -170,11 +174,10 @@ export function formAct(spec: FormSpec, state: FormState, action: FormAction, va
 		const at = (next.rows?.[list.name]?.length ?? 1) - 1;
 		return { state: next, ...(action.k === 'append' && list.focusAppended ? { focus: rowField(list, at, list.subs[0]!).name } : {}) };
 	}
-	// A control whose blur the site's code hands the library (TanStack Form's handleBlur): its field's submit errors go.
-	if (action.k === 'blur') return { state: { ...state, errors: { ...state.errors, [action.field]: [] } } };
+	// Neither validates on blur (TanStack Form, which may, runs on its own core: form-tanstack.ts).
+	if (action.k === 'blur') return { state };
 	if (action.k === 'change') {
 		const values = { ...state.values, [action.field]: action.value };
-		if (spec.library === 'tanstack-form') return { state: { ...state, values, errors: { ...state.errors, [action.field]: [] } } };
 		if (!state.submitted) return { state: { ...state, values } };
 		const found = issuesByField(spec, validate(formValues(spec, values, state)), state);
 		return { state: { ...state, values, errors: { ...state.errors, [action.field]: shown(spec, found[action.field]) } } };
@@ -182,7 +185,7 @@ export function formAct(spec: FormSpec, state: FormState, action: FormAction, va
 	const errors = validated(spec, state, validate);
 	const first = fieldsOf(spec, state).find((f) => errors[f.name]!.length);
 	const next: FormState = { ...state, errors, submitted: true };
-	if (first) return { state: next, ...(spec.library === 'tanstack-form' ? {} : { focus: first.name }) };
+	if (first) return { state: next, focus: first.name };
 	return { state: next, submit: formValues(spec, state.values, state) };
 }
 
@@ -202,9 +205,10 @@ const entries = () => (registry ??= import('./form-libraries.ts').then((m) => m.
 interface Live {
 	readonly spec: FormEntry;
 	state: FormState;
-	validate?: Validate;
+	/** Runs a use as the form's library does, and keeps the state it leaves. */
+	act(action: FormAction): Promise<FormResult>;
 	/** The values a passing validation gives (the schema's output, in its keys' order). */
-	output?: (values: Json) => Json;
+	output: (values: Json) => Json;
 }
 const live = new WeakMap<Element, Promise<Live | undefined>>();
 
@@ -223,7 +227,22 @@ function liveOf(region: Element): Promise<Live | undefined> {
 				const result = schema['~standard'].validate(values) as { value?: Json } | Promise<unknown>;
 				return result instanceof Promise || result.value === undefined ? values : result.value;
 			};
-			return { spec, state: initialState(spec), validate, output };
+			// TanStack Form runs on its own core; react-hook-form and Formisch on the rules above.
+			if (spec.library === 'tanstack-form') {
+				const engine = await tanstackEngine(spec, schema, spec.validators ?? ['onSubmit']);
+				const l: Live = { spec, state: engine.state, output, act: async (action) => {
+					const result = await engine.act(action);
+					l.state = result.state;
+					return result;
+				} };
+				return l;
+			}
+			const l: Live = { spec, state: initialState(spec), output, act: async (action) => {
+				const result = formAct(spec, l.state, action, validate);
+				l.state = result.state;
+				return result;
+			} };
+			return l;
 		});
 		live.set(region, found);
 	}
@@ -263,8 +282,7 @@ const focusField = (region: Element, spec: FormSpec, field: string) =>
 async function listUse(region: Element, action: FormAction): Promise<void> {
 	const l = await liveOf(region);
 	if (!l) return;
-	const result = formAct(l.spec, l.state, action, l.validate!);
-	l.state = result.state;
+	const result = await l.act(action);
 	commit(region, l);
 	if (result.focus) setTimeout(() => focusField(region, l.spec, result.focus!));
 }
@@ -294,7 +312,7 @@ async function changed(control: Element): Promise<void> {
 	const field = control.getAttribute(FIELD)!;
 	const value = valueOf(control, l.state.values[field] ?? null);
 	if (JSON.stringify(value) === JSON.stringify(l.state.values[field] ?? null)) return;
-	l.state = formAct(l.spec, l.state, { k: 'change', field, value }, l.validate!).state;
+	await l.act({ k: 'change', field, value });
 	commit(region, l);
 }
 
@@ -330,9 +348,9 @@ export function click(target: Element): boolean {
 export function focusout(target: Element): boolean {
 	const region = target.closest(REGION);
 	if (!region || !target.hasAttribute('data-mm-fl-blur')) return false;
-	void liveOf(region).then((l) => {
+	void liveOf(region).then(async (l) => {
 		if (!l) return;
-		l.state = formAct(l.spec, l.state, { k: 'blur', field: target.getAttribute(FIELD)! }, l.validate!).state;
+		await l.act({ k: 'blur', field: target.getAttribute(FIELD)! });
 		commit(region, l);
 	});
 	return false;
@@ -346,7 +364,7 @@ export function keydown(target: Element): boolean {
 async function doReset(region: Element): Promise<void> {
 	const l = await liveOf(region);
 	if (!l) return;
-	l.state = formAct(l.spec, l.state, { k: 'reset' }, l.validate!).state;
+	await l.act({ k: 'reset' });
 	for (const control of region.querySelectorAll(`[${FIELD}]`)) {
 		const field = control.getAttribute(FIELD)!;
 		const kind = control.getAttribute('data-mm-fl-kind');
@@ -366,14 +384,13 @@ export function submit(target: Element, event: SubmitEvent): boolean {
 	const region = target.closest(REGION);
 	if (!region) return false;
 	event.preventDefault();
-	void liveOf(region).then((l) => {
+	void liveOf(region).then(async (l) => {
 		if (!l) return;
-		const result = formAct(l.spec, l.state, { k: 'submit' }, l.validate!);
-		l.state = result.state;
+		const result = await l.act({ k: 'submit' });
 		commit(region, l);
 		if (result.focus) focusField(region, l.spec, result.focus);
 		// The site's onSubmit gets the resolver's or schema's output (react-hook-form, Formisch), TanStack Form its state's values.
-		if (result.submit !== undefined) region.dispatchEvent(new CustomEvent('mmformsubmit', { detail: l.spec.library === 'tanstack-form' ? result.submit : l.output!(result.submit), bubbles: true }));
+		if (result.submit !== undefined) region.dispatchEvent(new CustomEvent('mmformsubmit', { detail: l.spec.library === 'tanstack-form' ? result.submit : l.output(result.submit), bubbles: true }));
 	});
 	return true;
 }
