@@ -787,8 +787,8 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 				if (!mine?.id) break;
 				const trigger = page.locator(`[id="${mine.id}"]`);
 				const hovered = await trigger.hover({ timeout: 2000 }).then(() => true, () => false);
-				// Base UI opens a submenu only on a move once the pointer has moved on the menu (MenuRoot's allowMouseEnter),
-				// then once it has rested 100 ms on its trigger.
+				// The first item hovered takes focus, which scrolls a menu at the viewport's edge away from the pointer: a
+				// second move finds the trigger again, then Base UI opens the submenu once the pointer has rested 100 ms on it.
 				if (hovered) {
 					await trigger.hover({ timeout: 2000, position: { x: 3, y: 3 } }).catch(() => {});
 					await quiet(page, 500);
