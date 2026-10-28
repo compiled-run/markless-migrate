@@ -12,7 +12,7 @@ const config = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
 const handler = (await import(pathToFileURL(join(dir, 'functions/__server.func/index.mjs')).href)).default;
 const filesystemAt = config.routes.findIndex((r) => r.handle === 'filesystem');
 const before = config.routes.slice(0, filesystemAt < 0 ? 0 : filesystemAt).filter((r) => r.src);
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml', '.ico': 'image/x-icon' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml', '.rss': 'application/rss+xml', '.ico': 'image/x-icon' };
 
 // A route's `has` or `missing` condition, as Vercel reads it: the named header, cookie, query parameter or host, matching `value` if given.
 function holds(c, req, url) {

@@ -9,7 +9,7 @@ import { createGzip } from 'node:zlib';
 const port = Number(process.argv[2] ?? 4000);
 const root = new URL('./old/public', import.meta.url).pathname;
 const config = JSON.parse(readFileSync(new URL('./old/vercel.json', import.meta.url), 'utf8'));
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.xml': 'application/xml', '.rss': 'application/xml', '.ico': 'image/x-icon', '.riv': 'application/octet-stream', '.wasm': 'application/wasm' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.xml': 'application/xml', '.rss': 'application/rss+xml', '.ico': 'image/x-icon', '.riv': 'application/octet-stream', '.wasm': 'application/wasm' };
 
 // A vercel.json source (`/x`, `/assets/:splat*`, `/:path(regex)\\.txt`) as a regular expression with named groups.
 function pattern(source) {
@@ -58,9 +58,9 @@ createServer((req, res) => {
 		};
 		const found = file(path) ?? (path.endsWith('/') ? file(join(path, 'index.html')) : file(`${path}.html`));
 		if (found) return send(req, res, 200, { 'content-type': TYPES[extname(found)] ?? 'application/octet-stream', ...headers }, found);
-		// Clean URLs without a trailing-slash rule: `/x/` moves to `/x` when x.html exists, `/x` to `/x/` when x/index.html does.
-		if (path.endsWith('/') && path !== '/' && file(`${path.slice(0, -1)}.html`)) return moved(308, path.slice(0, -1));
-		if (!path.endsWith('/') && file(join(path, 'index.html'))) return moved(308, `${path}/`);
+		// Clean URLs without a trailing-slash rule, as Vercel answers them (checked live): `/x/` serves x.html and `/x` x/index.html, unmoved.
+		const other = path.endsWith('/') ? (path === '/' ? undefined : file(`${path.slice(0, -1)}.html`)) : file(join(path, 'index.html'));
+		if (other) return send(req, res, 200, { 'content-type': TYPES['.html'], ...headers }, other);
 		send(req, res, 404, { 'content-type': TYPES['.html'] }, join(root, '404.html'));
 	} catch (error) {
 		res.writeHead(500).end(String(error?.stack ?? error));
