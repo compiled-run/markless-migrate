@@ -6,6 +6,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
+import { chartModel } from '../src/convert/charts.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { earlyThemeScript } from '../parts/next-themes.ts';
 import { registryModule } from '../src/convert/parts.ts';
@@ -1867,5 +1868,28 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	const seen = await read(page);
 	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
 	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
+	await page.close();
+});
+
+test('capture: a chart\'s axes are read off React\'s current tree, not the stale fiber a DOM node may still point at', async () => {
+	const page = await browser.newPage();
+	await page.setContent('<svg class="recharts-surface"><g class="recharts-cartesian-axis"></g></svg>');
+	const axes = await page.evaluate(`(() => {
+		const chartModel = ${chartModel.toString()};
+		const props = (n) => ({ ticks: Array.from({ length: n }, (_, i) => ({ coordinate: i, value: i })), orientation: 'bottom', tickFormatter: undefined, axisType: 'xAxis', x: 0, y: 0, width: 10, height: 10, viewBox: {} });
+		// React's two trees: the root points at the current one; the axis' DOM node kept the fiber of the first render.
+		const stale = { memoizedProps: props(91) };
+		const fresh = { memoizedProps: props(8), alternate: stale };
+		stale.alternate = fresh;
+		const rootFresh = { child: fresh };
+		const fiberRoot = { current: rootFresh };
+		rootFresh.stateNode = fiberRoot;
+		// A stale fiber's return can point into the current tree: only the walk from the root tells them apart.
+		stale.return = rootFresh;
+		fresh.return = rootFresh;
+		document.querySelector('g')['__reactFiber$x'] = stale;
+		return chartModel(document.querySelector('svg')).axes.map((a) => a && a.c.length);
+	})()`);
+	assert.deepEqual(axes, [8]);
 	await page.close();
 });

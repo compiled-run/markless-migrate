@@ -198,10 +198,29 @@ function installProbe(): void {
  * with), and returns the marked elements. The part (recharts-motion) reads each mark's points off its path.
  */
 export function markGeometry(svg: Element): Element[] {
-	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null };
-	const fiberOf = (el: Element): Fiber | undefined => (el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? ''];
+	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null; alternate?: Fiber | null; child?: Fiber | null; sibling?: Fiber | null; stateNode?: { current?: Fiber } | null };
+	// A DOM node keeps the fiber it was made with, which after an update may be the stale one of React's two trees: the
+	// current tree is the one its root points at, walked once.
+	let current: Set<Fiber> | undefined;
+	const live = (fiber: Fiber | null | undefined): Fiber | undefined => {
+		if (!fiber) return undefined;
+		if (!current) {
+			current = new Set();
+			let top = fiber;
+			while (top.return) top = top.return;
+			const stack = [top.stateNode?.current ?? top];
+			while (stack.length) {
+				const f = stack.pop()!;
+				current.add(f);
+				if (f.child) stack.push(f.child);
+				if (f.sibling) stack.push(f.sibling);
+			}
+		}
+		return current.has(fiber) ? fiber : (fiber.alternate ?? fiber);
+	};
+	const fiberOf = (el: Element): Fiber | undefined => live((el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? '']);
 	const up = (el: Element, has: (p: Record<string, unknown>) => boolean) => {
-		for (let f: Fiber | null | undefined = fiberOf(el); f; f = f.return) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
+		for (let f = fiberOf(el); f; f = live(f.return)) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
 		return undefined;
 	};
 	const kinds: [string, string][] = [['recharts-line-curve', 'line'], ['recharts-area-area', 'area'], ['recharts-area-curve', 'curve'], ['recharts-rectangle', 'bar']];
@@ -229,10 +248,29 @@ export function markGeometry(svg: Element): Element[] {
  * the width and their text), and the bars' gaps and size settings. A custom tick (an element or a function) is left out.
  */
 export function chartModel(svg: Element): ChartModel {
-	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null };
-	const fiberOf = (el: Element): Fiber | undefined => (el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? ''];
+	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null; alternate?: Fiber | null; child?: Fiber | null; sibling?: Fiber | null; stateNode?: { current?: Fiber } | null };
+	// A DOM node keeps the fiber it was made with, which after an update may be the stale one of React's two trees: the
+	// current tree is the one its root points at, walked once.
+	let current: Set<Fiber> | undefined;
+	const live = (fiber: Fiber | null | undefined): Fiber | undefined => {
+		if (!fiber) return undefined;
+		if (!current) {
+			current = new Set();
+			let top = fiber;
+			while (top.return) top = top.return;
+			const stack = [top.stateNode?.current ?? top];
+			while (stack.length) {
+				const f = stack.pop()!;
+				current.add(f);
+				if (f.child) stack.push(f.child);
+				if (f.sibling) stack.push(f.sibling);
+			}
+		}
+		return current.has(fiber) ? fiber : (fiber.alternate ?? fiber);
+	};
+	const fiberOf = (el: Element): Fiber | undefined => live((el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? '']);
 	const up = (el: Element, has: (p: Record<string, unknown>) => boolean) => {
-		for (let f: Fiber | null | undefined = fiberOf(el); f; f = f.return) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
+		for (let f = fiberOf(el); f; f = live(f.return)) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
 		return undefined;
 	};
 	const num = (v: unknown, or = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : or);
@@ -669,7 +707,7 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
  * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
  */
 export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`charts4:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`charts5:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
 	// A capture from before the update animation (a chart with controls and no lag) or the layout model was read is taken again.
 	const stale = (c: ChartFacts) => (c.drivers.length && c.lag === undefined) || [c.variants, ...c.widths.map((w) => w.variants)].flat().some((v) => v.svg && !v.model);
