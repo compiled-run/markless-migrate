@@ -565,3 +565,27 @@ test("a Base UI combobox's own alignOffset (convert reads it per instance) moves
 	assert.deepEqual(placed.middleware[0], { mainAxis: 6, crossAxis: -28, alignmentAxis: -28 });
 	await page.close();
 });
+
+// Floating UI as the positioner calls it, recording each flip's options in order.
+const FLIP_RECORDING = `export const computePosition = async (anchor, floating, o) => { (window.flips ??= []).push(o.middleware.filter((m) => m && m.name === 'flip').map((m) => m.options.fallbackAxisSideDirection)[0]); return { x: 0, y: 0, placement: o.placement, middlewareData: {} }; };
+export const autoUpdate = () => () => {};
+export const arrow = () => ({}), hide = () => ({}), limitShift = () => ({}), size = () => ({}), shift = () => ({}), offset = () => ({});
+export const flip = (options) => ({ name: 'flip', options });`;
+
+test("a Base UI menu's root popup flips only along its side (DROPDOWN_COLLISION_AVOIDANCE); its submenu may fall back to the other axis", async () => {
+	const page = await open(withSub(), ['base-ui/menu'], {}, FLIP_RECORDING);
+	await page.locator('#dd').click();
+	await settled(page);
+	await page.locator('#sub1').hover();
+	await page.waitForTimeout(300);
+	assert.deepEqual([...new Set(await page.evaluate(() => (window as unknown as { flips: string[] }).flips))], ['none', 'end']);
+	await page.close();
+});
+
+test('a Base UI select flips only along its side, as its positioner never falls back to the other axis', async () => {
+	const page = await open(select.replace('data-side="none" data-align="center" role="presentation"', 'data-side="bottom" data-align="start" role="presentation"').replace('<div data-side="none" tabindex="-1"', '<div data-side="bottom" tabindex="-1"'), ['base-ui/select'], {}, FLIP_RECORDING);
+	await page.locator('#base').click();
+	await settled(page);
+	assert.deepEqual([...new Set(await page.evaluate(() => (window as unknown as { flips: string[] }).flips))], ['none']);
+	await page.close();
+});
