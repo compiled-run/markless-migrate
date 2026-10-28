@@ -362,6 +362,20 @@ export function databaseFramesReceived(page: Page): Promise<number> {
 	return page.evaluate(() => (globalThis as unknown as { __mmDatabaseFrames?: number }).__mmDatabaseFrames ?? 0).catch(() => 0);
 }
 
+// Every routed request is a round trip through Playwright's client, which captures a stack trace per call; static files pass straight through.
+const STATIC_FILE = /\.(?:m?js|css|woff2?|ttf|otf|eot|png|jpe?g|gif|webp|avif|svg|ico|mp4|webm)$/;
+
+/**
+ * The requests the route handler must see. Under a plain page load (no extra headers, replay, timing, source write
+ * facts or front door) the handler only continues a GET of the app's own static file unchanged, so those are left out.
+ */
+export function routedRequests(env: SideEnv, options: OpenOptions): string | RegExp {
+	const origin = new URL(env.origin);
+	if (env.headers || env.replay || env.writeFacts.length || env.frontDoor || options.timed || env.block(origin.hostname)) return '**/*';
+	const own = origin.origin.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+	return new RegExp(`^(?!${own}/[^?#]*${STATIC_FILE.source.slice(0, -1)}(?:[?#]|$))`);
+}
+
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
 	await registerStructure();
@@ -415,7 +429,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	if (env.replay?.live) await context.addInitScript(countDatabaseFrames, FIREBASE_SOCKET.source);
 	const door = env.frontDoor;
 	const ownOrigin = (url: URL) => sameApp(url, env.origin) || (door !== undefined && sameApp(url, door.old));
-	await context.route('**/*', async (route: Route) => {
+	await context.route(routedRequests(env, options), async (route: Route) => {
 		const request = route.request();
 		const url = new URL(request.url());
 		if (!/^https?:$/.test(url.protocol)) return route.continue();
