@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseFragment } from 'parse5';
 import { attr, body, find, parseDocument, walk, type Element } from '../src/convert/dom.ts';
-import { TablePlan, templateOf, type CapturedTable, type TableSnapshot } from '../src/convert/tanstack-table.ts';
+import { recordPageSize, TablePlan, templateOf, type CapturedTable, type TableSnapshot } from '../src/convert/tanstack-table.ts';
 import { emitChildren, emitElement, mergeBindings, type Binding } from '../src/convert/tsrx.ts';
 
 // A table region as the old page showed it in each recorded state, built from one description so the states differ only
@@ -287,4 +287,14 @@ test('a web font that only some rows draw waits on the table body, so the rows s
 	assert.deepEqual(plan.notes, []);
 	assert.match(out, /<tbody data-mm-late-font="">@for \(const row of tt0v\.rows; key row\.id\) \{ /);
 	assert.match(out, /<div class="lowercase">\{row\.c0\}<\/div>/);
+});
+
+test('pages are recorded at the page size the table loaded with when its rows fill three of them, so a page-size select shows its value', () => {
+	assert.equal(recordPageSize(68, 10), 10);
+	assert.equal(recordPageSize(100, 10), 10);
+	// Too few rows for a first, a middle and a last page at the table's own size: a third of the rows.
+	assert.equal(recordPageSize(5, 10), 1);
+	assert.equal(recordPageSize(25, 10), 8);
+	assert.equal(recordPageSize(30, 10), 10);
+	assert.equal(recordPageSize(9, undefined), 3);
 });

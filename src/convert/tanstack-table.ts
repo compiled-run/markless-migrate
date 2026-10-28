@@ -77,7 +77,7 @@ export interface TableCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'tables-8';
+const VERSION = 'tables-9';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Whether a settled page may hold a TanStack table: one with a table element. */
@@ -422,6 +422,10 @@ const dirOf = (sorting: Json | undefined, column: string): string => {
 
 const selectionOf = (state: Record<string, Json>) => Object.entries((state.rowSelection ?? {}) as Record<string, boolean>).filter(([, on]) => on).map(([id]) => id).sort();
 
+/** The page size pages are recorded at: the table's own when its rows fill a first, a middle and a last page of it, else a third of the rows. */
+export const recordPageSize = (rows: number, pageSize: number | undefined): number => (pageSize && rows >= 3 * pageSize ? pageSize : Math.max(1, Math.floor(rows / 3)));
+const pageSizeOf = (state: Readonly<Record<string, Json>>): number | undefined => ((state.pagination as { pageSize?: number } | undefined)?.pageSize);
+
 /** Uses each control of the table once (a sorting control from every direction) and records what it did. */
 /** The page as loaded again, its tables found again in the same order. */
 async function reload(page: Page): Promise<void> {
@@ -434,7 +438,7 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 	const out: TableControl[] = [];
 	const initial = spec.state as Record<string, Json>;
 	// Every page button is usable on a second page, and a page of two rows can have some of its rows selected.
-	const size = Math.max(2, Math.floor(spec.rowIds.length / 3));
+	const size = Math.max(2, recordPageSize(spec.rowIds.length, pageSizeOf(spec.state)));
 	const middle = spec.features.includes('rowPaginationFeature') && spec.rowIds.length > size ? { pagination: { pageIndex: 1, pageSize: size } } : undefined;
 	const controls = await page.evaluate(controlsOf, i);
 	// Select-all is used once the rows' own controls are known: a widget keeping its own selection is put in each state by them.
@@ -663,7 +667,7 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 	}
 	for (const c of controls.filter((x) => x.kind === 'sort')) for (const dir of ['asc', 'desc']) states.push([`sort:${c.column}:${dir}`, { sorting: [{ id: c.column!, desc: dir === 'desc' }] }]);
 	if (spec.features.includes('rowPaginationFeature') && ids.length > 2) {
-		const size = Math.max(1, Math.floor(ids.length / 3));
+		const size = recordPageSize(ids.length, pageSizeOf(spec.state));
 		const count = Math.ceil(ids.length / size);
 		states.push(['page:first', { pagination: { pageIndex: 0, pageSize: size } }], ['page:last', { pagination: { pageIndex: count - 1, pageSize: size }, rowSelection: { [ids[0]!]: true } }]);
 		// A page with pages both before and after it: what follows only one way (a last-page button) is told apart there.
