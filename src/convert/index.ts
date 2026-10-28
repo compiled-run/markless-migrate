@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
@@ -38,7 +38,7 @@ import { usedStylesheets } from './used-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
-import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
+import { keepRouting, nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
@@ -129,7 +129,8 @@ export default defineConfig({
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
 		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],${traceConfig(packages)}
 	},
-	plugins: [markless(), router()],
+	// \`markless-migrate dev\` turns off the dev server's execution log: it writes <html> attributes on every interaction.
+	plugins: [markless(process.env.MARKLESS_MIGRATE_DEV ? { executionLog: 'never' } : {}), router()],
 });
 `;
 
@@ -156,6 +157,8 @@ export interface ConvertOptions {
 	readonly reveal?: boolean;
 	/** Take every capture of the old pages into .migrate/convert and stop there: no page is written. */
 	readonly captureOnly?: boolean;
+	/** For `markless-migrate dev`: the app already holds this convert's static files and server; only what is missing is fetched, and the server only learns the pages. */
+	readonly reuse?: boolean;
 }
 
 export interface HeadTag {
@@ -171,6 +174,8 @@ export interface ConvertedRoute {
 	readonly page: string;
 	readonly bytes: number;
 	readonly parts: readonly PartUse[];
+	/** The port modules (under `parts/`) its page's registry loads: a change to one can break this route. */
+	readonly ports?: readonly string[];
 }
 
 export interface ConvertReport {
@@ -1931,19 +1936,22 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await mkdir(dirname(join(publicDir, path)), { recursive: true });
 		await writeFile(join(publicDir, path), css);
 	}
-	if (options.source) await copyStaticDir(join(options.source, 'public'), publicDir);
+	const kept = options.reuse && (await readdir(publicDir).then((names) => names.length > 0, () => false));
+	if (options.source && !kept) await copyStaticDir(join(options.source, 'public'), publicDir);
 	const paths = new Set<string>();
 	for (const p of prepared.values()) for (const path of p.resources) if (!path.startsWith('/_converted/')) paths.add(path);
 	// Resources a query picks are served by the routing middleware from the old build's answers, not as files.
 	const queried = [...paths].filter((p) => p.includes('?'));
-	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log);
+	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log, options.reuse);
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const endpoints: EndpointPort[] = [];
-	if (options.source) {
+	const serverKept = options.reuse && (await keepRouting(app, [...new Set(out.map((r) => new URL(r.route, options.old).pathname))]));
+	if (serverKept) log('server: kept as written before, with these pages');
+	if (options.source && !serverKept) {
 		const scanned = await readSource(options.source);
 		const handlerRoutes = scanned.routes.filter((r) => r.kind === 'endpoint' && r.file).map((r) => ({ route: r.path, file: r.file! }));
 		const rewrites = (scanned.redirects ?? []).filter((r) => r.kind === 'rewrite' && r.to.startsWith('/'));
@@ -1979,7 +1987,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort()));
 	}
 	const report: ConvertReport = {
-		routes: out,
+		routes: out.map((r) => ({ ...r, ports: [...usedPorts.of([r.route])].sort() })),
 		dropped: Object.fromEntries(dropped),
 		shared: factored.components.map((c) => ({ component: c.file, pages: c.pages, bytes: c.source.length })),
 		assets: { copied: assets.copied.length, missing: assets.missing },
