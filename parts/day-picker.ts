@@ -100,6 +100,10 @@ export interface DayPickerView {
 	readonly rm?: boolean;
 	/** How many times the view changed, which tells a written view from one Markless has not applied yet. */
 	readonly n?: number;
+	/** The visitor's day, once the page is idle: the cells a month change mounts mark it as today. */
+	readonly ct?: number;
+	/** Whether the month changed since the page loaded (every cell shown since is one React mounted on the visitor's clock). */
+	readonly mv?: boolean;
 	/** What a date picker's field shows: the text typed into it, or null once a day is picked (the day in its pattern). */
 	readonly x?: string | null;
 }
@@ -449,7 +453,7 @@ function latest(key: string, read: DayPickerView): DayPickerView {
 	return read;
 }
 function write(key: string, base: DayPickerView, next: DayPickerView): DayPickerView {
-	const out = { ...next, n: (base.n ?? 0) + 1 };
+	const out = { ...next, n: (base.n ?? 0) + 1, ...(next.m !== base.m ? { mv: true } : {}) };
 	written.set(key, out);
 	return out;
 }
@@ -458,10 +462,13 @@ function write(key: string, base: DayPickerView, next: DayPickerView): DayPicker
  * The view on the day the browser shows the page, when no one has used the calendar since the server rendered it; a
  * copy of the same view otherwise, so writing it costs Markless a draw that changes nothing.
  */
-export function dayPickerWake(config: DayPickerConfig, view: DayPickerView, key: string): DayPickerView {
+export function dayPickerWake(config: DayPickerConfig, view: DayPickerView, key: string, now: number = todayNumber()): DayPickerView {
 	const base = latest(key, view);
-	const now = todayNumber();
-	return write(key, base, base.u || base.t === now ? base : dayPickerView(config, now));
+	if (base.u || base.t === now) return write(key, base, base);
+	// Hydration leaves the server's attributes (today's mark) on the cells it rendered; text that differs (another month)
+	// makes React render the visitor's calendar instead.
+	const visitor = dayPickerView(config, now);
+	return write(key, base, visitor.m === base.m ? { ...base, ct: now } : visitor);
 }
 
 /** What a control beside the calendar did to it on the old page: the selection and the month it set. */
@@ -660,7 +667,8 @@ export function dayPickerModel(config: DayPickerConfig, view: DayPickerView): Da
 	const custom = customNames(lib, days, view.t);
 	const selection = selectionOf(config, view);
 	const cache = new Map<Day, Modifiers>();
-	const mods = (d: Day) => cache.get(d) ?? cache.set(d, modifiersOf(lib, d, nav, today, custom, view, selection)).get(d)!;
+	const marked = view.mv && view.ct !== undefined ? todayOf(config, view.ct) : today;
+	const mods = (d: Day) => cache.get(d) ?? cache.set(d, modifiersOf(lib, d, nav, marked, custom, view, selection)).get(d)!;
 	const target = focusTarget(lib, days, mods, selection, view);
 	const prev = previousMonth(lib, view.m, nav);
 	const next = nextMonth(lib, view.m, nav);
@@ -892,7 +900,8 @@ const remounts = (config: DayPickerConfig, before: DayPickerView, after: DayPick
 
 /** The view after `action`, as DayPicker's handlers leave it. */
 export function dayPickerNext(config: DayPickerConfig, view: DayPickerView, action: DayPickerAction): DayPickerView {
-	const after = step(config, view, action);
+	const stepped = step(config, view, action);
+	const after = stepped.m !== view.m && !stepped.mv ? { ...stepped, mv: true } : stepped;
 	return after !== view && !after.rm && remounts(config, view, after) ? { ...after, rm: true } : after;
 }
 

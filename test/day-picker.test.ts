@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dayOfDate, dayPickerField, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerTyped, dayPickerView, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
+import { dayOfDate, dayPickerField, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerTyped, dayPickerView, dayPickerWake, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
 import { fieldOf, pruneLocale, whenOf, type LayerOpener } from '../src/convert/day-picker.ts';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -240,4 +240,19 @@ test("a date picker's field is learned from the capture: new Date's reading of e
 	// A natural-language field read "tomorrow", which Date does not.
 	const chrono = { ...opener, field: { ...opener.field!, typed: typed.map((t) => (t.text === 'tomorrow' ? { ...t, selected: '2026-10-28' } : t)) } };
 	assert.match(fieldOf(chrono, base) as string, /typing "tomorrow" selected 2026-10-28, not 2026-02-03/);
+});
+
+test("a calendar the page rendered keeps its prerendered today on the cells it showed, as React's hydration leaves attributes; cells a month change mounts show the visitor's", () => {
+	const built = day(2026, 2, 10);
+	const visitor = day(2026, 2, 12);
+	const todayIn = (v: DayPickerView) => cells(base, v).filter((d) => d.today === 'true' && !d.outside).map((d) => d.iso);
+	let view = dayPickerWake(base, dayPickerView(base, built), 'today-a', visitor);
+	assert.deepEqual(todayIn(view), ['2026-03-10'], 'the same month: what the server rendered stays');
+	view = dayPickerNext(base, view, { t: 'nav', dir: 1 });
+	view = dayPickerNext(base, view, { t: 'nav', dir: -1 });
+	assert.deepEqual(todayIn(view), ['2026-03-12'], 'back after a month change: new cells, the visitor\'s today');
+	// Another month on the visitor's day: React's text differs, so it renders the visitor's calendar outright.
+	const later = dayPickerWake(base, dayPickerView(base, built), 'today-b', day(2026, 3, 2));
+	assert.equal(dayPickerModel(base, later).months[0]!.caption, 'April 2026');
+	assert.deepEqual(todayIn(later), ['2026-04-02']);
 });
