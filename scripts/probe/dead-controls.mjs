@@ -1,7 +1,7 @@
 // Dead-control inventory: every visible control of a route used once on the original and on the port, from a fresh load;
 // what it changes outside itself (by region), whether it moves the address, what a click at its centre reaches, and how the
 // popup it opens first shows. Usage: node dead-controls.mjs <routes-file> <out.jsonl> [shard index] [shard count]
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
@@ -78,19 +78,24 @@ function arm(control) {
 	const hit = !hitEl ? 'nothing' : owner === el || el.contains(hitEl) ? 'itself' : owner ? `${roleOf(owner)} "${nameOf(owner)}"` : `${hitEl.localName} (no control)`;
 	const openBefore = new Set([...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [role=tooltip]')].filter((p) => p.checkVisibility()));
 	const touched = new Set();
-	const attrs = new Set();
+	// First value of each attribute the use changed: one set again to what it was (a framework re-render, a screenshot's empty style) is no change.
+	const was = new Map();
 	const observer = new MutationObserver((records) => {
 		for (const rec of records) {
-			if (rec.type === 'attributes' && rec.attributeName?.startsWith('data-dc-')) continue;
+			if (rec.type === 'attributes') {
+				if (rec.attributeName?.startsWith('data-dc-')) continue;
+				const m = was.get(rec.target) ?? was.set(rec.target, new Map()).get(rec.target);
+				if (!m.has(rec.attributeName)) m.set(rec.attributeName, rec.oldValue);
+				continue;
+			}
 			touched.add(rec.target);
-			if (rec.type === 'attributes') attrs.add(rec.target);
 			if (rec.type === 'childList') for (const n of rec.addedNodes) touched.add(n);
 		}
 	});
-	observer.observe(document, { subtree: true, attributes: true, childList: true, characterData: true });
+	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
 	// A same-origin frame (a live preview) changes in its own document.
 	for (const frame of document.querySelectorAll('iframe')) {
-		try { if (frame.contentDocument && frame.checkVisibility()) observer.observe(frame.contentDocument, { subtree: true, attributes: true, childList: true, characterData: true }); } catch {}
+		try { if (frame.contentDocument && frame.checkVisibility()) observer.observe(frame.contentDocument, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true }); } catch {}
 	}
 	const frames = [];
 	const t0 = performance.now();
@@ -108,7 +113,7 @@ function arm(control) {
 	};
 	requestAnimationFrame(tick);
 	const url = location.pathname + location.search;
-	globalThis.__dc = { observer, touched, attrs, frames, url, openBefore, el };
+	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el };
 	return { hit, x: cx, y: cy };
 }
 
@@ -134,7 +139,8 @@ function read(prefix) {
 	};
 	const skip = [st.el, ...st.openBefore, ...(prefix ?? []).map((sel) => document.querySelector(sel)).filter(Boolean)];
 	const affected = new Set();
-	for (const node of st.touched) {
+	const attrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? (el.getAttribute(n) ?? '') !== (v ?? '') : el.getAttribute(n) !== v))).map(([el]) => el));
+	for (const node of [...st.touched, ...attrs]) {
 		const doc = node.ownerDocument ?? node;
 		if (doc !== document) {
 			const frame = [...document.querySelectorAll('iframe')].find((f) => { try { return f.contentDocument === doc; } catch { return false; } });
@@ -144,7 +150,7 @@ function read(prefix) {
 		const el = node instanceof Element ? node : node.parentElement;
 		if (!el?.isConnected || el.closest('head')) continue;
 		// The page's own colour mode or scroll lock is set on <html> or <body>; a pop-up put into <body> is named by itself.
-		if (el === document.body || el === document.documentElement) { if (node === el && st.attrs.has(el)) affected.add('the page'); continue; }
+		if (el === document.body || el === document.documentElement) { if (node === el && attrs.has(el)) affected.add('the page'); continue; }
 		if (skip.some((s) => s && (s === el || s.contains(el)))) continue;
 		if (!el.checkVisibility() && !el.parentElement?.checkVisibility()) continue;
 		affected.add(regionOf(el));
@@ -160,20 +166,24 @@ function read(prefix) {
 	return { affected: [...affected].sort().slice(0, 6), url: location.pathname + location.search !== st.url ? location.pathname + location.search : '', popup: first ? { firstMs: first.ms, opacity: Math.round(first.opacity * 100) / 100, transform: first.transform, anims: [...new Set(vis.flatMap((f) => f.anims))].sort(), ...(anchor ? { anchor } : {}) } : undefined };
 }
 
-const browser = await chromium.launch();
+const ENGINE = process.env.ENGINE ?? 'chromium';
+const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch();
+const WIDTH = Number(process.env.WIDTH ?? 1280);
+const STATIC_WIDTHS = (process.env.STATIC_WIDTHS ?? '1280,1440,390').split(',').map(Number);
+const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Boolean).map(Number);
 // One context for both sides (different origins keep their own storage); the bypass header only goes to the port's host.
 // Every use starts from a fresh context: what one use stored (a colour mode, a package manager, an intro dismissed) is not the next one's.
 const pages = {};
 const cdp = {};
 let context;
-async function fresh() {
+async function fresh(width = WIDTH) {
 	await context?.close().catch(() => {});
-	context = await browser.newContext({ viewport: { width: Number(process.env.WIDTH ?? 1280), height: 900 } });
+	context = await browser.newContext({ viewport: { width, height: 900 } });
 	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
 	for (const side of ['old', 'new']) {
 		pages[side] = await context.newPage();
 		pages[side].on('dialog', (d) => d.dismiss().catch(() => {}));
-		cdp[side] = await context.newCDPSession(pages[side]);
+		if (ENGINE === 'chromium') cdp[side] = await context.newCDPSession(pages[side]);
 	}
 }
 const layoutDone = new Set();
@@ -238,8 +248,8 @@ function strip(file, old, port) {
 	writeFileSync(file, PNG.sync.write(outPng));
 }
 
-async function use(side, route, prefix, control, film) {
-	if (side === 'old') await fresh();
+async function use(side, route, prefix, control, film, width = WIDTH) {
+	if (side === 'old') await fresh(width);
 	const p = pages[side];
 	await load(side, route);
 	for (const step of prefix) {
@@ -287,24 +297,29 @@ for (const route of mine) {
 	let tried = 0;
 	const started = Date.now();
 	try {
-		await fresh();
-		await load('old', route);
-		const controls = (await pages.old.evaluate(listControls)).filter((c) => !c.leaves);
-		await load('new', route);
-		const portControls = await pages.new.evaluate(listControls).catch(() => []);
-		// Box parity: each control of the page's own content, its size and its place in its example frame.
-		const portByKey = new Map(portControls.map((c) => [c.key, c]));
-		let boxes = 0;
-		for (const c of controls) {
-			if (c.layout || boxes >= 40) continue;
-			const n = portByKey.get(c.key);
-			if (!n) continue;
-			const d = { w: n.box.w - c.box.w, h: n.box.h - c.box.h, x: n.box.x - c.box.x, y: n.box.y - c.box.y };
-			if (Math.abs(d.w) > 3 || Math.abs(d.h) > 3 || Math.abs(d.x) > 4 || Math.abs(d.y) > 4) {
-				boxes++;
-				findings.push({ route, control: c.key, kind: 'box', expected: `${c.box.w}x${c.box.h} at (${c.box.x}, ${c.box.y}) in its frame`, actual: `${n.box.w}x${n.box.h} at (${n.box.x}, ${n.box.y})` });
+		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
+		let controls = [];
+		for (const width of STATIC_WIDTHS) {
+			await fresh(width);
+			await load('old', route);
+			const olds = await pages.old.evaluate(listControls);
+			await load('new', route);
+			const news = await pages.new.evaluate(listControls).catch(() => []);
+			if (width === WIDTH) controls = olds.filter((c) => !c.leaves);
+			const portByKey = new Map(news.map((c) => [c.key, c]));
+			let boxes = 0, missing = 0;
+			for (const c of olds) {
+				if (c.layout) continue;
+				const n = portByKey.get(c.key);
+				if (!n) {
+					if (missing++ < 10) findings.push({ route, control: c.key, kind: 'missing-at-width', width, expected: `shown at ${width} px wide`, actual: 'not on the port at this width' });
+					continue;
+				}
+				const d = { w: n.box.w - c.box.w, h: n.box.h - c.box.h, x: n.box.x - c.box.x, y: n.box.y - c.box.y };
+				if ((Math.abs(d.w) > 3 || Math.abs(d.h) > 3 || Math.abs(d.x) > 4 || Math.abs(d.y) > 4) && boxes++ < 20) findings.push({ route, control: c.key, kind: 'box', width, expected: `${c.box.w}x${c.box.h} at (${c.box.x}, ${c.box.y}) in its frame`, actual: `${n.box.w}x${n.box.h} at (${n.box.x}, ${n.box.y})` });
 			}
 		}
+		const popups = [];
 		const perName = new Map();
 		const queue = controls
 			.filter((c) => !(c.layout && layoutDone.has(c.key)))
@@ -323,7 +338,7 @@ for (const route of mine) {
 			const blockedBy = [...deadIds.keys()].find((d) => id.startsWith(`${d} > `));
 			if (blockedBy) { deadIds.get(blockedBy).behind++; continue; }
 			tried++;
-			const film = !motionTemplates.has(control.template);
+			const film = ENGINE === 'chromium' && !motionTemplates.has(control.template);
 			const old = await use('old', route, prefix, control, film).catch((e) => ({ failed: e.message.split('\n')[0] }));
 			if (old.failed || leftPage(old, route) || !changed(old)) continue;
 			if (film) motionTemplates.add(control.template);
@@ -339,12 +354,12 @@ for (const route of mine) {
 				if (old.url && !port.url) findings.push({ ...base, kind: 'address', expected: `address becomes ${old.url}`, actual: 'the address stays' });
 				const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
 				if (old.affected?.length && lost.length === old.affected.length && !old.popup) findings.push({ ...base, kind: 'region', expected: `changes ${old.affected.join(', ')}`, actual: `changes ${port.affected?.join(', ') || (port.url ? `only the address (${port.url})` : 'only a pop-up')}` });
+				if (old.popup) popups.push({ prefix, control, id });
 				if (old.popup && port.popup) {
 					const o = old.popup, n = port.popup;
 					const animOld = o.opacity < 0.95 || transformMoves(o.transform), animNew = n.opacity < 0.95 || transformMoves(n.transform);
 					if (animOld !== animNew || Math.abs(o.opacity - n.opacity) > 0.3 || n.firstMs - o.firstMs > 80) findings.push({ ...base, kind: 'popup-first-frame', expected: `first visible ${o.firstMs} ms after the input at opacity ${o.opacity}, ${o.transform}; animations ${o.anims.join(',') || 'none'}`, actual: `first visible ${n.firstMs} ms at opacity ${n.opacity}, ${n.transform}; animations ${n.anims.join(',') || 'none'}` });
-					const a = o.anchor, b = n.anchor;
-					if (a && b && (a.side !== b.side || Math.abs(a.dx - b.dx) > 4 || Math.abs(a.dy - b.dy) > 4 || Math.abs(a.w - b.w) > 4)) findings.push({ ...base, kind: 'popup-anchor', expected: `${a.side} its trigger, ${a.dx} px across and ${a.dy} px down from its corner, ${a.w}x${a.h} (trigger ${a.tw} wide)`, actual: `${b.side}, ${b.dx} px across, ${b.dy} px down, ${b.w}x${b.h} (trigger ${b.tw} wide)` });
+					anchorFinding(findings, base, o.anchor, n.anchor, WIDTH);
 				}
 			}
 			const om = old.motion, nm = port.motion;
@@ -374,13 +389,27 @@ for (const route of mine) {
 				}
 			}
 		}
+		// Where each pop-up opens, at the other widths a layout changes at.
+		for (const width of ANCHOR_WIDTHS) {
+			for (const { prefix, control, id } of popups.slice(0, 20)) {
+				const old = await use('old', route, prefix, control, false, width).catch(() => ({}));
+				if (!old.popup?.anchor) continue;
+				const port = await use('new', route, prefix, control, false, width).catch(() => ({}));
+				if (port.popup?.anchor) anchorFinding(findings, { route, control: id }, old.popup.anchor, port.popup.anchor, width);
+				else if (port.missing || port.failed || !port.popup) findings.push({ route, control: id, kind: 'popup-missing-at-width', width, expected: `opens a pop-up at ${width} px wide`, actual: port.missing ?? port.failed ?? 'no pop-up on the port' });
+			}
+		}
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
-	appendFileSync(out, JSON.stringify({ route, tried, ms: Date.now() - started, motionMs, findings }) + '\n');
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await browser.close();
+
+function anchorFinding(findings, base, a, b, width) {
+	if (a && b && (a.side !== b.side || Math.abs(a.dx - b.dx) > 4 || Math.abs(a.dy - b.dy) > 4 || Math.abs(a.w - b.w) > 4)) findings.push({ ...base, kind: 'popup-anchor', width, expected: `${a.side} its trigger, ${a.dx} px across and ${a.dy} px down from its corner, ${a.w}x${a.h} (trigger ${a.tw} wide)`, actual: `${b.side}, ${b.dx} px across, ${b.dy} px down, ${b.w}x${b.h} (trigger ${b.tw} wide)` });
+}
 
 function describe(r) {
 	return [r.affected?.length ? `changes ${r.affected.join(', ')}` : '', r.url ? `address becomes ${r.url}` : '', r.popup ? 'opens a pop-up' : ''].filter(Boolean).join('; ') || 'moves on screen';
