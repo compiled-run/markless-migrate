@@ -1,7 +1,7 @@
 import { parseFragment } from 'parse5';
 import { attr, childrenOf, isElement, walk as walkElements, type Element, type Node } from './dom.ts';
 import { emitChildren, lit, type Binding } from './tsrx.ts';
-import { layoutOwned, type Frame, type Scene, type SceneNode } from './scenes.ts';
+import { layoutOwned, TYPED, type Frame, type Scene, type SceneNode } from './scenes.ts';
 
 type El = Extract<SceneNode, { tag: string }>;
 type Value = string | number | null;
@@ -23,6 +23,8 @@ export interface SceneData {
 	readonly changes: Readonly<Record<number, readonly (readonly [number, Value])[]>>;
 	/** Per settled state's frame, every entry's value there. */
 	readonly full: Readonly<Record<number, readonly (readonly [number, Value])[]>>;
+	/** The text a listed field was given at capture, which the part replaces with what the visitor typed. */
+	readonly typed?: string;
 }
 
 interface Timeline {
@@ -100,11 +102,12 @@ function renameTo(trees: readonly SceneNode[], target: SceneNode): SceneNode[] {
 	return trees.map(rename);
 }
 
-const runsOf = (n: El): string[] => n.kids.filter((k) => !isEl(k)).map((k) => (k as { text: string }).text);
+// A textarea's text is React's defaultValue, following its value (`.value`): not a run of its own.
+const runsOf = (n: El): string[] => (n.tag === 'textarea' ? [] : n.kids.filter((k) => !isEl(k)).map((k) => (k as { text: string }).text));
 // A subtree's make-up without its values: elements by id, and whether each text run has text.
 function structure(n: SceneNode): string {
 	if (!isEl(n)) return n.text ? 'T' : '';
-	return `${n.id}(${n.kids.map(structure).join(',')})`;
+	return `${n.id}(${n.tag === 'textarea' ? '' : n.kids.map(structure).join(',')})`;
 }
 // Whether `a` can be shown as `b` with some of `b`'s elements hidden and some of its text emptied.
 function within(a: SceneNode, b: SceneNode): boolean {
@@ -274,7 +277,7 @@ export class ScenePlan {
 					const n = nodeAt(id, f);
 					return isEl(n) ? (n.attrs.find(([k]) => k === a)?.[1] ?? null) : undefined;
 				});
-				if (new Set(at.filter((v) => v !== undefined)).size <= 1) continue;
+				if (new Set(at.filter((v) => v !== undefined)).size <= 1 && !at.some((v) => v?.includes(TYPED))) continue;
 				const i = entry(id, 'a', a);
 				frames.forEach((f, j) => at[j] !== undefined && (values[f]![i] = at[j]!));
 			}
@@ -283,7 +286,8 @@ export class ScenePlan {
 					const n = nodeAt(id, f);
 					return isEl(n) ? (runsOf(n)[r] ?? '') : undefined;
 				});
-				if (new Set(at.filter((v) => v !== undefined)).size <= 1) continue;
+				// What the visitor typed is written by the part even where it never changes.
+				if (new Set(at.filter((v) => v !== undefined)).size <= 1 && !at.some((v) => v?.includes(TYPED))) continue;
 				const i = entry(id, 't', r);
 				const longest = at.reduce<string>((a, v) => (v !== undefined && v.length > a.length ? v : a), '');
 				entries[i]![3] = longest;
@@ -417,12 +421,14 @@ export class ScenePlan {
 					return v !== undefined && values[from]![i] !== v ? [[i, v] as const] : [];
 				});
 			}
-		const data: SceneData = { listed, rest: t.rest, edges: t.edges.map((e) => [e.from, e.control, e.start, e.end, e.times, e.to] as const), entries, changes, full };
+		const fields = t.edges.some((e) => e.control.includes('|'));
+		const data: SceneData = { listed, rest: t.rest, edges: t.edges.map((e) => [e.from, e.control, e.start, e.end, e.times, e.to] as const), entries, changes, full, ...(fields ? { typed: TYPED } : {}) };
 		const own = bindings.get(region);
+		const set = `(frame) => { ${name} = frame; }`;
 		bindings.set(region, {
 			...own,
 			declare: [...(own?.declare ?? []), `let ${name} = state(0);`],
-			extra: [...(own?.extra ?? []), `data-mm-scene={${lit(JSON.stringify(data))}}`, `onClick={(event) => playScene(event, (frame) => { ${name} = frame; })}`],
+			extra: [...(own?.extra ?? []), `data-mm-scene={${lit(JSON.stringify(data))}}`, `onClick={(event) => playScene(event, ${set})}`, ...(fields ? [`onInput={(event) => playScene(event, ${set})}`, `onKeyDown={(event) => playScene(event, ${set})}`] : [])],
 		});
 		this.names.set(region, name);
 		this.n++;
