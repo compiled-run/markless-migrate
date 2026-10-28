@@ -12,7 +12,7 @@ import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
-import { loadPage } from './infrastructure.ts';
+import { LOAD_TIMEOUT_MS, loadPage } from './infrastructure.ts';
 import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
 import { routeLinks, routePath, shellRoute } from './hash-routes.ts';
@@ -183,6 +183,14 @@ export const pageLoads = new WeakMap<PageCapture, readonly string[]>();
 /** The GETs each capture's page or its embeds made to other origins for data, and an embed's code: kept with a cached old capture and given to the new page with it. */
 export const thirdPartyLoads = new WeakMap<PageCapture, readonly string[]>();
 
+// A response its page left by navigating away (the about:blank before a retried load) never finishes: its body and sizes would wait forever.
+function readWithin<T>(work: Promise<T>): Promise<T | undefined> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	return Promise.race([work, new Promise<undefined>((done) => {
+		timer = setTimeout(() => done(undefined), LOAD_TIMEOUT_MS);
+	})]).finally(() => clearTimeout(timer));
+}
+
 export async function capturePage(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<PageCapture> {
 	const origin = env.origin;
 	const { context, page, log, own } = await openPage(browser, env, viewport, { loops: true, shareThirdParty: true });
@@ -209,7 +217,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			if (!ASSET_TYPES.has(type) || ofEmbed) return;
 			if (type === 'script') ownScripts.add(response.url());
 			pending.push(
-				(async () => {
+				readWithin((async () => {
 					const sizes = await response.request().sizes().catch(() => undefined);
 					const bytes = sizes?.responseBodySize ?? 0;
 					if (type === 'script') {
@@ -224,7 +232,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 					if (type === 'font' && response.ok()) fontHashes.set(response.url(), createHash('sha256').update(await response.body()).digest('hex'));
 					if (type === 'stylesheet' && response.ok()) stylesheets.push({ url: toLocal(response.url(), origin), text: await response.text() });
 					return { url: toLocal(response.url(), origin), type, status: response.status(), contentType: mime(response.headers()['content-type']), bytes };
-				})().catch(() => undefined),
+				})().catch(() => undefined)),
 			);
 		});
 		// A stylesheet that never answered is recorded too (status 0), so a page that rendered without it can be told apart.
