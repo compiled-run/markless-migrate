@@ -742,6 +742,32 @@ test('a vaul drawer opens with focus left on its trigger and no trap until focus
 	await page.close();
 });
 
+test('a Radix command dialog paints its first group with the dialog and the rest a frame later, with focus in its input', async () => {
+	const group = (g: number) => `<div cmdk-group="" role="presentation" style="display:block">${Array.from({ length: 30 }, (_, i) => `<div cmdk-item="" role="option">Item ${g}.${i}</div>`).join('')}</div>`;
+	const page = await open(
+		`<main><button data-slot="dialog-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="cd" data-state="closed">Search</button></main><div data-mm-layer="cd" hidden data-slot="dialog-overlay" data-state="closed"></div><div data-mm-layer="cd" hidden role="dialog" id="cd" data-slot="dialog-content" data-state="closed"><div cmdk-root=""><input cmdk-input="" role="combobox"><div cmdk-list="" role="listbox">${group(0)}${group(1)}${group(2)}</div></div></div>`,
+		['radix/dialog'],
+	);
+	await page.evaluate(() => {
+		const frames: string[] = [];
+		(window as unknown as { frames_: string[] }).frames_ = frames;
+		const sample = () => {
+			const dialog = document.getElementById('cd')!;
+			const laid = [...dialog.querySelectorAll('[cmdk-item]')].filter((item) => item.getBoundingClientRect().height > 0).length;
+			const shown = dialog.hidden ? 'closed' : `${laid} items`;
+			if (frames.at(-1) !== shown) frames.push(shown);
+			requestAnimationFrame(sample);
+		};
+		sample();
+	});
+	await page.getByText('Search').click();
+	await page.waitForFunction(() => (window as unknown as { frames_: string[] }).frames_.includes('90 items'));
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { frames_: string[] }).frames_), ['closed', '30 items', '90 items']);
+	assert.deepEqual(await page.locator('[cmdk-group]').evaluateAll((els) => els.map((el) => (el as HTMLElement).style.display)), ['block', 'block', 'block'], 'each group keeps its own display');
+	assert.equal(await focusOf(page), 'input[combobox]:');
+	await page.close();
+});
+
 test('a Radix vertical slider steps up with ArrowUp and follows the pointer from the bottom', async () => {
 	const page = await open(
 		`<div style="padding:50px"><span data-orientation="vertical" data-slot="slider" data-state="x" style="position:relative;display:block;height:200px;width:20px"><span data-slot="slider-track" style="position:absolute;inset:0"><span data-slot="slider-range" style="position:absolute;bottom:0%;top:50%;left:0;right:0"></span></span><span style="position:absolute;bottom:calc(50% + 0px)"><span role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-orientation="vertical" data-orientation="vertical" tabindex="0" data-slot="slider-thumb" style="display:block;width:16px;height:16px"></span></span></span></div>`,

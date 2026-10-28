@@ -2,6 +2,8 @@
 // FocusScope, FocusGuards, aria-hidden and react-remove-scroll do to the page, keyed off the `data-state` the
 // Markless parts render. Each element follows only its own `data-state` and its own animation events.
 
+import { itemsAfterFirstPaint } from '../first-frame.ts';
+
 interface Presence {
 	present: boolean;
 	state: 'mounted' | 'unmountSuspended' | 'unmounted';
@@ -66,6 +68,7 @@ function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => vo
 		} else if (was === 'unmounted') {
 			forgetMarks(el);
 			portal(el);
+			itemsAfterFirstPaint(el);
 			el.hidden = false;
 			p.prevAnimationName = animationName(el);
 			onMount();
