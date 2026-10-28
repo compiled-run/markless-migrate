@@ -106,7 +106,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -176,6 +176,20 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           is loaded again with the clock moved 40 days into Pacific/Auckland: text the old page changes with
           the clock must change on new.
           --no-probes leaves them out; --only probes runs them alone.
+          Control parity, with the probes: each width's controls (1280, 1440, 390) are listed on both apps
+          and a control the original shows at a width the port lacks is red; each control's box and its
+          parent's and example frame's boxes must agree within 2 px; what a click reaches at five points
+          over each control and over a grid and every control of each landmark in view must match; each
+          pop-up's side, offset and width against its trigger must agree within 4 px at 1280 and 1440,
+          in Chromium, and in WebKit too with --control-webkit; on routes that carry motion the
+          first pop-up of each kind is filmed opening and closing (Escape), and one side moving while the
+          other jumps, or another duration or cadence, is red; a standard key set (arrows, Enter, Space,
+          Escape, Tab, Home, End, short sequences) from each kind of control must leave focus, regions,
+          address and pop-ups as the original does; realistic values (dates in several formats, numbers,
+          text, invalid input) typed into each field then Enter and a blur must leave the same value,
+          aria-invalid, regions, address and the pop-up it drives; an error thrown only by the port after
+          any of these is red. A difference stands only when a second run of each side repeats it.
+          --no-control-parity leaves it out.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -428,6 +442,8 @@ const TIMING_FLAGS = {
 	'no-motion': { type: 'boolean' },
 	'no-embeds': { type: 'boolean' },
 	'no-probes': { type: 'boolean' },
+	'no-control-parity': { type: 'boolean' },
+	'control-webkit': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -735,6 +751,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(values['no-probes'] ? {} : { probes: {} }),
+					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
@@ -970,6 +987,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				...(values['no-probes'] ? {} : { probes: {} }),
+				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),
