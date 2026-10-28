@@ -15,6 +15,7 @@ mkdir -p "$CWD"
 [ "$1" = front ] && (cd "$CWD" && vercel pull --yes --environment production --scope "$SCOPE" >/dev/null && rm -f .env.local .gitignore)
 if [ "$1" = new ]; then
 	(cd "$CWD" && NITRO_PRESET=vercel npm run build)
+	if [ -f "$CWD/.migrate/caching.json" ]; then (cd "$CWD" && node "$DIR/../src/cli.ts" cache output); fi
 else
 	node "$DIR/build.ts" "$1"
 fi

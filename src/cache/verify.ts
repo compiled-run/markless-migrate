@@ -177,10 +177,10 @@ export function judgeRoute(planned: RouteCaching, observed: RouteObservation, fr
 }
 
 /** Same-origin content-hashed files the page loads that browsers are not told to keep. */
-async function assetFindings(origin: string, route: string, html: string, oldLongLived: ReadonlySet<string>): Promise<CachingFinding[]> {
+async function assetFindings(origin: string, route: string, html: string, oldLongLived: ReadonlySet<string>, headers: Readonly<Record<string, string>> = {}): Promise<CachingFinding[]> {
 	const out: CachingFinding[] = [];
 	for (const path of assetPaths(html, origin).filter(isContentHashed).slice(0, 40)) {
-		const facts = await fetchFacts(new URL(path, origin).href).catch(() => undefined);
+		const facts = await fetchFacts(new URL(path, origin).href, headers).catch(() => undefined);
 		if (!facts || facts.status !== 200) continue;
 		const cc = parseCacheControl(facts.cacheControl);
 		if (!longLived(cc)) out.push({ route, problem: 'short-lived-asset', detail: `${path}: Cache-Control: ${facts.cacheControl ?? '(none)'}${oldLongLived.has(path) ? ' (the old site let browsers keep it)' : ''}` });
@@ -189,8 +189,8 @@ async function assetFindings(origin: string, route: string, html: string, oldLon
 }
 
 /** Function invocations one page view by a new visitor causes: every same-origin response the browser loads, in a fresh context. */
-async function pageInvocations(browser: Browser, url: string): Promise<number> {
-	const context = await browser.newContext();
+async function pageInvocations(browser: Browser, url: string, headers: Readonly<Record<string, string>> = {}): Promise<number> {
+	const context = await browser.newContext({ extraHTTPHeaders: { ...headers } });
 	let n = 0;
 	try {
 		const page = await context.newPage();
@@ -210,6 +210,8 @@ async function pageInvocations(browser: Browser, url: string): Promise<number> {
 }
 
 export interface VerifyOptions {
+	/** Sent with every request to the new deployment, such as a protection bypass for a preview. */
+	readonly headers?: Readonly<Record<string, string>>;
 	readonly fragmentHeader?: string;
 	readonly fragmentPath?: string;
 	/** The comments the router ends a fragment response with: each response is told fragment or document by them. */
@@ -242,7 +244,7 @@ export async function verifyCaching(origin: string, planned: readonly RouteCachi
 	const oldLong = new Set(oldHashed.filter((a) => a.longLived).map((a) => a.path));
 	const markers = options.fragmentMarkers ?? [];
 	const fetchOne = async (url: string, headers: Record<string, string> = {}): Promise<{ facts: ResponseFacts; html: string }> => {
-		const got = await fetchPage(url, headers);
+		const got = await fetchPage(url, { ...options.headers, ...headers });
 		const fragmentBody = markers.length && /html/.test(got.facts.contentType) ? markers.some((m) => got.body.trimEnd().endsWith(m)) : undefined;
 		return { facts: { ...got.facts, ...(fragmentBody !== undefined ? { fragmentBody } : {}) }, html: got.body };
 	};
@@ -297,10 +299,10 @@ export async function verifyCaching(origin: string, planned: readonly RouteCachi
 			if (!servedByCdn(tried.fragmentFirst[0]!.response) && !servedByCdn(tried.documentFirst[0]!.response)) orders = tried;
 		}
 		const query = p.html && last.status === 200 && p.allowQuery?.length ? await queryProbes(url, p.allowQuery) : undefined;
-		const invocations = browser && /html/.test(last.contentType) ? await pageInvocations(browser, url) : invoked(last) ? 1 : 0;
+		const invocations = browser && /html/.test(last.contentType) ? await pageInvocations(browser, url, options.headers) : invoked(last) ? 1 : 0;
 		if (options.assets !== false && !assetsChecked && /html/.test(last.contentType)) {
 			assetsChecked = true;
-			findings.push(...(await assetFindings(origin, p.route, html, oldLong)));
+			findings.push(...(await assetFindings(origin, p.route, html, oldLong, options.headers)));
 		}
 		return { route: p.route, class: p.class, passes, ...(fragment ? { fragment } : {}), ...(fragmentPasses.length ? { fragmentPasses } : {}), ...(orders ? { orders } : {}), ...(query ? { query } : {}), invocations };
 	};
