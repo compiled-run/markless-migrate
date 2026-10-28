@@ -1978,8 +1978,8 @@ test('recharts: a switch moves the marks from the drawing that was on screen, no
 	const page = await open(`<style>.narrow{display:none!important}</style><div data-mm-morph><button>Mobile</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1">${svg(otherWidthA, 'display:block', '2 3', 'narrow')}${svg(shownA, 'display:block', '1 2')}${svg(toB, 'display: none;', '1 2 3')}<div class="recharts-tooltip-wrapper" style="visibility: hidden"></div></div></div>`, ['recharts']);
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	await page.hover('button');
-	await page.waitForResponse((r) => r.url().endsWith('/parts/recharts-motion.ts')).catch(() => {});
-	await page.waitForTimeout(300);
+	await page.evaluate('import("/parts/recharts-motion.ts")');
+	await page.waitForTimeout(50);
 	const first = await page.evaluate(
 		() =>
 			new Promise<string>((resolve) => {
