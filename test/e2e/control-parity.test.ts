@@ -3,9 +3,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, webkit, type Browser } from 'playwright';
-import { defaultEnv } from '../src/check/browser.ts';
-import { checkControlParity, type ControlParityOptions } from '../src/check/control-parity.ts';
-import { VIEWPORTS, type Failure } from '../src/check/types.ts';
+import { defaultEnv } from '../../src/check/browser.ts';
+import { checkControlParity, type ControlParityOptions } from '../../src/check/control-parity.ts';
+import { VIEWPORTS, type Failure } from '../../src/check/types.ts';
 
 const page = (body: string, script = '', style = '') => `<!doctype html><html lang="en"><head><title>Parity</title><style>body { margin: 0; font: 16px/1.5 sans-serif } header { height: 60px; display: flex; gap: 8px; align-items: center; padding: 0 16px } main { padding: 16px } [role=menu] { position: absolute; background: white; border: 1px solid #888; padding: 4px; width: 160px } [role=menu][hidden] { display: none } ${style}</style></head><body><header><a href="/elsewhere">Home</a><a href="/other">Docs</a></header><main><h1>Parity</h1>${body}</main><script>${script}</script></body></html>`;
 

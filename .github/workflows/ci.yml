@@ -66,6 +66,7 @@ jobs:
           - suite: waste
           - { suite: slow-network, browsers: chromium firefox webkit }
           - { suite: late-fonts, browsers: chromium firefox webkit }
+          - { suite: control-parity, browsers: chromium webkit }
           - { suite: next-app, shard: 1/6 }
           - { suite: next-app, shard: 2/6 }
           - { suite: next-app, shard: 3/6 }
