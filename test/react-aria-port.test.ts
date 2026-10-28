@@ -136,7 +136,7 @@ async function open(html: string, parts: readonly string[] = PARTS): Promise<Pag
 	await page.evaluate(async (parts) => {
 		const loaded = await Promise.all(parts.map((p) => import(`/parts/${p}.ts`)));
 		const seen = new WeakSet<Event>();
-		for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'input', 'focusin', 'focusout']) {
+		for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'input', 'focusin', 'focusout', 'contextmenu']) {
 			document.addEventListener(type, (event) => {
 				if (seen.has(event) || !(event.target instanceof Element)) return;
 				seen.add(event);
@@ -576,6 +576,19 @@ test('PreviewTrigger: a hover opens the card after the trigger\'s own delay, lea
 	assert.equal(await page.isVisible('#card2'), false);
 	await page.waitForTimeout(400);
 	assert.equal(await page.isVisible('#card2'), true);
+	await page.close();
+});
+
+test('Menu: a context menu opens at the pointer as its source places it (bottom start), not as the capture\'s anchor at the area\'s middle read', async () => {
+	// The capture right-clicked the middle of the area: racPlacement read that as a centred placement.
+	const html = `<div dir="rtl" style="width:400px"><div role="button" id="area" data-react-aria-pressable="true" tabindex="0" style="width:400px;height:150px">Right click here</div></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="area" data-mm-placement="bottom" data-mm-offset="4"><div data-slot="context-menu-content" data-rac="" data-trigger="MenuTrigger" style="position:absolute;width:192px" role="dialog" tabindex="-1" data-placement="bottom" dir="rtl">
+<div id="menu" data-rac="" role="menu" tabindex="0"><div data-rac="" role="menuitem" tabindex="-1">Back</div></div></div></div>`;
+	const page = await open(html);
+	await page.mouse.click(300, 100, { button: 'right' });
+	await page.waitForTimeout(100);
+	const box = await page.locator('[data-slot="context-menu-content"]').boundingBox();
+	assert.deepEqual([Math.round(box!.x + box!.width), Math.round(box!.y)], [300, 104], 'right-to-left: its end (right) edge at the pointer, offset 4 below');
 	await page.close();
 });
 
