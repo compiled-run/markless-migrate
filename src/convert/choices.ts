@@ -24,7 +24,8 @@ export interface Choice {
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
-const OPTION = '[cmdk-item], [role="option"]:not(a), [role="menuitem"]:not(a)';
+// In the list or menu the control opened: a menubar's own triggers are menuitems too.
+const OPTION = '[cmdk-item], [role="listbox"] [role="option"]:not(a), [role="menu"] [role="menuitem"]:not(a)';
 
 const isOption = (el: Tree) => el.tagName !== 'a' && (attr(el, 'cmdk-item') !== undefined || /^(option|menuitem)$/.test(attr(el, 'role') ?? ''));
 /** What choosing `el` is recorded under: cmdk's data-value, else the option's text, as captureChoices reads it in the page. */
@@ -137,7 +138,12 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
 				await page.evaluate(() => ((window as unknown as { __mmWent?: string[] }).__mmWent = []));
-				await target.click({ timeout: 2000 }).catch(() => {});
+				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
+				if (!(await target.click({ timeout: 2000 }).then(() => true, () => false)) && !((await openOn(page, origin, route, reveal.path)) && (await target.click({ timeout: 5000 }).then(() => true, () => false)))) {
+					failure ??= `could not choose ${key}`;
+					await openOn(page, origin, route, reveal.path);
+					continue;
+				}
 				await afterChoosing(page, before, requests, earlier);
 				const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
 				const went = await page.evaluate(() => (window as unknown as { __mmWent?: string[] }).__mmWent?.at(-1));
