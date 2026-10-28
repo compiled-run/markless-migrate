@@ -863,7 +863,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		l.trigger!.attrs = l.trigger!.attrs.map((a) => (a.name === 'id' ? { ...a, value: l.reveal.key } : a));
 		for (const top of l.kept) for (const el of [top, ...walkAll(top)]) el.attrs = el.attrs.map((a) => (/^aria-(labelledby|describedby)$/.test(a.name) ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t === id ? l.reveal.key : t)).join('') } : a));
 	}
-	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined })));
+	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined, ...(l.reveal.from !== undefined ? { from: l.reveal.from } : {}) })));
 	const placedWith = new Set<string>();
 	for (const c of companions) {
 		const at = `${c.key}|${outer(c.kept[0]!)}`;

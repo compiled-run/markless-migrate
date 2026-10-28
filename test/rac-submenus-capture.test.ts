@@ -51,7 +51,7 @@ test("captureRacSubmenus: a context menu's submenu is captured from a right clic
 		const recorded = '<div data-trigger="MenuTrigger"><div role="menu"><div role="menuitem" data-rac="">Back</div><div role="menuitem" data-rac="" id="react-aria-_r_2_" aria-haspopup="menu" aria-expanded="false">More Tools</div></div></div>';
 		const menu: Reveal = { key: 'react-aria-_r_0_', path: [0], sig: 'div||Right click here', nth: 0, action: 'contextmenu', viewport: 'desktop', added: [{ into: 'body', before: -1, html: recorded }] };
 		const found = await captureRacSubmenus(browser, origin, '/', dir, [menu]);
-		assert.deepEqual(found.map((r) => [r.key, r.action]), [['react-aria-_r_2_', 'hover']]);
+		assert.deepEqual(found.map((r) => [r.key, r.action, r.from]), [['react-aria-_r_2_', 'hover', 'react-aria-_r_0_']]);
 		assert.match(found[0]!.added[0]!.html, /^<div data-trigger="SubmenuTrigger"><div role="menu" aria-labelledby="react-aria-_r_2_">.*Save Page/);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
