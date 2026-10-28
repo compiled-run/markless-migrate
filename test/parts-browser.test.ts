@@ -602,27 +602,23 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
-test('a control listed as showing in place does what its use did on the old page, each change found from the control', async () => {
-	const effects = (active: number, code: string) => JSON.stringify([{ up: 0, down: [], attrs: { 'data-active': 'true' } }, { up: 2, down: [1 - active, 0], attrs: { 'data-active': 'false' } }, { up: 3, down: [1], html: code }]);
+test('a control listed as showing in place does what its use did on the old page: shows its view and sets its attributes, each found from the control', async () => {
+	const effects = (active: number, view: string) => JSON.stringify([{ up: 0, down: [], attrs: { 'data-active': 'true' } }, { up: 2, down: [1 - active, 0], attrs: { 'data-active': 'false' } }, { up: 3, down: [1], view }]).replace(/"/g, '&quot;');
 	const page = await open(
-		`<div data-view="code"><ul><li><button data-slot="sidebar-menu-button" data-active="true">page.tsx</button></li><li><button data-slot="sidebar-menu-button" data-active="false">nav.tsx</button></li></ul><figure><pre>page code</pre></figure></div>
-		<template data-mm-show="button|sidebar-menu-button|nav.tsx#0" data-mm-effects-src="/shown/nav.json"></template>
-		<template data-mm-show="button|sidebar-menu-button|page.tsx#0" data-mm-effects-src="/shown/page.json"></template>`,
+		`<div data-view="code"><ul><li><button data-slot="sidebar-menu-button" data-active="true">page.tsx</button></li><li><button data-slot="sidebar-menu-button" data-active="false">nav.tsx</button></li></ul><figure><div data-mm-show-view="p" style="display: contents"><pre>page code</pre></div><div data-mm-show-view="n" style="display: none"><pre>nav code</pre></div></figure></div>
+		<template data-mm-show="button|sidebar-menu-button|nav.tsx#0" data-mm-effects="${effects(1, 'n')}"></template>
+		<template data-mm-show="button|sidebar-menu-button|page.tsx#0" data-mm-effects="${effects(0, 'p')}"></template>`,
 		[],
 		'body',
 	);
-	let fetched = 0;
-	await page.route('http://parts.test/shown/*', (route) => (fetched++, route.fulfill({ contentType: 'application/json', body: route.request().url().endsWith('nav.json') ? effects(1, '<pre>nav code</pre>') : effects(0, '<pre>page code</pre>') })));
-	const look = () => page.evaluate(() => [document.querySelector('figure')!.textContent, ...[...document.querySelectorAll('button')].map((b) => b.dataset.active)].join(' '));
+	const look = () => page.evaluate(() => [(document.querySelector('figure') as HTMLElement).innerText.trim(), ...[...document.querySelectorAll('button')].map((b) => b.dataset.active)].join(' '));
+	const nodes = () => page.evaluate(() => document.querySelectorAll('*').length);
+	const before = await nodes();
 	await page.getByText('nav.tsx').click();
-	await page.waitForFunction(() => document.querySelector('figure')!.textContent === 'nav code');
 	assert.equal(await look(), 'nav code false true');
 	await page.getByText('page.tsx').click();
-	await page.waitForFunction(() => document.querySelector('figure')!.textContent === 'page code');
 	assert.equal(await look(), 'page code true false');
-	await page.getByText('nav.tsx').click();
-	await page.waitForFunction(() => document.querySelector('figure')!.textContent === 'nav code');
-	assert.equal(fetched, 2, 'each file is fetched once');
+	assert.equal(await nodes(), before, 'no node is added or removed');
 	await page.close();
 });
 

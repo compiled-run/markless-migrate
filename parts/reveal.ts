@@ -162,16 +162,14 @@ function signature(el: Element): string {
 interface ShownEffect {
 	readonly up: number;
 	readonly down: readonly number[];
-	readonly html?: string;
+	readonly view?: string;
 	readonly attrs?: Readonly<Record<string, string | null>>;
 }
 
-const effectsAt = new Map<string, Promise<readonly ShownEffect[]>>();
-const effectsOf = (src: string) => effectsAt.get(src) ?? effectsAt.set(src, fetch(src).then((r) => (r.ok ? (r.json() as Promise<ShownEffect[]>) : []), () => [])).get(src)!;
-
 /**
  * A control the site lists as showing something in place (a block viewer's file): what using it did on the old page, from
- * the file its template names, done again (its content and attributes, each found from the control). False when none is listed.
+ * the page's own template, done again: the view it showed in each place (every view is rendered there, the others in a
+ * box that does not lay out) and the attributes it set, each found from the control. False when none is listed.
  */
 export function show(target: Element): boolean {
 	if (!document.querySelector('template[data-mm-show]')) return false;
@@ -183,22 +181,19 @@ export function show(target: Element): boolean {
 			if (el === control) break;
 			if (signature(el) === sig) nth++;
 		}
-		const src = document.querySelector(`template[data-mm-show="${CSS.escape(`${sig}#${nth}`)}"]`)?.getAttribute('data-mm-effects-src');
-		if (!src) return false;
-		const from = control;
-		void effectsOf(src).then((effects) => {
-			for (const effect of effects) {
-				let el: Element | null | undefined = from;
-				for (let i = 0; i < effect.up && el; i++) el = el.parentElement;
-				for (const i of effect.down) el = el?.children[i];
-				if (!el) continue;
-				if (effect.html !== undefined) el.innerHTML = effect.html.split('@@MM_APP_URL@@').join(location.origin);
-				for (const [name, value] of Object.entries(effect.attrs ?? {})) {
-					if (value === null) el.removeAttribute(name);
-					else el.setAttribute(name, value);
-				}
+		const template = document.querySelector(`template[data-mm-show="${CSS.escape(`${sig}#${nth}`)}"]`);
+		if (!template) return false;
+		for (const effect of JSON.parse(template.getAttribute('data-mm-effects') ?? '[]') as ShownEffect[]) {
+			let el: Element | null | undefined = control;
+			for (let i = 0; i < effect.up && el; i++) el = el.parentElement;
+			for (const i of effect.down) el = el?.children[i];
+			if (!el) continue;
+			if (effect.view !== undefined) for (const view of el.querySelectorAll<HTMLElement>(':scope > [data-mm-show-view]')) view.style.display = view.dataset.mmShowView === effect.view ? 'contents' : 'none';
+			for (const [name, value] of Object.entries(effect.attrs ?? {})) {
+				if (value === null) el.removeAttribute(name);
+				else el.setAttribute(name, value);
 			}
-		});
+		}
 		return true;
 	}
 	return false;

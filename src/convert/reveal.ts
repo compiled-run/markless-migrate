@@ -30,11 +30,12 @@ export interface Revealed {
 	readonly html: string;
 }
 
-/** One element a `show` control changed: `up` parents from the control, then down by child index; its new content or attribute values. */
+/** One element a `show` control changed: `up` parents from the control, then down by child index; its new content (as captured, or the id of the view the page renders for it) or attribute values. */
 export interface ShownEffect {
 	readonly up: number;
 	readonly down: readonly number[];
 	readonly html?: string;
+	readonly view?: string;
 	readonly attrs?: Readonly<Record<string, string | null>>;
 }
 
