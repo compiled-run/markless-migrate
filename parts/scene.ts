@@ -72,7 +72,8 @@ function apply(player: Player, i: number, el: Element): void {
 	if (v === undefined) return;
 	const { typed } = player.data;
 	const own = (text: string) => (typed && player.typed !== undefined ? text.replaceAll(typed, player.typed) : text);
-	if (kind === 'h') (el as HTMLElement).hidden = v === 1;
+	// An SVG element has no hidden property: the attribute is what hides it.
+	if (kind === 'h') el.toggleAttribute('hidden', v === 1);
 	else if (kind === 't') setRun(el, which as number, own(typeof v === 'number' ? (longest ?? '').slice(0, v) : (v ?? '')));
 	else if (which === '.value') {
 		if (el !== player.typing) (el as HTMLInputElement).value = own(typeof v === 'string' ? v : '');

@@ -248,6 +248,34 @@ test('typing plays the fill use without touching what the visitor typed; Enter s
 	}
 });
 
+// A transcript that only exists once a message is sent, holding a typing row, then the reply that replaces it.
+const thread = (rows: SceneNode[] | null) => el(1, 'div', { 'data-slot': 'preview' }, ...(rows ? [el(2, 'div', { 'data-slot': 'message-scroller' }, ...rows)] : []), el(9, 'button', {}, text(10, 'Send')));
+const GROWING: Scene = {
+	sig: 'div|preview|',
+	nth: 0,
+	states: [thread(null), thread([el(6, 'p', {}, text(7, 'Hello there'))])],
+	edges: [
+		{
+			from: 0,
+			control: 'button||Send#0',
+			to: 1,
+			frames: [
+				{ t: 20, tree: thread([el(5, 'p', { 'data-typing': '' }, text(8, '…'))]) },
+				{ t: 500, tree: thread([el(6, 'p', {}, text(7, 'Hel'))]) },
+				{ t: 540, tree: thread([el(6, 'p', {}, text(7, 'Hello there'))]) },
+			],
+		},
+	],
+	skipped: [],
+};
+
+test('a node that shows different children by turns is one arm over all of them, so it is never mounted again between them', () => {
+	const { out, data } = planned(GROWING);
+	assert.equal((out.match(/data-slot="message-scroller"/g) ?? []).length, 1, 'the transcript is rendered once');
+	assert.match(out, /@if \(\(sc0 >= 1 && sc0 <= 3\)\) \{ <><div data-slot="message-scroller"/);
+	assert.deepEqual(data.entries.filter(([, kind]) => kind === 'h').map(([k]) => k).sort(), [5, 6]);
+});
+
 test('a demo whose uses would replace an element another plan puts on Markless state is not played', () => {
 	const region = parseFragment(html(REPLAY.states[0]!)).childNodes[0] as unknown as Element;
 	const plan = new ScenePlan((e) => e.tagName === 'span');
