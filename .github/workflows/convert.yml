@@ -148,7 +148,7 @@ jobs:
     strategy:
       fail-fast: false
       # The org runs 60 jobs at once: a convert leaves room for every other repository's CI.
-      max-parallel: 20
+      max-parallel: 10
       matrix:
         shard: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
