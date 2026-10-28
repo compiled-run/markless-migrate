@@ -1858,8 +1858,13 @@ test('recharts: a control switching the chart moves each mark from its old shape
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	// The pointer over the card fetches the animation before its control is used; the module is in once it and
 	// d3-shape's modules have all loaded (the same module record the part imported).
+	// From outside the card: a pointer already resting on the button (a layout's synthetic move at 0,0) sends no pointerover.
+	const view = page.viewportSize()!;
+	await page.mouse.move(view.width - 1, view.height - 1);
 	await page.hover('button');
-	await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => e.name.endsWith('/parts/recharts-motion.ts')));
+	await page
+		.waitForFunction(() => performance.getEntriesByType('resource').some((e) => e.name.endsWith('/parts/recharts-motion.ts')), undefined, { timeout: 10_000 })
+		.catch(async () => assert.fail(`hovering the button did not fetch recharts-motion.ts; pointer events seen: ${await page.evaluate(() => JSON.stringify((window as unknown as { pointerLog: string[] }).pointerLog))}`));
 	await page.evaluate('import("/parts/recharts-motion.ts")');
 	type Sample = { ts: number; d: string[] };
 	const run = await page.evaluate(
