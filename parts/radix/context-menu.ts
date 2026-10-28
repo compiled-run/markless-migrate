@@ -1,4 +1,5 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
+import { switchItem } from '../menu-checkable.ts';
 import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
 import { clearHighlight, closeSubs, menuRoot, trackMenu } from './dropdown-menu.ts';
 
@@ -45,6 +46,7 @@ export function click(target: Element): boolean {
 	const item = target.closest<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]');
 	const layer = item && layerOf(item);
 	if (!item || !layer || item.hasAttribute('data-disabled') || item.getAttribute('aria-haspopup') === 'menu') return false;
+	switchItem(item);
 	const root = menuRoot(layer);
 	for (const [trigger, l] of open) if (l === root) {
 		close(trigger, l);

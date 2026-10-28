@@ -323,3 +323,17 @@ test('Radix ContextMenu.Sub on a page listing only the context menu port: restin
 	assert.equal(await active(page), 'More Tools');
 	await page.close();
 });
+
+test('Radix DropdownMenu: a checkbox item convert marked switches as it is chosen; the menu closes and opens again showing it chosen', async () => {
+	const page = await open(dropdown.replace('<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">Billing</div>', `<div role="menuitemcheckbox" aria-checked="false" data-state="unchecked" tabindex="-1" data-mm-toggle="kept" data-mm-on='{"aria-checked":"true","data-state":"checked"}' data-mm-off='{"aria-checked":"false","data-state":"unchecked"}'><span data-mm-when="off"></span><span data-mm-when="on" hidden>✓</span>Billing</div>`), ['radix/dropdown-menu']);
+	const billing = () => page.evaluate(() => { const el = document.querySelector('[role="menuitemcheckbox"]')!; return `${el.getAttribute('aria-checked')} ${el.getAttribute('data-state')} ${[...el.querySelectorAll<HTMLElement>('[data-mm-when]')].filter((s) => !s.hidden).map((s) => s.dataset.mmWhen).join()}`; });
+	await page.getByText('Open').click();
+	await settled(page);
+	await page.getByText('Billing').click();
+	await settled(page);
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
+	await page.getByText('Open').click();
+	await settled(page);
+	assert.equal(await billing(), 'true checked on');
+	await page.close();
+});

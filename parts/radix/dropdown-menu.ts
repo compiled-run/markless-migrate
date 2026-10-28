@@ -1,4 +1,5 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
+import { switchItem } from '../menu-checkable.ts';
 import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix DropdownMenu (@radix-ui/react-dropdown-menu), modal as by default: pressing the trigger (or Enter, Space or
@@ -139,6 +140,7 @@ export function click(target: Element): boolean {
 		if (subOf.get(layer)?.trigger !== item) openSub(item, false);
 		return true;
 	}
+	switchItem(item);
 	closeMenu(layer);
 	return true;
 }

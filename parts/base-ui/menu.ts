@@ -1,4 +1,5 @@
 import { closePopup, endTyping, newTyping, openPopup, popupOf, typeahead, type Dismissal, type Popup, type Typing } from './popup.ts';
+import { switchItem } from '../menu-checkable.ts';
 
 // Base UI Menu: a press on the trigger opens the menu focused (keyboard: Enter, Space, ArrowDown highlight the first
 // enabled item, ArrowUp the last); arrows loop over every item, disabled ones too, Home and End go to the ends, typing
@@ -226,6 +227,7 @@ export function click(target: Element, event?: MouseEvent): boolean {
 		if (pointer !== 'mouse' && pointer !== 'pen') openSub(p, item, 'pointer');
 		return true;
 	}
+	switchItem(item);
 	if (closesOnClick(item)) closeTree(p, 'item');
 	return true;
 }
