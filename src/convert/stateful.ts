@@ -164,6 +164,11 @@ export class DisclosurePlan {
 					],
 				});
 				for (const el of [i.item, i.header]) if (el) this.bindings.set(el, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+				// forceMount: Radix keeps a closed content mounted and shown, so only its data-state follows.
+				if (attr(i.trigger, 'aria-expanded') === 'false' && attr(i.content, 'hidden') === undefined) {
+					this.bindings.set(i.content, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+					return;
+				}
 				const revealed = content(i.content);
 				this.bindings.set(i.content, {
 					declare,
