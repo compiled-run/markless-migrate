@@ -134,8 +134,14 @@ function blockPointer(parent: Popup, sub: Popup): void {
 		const [d1, d2, d3] = [side(a, b), side(b, c), side(c, a)];
 		return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
 	};
+	// Once the pointer is in the submenu, its menu takes the pointer again and leaving the submenu closes nothing.
+	let landed = false;
 	const away = (event: MouseEvent, target: EventTarget | null) => {
-		if (inside(target) || towards(event.clientX, event.clientY)) return;
+		if (target instanceof Node && sub.portal.contains(target) && !landed) {
+			landed = true;
+			scope.style.removeProperty('pointer-events');
+		}
+		if (landed || inside(target) || towards(event.clientX, event.clientY)) return;
 		closeSub(sub, false);
 		quietSince = event.timeStamp;
 	};
@@ -151,6 +157,7 @@ function blockPointer(parent: Popup, sub: Popup): void {
 	const onMove = (event: PointerEvent) => {
 		if (sub.trigger.contains(event.target as Node)) {
 			onTrigger = true;
+			landed = false;
 			exit = { x: event.clientX, y: event.clientY };
 			return;
 		}
