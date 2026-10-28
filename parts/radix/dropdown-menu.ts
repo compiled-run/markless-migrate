@@ -181,6 +181,20 @@ function track(layer: Layer, event: PointerEvent): void {
 	m.x = event.clientX;
 	motion.set(layer, m);
 }
+let watching = false;
+function watchMoves(): void {
+	if (watching) return;
+	watching = true;
+	document.addEventListener(
+		'pointermove',
+		(event) => {
+			if (event.pointerType !== 'mouse' || !(event.target instanceof Element)) return;
+			const layer = layerOf(event.target);
+			if (layer?.content.contains(event.target)) track(layer, event);
+		},
+		true,
+	);
+}
 
 function inPolygon(x: number, y: number, area: readonly { x: number; y: number }[]): boolean {
 	let inside = false;
@@ -208,7 +222,10 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 		return open ? switchTo(open, bar, false) : false;
 	}
 	const within = event.pointerType === 'mouse' ? layerOf(target) : undefined;
-	if (within?.content.contains(target)) track(within, event);
+	if (within?.content.contains(target)) {
+		watchMoves();
+		track(within, event);
+	}
 	const item = target.closest<HTMLElement>(ITEM);
 	const layer = item && layerOf(item);
 	if (!item || !layer || event.pointerType !== 'mouse') return false;

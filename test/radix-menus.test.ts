@@ -192,6 +192,24 @@ test('Radix DropdownMenu.Sub with the mouse: resting on the sub-trigger opens it
 	await page.close();
 });
 
+test('Radix DropdownMenu.Sub: the way the pointer heads is its last move in the menu, so drifting back along the sub-trigger and then down to the submenu keeps it open', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	const from = (await page.locator('#sub').boundingBox())!;
+	await page.mouse.move(from.x + from.width - 5, from.y + from.height / 2, { steps: 2 });
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	// Back left along the sub-trigger, then right and down across "New Team" to "Message".
+	await page.mouse.move(from.x + 20, from.y + from.height / 2, { steps: 4 });
+	const to = (await page.getByText('Message', { exact: true }).boundingBox())!;
+	await page.mouse.move(to.x + 10, to.y + to.height / 2, { steps: 6 });
+	await settled(page);
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Message');
+	await page.close();
+});
+
 test('Radix DropdownMenu.Sub: another item of the parent taking focus closes the submenu', async () => {
 	const page = await open(withSub, ['radix/dropdown-menu']);
 	await page.getByText('Open').click();
@@ -233,7 +251,7 @@ test('Radix DropdownMenu.Sub from the keyboard: ArrowRight or Enter opens it on 
 	await page.close();
 });
 
-test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, having only moved down across it, leaves the submenu open and its trigger focused', async () => {
+test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, having only moved down across it, leaves the submenu open and its trigger focused; moving left across it first closes it', async () => {
 	const page = await open(withSub, ['radix/dropdown-menu']);
 	await page.getByText('Open').click();
 	await settled(page);
@@ -241,13 +259,18 @@ test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, 
 	await hoverItem(page, 'Invite users');
 	await page.waitForTimeout(150);
 	assert.equal(await subOpen(page), true);
-	// Out to the left at the height of the submenu: Radix judges the way by the last move across the menu (straight
-	// down, so its initial "right"), not by where the pointer went once off it.
+	// Straight out to the left in one move: Radix judges the way by the last move across the menu (straight down, so
+	// its initial "right"), not by where the pointer went once off it.
 	const at = (await page.locator('#sub').boundingBox())!;
-	await page.mouse.move(8, at.y + at.height / 2, { steps: 3 });
+	await page.mouse.move(8, at.y + at.height / 2);
 	await settled(page);
 	assert.equal(await subOpen(page), true);
 	assert.equal(await active(page), 'Invite users');
+	// Back on it, then left across it and off the menu: the last moves in the menu went left, away from the submenu.
+	await hoverItem(page, 'Invite users');
+	await page.mouse.move(8, at.y + at.height / 2, { steps: 3 });
+	await settled(page);
+	assert.equal(await subOpen(page), false);
 	await page.close();
 });
 
