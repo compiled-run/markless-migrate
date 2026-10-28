@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { trackEmbedSlots } from '../embed/page.ts';
 import { trackCanvasDraws } from './embeds.ts';
 import { SLOTS } from '../embed/providers.ts';
+import { pinLiveCounts } from './live-counts.ts';
 import { request as playwrightRequest, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Frame, type Page, type Request, type Route } from 'playwright';
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
 import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
@@ -52,6 +53,8 @@ export interface SideEnv {
 	readonly dataHosts?: ReadonlySet<string>;
 	/** A hash-routed old app: each route loads from the shell at `/` with the route moved into the hash, and the addresses its pages show are read as routes. */
 	readonly routing?: OldRouting;
+	/** The new side's: repository star counts the old pages showed live (live-counts.ts), shown in this app's links to them too. */
+	readonly liveCounts?: Map<string, string>;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -372,6 +375,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	if (options.loops) await context.addInitScript(trackLoops, options.loops === true ? [] : [...options.loops.known]);
 	await context.addInitScript(trackEmbedSlots, SLOTS.map((s) => ({ ...s })));
 	await context.addInitScript(trackCanvasDraws);
+	if (env.liveCounts?.size) await context.addInitScript(pinLiveCounts, [...env.liveCounts]);
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
 	const pending = new Set<Promise<void>>();

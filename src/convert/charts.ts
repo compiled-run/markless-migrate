@@ -6,7 +6,7 @@ import type { Browser, Locator, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
-import { attr, childrenOf, isElement, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 
 /** What a recharts chart shows for one active data point, as the old page drew it with that point active. */
@@ -46,6 +46,55 @@ export interface ChartVariant {
 	readonly keys?: readonly (readonly [number, number, number])[];
 	/** The number of elements in the SVG at rest, which the paths index. */
 	readonly elements: number;
+	/** What recharts laid the drawing out from that it does not show (`chartModel`). */
+	readonly model?: ChartModel;
+}
+
+/**
+ * A cartesian axis as recharts' CartesianAxis was given it: every tick it could show (`c`: coordinates, `l`: the
+ * formatter's text, in the capture's time zone), from which `getTicks` keeps the ones that fit, and the box and
+ * settings that place them.
+ */
+export interface AxisModel {
+	readonly t: 'xAxis' | 'yAxis';
+	readonly o: 'top' | 'bottom' | 'left' | 'right';
+	readonly box: readonly [number, number, number, number];
+	/** The view box `getTicks` keeps the ticks inside. */
+	readonly vb: readonly [number, number, number, number];
+	readonly gap: number;
+	readonly iv: string | number;
+	readonly ts: number;
+	readonly tm: number;
+	readonly m?: true;
+	readonly u?: string;
+	readonly ang?: number;
+	/** Half a band (a band axis' tick offset). */
+	readonly off: number;
+	/** A number axis (recharts' `type`); a category axis otherwise. */
+	readonly num?: true;
+	readonly rev?: true;
+	/** The axis' padding along its length: [start, end] in px, or recharts' 'gap' / 'no-gap'. */
+	readonly pad?: readonly [number, number] | string;
+	readonly c: readonly number[];
+	readonly l: readonly string[];
+}
+
+/** The chart's bars as recharts sized them: its gaps and maximum, and each bar's size setting, stacked bars as one. */
+export interface BarModel {
+	readonly gap: number | string;
+	readonly cat: number | string;
+	readonly max?: number;
+	readonly size?: number;
+	readonly groups: readonly { readonly size?: number; readonly max?: number }[];
+}
+
+export interface ChartModel {
+	/** Each axis the SVG draws, in order; null where its ticks are custom. */
+	readonly axes: readonly (AxisModel | null)[];
+	readonly bars?: BarModel;
+	/** recharts' layoutType, where the chart is cartesian: which axis holds the categories. */
+	readonly layout?: 'horizontal' | 'vertical';
+	readonly stack?: string;
 }
 
 /** A control in the chart's card that switches what the chart shows (a time range, a metric). */
@@ -83,6 +132,8 @@ export interface ChartFacts {
 	readonly variants: readonly ChartVariant[];
 	readonly drivers: readonly ChartDriver[];
 	readonly widths: readonly ChartWidth[];
+	/** Frames from a control's use to the one the old page's update animation began at (`animationLag`). */
+	readonly lag?: number;
 }
 
 declare global {
@@ -139,6 +190,152 @@ function installProbe(): void {
 			return { visible, tooltip: visible ? tip!.innerHTML : '', x: m ? Number(m[1]) : null, y: m ? Number(m[2]) : null, added, changed };
 		},
 	};
+}
+
+/**
+ * Runs in the old page: marks each line, area and bar of a chart with what recharts' update animation needs and its
+ * path does not say (`data-mm-geo`: its kind, curve, layout and animation, read off the props recharts rendered it
+ * with), and returns the marked elements. The part (recharts-motion) reads each mark's points off its path.
+ */
+export function markGeometry(svg: Element): Element[] {
+	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null; alternate?: Fiber | null; child?: Fiber | null; sibling?: Fiber | null; stateNode?: { current?: Fiber } | null };
+	// A DOM node keeps the fiber it was made with, which after an update may be the stale one of React's two trees: the
+	// current tree is the one its root points at, walked once.
+	let current: Set<Fiber> | undefined;
+	const live = (fiber: Fiber | null | undefined): Fiber | undefined => {
+		if (!fiber) return undefined;
+		if (!current) {
+			current = new Set();
+			let top = fiber;
+			while (top.return) top = top.return;
+			const stack = [top.stateNode?.current ?? top];
+			while (stack.length) {
+				const f = stack.pop()!;
+				current.add(f);
+				if (f.child) stack.push(f.child);
+				if (f.sibling) stack.push(f.sibling);
+			}
+		}
+		return current.has(fiber) ? fiber : (fiber.alternate ?? fiber);
+	};
+	const fiberOf = (el: Element): Fiber | undefined => live((el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? '']);
+	const up = (el: Element, has: (p: Record<string, unknown>) => boolean) => {
+		for (let f = fiberOf(el); f; f = live(f.return)) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
+		return undefined;
+	};
+	const kinds: [string, string][] = [['recharts-line-curve', 'line'], ['recharts-area-area', 'area'], ['recharts-area-curve', 'curve'], ['recharts-rectangle', 'bar']];
+	const marked: Element[] = [];
+	for (const el of svg.querySelectorAll('path')) {
+		const k = kinds.find(([c]) => el.classList.contains(c))?.[1];
+		if (!k || (k === 'bar' && !el.closest('.recharts-bar-rectangle'))) continue;
+		const a = up(el, (p) => 'animationDuration' in p);
+		const curve = k === 'bar' ? undefined : up(el, (p) => Array.isArray(p.points));
+		const layout = up(el, (p) => p.layout === 'horizontal' || p.layout === 'vertical')?.layout;
+		// An easing recharts was given as a function, or a spring, is no curve the part can draw: it shows the end.
+		const easing = typeof a?.animationEasing === 'string' ? a.animationEasing : undefined;
+		if (curve && curve.type !== undefined && typeof curve.type !== 'string') continue;
+		const animated = a && a.isAnimationActive !== false && easing ? { a: [Number(a.animationBegin ?? 0), Number(a.animationDuration ?? 0), easing] } : {};
+		const geo = { k, ...(curve ? { t: curve.type ?? 'linear' } : {}), ...(layout ? { l: layout } : {}), ...(curve?.connectNulls ? { n: 1 } : {}), ...animated };
+		el.setAttribute('data-mm-geo', JSON.stringify(geo));
+		marked.push(el);
+	}
+	return marked;
+}
+
+/**
+ * Runs in the old page: what recharts laid the chart's drawing out from and does not draw, read off the props its
+ * CartesianAxis components and its store were given: each axis' every possible tick (getTicks keeps the ones that fit
+ * the width and their text), and the bars' gaps and size settings. A custom tick (an element or a function) is left out.
+ */
+export function chartModel(svg: Element): ChartModel {
+	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null; alternate?: Fiber | null; child?: Fiber | null; sibling?: Fiber | null; stateNode?: { current?: Fiber } | null };
+	// A DOM node keeps the fiber it was made with, which after an update may be the stale one of React's two trees: the
+	// current tree is the one its root points at, walked once.
+	let current: Set<Fiber> | undefined;
+	const live = (fiber: Fiber | null | undefined): Fiber | undefined => {
+		if (!fiber) return undefined;
+		if (!current) {
+			current = new Set();
+			let top = fiber;
+			while (top.return) top = top.return;
+			const stack = [top.stateNode?.current ?? top];
+			while (stack.length) {
+				const f = stack.pop()!;
+				current.add(f);
+				if (f.child) stack.push(f.child);
+				if (f.sibling) stack.push(f.sibling);
+			}
+		}
+		return current.has(fiber) ? fiber : (fiber.alternate ?? fiber);
+	};
+	const fiberOf = (el: Element): Fiber | undefined => live((el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? '']);
+	const up = (el: Element, has: (p: Record<string, unknown>) => boolean) => {
+		for (let f = fiberOf(el); f; f = live(f.return)) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
+		return undefined;
+	};
+	const num = (v: unknown, or = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : or);
+	const axes: (AxisModel | null)[] = [];
+	for (const g of svg.querySelectorAll('g.recharts-cartesian-axis')) {
+		const p = up(g, (q) => Array.isArray(q.ticks) && 'orientation' in q && 'tickFormatter' in q);
+		const custom = !p || (p.tick !== undefined && p.tick !== true && typeof p.tick !== 'object') || (!!p.tick && typeof p.tick === 'object' && ('type' in (p.tick as object) || '$$typeof' in (p.tick as object)));
+		if (!p || custom || (p.axisType !== 'xAxis' && p.axisType !== 'yAxis')) {
+			axes.push(null);
+			continue;
+		}
+		const ticks = p.ticks as { coordinate: number; value: unknown; offset?: number }[];
+		const format = typeof p.tickFormatter === 'function' ? (p.tickFormatter as (v: unknown, i: number) => unknown) : (v: unknown) => v;
+		const vb = (p.viewBox ?? {}) as Record<string, unknown>;
+		axes.push({
+			t: p.axisType,
+			o: p.orientation as AxisModel['o'],
+			box: [num(p.x), num(p.y), num(p.width), num(p.height)],
+			vb: [num(vb.x), num(vb.y), num(vb.width), num(vb.height)],
+			gap: num(p.minTickGap, 5),
+			iv: typeof p.interval === 'number' || typeof p.interval === 'string' ? p.interval : 'preserveEnd',
+			ts: num(p.tickSize, 6),
+			tm: num(p.tickMargin, 2),
+			...(p.mirror ? { m: true as const } : {}),
+			...(typeof p.unit === 'string' || typeof p.unit === 'number' ? { u: String(p.unit) } : {}),
+			...(num(p.angle) ? { ang: num(p.angle) } : {}),
+			off: num(ticks[0]?.offset),
+			...(p.type === 'number' ? { num: true as const } : {}),
+			...(p.reversed ? { rev: true as const } : {}),
+			...(typeof p.padding === 'string' ? { pad: p.padding } : p.padding && typeof p.padding === 'object' ? { pad: (p.axisType === 'xAxis' ? [num((p.padding as Record<string, unknown>).left), num((p.padding as Record<string, unknown>).right)] : [num((p.padding as Record<string, unknown>).top), num((p.padding as Record<string, unknown>).bottom)]) as [number, number] } : {}),
+			c: ticks.map((t) => t.coordinate),
+			l: ticks.map((t, i) => String(format(t.value, i))),
+		});
+	}
+	const store = up(svg, (q) => !!(q.value as { store?: { getState?: unknown } } | undefined)?.store?.getState || !!(q.store as { getState?: unknown } | undefined)?.getState);
+	type State = { rootProps?: Record<string, unknown>; layout?: { layoutType?: string }; graphicalItems?: { cartesianItems?: Record<string, unknown>[] } };
+	const state = ((store?.value as { store?: { getState(): State } } | undefined)?.store ?? (store?.store as { getState(): State } | undefined))?.getState();
+	const layoutType = state?.layout?.layoutType;
+	const chart = {
+		...(layoutType === 'horizontal' || layoutType === 'vertical' ? { layout: layoutType as 'horizontal' | 'vertical' } : {}),
+		...(typeof state?.rootProps?.stackOffset === 'string' && state.rootProps.stackOffset !== 'none' ? { stack: state.rootProps.stackOffset } : {}),
+	};
+	const items = (state?.graphicalItems?.cartesianItems ?? []).filter((i) => i.type === 'bar' && !i.hide);
+	if (!items.length || !state?.rootProps) return { axes, ...chart };
+	const groups: { size?: number; max?: number }[] = [];
+	const seen = new Set<unknown>();
+	for (const item of [...items.filter((i) => i.stackId != null), ...items.filter((i) => i.stackId == null)]) {
+		if (item.stackId != null && seen.has(item.stackId)) continue;
+		seen.add(item.stackId);
+		groups.push({ ...(typeof item.barSize === 'number' ? { size: item.barSize } : {}), ...(typeof item.maxBarSize === 'number' ? { max: item.maxBarSize } : {}) });
+	}
+	const r = state.rootProps;
+	const bars: BarModel = { gap: r.barGap as number | string, cat: r.barCategoryGap as number | string, ...(typeof r.maxBarSize === 'number' ? { max: r.maxBarSize } : {}), ...(typeof r.barSize === 'number' ? { size: r.barSize } : {}), groups };
+	return { axes, bars, ...chart };
+}
+
+/**
+ * Frames from a control's use to the one recharts' update animation's clock begins at, as the old page took them, from
+ * a film of the chart's marks: the first of three frames in a row that each change them is its first frames of motion.
+ */
+export function animationLag(frames: readonly string[]): number | undefined {
+	// frames[0] is read at the input, frames[j] at the start of the j-th frame after it: what frame j-1 painted, which
+	// React drew from frame j-2's tick. The first sample of the run of motion is two frames after the clock's start.
+	for (let k = 1; k + 2 < frames.length; k++) if (frames[k] !== frames[k - 1] && frames[k + 1] !== frames[k] && frames[k + 2] !== frames[k + 1]) return Math.max(0, k - 2);
+	return undefined;
 }
 
 interface Sample {
@@ -400,6 +597,7 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 		await page.waitForTimeout(2200);
 		await page.evaluate(installProbe);
+		await page.evaluate(`window.markGeometry = ${markGeometry.toString()}; window.chartModel = ${chartModel.toString()}`);
 	};
 	try {
 		await load();
@@ -433,15 +631,20 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 				const drivers = card ? [...card.querySelectorAll(controls)].filter((el) => visible(el) && !root.contains(el)).map((el) => ({ sig: sigOf(el), nth: nthOf(el), select: el.getAttribute('data-slot') === 'select-trigger', active: el.hasAttribute('data-active') })) : [];
 				return { sig: sigOf(root), nth: nthOf(root), w, h, view, drivers };
 			}, CONTROLS);
-			const svgNow = () => wrapper.evaluate((root) => {
-				const clean = (el: Element | null) => (el ? el.outerHTML.replace(/ data-mm-old=""/g, '') : '');
-				return { svg: clean(root.querySelector('svg.recharts-surface')), legend: clean(root.querySelector('.recharts-legend-wrapper')) };
-			});
+			const svgNow = () =>
+				wrapper.evaluate((root) => {
+					const clean = (el: Element | null) => (el ? el.outerHTML.replace(/ data-mm-old=""/g, '') : '');
+					const svg = root.querySelector('svg.recharts-surface');
+					const geo = svg ? markGeometry(svg) : [];
+					const out = { svg: clean(svg), legend: clean(root.querySelector('.recharts-legend-wrapper')), model: svg ? chartModel(svg) : undefined };
+					for (const el of geo) el.removeAttribute('data-mm-geo');
+					return out;
+				});
 			const variants: ChartVariant[] = [];
 			const seen = new Map<string, number>();
 			const rest = await svgNow();
 			seen.set(rest.svg, 0);
-			variants.push({ svg: rest.svg, ...(rest.legend ? { legend: rest.legend } : {}), ...(await captureVariant(page, wrapper, found.view)) });
+			variants.push({ svg: rest.svg, ...(rest.legend ? { legend: rest.legend } : {}), ...(rest.model ? { model: rest.model } : {}), ...(await captureVariant(page, wrapper, found.view)) });
 			const drivers: ChartDriver[] = [];
 			const settle = () => page.waitForTimeout(2100);
 			const record = async (driver: Omit<ChartDriver, 'variant'>) => {
@@ -452,7 +655,7 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 				if (variant === undefined) {
 					variant = variants.length;
 					seen.set(now.svg, variant);
-					variants.push({ svg: now.svg, ...(now.legend ? { legend: now.legend } : {}), ...(await captureVariant(page, wrapper, found.view)) });
+					variants.push({ svg: now.svg, ...(now.legend ? { legend: now.legend } : {}), ...(now.model ? { model: now.model } : {}), ...(await captureVariant(page, wrapper, found.view)) });
 				}
 				drivers.push({ ...driver, variant });
 			};
@@ -504,9 +707,11 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
  * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
  */
 export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`charts4:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`charts5:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
-	const known = cached?.route === route ? cached.charts : undefined;
+	// A capture from before the update animation (a chart with controls and no lag) or the layout model was read is taken again.
+	const stale = (c: ChartFacts) => (c.drivers.length && c.lag === undefined) || [c.variants, ...c.widths.map((w) => w.variants)].flat().some((v) => v.svg && !v.model);
+	const known = cached?.route === route && !cached.charts.some(stale) ? cached.charts : undefined;
 	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
 	const missing = known && !known.length ? [] : CHART_WIDTHS.filter((w) => !have.has(w));
 	if (known && !missing.length) return { route, charts: known };
@@ -518,10 +723,71 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 			if (same) (chart.widths as ChartWidth[]).push({ viewport: width, width: same.width, height: same.height, view: same.view, variants: same.variants, drivers: same.drivers });
 		}
 	}
+	if (charts.some((c) => c.drivers.length && c.lag === undefined)) await measureLags(browser, origin, route, charts);
 	const capture = { route, charts };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+/**
+ * Uses each chart's controls on the old page with motion allowed (the captures run with reduced motion, where recharts
+ * does not animate), filming its marks frame by frame from the input: the chart's lag is the one most of them took.
+ */
+async function measureLags(browser: Browser, origin: string, route: string, charts: ChartFacts[]): Promise<void> {
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	try {
+		await page.emulateMedia({ reducedMotion: 'no-preference' });
+		for (const chart of charts) {
+			if (!chart.drivers.length) continue;
+			const lags: number[] = [];
+			for (const d of chart.drivers) {
+				await loadPage(page, new URL(route, origin).href);
+				await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+				// The entry animation ends first.
+				await page.waitForTimeout(2500);
+				const found = await page.locator('body *').evaluateAll(
+					(els, [s, n]) => {
+						const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+						const hit = els.filter((e) => sigOf(e) === s)[n as number];
+						hit?.setAttribute('data-mm-driver', '');
+						return !!hit;
+					},
+					[d.sig, d.nth] as const,
+				);
+				if (!found) continue;
+				const control = page.locator('[data-mm-driver]').first();
+				if (d.kind === 'choose') {
+					await control.click({ timeout: 3000 }).catch(() => {});
+					await page.waitForTimeout(400);
+				}
+				await page.evaluate((index) => {
+					const root = document.querySelectorAll('.recharts-wrapper')[index];
+					const film: string[] = [];
+					const read = () => [...(root?.querySelectorAll('svg.recharts-surface path') ?? [])].map((p) => p.getAttribute('d')).join('|');
+					(window as unknown as { __mmFilm: string[] }).__mmFilm = film;
+					let started = false;
+					document.addEventListener('pointerup', () => ((started = true), film.push(read())), { capture: true, once: true });
+					const tick = () => {
+						if (started) film.push(read());
+						if (film.length < 40) requestAnimationFrame(tick);
+					};
+					requestAnimationFrame(tick);
+				}, chart.index);
+				if (d.kind === 'choose') await page.locator('[role="option"]').filter({ hasText: d.label ?? '' }).first().click({ timeout: 3000 }).catch(() => {});
+				else await control.click({ timeout: 3000 }).catch(() => {});
+				await page.waitForTimeout(1000);
+				const lag = animationLag(await page.evaluate(() => (window as unknown as { __mmFilm: string[] }).__mmFilm));
+				if (lag !== undefined) lags.push(lag);
+			}
+			const counts = new Map<number, number>();
+			for (const lag of lags) counts.set(lag, (counts.get(lag) ?? 0) + 1);
+			const lag = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+			(chart as { lag?: number }).lag = lag ?? 0;
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
 }
 
 const HOLE = (k: number) => `MMHOLE${k}MMHOLE`;
@@ -673,6 +939,7 @@ export const MOTION_CSS = `@property --mm-t { syntax: '<number>'; inherits: fals
 }
 [data-mm-chart] .recharts-pie .recharts-sector { animation: mm-sweep 1500ms ease 400ms backwards; }
 [data-mm-chart] .recharts-radial-bar-sector { animation: mm-sweep 1500ms ease backwards; }
+[data-mm-chart][data-mm-moved] * { animation: none !important; }
 }
 `;
 
@@ -731,6 +998,7 @@ export class ChartPlan {
 			const many = chart.variants.length > 1;
 			const declare = [`let ${name} = state(-1);`, ...(many ? [`let ${v} = state(0);`] : [])];
 			const entries: ChartWidth[] = [{ viewport: 0, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
+			const spares = spareCounts(entries.flatMap((entry) => entry.variants.map((v) => parsedSvg(v.svg ?? ''))));
 			// Each width's variants by the reference's: the rest is 0, a control's state is the one the same control (by its text) shows.
 			const refOf = (entry: ChartWidth, j: number): number => {
 				if (entry === entries[0]) return j;
@@ -768,14 +1036,16 @@ export class ChartPlan {
 					const own = buckets.get(`${e}/${k}`);
 					if (!own?.length) continue;
 					const variant = e === 0 ? reference : align(entry.variants[j]!, reference);
-					const tree = e === 0 && k === 0 ? svg : parsedSvg(entry.variants[j]!.svg ?? '');
+					const tree: Tree | undefined = e === 0 && k === 0 ? svg : parsedSvg(entry.variants[j]!.svg ?? '');
 					if (!tree) continue;
+					if (tree === svg) copyGeometry(parsedSvg(reference.svg ?? ''), tree);
 					const prefix = `${name}w${e}v${k}`;
 					const local = new Map<Tree, Binding>();
 					this.states(tree, variant, prefix, name, on, arms, local, declare);
+					spare(tree, spares);
 					motion(tree, entry.view);
 					const style = attr(tree, 'style');
-					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify(this.factsOf(entry, variant, tree)))}}`];
+					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(many && chart.lag ? { z: chart.lag } : {}) }))}}`];
 					const hide = `${v} === ${k} ? ${lit(style ?? '')} : ${lit(`${style ? `${style.replace(/;?\s*$/, ';')} ` : ''}display: none;`)}`;
 					if (many && style === undefined) extra.unshift(`style={${hide}}`);
 					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
@@ -880,6 +1150,9 @@ export class ChartPlan {
 			}),
 			...(polar ? { q: variant.states.map((_, k) => round(snap(variant, axisOf(variant, k), tree))) } : {}),
 			...(variant.keys ? { k: variant.keys } : {}),
+			...(variant.model?.axes.some((a) => a) ? { a: variant.model.axes } : {}),
+			...(variant.model?.bars ? { b: variant.model.bars } : {}),
+			...(variant.model?.layout ? { l: variant.model.layout } : {}),
 		};
 	}
 
@@ -903,7 +1176,8 @@ export class ChartPlan {
 			const active = controls.find((c) => c.el === el)?.d.active;
 			this.bindings.set(el, active ? { ...own, expressions: { 'data-active': `${v} === ${k} ? "true" : "false"` } } : own);
 		}
-		const extra: string[] = [];
+		// The pointer or focus coming to the card fetches the update animation before a control is used.
+		const extra: string[] = ['data-mm-morph=""'];
 		if (pressed.size) extra.push(`onClick={(event) => { const k = (event.target as Element).closest('[data-mm-variant]')?.getAttribute('data-mm-variant'); if (k != null && ${v} !== Number(k)) { ${v} = Number(k); ${name} = -1; } }}`);
 		if (Object.keys(chosen).length) {
 			declare.push(`const ${name}o: Record<string, number> = ${JSON.stringify(chosen)};`);
@@ -949,6 +1223,76 @@ function snap(variant: ChartVariant, value: number, tree: Tree | undefined): num
 		return near !== undefined && Math.abs(near - value) < 3 ? near : value;
 	}
 	return value;
+}
+
+// The groups whose children the part shows and hides for a width or a time zone the capture did not see: an axis'
+// tick labels and tick lines, and a horizontal grid's lines. Markless owns the page's nodes, so the part never adds
+// one; each drawing carries as many as the chart's busiest drawing shows, and three more.
+const SPARED: readonly (readonly [string, (el: Tree) => boolean])[] = [
+	['recharts-xAxis-tick-labels', (el) => classes(el).includes('recharts-cartesian-axis-tick-label')],
+	['recharts-yAxis-tick-labels', (el) => classes(el).includes('recharts-cartesian-axis-tick-label')],
+	['recharts-xAxis-tick-lines', (el) => classes(el).includes('recharts-cartesian-axis-tick')],
+	['recharts-yAxis-tick-lines', (el) => classes(el).includes('recharts-cartesian-axis-tick')],
+	['recharts-cartesian-grid-horizontal', (el) => el.tagName === 'line'],
+];
+const SPARE = 3;
+
+const sparedGroups = (svg: Tree): Map<string, Tree[]> => {
+	const out = new Map<string, Tree[]>();
+	for (const el of walk(svg))
+		for (const [cls] of SPARED)
+			if (classes(el).includes(cls)) {
+				const list = out.get(cls) ?? out.set(cls, []).get(cls)!;
+				list.push(el);
+			}
+	return out;
+};
+
+/** The most children each spared group (by its class and place) has in any of the chart's drawings, plus the spares. */
+export function spareCounts(svgs: readonly (Tree | undefined)[]): Map<string, number> {
+	const most = new Map<string, number>();
+	for (const svg of svgs) {
+		if (!svg) continue;
+		for (const [cls, groups] of sparedGroups(svg)) {
+			const counts = SPARED.find(([c]) => c === cls)![1];
+			groups.forEach((g, i) => {
+				const key = `${cls}#${i}`;
+				most.set(key, Math.max(most.get(key) ?? 0, elementChildren(g).filter(counts).length));
+			});
+		}
+	}
+	for (const [key, n] of most) most.set(key, n + SPARE);
+	return most;
+}
+
+/** Fills each spared group up to its count with hidden copies of its first child. */
+export function spare(svg: Tree, counts: ReadonlyMap<string, number>): void {
+	for (const [cls, groups] of sparedGroups(svg)) {
+		const counts_ = SPARED.find(([c]) => c === cls)![1];
+		groups.forEach((g, i) => {
+			const kids = elementChildren(g).filter(counts_);
+			const first = kids[0];
+			if (!first) return;
+			for (let n = kids.length; n < (counts.get(`${cls}#${i}`) ?? 0); n++) {
+				const copy = elementChildren(svgTree(outer(first)))[0]!;
+				setAttr(copy, 'display', 'none');
+				copy.parentNode = g;
+				childrenOf(g).push(copy);
+			}
+		});
+	}
+}
+
+/** The page's own SVG takes the marks' `data-mm-geo` from the capture of the same drawing, element for element. */
+function copyGeometry(from: Tree | undefined, to: Tree): void {
+	if (!from) return;
+	const a = [...walk(from)];
+	const b = [...walk(to)];
+	if (a.length !== b.length) return;
+	a.forEach((el, i) => {
+		const geo = attr(el, 'data-mm-geo');
+		if (geo !== undefined && b[i]!.tagName === el.tagName && attr(b[i]!, 'class') === attr(el, 'class')) setAttr(b[i]!, 'data-mm-geo', geo);
+	});
 }
 
 /** A captured SVG as a tree, with its own attributes (each width's size and view box). */

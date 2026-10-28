@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
+import { chartModel } from '../src/convert/charts.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { earlyThemeScript } from '../parts/next-themes.ts';
 import { registryModule } from '../src/convert/parts.ts';
@@ -12,10 +14,14 @@ import { registryModule } from '../src/convert/parts.ts';
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
 const SITE = join(import.meta.dirname, '..', 'examples', 'shadcn-ui-markless', 'lib', 'site', 'parts.ts');
-// Placement is not under test here; the ports only need @floating-ui/dom's functions to exist.
-const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
+// Placement is not under test here; the ports only need @floating-ui/dom's functions to exist (each reference placed against is noted).
+const FLOATING_STUB = `export const computePosition = async (reference) => ((globalThis.placedAgainst ??= []).push(reference?.id ?? ''), { x: 0, y: 0, placement: 'bottom', middlewareData: {} });
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
+
+// The recharts update animation draws with d3-shape, which the app installs; here, the repo's own copy.
+const D3_SHAPE = realpathSync(join(import.meta.dirname, '..', 'node_modules', 'd3-shape'));
+const D3 = { 'd3-shape': D3_SHAPE, 'd3-path': join(dirname(D3_SHAPE), 'd3-path') };
 
 let browser: Browser;
 before(async () => {
@@ -34,8 +40,10 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 	const registry = registryModule(ports.filter((p) => p !== 'site'), '.', ports.includes('site') ? './site.ts' : undefined);
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/registry.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js","d3-shape":"/d3-shape/src/index.js","d3-path":"/d3-path/src/index.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/registry.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
+		const d3 = /^\/(d3-shape|d3-path)\/(.*)$/.exec(path);
+		if (d3) return route.fulfill({ contentType: 'text/javascript', body: await readFile(join(D3[d3[1] as 'd3-shape' | 'd3-path'], d3[2]!), 'utf8') });
 		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
 		// What choosing each option did on the old page, which convert writes beside the ports.
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
@@ -260,6 +268,21 @@ test('the site\'s D theme shortcut, a document listener on the old page, runs wi
 	await page.close();
 });
 
+test("another document's theme switch (the storage event next-themes' ThemeProvider listens for) applies here too", async () => {
+	const page = await open('<main>page</main>', ['site']);
+	await page.evaluate(() => {
+		localStorage.setItem('theme', 'dark');
+		window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: 'dark' }));
+	});
+	assert.deepEqual(await page.evaluate(() => [document.documentElement.classList.contains('dark'), document.documentElement.style.colorScheme]), [true, 'dark']);
+	await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'other', newValue: 'light' })));
+	assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), true, 'another key is not the theme');
+	await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: null })));
+	assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), 'a cleared theme is the default, the system one');
+	assert.equal(await page.evaluate(() => localStorage.getItem('theme')), 'system', 'stored again, as setTheme(defaultTheme) does');
+	await page.close();
+});
+
 test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base UI's useTypeahead stops it: the site's D shortcut does not see it", async () => {
 	const page = await open(
 		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
@@ -281,6 +304,40 @@ test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base
 	await page.keyboard.press('Escape');
 	await page.keyboard.press('d');
 	assert.equal(await themeFlips(page), 1, 'with the menu closed the shortcut answers');
+	await page.close();
+});
+
+test("a Base UI menu's radio and checkbox items keep it open when chosen (closeOnClick is false for them), a plain item closes it", async () => {
+	const page = await open(
+		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="dd"><div data-side="bottom" data-align="start" role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="dd" data-slot="dropdown-menu-content" data-closed><div role="menuitemradio" aria-checked="false" tabindex="-1">Inter</div><div role="menuitemcheckbox" aria-checked="false" tabindex="-1">Bold</div><div role="menuitem" tabindex="-1">Reset</div></div></div></div>`,
+		['base-ui/menu'],
+	);
+	const shown = () => page.evaluate(() => !(document.querySelector('[data-mm-layer="dd"]') as HTMLElement).hidden);
+	await page.locator('#dd').click();
+	assert.equal(await shown(), true);
+	await page.getByText('Inter').click();
+	assert.equal(await shown(), true, 'a radio item chosen with the pointer');
+	await page.getByText('Bold').click();
+	assert.equal(await shown(), true, 'a checkbox item chosen with the pointer');
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Inter');
+	await page.keyboard.press('Enter');
+	assert.equal(await shown(), true, 'a radio item chosen with Enter');
+	await page.getByText('Reset').click();
+	await page.waitForFunction(() => (document.querySelector('[data-mm-layer="dd"]') as HTMLElement).hidden, null, { timeout: 2000 });
+	await page.close();
+});
+
+test("a Base UI menu whose Positioner takes another anchor than its trigger (the portal names it) is placed against that element", async () => {
+	const page = await open(
+		`<main style="padding:100px"><div id="card"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></div></main>
+		<div data-base-ui-portal hidden data-mm-layer="dd" data-mm-anchor="card"><div data-side="top" data-align="center" role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="dd" data-slot="dropdown-menu-content" data-closed><div role="menuitemradio" aria-checked="false" tabindex="-1">Inter</div></div></div></div>`,
+		['base-ui/menu'],
+	);
+	await page.locator('#dd').click();
+	await page.waitForFunction(() => ((globalThis as { placedAgainst?: string[] }).placedAgainst ?? []).length > 0);
+	assert.deepEqual([...new Set(await page.evaluate(() => (globalThis as { placedAgainst?: string[] }).placedAgainst))], ['card']);
 	await page.close();
 });
 
@@ -348,7 +405,7 @@ async function commandState(page: Page) {
 	});
 }
 
-test('cmdk: command-score filters and sorts the items left after the disabled ones, groups by their best item; nothing left shows the empty state', async () => {
+test('cmdk: command-score filters and sorts the items left after the disabled ones; nothing left shows the empty state', async () => {
 	const page = await open(COMMAND, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('se');
@@ -377,13 +434,29 @@ test('cmdk: aria-activedescendant names an item a key or the pointer selected; a
 	await page.close();
 });
 
+test('cmdk: as each mounted command scrolls its selected item into view, the page ends where the last one below the fold put it; one in a hidden layer moves nothing', async () => {
+	const page = await open(`<div style="height:3000px">top</div>${COMMAND}<div style="height:2000px"></div><div data-mm-layer="k" hidden>${COMMAND.replaceAll('id="', 'id="h')}</div>`, ['cmdk']);
+	const got = await page.evaluate(() => {
+		const item = document.getElementById('cal')!.getBoundingClientRect();
+		return { scrollY: Math.round(scrollY), bottom: Math.round(item.bottom), inner: innerHeight };
+	});
+	assert.ok(got.scrollY > 2000, `the page scrolled to the command (${got.scrollY})`);
+	assert.equal(got.bottom, got.inner, 'block: nearest brings the selected item to the bottom edge');
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('bil');
 	await page.keyboard.press('ArrowDown');
+	// Focus leaves as an outside press starts closing the layer: what it shows stays while it animates out, as React's does.
 	await page.locator('#trigger').focus();
-	assert.equal(await page.locator('[cmdk-input]').inputValue(), '');
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), 'bil');
+	assert.equal((await commandState(page)).selected, 'bil');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => (document.querySelector('[cmdk-input]') as HTMLInputElement).value === '');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
 	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
 	await page.close();
 });
@@ -543,6 +616,19 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+// Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
+test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
+	for (const bound of [true, false]) {
+		const layer = dialogLayer('ad').replace(/alert-dialog/g, 'dialog').replace('role="alertdialog"', 'role="dialog"').replace('<button data-slot="dialog-cancel">Cancel</button>', `<input${bound ? ' m:on="input:0"' : ''}>`);
+		const page = await open(`<div data-async-container><main><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Search</button></main>${layer}<div id="later"></div><!--markless:page-end--></div>`, ['radix/dialog']);
+		await page.getByText('Search').click();
+		assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+		const order = await page.evaluate(() => [...document.querySelector('[data-async-container]')!.children].map((e) => e.id || e.getAttribute('data-slot') || e.tagName.toLowerCase()).join(','));
+		assert.equal(order, bound ? 'main,dialog-overlay,ad,later' : 'main,later,dialog-overlay,ad');
+		await page.close();
+	}
+});
+
 test('shadcn-ui site: a code block\'s copy button writes what it copied on the old page and shows Copied with the check for 2 s', async () => {
 	const icon = '<svg class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
 	const button = `<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button>`;
@@ -560,6 +646,63 @@ test('shadcn-ui site: a code block\'s copy button writes what it copied on the o
 	assert.deepEqual(await look(), ['Copied', 'true', 'lucide lucide-check', 'none']);
 	await page.waitForTimeout(2100);
 	assert.deepEqual(await look(), ['Copy', null, 'lucide lucide-copy', null]);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s check over its Terminal icon (a polyline and a line) for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg>';
+	const page = await open(`<button data-slot="button" type="button">${icon}<span>npx shadcn add sidebar-07</span></button><template data-mm-clipboard="button|button|npx shadcn add sidebar-07#0" data-mm-text="npx shadcn@latest add sidebar-07"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button svg').evaluate((svg) => [svg.getAttribute('class'), ...[...svg.children].map((c) => `${c.tagName}:${c.getAttribute('points') ?? c.getAttribute('d') ?? c.getAttribute('x1')}${c.getAttribute('display') ? ' hidden' : ''}`)]);
+	assert.deepEqual(await look(), ['lucide lucide-check', 'polyline:20 6 9 17 4 12', 'line:12 hidden'], 'the check is drawn, not just the terminal hidden');
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['lucide lucide-terminal', 'polyline:4 17 10 11 4 5', 'line:12']);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s frame again', async () => {
+	const page = await open(`<div id="sidebar-03" data-view="preview"><div><button data-slot="button" title="Refresh Preview"><span class="sr-only">Refresh Preview</span></button></div><iframe height="100"></iframe></div>`, ['site']);
+	let loads = 0;
+	await page.route('http://parts.test/frame/**', (route) => (loads++, route.fulfill({ contentType: 'text/html', body: '<p>block</p>' })));
+	await page.evaluate(() => (document.querySelector('iframe')!.src = '/frame/sidebar-03'));
+	await page.waitForFunction(() => document.querySelector('iframe')!.contentDocument?.querySelector('p'));
+	const before = loads;
+	await page.getByRole('button', { name: 'Refresh Preview' }).click();
+	await page.waitForTimeout(500);
+	assert.equal(loads, before + 1, 'setIframeKey mounts the frame afresh, which loads its page again');
+	await page.close();
+});
+
+test('a control listed as a download saves the file its use saved on the old page: name, type and content', async () => {
+	const page = await open(
+		`<div data-slot="code-block"><button aria-label="Download">D</button></div><template data-mm-download="button||D#0" data-mm-name="route.ts" data-mm-type="text/plain" data-mm-text="import { streamText } from &quot;ai&quot;"></template>`,
+		[],
+		'body',
+	);
+	const [saved] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download' }).click()]);
+	assert.equal(saved.suggestedFilename(), 'route.ts');
+	const path = await saved.path();
+	assert.equal(await readFile(path, 'utf8'), 'import { streamText } from "ai"');
+	await page.close();
+});
+
+test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
+	const page = await open('<main id="main"></main>', ['site'], 'body');
+	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
+	const seen = await page.evaluate(
+		() =>
+			new Promise<string>((done) => {
+				const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
+				// The page an in-place navigation swaps in, its tab state its own (the converter's mousedown handler).
+				document.getElementById('main')!.innerHTML = `<div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div>`;
+				const list = document.querySelector('[role="tablist"]')!;
+				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
+			}),
+	);
+	assert.equal(seen, 'npm', 'chosen before the next frame');
 	await page.close();
 });
 
@@ -690,6 +833,23 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 	await page.close();
 });
 
+
+test('react-resizable-panels: a press within the separator\'s 10 px hit area drags it, though another element is on top there', async () => {
+	// The second panel is drawn over the separator, as a block viewer's panel is once a viewport button has resized it.
+	const page = await open(
+		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:2px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px;margin-left:-2px;position:relative;background:#eee"></div></div></div>`,
+		['resizable'],
+	);
+	const separator = page.locator('[role="separator"]');
+	const box = (await separator.boundingBox())!;
+	await page.mouse.move(box.x + 4, box.y + 50);
+	await page.mouse.down();
+	assert.equal(await separator.getAttribute('data-separator'), 'active', 'the press is within 10 px around the separator');
+	await page.mouse.move(box.x + 44, box.y + 50, { steps: 4 });
+	await page.mouse.up();
+	assert.equal(await separator.getAttribute('aria-valuenow'), '60', 'dragged by 40 of the panels\' 400 px');
+	await page.close();
+});
 
 test('react-resizable-panels: the arrows do not follow the text direction, and the other orientation\'s arrows do nothing', async () => {
 	const page = await open(
@@ -926,6 +1086,26 @@ test('a press on a Radix roving group itself leaves focus on the group; Tab into
 	await page.close();
 });
 
+test('a Radix roving item focused, by Tab into its group, a press or an arrow, becomes the one item in the tab order (Radix RovingFocusGroup)', async () => {
+	const item = (t: string, selected: boolean) => `<button role="tab" aria-selected="${selected}" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">${t}</button>`;
+	const page = await open(`<main><button id="before">Before</button><div role="tablist" tabindex="0" data-orientation="horizontal" style="outline:none">${item('A', true)}${item('B', false)}${item('C', false)}</div><button id="after">After</button></main>`, ['radix/roving']);
+	await page.evaluate(async () => {
+		const { roving } = await import('/parts/radix/roving.ts' as string);
+		document.querySelector('[role="tablist"]')!.addEventListener('keydown', (e) => roving(e as KeyboardEvent));
+	});
+	const stops = () => page.$$eval('[role="tab"]', (tabs) => tabs.map((t) => `${t.textContent}:${t.getAttribute('tabindex')}`).join(' '));
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button[tab]:A');
+	assert.equal(await stops(), 'A:0 B:-1 C:-1', 'Tab into the group moves on to the selected item, which becomes the tab stop');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'button[tab]:B');
+	assert.equal(await stops(), 'A:-1 B:0 C:-1');
+	await page.locator('[role="tab"]', { hasText: 'C' }).click();
+	assert.equal(await stops(), 'A:-1 B:-1 C:0', 'a press makes the pressed item the tab stop');
+	await page.close();
+});
+
 test('React Aria tabs keep React Aria\'s keys: Left/Right also step a vertical list, Up/Down only a vertical one, disabled tabs are skipped', async () => {
 	const tabs = (orientation: string, p: string) => `<div role="tablist" aria-orientation="${orientation}" data-rac="" data-slot="tabs-list"><div role="tab" data-rac="" tabindex="0" id="${p}a">${p}A</div><div role="tab" data-rac="" tabindex="-1">${p}B</div><div role="tab" data-rac="" tabindex="-1" aria-disabled="true" data-disabled="true">${p}C</div></div>`;
 	const page = await open(`${tabs('vertical', 'V')}${tabs('horizontal', 'H')}`, ['radix/roving']);
@@ -1046,6 +1226,31 @@ test('a Radix select layer captured open is converted at rest with no option ari
 	await page.close();
 });
 
+test('a Base UI select icon carries data-popup-open while its select is open, as SelectIcon does', async () => {
+	const page = await open(baseSelect.replace('<span data-slot="select-value">Select a fruit</span>', '<span data-slot="select-value">Select a fruit</span><svg aria-hidden="true" width="8" height="8"><path d="m6 9 6 6 6-6"></path>&#9660;</svg>'), ['base-ui/select'], 'body');
+	const icon = () => page.locator('[data-slot="select-trigger"] svg').evaluate((s) => s.hasAttribute('data-popup-open'));
+	assert.equal(await icon(), false);
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	assert.equal(await icon(), true);
+	await page.keyboard.press('Escape');
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await icon(), false);
+	await page.close();
+});
+
+test('a Base UI select opened by a press shows no focus ring on its option, nor on its trigger once an option is chosen', async () => {
+	const page = await open(baseSelect, ['base-ui/select'], 'body');
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	const ring = () => page.evaluate(() => `${document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName}:${document.activeElement?.matches(':focus-visible')}`);
+	assert.equal(await ring(), 'option:false', 'Base UI focuses the option after a mouse focused the trigger');
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await ring(), 'combobox:false');
+	await page.close();
+});
+
 test('a press outside a Radix or Base UI select closes it with focus back on its trigger, as each library does', async () => {
 	for (const [markup, port] of [
 		[radixSelect(), 'radix/select'],
@@ -1059,6 +1264,26 @@ test('a press outside a Radix or Base UI select closes it with focus back on its
 		assert.match(await selectState(page), /^false focus=trigger/, port);
 		await page.close();
 	}
+});
+
+test('a Base UI select opened inside a Base UI drawer is part of it: choosing an option, whose list is portaled outside the drawer, leaves the drawer open', async () => {
+	const page = await open(
+		`<main><button type="button" id="code" data-slot="drawer-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false">Get Code</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="code"><div role="presentation" data-slot="drawer-viewport"><div role="dialog" tabindex="-1" data-slot="drawer-popup" data-swipe-direction="right" data-closed><button type="button" id="fw" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Next.js</span></button></div></div></div>
+		<div data-base-ui-portal hidden data-mm-layer="fw"><div data-side="bottom" data-align="end" role="presentation" style="position:absolute" data-closed><div tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox">${['Next.js', 'Vite'].map((f) => `<div role="option" aria-selected="${f === 'Next.js'}" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`,
+		['base-ui/dialog', 'base-ui/select'],
+		'body',
+	);
+	await page.getByText('Get Code').click();
+	await page.waitForTimeout(50);
+	await page.locator('#fw').click();
+	await page.locator('[role="option"]', { hasText: 'Vite' }).click();
+	await page.waitForTimeout(50);
+	assert.equal(await page.locator('[role="option"]', { hasText: 'Vite' }).getAttribute('aria-selected'), 'true');
+	assert.equal(await page.locator('[role="dialog"]').isVisible(), true, 'the drawer stays open');
+	await page.mouse.click(5, 790);
+	await page.waitForFunction(() => (document.querySelector('[data-mm-layer="code"]') as HTMLElement).hidden, null, { timeout: 2000 });
+	await page.close();
 });
 
 test('a Radix dropdown menu closed by a press outside returns focus to its trigger, as its modal FocusScope does', async () => {
@@ -1429,6 +1654,29 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.close();
 });
 
+test('shadcn-ui site: a chart\'s frame captured shown but still loading when it is mounted goes transparent at once, without fading out', async () => {
+	const css = '<style>.transition-opacity{transition-property:opacity;transition-duration:300ms}.opacity-0{opacity:0}.opacity-100{opacity:1}</style>';
+	const page = await open(`${css}<div style="height:5000px"></div><iframe src="/frame/slow" class="w-full border-none transition-opacity duration-300 opacity-100" height="100" loading="lazy" title="chart"></iframe>`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg></svg>' });
+	});
+	await page.locator('iframe').scrollIntoViewIfNeeded();
+	await page.evaluate(() => {
+		const w = window as unknown as { faded: number; mountParts: (a: string) => void };
+		w.faded = 0;
+		document.querySelector('iframe')!.addEventListener('transitionrun', () => w.faded++);
+		w.mountParts('iframe[loading]');
+	});
+	await page.waitForTimeout(400);
+	assert.match(await page.locator('iframe').evaluate((f) => f.className), / opacity-0$/);
+	assert.equal(await page.evaluate(() => (window as unknown as { faded: number }).faded), 0, 'the old frame starts transparent: nothing fades out');
+	release();
+	await page.close();
+});
+
 test('shadcn-ui site: a chart\'s frame stays transparent until its page has loaded, then shows, whatever the capture caught it in', async () => {
 	const frame = (name: string, opacity: string) => `<iframe src="/frame/${name}" class="w-full border-none transition-opacity duration-300 ${opacity}" height="100" loading="lazy" title="chart-${name}"></iframe>`;
 	const page = await open(`<div style="height:5000px"></div>${frame('slow', 'opacity-100')}<div style="height:5000px"></div>${frame('loaded', 'opacity-0')}`, ['site']);
@@ -1453,5 +1701,223 @@ test('shadcn-ui site: a chart\'s frame stays transparent until its page has load
 	release();
 	await loaded(0);
 	await page.waitForFunction(() => document.querySelector('iframe')!.className.endsWith(' opacity-100'));
+	await page.close();
+});
+
+test("day picker: a key DayPicker handles on a day does not scroll the page, even when the page's render removes that day's button at once", async () => {
+	const page = await open('<div style="height:3000px"></div><div data-mm-day-picker><table><tbody><tr><td role="gridcell"><button id="d">6</button></td></tr></tbody></table></div><div style="height:3000px"></div>', []);
+	const prevented = await page.evaluate(async () => {
+		const { dayPickerEvent, dayPickerView } = await import('/parts/day-picker.ts' as string);
+		const loc = { ws: 0, fwcd: 1, full: 'PP', months: {}, days: {}, ord: [] };
+		const config = { loc, mode: 'single', interactive: true, n: 1, caption: 'label', cls: {} };
+		const button = document.getElementById('d')!;
+		const root = document.querySelector('[data-mm-day-picker]')!;
+		let result = false;
+		root.addEventListener('keydown', (event) => {
+			// A month change rendered in the same task replaces the grid's cells.
+			queueMicrotask(() => button.remove());
+			dayPickerEvent(config, dayPickerView(config, 20000), event, 'k');
+		});
+		window.addEventListener('keydown', (event) => setTimeout(() => (result = event.defaultPrevented)), true);
+		button.focus();
+		button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+		await new Promise((r) => setTimeout(r, 50));
+		return result;
+	});
+	assert.equal(prevented, true);
+	await page.close();
+});
+
+// recharts 3.8's easing.js, as an oracle for the frames the part draws: Newton's method with its own stopping rule.
+function rechartsEase(t0: number): number {
+	const poly = (p: number[], t: number) => p.map((q, i) => q * t ** i).reduce((a, b) => a + b);
+	const fx = [0, 0.75, -0.75, 1];
+	const fy = [0, 0.3, 2.4, -1.7];
+	const t = t0 > 1 ? 1 : t0;
+	let x = t;
+	for (let i = 0; i < 8; ++i) {
+		const e = poly(fx, x) - t;
+		const der = poly([0.75, -1.5, 3, 0], x);
+		if (Math.abs(e - t) < 1e-4 || der < 1e-4) return poly(fy, x);
+		x = Math.min(1, Math.max(0, x - e / der));
+	}
+	return poly(fy, x);
+}
+
+test('recharts: a control switching the chart moves each mark from its old shape to the new one, timed, eased and drawn as recharts animates an update', async () => {
+	const { area, line, curveMonotoneX } = await import('d3-shape');
+	type P = [number, number];
+	const lineA: P[] = [[10, 80], [60, 20], [110, 60], [160, 30]];
+	const lineB: P[] = [[10, 30], [60, 70], [110, 20], [160, 60]];
+	const areaA: P[] = [[10, 50], [40, 60], [70, 40], [100, 70], [130, 45], [160, 55]];
+	const areaB: P[] = [[10, 20], [85, 75], [160, 30]];
+	const drawLine = (ps: readonly P[]) => line().curve(curveMonotoneX)(ps as P[])!;
+	const drawArea = (ps: readonly P[]) => area().curve(curveMonotoneX).y0(95)(ps as P[])!;
+	const geo = (k: string) => JSON.stringify({ k, t: 'monotone', l: 'horizontal', a: [0, 1500, 'ease'] });
+	const bar = ([x, y, w, h]: readonly number[]) => `x="${x}" y="${y}" width="${w}" height="${h}" radius="0" data-mm-geo='${JSON.stringify({ k: 'bar', a: [0, 1500, 'ease'] })}'`;
+	const rect = ([x, y, w, h]: readonly number[]) => `M ${x},${y} h ${w} v ${h} h ${-w!} Z`;
+	const barA = [170, 40, 20, 55];
+	const barB = [170, 10, 20, 85];
+	const facts = JSON.stringify({ w: 200, h: 100, v: [5, 5, 190, 90], m: 'x', g: [], p: [], z: 5 });
+	// Each drawing covers the widths it is nearest to; a control's drawings may split the widths differently.
+	const svg = (ln: readonly P[], ar: readonly P[], br: readonly number[], style: string, widths: string) =>
+		`<svg class="recharts-surface" width="200" height="100" style="${style}" data-mm-b="${widths}" data-mm-facts='${facts}'><path class="recharts-curve recharts-area-area" d="${drawArea(ar)}" data-mm-geo='${geo('area')}'></path><path class="recharts-curve recharts-line-curve" d="${drawLine(ln)}" data-mm-geo='${geo('line')}'></path><path class="recharts-rectangle" d="${rect(br)}" ${bar(br)}></path></svg>`;
+	const page = await open(
+		`<div data-mm-morph><button>Mobile</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1">${svg(lineA, areaA, barA, 'display:block', '0 1 2')}${svg(lineB, areaB, barB, 'display: none;', '2 3')}<div class="recharts-tooltip-wrapper" style="visibility: hidden"></div></div></div>`,
+		['recharts'],
+	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	// The pointer over the card fetches the animation before its control is used; the module is in once it and
+	// d3-shape's modules have all loaded (the same module record the part imported).
+	await page.hover('button');
+	await page.evaluate('import("/parts/recharts-motion.ts")');
+	await page.waitForTimeout(50);
+	type Sample = { ts: number; d: string[] };
+	const run = await page.evaluate(
+		() =>
+			new Promise<{ sync: string[]; frames: Sample[]; moved: boolean }>((resolve) => {
+				const [a, b] = [...document.querySelectorAll('svg.recharts-surface')] as SVGSVGElement[];
+				const read = () => [...b!.querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+				const frames: Sample[] = [];
+				let sync: string[] = [];
+				const sample = (ts: number) => {
+					frames.push({ ts, d: read() });
+					if (frames.length < 120) requestAnimationFrame(sample);
+					else resolve({ sync, frames, moved: b!.parentElement!.hasAttribute('data-mm-moved') });
+				};
+				requestAnimationFrame(() => {
+					a!.setAttribute('style', 'display: none;');
+					b!.setAttribute('style', 'display:block');
+					queueMicrotask(() => (sync = read()));
+					requestAnimationFrame(sample);
+				});
+			}),
+	);
+	assert.ok(run.moved, 'the chart is marked as switched, so its entry animation does not play again');
+	// recharts maps each new point to the old one at its index scaled by the old count: 6 points to 3 take 0, 2 and 4.
+	const t0 = [drawArea([areaA[0]!, areaA[2]!, areaA[4]!]), drawLine(lineA), rect(barA)];
+	assert.deepEqual(run.sync, t0, 'before the first paint, the new SVG holds the old shapes');
+	// The sample taken in frame j+1 reads what frame j painted. recharts' clock begins in frame 5 (the facts' lag); React
+	// paints the shape for frame j-1's time in frame j.
+	const painted = run.frames.map((f) => f.d);
+	const time = (j: number) => run.frames[j - 1]!.ts;
+	const begin = time(5);
+	for (let j = 1; j < painted.length; j++) {
+		if (j < 7) {
+			assert.deepEqual(painted[j], t0, `frame ${j}: the old shapes hold until the frame after the clock's first tick`);
+			continue;
+		}
+		const t = (time(j - 1) - begin) / 1500;
+		if (t >= 1) {
+			assert.deepEqual(painted[j], [drawArea(areaB), drawLine(lineB), rect(barB)], `frame ${j}: the new shapes once the animation ends`);
+			continue;
+		}
+		const e = rechartsEase(t);
+		const near = (from: readonly P[], i: number, n: number) => from[Math.floor((i * from.length) / n)]!;
+		const mix = (from: readonly P[], to: readonly P[]) => to.map((p, i) => [near(from, i, to.length)[0] + e * (p[0] - near(from, i, to.length)[0]), near(from, i, to.length)[1] + e * (p[1] - near(from, i, to.length)[1])] as P);
+		const box = barA.map((v, i) => v + e * (barB[i]! - v));
+		const round = (n: number) => Math.round(n * 1e4) / 1e4;
+		assert.deepEqual(painted[j], [drawArea(mix(areaA, areaB)), drawLine(mix(lineA, lineB)), `M ${round(box[0]!)},${round(box[1]!)} h ${round(box[2]!)} v ${round(box[3]!)} h ${round(-box[2]!)} Z`], `frame ${j} at ${Math.round(time(j - 1) - begin)} ms`);
+	}
+	assert.ok(time(painted.length - 1) - begin > 1550, 'the samples reach the end of the animation');
+});
+
+test('cmdk: a search keeps the groups where they are, sorts the items it kept, then puts back the ones it brings back where React mounts them, and selects the first', async () => {
+	const page = await open(COMMAND, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('cal');
+	assert.deepEqual((await commandState(page)).order, 'calc,cal');
+	for (let k = 0; k < 2; k++) await page.keyboard.press('Backspace');
+	// cmdk 1.1.1 sorts the mounted items synchronously; Search Emoji mounts after, before the next item React renders after it.
+	const back = await commandState(page);
+	assert.deepEqual([back.order, back.selected], ['emo,calc,cal', 'emo']);
+	await page.keyboard.press('Backspace');
+	// Its group lookup never matches (it queries a group by its id among their values): the groups never move.
+	const cleared = await commandState(page);
+	assert.deepEqual([cleared.order, cleared.selected, cleared.separator], ['emo,calc,cal,pro,bil,set', 'emo', false]);
+	await page.close();
+});
+
+// recharts 3.8's getTicks with interval preserveEnd (getTicksEnd), as an oracle: from the last tick back, each kept
+// where its text fits before the one after it, minTickGap apart; the last one's text pulled inside the end.
+function preserveEnd(coords: readonly number[], widths: readonly number[], start: number, end: number, gap: number): { i: number; at: number }[] {
+	const out: { i: number; at: number }[] = [];
+	for (let i = coords.length - 1; i >= 0; i--) {
+		const w = widths[i]!;
+		const over = coords[i]! + w / 2 - end;
+		const at = i === coords.length - 1 && over > 0 ? coords[i]! - over : coords[i]!;
+		if (at < start || at > end) continue;
+		if (at - w / 2 - start >= 0 && at + w / 2 - end <= 0) {
+			out.unshift({ i, at });
+			end = at - (w / 2 + gap);
+		}
+	}
+	return out;
+}
+
+test('recharts: behind UTC, the axis shows the ticks recharts keeps for the dates read a day earlier, measured in the tick\'s font', async () => {
+	const labels = ['Apr 1', 'Apr 2', 'Apr 3', 'Apr 4', 'Apr 5', 'Apr 6', 'Apr 7', 'Apr 8', 'Apr 9', 'Apr 10', 'Apr 11', 'Apr 12'];
+	const coords = labels.map((_, i) => 10 + i * 25);
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 280, 30], vb: [0, 0, 300, 200], gap: 8, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c: coords, l: labels };
+	const facts = JSON.stringify({ w: 300, h: 200, v: [10, 0, 280, 170], m: 'x', g: [], p: [], a: [axis] });
+	// What the capture shows in UTC: every third tick from the end.
+	const shown = [2, 5, 8, 11];
+	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="184" text-anchor="middle" fill="#666" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${labels[i]}</tspan></text></g>`;
+	const line = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick"><line class="recharts-cartesian-axis-tick-line" x1="${coords[i]}" y1="176" x2="${coords[i]}" y2="170"></line></g>`;
+	// Convert's spare ticks: copies of the first, hidden, which the part shows when more ticks fit.
+	const spares = (html: string) => html.replace('<g class="recharts-layer', '<g display="none" class="recharts-layer').repeat(4);
+	const body = `<div data-slot="chart" data-mm-clock='[{"*":2024}]' style="width:300px;font:12px monospace"><div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"><g class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines">${shown.map(line).join('')}${spares(line(shown[0]!))}</g></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${shown.map(tick).join('')}${spares(tick(shown[0]!))}</g></g></svg><div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	const read = (page: Page) =>
+		page.evaluate(() => ({
+			labels: [...document.querySelectorAll('.recharts-xAxis-tick-labels > g:not([display="none"]) text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`),
+			lines: [...document.querySelectorAll('.recharts-xAxis-tick-lines > g:not([display="none"]) line')].map((l) => l.getAttribute('x1')),
+		}));
+	for (const zone of ['UTC', 'Asia/Tokyo']) {
+		const page = await open(body, ['recharts', 'clock'], undefined, '', zone);
+		await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+		await page.waitForTimeout(300);
+		assert.deepEqual((await read(page)).labels, shown.map((i) => `${labels[i]}@${coords[i]}`), `${zone}: the capture's ticks`);
+		await page.close();
+	}
+	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
+	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent?.startsWith('Mar') || [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].some((t) => t.textContent === 'Apr 11'), undefined, { timeout: 5000 }).catch(() => {});
+	await page.waitForTimeout(300);
+	const west = ['Mar 31', ...labels.slice(0, -1)];
+	const widths = await page.evaluate((texts) => {
+		const span = document.createElement('span');
+		Object.assign(span.style, { position: 'absolute', top: '-20000px', whiteSpace: 'pre', fontSize: '12px' });
+		document.body.appendChild(span);
+		return texts.map((t) => ((span.textContent = t), span.getBoundingClientRect().width));
+	}, west);
+	const expected = preserveEnd(coords, widths, 0, 300, 8);
+	assert.notDeepEqual(expected.map((e) => e.i), shown, 'the west dates keep other ticks');
+	const seen = await read(page);
+	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
+	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
+	await page.close();
+});
+
+test('capture: a chart\'s axes are read off React\'s current tree, not the stale fiber a DOM node may still point at', async () => {
+	const page = await browser.newPage();
+	await page.setContent('<svg class="recharts-surface"><g class="recharts-cartesian-axis"></g></svg>');
+	const axes = await page.evaluate(`(() => {
+		const chartModel = ${chartModel.toString()};
+		const props = (n) => ({ ticks: Array.from({ length: n }, (_, i) => ({ coordinate: i, value: i })), orientation: 'bottom', tickFormatter: undefined, axisType: 'xAxis', x: 0, y: 0, width: 10, height: 10, viewBox: {} });
+		// React's two trees: the root points at the current one; the axis' DOM node kept the fiber of the first render.
+		const stale = { memoizedProps: props(91) };
+		const fresh = { memoizedProps: props(8), alternate: stale };
+		stale.alternate = fresh;
+		const rootFresh = { child: fresh };
+		const fiberRoot = { current: rootFresh };
+		rootFresh.stateNode = fiberRoot;
+		// A stale fiber's return can point into the current tree: only the walk from the root tells them apart.
+		stale.return = rootFresh;
+		fresh.return = rootFresh;
+		document.querySelector('g')['__reactFiber$x'] = stale;
+		return chartModel(document.querySelector('svg')).axes.map((a) => a && a.c.length);
+	})()`);
+	assert.deepEqual(axes, [8]);
 	await page.close();
 });

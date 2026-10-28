@@ -85,6 +85,9 @@ test('a column toggles its visibility, and pages move within bounds', () => {
 	assert.equal(ttView(s, second).q.canPrev, true);
 	// Sorting goes back to the first page, as the sorted row model resets the page index on the old page.
 	assert.deepEqual(ttAct(s, second, EMAIL).pagination, { pageIndex: 0, pageSize: 2 });
+	// A last-page button goes to the last page from any page; a first-page one to the first.
+	assert.equal(order(s, ttAct(s, second, { k: 'page', to: 'last' })), '4');
+	assert.equal(order(s, ttAct(s, ttAct(s, second, { k: 'page', to: 'last' }), { k: 'page', to: 'first' })), '0,1');
 });
 
 test("each row of the view carries the values its row shows, as fields a row's markup reads plainly", () => {
@@ -93,6 +96,18 @@ test("each row of the view carries the values its row shows, as fields a row's m
 	const rows = ttView(s, ttAct(s, INITIAL, EMAIL), cells).rows;
 	assert.deepEqual(rows[0], { c0: 'success', c1: '$242.00', id: '1', sel: false });
 	assert.equal(ttView(s, INITIAL).rows[0]!.c0, undefined, 'a view without values (a menu reading only its columns) has none');
+});
+
+test("a value a row's own control keeps (its select's choice) follows that row through a sort, and leaves the others", () => {
+	const s = spec();
+	const cells = { '0': ['success', 'Assign'], '1': ['success', 'Assign'], '2': ['processing', 'Eddie'], '3': ['success', 'Assign'], '4': ['failed', 'Assign'] };
+	const chosen = ttAct(s, INITIAL, { k: 'cell', r: '1', c: 1, v: 'Jamik' });
+	assert.equal(ttView(s, chosen, cells).rows.find((r) => r.id === '1')!.c1, 'Jamik');
+	assert.deepEqual(ttView(s, ttAct(s, chosen, EMAIL), cells).rows.map((r) => `${r.id}:${r.c1}`).sort(), ['0:Assign', '1:Jamik', '2:Eddie', '3:Assign', '4:Assign']);
+	// Paged away and back, the row mounts again: its select shows what it showed at first.
+	const paged = ttAct(s, { ...INITIAL, pagination: { pageIndex: 0, pageSize: 2 } }, { k: 'cell', r: '1', c: 1, v: 'Jamik' });
+	const back = ttAct(s, ttAct(s, paged, { k: 'page', d: 1 }), { k: 'page', d: -1 });
+	assert.equal(ttView(s, back, cells).rows.find((r) => r.id === '1')!.c1, 'Assign');
 });
 
 test("select-all does what the old page's control did: React Aria's clears every row, the Radix demo's only the page's", () => {
@@ -116,4 +131,40 @@ test('controls used on a copy of the state, as a converted page hands it, end in
 		assert.equal(JSON.stringify(b), JSON.stringify(a));
 		assert.equal(order(copied, structuredClone(b)), order(live, a));
 	}
+});
+
+test('whether any column is filtered is a quantity of the view (a toolbar shows Reset while one is)', () => {
+	const s = spec();
+	assert.equal(ttView(s, INITIAL).q.filtering, false);
+	const typed = ttAct(s, INITIAL, { k: 'filter', c: 'email', v: 'abe' });
+	assert.equal(ttView(s, typed).q.filtering, true);
+	assert.equal(ttView(s, ttAct(s, typed, { k: 'filter', c: 'email', v: '' })).q.filtering, false);
+});
+
+test('a faceted filter toggles values in its column\'s filter list, clears it, and the view counts each value among the rows the other filters keep', async () => {
+	const { columnFacetingFeature, createFacetedRowModel, createFacetedUniqueValues } = await import('@tanstack/table-core');
+	const s: TableSpec = { ...spec(), features: { ...features, columnFacetingFeature, facetedRowModel: createFacetedRowModel(), facetedUniqueValues: createFacetedUniqueValues() } as never, columns: spec().columns.map((c) => (c.id === 'status' ? { ...c, def: { ...c.def, filterFn: (row: { getValue: (id: string) => unknown }, id: string, value: unknown[]) => value.includes(row.getValue(id)) } } : c)) };
+	assert.deepEqual(ttView(s, INITIAL).c.status!.u, { success: 3, processing: 1, failed: 1 });
+	const one = ttAct(s, INITIAL, { k: 'facet', c: 'status', v: 'success' });
+	assert.deepEqual(one.columnFilters, [{ id: 'status', value: ['success'] }]);
+	assert.deepEqual(ttView(s, one).c.status!.fs, ['success']);
+	assert.equal(order(s, one), '0,1,3');
+	const two = ttAct(s, one, { k: 'facet', c: 'status', v: 'failed' });
+	assert.equal(order(s, two), '0,1,3,4');
+	assert.deepEqual(ttView(s, ttAct(s, two, { k: 'facet', c: 'status', v: 'success' })).c.status!.fs, ['failed']);
+	// The last value taken out leaves no filter, as the faceted filter sets undefined for an empty list.
+	assert.deepEqual(ttAct(s, one, { k: 'facet', c: 'status', v: 'success' }).columnFilters, []);
+	assert.deepEqual(ttAct(s, two, { k: 'facetClear', c: 'status' }).columnFilters, []);
+	// Another column's filter narrows the counts.
+	const typed = ttAct(s, INITIAL, { k: 'filter', c: 'email', v: 'abe' });
+	assert.deepEqual(ttView(s, typed).c.status!.u, { success: 1 });
+});
+
+test('a page-size choice pages the rows by it, keeping the first row shown on the page that holds it', () => {
+	const s = spec();
+	const two = ttAct(s, { ...INITIAL, pagination: { pageIndex: 0, pageSize: 2 } }, { k: 'page', d: 1 });
+	assert.equal(ttView(s, two).q.pageNumber, 2);
+	const three = ttAct(s, two, { k: 'pageSize', n: 3 });
+	assert.deepEqual(three.pagination, { pageIndex: 0, pageSize: 3 });
+	assert.equal(ttView(s, three).q.pageCount, 2);
 });

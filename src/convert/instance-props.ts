@@ -24,7 +24,11 @@ export interface InstanceSpec {
 export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/combobox', selector: 'input[role="combobox"][aria-haspopup="listbox"]:not([cmdk-input])', props: [{ name: 'autoHighlight' }], hints: ['aria-haspopup="listbox"'] },
 	{ port: 'base-ui/combobox', selector: '[role="listbox"][data-base-ui-focusable] [role="option"]', props: [{ name: 'value', attr: 'data-mm-value', as: 'form-value' }], hints: ['data-base-ui-focusable', 'role="option"'] },
+	{ port: 'base-ui/menu', selector: '[role="menu"][data-base-ui-focusable] :is([role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"])', props: [{ name: 'closeOnClick' }], hints: ['data-base-ui-focusable', 'role="menu"'] },
+	{ port: 'react-aria/overlay', selector: '[data-rac][data-trigger]', props: [{ name: 'placement' }, { name: 'offset' }, { name: 'crossOffset' }], hints: ['data-rac', 'data-trigger='] },
 	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
+	// Its Positioner's offsets as this instance gave them (an input with an icon addon moves its list by alignOffset).
+	{ port: 'base-ui/combobox', selector: '[data-slot="combobox-content"]', props: [{ name: 'alignOffset' }, { name: 'sideOffset' }], hints: ['data-slot="combobox-content"'], version: 2 },
 ];
 
 /** Each spec as a mark of its own, so a spec that reads more takes again only the captures holding its hints. */

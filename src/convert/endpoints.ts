@@ -387,6 +387,8 @@ export interface RoutingInput {
 	readonly fallthrough?: string;
 	/** The redirects plan saw the old site answer (a static host adding a page's trailing slash). */
 	readonly observed?: readonly { readonly route: string; readonly status?: number; readonly redirectsTo?: string }[];
+	/** A deployment of the old site whose sitemap (when it lists the content source's pages) orders the content collection. */
+	readonly pageOrderFrom?: string;
 	readonly log?: (line: string) => void;
 }
 
@@ -554,6 +556,20 @@ export function trailingPolicy(nextConfig: string | undefined, observed: Routing
 	return undefined;
 }
 
+/**
+ * Keeps the app's routing middleware (server/routing.ts) as it was written, its handlers and outputs included, for the
+ * pages given: only the list of pages the app renders is written again. False when the app has none to keep.
+ */
+export async function keepRouting(app: string, pages: readonly string[]): Promise<boolean> {
+	const file = join(app, 'server', 'routing.ts');
+	const text = await readFile(file, 'utf8').catch(() => undefined);
+	const line = /^const PAGES = new Set<string>\(.*\);$/m;
+	if (!text || !line.test(text)) return false;
+	const next = text.replace(line, () => `const PAGES = new Set<string>(${JSON.stringify(pages)});`);
+	if (next !== text) await writeFile(file, next);
+	return true;
+}
+
 export async function writeRouting(input: RoutingInput): Promise<{ ports: EndpointPort[]; packages: Record<string, string>; overrides: Record<string, Record<string, string>> }> {
 	const { app, source } = input;
 	const out = join(app, 'server', 'handlers');
@@ -565,9 +581,10 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 	const packages: Record<string, string> = { 'path-to-regexp': '6.3.0' };
 	const ports: EndpointPort[] = [];
 	const handlers: { pattern: string; module: string }[] = [];
-	const collection = await fumadocsCollection(source);
+	const order = input.pageOrderFrom ? await sitemapOrder(source, input.pageOrderFrom, input.log) : undefined;
+	const collection = await fumadocsCollection(source, order);
 	const generated = new Set(collection ? [join(source, collection.file)] : []);
-	if (collection) input.log?.(`content collection ${collection.file}: ${collection.entries} entries read as data by fumadocs-mdx's own loader`);
+	if (collection) input.log?.(`content collection ${collection.file}: ${collection.entries} entries read as data by fumadocs-mdx's own loader; ${collection.moved} pages reordered ${order ? `to ${input.pageOrderFrom}/sitemap.xml's order` : 'by path'}`);
 	// Next.js's metadata routes: app/sitemap.ts and app/robots.ts, whose default export's value Next.js writes as a file.
 	const metadata = [
 		{ route: '/sitemap.xml', names: ['app/sitemap.ts', 'app/sitemap.js'] },
@@ -791,4 +808,22 @@ export default defineHandler(async (event) => {
 `;
 	await writeFile(join(app, 'server', 'routing.ts'), routing);
 	return { ports, packages, overrides: peerOverrides(source, packages) };
+}
+
+/**
+ * The page paths a deployment's sitemap lists, in its order, when the old app's sitemap lists its content source's
+ * pages (getPages()), which is the order that source gave them on the machine that built it.
+ */
+async function sitemapOrder(source: string, origin: string, log?: (line: string) => void): Promise<readonly string[] | undefined> {
+	const file = ['app/sitemap.ts', 'app/sitemap.js'].map((f) => join(source, f)).find((f) => existsSync(f));
+	if (!file || !/\.getPages\(\)/.test(await readFile(file, 'utf8'))) {
+		log?.(`page order from ${origin}: the old app's sitemap does not list its content source's pages; pages ordered by path`);
+		return undefined;
+	}
+	const res = await fetch(new URL('/sitemap.xml', origin)).catch(() => undefined);
+	if (!res?.ok) {
+		log?.(`page order from ${origin}: no sitemap.xml (${res?.status ?? 'no answer'}); pages ordered by path`);
+		return undefined;
+	}
+	return [...(await res.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]!.trim()).pathname);
 }

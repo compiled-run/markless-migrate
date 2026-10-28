@@ -35,6 +35,19 @@ document.getElementById('go').onclick = async () => {
 };
 </script></body></html>`;
 
+// A spinner shown only when the list takes over 50 ms to answer (a pending UI behind a delay, as a Suspense fallback).
+const spinner = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Team</title></head><body><main><h1>Team</h1>
+<ul id="people"><li>Ada</li><li>Grace</li></ul><button id="go" type="button">Refresh</button></main>
+<script>
+document.getElementById('go').onclick = async () => {
+	const list = document.getElementById('people');
+	const slow = setTimeout(() => list.replaceChildren(Object.assign(document.createElement('li'), { textContent: 'Loading…' })), 50);
+	const names = await (await fetch('/team')).json();
+	clearTimeout(slow);
+	list.replaceChildren(...names.map((n) => Object.assign(document.createElement('li'), { textContent: n })));
+};
+</script></body></html>`;
+
 let browser: Browser;
 const servers: Server[] = [];
 before(async () => {
@@ -48,11 +61,16 @@ after(async () => {
 	}
 });
 
-function serve(body: string | ((path: string) => string | undefined)): Promise<string> {
+function serve(body: string | ((path: string) => string | undefined), team: number[] = []): Promise<string> {
+	const slowTeamHere = team;
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
 		const late = (send: () => void) => setTimeout(send, 400);
 		if (path === '/people') return late(() => res.writeHead(200, { 'content-type': 'application/json' }).end('["Ada","Grace","Linus"]'));
+		if (path === '/team') {
+			const wait = slowTeamHere.shift() ?? 0;
+			return void setTimeout(() => res.writeHead(200, { 'content-type': 'application/json' }).end('["Ada","Grace","Linus"]'), wait);
+		}
 		const page = typeof body === 'string' ? (path === '/' ? body : undefined) : body(path);
 		if (page === undefined) return void res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title><h1>Not found</h1>');
 		const answer = () => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page);
@@ -98,4 +116,13 @@ test('a placeholder the old page also showed is not a difference, however long e
 	assert.equal(interimViews([step({ swaps: 2, interimMs: 18, interim: ['loading'] })], step({ swaps: 3, interimMs: 151, interim: ['loading'] })), undefined);
 	assert.equal(interimViews([step({ swaps: 1, interimMs: 0, interim: [] })], step({ swaps: 2, interimMs: 60, interim: ['…'] })), undefined);
 	assert.match(interimViews([step({ swaps: 1, interimMs: 0, interim: [] })], step({ swaps: 3, interimMs: 250, interim: ['⍥', 'Loading'] }))!, /new: shows 2 views in between for 250 ms \("⍥", "Loading"\)/);
+});
+
+test('a placeholder the new page showed once, because its server was slow that time, is timed again one side at a time and does not stand', async () => {
+	const [a, b] = await Promise.all([serve(spinner), serve(spinner, Array.from({ length: 20 }, () => 400))]);
+	const late = inBetween(await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } }));
+	assert.ok(late.length, 'a new server slow every time keeps it red');
+	const [c, d] = await Promise.all([serve(spinner), serve(spinner, [400])]);
+	const once = inBetween(await runCheck({ oldOrigin: c, newOrigin: d, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } }));
+	assert.deepEqual(once.map((f) => `${f.check}: ${f.actual}`), []);
 });

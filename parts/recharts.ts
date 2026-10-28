@@ -19,6 +19,8 @@ interface Facts {
 	readonly q?: readonly number[];
 	/** The arrow keys' order: [state, x, y]. */
 	readonly k?: readonly (readonly [number, number, number])[];
+	/** Frames from a control's use to the one recharts' update animation begins at, on the old page. */
+	readonly z?: number;
 }
 
 const WRAPPER = '[data-mm-chart]';
@@ -146,6 +148,7 @@ function wire(wrapper: HTMLElement): void {
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
+	intent(target);
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper) return false;
 	wire(wrapper);
@@ -155,8 +158,80 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 
 // A pointer already over the chart when the page loads moves inside it without a pointerover: the chart is wired once it is visible.
 export function mount(el: Element): void {
-	if (el instanceof HTMLElement && el.matches(WRAPPER)) wire(el);
+	if (!(el instanceof HTMLElement) || !el.matches(WRAPPER)) return;
+	wire(el);
+	watch(el);
+	relabel(el);
 }
+
+// Behind UTC, the dates recharts formats from UTC midnights read a day earlier, so their axis keeps other ticks.
+function relabel(wrapper: HTMLElement): void {
+	const region = wrapper.closest('[data-mm-clock]');
+	let rules: { '*'?: number }[];
+	try {
+		rules = JSON.parse(region?.getAttribute('data-mm-clock') ?? '[]') as { '*'?: number }[];
+	} catch {
+		return;
+	}
+	const year = rules.find((r) => r['*'] !== undefined)?.['*'];
+	if (year === undefined || ![0, 6].some((month) => new Date(Date.UTC(year, month, 1)).getTimezoneOffset() > 0)) return;
+	void Promise.all([import('./recharts-layout.ts'), import('./clock.ts')]).then(([layout, clock]) => layout.relabel(wrapper, rules, clock));
+}
+
+// recharts' update animation runs in its own module, fetched once a card whose controls switch its chart is about to be used.
+type Motion = typeof import('./recharts-motion.ts');
+let motion: Promise<Motion> | undefined;
+let motionIn: Motion | undefined;
+const loadMotion = () => (motion ??= import('./recharts-motion.ts').then((m) => (motionIn = m)));
+const watched = new WeakSet<Element>();
+/** Each mark's own path, as convert wrote it: where its animation ends. */
+const finals = new WeakMap<Element, string>();
+
+/**
+ * A control switching the chart shows another of its SVGs: recharts keeps the chart mounted, so its entry animation does
+ * not play again and its marks move from the old shape to the new one. Until the animation module is in, the new SVG
+ * keeps the old one's paths, and the frames it took count towards the old page's wait.
+ */
+function watch(wrapper: HTMLElement): void {
+	if (watched.has(wrapper)) return;
+	watched.add(wrapper);
+	new MutationObserver((records) => {
+		const now = surfaceOf(wrapper);
+		const widths = new Set(now?.getAttribute('data-mm-b')?.split(' '));
+		const from = records.find((r) => r.target !== now && r.target instanceof SVGSVGElement && r.target.parentElement === wrapper && r.target.getAttribute('data-mm-b')?.split(' ').some((b) => widths.has(b)) && !/display:\s*none/.test(r.oldValue ?? ''))?.target as SVGSVGElement | undefined;
+		if (!now || !from) return;
+		wrapper.setAttribute('data-mm-moved', '');
+		if (!now.querySelector('[data-mm-geo]') || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const lag = factsOf(now)?.z ?? 0;
+		if (motionIn) return motionIn.morph(wrapper, from, now, lag, 0, finals);
+		let frames = 0;
+		let counting = true;
+		const count = () => {
+			if (!counting) return;
+			frames++;
+			requestAnimationFrame(count);
+		};
+		requestAnimationFrame(count);
+		// Before the module is in: the old shape, which the new SVG's paths hold until it moves them.
+		const before = [...from.querySelectorAll('path[data-mm-geo]')];
+		now.querySelectorAll('path[data-mm-geo]').forEach((path, i) => {
+			const d = before[i]?.getAttribute('d');
+			if (!finals.has(path)) finals.set(path, path.getAttribute('d') ?? '');
+			if (d) path.setAttribute('d', d);
+		});
+		void loadMotion().then(
+			(m) => {
+				counting = false;
+				m.morph(wrapper, from, now, lag, frames, finals);
+			},
+			() => (counting = false),
+		);
+	}).observe(wrapper, { attributes: true, attributeFilter: ['style'], attributeOldValue: true, subtree: true });
+}
+
+const intent = (target: Element) => {
+	if (target.closest('[data-mm-morph]')) void loadMotion();
+};
 
 function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {
 	const entry = factsOf(surface)?.k?.[key];
@@ -164,6 +239,7 @@ function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {
 }
 
 export function focusin(target: Element): boolean {
+	intent(target);
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
 	step(wrapper, target, 0);

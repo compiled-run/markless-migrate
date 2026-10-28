@@ -8,16 +8,23 @@ import { place } from './positioner.ts';
 // Radix's trigger carries data-state; Base UI's never does (the converter renames generated ids, so they tell neither).
 const TRIGGER = '[role="combobox"][data-slot="select-trigger"]:not([data-state])';
 const OPTION = '[role="option"]';
+// A select's own popup: another Base UI popup (a dialog holding a cmdk list) has options that are not the select's.
+const popupOfSelect = (el: Element) => {
+	const p = popupOf(el);
+	return p?.trigger.matches(TRIGGER) ? p : undefined;
+};
 
 const options = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)];
 // isElementDisabled; a captured Base UI item carries data-disabled as well.
 const enabled = (o: HTMLElement) => !o.hasAttribute('disabled') && o.getAttribute('aria-disabled') !== 'true' && !o.hasAttribute('data-disabled');
 const enabledOptions = (p: Popup) => options(p).filter(enabled);
+// A press focuses as a mouse does, without a focus ring (Base UI's trigger takes the mousedown's focus, the option a script's).
+const quietly = { preventScroll: true, focusVisible: false } as FocusOptions;
 function highlight(p: Popup, option: HTMLElement | undefined, keyboard = false): void {
 	for (const o of options(p)) o.removeAttribute('data-highlighted');
 	if (!option) return;
 	option.setAttribute('data-highlighted', '');
-	option.focus({ preventScroll: true });
+	option.focus(keyboard ? { preventScroll: true } : quietly);
 	if (keyboard) option.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 const selectedValue = new WeakMap<HTMLElement, string>();
@@ -110,22 +117,30 @@ function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): vo
 	}
 }
 // Its highlight goes with activeIndex, reset as the popup's exit completes.
-function dismiss(p: Popup): void {
+function dismiss(p: Popup, focus?: FocusOptions): void {
 	highlight(p, undefined);
-	closePopup(p, true, true);
+	closePopup(p, true, true, focus);
 }
-function choose(p: Popup, option: HTMLElement): void {
+function choose(p: Popup, option: HTMLElement, pressed = false): void {
 	select(p.trigger, p.popup, option);
-	dismiss(p);
+	dismiss(p, pressed ? quietly : undefined);
 }
 
 const popupFor = (trigger: HTMLElement) => [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 const typings = new WeakMap<HTMLElement, Typing>();
 const typingOf = (trigger: HTMLElement) => typings.get(trigger) ?? typings.set(trigger, newTyping()).get(trigger)!;
 
+// SelectIcon (aria-hidden, its default child ▼ kept beside a rendered svg) carries data-popup-open while the select is open.
+const iconOf = (trigger: HTMLElement) => [...trigger.children].find((c) => c.getAttribute('aria-hidden') === 'true' && (c.textContent ?? '').includes('▼'));
+
 function openSelect(trigger: HTMLElement, key?: string): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: dismiss });
+	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: (q) => dismiss(q) });
 	if (!p) return false;
+	const icon = iconOf(trigger);
+	if (icon) {
+		icon.setAttribute('data-popup-open', '');
+		p.cleanup.push(() => icon.removeAttribute('data-popup-open'));
+	}
 	endTyping(typingOf(trigger));
 	const label = selectedValue.get(trigger);
 	if (label !== undefined) for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) {
@@ -137,12 +152,14 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	if (!alignOver(trigger, p) && p.positioner) {
 		for (const prop of ['top', 'bottom', 'left', 'height', 'max-height', 'margin-top', 'margin-bottom']) p.positioner.style.removeProperty(prop);
 		(p.positioner.firstElementChild as HTMLElement | null)?.style.removeProperty('height');
+		// openPopup placed it off the listbox's own data-align (none: center) and keeps it there until stopped.
+		p.stop?.();
 		p.stop = place(trigger, p.positioner, p.popup, { side: 'bottom', align: 'start', sideOffset: 0, alignOffset: 0, positionMethod: 'fixed' });
 	}
 	// useListNavigation: the selected item, else from ArrowUp the last enabled one, else the first.
 	const list = options(p);
 	const selected = list.find((o) => o.getAttribute('aria-selected') === 'true');
-	highlight(p, selected ?? (key === 'ArrowUp' ? list.findLast(enabled) : undefined) ?? enabledOptions(p)[0]);
+	highlight(p, selected ?? (key === 'ArrowUp' ? list.findLast(enabled) : undefined) ?? enabledOptions(p)[0], key !== undefined);
 	return true;
 }
 
@@ -152,20 +169,23 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	const p = popupFor(trigger);
 	event.preventDefault();
 	if (p) dismiss(p);
-	else openSelect(trigger);
+	else {
+		trigger.focus(quietly);
+		openSelect(trigger);
+	}
 	return true;
 }
 export function click(target: Element): boolean {
 	if (target.closest(TRIGGER)) return true;
 	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
+	const p = option && popupOfSelect(option);
 	if (!option || !p) return false;
-	if (enabled(option)) choose(p, option);
+	if (enabled(option)) choose(p, option, true);
 	return true;
 }
 export function pointerover(target: Element): boolean {
 	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
+	const p = option && popupOfSelect(option);
 	if (!option || !p) return false;
 	highlight(p, option);
 	return true;
@@ -184,7 +204,7 @@ const keysMove = () => {
 // useListNavigation's onPointerLeave: the pointer leaving an option for no other unhighlights it and focuses SelectPopup.
 export function pointerout(target: Element, event: PointerEvent): boolean {
 	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
+	const p = option && popupOfSelect(option);
 	if (!option || !p || !p.popup.matches('[role="listbox"]') || event.pointerType === 'touch' || keysMoved) return false;
 	const to = event.relatedTarget instanceof Element ? event.relatedTarget.closest(OPTION) : null;
 	if ((to && p.popup.contains(to)) || !option.hasAttribute('data-highlighted')) return false;

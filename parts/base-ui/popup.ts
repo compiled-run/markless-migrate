@@ -1,6 +1,7 @@
 import { layersFor, showCompanions } from '../reveal.ts';
 import { place, type BaseOptions } from './positioner.ts';
 import { enter, exit } from './transition.ts';
+import { raiseOver } from '../stacking.ts';
 
 // What Base UI's FloatingPortal, FloatingFocusManager and dismissal do around a popover, menu, select or tooltip: the
 // portal container appended to the body, Escape and a press outside closing the top popup, the trigger marked open.
@@ -20,7 +21,10 @@ export interface Popup {
 	/** Closes it as its part does (the part's onDismiss). */
 	readonly dismiss: (reason: Dismissal) => void;
 	stop?: () => void;
+	lower?: () => void;
 	cleanup: (() => void)[];
+	/** Whether opening it gave its trigger aria-controls, which the trigger carries while the popup is mounted. */
+	controls?: boolean;
 }
 
 export type Dismissal = 'escape' | 'outside' | 'tab' | 'item';
@@ -189,11 +193,12 @@ function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement |
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
 // pressable: data-pressed on the trigger while open (pressableTriggerOpenStateMapping); lockScroll: modal; tabOut: Tab leaves.
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly anchorOf?: (popup: HTMLElement) => Element | null | undefined; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean }): Popup | undefined {
 	// A context menu's trigger area has no id: its layer key, and the point it opens at.
 	const key = options.key || trigger.id;
 	if (!key || isOpen(key)) return undefined;
-	const portal = layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
+	// `portal` with `shown`: a popup the page already shows open (open at load), taken as it is.
+	const portal = options.portal ?? layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
 	if (!portal) return undefined;
 	const popup = portal.querySelector<HTMLElement>(options.popupSelector);
 	if (!popup) return undefined;
@@ -215,14 +220,24 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
-		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
-		p.stop = place(options.anchor ?? trigger, positioner, popup, opts);
+		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? positioner.getAttribute('data-align') ?? 'center', sideOffset: Number(popup.dataset.mmSideOffset ?? portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(popup.dataset.mmAlignOffset ?? portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
+		// A Positioner given another anchor than its trigger (an element ref): the portal names that element.
+		const named = portal.dataset.mmAnchor ? document.getElementById(portal.dataset.mmAnchor) : null;
+		p.stop = place(options.anchor ?? options.anchorOf?.(popup) ?? named ?? trigger, positioner, popup, opts);
 	}
 	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
 	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
-	enter(popup, around);
+	// Menu, Select, Popover, Tooltip and Combobox popups start with transitions off; a Dialog's (not anchored) does not.
+	if (!options.shown) enter(popup, around, options.anchored !== false);
 	setTrigger(trigger, true, pressable);
+	// Base UI's menu, popover and dialog triggers name the popup they mounted (aria-controls={popupId}) until it unmounts.
+	if (/^(menu|dialog|true)$/.test(trigger.getAttribute('aria-haspopup') ?? '') && !trigger.hasAttribute('aria-controls') && popup.id) {
+		trigger.setAttribute('aria-controls', popup.id);
+		p.controls = true;
+	}
 	showCompanions(key, true);
+	const stacked = (q: HTMLElement) => [...q.children].filter((c): c is HTMLElement => c instanceof HTMLElement);
+	p.lower = raiseOver(stacked(portal), open.flatMap((o) => stacked(o.portal)));
 	open.push(p);
 	if (options.lockScroll ?? popup.matches('[role="menu"]')) p.cleanup.push(acquireScrollLock());
 	const onKey = (event: KeyboardEvent) => {
@@ -270,7 +285,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	return p;
 }
 
-export function closePopup(p: Popup, returnFocus = true, keep = false): void {
+export function closePopup(p: Popup, returnFocus = true, keep = false, focus: FocusOptions = {}): void {
 	const at = open.indexOf(p);
 	if (at < 0) return;
 	open.splice(at, 1);
@@ -287,20 +302,26 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (!at || at === document.body || p.portal.contains(at)) p.trigger.focus({ preventScroll: true });
 	};
 	if (returnFocus && keep) {
-		p.trigger.focus({ preventScroll: true });
+		p.trigger.focus({ preventScroll: true, ...focus });
 		// The outside press's own mousedown then blurs to the body: focus comes back after it.
 		if (pressedOutside === p) setTimeout(refocus);
 	}
 	exit(p.popup, p.around, () => {
 		p.stop?.();
-		// Opened again before this exit ended: it stays mounted.
-		if (open.some((o) => o.portal === p.portal)) return;
+		// Opened again before this exit ended: it stays mounted, raised as it was.
+		const again = open.find((o) => o.portal === p.portal);
+		if (again) {
+			again.lower ??= p.lower;
+			return;
+		}
+		p.lower?.();
 		if (returnFocus && !keep) refocus();
 		// Base UI's Select keeps its popup mounted once opened, hidden; other popups leave, here hidden with their portal.
 		if (keep) {
 			(p.positioner ?? p.popup).hidden = true;
 			if (p.backdrop) p.backdrop.hidden = true;
 		} else p.portal.hidden = true;
+		if (p.controls) p.trigger.removeAttribute('aria-controls');
 	});
 }
 

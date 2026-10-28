@@ -206,6 +206,18 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   selection and select-all, the selected count and the page buttons did nothing on all six tables. After: every step
   of a 22-step journey matches the old page on each of the three routes in the local witness: row order, cell text,
   checked states, `aria-sort`, the count and the page buttons.
+- TanStack tables, continued: `/examples/tasks` and dashboard-01. A column's own `filterFn` or `sortingFn` is the old
+  page's code (its source, read from the instance) when it reads only its arguments and the language's globals. A
+  column header's menu items sort one way whatever the direction was. The toolbar's Reset (shown only while a column is
+  filtered) is an arm that clears every filter, and the filter field shows its column's filter. A faceted filter's
+  popover options toggle their value in the column's filter list, and show their check and their count among the rows
+  the other filters keep. Clear filters shows once a value is chosen. The trigger shows the chosen labels, or their count
+  past two: one template learned from each value chosen alone and two and three chosen, rendered always and hidden by the
+  count, because Markless rebuilds no arm on another module's state. A Rows per page select sets the page size. Pages are
+  recorded at the table's own page size when the rows fill three pages, so a page-size select shows its value. Before:
+  `/examples/tasks`'s table was left static (its status and priority columns have filter functions). After: filter,
+  Reset, header-menu sorting, faceted filters, row selection, page size and the page buttons match the old page step by
+  step in the local witness. dashboard-01 matches as before.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
@@ -2512,10 +2524,69 @@ Leading causes (routes):
 
 </details>
 
+## Charts: how they move, fit and date (decision, 2026-10-27)
+
+The port draws each chart from SVGs captured on the old page. Three things differed from recharts: a card's control
+(Desktop 7,324 / Mobile 7,250, a range select, a toggle group) swapped one drawing for another instead of moving the
+lines, areas and bars to their new shape; a width the capture did not see stretched the nearest drawing; and behind
+UTC the axis showed other ticks than the old page.
+
+Inventory (old site, 74 routes with a chart): 68 `/view` chart pages, the three docs `chart` pages, `/sera`, and the
+two dashboards. Charts whose card controls change them: bar-interactive (docs `chart` pages and `/view`), line-interactive, area-interactive,
+`dashboard-01` and `/examples/dashboard` (toggle group and select), pie-interactive (a month select: recharts
+redraws it at once, no update animation). Every chart has a tooltip; 44 of them change size with the page (most are
+`aspect-video`); the pie, radar and radial charts are 250 px squares at every captured width but pie-interactive and
+pie-legend.
+
+Approaches, measured on `/view/new-york-v4/chart-line-interactive` (1280 px, Chromium, V8 coverage):
+
+| | Downloaded on first use | Executed at load | Executed by a switch |
+| --- | --- | --- | --- |
+| Old page (React, recharts 3.8) | (already loaded) | 666 KB | 207 KB |
+| Run recharts lazily over the capture | about 215 KB gzip (React DOM 71 KB, recharts chunks 144 KB) | 0 | more than the old page's 207 KB the first time (React and recharts start too; not measured) |
+| Markless part with recharts' own animation code | 17.4 KB gzip (57 KB: the part, d3-shape's curves, d3-path) | 0 | 7.3 KB in the part |
+
+Running recharts needs React in the port, which the catalog rules out (`react`, `react-dom`: the old framework
+itself), and the chart's component source. Decision: a Markless part. `parts/recharts-motion.ts` ports recharts 3.8's
+update animation as written: `JavascriptAnimate`'s clock (the frame its timer starts in, `animationBegin`), the
+`configBezier` easing with its Newton step and stopping rule, `animationDuration` (1500 ms for lines and areas, 400
+ms for bars), the point mapping (`prevPoints[floor(i * prev / next)]`, an area's baseline too), and the paths drawn
+with d3-shape 3.2 curves and recharts' `Rectangle` path. Convert reads each mark's curve, layout and animation off
+the props recharts rendered it with (`data-mm-geo`) and the frames the old page waited from the input to the first
+moving frame (`lag`, 4 on the bar and line charts, 3 on area-interactive). The part is fetched when the pointer or
+focus comes to a card with such a control, so nothing of it runs at load; a control used before it arrives shows the
+old shapes, and the frames it took count towards the wait.
+
+Frame-by-frame check (each frame read after it was painted, 1280 px, against the old site served locally):
+
+| Chart | Control | Moving frames old / port | Largest gap in the same frame |
+| --- | --- | --- | --- |
+| line-interactive | Mobile | 90 / 91 | 0.011 px |
+| bar-interactive | Mobile | 24 / 24 | 0.019 px |
+| area-interactive | Last 30 days (select) | 92 / 92 | 0.017 px |
+| dashboard-01 | Last 30 days (toggle) | 91 / 91 | 0.038 px; the first 2 frames hold the old shape when the click comes at once after the pointer (the part was still loading) |
+| docs `chart` (radix) | Mobile | 9 / 24 | 0.034 px at equal progress: the old docs page drops frames under its other charts' work; the frames it paints sit on the port's curve |
+| pie-interactive | February (select) | 1 / 1 (no animation) | 0 px |
+
+Time zones (second change): convert reads each axis' every possible tick off the props recharts' CartesianAxis was
+given (coordinates and the formatter's text, `a` in the drawing's facts) and each chart's layout and bar settings off
+its store. Behind UTC (checked once, on Jan 1 and Jul 1 of the chart's year) `parts/recharts-layout.ts` takes the
+dates as the clock part writes them for the visitor, keeps the ticks recharts' `getTicks` keeps (its `preserveEnd`
+and the other intervals as written, each text measured in a span on the body in the tick's font size and letter
+spacing, as `getStringSize` does) and draws them where `getTickLineCoord` puts them. Clock capture now finds a chart's
+dates as a whole too: on `chart-line-interactive` and `dashboard-01` the axis shows another number of ticks behind
+UTC, so the place-by-place reading found nothing. Old and port agree on every tick's text and place in UTC,
+Asia/Tokyo, America/Los_Angeles, Pacific/Honolulu and America/St_Johns on area-interactive, bar-interactive,
+line-interactive, dashboard-01 and area-default (1280 px), and the tooltips' dates at three points of each.
+
+Next, same part family, from the same captures: the layout at any width (recharts' band and bar sizes, which it
+truncates to whole pixels, so the drawing cannot simply scale, and the ticks `getTicks` keeps for the width).
+
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
-  the interactive charts' pages are 3-5x the original's HTML. Next: one SVG laid out from the captured data at any width.
+  the interactive charts' pages are 3-5x the original's HTML, and other widths stretch the nearest. Next: the chart
+  laid out at any width and for the visitor's time zone (see "Charts: how they move, fit and date").
 - `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.

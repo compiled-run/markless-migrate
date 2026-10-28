@@ -3,6 +3,7 @@ import { leave, stay } from './presence.ts';
 import { layersFor, showCompanions } from './reveal.ts';
 import { hideOthers } from './aria-hidden.ts';
 import { lockScroll } from './remove-scroll.ts';
+import { raiseOver } from './stacking.ts';
 
 // What Radix's Portal, DismissableLayer and FocusScope do around a popover, menu, select or tooltip, on the content
 // Markless renders at the end of the body: shown on open, Escape and a press outside closing the top layer, focus
@@ -68,6 +69,12 @@ export function focusFirst(container: HTMLElement): void {
 	container.focus({ preventScroll: true });
 }
 
+const raised = new WeakMap<Layer, () => void>();
+function raise(layer: Layer): void {
+	const undo = raiseOver(layer.nodes, open.flatMap((o) => o.nodes));
+	if (undo) raised.set(layer, undo);
+}
+
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
 export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly loop?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus', event?: Event) => void }): Layer | undefined {
 	if (isOpen(key)) return open.find((l) => l.key === key);
@@ -87,6 +94,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		layer.stop = place(options.anchor ?? trigger, wrapper, optionsOf(wrapper, content));
 	}
 	content.setAttribute('data-state', 'open');
+	raise(layer);
 	if (layer.modal) {
 		if (!open.some((l) => l.modal)) {
 			bodyPointerEvents = document.body.style.pointerEvents;
@@ -179,6 +187,8 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 		() => layer.content.setAttribute('data-state', 'closed'),
 		() => {
 			layer.stop?.();
+			raised.get(layer)?.();
+			raised.delete(layer);
 			for (const n of layer.nodes) n.hidden = true;
 		},
 	);

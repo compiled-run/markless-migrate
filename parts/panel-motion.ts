@@ -76,6 +76,15 @@ function measureRadix(el: HTMLElement): void {
 	el.style.transitionDuration = duration;
 }
 
+/** Radix content open on load, measured as its layout effect does on mount: before any size is set on it (the server's was taken at another width). */
+export function measureOpenRadix(): void {
+	for (const el of document.querySelectorAll<HTMLElement>('[data-state="open"]:not([hidden])')) {
+		if (run.has(el) || !el.style.getPropertyValue(RADIX_VARS[0]!)) continue;
+		for (const v of RADIX_VARS) el.style.removeProperty(v);
+		measureRadix(el);
+	}
+}
+
 /** The panel of `id` opens: called from the trigger's handler as it sets the open state. */
 export function panelEnter(id: string, depth = 0): void {
 	if (!id) return;

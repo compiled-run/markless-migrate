@@ -46,6 +46,25 @@ test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, wit
 	assert.match(out, /btab0d = 1 > btab0 \? "right"/);
 });
 
+test('Base UI tabs whose chosen panel holds a shared component keep every tab\'s content rendered and show the chosen one', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs"><div role="tablist"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a"><figure>a</figure></div></div></body>');
+	const b = [...walk(body(doc))].find((el) => attr(el, 'id') === 'base-ui-b')!;
+	const figure = [...walk(body(doc))].find((el) => el.tagName === 'figure')!;
+	const plan = new BaseTabsPlan();
+	plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), (t) => (t === b ? { attrs: { role: 'tabpanel', id: 'p-b', 'aria-labelledby': 'base-ui-b' }, inner: '<figure>b</figure>' } : undefined), (h) => h);
+	// The page's code block is a component several pages share (factor.ts).
+	const out = emitElement(body(doc), { bind: (el) => (el === figure ? { replace: '<CodeBlock path={path} />' } : plan.bind(el)) });
+	assert.match(out, /<div hidden=\{btab0 !== 0\}><CodeBlock path=\{path\} \/><\/div><div hidden=\{btab0 !== 1\}><figure>b<\/figure><\/div>/);
+	// React Aria's Tabs alike.
+	const rac = parseDocument('<body><div><div role="tablist"><div role="tab" data-rac="" id="react-aria-a" aria-selected="true" aria-controls="p-a">A</div><div role="tab" data-rac="" id="react-aria-b" aria-selected="false">B</div></div><div role="tabpanel" id="p-a" aria-labelledby="react-aria-a"><figure>a</figure></div></div></body>');
+	const rb = [...walk(body(rac))].find((el) => attr(el, 'id') === 'react-aria-b')!;
+	const rfigure = [...walk(body(rac))].find((el) => el.tagName === 'figure')!;
+	const racPlan = new BaseTabsPlan();
+	racPlan.add(body(rac), (el) => /^react-aria-/.test(attr(el, 'id') ?? ''), (t) => (t === rb ? { attrs: { role: 'tabpanel', id: 'p-b', 'aria-labelledby': 'react-aria-b' }, inner: '<figure>b</figure>' } : undefined), (h) => h);
+	assert.match(emitElement(body(rac), { bind: (el) => (el === rfigure ? { replace: '<CodeBlock path={path} />' } : racPlan.bind(el)) }), /<div hidden=\{btab0 !== 0\}><CodeBlock path=\{path\} \/><\/div><div hidden=\{btab0 !== 1\}><figure>b<\/figure><\/div>/);
+});
+
 test('a disclosure that mounts its content where it opens renders that content in an arm at the same place', async () => {
 	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div><button id="base-ui-t" aria-expanded="false">More</button><p>after</p></div></body>');
@@ -133,6 +152,17 @@ test('a Base UI tab list without panels (the line and vertical variants) still s
 	assert.doesNotMatch(out, /aria-controls=\{/);
 });
 
+test('a Base UI tab list in a header beside other controls switches the panels of its Tabs root (the typeset Docs and Prompt tabs)', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div class="header"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="">Docs</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">Prompt</button></div><button>Next.js</button></div><div><div role="tabpanel" id="base-ui-p" aria-labelledby="base-ui-a" data-index="0"><p>docs</p></div></div></div></body>');
+	const plan = new BaseTabsPlan();
+	const revealed = (t: Element) => (attr(t, 'id') === 'base-ui-b' ? { attrs: { role: 'tabpanel', id: 'base-ui-q', 'aria-labelledby': 'base-ui-b', 'data-index': '1' }, inner: '<p>prompt</p>' } : undefined);
+	assert.equal(plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), revealed, (h) => h), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /@if \(btab0 === 0\) \{ <><p>docs<\/p><\/> \}@if \(btab0 === 1\) \{ <><p>prompt<\/p><\/> \}/);
+	assert.match(out, /<div data-slot="tabs" data-activation-direction=\{btab0d\}>/);
+});
+
 test('a Radix collapsible whose trigger renders its child (asChild, data-slot="button") opens its content on state', async () => {
 	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="button" aria-controls="c1" aria-expanded="false" data-state="closed">Product details</button><div id="c1" data-slot="collapsible-content" data-state="closed" hidden></div></div></body>');
@@ -141,6 +171,16 @@ test('a Radix collapsible whose trigger renders its child (asChild, data-slot="b
 	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
 	assert.match(out, /<button data-slot="button" aria-controls="c1" aria-expanded=\{acc0 === 0 \? "true" : "false"\}/);
 	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
+});
+
+test('a Radix collapsible content mounted while closed (forceMount) keeps its children shown and binds only data-state', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="collapsible-trigger" aria-controls="c1" aria-expanded="false" data-state="closed">Expand</button><div id="c1" data-slot="collapsible-content" data-state="closed" class="data-[state=closed]:max-h-64"><figure>code</figure></div></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div id="c1" data-slot="collapsible-content" class="data-\[state=closed\]:max-h-64" data-state=\{acc0 === 0 \? "open" : "closed"\}><figure>code<\/figure><\/div>/);
+	assert.doesNotMatch(out, /hidden=/);
 });
 
 test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) is still the shared one, shown in its at-rest look', async () => {
@@ -250,4 +290,55 @@ test('a sonner toaster renders its lists and toasts from one state, each control
 	assert.match(out, /<button data-slot="button" onClick=\{\(\) => sonnerAdd\(\{"id":"tst0","position":"top-center","gap":14,"visibleToasts":3,"expand":false,"hotkey":\["altKey","KeyT"\],"style":"--width: 356px; --gap: 14px;"\}, \{"view":1,"duration":4000,"dismissible":true,"promise":true,"style":"","phases":\[\{"at":0,"type":"loading","attrs":\{"tabindex":"0","data-sonner-toast":"","data-type":"loading"\}\}/);
 	assert.deepEqual(plan.bind(show)?.declare, ['let tst0 = state(SONNER_EMPTY);']);
 	assert.ok(plan.hosts(region));
+});
+
+test('a Base UI disclosure whose content holds disclosures of its own keeps that content in the page, shown while open, its own bound inside', async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-closed=""><button id="base-ui-a" aria-expanded="false" data-base-ui-collapsible-trigger="">components</button><div data-open="" id="base-ui-pa"><div data-closed=""><button id="base-ui-b" aria-expanded="false" data-base-ui-collapsible-trigger="">ui</button></div></div></div></body>');
+	const els = [...walk(body(doc))];
+	const outerTrigger = els.find((e) => attr(e, 'id') === 'base-ui-a')!;
+	const content = els.find((e) => attr(e, 'id') === 'base-ui-pa')!;
+	const innerTrigger = els.find((e) => attr(e, 'id') === 'base-ui-b')!;
+	const plan = new InsertedDisclosurePlan();
+	const groups = plan.add([
+		{ trigger: outerTrigger, parent: outerTrigger.parentNode as Element, before: null, markup: '', nodes: [content], panelId: 'base-ui-pa' },
+		{ trigger: innerTrigger, parent: innerTrigger.parentNode as Element, before: null, markup: '<div data-open="">button.tsx</div>', panelId: 'base-ui-pb' },
+	]);
+	assert.equal(groups, 2);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-open="" id="base-ui-pa" hidden=\{!\(ins0 \|\| ins0x\)\}>/);
+	assert.match(out, /<button id="base-ui-b" [^>]*aria-expanded=\{ins1 \? "true" : "false"\}/);
+	assert.match(out, /@if \(ins1 \|\| ins1x\) \{ <><div data-open="">button\.tsx<\/div><\/> \}/);
+});
+
+test("a Base UI Select whose trigger renders the chosen value as bare text (button-group's currency) shows the chosen option's value, its icon kept", async () => {
+	const { SelectPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><button type="button" role="combobox" aria-haspopup="listbox" data-slot="select-trigger">$<svg aria-hidden="true"><path d="m6 9 6 6 6-6"></path>▼</svg></button></body>');
+	const plan = new SelectPlan();
+	assert.equal(plan.add(body(doc), () => true, (html) => html), 1);
+	const trigger = find(doc, (el) => attr(el, 'data-slot') === 'select-trigger')!;
+	const binding = plan.bind(trigger)!;
+	assert.match(binding.declare!.join(' '), /let sel0 = state\("\$"\);/);
+	assert.match(binding.children!, /^\{sel0\}<svg/);
+	// The select part hands over what the trigger showed after the choice, its icon's text included.
+	const handler = binding.extra!.find((e) => e.startsWith('onMmchoose'))!;
+	assert.match(handler, /"▼"/);
+});
+
+test('a Radix Collapsible with two triggers (a code block\'s Expand and the fade under it) is one state, either trigger toggling it', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-state="closed" data-slot="collapsible"><div aria-controls="radix-_r_5_" aria-expanded="false" data-state="closed" data-slot="collapsible-trigger"><button>Expand</button></div><div id="radix-_r_5_" data-state="closed" data-slot="collapsible-content"><pre>code</pre></div><button type="button" aria-controls="radix-_r_5_" aria-expanded="false" data-state="closed" data-slot="collapsible-trigger">Expand</button></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1, 'one group');
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.equal(out.match(/aria-expanded=\{acc0 === 0 \? "true" : "false"\}/g)?.length, 2, out);
+	assert.match(out, /id="radix-_r_5_" [^>]*data-state=\{acc0 === 0 \? "open" : "closed"\}/);
+	assert.doesNotMatch(out, /acc1|acc0 === 1/, 'both triggers open the one content');
+});
+
+test('content a tab reveals holding a Radix Collapsible of its own is kept in the page, where the Collapsible is bound', async () => {
+	const { holdsRadixDisclosure } = await import('../src/convert/stateful.ts');
+	const roots = (html: string) => [...walk(body(parseDocument(`<body>${html}</body>`)))].slice(0, 1);
+	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="c">Expand</button><div id="c" data-state="closed" data-slot="collapsible-content"></div></div>')), true);
+	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="p">Expand</button><pre id="p" data-state="closed"></pre></div>')), false);
 });

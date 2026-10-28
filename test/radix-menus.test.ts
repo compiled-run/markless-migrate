@@ -192,6 +192,37 @@ test('Radix DropdownMenu.Sub with the mouse: resting on the sub-trigger opens it
 	await page.close();
 });
 
+test('Radix DropdownMenu.Sub: the way the pointer heads is its last move in the menu, so drifting back along the sub-trigger and then down to the submenu keeps it open', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	const from = (await page.locator('#sub').boundingBox())!;
+	await page.mouse.move(from.x + from.width - 5, from.y + from.height / 2, { steps: 2 });
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	// Back left along the sub-trigger, then right and down across "New Team" to "Message".
+	await page.mouse.move(from.x + 20, from.y + from.height / 2, { steps: 4 });
+	const to = (await page.getByText('Message', { exact: true }).boundingBox())!;
+	await page.mouse.move(to.x + 10, to.y + to.height / 2, { steps: 6 });
+	await settled(page);
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Message');
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub: an opening submenu is painted over its menu, as its portal mounts it last, though convert rendered it first', async () => {
+	const [menuLayer, subLayer] = withSub.replaceAll('data-radix-popper-content-wrapper>', 'data-radix-popper-content-wrapper style="z-index:50">').split(/(?=<div data-mm-layer="sub")/);
+	const page = await open(subLayer!.replace('data-side="right"', 'data-side="right" style="margin-left:-120px"') + menuLayer, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await page.getByText('Invite users', { exact: true }).focus();
+	await press(page, 'ArrowRight');
+	assert.equal(await subOpen(page), true);
+	const on = (await page.getByText('Email', { exact: true }).boundingBox())!;
+	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role=menu]')?.id, [on.x + 5, on.y + 5]), 'sub-content');
+	await page.close();
+});
+
 test('Radix DropdownMenu.Sub: another item of the parent taking focus closes the submenu', async () => {
 	const page = await open(withSub, ['radix/dropdown-menu']);
 	await page.getByText('Open').click();
@@ -233,7 +264,7 @@ test('Radix DropdownMenu.Sub from the keyboard: ArrowRight or Enter opens it on 
 	await page.close();
 });
 
-test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, having only moved down across it, leaves the submenu open and its trigger focused', async () => {
+test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, having only moved down across it, leaves the submenu open and its trigger focused; moving left across it first closes it', async () => {
 	const page = await open(withSub, ['radix/dropdown-menu']);
 	await page.getByText('Open').click();
 	await settled(page);
@@ -241,13 +272,18 @@ test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, 
 	await hoverItem(page, 'Invite users');
 	await page.waitForTimeout(150);
 	assert.equal(await subOpen(page), true);
-	// Out to the left at the height of the submenu: Radix judges the way by the last move across the menu (straight
-	// down, so its initial "right"), not by where the pointer went once off it.
+	// Straight out to the left in one move: Radix judges the way by the last move across the menu (straight down, so
+	// its initial "right"), not by where the pointer went once off it.
 	const at = (await page.locator('#sub').boundingBox())!;
-	await page.mouse.move(8, at.y + at.height / 2, { steps: 3 });
+	await page.mouse.move(8, at.y + at.height / 2);
 	await settled(page);
 	assert.equal(await subOpen(page), true);
 	assert.equal(await active(page), 'Invite users');
+	// Back on it, then left across it and off the menu: the last moves in the menu went left, away from the submenu.
+	await hoverItem(page, 'Invite users');
+	await page.mouse.move(8, at.y + at.height / 2, { steps: 3 });
+	await settled(page);
+	assert.equal(await subOpen(page), false);
 	await page.close();
 });
 
@@ -263,5 +299,27 @@ test('Radix DropdownMenu.Sub: a press outside the menu and its open submenu clos
 	assert.equal(await subOpen(page), false);
 	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
 	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
+	await page.close();
+});
+
+test('Radix ContextMenu.Sub on a page listing only the context menu port: resting on the sub-trigger opens it, ArrowLeft closes it, ArrowDown moves in the menu', async () => {
+	const page = await open(
+		`<main><div data-slot="context-menu-trigger" data-state="closed" data-mm-key="ctx" style="position:fixed;left:0;top:0;width:600px;height:300px">Right click here</div></main>
+<div data-mm-layer="ctx" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="context-menu-content" role="menu" id="ctx-content" data-state="closed" tabindex="-1" data-radix-menu-content=""><div role="menuitem" tabindex="-1">Back</div><div role="menuitem" id="csub" aria-haspopup="menu" aria-expanded="false" aria-controls="csub-content" data-state="closed" tabindex="-1" data-slot="context-menu-sub-trigger">More Tools</div></div></div>
+<div data-mm-layer="csub" hidden data-radix-popper-content-wrapper><div data-slot="context-menu-sub-content" role="menu" id="csub-content" aria-labelledby="csub" data-state="closed" tabindex="-1" data-radix-menu-content="" data-side="right" data-align="start"><div role="menuitem" tabindex="-1">Save Page</div></div></div>`,
+		['radix/context-menu'],
+	);
+	await page.mouse.click(20, 20, { button: 'right' });
+	await settled(page);
+	await press(page, 'ArrowDown');
+	assert.equal(await active(page), 'Back');
+	await hoverItem(page, 'More Tools');
+	await page.waitForTimeout(150);
+	assert.equal(await page.locator('#csub').getAttribute('aria-expanded'), 'true');
+	await press(page, 'ArrowRight');
+	assert.equal(await active(page), 'Save Page');
+	await press(page, 'ArrowLeft');
+	assert.equal(await page.locator('#csub').getAttribute('aria-expanded'), 'false');
+	assert.equal(await active(page), 'More Tools');
 	await page.close();
 });

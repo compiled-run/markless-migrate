@@ -6,7 +6,7 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
-import { attr, textContent, type Element as Tree } from './dom.ts';
+import { attr, body, parseDocument, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import type { Reveal } from './reveal.ts';
 import { lit, type Binding } from './tsrx.ts';
 import type { Limit } from './limit.ts';
@@ -24,16 +24,46 @@ export interface Choice {
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
-const OPTION = '[cmdk-item], [role="option"]:not(a), [role="menuitem"]:not(a)';
+// In the list or menu the control opened: a menubar's own triggers are menuitems too.
+const OPTION = '[cmdk-item], [role="listbox"] [role="option"]:not(a), [role="menu"] [role="menuitem"]:not(a)';
+
+const isOption = (el: Tree) => el.tagName !== 'a' && (attr(el, 'cmdk-item') !== undefined || /^(option|menuitem)$/.test(attr(el, 'role') ?? ''));
+/** What choosing `el` is recorded under: cmdk's data-value, else the option's text, as captureChoices reads it in the page. */
+export const optionKey = (el: Tree): string => attr(el, 'data-value') ?? textContent(el).trim();
+
+/**
+ * The options a reveal shows, by the keys their choices are recorded under. A control showing other options on another page
+ * (a docs palette listing the components of the page's own library) is chosen again there; the same options, never.
+ */
+export function optionsShown(reveal: Reveal): string {
+	const keys = reveal.added.flatMap((a) => [...walk(body(parseDocument(`<body>${a.html}</body>`)))].filter(isOption).map(optionKey));
+	return createHash('sha256').update(JSON.stringify(keys)).digest('hex').slice(0, 8);
+}
+
+/** A cmdk item whose choosing went somewhere on the old page names that address, which the cmdk part goes to when it is chosen. */
+export function markChosenHref(el: Tree, chosen: Readonly<Record<string, Choice>> | undefined): void {
+	const href = chosen && attr(el, 'cmdk-item') !== undefined ? chosen[optionKey(el)]?.href : undefined;
+	if (href !== undefined) setAttr(el, 'data-mm-href', href);
+}
+
 const MAX_OPTIONS = 800;
 
 async function openOn(page: Page, origin: string, route: string, path: readonly number[]): Promise<boolean> {
 	await loadPage(page, new URL(route, origin).href);
 	await page.waitForTimeout(400);
 	await page.evaluate(() => {
-		const w = window as unknown as { __mmCopied?: string[] };
+		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
 		w.__mmCopied = [];
+		w.__mmWent = [];
 		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.__mmCopied!.push(t), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
+		// A router sent to the address the page is already at replaces the history entry: the address alone shows no move.
+		for (const name of ['pushState', 'replaceState'] as const) {
+			const own = history[name];
+			history[name] = function (this: History, data: unknown, unused: string, url?: string | URL | null) {
+				if (url != null) w.__mmWent!.push(new URL(url, location.href).href);
+				return own.call(this, data, unused, url);
+			};
+		}
 	});
 	const trigger = await page.evaluateHandle((p) => {
 		let el: Element | undefined = document.body;
@@ -91,7 +121,7 @@ const OPTIONS_PER_PAGE = 20;
  */
 export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task()): Promise<Record<string, Choice>> {
 	const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : ''}.json`);
+	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown`}.json`);
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
 	const viewport = VIEWPORTS.find((v) => v.name === reveal.viewport) ?? VIEWPORTS[0]!;
@@ -107,13 +137,21 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
-				await target.click({ timeout: 2000 }).catch(() => {});
+				await page.evaluate(() => ((window as unknown as { __mmWent?: string[] }).__mmWent = []));
+				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
+				if (!(await target.click({ timeout: 2000 }).then(() => true, () => false)) && !((await openOn(page, origin, route, reveal.path)) && (await target.click({ timeout: 5000 }).then(() => true, () => false)))) {
+					failure ??= `could not choose ${key}`;
+					await openOn(page, origin, route, reveal.path);
+					continue;
+				}
 				await afterChoosing(page, before, requests, earlier);
 				const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
+				const went = await page.evaluate(() => (window as unknown as { __mmWent?: string[] }).__mmWent?.at(-1));
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
-				out[key] = after !== before ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
-				if (after !== before || copied !== undefined || !(await target.isVisible().catch(() => false))) await openOn(page, origin, route, reveal.path);
+				const moved = after !== before || went === before;
+				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
+				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await openOn(page, origin, route, reveal.path);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];

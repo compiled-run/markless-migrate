@@ -4,6 +4,7 @@
 	{"selector": "[class~=\"group/buttons\"] > [data-slot=\"button\"]:first-of-type", "action": "copy"},
 	{"selector": "[data-slot=\"sidebar-trigger\"], [data-slot=\"sidebar-rail\"]", "action": "toggle"},
 	{"selector": "button:has(> svg.lucide-terminal)", "action": "copy"},
+	{"selector": "[role=\"tabpanel\"] button[data-slot=\"button\"]:has(> svg.lucide-copy)", "action": "copy", "routes": "^/typeset$"},
 	{"selector": "[data-slot=\"code-block-copy-button\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/code-block|ai-elements/[^/]+/message|changelog|changelog/2026-10-ai-elements)$"},
 	{"selector": "button[data-slot=\"button\"][aria-label=\"Copy\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/(input-group|message)|ai-elements/[^/]+/message|changelog|changelog/2025-10-new-components|changelog/2026-10-ai-elements)$"},
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]", "action": "notify", "routes": "^/docs/components/[^/]+/(sonner|toast)$"},
@@ -12,5 +13,6 @@
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-pressed]):not([aria-haspopup]), [data-slot=\"preview\"] button[data-slot=\"tooltip-trigger\"][aria-label^=\"Reset\"]", "action": "play", "routes": "^/docs/components/[^/]+/message-scroller$"},
 	{"selector": "[data-slot=\"preview\"] [data-slot=\"collapsible-trigger\"], [data-slot=\"preview\"] [data-slot=\"collapsible\"] > button[slot=\"trigger\"]", "action": "play", "routes": "^/docs/components/[^/]+/bubble$"},
 	{"action": "theme", "name": "Toggle theme", "key": "d", "metaColors": {"light": "#ffffff", "dark": "#0a0a0a"}, "disableTransitionOnChange": true},
-	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-haspopup]):not([aria-expanded])", "action": "open", "routes": "^/docs/components/[^/]+/command$"}
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-haspopup]):not([aria-expanded])", "action": "open", "routes": "^/docs/components/[^/]+/command$"},
+	{"selector": "[data-slot=\"code-block\"] button[aria-label=\"Download\"]", "action": "download", "routes": "^/docs/(components/[^/]+/code-block|changelog|changelog/2026-10-ai-elements)$"}
 ]

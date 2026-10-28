@@ -46,3 +46,32 @@ test("what Floating UI puts beside an open trigger keeps its aria-owns span, nam
 	assert.equal(names.of('base-ui-_R_b_').get('_r_0_'), names.each[1]!.get('_r_0_'));
 	assert.notEqual(names.of('base-ui-_R_b_').get('_r_0_'), names.of('base-ui-_R_a_').get('_r_0_'));
 });
+
+test("a trigger's aria-controls names the layer it opens, even when an earlier layer captured on another load holds that id", () => {
+	// React's client ids start over on each load: the first sheet's code block holds radix-_r_3_, the second sheet's key.
+	const first = layer('radix-_r_0_', '<div id="radix-_r_0_" role="dialog"><div id="radix-_r_1_">Code</div><button id="radix-_r_3_">Copy</button></div>');
+	const second = layer('radix-_r_3_', '<div id="radix-_r_3_" role="dialog"><div id="radix-_r_4_">Code</div></div>');
+	const { each, page } = layerNames([first, second]);
+	assert.equal(page.get('radix-_r_3_'), each[1]!.get('radix-_r_3_'), 'the second trigger controls the second sheet');
+	assert.equal(page.get('radix-_r_0_'), each[0]!.get('radix-_r_0_'));
+});
+
+test("a React Aria submenu, keyed by its trigger item's id, and the menu holding that item name the item alike", () => {
+	const menu = layer('react-aria-_r_1_', '<div id="react-aria-_r_1_" role="menu"><div role="menuitem" id="react-aria-_r_2_">Team</div><div role="menuitem" id="react-aria-_r_3_" aria-haspopup="menu">Invite users</div></div>');
+	const sub = layer('react-aria-_r_3_', '<div role="menu" id="react-aria-_r_4_" aria-labelledby="react-aria-_r_3_"><div role="menuitem" id="react-aria-_r_5_">Email</div></div>', false);
+	const { each, page } = layerNames([menu, sub]);
+	const key = page.get('react-aria-_r_3_');
+	assert.equal(each[0]!.get('react-aria-_r_3_'), key, "the menu's item is named as the submenu's key");
+	assert.equal(each[1]!.get('react-aria-_r_3_'), key, "the submenu's label is that item");
+});
+
+test('a React Aria submenu captured from its menu is named from that menu, though a menu captured on another load holds the same id first', () => {
+	// React's ids start over on each load: another dropdown, captured on its own load, has an item with the same id.
+	const other = layer('react-aria-_r_9_', '<div role="menu"><div role="menuitem" id="react-aria-_r_3_">Billing</div></div>');
+	const menu = layer('react-aria-_r_1_', '<div id="react-aria-_r_1_" role="menu"><div role="menuitem" id="react-aria-_r_2_">Team</div><div role="menuitem" id="react-aria-_r_3_" aria-haspopup="menu">Theme</div></div>');
+	const sub = { ...layer('react-aria-_r_3_', '<div role="menu" id="react-aria-_r_4_" aria-labelledby="react-aria-_r_3_"><div role="menuitemradio" id="react-aria-_r_5_">Light</div></div>', false), from: 'react-aria-_r_1_' };
+	const { each, page } = layerNames([other, menu, sub]);
+	const key = page.get('react-aria-_r_3_');
+	assert.equal(each[1]!.get('react-aria-_r_3_'), key, "the menu's Theme item is named as the submenu's key");
+	assert.equal(each[2]!.get('react-aria-_r_3_'), key);
+});

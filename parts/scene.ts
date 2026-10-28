@@ -129,14 +129,17 @@ export function playScene(event: Event, set: (frame: number) => void): void {
 	if (!edge) return;
 	const [, , start, end, times] = edge;
 	player.playing = { edge, set };
-	for (let f = start; f <= end; f++) {
-		const frame = f;
-		const step = () => {
-			show(player, frame, set, player.data.changes[frame] ?? []);
-			if (frame === end) settle(player);
-		};
-		// What the old page changed as the click was handled changes now, in the same task.
-		if (times[frame - start]! <= 4 && player.timers.length === 0) step();
-		else player.timers.push(window.setTimeout(step, times[frame - start]));
-	}
+	const began = performance.now();
+	// Each frame is due its recorded gap after the one before, counted from when that one ran if it ran late: a busy page
+	// delays what follows, as the old page's stream waited on each chunk, instead of showing every late frame at once.
+	const run = (frame: number, due: number) => {
+		if (player.playing?.edge !== edge) return;
+		show(player, frame, set, player.data.changes[frame] ?? []);
+		if (frame === end) return settle(player);
+		const next = Math.max(performance.now(), due) + times[frame + 1 - start]! - times[frame - start]!;
+		player.timers = [window.setTimeout(() => run(frame + 1, next), Math.max(0, next - performance.now()))];
+	};
+	// What the old page changed as the click was handled changes now, in the same task.
+	if (times[0]! <= 4) run(start, began + times[0]!);
+	else player.timers = [window.setTimeout(() => run(start, began + times[0]!), times[0])];
 }

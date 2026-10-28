@@ -7,8 +7,12 @@ import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
-import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, textContent, walk, type Element as Tree } from './dom.ts';
+import { parseSync } from 'oxc-parser';
+import { patternNames, walk as walkJs, type N } from '../source/js.ts';
+import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, outer, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { LATE_FONT } from '../../parts/late-fonts.ts';
 import { emitChildren, lit, mergeBindings, type Binding } from './tsrx.ts';
+import { chosenTemplate } from './chosen-template.ts';
 
 // What a page's TanStack Table (v9, @tanstack/react-table's useTable) was given and how it showed each state, read from
 // the old page's React tree and by using the table there. The port runs @tanstack/table-core on that data over Markless
@@ -24,13 +28,23 @@ export interface TableControl {
 	 * `sort`: sets the column's sorting from its current direction (`next`, keyed by '', 'asc' or 'desc'); `filter`: an
 	 * input whose value is the column's filter; `row`: toggles a row's selection; `select`: selects or clears the page's
 	 * rows or every row, from whether none, some or all of the page's are (`next`, keyed by 'none', 'some' or 'all');
-	 * `visibility`: toggles the column's visibility (a menu item, `menu` naming its trigger); `page`: moves `delta` pages.
+	 * `visibility`: toggles the column's visibility (a menu item, `menu` naming its trigger); `clear`: clears every column's
+	 * filter (a toolbar's Reset, shown only while one is filtered); `facet`: an option of a faceted filter's popover that
+	 * toggles `value` in its column's filter list, `facetClear` the popover's Clear filters; `pageSize`: a select whose
+	 * options set the page size (`sizes`); `page`: moves `delta` pages,
+	 * or goes `to` an end.
 	 */
-	readonly kind: 'sort' | 'filter' | 'row' | 'select' | 'visibility' | 'page';
+	readonly kind: 'sort' | 'filter' | 'row' | 'select' | 'visibility' | 'page' | 'clear' | 'facet' | 'facetClear' | 'pageSize';
+	/** A page-size select's sizes, by the text its trigger shows once each is chosen. */
+	readonly sizes?: Readonly<Record<string, number>>;
+	/** A faceted filter option's value, which it toggles in its column's filter list. */
+	readonly value?: Json;
 	readonly column?: string;
 	readonly row?: string;
 	readonly next?: Readonly<Record<string, string>>;
 	readonly delta?: number;
+	/** `page`: goes to the first or the last page, from any page. */
+	readonly to?: 'first' | 'last';
 	readonly menu?: { readonly sig: string; readonly nth: number };
 }
 
@@ -38,7 +52,7 @@ export interface TableControl {
 export interface TableSnapshot {
 	readonly name: string;
 	readonly q: Readonly<Record<string, string | number | boolean>>;
-	readonly columns: Readonly<Record<string, { readonly sorted: string; readonly visible: boolean }>>;
+	readonly columns: Readonly<Record<string, { readonly sorted: string; readonly visible: boolean; readonly chosen?: readonly Json[]; readonly facets?: Readonly<Record<string, number>> }>>;
 	/** The page's rows in order, with whether each is selected. */
 	readonly rows: readonly { readonly id: string; readonly sel: boolean }[];
 	/** The region's markup (the component's root element), attributes sorted and transient ones left out. */
@@ -73,10 +87,12 @@ export interface TableCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'tables-5';
+const VERSION = 'tables-17';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Whether a settled page may hold a TanStack table: one with a table element. */
+const ALL_ROWS = 'rows:all';
+
 export const mayHoldTable = (html: string): boolean => /<table[\s>]/.test(html);
 
 // --- In the page -----------------------------------------------------------------------------------------------------
@@ -176,6 +192,11 @@ function findTables(): Found[] {
 			const def: Record<string, unknown> = {};
 			for (const [k, v] of Object.entries(c.columnDef as object)) {
 				if (['header', 'cell', 'footer', 'meta', 'accessorFn', 'accessorKey', 'columns', 'id', 'aggregatedCell'].includes(k)) continue;
+				// A column's own filter or sort function is kept as its source: the plan runs it when it reads only its arguments.
+				if (typeof v === 'function' && (k === 'filterFn' || k === 'sortingFn')) {
+					def[k] = { $fn: String(v) };
+					continue;
+				}
 				if (typeof v === 'function') {
 					why = `column "${c.id}" has a ${k} function`;
 					break;
@@ -270,12 +291,17 @@ function readTable(i: number): Pick<TableSnapshot, 'q' | 'columns' | 'rows'> {
 		pageCount: r(() => t.getPageCount() as number, 1),
 		pageIndex: s.pagination?.pageIndex ?? 0,
 		canPrev: r(() => t.getCanPreviousPage() as boolean, false),
+		filtering: ((t.store.state as { columnFilters?: unknown[] }).columnFilters ?? []).length > 0,
 		canNext: r(() => t.getCanNextPage() as boolean, false),
 		pageSel: page,
 		allSel: all,
 	};
-	const columns: Record<string, { sorted: string; visible: boolean }> = {};
-	for (const c of t.getAllLeafColumns() as Tbl[]) columns[c.id as string] = { sorted: r(() => (c.getIsSorted() as string | false) || '', ''), visible: r(() => c.getIsVisible() as boolean, true) };
+	const columns: Record<string, { sorted: string; visible: boolean; chosen?: Json[]; facets?: Record<string, number> }> = {};
+	for (const c of t.getAllLeafColumns() as Tbl[]) {
+		const filter = r(() => c.getFilterValue() as unknown, undefined);
+		const facets = r(() => (typeof c.getFacetedUniqueValues === 'function' ? Object.fromEntries(c.getFacetedUniqueValues() as Map<string, number>) : undefined), undefined);
+		columns[c.id as string] = { sorted: r(() => (c.getIsSorted() as string | false) || '', ''), visible: r(() => c.getIsVisible() as boolean, true), ...(Array.isArray(filter) ? { chosen: JSON.parse(JSON.stringify(filter)) } : {}), ...(facets ? { facets } : {}) };
+	}
 	return { q, columns, rows: (t.getRowModel().rows as Tbl[]).map((row) => ({ id: row.id as string, sel: r(() => row.getIsSelected() as boolean, false) })) };
 }
 
@@ -319,7 +345,7 @@ function regionMarkup(i: number): string {
 }
 
 /** The controls in the region a visitor uses, by signature at load: text inputs, buttons, checkboxes and sortable headers. */
-function controlsOf(i: number): { sig: string; nth: number; text: boolean; disabled: boolean; menu: boolean }[] {
+function controlsOf(i: number): { sig: string; nth: number; text: boolean; disabled: boolean; menu: boolean; pop: boolean; listbox: boolean }[] {
 	const w = window as unknown as { __mmTT: { root: Element }[]; __mmControls: Element[] };
 	const root = w.__mmTT[i]!.root;
 	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
@@ -333,7 +359,7 @@ function controlsOf(i: number): { sig: string; nth: number; text: boolean; disab
 	}
 	const found = [...root.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea, button, [role="checkbox"], [role="button"], [role="columnheader"], label[data-rac]:has(input[type="checkbox"]), tbody > tr[role="row"]')].filter((el) => !el.matches('[role="checkbox"] *, [role="button"] *, button *, label[data-rac] input'));
 	w.__mmControls = found;
-	return found.map((el) => ({ sig: sigOf(el), nth: order.get(el) ?? 0, text: el.matches('input, textarea'), disabled: el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'), menu: el.getAttribute('aria-haspopup') === 'menu' || el.getAttribute('aria-haspopup') === 'true' }));
+	return found.map((el) => ({ sig: sigOf(el), nth: order.get(el) ?? 0, text: el.matches('input, textarea'), disabled: el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'), menu: el.getAttribute('aria-haspopup') === 'menu' || el.getAttribute('aria-haspopup') === 'true', pop: el.getAttribute('aria-haspopup') === 'dialog', listbox: el.tagName === 'BUTTON' && el.getAttribute('role') === 'combobox' }));
 }
 
 /** The menu a trigger opened (its aria-controls, else the menu shown last), with its items' texts. */
@@ -369,7 +395,7 @@ async function set(page: Page, i: number, state: Record<string, unknown> | 'init
 }
 
 async function closeMenus(page: Page): Promise<void> {
-	for (let k = 0; k < 3 && (await page.evaluate(() => Boolean(document.querySelector('[role="menu"]')))); k++) {
+	for (let k = 0; k < 3 && (await page.evaluate(() => Boolean(document.querySelector('[role="menu"], [role="dialog"][data-state="open"]')))); k++) {
 		await page.keyboard.press('Escape');
 		await page.waitForTimeout(200);
 	}
@@ -416,6 +442,91 @@ const dirOf = (sorting: Json | undefined, column: string): string => {
 
 const selectionOf = (state: Record<string, Json>) => Object.entries((state.rowSelection ?? {}) as Record<string, boolean>).filter(([, on]) => on).map(([id]) => id).sort();
 
+// What a column's own function may read besides its arguments: the language's globals, never the old app's.
+const GLOBALS = new Set(['Array', 'Boolean', 'Date', 'Infinity', 'JSON', 'Math', 'NaN', 'Number', 'Object', 'RegExp', 'String', 'isNaN', 'isFinite', 'parseFloat', 'parseInt', 'undefined']);
+
+/** A column's own function (a filterFn) as code the port runs, when it reads nothing of the old page's: else why not. */
+export function ownFunction(source: string): { readonly code: string } | { readonly why: string } {
+	for (const code of [source, `function ${source}`]) {
+		const parsed = parseSync('fn.js', `(${code})`, { sourceType: 'module', preserveParens: false });
+		const expr = (parsed.program.body[0] as unknown as { expression?: N } | undefined)?.expression;
+		if (parsed.errors.length || !expr || !/^(ArrowFunctionExpression|FunctionExpression)$/.test(expr.type)) continue;
+		const declared = new Set<string>();
+		walkJs(expr, (n) => {
+			if (n.type === 'VariableDeclarator' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression' || n.type === 'FunctionDeclaration') {
+				for (const p of [n.id, ...(n.params ?? [])]) for (const name of patternNames(p)) declared.add(name);
+			}
+		});
+		const free = new Set<string>();
+		walkJs(expr, (n, ancestors) => {
+			if (n.type !== 'Identifier') return;
+			const parent = ancestors.at(-1);
+			if (parent?.type === 'MemberExpression' && parent.property === n && !parent.computed) return;
+			if (parent?.type === 'Property' && parent.key === n && !parent.computed && !parent.shorthand) return;
+			if (!declared.has(n.name) && !GLOBALS.has(n.name)) free.add(n.name);
+		});
+		return free.size ? { why: `reads ${[...free].join(', ')}` } : { code };
+	}
+	return { why: 'is not a function expression' };
+}
+
+/** The columns as code: a column's own function is written as its source, every other value as JSON. */
+function columnsCode(columns: CapturedTable['columns']): string {
+	const code: string[] = [];
+	const text = JSON.stringify(columns, (_, v: unknown) => {
+		const source = v && typeof v === 'object' && !Array.isArray(v) ? (v as { $fn?: unknown }).$fn : undefined;
+		if (typeof source !== 'string') return v;
+		const own = ownFunction(source);
+		code.push('code' in own ? own.code : 'undefined');
+		return `\u0000fn${code.length - 1}\u0000`;
+	});
+	return text.replace(/"\\u0000fn(\d+)\\u0000"/g, (_, i: string) => code[Number(i)]!);
+}
+
+/** A table's faceted filters: each popover trigger, by `sig#nth`, with the column its options filter and its options in order. */
+function facetsOf(table: CapturedTable): Map<string, { trigger: { sig: string; nth: number }; column: string; options: TableControl[] }> {
+	const out = new Map<string, { trigger: { sig: string; nth: number }; column: string; options: TableControl[] }>();
+	for (const c of table.controls.filter((x) => x.kind === 'facet' && x.menu)) {
+		const key = `${c.menu!.sig}#${c.menu!.nth}`;
+		(out.get(key) ?? out.set(key, { trigger: c.menu!, column: c.column!, options: [] }).get(key)!).options.push(c);
+	}
+	return out;
+}
+
+const meaningfulKids = (el: Tree): Tree[] => childrenOf(el).filter((n) => isElement(n) || (isText(n) && n.value.trim() !== '')) as Tree[];
+// Alike whatever order their attributes were written in: a recorded state's markup has them sorted.
+const sameNode = (a: Tree, b: Tree): boolean => {
+	if (isText(a as never) || isText(b as never)) return isText(a as never) && isText(b as never) && (a as unknown as { value: string }).value === (b as unknown as { value: string }).value;
+	if (!isElement(a) || !isElement(b) || a.tagName !== b.tagName) return false;
+	const attrs = (x: Tree) => JSON.stringify(x.attrs.map((t) => [t.name, t.value]).sort());
+	const ak = meaningfulKids(a);
+	const bk = meaningfulKids(b);
+	return attrs(a) === attrs(b) && ak.length === bk.length && ak.every((x, i) => sameNode(x, bk[i]!));
+};
+
+/**
+ * Each value's label from what a control showed with each value chosen alone: the one text that differs between them.
+ * Undefined unless every value was recorded alone and one text tells them apart.
+ */
+function chosenLabels(variants: readonly { values: readonly Json[]; extras: readonly Tree[] | undefined }[]): Record<string, string> | undefined {
+	const singles = variants.filter((x) => x.values.length === 1 && x.extras);
+	const textsOf = (nodes: readonly Tree[]) => {
+		const out: string[] = [];
+		const visit = (n: Tree) => (isText(n as never) ? out.push((n as unknown as { value: string }).value.trim()) : isElement(n) ? childrenOf(n).forEach((c) => visit(c as Tree)) : undefined);
+		nodes.forEach(visit);
+		return out;
+	};
+	const texts = singles.map((x) => textsOf(x.extras!));
+	if (texts.length < 2 || texts.some((t) => t.length !== texts[0]!.length)) return undefined;
+	const differ = texts[0]!.map((_, i) => i).filter((i) => new Set(texts.map((t) => t[i])).size > 1);
+	if (differ.length !== 1) return undefined;
+	return Object.fromEntries(singles.map((x, k) => [String(x.values[0]), texts[k]![differ[0]!]!]));
+}
+
+/** The page size pages are recorded at: the table's own when its rows fill a first, a middle and a last page of it, else a third of the rows. */
+export const recordPageSize = (rows: number, pageSize: number | undefined): number => (pageSize && rows >= 3 * pageSize ? pageSize : Math.max(1, Math.floor(rows / 3)));
+const pageSizeOf = (state: Readonly<Record<string, Json>>): number | undefined => ((state.pagination as { pageSize?: number } | undefined)?.pageSize);
+
 /** Uses each control of the table once (a sorting control from every direction) and records what it did. */
 /** The page as loaded again, its tables found again in the same order. */
 async function reload(page: Page): Promise<void> {
@@ -428,7 +539,7 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 	const out: TableControl[] = [];
 	const initial = spec.state as Record<string, Json>;
 	// Every page button is usable on a second page, and a page of two rows can have some of its rows selected.
-	const size = Math.max(2, Math.floor(spec.rowIds.length / 3));
+	const size = Math.max(2, recordPageSize(spec.rowIds.length, pageSizeOf(spec.state)));
 	const middle = spec.features.includes('rowPaginationFeature') && spec.rowIds.length > size ? { pagination: { pageIndex: 1, pageSize: size } } : undefined;
 	const controls = await page.evaluate(controlsOf, i);
 	// Select-all is used once the rows' own controls are known: a widget keeping its own selection is put in each state by them.
@@ -453,16 +564,18 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 			await el.fill('').catch(() => {});
 			continue;
 		}
-		if (c.disabled && middle) await set(page, i, middle);
-		else if (c.disabled) continue;
+		if (c.disabled && !middle) continue;
+		// The second page shows other rows, whose controls come before this one: it is found again there.
+		const found = async () => (c.disabled ? (await set(page, i, middle!), (await page.evaluate(controlsOf, i)).findIndex((x) => x.sig === c.sig && x.nth === c.nth)) : k);
+		let at = await found();
 		let before = await stateOf(page, i);
-		if (!(await click(page, k))) {
+		if (at < 0 || !(await click(page, at))) {
 			// What a use before left over the page (a menu's underlay that outlived Escape) goes with a fresh load.
 			await reload(page);
-			if (c.disabled && middle) await set(page, i, middle);
 			await page.evaluate(controlsOf, i);
+			at = await found();
 			before = await stateOf(page, i);
-			if (!(await click(page, k))) {
+			if (at < 0 || !(await click(page, at))) {
 				log(`  table control ${c.sig}#${c.nth}: could not be pressed`);
 				continue;
 			}
@@ -471,6 +584,17 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 		let after = await stateOf(page, i);
 		if (c.menu) {
 			await probeMenu(page, i, c, initial, out, log);
+			continue;
+		}
+		if (c.pop) {
+			await closeMenus(page);
+			await probeFacets(page, i, c, initial, out, log);
+			continue;
+		}
+		if (c.listbox) {
+			await page.keyboard.press('Escape');
+			await settle(page);
+			await probeSizes(page, i, c, out);
 			continue;
 		}
 		const keys = changed(before, after);
@@ -483,7 +607,7 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 			for (let n = 0; n < 3; n++) {
 				const from = dirOf(after.sorting, column);
 				if (from in next) break;
-				await click(page, k);
+				await click(page, at);
 				await settle(page);
 				after = await stateOf(page, i);
 				next[from] = dirOf(after.sorting, column);
@@ -497,10 +621,50 @@ async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, lo
 			if (toggled.length === 1 && pageIds.length > 1) out.push({ sig: c.sig, nth: c.nth, kind: 'row', row: toggled[0]! });
 			else if (now.length === pageIds.length || now.length === spec.rowIds.length) selects.push(c);
 		} else if (keys.length === 1 && keys[0] === 'pagination') {
-			const delta = ((after.pagination as { pageIndex: number }).pageIndex) - ((before.pagination as { pageIndex: number }).pageIndex);
-			if (delta) out.push({ sig: c.sig, nth: c.nth, kind: 'page', delta });
+			const index = (s: Record<string, Json>) => (s.pagination as { pageIndex: number }).pageIndex;
+			const delta = index(after) - index(before);
+			const count = Number((await page.evaluate(readTable, i)).q.pageCount);
+			// Used again from another page: a control that goes to the first or last page goes there from anywhere.
+			const third = middle && Math.ceil(spec.rowIds.length / middle.pagination.pageSize) > 2 ? { pagination: { pageIndex: 2, pageSize: middle.pagination.pageSize } } : undefined;
+			const again = middle && index(before) !== middle.pagination.pageIndex ? middle : third;
+			let to: 'first' | 'last' | undefined;
+			if (delta && again) {
+				await set(page, i, again);
+				// Another page shows other rows, whose controls come before this one.
+				const there = (await page.evaluate(controlsOf, i)).findIndex((x) => x.sig === c.sig && x.nth === c.nth);
+				const from = await stateOf(page, i);
+				const counted = Number((await page.evaluate(readTable, i)).q.pageCount);
+				if (there >= 0 && (await click(page, there))) {
+					await settle(page);
+					const moved = index(await stateOf(page, i));
+					if (moved - index(from) !== delta) to = index(after) === count - 1 && moved === counted - 1 ? 'last' : index(after) === 0 && moved === 0 ? 'first' : undefined;
+					if (moved - index(from) !== delta && !to) {
+						log(`  table control ${c.sig}#${c.nth}: moves the page by neither a step nor to an end, which is not ported`);
+						continue;
+					}
+				}
+			}
+			if (to) out.push({ sig: c.sig, nth: c.nth, kind: 'page', to });
+			else if (delta) out.push({ sig: c.sig, nth: c.nth, kind: 'page', delta });
 		} else if (keys.length) log(`  table control ${c.sig}#${c.nth}: changed ${keys.join(', ')}, which is not ported`);
 		await closeMenus(page);
+	}
+	// A control shown only while a column is filtered (a toolbar's Reset): used from a filtered table.
+	const filter = out.find((c) => c.kind === 'filter');
+	if (filter) {
+		const filtered = { columnFilters: [{ id: filter.column!, value: String(spec.data.map((d) => d[filter.column!]).find((v) => typeof v === 'string' && v) ?? 'a').slice(0, 2) }] };
+		await set(page, i, filtered);
+		const shown = await page.evaluate(controlsOf, i);
+		for (const [k, c] of shown.entries()) {
+			if (controls.some((x) => x.sig === c.sig) || c.text) continue;
+			await set(page, i, filtered);
+			await page.evaluate(controlsOf, i);
+			if (!(await click(page, k))) continue;
+			await settle(page);
+			if (((await stateOf(page, i)).columnFilters as unknown[] | undefined)?.length === 0) out.push({ sig: c.sig, nth: c.nth, kind: 'clear' });
+			await closeMenus(page);
+		}
+		await set(page, i, 'initial');
 	}
 	for (const c of selects) out.push({ sig: c.sig, nth: c.nth, kind: 'select', next: owned ? await selectAllByUse(page, i, c, spec, out) : await selectAll(page, i, (await page.evaluate(controlsOf, i)).findIndex((x) => x.sig === c.sig && x.nth === c.nth), spec, middle) });
 	await set(page, i, 'initial');
@@ -576,6 +740,121 @@ async function selectAll(page: Page, i: number, k: number, spec: NonNullable<Fou
 	return next;
 }
 
+/** The options of the popover a trigger opened (its aria-controls): their texts, and the popover's markup. */
+function openedOptions(trigger: number): { html: string; items: string[] } | undefined {
+	const w = window as unknown as { __mmControls: Element[]; __mmOptions?: Element[] };
+	const id = w.__mmControls[trigger]?.getAttribute('aria-controls');
+	const popover = id ? document.getElementById(id) : null;
+	if (!popover) return undefined;
+	w.__mmOptions = [...popover.querySelectorAll('[cmdk-item], [role="option"]')];
+	const transient = /^data-(hovered|pressed|focused|focus-visible|focus-visible-within|focus-within|highlighted|selected)$|^(tabindex|style|aria-selected|id|aria-labelledby|aria-controls|aria-activedescendant)$/;
+	const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const canon = (n: Node): string => {
+		if (n.nodeType === Node.TEXT_NODE) return esc(n.textContent ?? '');
+		if (!(n instanceof Element)) return '';
+		const tag = n.tagName.toLowerCase();
+		const list = [...n.attributes].filter((a) => !transient.test(a.name)).sort((a, b) => (a.name < b.name ? -1 : 1)).map((a) => ` ${a.name}="${a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
+		return /^(img|input|br|hr)$/.test(tag) ? `<${tag}${list}>` : `<${tag}${list}>${[...n.childNodes].map(canon).join('')}</${tag}>`;
+	};
+	return { html: canon(popover), items: w.__mmOptions.map((x) => (x.textContent ?? '').trim()) };
+}
+
+/** A select of the table (Rows per page): each option chosen in turn; one setting the page size makes it a page-size control. */
+async function probeSizes(page: Page, i: number, trigger: { sig: string; nth: number }, out: TableControl[]): Promise<void> {
+	const open = async () => {
+		const k = triggerIndex(await page.evaluate(controlsOf, i), trigger);
+		if (k < 0 || !(await click(page, k))) return 0;
+		await settle(page);
+		return page.locator('[role="listbox"] [role="option"]').filter({ visible: true }).count();
+	};
+	await set(page, i, 'initial');
+	const count = await open();
+	await page.keyboard.press('Escape');
+	await settle(page);
+	const sizes: Record<string, number> = {};
+	for (let n = 0; n < count; n++) {
+		await set(page, i, 'initial');
+		if (!(await open())) break;
+		const option = page.locator('[role="listbox"] [role="option"]').filter({ visible: true }).nth(n);
+		const text = ((await option.textContent().catch(() => '')) ?? '').trim();
+		if (!(await option.click({ timeout: 2000 }).then(() => true, () => false))) continue;
+		await settle(page);
+		const size = ((await stateOf(page, i)).pagination as { pageSize?: number } | undefined)?.pageSize;
+		if (typeof size === 'number') sizes[text] = size;
+	}
+	await set(page, i, 'initial');
+	const initial = (await stateOf(page, i)).pagination as { pageSize?: number } | undefined;
+	if (Object.values(sizes).some((n) => n !== initial?.pageSize)) out.push({ sig: trigger.sig, nth: trigger.nth, kind: 'pageSize', sizes });
+}
+
+/**
+ * A popover trigger among the controls in some state: its text then may hold what is chosen after its own (a faceted
+ * filter's badges), so it is the one of its tag and slot whose text starts with its own, by its place among those.
+ */
+function triggerIndex(controls: readonly { sig: string }[], trigger: { sig: string; nth: number }): number {
+	const [tag, slot, text] = trigger.sig.split('|') as [string, string, string];
+	const alike = controls.map((c, k) => ({ c, k })).filter(({ c }) => {
+		const [t, s, x] = c.sig.split('|') as [string, string, string];
+		return t === tag && s === slot && x.startsWith(text);
+	});
+	const exact = alike.filter(({ c }) => c.sig === trigger.sig);
+	return (exact.length > trigger.nth ? exact[trigger.nth] : alike[trigger.nth])?.k ?? -1;
+}
+
+/**
+ * Opens a popover trigger of the table (a faceted filter) and uses each option from the table as loaded: an option that
+ * puts one value in a column's filter list toggles it; one shown once a value is chosen that empties the list clears it.
+ */
+async function probeFacets(page: Page, i: number, trigger: { sig: string; nth: number }, initial: Record<string, Json>, out: TableControl[], log: (line: string) => void): Promise<void> {
+	const open = async (): Promise<{ items: string[] } | undefined> => {
+		const k = triggerIndex(await page.evaluate(controlsOf, i), trigger);
+		if (k < 0 || !(await click(page, k))) return undefined;
+		await settle(page);
+		return page.evaluate(openedOptions, k);
+	};
+	const pick = (n: number) => page.evaluateHandle((n) => (window as unknown as { __mmOptions: Element[] }).__mmOptions[n]!, n).then((h) => h.asElement());
+	await set(page, i, 'initial');
+	const first = await open();
+	await closeMenus(page);
+	if (!first) return;
+	let column: string | undefined;
+	let chosen: Json | undefined;
+	for (const [n, text] of first.items.entries()) {
+		await set(page, i, 'initial');
+		if (!(await open())) continue;
+		const el = await pick(n);
+		if (!el || !(await el.click({ timeout: 2000 }).then(() => true, () => false))) continue;
+		await settle(page);
+		const after = await stateOf(page, i);
+		await closeMenus(page);
+		const filters = (after.columnFilters ?? []) as { id: string; value: Json }[];
+		const keys = changed(initial, after);
+		if (keys.length === 1 && keys[0] === 'columnFilters' && filters.length === 1 && Array.isArray(filters[0]!.value) && filters[0]!.value.length === 1) {
+			column = filters[0]!.id;
+			chosen ??= filters[0]!.value[0]!;
+			out.push({ sig: `option|${text}`, nth: n, kind: 'facet', column, value: filters[0]!.value[0]!, menu: { sig: trigger.sig, nth: trigger.nth } });
+		} else if (keys.length) log(`  table popover option "${text}": changed ${keys.join(', ')}, which is not ported`);
+	}
+	if (column === undefined) return;
+	// What a chosen value shows besides the options (Clear filters) is used with one value chosen.
+	const one = { columnFilters: [{ id: column, value: [chosen!] }] };
+	await set(page, i, one);
+	const opened = await open();
+	await closeMenus(page);
+	for (const [n, text] of (opened?.items ?? []).entries()) {
+		if (n < first.items.length) continue;
+		await set(page, i, one);
+		if (!(await open())) continue;
+		const el = await pick(n);
+		if (!el || !(await el.click({ timeout: 2000 }).then(() => true, () => false))) continue;
+		await settle(page);
+		const after = await stateOf(page, i);
+		await closeMenus(page);
+		if (!((after.columnFilters ?? []) as unknown[]).length) out.push({ sig: `option|${text}`, nth: n, kind: 'facetClear', column, menu: { sig: trigger.sig, nth: trigger.nth } });
+	}
+	await set(page, i, 'initial');
+}
+
 /** Opens a menu trigger of the table and uses each item: an item that toggles a column's visibility is a control. */
 async function probeMenu(page: Page, i: number, trigger: { sig: string; nth: number }, initial: Record<string, Json>, out: TableControl[], log: (line: string) => void): Promise<void> {
 	const opened = await page.evaluate(openedMenu);
@@ -603,6 +882,11 @@ async function probeMenu(page: Page, i: number, trigger: { sig: string; nth: num
 		if (keys.length === 1 && keys[0] === 'columnVisibility') {
 			const hidden = Object.entries(after.columnVisibility as Record<string, boolean>).filter(([id, on]) => on === false && (initial.columnVisibility as Record<string, boolean> | undefined)?.[id] !== false).map(([id]) => id);
 			if (hidden.length === 1) out.push({ sig: `item|${text}`, nth: index, kind: 'visibility', column: hidden[0]!, menu: { sig: trigger.sig, nth: trigger.nth } });
+		} else if (keys.length === 1 && keys[0] === 'sorting' && (after.sorting as { id: string }[]).length === 1) {
+			// A column header's menu item sorts one way whatever the direction was (DataTableColumnHeader's Asc and Desc).
+			const column = (after.sorting as { id: string }[])[0]!.id;
+			const dir = dirOf(after.sorting, column);
+			out.push({ sig: `item|${text}`, nth: index, kind: 'sort', column, next: { '': dir, asc: dir, desc: dir }, menu: { sig: trigger.sig, nth: trigger.nth } });
 		} else if (keys.length) log(`  table menu item "${text}": changed ${keys.join(', ')}, which is not ported`);
 	}
 	await set(page, i, 'initial');
@@ -630,16 +914,35 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 		}
 		states.push(['empty', { columnFilters: [{ id: filter.column!, value: '⁣mm-no-match' }] }]);
 	}
-	for (const c of controls.filter((x) => x.kind === 'sort')) for (const dir of ['asc', 'desc']) states.push([`sort:${c.column}:${dir}`, { sorting: [{ id: c.column!, desc: dir === 'desc' }] }]);
+	for (const column of new Set(controls.filter((x) => x.kind === 'sort').map((x) => x.column!))) for (const dir of ['asc', 'desc']) states.push([`sort:${column}:${dir}`, { sorting: [{ id: column, desc: dir === 'desc' }] }]);
 	if (spec.features.includes('rowPaginationFeature') && ids.length > 2) {
-		const size = Math.max(1, Math.floor(ids.length / 3));
+		const size = recordPageSize(ids.length, pageSizeOf(spec.state));
 		const count = Math.ceil(ids.length / size);
 		states.push(['page:first', { pagination: { pageIndex: 0, pageSize: size } }], ['page:last', { pagination: { pageIndex: count - 1, pageSize: size }, rowSelection: { [ids[0]!]: true } }]);
+		// A page with pages both before and after it: what follows only one way (a last-page button) is told apart there.
+		if (count > 2) states.push(['page:middle', { pagination: { pageIndex: 1, pageSize: size } }]);
 		selected.set('page:last', ids.slice(0, 1));
 	}
+	// Every row on one page: the markup of the rows no other state shows, each read as its own values.
+	if (spec.features.includes('rowPaginationFeature')) states.push([ALL_ROWS, { pagination: { pageIndex: 0, pageSize: ids.length } }]);
 	const hideable = spec.columns.filter((c) => c.def.enableHiding !== false).map((c) => c.id);
 	if (spec.features.includes('columnVisibilityFeature') && hideable.length) states.push(['hidden', { columnVisibility: Object.fromEntries(hideable.map((id) => [id, false])) }]);
-	const menus = [...new Map(controls.filter((c) => c.menu).map((c) => [`${c.menu!.sig}#${c.menu!.nth}`, c.menu!])).entries()];
+	const facet = (c: TableControl) => c.kind === 'facet' || c.kind === 'facetClear';
+	const menus = [...new Map(controls.filter((c) => c.menu && !facet(c)).map((c) => [`${c.menu!.sig}#${c.menu!.nth}`, c.menu!])).entries()];
+	// A faceted filter in each of its states: no value chosen, each value alone, two values and three (its trigger shows a
+	// count beyond two), each with its popover as it then opened.
+	const popovers = [...new Map(controls.filter((c) => c.kind === 'facet').map((c) => [`${c.menu!.sig}#${c.menu!.nth}`, { trigger: c.menu!, column: c.column! }])).entries()];
+	const facetStates = new Set<string>(['initial']);
+	for (const [key, { column }] of popovers) {
+		const values = controls.filter((c) => c.kind === 'facet' && `${c.menu!.sig}#${c.menu!.nth}` === key).map((c) => c.value!);
+		const add = (name: string, chosen: Json[]) => {
+			states.push([name, { columnFilters: [{ id: column, value: chosen }] }]);
+			facetStates.add(name);
+		};
+		values.forEach((value, k) => add(`facet:${key}:${k}`, [value]));
+		if (values.length > 1) add(`facet:${key}:two`, values.slice(0, 2));
+		if (values.length > 2) add(`facet:${key}:three`, values.slice(0, 3));
+	}
 	const out: TableSnapshot[] = [];
 	for (const [name, state] of states) {
 		const rows = selected.get(name);
@@ -655,6 +958,15 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 		const read = await page.evaluate(readTable, i);
 		const html = await page.evaluate(regionMarkup, i);
 		const shown: Record<string, string> = {};
+		if (facetStates.has(name))
+			for (const [key, { trigger }] of popovers) {
+				const k = triggerIndex(await page.evaluate(controlsOf, i), trigger);
+				if (k < 0 || !(await click(page, k))) continue;
+				await settle(page);
+				const opened = await page.evaluate(openedOptions, k);
+				if (opened) shown[key] = opened.html;
+				await closeMenus(page);
+			}
 		if (name === 'initial' || name === 'hidden')
 			for (const [key, trigger] of menus) {
 				const k = (await page.evaluate(controlsOf, i)).findIndex((c) => c.sig === trigger.sig && c.nth === trigger.nth);
@@ -719,7 +1031,7 @@ const FILTER_FNS = new Set(['arrHas', 'arrIncludes', 'arrIncludesAll', 'arrInclu
 const BOOLEAN = new Set(['hidden', 'disabled', 'checked', 'selected', 'open', 'inert', 'readonly', 'required', 'multiple']);
 // The quantities an attribute or what an element holds may follow, in the order they are tried, and the counts a text may
 // show (a count is never a key: a lookup from it would guess at the counts no state showed).
-const STATES = ['canPrev', 'canNext', 'pageSel', 'allSel', 'empty'];
+const STATES = ['canPrev', 'canNext', 'pageSel', 'allSel', 'empty', 'filtering'];
 const COUNTS = ['filteredSelected', 'selected', 'filtered', 'rows', 'pageRows', 'pageNumber', 'pageCount', 'pageIndex'];
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
@@ -913,7 +1225,7 @@ export class TablePlan {
 			const k = this.n++;
 			const spec = `${SPEC_PREFIX}${hash([table.data, table.columns, table.features, table.rowModels, table.sortFns, table.filterFns, table.options, table.rowIds])}`;
 			const placed: Placed = { name: `tt${k}`, spec, cells: `${CELLS_PREFIX}${hash([route, table.sig, table.nth])}`, shared: `ttShared${k}`, table, values: {} };
-			for (const c of table.controls.filter((x) => x.kind === 'visibility' && x.menu)) {
+			for (const c of table.controls.filter((x) => (x.kind === 'visibility' || x.kind === 'sort' || x.kind === 'facet' || x.kind === 'facetClear') && x.menu)) {
 				const key = `${route}|${c.menu!.sig}#${c.menu!.nth}`;
 				(this.menus.get(key) ?? this.menus.set(key, { placed, controls: [] }).get(key)!).controls.push(c);
 			}
@@ -936,6 +1248,12 @@ export class TablePlan {
 		const { table, name, spec } = placed;
 		const unknown = [...table.features.filter((f) => !FEATURES.has(f)), ...table.rowModels.filter((m) => !ROW_MODELS[m]), ...table.sortFns.filter((f) => !SORT_FNS.has(f)).map((f) => `sortFn ${f}`), ...table.filterFns.filter((f) => !FILTER_FNS.has(f)).map((f) => `filterFn ${f}`)];
 		if (unknown.length) return `it registers ${unknown.join(', ')}, which table-core does not export`;
+		for (const c of table.columns)
+			for (const [key, value] of Object.entries(c.def)) {
+				const source = value && typeof value === 'object' && !Array.isArray(value) ? (value as { $fn?: Json }).$fn : undefined;
+				const own = typeof source === 'string' ? ownFunction(source) : undefined;
+				if (own && 'why' in own) return `column "${c.id}"'s ${key} ${own.why}`;
+			}
 		const region = locate(table.region.sig, table.region.nth);
 		const tableEl = locate(table.sig, table.nth);
 		if (!region || !tableEl || !pathIn(region, tableEl)) return 'its region is not on the converted page';
@@ -945,6 +1263,9 @@ export class TablePlan {
 		const differs = mismatch(region, initial.root, region.tagName);
 		if (differs) return `its markup differs from the old page's (${differs})`;
 		const tablePath = pathIn(region, tableEl)!;
+		// A state's table is found by its place among the region's tables: what a state adds around it (a toolbar's Reset) moves its path.
+		const tableIndex = [...walk(region)].filter((e) => e.tagName === 'table').indexOf(tableEl);
+		const inTable = (root: Tree | undefined, path: readonly number[]) => at(root ? [...walk(root)].filter((e) => e.tagName === 'table')[tableIndex] : undefined, path);
 		const section = (root: Tree | undefined, tag: string) => (at(root, tablePath) ? kids(at(root, tablePath)!).find((k) => k.tagName === tag) : undefined);
 		const thead = section(region, 'thead');
 		const tbody = section(region, 'tbody');
@@ -956,6 +1277,10 @@ export class TablePlan {
 		if (heads.length !== visible.length) return `its head shows ${heads.length} cells for ${visible.length} columns`;
 		const bodyRows = kids(tbody);
 		if (bodyRows.length !== initial.rows.length || bodyRows.some((tr) => tr.tagName !== 'tr' || kids(tr).length !== visible.length)) return 'its body rows are not one cell per column';
+		// Any row may show any record once the table sorts, filters or pages, so a late font one row draws waits on the body.
+		const late = bodyRows.flatMap((tr) => [...walk(tr)]).filter((el) => attr(el, LATE_FONT) !== undefined);
+		for (const el of late) removeAttr(el, LATE_FONT);
+		if (late.length) setAttr(tbody, LATE_FONT, '');
 
 		const v = `${name}v`;
 		const declare = [`const ${name} = ${placed.shared}();`, `const ${v} = computed(() => ttView(${spec}, ${name}.s, ${placed.cells}));`];
@@ -966,7 +1291,8 @@ export class TablePlan {
 		const notes: string[] = [];
 
 		// Cells move in the hidden state; every other state shows every column.
-		const shown = snaps.filter((s) => s.name !== 'hidden' && s.root);
+		const shown = snaps.filter((s) => s.name !== 'hidden' && s.name !== ALL_ROWS && s.root);
+		const facetTriggers = new Set<Tree>();
 		const tableExprs = [...STATES, ...COUNTS].map((key) => `${v}.q.${key}`);
 		// Text updates only where it reads a name: each quantity a text shows is a computed() of its own.
 		const texts = new Map<string, string>();
@@ -982,11 +1308,50 @@ export class TablePlan {
 		const tableKeys = (s: (typeof snaps)[number]): Key[] => [...STATES, ...COUNTS].map((key) => (key === 'empty' ? s.q.pageRows === 0 : s.q[key]!));
 
 		/**
+		 * Where states differ only by elements some of them add among an element's children (a toolbar's Reset while a column
+		 * is filtered): each added element as an arm at its place, shown by the quantity its presence follows, and each child
+		 * the states share read in its own place. A table control among what an arm shows does what it did.
+		 */
+		const insertedArms = (el: Tree, reads: readonly Read[], candidates: readonly Candidate[]): { inserts: { before: Tree | null; markup: string }[]; reads: Read[][] } | undefined => {
+			const base = kids(el);
+			const shared: Read[][] = base.map(() => []);
+			const extras = new Map<number, (string | undefined)[]>();
+			for (const [n, r] of reads.entries()) {
+				const own = kids(r.el);
+				let j = 0;
+				for (const child of own) {
+					if (j < base.length && child.tagName === base[j]!.tagName && attr(child, 'data-slot') === attr(base[j]!, 'data-slot')) {
+						shared[j]!.push({ el: child, keys: r.keys });
+						j++;
+					} else (extras.get(j) ?? extras.set(j, reads.map(() => undefined)).get(j)!)[n] = outer(child);
+				}
+				if (j < base.length) return undefined;
+			}
+			if (!extras.size) return undefined;
+			const inserts: { before: Tree | null; markup: string }[] = [];
+			for (const [j, values] of extras) {
+				const learned = learn(values, candidates);
+				if (!learned || learned === 'static') return undefined;
+				inserts.push({ before: base[j] ?? null, markup: arms(learned.expr, learned.table, (html) => this.emitHtml(withClear(html)).replaceAll(`${CLEAR}=""`, `onClick={() => { ${act('{ k: "clear" }')}; }}`)) });
+			}
+			return { inserts, reads: shared };
+		};
+		const clears = table.controls.filter((c) => c.kind === 'clear');
+		const CLEAR = 'data-mm-tt-clear';
+		// A Reset an arm shows clears every filter: marked in its markup, then bound once the arm is emitted.
+		const withClear = (html: string): string => {
+			if (!clears.length) return html;
+			const fragment = parseFragment(html) as unknown as Tree;
+			for (const x of walk(fragment)) if (clears.some((c) => c.sig === `${x.tagName}|${attr(x, 'data-slot') ?? ''}|${textContent(x).trim().replace(/\s+/g, ' ').slice(0, 60)}`)) setAttr(x, CLEAR, '');
+			return innerOf(fragment);
+		};
+
+		/**
 		 * Binds what an element's markup followed over the states it was read in: an attribute, its text (each number in it
 		 * read from the view) or, where its children change shape, an arm per value; then its children, unless `shallow`.
 		 */
-		const learnElement = (el: Tree, reads: readonly Read[], exprs: readonly string[], label: string, shallow = false, inRow = false): void => {
-			if (!reads.length) return;
+		const learnElement = (el: Tree, reads: readonly Read[], exprs: readonly string[], label: string, shallow = false, inRow = false): Read[][] | undefined => {
+			if (!reads.length || facetTriggers.has(el)) return undefined;
 			const props = reads.map((r) => propsOf(r.el));
 			const all = exprs.map((expr, c) => ({ expr, keys: reads.map((r) => r.keys[c]!) }));
 			const candidates = all.filter((c) => c.keys.every((k) => typeof k !== 'number'));
@@ -1005,6 +1370,14 @@ export class TablePlan {
 				}
 			}
 			if (omit.length) add(el, { omit, extra });
+			if (new Set(props.map((p) => p.shape)).size > 1 && !inRow) {
+				const inserted = insertedArms(el, reads, candidates);
+				if (inserted) {
+					add(el, { inserts: inserted.inserts });
+					if (!shallow) kids(el).forEach((child, i) => learnElement(child, inserted.reads[i]!, exprs, `${label}/${child.tagName}[${i}]`));
+					return inserted.reads;
+				}
+			}
 			if (new Set(props.map((p) => p.shape)).size > 1) {
 				const learned = shallow ? undefined : learn(props.map((p) => p.inner), candidates);
 				if (!learned) notes.push(`${label}: what it holds follows no quantity of the table`);
@@ -1038,37 +1411,58 @@ export class TablePlan {
 		};
 
 		// Outside the head and body: each element by its place, in every state that shows every column.
-		const outside = (el: Tree, path: number[]): void => {
+		const outside = (el: Tree, reads: readonly Read[], label: string): void => {
 			if (el === thead || el === tbody) return;
-			const reads = shown.flatMap((s) => {
-				const r = at(s.root, path);
-				return r && r.tagName === el.tagName ? [{ el: r, keys: tableKeys(s) }] : [];
-			});
-			if (![...walk(el)].includes(thead)) return learnElement(el, reads, tableExprs, `${el.tagName} ${path.join('/')}`);
-			learnElement(el, reads, tableExprs, `${el.tagName} ${path.join('/')}`, true);
-			kids(el).forEach((child, i) => outside(child, [...path, i]));
+			if (![...walk(el)].includes(thead)) {
+				learnElement(el, reads, tableExprs, label);
+				return;
+			}
+			const aligned = learnElement(el, reads, tableExprs, label, true);
+			kids(el).forEach((child, i) => outside(child, aligned ? aligned[i]! : reads.flatMap((r) => (kids(r.el)[i]?.tagName === child.tagName ? [{ el: kids(r.el)[i]!, keys: r.keys }] : [])), `${label}/${child.tagName}[${i}]`));
 		};
-		outside(region, []);
+		// A faceted filter's trigger shows what its column's filter list holds: one template over the chosen values' labels.
+		for (const [key, { trigger, column }] of facetsOf(table)) {
+			const el = locate(trigger.sig, trigger.nth);
+			const path = el ? pathIn(region, el) : undefined;
+			const base = el ? meaningfulKids(el) : [];
+			const variants: { labels: string[]; values: readonly Json[]; extras: Tree[] | undefined }[] = [];
+			for (const snap of snaps.filter((x) => x.name.startsWith(`facet:${key}:`))) {
+				const own = path && snap.root ? at(snap.root, path) : undefined;
+				const nodes = own ? meaningfulKids(own) : [];
+				const prefix = nodes.length > base.length && base.every((b, i) => sameNode(b, nodes[i]!));
+				variants.push({ labels: [], values: snap.columns[column]?.chosen ?? [], extras: prefix ? nodes.slice(base.length) : undefined });
+			}
+			const labels = chosenLabels(variants);
+			const template = el && labels && variants.every((x) => x.extras) ? chosenTemplate(variants.map((x) => ({ labels: x.values.map((value) => labels[String(value)]!), html: x.extras!.map(outer).join('') })), `${v}.c[${lit(column)}].fs.length`, `${v}.c[${lit(column)}].fs.map((x) => (${JSON.stringify(labels)} as Record<string, string>)[String(x)] ?? "")`, `${v}.c[${lit(column)}].fs.length === 0`) : undefined;
+			if (!el || !template) {
+				notes.push(`faceted filter ${trigger.sig}#${trigger.nth}: what it shows of its chosen values follows no template`);
+				continue;
+			}
+			// Rendered always and hidden while nothing is chosen: the table's state is another module's, which no arm is rebuilt from.
+			add(el, { inserts: [{ before: null, markup: template }] });
+			facetTriggers.add(el);
+		}
+		outside(region, shown.flatMap((s) => (s.root ? [{ el: s.root, keys: tableKeys(s) }] : [])), region.tagName);
 
 		// A hidden column's header leaves as on the old page; its cells are hidden, not taken out: a keyed row holding a
 		// branch could not be built for a row that comes back (a filter cleared), so nothing in a row is a branch.
 		const hideable = (id: string) => table.features.includes('columnVisibilityFeature') && table.columns.find((c) => c.id === id)!.def.enableHiding !== false;
 		// The head: each column's cell, read with the column's direction first.
-		const headPath = pathIn(region, headRows[0]!)!;
+		const headPath = pathIn(tableEl, headRows[0]!)!;
 		heads.forEach((th, i) => {
 			const id = visible[i]!;
-			const reads = shown.flatMap((s) => (at(s.root, [...headPath, i]) ? [{ el: at(s.root, [...headPath, i])!, keys: [s.columns[id]?.sorted ?? '', ...tableKeys(s)] }] : []));
+			const reads = shown.flatMap((s) => (inTable(s.root, [...headPath, i]) ? [{ el: inTable(s.root, [...headPath, i])!, keys: [s.columns[id]?.sorted ?? '', ...tableKeys(s)] }] : []));
 			learnElement(th, reads, [`${v}.c[${lit(id)}].s`, ...tableExprs], `head ${id}`);
 			if (hideable(id)) this.removable(th, `${v}.c[${lit(id)}].v`);
 		});
 
 		// The body: each row read in every state that shows it, with whether it is selected first.
-		const bodyPath = pathIn(region, tbody)!;
+		const bodyPath = pathIn(tableEl, tbody)!;
 		bodyRows.forEach((tr, index) => {
 			const id = table.rowIds[index]!;
 			const reads = shown.flatMap((s) => {
 				const place = s.rows.findIndex((r) => r.id === id);
-				const row = place >= 0 ? kids(at(s.root, bodyPath) ?? tr)[place] : undefined;
+				const row = place >= 0 ? kids(inTable(s.root, bodyPath) ?? tr)[place] : undefined;
 				return row ? [{ el: row, keys: [s.rows[place]!.sel, ...tableKeys(s)] }] : [];
 			});
 			learnElement(tr, reads, ['row.sel', ...tableExprs], `row ${id}`, false, true);
@@ -1079,7 +1473,7 @@ export class TablePlan {
 
 		// The controls: each calls ttAct as its use did on the old page.
 		const inRegion = new Set(walk(region));
-		const located = table.controls.filter((c) => c.kind !== 'visibility').map((c) => ({ c, el: locate(c.sig, c.nth) }));
+		const located = table.controls.filter((c) => !c.menu && c.kind !== 'clear').map((c) => ({ c, el: locate(c.sig, c.nth) }));
 		for (const { c, el } of located) {
 			if (!el || !inRegion.has(el)) {
 				notes.push(`control ${c.sig}#${c.nth}: not in the converted region`);
@@ -1100,9 +1494,16 @@ export class TablePlan {
 				c.kind === 'sort' ? `{ k: "sort", c: ${lit(c.column!)}, next: ${JSON.stringify(c.next)} }`
 				: c.kind === 'filter' ? `{ k: "filter", c: ${lit(c.column!)}, v: (event.target as HTMLInputElement).value }`
 				: c.kind === 'row' ? '{ k: "row", r: row.id }'
-				: c.kind === 'page' ? `{ k: "page", d: ${c.delta} }`
+				: c.kind === 'page' ? (c.to ? `{ k: "page", to: ${lit(c.to)} }` : `{ k: "page", d: ${c.delta} }`)
 				: `{ k: ${lit(c.kind)}, next: ${JSON.stringify(c.next)} }`;
-			add(el, { extra: c.kind === 'filter' ? [`onInput={(event) => { ${act(action)}; }}`] : [clickOf(el, holdsLabel, act(action)), ...checkboxKeys(el, act(action)), ...pressKeys(el, act(action))] });
+			// A page-size select's choice (the select part's mmchoose, bubbling from its trigger) sets the page size.
+			if (c.kind === 'pageSize') {
+				const parent = el.parentNode as Tree | null;
+				if (parent && isElement(parent)) add(parent, { extra: [`onMmchoose={(event) => { const n = (${JSON.stringify(c.sizes)} as Record<string, number>)[(event as CustomEvent<string>).detail]; if (n !== undefined) { ${act('{ k: "pageSize", n }')}; } }}`] });
+				continue;
+			}
+			// A filter field shows its column's filter (a Reset clears it), as the old page's controlled input does.
+			add(el, c.kind === 'filter' ? { omit: ['value'], extra: [`value={${v}.c[${lit(c.column!)}].f}`, `onInput={(event) => { ${act(action)}; }}`] } : { extra: [clickOf(el, holdsLabel, act(action)), ...checkboxKeys(el, act(action)), ...pressKeys(el, act(action))] });
 			// Base UI's checkbox: the hidden input beside it (its label's target) uses it too and hands focus to it.
 			const parent = el.parentNode as Tree | null;
 			const siblings = parent && isElement(parent) ? kids(parent) : [];
@@ -1112,22 +1513,33 @@ export class TablePlan {
 
 		// The rows: one template from the rows as emitted; what differs between them is each row's own value.
 		const empty = snaps.find((s) => s.name === 'empty');
-		const emptyBody = empty ? at(empty.root, bodyPath) : undefined;
+		const emptyBody = empty ? inTable(empty.root, bodyPath) : undefined;
 		let rows: { binding: Binding | undefined } | undefined;
 		const rowsBinding = () => (rows ??= { binding: emitRows() }).binding;
 		this.rows.set(name, rowsBinding);
 		this.lazy.set(tbody, rowsBinding);
+		// Every row the table has: the page's own, then those only the every-row state showed.
+		const every = snaps.find((s) => s.name === ALL_ROWS);
+		const pageIds = table.rowIds.slice(0, bodyRows.length);
+		const extra = every?.root && inTable(every.root, bodyPath) ? kids(inTable(every.root, bodyPath)!).flatMap((tr, k) => (every.rows[k] && !pageIds.includes(every.rows[k]!.id) ? [{ id: every.rows[k]!.id, tr }] : [])) : [];
 		const emitRows = (): Binding | undefined => {
 			const local: string[] = [];
-			const template = templateOf(bodyRows.map((tr) => this.emitter(tr, local)));
-			if (typeof template === 'string') {
+			const all = [...bodyRows, ...extra.map((x) => x.tr)];
+			const ids = [...pageIds, ...extra.map((x) => x.id)];
+			const emitted = rowMarkups(all, bodyRows.length, this.bindings, (el) => this.emitter(el, local), this.emitHtml);
+			const own = typeof emitted === 'string' ? emitted : rowStates(emitted, local);
+			const template = typeof own === 'string' ? own : templateOf(own.rows);
+			if (typeof template === 'string' || typeof own === 'string') {
 				this.notes.push(`${route} table ${table.sig.slice(0, 40)}: its rows are not one template, ${template}`);
 				return undefined;
 			}
-			table.rowIds.forEach((id, i) => (placed.values[id] = template.values[i]!));
+			// What a row's own control keeps is a value of the row after the template's, set through the table's state.
+			const kept = template.values[0]!.length;
+			ids.forEach((id, i) => (placed.values[id] = [...template.values[i]!, ...own.inits[i]!]));
 			// A row's values are fields of its row in the view: a plain read of the row updates, a composite one would not.
-			const markup = template.markup.replace(/\u0000(\d+)\u0000/g, (_, slot: string) => `row.c${slot}`);
-			return { declare: [...declare, ...local], children: `@for (const row of ${v}.rows; key row.id) { ${markup} }${emptyBody ? ` @empty { ${this.emitHtml(innerOf(emptyBody))} }` : ''}` };
+			const slots = template.markup.replace(/\u0000(\d+)\u0000/g, (_, slot: string) => `row.c${slot}`);
+			const markup = rowStateCode(slots, (k, value) => act(`{ k: "cell", r: row.id, c: ${kept + Number(k)}, v: ${value} }`), (k) => `row.c${kept + Number(k)}`);
+			return { declare: [...declare, ...own.declare], children: `@for (const row of ${v}.rows; key row.id) { ${markup} }${emptyBody ? ` @empty { ${this.emitHtml(innerOf(emptyBody))} }` : ''}` };
 		};
 
 		for (const note of notes) this.notes.push(`${route} table ${table.sig.slice(0, 40)}: ${note}`);
@@ -1163,6 +1575,7 @@ export class TablePlan {
 		const { name, spec } = placed;
 		const v = `${name}v`;
 		const declare = [`const ${name} = ${placed.shared}();`, `const ${v} = computed(() => ttView(${spec}, ${name}.s));`];
+		if (controls.some((c) => c.kind === 'facet')) return this.facetLayer(placed, key, controls, kept, declare);
 		const recorded = placed.table.snapshots.filter((s) => s.menus?.[key]).map((s) => ({ s, items: [...walk(kids(parseFragment(s.menus![key]!) as unknown as Tree)[0]!)].filter((el) => /^menuitem/.test(attr(el, 'role') ?? '')) }));
 		const items = kept.flatMap((top) => [...walk(top)]).filter((el) => /^menuitem/.test(attr(el, 'role') ?? ''));
 		// A layer's other nodes (focus guards beside the menu) are layers of their own.
@@ -1173,6 +1586,10 @@ export class TablePlan {
 			const el = items[c.nth];
 			if (!el || textContent(el).trim() !== c.sig.slice('item|'.length)) {
 				this.notes.push(`${route} table menu item ${c.sig}: not in its layer`);
+				continue;
+			}
+			if (c.kind === 'sort') {
+				add(el, { extra: [`onClick={() => { ${name}.s = ttAct(${spec}, structuredClone(${name}.s), { k: "sort", c: ${lit(c.column!)}, next: ${JSON.stringify(c.next)} }); }}`] });
 				continue;
 			}
 			const shownExpr = `${v}.c[${lit(c.column!)}].v`;
@@ -1204,6 +1621,104 @@ export class TablePlan {
 		return bindings.size ? { bind: (el) => bindings.get(el), declare } : undefined;
 	}
 
+	/**
+	 * A faceted filter's popover: each option toggles its value in its column's filter list and binds what it showed with
+	 * the value chosen and not (its check) and its count; what the popover adds once a value is chosen (Clear filters) is
+	 * an arm whose option clears the list.
+	 */
+	private facetLayer(placed: Placed, key: string, controls: readonly TableControl[], kept: readonly Tree[], declare: readonly string[]): { readonly bind: (el: Tree) => Binding | undefined; readonly declare: readonly string[] } | undefined {
+		const { name, spec } = placed;
+		const v = `${name}v`;
+		const column = controls.find((c) => c.kind === 'facet')!.column!;
+		const fs = `${v}.c[${lit(column)}].fs`;
+		const act = (action: string) => `${name}.s = ttAct(${spec}, structuredClone(${name}.s), ${action})`;
+		const bindings = new Map<Tree, Binding>();
+		const add = (el: Tree, b: Binding) => bindings.set(el, mergeBindings(bindings.get(el), { declare, ...b })!);
+		const isItem = (el: Tree) => attr(el, 'cmdk-item') !== undefined || attr(el, 'role') === 'option';
+		const roots = kept.filter((x) => isElement(x));
+		const items = roots.flatMap((top) => [...walk(top)]).filter(isItem);
+		// A layer's other nodes (focus guards beside the popover) are layers of their own.
+		if (!items.length) return undefined;
+		const recorded = placed.table.snapshots.filter((s) => s.menus?.[key]).map((s) => {
+			const root = kids(parseFragment(s.menus![key]!) as unknown as Tree)[0]!;
+			return { s, root, items: [...walk(root)].filter(isItem), chosen: s.columns[column]?.chosen ?? [], facets: s.columns[column]?.facets ?? {} };
+		});
+		const unchosen = recorded.filter((r) => !r.chosen.length);
+		for (const c of controls.filter((x) => x.kind === 'facet')) {
+			const el = items[c.nth];
+			if (!el || `option|${textContent(el).trim()}` !== c.sig) {
+				this.notes.push(`table popover option ${c.sig}: not in its layer`);
+				continue;
+			}
+			const value = JSON.stringify(c.value);
+			const on = `${fs}.includes(${value})`;
+			const reads = recorded.flatMap((r) => (r.items[c.nth] ? [{ el: r.items[c.nth]!, on: r.chosen.some((x) => JSON.stringify(x) === value), count: r.facets[String(c.value)] }] : []));
+			const visit = (page: Tree, at: readonly { el: Tree; on: boolean; count: number | undefined }[]): void => {
+				const props = at.map((r) => propsOf(r.el));
+				const omit: string[] = [];
+				const extra: string[] = [];
+				for (const a of [...new Set(props.flatMap((p) => Object.keys(p.attrs)))]) {
+					if (!/^[A-Za-z_][\w.-]*$/.test(a) || /^(id|aria-selected|data-selected)$/.test(a)) continue;
+					const learned = learn(props.map((p) => p.attrs[a]), [{ expr: on, keys: at.map((r) => r.on) }]);
+					if (learned && learned !== 'static') {
+						omit.push(a);
+						extra.push(`${a}={${choose(learned.expr, learned.table, attributeValue(a))}}`);
+					}
+				}
+				if (omit.length) add(page, { omit, extra });
+				// A count of the rows holding the value, among those the other columns' filters keep.
+				if (!kids(page).length && props.every((p, k) => p.text.trim() !== '' && p.text.trim() === String(at[k]!.count))) {
+					add(page, { children: `{${v}.c[${lit(column)}].u[${lit(String(c.value))}] ?? 0}` });
+					return;
+				}
+				const own = kids(page);
+				if (at.every((r) => kids(r.el).length === own.length)) own.forEach((child, i) => visit(child, at.map((r) => ({ ...r, el: kids(r.el)[i]! }))));
+			};
+			visit(el, reads);
+			add(el, { extra: [`onClick={() => { ${act(`{ k: "facet", c: ${lit(column)}, v: ${value} }`)}; }}`] });
+		}
+		// What the popover adds once a value is chosen, in the place it adds it.
+		const clears = controls.filter((c) => c.kind === 'facetClear');
+		const chosenOnes = recorded.filter((r) => r.chosen.length);
+		// Aligned child by child (tag and slot); what the converter renders hidden that the old page left out (cmdk's empty
+		// state) is skipped, and what the state has beyond the layer is added before the next child it does have.
+		const added = (page: Tree, rec: Tree): { parent: Tree; before: Tree | null; html: string }[] | undefined => {
+			const a = kids(page);
+			const b = kids(rec);
+			const alike = (x: Tree, y: Tree) => x.tagName === y.tagName && attr(x, 'data-slot') === attr(y, 'data-slot');
+			const out: { parent: Tree; before: Tree | null; html: string }[] = [];
+			let i = 0;
+			for (const child of b) {
+				while (i < a.length && !alike(a[i]!, child) && attr(a[i]!, 'hidden') !== undefined) i++;
+				if (i < a.length && alike(a[i]!, child)) {
+					const inner = added(a[i]!, child);
+					if (!inner) return undefined;
+					out.push(...inner);
+					i++;
+				} else {
+					const last = out.at(-1);
+					if (last && last.parent === page && last.before === (a[i] ?? null)) out[out.length - 1] = { ...last, html: last.html + outer(child) };
+					else out.push({ parent: page, before: a[i] ?? null, html: outer(child) });
+				}
+			}
+			return a.slice(i).every((x) => attr(x, 'hidden') !== undefined) ? out : undefined;
+		};
+		// The popover's content, which is what was recorded: the layer may wrap it (a popper's positioning wrapper).
+		const recRoot = chosenOnes[0]?.root ?? recorded[0]?.root;
+		const base = recRoot ? roots.flatMap((top) => [...walk(top)]).find((el) => el.tagName === recRoot.tagName && attr(el, 'data-slot') === attr(recRoot, 'data-slot') && attr(el, 'role') === attr(recRoot, 'role')) : undefined;
+		const extras = base && chosenOnes.length ? added(base, chosenOnes[0]!.root) : undefined;
+		if (extras?.length && unchosen.every((r) => !added(base!, r.root)?.length) && chosenOnes.every((r) => JSON.stringify(added(base!, r.root)?.map((x) => x.html)) === JSON.stringify(extras.map((x) => x.html)))) {
+			const MARK = 'data-mm-tt-facet-clear';
+			for (const x of extras) {
+				const fragment = parseFragment(x.html) as unknown as Tree;
+				for (const el of walk(fragment)) if (isItem(el) && clears.some((c) => c.sig === `option|${textContent(el).trim()}`)) setAttr(el, MARK, '');
+				const markup = this.emitHtml(innerOf(fragment)).replaceAll(`${MARK}=""`, `onClick={() => { ${act(`{ k: "facetClear", c: ${lit(column)} }`)}; }}`);
+				add(x.parent, { inserts: [{ before: x.before, markup: `@if (${fs}.length > 0) { <>${markup}</> }` }] });
+			}
+		} else if (clears.length) this.notes.push(`table popover ${key}: what it adds once a value is chosen is not one arm`);
+		return bindings.size ? { bind: (el) => bindings.get(el), declare } : undefined;
+	}
+
 	/** The module of every placed table's spec and row values, importing the table-core exports each registers. */
 	specsModule(): string | undefined {
 		const all = [...this.expected.values()].flat();
@@ -1218,7 +1733,7 @@ export class TablePlan {
 			const features = [...t.features.map((f) => (imports.add(f), f)), ...t.rowModels.map((m) => (imports.add(ROW_MODELS[m]!), `${m}: ${ROW_MODELS[m]}()`))];
 			if (t.sortFns.length) features.push(`sortFns: { ${t.sortFns.map((f) => (imports.add(`sortFn_${f}`), `${f}: sortFn_${f}`)).join(', ')} }`);
 			if (t.filterFns.length) features.push(`filterFns: { ${t.filterFns.map((f) => (imports.add(`filterFn_${f}`), `${f}: filterFn_${f}`)).join(', ')} }`);
-			specs.set(p.spec, `export const ${p.spec}: TableSpec = { features: { ${features.join(', ')} }, data: ${JSON.stringify(t.data)}, rowIds: ${JSON.stringify(t.rowIds)}, columns: ${JSON.stringify(t.columns)}, options: ${JSON.stringify(t.options)} };`);
+			specs.set(p.spec, `export const ${p.spec}: TableSpec = { features: { ${features.join(', ')} }, data: ${JSON.stringify(t.data)}, rowIds: ${JSON.stringify(t.rowIds)}, columns: ${columnsCode(t.columns)}, options: ${JSON.stringify(t.options)} };`);
 		}
 		return `// Generated by markless-migrate convert: each TanStack table's data, columns and features as the old page gave them; change the converter, not this file.\nimport { ${[...imports].sort().join(', ')} } from '@tanstack/table-core';\nimport type { TableSpec } from './tanstack-table.ts';\n\n${[...specs.values()].join('\n')}\n${cells.join('\n')}\n`;
 	}
@@ -1229,6 +1744,164 @@ export class TablePlan {
 		const lines = [...this.expected.values()].flat().map((p) => `export const ${p.shared} = shared(() => {\n\tconst table = state<{ s: TableState }>({ s: ${JSON.stringify(p.table.state)} });\n\treturn table;\n});`);
 		return `// Generated by markless-migrate convert: each TanStack table's state, shared by its page and its menus; change the converter, not this file.\nimport { shared, state } from '@markless/core';\nimport type { TableState } from '${partsPath}/tanstack-table.ts';\n\n${lines.join('\n')}\n`;
 	}
+}
+
+// An element's own shape (its tag and attribute names), and what it holds by shape: its children's own shapes and texts.
+const ownShape = (el: Tree) => `${el.tagName}[${el.attrs.map((a) => a.name).sort().join(',')}]`;
+const holds = (el: Tree) => childrenOf(el).map((n) => (isElement(n) ? ownShape(n) : isText(n) && n.value.trim() ? '#t' : '')).filter(Boolean).join('|');
+
+/** Where rows hold differently shaped content (a status icon per status), and which rows hold each shape. */
+function variantsOf(rows: readonly Tree[]): { readonly path: number[]; readonly groups: number[][] }[] {
+	const out: { path: number[]; groups: number[][] }[] = [];
+	const visit = (nodes: readonly Tree[], path: number[]): void => {
+		const shapes = nodes.map(holds);
+		if (shapes.some((h) => h !== shapes[0])) {
+			const groups = new Map<string, number[]>();
+			shapes.forEach((h, r) => (groups.get(h) ?? groups.set(h, []).get(h)!).push(r));
+			out.push({ path, groups: [...groups.values()] });
+			return;
+		}
+		kids(nodes[0]!).forEach((_, i) => visit(nodes.map((n) => kids(n)[i]!), [...path, i]));
+	};
+	visit(rows, []);
+	return out;
+}
+
+/** Writes `from`'s attribute values and texts on `to`, alike in shape, except inside `skip`; the undo, or undefined when they differ. */
+function transplant(to: Tree, from: Tree, skip: ReadonlySet<Tree> = new Set()): (() => void) | undefined {
+	const writes: [target: { value: string }, value: string][] = [];
+	const visit = (a: Tree, b: Tree): boolean => {
+		if (ownShape(a) !== ownShape(b)) return false;
+		for (const x of a.attrs) {
+			const value = attr(b, x.name)!;
+			if (value !== x.value) writes.push([x, value]);
+		}
+		if (skip.has(a)) return true;
+		const ak = childrenOf(a);
+		const bk = childrenOf(b);
+		if (ak.length !== bk.length) return false;
+		return ak.every((n, i) => {
+			const m = bk[i]!;
+			if (isText(n) && isText(m)) {
+				if (n.value !== m.value) writes.push([n, m.value]);
+				return true;
+			}
+			return isElement(n) && isElement(m) ? visit(n, m) : n.nodeName === m.nodeName;
+		});
+	};
+	if (!visit(to, from)) return undefined;
+	const old = writes.map(([t]) => t.value);
+	for (const [t, v] of writes) t.value = v;
+	return () => writes.forEach(([t], i) => (t.value = old[i]!));
+}
+
+/**
+ * The state each row's own controls keep (a select's shown value, a state() per row on the page) as values of their
+ * rows, which the table's state can change: in each row's markup, the k-th such state it reads is `\u0005k\u0005`, and
+ * `inits[row][k]` its first value. A string when a row's states differ from another's in kind.
+ */
+function rowStates(rows: readonly string[], declared: readonly string[]): { readonly rows: string[]; readonly inits: string[][]; readonly declare: string[] } | string {
+	const states = new Map<string, string>();
+	for (const line of declared) {
+		const m = /^let (\w+) = state\((".*")\);$/.exec(line);
+		if (m) states.set(m[1]!, JSON.parse(m[2]!) as string);
+	}
+	if (!states.size) return { rows: [...rows], inits: rows.map(() => []), declare: [...declared] };
+	const name = new RegExp(`\\b(${[...states.keys()].join('|')})\\b`, 'g');
+	const inits: string[][] = [];
+	const out = rows.map((markup, r) => {
+		const order: string[] = [];
+		const named = markup.replace(name, (n) => {
+			if (!order.includes(n)) order.push(n);
+			return `\u0005${order.indexOf(n)}\u0005`;
+		});
+		inits[r] = order.map((n) => states.get(n)!);
+		return named;
+	});
+	if (inits.some((i) => i.length !== inits[0]!.length)) return 'their rows keep different states';
+	return { rows: out, inits, declare: declared.filter((line) => !states.has(/^let (\w+) = state\(/.exec(line)?.[1] ?? '')) };
+}
+
+/** A row's kept state in a template: each assignment to it a call that writes it (`write`), each other mention a read. */
+function rowStateCode(markup: string, write: (k: string, value: string) => string, read: (k: string) => string): string {
+	let out = '';
+	let from = 0;
+	const re = /\u0005(\d+)\u0005/g;
+	for (let m = re.exec(markup); m; m = re.exec(markup)) {
+		out += markup.slice(from, m.index);
+		const end = m.index + m[0].length;
+		const assign = /^\s*=(?!=)\s*/.exec(markup.slice(end));
+		if (!assign) {
+			out += read(m[1]!);
+			from = end;
+			continue;
+		}
+		const start = end + assign[0].length;
+		let depth = 0;
+		let j = start;
+		for (; j < markup.length; j++) {
+			const c = markup[j]!;
+			if ('([{'.includes(c)) depth++;
+			else if (')]}'.includes(c)) {
+				if (depth === 0) break;
+				depth--;
+			} else if ((c === ',' || c === ';') && depth === 0) break;
+		}
+		out += write(m[1]!, markup.slice(start, j));
+		from = j;
+		re.lastIndex = j;
+	}
+	return out + markup.slice(from);
+}
+
+/**
+ * Each row's markup with every shape its places hold across the rows as an arm on the row's own key, so every row is the
+ * same template: a page row as it is emitted, a row only another state showed written on the page's first row.
+ */
+function rowMarkups(rows: readonly Tree[], pageCount: number, bindings: Map<Tree, Binding>, emit: (el: Tree) => string, emitHtml: (html: string) => string): string[] | string {
+	const variants = variantsOf(rows);
+	const childrenMarkup = (el: Tree) => childrenOf(el).map((n) => (isElement(n) ? emit(n) : isText(n) ? emitHtml(n.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')) : '')).join('');
+	const out: string[] = [];
+	for (let r = 0; r < rows.length; r++) {
+		const host = r < pageCount ? rows[r]! : rows[0]!;
+		const undo: (() => void)[] = [];
+		try {
+			const places = variants.map((v) => at(host, v.path)!);
+			if (r >= pageCount) {
+				const done = transplant(host, rows[r]!, new Set(places));
+				if (!done) return `row ${r} has a shape no page row has`;
+				undo.push(done);
+			}
+			for (const [k, v] of variants.entries()) {
+				const mine = v.groups.findIndex((g) => g.includes(r));
+				const arms = v.groups.map((g, gi) => {
+					const page = g.find((x) => x < pageCount);
+					let content: string;
+					if (page === undefined) content = emitHtml(innerOf(at(rows[gi === mine ? r : g[0]!]!, v.path)!));
+					else {
+						const el = at(rows[gi === mine && r < pageCount ? r : page]!, v.path)!;
+						if (gi === mine && r >= pageCount) {
+							const done = transplant(el, at(rows[r]!, v.path)!);
+							if (!done) return undefined;
+							undo.push(done);
+						}
+						content = childrenMarkup(el);
+					}
+					return `@if (\u0003${mine}\u0003 === ${JSON.stringify(String(gi))}) { <>${content}</> }`;
+				});
+				if (arms.some((a) => a === undefined)) return `row ${r} holds a shape no page row holds alike`;
+				const place = places[k]!;
+				const own = bindings.get(place);
+				if (own?.children !== undefined || own?.replace !== undefined) return 'a place whose shape differs between rows already changes with the table';
+				bindings.set(place, mergeBindings(own, { children: arms.join('') })!);
+				undo.push(() => (own ? bindings.set(place, own) : bindings.delete(place)));
+			}
+			out.push(emit(host));
+		} finally {
+			undo.reverse().forEach((u) => u());
+		}
+	}
+	return out;
 }
 
 /**
@@ -1262,7 +1935,7 @@ function checkboxKeys(el: Tree, use: string): string[] {
 }
 
 interface Token {
-	readonly kind: 'code' | 'attr' | 'expr' | 'text';
+	readonly kind: 'code' | 'attr' | 'expr' | 'text' | 'key';
 	readonly text: string;
 	readonly value: string;
 }
@@ -1273,13 +1946,16 @@ const decode = (t: string) => t.replace(/&(#\d+|#x[0-9a-f]+|\w+);/gi, (m, e: str
 /** tsrx markup as tokens: `="value"` attributes, whole `{"value"}` expressions, text between tags, and the code between them. */
 function tokenize(markup: string): Token[] {
 	const out: Token[] = [];
-	const re = /="((?:[^"\\]|\\.)*)"|\{("(?:[^"\\]|\\.)*")\}|>([^<>{}@]+)(?=<)/g;
+	const re = /="((?:[^"\\]|\\.)*)"|\{("(?:[^"\\]|\\.)*")\}|>([^<>{}@]+)(?=<)|\u0003([^\u0003]*)\u0003/g;
 	let last = 0;
 	const code = (to: number) => {
 		if (to > last) out.push({ kind: 'code', text: markup.slice(last, to), value: '' });
 	};
 	for (let m = re.exec(markup); m; m = re.exec(markup)) {
-		if (m[3] !== undefined) {
+		if (m[4] !== undefined) {
+			code(m.index);
+			out.push({ kind: 'key', text: m[0], value: m[4] });
+		} else if (m[3] !== undefined) {
 			code(m.index + 1);
 			out.push({ kind: 'text', text: m[3], value: decode(m[3]) });
 		} else {
@@ -1300,18 +1976,26 @@ export function templateOf(rows: readonly string[]): { readonly markup: string; 
 	const tokens = rows.map(tokenize);
 	if (tokens.some((t) => t.length !== tokens[0]!.length)) return 'their markup has different shapes';
 	const values: string[][] = rows.map(() => []);
+	// A row's key is read by every arm it decides: one slot each.
+	const keys = new Map<string, number>();
 	let markup = '';
 	for (let i = 0; i < tokens[0]!.length; i++) {
 		const all = tokens.map((t) => t[i]!);
 		const first = all[0]!;
 		if (all.every((t) => t.text === first.text)) {
-			markup += first.text;
+			markup += first.kind === 'key' ? JSON.stringify(first.value) : first.text;
 			continue;
 		}
 		if (all.some((t) => t.kind !== first.kind || t.kind === 'code')) return `they differ in ${JSON.stringify(first.text.slice(0, 80))}`;
+		const seen = first.kind === 'key' ? keys.get(JSON.stringify(all.map((t) => t.value))) : undefined;
+		if (seen !== undefined) {
+			markup += `\u0000${seen}\u0000`;
+			continue;
+		}
 		const slot = values[0]!.length;
+		if (first.kind === 'key') keys.set(JSON.stringify(all.map((t) => t.value)), slot);
 		all.forEach((t, r) => values[r]!.push(t.value));
-		markup += first.kind === 'attr' ? `={\u0000${slot}\u0000}` : `{\u0000${slot}\u0000}`;
+		markup += first.kind === 'attr' ? `={\u0000${slot}\u0000}` : first.kind === 'key' ? `\u0000${slot}\u0000` : `{\u0000${slot}\u0000}`;
 	}
 	return { markup, values };
 }

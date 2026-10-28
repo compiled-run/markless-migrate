@@ -66,7 +66,77 @@ function openSub(item: HTMLElement, strategy: 'first' | null): void {
 	clearTimeout(opening.get(item));
 	if (overlayFor(item) || disabled(item)) return;
 	const o = openOverlay(item, item.id, { modal: false, dismissable: false, placement: 'end top', offset: 0, crossOffset: -3, onDismiss: (x) => close(x), onReady: (x) => ready(x, strategy) });
-	if (o) item.setAttribute('data-open', 'true');
+	if (!o) return;
+	item.setAttribute('data-open', 'true');
+	const menu = item.closest<HTMLElement>('[role="menu"]');
+	if (menu) safePath(o, menu);
+}
+
+// useSafelyMouseToSubmenu: while the pointer heads for the open submenu, its parent menu takes no pointer events.
+function safePath(o: Overlay, menu: HTMLElement): void {
+	const ALLOWED = 2;
+	const PAD = Math.PI / 12;
+	let prev: { x: number; y: number } | undefined;
+	let side: 'left' | 'right' | undefined;
+	let count = ALLOWED;
+	let last = 0;
+	let blocked = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let autoClose: ReturnType<typeof setTimeout> | undefined;
+	const block = (on: boolean) => {
+		blocked = on;
+		menu.style.pointerEvents = on ? 'none' : '';
+	};
+	const reset = () => {
+		block(false);
+		count = ALLOWED;
+		prev = undefined;
+	};
+	const move = (event: PointerEvent) => {
+		if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+		if (keyboardModality()) return reset();
+		const now = Date.now();
+		if (now - last < 50) return;
+		clearTimeout(timer);
+		clearTimeout(autoClose);
+		const { clientX: x, clientY: y } = event;
+		if (!prev) {
+			prev = { x, y };
+			return;
+		}
+		const r = o.content.getBoundingClientRect();
+		side ??= x > r.right ? 'left' : 'right';
+		const m = menu.getBoundingClientRect();
+		if (x < m.left || x > m.right || y < m.top || y > m.bottom) return reset();
+		const toX = side === 'right' ? r.left - prev.x : prev.x - r.right;
+		const top = Math.atan2(prev.y - r.top, toX) + PAD;
+		const bottom = Math.atan2(prev.y - r.bottom, toX) - PAD;
+		const angle = Math.atan2(prev.y - y, side === 'left' ? -(x - prev.x) : x - prev.x);
+		const towards = angle < top && angle > bottom;
+		count = towards ? Math.min(count + 1, ALLOWED) : Math.max(count - 1, 0);
+		block(count >= ALLOWED);
+		last = now;
+		prev = { x, y };
+		if (towards)
+			timer = setTimeout(() => {
+				reset();
+				autoClose = setTimeout(() => {
+					const under = document.elementFromPoint(x, y);
+					if (under && menu.contains(under)) under.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, cancelable: true }));
+				}, 100);
+			}, 1000);
+	};
+	// A press while the menu lets the pointer through would land behind it.
+	const down = (event: PointerEvent) => blocked && event.preventDefault();
+	window.addEventListener('pointermove', move);
+	window.addEventListener('pointerdown', down, true);
+	o.cleanup.push(() => {
+		window.removeEventListener('pointermove', move);
+		window.removeEventListener('pointerdown', down, true);
+		clearTimeout(timer);
+		clearTimeout(autoClose);
+		block(false);
+	});
 }
 function closeSubsOf(menu: Element, except?: Element): void {
 	for (const sub of menu.querySelectorAll<HTMLElement>(`${SUB}[aria-expanded="true"]`)) {

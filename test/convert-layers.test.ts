@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
-import { extrasModule, LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
+import { extrasModule, LAYER_FILL, layerTable, pagesWiring, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
 import { componentImport, componentName, pageComponentOf, siteComponentOf, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
@@ -182,4 +182,37 @@ test("a page's extras outside its root are bound as its root is: a site componen
 	assert.match(source, /<SearchBox \/>/);
 	assert.doesNotMatch(source, /data-combobox-root/);
 	assert.deepEqual(seen, ['tabs']);
+});
+
+test("a page renders its own body children outside its root when they hold something to wire (a site component, a handler); the Document renders the rest", () => {
+	const doc = parseDocument('<body><header id="a"><div data-combobox-root=""><input data-id="search"></div></header><header id="b"><a href="/">Home</a></header></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => el.tagName === 'header');
+	const site = [{ selector: 'div[data-combobox-root]:has(input[data-id="search"])', component: 'search-box.tsrx', in: 'page' as const }];
+	const owned = pagesWiring(new Map([['/one/', [a!]], ['/two/', [b!]]]), (el) => pageComponentOf(el, site) !== undefined);
+	assert.deepEqual([...owned.keys()], ['/one/']);
+});
+
+test('a layer every page portals goes in the Document only when it is plain markup: one with a site component or state stays in each page', () => {
+	const plain = '<div data-mm-layer="tip" hidden>tip</div>';
+	const shell = `<div data-mm-layer="search" hidden data-mm-served="${LAYER_FILL}"><CommandMenu fill="${LAYER_FILL}" /></div>`;
+	const search = { key: 'search', markup: '<div data-mm-layer="search" hidden>palette</div>', shell, fill: '<div cmdk-group="">Pages</div>', imports: ["import CommandMenu from '../../../lib/site/command-menu.tsrx';"] };
+	const calendar = { key: 'cal', markup: '<div data-mm-layer="cal" hidden>{String(month)}</div>', shell: '', fill: '', declare: ['let month = state(0);'] };
+	const tip = { key: 'tip', markup: plain, shell: plain, fill: '' };
+	const table = layerTable(new Map([['/a', [search, calendar, tip]], ['/b', [search, calendar, tip]]]));
+	const name = (markup: string) => table.files.find((f) => f.source.includes(markup))!.file.replace(/^layers\/layer-(\d+)\.tsrx$/, 'Layer$1');
+	assert.deepEqual(table.everywhere, [name(plain)]);
+	for (const route of ['/a', '/b']) assert.deepEqual([...table.own(route)].sort(), [name('CommandMenu'), name('String(month)')].sort());
+});
+
+test("a Base UI combobox list captured with nothing selected gets the indicator another list on the page showed, hidden on every item", async () => {
+	const { comboboxIndicators, comboboxIndicatorIn } = await import('../src/convert/index.ts');
+	const { parseFragment } = await import('parse5');
+	const { attr: attrOf, walk: walkOf } = await import('../src/convert/dom.ts');
+	const list = (selected: boolean) => parseFragment(`<div data-slot="combobox-list"><div role="option" aria-selected="false">Next.js</div><div role="option" aria-selected="${selected}">SvelteKit${selected ? '<span data-selected="" aria-hidden="true" class="check"><svg></svg></span>' : ''}</div></div>`).childNodes[0] as unknown as import('../src/convert/dom.ts').Element;
+	const plain = list(false);
+	const chosen = list(true);
+	comboboxIndicators(plain, comboboxIndicatorIn([plain, chosen]));
+	const marks = [...walkOf(plain)].filter((el) => attrOf(el, 'data-mm-indicator') !== undefined);
+	assert.equal(marks.length, 2, 'every item has one');
+	assert.ok(marks.every((el) => attrOf(el, 'hidden') === '' && attrOf(el, 'data-selected') === undefined && attrOf(el, 'class') === 'check'));
 });

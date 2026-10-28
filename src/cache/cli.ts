@@ -4,7 +4,9 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { bypassOptions } from '../check/blocked.ts';
 import type { Inventory } from '../plan/inventory.ts';
-import { applyCaching, fragmentEndMarkers, fragmentHeader, fragmentPath, type ApplyResult } from './apply.ts';
+import { applyCaching, fragmentEndMarkers, fragmentHeader, fragmentPath, nitroPassesQuery, nitroVersion, requireInstalled, type ApplyResult } from './apply.ts';
+import { missingIsrFunctions } from './output.ts';
+import { cacheRules } from './rules.ts';
 import { pageFilesByConvention, pageFilesFromOrigin } from './pages.ts';
 import { planCaching, readCachingPlan, summarizeCachingPlan, writeCachingPlan, type CachingPlan } from './plan.ts';
 import { summarizeCachingReport, verifyCaching } from './verify.ts';
@@ -22,7 +24,11 @@ export const CACHE_USAGE = `  cache plan [--old <origin>] [--route <path>]... [-
           Write the plan into the Markless app as migrate-cache.ts (Nitro routeRules) and
           add migrateCache() to its vite.config.ts. A page the app reads cookies or the session in is never
           cached. run applies it before every build.
-  cache check --new <origin> [--app <dir>] [--passes <n>] [--expiry-wait <s>] [--json] [--no-psi] [--psi-key <key>]
+  cache output [--app <dir>] [--vercel <dir>]
+          Read the app's Vercel build (default .vercel/output) before it is deployed: exits 1 when a page the plan
+          caches, or its fragment URL, has no ISR function or static file there, so every request for it would run
+          the server function. deploy runs it before uploading.
+  cache check --new <origin> [--app <dir>] [--header <name:value>]... [--passes <n>] [--expiry-wait <s>] [--json] [--no-psi] [--psi-key <key>]
           Read the deployment's caching (x-vercel-cache MISS then HIT, Age, Cache-Control, Vary) route by route
           into .migrate/caching-report.json, then the homepage's load on PageSpeed Insights, old against new
           (--no-psi leaves it out; the key as in check). Each page's fragment and document are asked for in both orders on
@@ -81,17 +87,37 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		out(result.wired ? `vite.config.ts uses migrateCache()\n` : `vite.config.ts has no plugins array: add migrateCache() from ./migrate-cache.ts to it\n`);
 		return result.wired ? 0 : 1;
 	}
+	if (sub === 'output') {
+		const { values } = parseArgs({ args: rest, options: { app: { type: 'string' }, vercel: { type: 'string' } } });
+		const app = resolve(cwd, values.app ?? '.');
+		await requireInstalled(app);
+		const plan = await readCachingPlan(join(cwd, STATE_DIR));
+		if (!plan?.applied) throw new Error('cache output needs .migrate/caching.json with applied routes: run cache apply first');
+		const header = await fragmentHeader(app);
+		const prefix = await fragmentPath(app);
+		const expected = cacheRules(plan.applied, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), passQuery: nitroPassesQuery(await nitroVersion(app)) });
+		const output = resolve(app, values.vercel ?? '.vercel/output');
+		const missing = await missingIsrFunctions(output, expected.routeRules);
+		const cached = Object.values(expected.routeRules).filter((r) => r.isr !== undefined && r.isr !== false).length;
+		if (!missing.length) {
+			out(`${output}: all ${cached} cached paths have an ISR function${prefix ? `, each page's ${prefix}/ fragment included` : ''}\n`);
+			return 0;
+		}
+		out(`FAIL ${output}: ${missing.length} of ${cached} cached paths have no ISR function or static file, so every request for them runs the server function:\n${missing.slice(0, 20).map((p) => `  ${p}\n`).join('')}${missing.length > 20 ? `  and ${missing.length - 20} more\n` : ''}Run cache apply with the app's dependencies installed, then build again.\n`);
+		return 1;
+	}
 	if (sub === 'check') {
-		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, previous: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
+		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, previous: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, header: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
 		if (!values.new) throw new Error('cache check needs --new <origin>');
 		const plan = await readCachingPlan(join(cwd, STATE_DIR));
 		if (!plan) throw new Error('cache check needs .migrate/caching.json: run cache plan first');
+		await requireInstalled(resolve(cwd, values.app ?? '.'));
 		const header = await fragmentHeader(resolve(cwd, values.app ?? '.'));
 		const prefix = await fragmentPath(resolve(cwd, values.app ?? '.'));
 		const markers = await fragmentEndMarkers(resolve(cwd, values.app ?? '.'));
 		const judged = plan.applied ?? plan.routes;
 		const routes = values.route?.length ? judged.filter((r) => values.route!.includes(r.route)) : judged;
-		const report = await verifyCaching(values.new, routes, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), fragmentMarkers: markers, oldOrigin: plan.origin, ...(values.passes ? { passes: Number(values.passes) } : {}), ...(values['expiry-wait'] ? { expiryWaitS: Number(values['expiry-wait']) } : {}) }, plan.hashedAssets);
+		const report = await verifyCaching(values.new, routes, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), fragmentMarkers: markers, oldOrigin: plan.origin, ...(values.header?.length ? { headers: bypassOptions(values.header).headers ?? {} } : {}), ...(values.passes ? { passes: Number(values.passes) } : {}), ...(values['expiry-wait'] ? { expiryWaitS: Number(values['expiry-wait']) } : {}) }, plan.hashedAssets);
 		await writeFile(join(cwd, STATE_DIR, 'caching-report.json'), `${JSON.stringify(report, null, '\t')}\n`);
 		out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : summarizeCachingReport(report));
 		// The deployed pages' load, old against new, on PageSpeed Insights: what the caching was for.
@@ -113,5 +139,5 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		}
 		return report.findings.length || slower || gone ? 1 : 0;
 	}
-	throw new Error(`cache needs plan, apply or check\n\n${CACHE_USAGE}`);
+	throw new Error(`cache needs plan, apply, output or check\n\n${CACHE_USAGE}`);
 }

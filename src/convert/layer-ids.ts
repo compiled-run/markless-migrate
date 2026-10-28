@@ -5,6 +5,8 @@ import { GENERATED_ID } from './factor.ts';
 export interface CapturedLayer {
 	readonly key: string;
 	readonly kept: readonly Element[];
+	/** The layer whose content holds this one's trigger, when the capture knows it (a submenu opened from its menu). */
+	readonly from?: string;
 }
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 8);
@@ -58,11 +60,13 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 			mine.set(from, name);
 		}
 	}
-	const page = new Map<string, string>();
-	for (const names of own.values()) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
 	const keys = new Map<string, string>();
 	for (const [key, names] of own) if (names.has(key)) keys.set(key, names.get(key)!);
+	// A trigger in the page names the layer it opens by its key, before any other layer holding that id from another load.
+	const page = new Map(keys);
+	for (const names of own.values()) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
 	const opener = new Map<string, string>();
+	for (const l of layers) if (l.from !== undefined && own.has(l.from)) opener.set(l.key, l.from);
 	for (const l of layers)
 		for (const top of l.kept)
 			for (const el of walk(top))
@@ -76,7 +80,9 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 		const up = chain(l.key);
 		const down = [...own.keys()].filter((k) => k !== l.key && chain(k).includes(l.key));
 		const loose = !l.inPage && !up.length ? [page] : [];
-		return new Map([...loose.flatMap((m) => [...m]), ...keys, ...down.flatMap((k) => [...own.get(k)!]), ...up.reverse().flatMap((k) => [...own.get(k)!]), ...own.get(l.key)!]);
+		// An item that is a submenu's key (React Aria keys a submenu by its trigger's id) is named as that key.
+		const opened = down.filter((k) => keys.has(k)).map((k) => [k, keys.get(k)!] as const);
+		return new Map([...loose.flatMap((m) => [...m]), ...keys, ...down.flatMap((k) => [...own.get(k)!]), ...up.reverse().flatMap((k) => [...own.get(k)!]), ...own.get(l.key)!, ...opened]);
 	});
 	return { page, each, of: (key) => each[layers.findIndex((l) => l.key === key)] ?? page };
 }

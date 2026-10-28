@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dayOfDate, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerView, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
-import { pruneLocale, whenOf } from '../src/convert/day-picker.ts';
+import { dayOfDate, dayPickerField, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerTyped, dayPickerView, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
+import { fieldOf, pruneLocale, whenOf, type LayerOpener } from '../src/convert/day-picker.ts';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -189,4 +189,55 @@ test("the converter checks its render against the capture with an instant on the
 	const { asCaptured } = await import('../src/convert/day-picker.ts');
 	const config = asCaptured({ ...base, month: { at: Date.UTC(2025, 5, 1) }, selected: [{ at: Date.UTC(2025, 5, 1) }, null] });
 	assert.deepEqual([config.month, config.selected], [{ y: 2025, m: 5, d: 1 }, [{ y: 2025, m: 5, d: 1 }, null]]);
+});
+
+test('weeks and days are keyed as DayPicker keys them: a week by its number, a day by its date and the month it shows in', () => {
+	const jan = dayPickerView(base, day(2026, 2, 15));
+	const feb = dayPickerNext(base, jan, { t: 'nav', dir: 1 });
+	const keys = (view: DayPickerView) => dayPickerModel(base, view).months[0]!.weeks.map((w) => ({ week: w.key, days: w.days.map((d) => d.key) }));
+	const [a, b] = [keys(jan), keys(feb)];
+	const janDays = new Set(a.flatMap((w) => w.days));
+	assert.ok(b.flatMap((w) => w.days).every((k) => !janDays.has(k)), 'no day keeps its cell across a month change');
+	// March's last week and April's first are the same week (March 29 to April 4), shown in both grids.
+	assert.equal(a.at(-1)!.week, b[0]!.week);
+	assert.notEqual(a[0]!.week, b[0]!.week);
+});
+
+test("a date picker's field: typed text selects and shows the day new Date reads, a pick writes the day back in the field's pattern", () => {
+	const pattern = 'MMMM dd, yyyy';
+	let view = dayPickerView(base, JAN_15);
+	assert.equal(dayPickerField(base, view, pattern, 'June 01, 2025'), 'June 01, 2025');
+	for (const text of ['M', 'Ma', 'May', 'May 2', 'May 28', 'May 28,', 'May 28, 2', 'May 28, 2025']) view = dayPickerTyped(base, view, text, 'field');
+	assert.equal(dayPickerField(base, view, pattern, 'June 01, 2025'), 'May 28, 2025');
+	assert.equal(cell(base, view, '2025-05-28').selected, 'true');
+	assert.equal(dayPickerModel(base, view).months[0]!.caption, 'May 2025');
+	// Text no Date reads keeps the day last read.
+	view = dayPickerTyped(base, view, 'May 28, 2025 x', 'field');
+	assert.equal(dayPickerField(base, view, pattern, ''), 'May 28, 2025 x');
+	assert.equal(cell(base, view, '2025-05-28').selected, 'true');
+	view = dayPickerNext(base, view, { t: 'day', ...place(base, view, '2025-05-20') });
+	assert.equal(dayPickerField(base, view, pattern, ''), 'May 20, 2025');
+	view = dayPickerNext(base, view, { t: 'day', ...place(base, view, '2025-05-20') });
+	assert.equal(dayPickerField(base, view, pattern, 'June 01, 2025'), '');
+});
+
+test("a date picker's field is learned from the capture: new Date's reading of every sample, and the pattern a pick wrote", () => {
+	const typed = [
+		{ text: 'May 28, 2025', shown: 'May 28, 2025', predicted: [2025, 4, 28] as const, selected: '2025-05-28', caption: 'May 2025' },
+		{ text: '2025-05-28', shown: '2025-05-28', predicted: [2025, 4, 27] as const, selected: '2025-05-27', caption: 'May 2025' },
+		{ text: '05/28/2025', shown: '05/28/2025', predicted: [2025, 4, 28] as const, selected: '2025-05-28', caption: 'May 2025' },
+		{ text: '28 May 2025', shown: '28 May 2025', predicted: [2025, 4, 28] as const, selected: '2025-05-28', caption: 'May 2025' },
+		{ text: 'December 31, 2024', shown: 'December 31, 2024', predicted: [2024, 11, 31] as const, selected: '2024-12-31', caption: 'December 2024' },
+		{ text: 'not a date', shown: 'not a date', predicted: null, selected: '2024-12-31', caption: 'December 2024' },
+		{ text: 'Feb 3 2026', shown: 'Feb 3 2026', predicted: [2026, 1, 3] as const, selected: '2026-02-03', caption: 'February 2026' },
+		{ text: 'tomorrow', shown: 'tomorrow', predicted: null, selected: '2026-02-03', caption: 'February 2026' },
+		{ text: 'in 3 days', shown: 'in 3 days', predicted: null, selected: '2026-02-03', caption: 'February 2026' },
+	].map((t) => ({ ...t, predicted: t.predicted && ([...t.predicted] as [number, number, number]) }));
+	const opener: LayerOpener = { sig: 'button||', nth: 0, k: 0, before: '', picks: [{ days: [[2025, 5, 5]], html: '', open: false, value: 'June 05, 2025' }], field: { sig: 'input||', nth: 0, value: 'June 01, 2025', opens: true, typed } };
+	assert.deepEqual(fieldOf(opener, base), { pattern: 'MMMM dd, yyyy' });
+	const ignored = { ...opener, field: { ...opener.field!, typed: typed.map((t, i) => (i === 1 ? { ...t, selected: '2025-05-28' } : t)) } };
+	assert.match(fieldOf(ignored, base) as string, /2025-05-28, not 2025-05-27/);
+	// A natural-language field read "tomorrow", which Date does not.
+	const chrono = { ...opener, field: { ...opener.field!, typed: typed.map((t) => (t.text === 'tomorrow' ? { ...t, selected: '2026-10-28' } : t)) } };
+	assert.match(fieldOf(chrono, base) as string, /typing "tomorrow" selected 2026-10-28, not 2026-02-03/);
 });

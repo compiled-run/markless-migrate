@@ -91,8 +91,7 @@ export interface DayPickerView {
 	readonly f: readonly [number, number] | null;
 	readonly lf: readonly [number, number] | null;
 	/**
-	 * The day whose button has the browser's focus. The cells here stay as the month changes, where React's are mounted
-	 * per day: a blur from a day React no longer renders never reached DayPicker.
+	 * The day whose button has the browser's focus: a blur from a day React no longer renders never reached DayPicker.
 	 */
 	readonly d?: readonly [number, number] | null;
 	/** Whether a person changed the view since the server rendered it. */
@@ -101,6 +100,8 @@ export interface DayPickerView {
 	readonly rm?: boolean;
 	/** How many times the view changed, which tells a written view from one Markless has not applied yet. */
 	readonly n?: number;
+	/** What a date picker's field shows: the text typed into it, or null once a day is picked (the day in its pattern). */
+	readonly x?: string | null;
 }
 
 export interface DayModel {
@@ -359,6 +360,28 @@ export function dayPickerLabel(config: DayPickerConfig, view: DayPickerView, pat
 	const days = view.s.filter((d): d is number => d !== null);
 	if (!days.length || (config.mode === 'range' && view.r === false)) return undefined;
 	return days.slice(0, 2).map((d) => format(lib, d, pattern)).join(join);
+}
+
+/** The view after `text` was typed into a date picker's field: the day `new Date(text)` reads selected and shown, if any. */
+export function dayPickerTyped(config: DayPickerConfig, read: DayPickerView, text: string, key: string): DayPickerView {
+	const view = latest(key, read);
+	const at = new Date(text).getTime();
+	const typed = { ...view, x: text, u: true };
+	return write(key, view, Number.isNaN(at) ? typed : dayPickerSet(config, typed, { s: [{ at }], m: 'selected' }));
+}
+
+/** What a date picker's field shows: `initial` until it is used, then what was typed, or the picked day in `pattern`. */
+export function dayPickerField(config: DayPickerConfig, view: DayPickerView, pattern: string, initial: string): string {
+	if (view.x === undefined) return initial;
+	return view.x ?? dayPickerLabel(config, view, pattern) ?? '';
+}
+
+/** ArrowDown in a date picker's field opens its popover (the trigger marked `opener`), as the page's own handler does. */
+export function dayPickerFieldKey(event: KeyboardEvent, opener: string): void {
+	if (event.key !== 'ArrowDown') return;
+	event.preventDefault();
+	const trigger = document.querySelector<HTMLElement>(`[data-mm-field-opener="${opener}"]`);
+	if (trigger && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
 }
 
 /** Closes the layer a calendar was picked in, as a date picker that sets its popover's open state on select does. */
@@ -733,12 +756,12 @@ export function dayPickerModel(config: DayPickerConfig, view: DayPickerView): Da
 				monthLabel: monthLabel(cm.month),
 				yearLabel: yearOptions.length ? format(lib, cm.month, 'yyyy') : '',
 				yearText: format(lib, cm.month, 'yyyy'),
-				// Rows and cells are keyed by place: another month updates them in place, as few nodes as possible change.
-				weeks: cm.weeks.map((w, wi) => ({
-					key: `w${wi}`,
+				// DayPicker's keys: a week by its number, a day by its date and month (another month's cells are new ones).
+				weeks: cm.weeks.map((w) => ({
+					key: `w${w.number}`,
 					number: w.number < 10 ? digits(config, `0${w.number.toLocaleString()}`) : digits(config, w.number.toLocaleString()),
 					numberLabel: `Week ${w.number}`,
-					days: w.days.map((d, di) => ({ ...dayModel(d), key: `d${di}` })),
+					days: w.days.map((d) => dayModel(d)),
 				})),
 			};
 		}),
@@ -880,7 +903,7 @@ function step(config: DayPickerConfig, view: DayPickerView, action: DayPickerAct
 	switch (action.t) {
 		// A click also focuses the button (its focusin's write may not have landed yet: Markless applies writes per frame).
 		case 'day':
-			return select(config, { ...used, f: [action.n, action.m], d: [action.n, action.m] }, action.n);
+			return select(config, { ...used, f: [action.n, action.m], d: [action.n, action.m], x: null }, action.n);
 		case 'focus':
 			return { ...used, f: [action.n, action.m], d: [action.n, action.m] };
 		case 'blur': {
@@ -990,6 +1013,8 @@ function actionOf(config: DayPickerConfig, view: DayPickerView, event: Event): D
 export function dayPickerEvent(config: DayPickerConfig, read: DayPickerView, event: Event, key: string): DayPickerView | undefined {
 	const view = latest(key, read);
 	const action = actionOf(config, view, event);
+	// DayPicker prevents a key it handles before acting: the render that follows may remove the day the key was pressed on.
+	if (action?.t === 'key') event.preventDefault();
 	const next = action ? dayPickerNext(config, view, action) : view;
 	if (next === view) return undefined;
 	const out = write(key, view, next);

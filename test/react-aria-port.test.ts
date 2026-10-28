@@ -136,7 +136,7 @@ async function open(html: string, parts: readonly string[] = PARTS): Promise<Pag
 	await page.evaluate(async (parts) => {
 		const loaded = await Promise.all(parts.map((p) => import(`/parts/${p}.ts`)));
 		const seen = new WeakSet<Event>();
-		for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'input', 'focusin', 'focusout']) {
+		for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'input', 'focusin', 'focusout', 'contextmenu']) {
 			document.addEventListener(type, (event) => {
 				if (seen.has(event) || !(event.target instanceof Element)) return;
 				seen.add(event);
@@ -301,6 +301,40 @@ test('Menu: a submenu opened by hovering its item leaves focus on the item', asy
 	assert.equal(await active(page), 'i2');
 	await page.hover('#s2');
 	assert.equal(await active(page), 's2');
+	await page.close();
+});
+
+test('Menu: the pointer heading for an open submenu across the items below its trigger keeps it open, as useSafelyMouseToSubmenu does', async () => {
+	const page = await open(submenu.replace('Invite users</div>', 'Invite users</div><div data-rac="" role="menuitem" tabindex="-1" id="i3">New Team</div><div data-rac="" role="menuitem" tabindex="-1" id="i4">GitHub</div>'));
+	await page.click('#m1');
+	const from = (await page.locator('#i2').boundingBox())!;
+	await page.mouse.move(from.x + 10, from.y + from.height / 2);
+	await page.waitForTimeout(300);
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	const to = (await page.locator('#s2').boundingBox())!;
+	// Down and right across New Team, a move every 60 ms as a hand makes them.
+	for (let i = 1; i <= 6; i++) {
+		await page.mouse.move(from.x + 10 + ((to.x + 5 - from.x - 10) * i) / 6, from.y + from.height / 2 + ((to.y + to.height / 2 - from.y - from.height / 2) * i) / 6);
+		await page.waitForTimeout(60);
+	}
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	assert.equal(await page.evaluate(() => document.getElementById('menu')!.style.pointerEvents), '');
+	await page.close();
+});
+
+test('Menu: the pointer moving away from an open submenu onto another item closes it', async () => {
+	const page = await open(submenu.replace('Invite users</div>', 'Invite users</div><div data-rac="" role="menuitem" tabindex="-1" id="i3">New Team</div>'));
+	await page.click('#m1');
+	const from = (await page.locator('#i2').boundingBox())!;
+	await page.mouse.move(from.x + 10, from.y + from.height / 2);
+	await page.waitForTimeout(300);
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	for (let i = 1; i <= 3; i++) {
+		await page.mouse.move(from.x + 10 - i, from.y + from.height / 2 + (from.height * i) / 3);
+		await page.waitForTimeout(60);
+	}
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'false');
+	assert.equal(await active(page), 'i3');
 	await page.close();
 });
 
@@ -542,6 +576,19 @@ test('PreviewTrigger: a hover opens the card after the trigger\'s own delay, lea
 	assert.equal(await page.isVisible('#card2'), false);
 	await page.waitForTimeout(400);
 	assert.equal(await page.isVisible('#card2'), true);
+	await page.close();
+});
+
+test('Menu: a context menu opens at the pointer as its source places it (bottom start), not as the capture\'s anchor at the area\'s middle read', async () => {
+	// The capture right-clicked the middle of the area: racPlacement read that as a centred placement.
+	const html = `<div dir="rtl" style="width:400px"><div role="button" id="area" data-react-aria-pressable="true" tabindex="0" style="width:400px;height:150px">Right click here</div></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="area" data-mm-placement="bottom" data-mm-offset="4"><div data-slot="context-menu-content" data-rac="" data-trigger="MenuTrigger" style="position:absolute;width:192px" role="dialog" tabindex="-1" data-placement="bottom" dir="rtl">
+<div id="menu" data-rac="" role="menu" tabindex="0"><div data-rac="" role="menuitem" tabindex="-1">Back</div></div></div></div>`;
+	const page = await open(html);
+	await page.mouse.click(300, 100, { button: 'right' });
+	await page.waitForTimeout(100);
+	const box = await page.locator('[data-slot="context-menu-content"]').boundingBox();
+	assert.deepEqual([Math.round(box!.x + box!.width), Math.round(box!.y)], [300, 104], 'right-to-left: its end (right) edge at the pointer, offset 4 below');
 	await page.close();
 });
 

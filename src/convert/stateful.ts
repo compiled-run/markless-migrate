@@ -92,6 +92,13 @@ export class TabsPlan {
 /** A Radix Collapsible's or Accordion's content: its panel by data-slot, with Radix's data-state. */
 export const radixDisclosurePanel = (panel: Element) => /(^|-)(collapsible|accordion)-content$/.test(attr(panel, 'data-slot') ?? '') && attr(panel, 'data-state') !== undefined;
 
+/** Whether markup holds a Radix Collapsible or Accordion of its own: a trigger whose aria-controls names such a panel in it. */
+export function holdsRadixDisclosure(roots: readonly Element[]): boolean {
+	const all = roots.flatMap((r) => [r, ...walk(r)]);
+	const panels = new Set(all.filter(radixDisclosurePanel).map((p) => attr(p, 'id')).filter(Boolean));
+	return all.some((el) => attr(el, 'aria-expanded') !== undefined && panels.has(attr(el, 'aria-controls')));
+}
+
 export class DisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -134,8 +141,8 @@ export class DisclosurePlan {
 						if (attr(n, 'data-state') !== undefined) item = n;
 						break;
 					}
-			// Each item of an accordion that lets several be open is its own group.
-			const key = accordion && !multiple(accordion) ? accordion : trigger;
+			// Each item of an accordion that lets several be open is its own group; a Collapsible's triggers share its content.
+			const key = accordion && !multiple(accordion) ? accordion : accordion ? trigger : panel;
 			const list = groups.get(key) ?? groups.set(key, []).get(key)!;
 			list.push({ trigger, content: panel, ...(item ? { item } : {}), ...(header ? { header } : {}) });
 		}
@@ -143,11 +150,14 @@ export class DisclosurePlan {
 			const n = this.n++;
 			const open = `acc${n}`;
 			const closing = `acc${n}x`;
-			const initial = items.findIndex((i) => attr(i.trigger, 'aria-expanded') === 'true');
+			// Each content is one item, whichever of its triggers is used.
+			const contents = [...new Set(items.map((i) => i.content))];
+			const initial = contents.indexOf(items.find((i) => attr(i.trigger, 'aria-expanded') === 'true')?.content as Element);
 			const collapsible = !items.some((i) => attr(i.trigger, 'aria-expanded') === 'true' && attr(i.trigger, 'aria-disabled') === 'true');
 			const declare = [`let ${open} = state(${initial >= 0 ? initial : -1});`, `let ${closing} = state(-1);`];
-			const ids = `[${items.map((i) => lit(attr(i.content, 'id') ?? '')).join(', ')}]`;
-			items.forEach((i, k) => {
+			const ids = `[${contents.map((c) => lit(attr(c, 'id') ?? '')).join(', ')}]`;
+			items.forEach((i) => {
+				const k = contents.indexOf(i.content);
 				const isOpen = `${open} === ${k}`;
 				const shown = `(${open} === ${k} || ${closing} === ${k})`;
 				const id = attr(i.content, 'id') ?? '';
@@ -164,6 +174,11 @@ export class DisclosurePlan {
 					],
 				});
 				for (const el of [i.item, i.header]) if (el) this.bindings.set(el, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+				// forceMount: Radix keeps a closed content mounted and shown, so only its data-state follows.
+				if (attr(i.trigger, 'aria-expanded') === 'false' && attr(i.content, 'hidden') === undefined) {
+					this.bindings.set(i.content, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+					return;
+				}
 				const revealed = content(i.content);
 				this.bindings.set(i.content, {
 					declare,
@@ -205,14 +220,18 @@ export class SelectPlan {
 			}
 			if (attr(trigger, 'data-slot') !== 'select-trigger' || !isBaseSelect(trigger)) continue;
 			const value = [...walk(trigger)].find((el) => attr(el, 'data-slot') === 'select-value');
-			// A React Aria Select whose trigger renders the chosen text itself (a render function, no SelectValue): its
-			// leading text is the state, the rest of its children stay as they are.
+			// A trigger that renders the chosen text itself (React Aria's render function, Base UI's Value rendering bare
+			// text): its leading text is the state, the rest of its children stay as they are.
 			const lead = childrenOf(trigger)[0];
-			if (!value && emit && attr(trigger, 'data-rac') !== undefined && lead && isText(lead) && lead.value.trim()) {
+			if (!value && emit && lead && isText(lead) && lead.value.trim()) {
 				const name = `sel${this.n++}`;
 				const declare = [`let ${name} = state(${lit(lead.value)});`];
-				const rest = childrenOf(trigger).slice(1).map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
-				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => (${name} = (event as CustomEvent<string>).detail)}`], children: `{${name}}${emit(rest)}` });
+				const others = childrenOf(trigger).slice(1);
+				const rest = others.map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
+				// What the trigger showed after a choice, as convert recorded it, holds the rest's text too (an icon's).
+				const tail = others.map((n) => (isText(n) ? n.value : 'tagName' in n ? textOf(n as Element) : '')).join('');
+				const shown = tail ? `{ const d = (event as CustomEvent<string>).detail; ${name} = d.endsWith(${lit(tail)}) ? d.slice(0, d.length - ${tail.length}) : d; }` : `(${name} = (event as CustomEvent<string>).detail)`;
+				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => ${shown}}`], children: `{${name}}${emit(rest)}` });
 				count++;
 				continue;
 			}
@@ -361,6 +380,12 @@ export class CheckablePlan {
  * aria-controls; Base UI renders only the chosen panel, so the panel element binds the chosen panel's id, label and
  * index and renders the content each tab showed on the old page (captured by choosing it) in an @if arm.
  */
+// Each tab's panel content in an arm; content Markless cannot rebuild in an arm (a shared component) stays rendered, hidden while its tab is not chosen.
+function panelArms(name: string, contents: readonly (string | undefined)[], inner: string): string {
+	if (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner)) return contents.map((c, k) => `<div hidden={${name} !== ${k}}>${c ?? inner}</div>`).join('');
+	return contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('');
+}
+
 export class BaseTabsPlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -376,11 +401,20 @@ export class BaseTabsPlan {
 			const triggers = [...walk(list)].filter((t) => attr(t, 'role') === 'tab' && isBaseTab(t));
 			if (triggers.length < 2) continue;
 			const active = triggers.findIndex((t) => attr(t, 'aria-selected') === 'true');
-			const tabs = list.parentNode as Element | null;
+			let tabs = list.parentNode as Element | null;
 			if (active < 0 || !tabs || !('tagName' in tabs)) continue;
 			const activeId = attr(triggers[active]!, 'id');
+			const panelIn = (el: Element) => [...walk(el)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
+			// The list may sit in a header beside other controls: the Tabs root is the nearest ancestor holding its panel.
+			for (let up: Element | null = tabs; up && 'tagName' in up && up !== root; up = up.parentNode as Element | null) {
+				if (panelIn(up)) {
+					tabs = up;
+					break;
+				}
+				if (attr(up, 'data-slot') === 'tabs') break;
+			}
 			// A list without panels (shadcn's line, vertical and icon variants) still switches its triggers.
-			const panel = [...walk(tabs)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
+			const panel = panelIn(tabs);
 			const own = panel && { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
 			const panels = panel ? triggers.map((t, k) => (k === active ? own : revealed(t))) : [];
 			if (panels.some((p) => !p)) continue;
@@ -403,7 +437,7 @@ export class BaseTabsPlan {
 					});
 				});
 				const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => new Set(panels.map((p) => p!.attrs[a])).size > 1);
-				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')) });
+				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => panelArms(name, contents, inner) });
 				groups++;
 				continue;
 			}
@@ -436,8 +470,7 @@ export class BaseTabsPlan {
 				declare,
 				omit: [...varying, 'data-activation-direction'],
 				extra: [...varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), direction],
-				// The chosen panel's own content, when Markless cannot rebuild it in an arm, stays as the only content.
-				wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')),
+				wrap: (inner) => panelArms(name, contents, inner),
 			});
 			groups++;
 		}
@@ -464,7 +497,7 @@ export class InsertedDisclosurePlan {
 	 * `roots`: the pages, where a Base UI disclosure open on load (its content in the page, named by aria-controls)
 	 * closes and opens again on the same state.
 	 */
-	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly nodes?: readonly Element[]; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
 		const byTrigger = new Map<Element, (typeof items)[number][]>();
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
 		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
@@ -564,6 +597,11 @@ export class InsertedDisclosurePlan {
 				const panel = panels.get(trigger);
 				if (panel) this.bindings.set(panel, { declare, omit: ['hidden', 'data-open', 'data-closed'], extra: [`hidden={!${shown}}`, `data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
 				for (const i of byTrigger.get(trigger) ?? []) {
+					// Content placed in the page (it holds disclosures of its own) shows while open, its own disclosures bound inside.
+					if (i.nodes) {
+						for (const node of i.nodes) if (!this.bindings.has(node)) this.bindings.set(node, { declare, omit: ['hidden'], extra: [`hidden={!${shown}}`] });
+						continue;
+					}
 					const list = inserts.get(i.parent) ?? inserts.set(i.parent, []).get(i.parent)!;
 					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if ${shown} { <>${i.markup}</> }`;
 					if (markup && !list.some((l) => l.before === i.before && l.markup === markup)) list.push({ before: i.before, markup, declare });

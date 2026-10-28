@@ -5,13 +5,25 @@ import { router } from '@markless/router/vite';
 import { defineConfig } from 'vite-plus';
 import { migrateCache } from './migrate-cache.ts';
 
+// Markless's router hands Vite this nitro config again, and Vite's merge doubles its lists.
+const nitroOnce: (options: Record<string, unknown>) => void = (options) => {
+	for (const list of ['handlers', 'serverAssets', 'traceDeps']) {
+		const entries = options[list];
+		if (!Array.isArray(entries)) continue;
+		const seen = new Set();
+		options[list] = entries.filter((entry) => !seen.has(JSON.stringify(entry)) && Boolean(seen.add(JSON.stringify(entry))));
+	}
+};
+
 export default defineConfig({
 	nitro: {
+		modules: [{ name: 'markless-migrate:once', setup: (nitro: { options: Record<string, unknown> }) => nitroOnce(nitro.options) }],
 		// The old app's redirects, rewrites and route handlers answer before the pages.
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
 		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],
 		traceDeps: ["@vercel/analytics","@vercel/blob","@vercel/og","cn","dedent","fumadocs-core","shadcn","ts-morph","zod","@ts-morph/common*"],
 		traceOpts: { nft: { ignore: (path: string) => ["@ts-morph/common/dist/typescript.js"].some((file) => path.endsWith(file)) } },
 	},
-	plugins: [migrateCache(), markless(), router()],
+	// `markless-migrate dev` turns off the dev server's execution log: it writes <html> attributes on every interaction.
+	plugins: [migrateCache(), markless(process.env.MARKLESS_MIGRATE_DEV ? { executionLog: 'never' } : {}), router()],
 });
