@@ -71,10 +71,12 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
+	const chronoNames = ['chronoDate', 'loadChrono'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (chronoNames.length) out = out.replace('\n', `\nimport { ${chronoNames.join(', ')} } from '${dir}/chrono-date.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
 	const racCalendar = ['racCalendarView', 'racCalendarModel', 'racCalendarEvent', 'racCalendarWake', 'racDateLabel'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -1352,7 +1354,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	// A calendar in a layer (a date picker's popover) is bound as its layer is rendered, in prepare.
-	const dayPickers = new DayPickerPlan();
+	const dayPickers = new DayPickerPlan(options.source);
 	layerPickers = (route, reveal, kept) => {
 		const captured = pickers.get(route);
 		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
@@ -1524,7 +1526,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
 			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
-			if (field && trigger) dayPickers.field(route, field, trigger, raw.opener);
+			if (field && trigger) dayPickers.field(route, captured, field, trigger, raw.opener, locate);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
@@ -1881,7 +1883,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts, choices, tables.used ? ['tanstack-table'] : []);
+	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : [])], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
 	const tableSpecs = tables.specsModule();
 	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);
