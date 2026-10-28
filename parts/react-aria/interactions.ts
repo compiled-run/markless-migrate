@@ -150,17 +150,19 @@ function focusout(target: Element, related: EventTarget | null): boolean {
 }
 
 // Only React Aria Components write these states: a bare usePress element (a context menu's trigger area) has no data-rac.
-const HOVERABLE = '[data-react-aria-pressable][data-rac], label[data-rac], input[data-rac], textarea[data-rac], [role="option"][data-rac], [role="menuitem"][data-rac], [role="menuitemcheckbox"][data-rac], [role="menuitemradio"][data-rac], [role="tab"][data-rac], [role="row"][data-rac]';
+const HOVERABLE = '[data-react-aria-pressable][data-rac], label[data-rac], input[data-rac], textarea[data-rac], [role="option"][data-rac], [role="menuitem"][data-rac], [role="menuitemcheckbox"][data-rac], [role="menuitemradio"][data-rac], [role="tab"][data-rac], [role="row"][data-rac], [role="group"][data-rac]';
+// Each element has a useHover of its own: a field inside a Group hovers both.
+function* hoverables(target: Element): Generator<HTMLElement> {
+	for (let el = target.closest<HTMLElement>(HOVERABLE); el; el = el.parentElement?.closest<HTMLElement>(HOVERABLE) ?? null) yield el;
+}
 function pointerover(target: Element, event: PointerEvent): boolean {
 	if (event.pointerType === 'touch') return false;
-	const el = target.closest<HTMLElement>(HOVERABLE);
 	// TextArea passes useHover its DOM props, so `disabled` does not turn its hover off.
-	if (el && (el instanceof HTMLTextAreaElement || (!el.hasAttribute('data-disabled') && el.getAttribute('aria-disabled') !== 'true' && !el.hasAttribute('disabled')))) el.setAttribute('data-hovered', 'true');
+	for (const el of hoverables(target)) if (el instanceof HTMLTextAreaElement || (!el.hasAttribute('data-disabled') && el.getAttribute('aria-disabled') !== 'true' && !el.hasAttribute('disabled'))) el.setAttribute('data-hovered', 'true');
 	return false;
 }
 function pointerout(target: Element, event: PointerEvent): boolean {
-	const el = target.closest<HTMLElement>(HOVERABLE);
-	if (el && !(event.relatedTarget instanceof Node && el.contains(event.relatedTarget))) el.removeAttribute('data-hovered');
+	for (const el of hoverables(target)) if (!(event.relatedTarget instanceof Node && el.contains(event.relatedTarget))) el.removeAttribute('data-hovered');
 	return false;
 }
 

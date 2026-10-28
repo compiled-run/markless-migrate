@@ -6,7 +6,7 @@ import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { chromium, type Browser } from 'playwright';
+import { chromium, webkit, type Browser } from 'playwright';
 import { applyAccepted, type Accept } from './accepted.ts';
 import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
 import type { AutomaticRule } from './automatic.ts';
@@ -24,6 +24,7 @@ import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { checkClock } from './clock-shift.ts';
 import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
+import { checkControlParity, type ControlParityOptions } from './control-parity.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
@@ -118,6 +119,8 @@ export interface CheckOptions {
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** The widget probes (probes.ts) and the moved-clock look (clock-shift.ts) on each page route; left out when absent. */
 	readonly probes?: Omit<ProbeOptions, 'shared'>;
+	/** Control parity (control-parity.ts) with the widget probes: controls at each width and their boxes, hit points, pop-up places (in WebKit too with `webkit`), pop-up motion, keys and field input. */
+	readonly controls?: Omit<ControlParityOptions, 'webkit'> & { readonly webkit?: boolean };
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -167,6 +170,7 @@ interface Run {
 	readonly motion?: MotionOptions;
 	readonly embeds?: EmbedCheckOptions;
 	readonly probes?: ProbeOptions;
+	readonly controls?: ControlParityOptions;
 }
 
 /** The hosts the old app's API clients name in absolute URLs. */
@@ -291,7 +295,7 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
-	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed)) : journeyed;
+	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed;
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
@@ -313,13 +317,17 @@ export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: R
 	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
 }
 
-/** The widget probes of the route's controls and the moved-clock look, old against new, on top of what the journeys found. */
-async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes'>, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
+/** The widget probes of the route's controls, the moved-clock look and control parity, old against new, on top of what the journeys found; pop-up motion is filmed on routes that carry motion. */
+async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes' | 'controls' | 'motion'>, route: string, viewport: Viewport, result: RouteResult, film = false): Promise<RouteResult> {
 	const sides = { old: run.old, new: run.new };
 	const clock = await checkClock(browser, sides, route, viewport);
 	const out = await checkProbes(browser, sides, route, viewport, result.journeys, run.probes);
-	const failures = [...clock, ...out.failures];
-	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures]) : result), probes: { controls: out.controls, ms: out.ms } };
+	const parity = run.controls
+		? await profiled(route, 'control parity', () => checkControlParity(browser, sides, route, viewport, { ...run.controls, film: film && Boolean(run.motion) })).catch((error: Error) => ({ failures: [{ route, dimension: 'behaviour' as const, check: 'control parity', expected: 'control parity runs', actual: error.message.split('\n')[0]!, hint: 'Control parity could not load the route on one side.' }], shots: [], tried: 0, leftOut: 0, ms: 0 }))
+		: undefined;
+	const failures = [...clock, ...out.failures, ...(parity?.failures ?? [])];
+	const shots = parity?.shots.length ? { shots: [...result.shots, ...parity.shots] } : {};
+	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures], shots) : { ...result, ...shots }), probes: { controls: out.controls, ms: out.ms }, ...(parity ? { controlParity: { tried: parity.tried, leftOut: parity.leftOut, ms: parity.ms } } : {}) };
 }
 
 async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], result: RouteResult): Promise<RouteResult> {
@@ -800,7 +808,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const webkitBrowser = options.controls?.webkit ? await webkit.launch().catch((error: Error) => {
+		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
+	}) : undefined;
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -971,6 +982,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
 		if (!options.browser) await browser.close();
+		await webkitBrowser?.close();
 	}
 }
 

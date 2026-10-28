@@ -1,0 +1,6 @@
+{
+	"routes": ["/docs/directory", "/docs/directory?page=2", "/docs/directory?page=48"],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
