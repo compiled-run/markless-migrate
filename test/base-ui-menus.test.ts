@@ -645,3 +645,13 @@ test('an opening Base UI submenu is painted over its menu, as its portal mounts 
 	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="menu"]')?.getAttribute('aria-labelledby'), [email.x + 5, email.y + 5]), 'sub1');
 	await page.close();
 });
+
+test('the highlighted Base UI menu item is the tab stop, as its composite list does', async () => {
+	const page = await open(menu(['Apple', 'Banana', 'Blueberry']), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	await press(page, 'ArrowDown');
+	await press(page, 'ArrowDown');
+	assert.equal(await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map((e) => `${e.textContent}:${e.getAttribute('tabindex')}`).join(' ')), 'Apple:-1 Banana:0 Blueberry:-1');
+	await page.close();
+});
+
