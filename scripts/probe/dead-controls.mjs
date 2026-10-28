@@ -14,6 +14,7 @@ const MAX_ACTIONS = Number(process.env.MAX_ACTIONS ?? 60);
 const SETTLE = Number(process.env.SETTLE ?? 700);
 const BOX_TOLERANCE = Number(process.env.BOX_TOLERANCE ?? 2);
 const KEY_MAX = Number(process.env.KEY_MAX ?? 24);
+const INPUT_MAX = Number(process.env.INPUT_MAX ?? 24);
 const KEYS_PER_CONTROL = Number(process.env.KEYS_PER_CONTROL ?? 4);
 const [routesFile, out, shardArg, countArg] = process.argv.slice(2);
 const all = JSON.parse(readFileSync(routesFile, 'utf8'));
@@ -53,7 +54,8 @@ function listControls() {
 		const f = frame.getBoundingClientRect();
 		const slot = el.closest('[data-slot]')?.getAttribute('data-slot') ?? '';
 		const pr = el.parentElement?.getBoundingClientRect() ?? r;
-		out.push({ parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: { w: Math.round(f.width), h: Math.round(f.height) }, key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
+		const hint = [el.getAttribute('placeholder'), el.getAttribute('name'), el.id, el.getAttribute('inputmode'), el.getAttribute('aria-label')].filter(Boolean).join(' ');
+		out.push({ hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: { w: Math.round(f.width), h: Math.round(f.height) }, key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
 	}
 	return out;
 }
@@ -315,8 +317,7 @@ function strip(file, old, port) {
 	writeFileSync(file, PNG.sync.write(outPng));
 }
 
-async function use(side, route, prefix, control, film, width = WIDTH) {
-	if (side === 'old') await fresh(width);
+async function replay(side, route, prefix) {
 	const p = pages[side];
 	await load(side, route);
 	for (const step of prefix) {
@@ -328,6 +329,12 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 		await p.evaluate(read, []).catch(() => null);
 		await p.evaluate(() => { const el = document.querySelector('[data-dc-used]'); el?.setAttribute('data-dc-prefix', ''); el?.removeAttribute('data-dc-used'); });
 	}
+}
+
+async function use(side, route, prefix, control, film, width = WIDTH) {
+	if (side === 'old') await fresh(width);
+	const p = pages[side];
+	await replay(side, route, prefix);
 	const armed = await p.evaluate(arm, control).catch((e) => ({ error: e.message }));
 	if (!armed) return { missing: 'not on the page' };
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
@@ -364,6 +371,93 @@ async function act(p, c) {
 	if (c.options) return loc.selectOption(c.options[1] ?? c.options[0], { timeout: 3000 });
 	if (c.role === 'slider') { await loc.focus({ timeout: 3000 }); return p.keyboard.press('ArrowRight'); }
 	return loc.click({ timeout: 3000 });
+}
+
+const INPUT_VALUES = {
+	date: ['May 28, 2025', '2025-05-28', '05/28/2025', '28/05/2025', '28.05.2025', '5/28/25', '2025-02-30', 'tomorrow', 'abc'],
+	nativeDate: ['2025-05-28', '05282025', '2025-02-28'],
+	number: ['42', '0', '-1', '3.14', '1e3', '99999999', 'abc', ''],
+	text: ['May 28, 2025', '42', 'abc', 'zq zq', ''],
+};
+const isInput = (c) => /^(textbox|searchbox|spinbutton|combobox)$/.test(c.role) && !c.options && /^(text|search|date|number|email|tel|url|textarea|)$/.test(c.type ?? '');
+function inputKind(c) {
+	if (c.type === 'date') return 'nativeDate';
+	if (/date|day|month|year|birth|calendar|dd|mm\/|yyyy|\d{1,2}\/\d{1,2}/i.test(`${c.hint} ${c.name}`)) return 'date';
+	if (c.type === 'number' || /numeric|decimal|amount|price|quantity|count|age/i.test(c.hint ?? '') || c.role === 'spinbutton') return 'number';
+	return 'text';
+}
+
+async function typeInto(side, route, prefix, control, value) {
+	if (side === 'old') await fresh();
+	const p = pages[side];
+	await replay(side, route, prefix);
+	const armed = await p.evaluate(arm, control).catch((e) => ({ error: e.message }));
+	if (!armed) return { missing: 'not on the page' };
+	if (armed.error) return { missing: armed.error.split('\n')[0] };
+	const before = errors[side].length;
+	const loc = p.locator('[data-dc-used]').first();
+	await loc.click({ timeout: 3000 });
+	if (control.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) await loc.fill(value, { timeout: 3000 });
+	else {
+		await p.keyboard.press('ControlOrMeta+A');
+		await p.keyboard.press('Backspace');
+		await p.keyboard.type(value, { delay: 15 });
+	}
+	await p.keyboard.press('Enter');
+	await p.waitForTimeout(200);
+	await p.evaluate(() => (document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el)?.blur?.()).catch(() => {});
+	await p.waitForTimeout(SETTLE);
+	const field = await p.evaluate(() => {
+		const el = document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el;
+		return el ? { value: String(el.value ?? el.textContent ?? '').trim().slice(0, 80), invalid: el.getAttribute('aria-invalid') ?? '', badInput: el.validity ? !el.validity.valid : false, connected: el.isConnected } : { value: '', invalid: '', badInput: false, connected: false };
+	}).catch(() => ({ value: '', invalid: '', badInput: false, connected: false }));
+	let r = await p.evaluate(read, ['[data-dc-prefix]']).catch(() => undefined);
+	if (!r) { const u = new URL(p.url()); return { affected: [], url: u.pathname + u.search, field, errors: errors[side].slice(before) }; }
+	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
+	// What a pop-up the field drives shows for the value (a date picker's chosen day): ArrowDown in the field, else the button beside it.
+	await loc.focus({ timeout: 2000 }).catch(() => {});
+	await p.keyboard.press('ArrowDown').catch(() => {});
+	await p.waitForTimeout(500);
+	let shown = await p.evaluate(popupSummary).catch(() => '');
+	if (!shown && (await p.evaluate(markBeside).catch(() => false))) {
+		await p.locator('[data-dc-beside]').first().click({ timeout: 2000 }).catch(() => {});
+		await p.waitForTimeout(600);
+		shown = await p.evaluate(popupSummary).catch(() => '');
+	}
+	return { ...r, field, shown, errors: errors[side].slice(before) };
+}
+
+// In the page: what a pop-up opened over the page marks as chosen, and its caption.
+function popupSummary() {
+	const before = globalThis.__dc?.openBefore ?? new Set();
+	const pop = [...document.querySelectorAll('[role=dialog], [role=listbox], [role=menu], [role=grid], [data-slot=popover-content]')].find((x) => !before.has(x) && x.checkVisibility() && !x.closest('main [data-dc-used]'));
+	if (!pop) return '';
+	const picked = [...pop.querySelectorAll('[aria-selected=true], [data-selected=true], [data-selected-single=true], [aria-checked=true], [aria-current=date]')].filter((x) => x.checkVisibility()).map((x) => `${x.textContent.trim().slice(0, 30)}${x.getAttribute('data-day') ? ` (${x.getAttribute('data-day')})` : ''}`);
+	const caption = [...pop.querySelectorAll('[role=status], [aria-live], [class*=caption]')].filter((x) => x.checkVisibility()).map((x) => x.textContent.trim().slice(0, 40));
+	return [...new Set([...caption, ...picked])].join('; ').slice(0, 200) || `${pop.getAttribute('role') ?? 'pop-up'} open`;
+}
+
+// In the page: the button beside the used field (in its group), marked.
+function markBeside() {
+	const el = document.querySelector('[data-dc-used]');
+	for (let at = el?.parentElement, up = 0; at && up < 2; at = at.parentElement, up++) {
+		const b = [...at.querySelectorAll('button, [role=button]')].find((x) => x !== el && x.checkVisibility());
+		if (b) { b.setAttribute('data-dc-beside', ''); return true; }
+	}
+	return false;
+}
+
+function inputFindings(findings, base, old, port) {
+	if (port.missing || port.failed) return void findings.push({ ...base, kind: 'input-unusable', expected: `takes the value (ends as "${old.field.value}")`, actual: port.missing ?? port.failed });
+	const o = old.field, n = port.field;
+	if (o.value !== n.value) findings.push({ ...base, kind: 'input-value', expected: `the field ends as "${o.value}"`, actual: `"${n.value}"` });
+	if (old.shown && old.shown !== port.shown) findings.push({ ...base, kind: 'input-popup', expected: `its pop-up then shows ${old.shown}`, actual: port.shown ? `shows ${port.shown}` : 'no pop-up opens' });
+	if (o.invalid !== n.invalid || o.badInput !== n.badInput) findings.push({ ...base, kind: 'input-invalid', expected: `aria-invalid ${o.invalid || 'unset'}, ${o.badInput ? 'invalid' : 'valid'} to the browser`, actual: `aria-invalid ${n.invalid || 'unset'}, ${n.badInput ? 'invalid' : 'valid'}` });
+	if ((old.url ?? '') !== (port.url ?? '')) findings.push({ ...base, kind: 'input-address', expected: old.url ? `address becomes ${old.url}` : 'the address stays', actual: port.url ? `becomes ${port.url}` : 'the address stays' });
+	const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
+	if (old.affected?.length && lost.length === old.affected.length) findings.push({ ...base, kind: port.affected?.length ? 'input-region' : 'input-dead', expected: `changes ${old.affected.join(', ')}`, actual: port.affected?.length ? `changes ${port.affected.join(', ')}` : 'nothing changed on the port' });
+	const thrown = (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
+	if (thrown.length) findings.push({ ...base, kind: 'input-error', expected: old.errors?.length ? `throws ${old.errors.join('; ')}` : 'throws nothing', actual: `throws ${thrown.slice(0, 3).join('; ')}` });
 }
 
 function keySet(c) {
@@ -502,6 +596,7 @@ for (const route of mine) {
 		for (const c of controls) if (c.layout) layoutDone.add(c.key);
 		const done = new Set();
 		const deadIds = new Map();
+		const nestedInputs = [];
 		while (queue.length && tried < MAX_ACTIONS) {
 			const { prefix, control } = queue.shift();
 			const id = [...prefix.map((s) => s.key), control.key].join(' > ');
@@ -558,7 +653,29 @@ for (const route of mine) {
 					const n = (names.get(`${c.role}|${c.name}`) ?? 0) + 1;
 					names.set(`${c.role}|${c.name}`, n);
 					if (n <= 2 && added++ < 40) queue.push({ prefix: [...prefix, control], control: c });
+					if (n <= 2 && isInput(c)) nestedInputs.push({ prefix: [...prefix, control], control: c });
 				}
+			}
+		}
+		// Inputs: realistic values typed into each text, date, number or search field (and those a use revealed), then Enter and a blur.
+		let inputTrials = 0;
+		const inputTemplates = new Map();
+		for (const { prefix, control } of [...controls.filter((c) => !c.layout && isInput(c)).map((c) => ({ prefix: [], control: c })), ...nestedInputs]) {
+			const kind = inputKind(control);
+			const seenKind = `${control.template}|${kind}`;
+			const n = (inputTemplates.get(seenKind) ?? 0) + 1;
+			inputTemplates.set(seenKind, n);
+			if (n > (kind === 'date' ? 3 : 1)) continue;
+			for (const value of INPUT_VALUES[kind]) {
+				if (inputTrials >= INPUT_MAX) break;
+				const id = `${[...prefix.map((s) => s.key), control.key].join(' > ')} <- "${value}"`;
+				if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
+				inputTrials++;
+				const old = await typeInto('old', route, prefix, control, value).catch((e) => ({ failed: e.message.split('\n')[0] }));
+				if (old.failed || old.missing) continue;
+				const port = await typeInto('new', route, prefix, control, value).catch((e) => ({ failed: e.message.split('\n')[0] }));
+				if (process.env.DEBUG) console.log('  ', id, '\n     old', JSON.stringify(old), '\n     new', JSON.stringify(port));
+				inputFindings(findings, { route, control: id }, old, port);
 			}
 		}
 		// Keyboard: a standard key set, one key and short sequences, from one control of each kind focused on a fresh load.

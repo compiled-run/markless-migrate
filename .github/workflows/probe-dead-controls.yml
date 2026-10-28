@@ -24,9 +24,9 @@ jobs:
       - name: Probe
         run: |
           mkdir -p out/strips
-          if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=20 KEY_MAX=12; else export MAX_ACTIONS=30 KEY_MAX=24; fi
-          for w in 0 1 2; do
-            ENGINE=${{ matrix.engine }} WORKERS=3 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs deploy/shadcn-ui/check-targets.json out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
+          if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
+          for w in 0 1 2 3; do
+            ENGINE=${{ matrix.engine }} WORKERS=4 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs deploy/shadcn-ui/check-targets.json out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
           done
           wait
           tail -5 out/log-*.txt
