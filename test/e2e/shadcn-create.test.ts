@@ -20,9 +20,11 @@ after(async () => {
 	await Promise.all([...Object.values(browsers).map((b) => b?.close()), app?.stop()]);
 });
 
-async function open(kind: keyof typeof BROWSERS, path = '/create', viewport = { width: 1440, height: 900 }): Promise<Page> {
+async function open(kind: keyof typeof BROWSERS, path = '/create', viewport = { width: 1440, height: 900 }, random?: number): Promise<Page> {
 	const browser = (browsers[kind] ??= await BROWSERS[kind].launch());
 	const context = await browser.newContext({ viewport });
+	// What the designer draws while the page loads (?preset=random), fixed.
+	if (random !== undefined) await context.addInitScript((r) => window.top === window && (Math.random = () => r), random);
 	if (kind === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: app.origin });
 	// WebKit grants no clipboard permissions to automation: the page's writes are kept for the reads.
 	else await context.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => void ((globalThis as { copied?: string }).copied = t), readText: async () => (globalThis as { copied?: string }).copied ?? '' } }));
@@ -363,9 +365,8 @@ for (const kind of Object.keys(BROWSERS) as (keyof typeof BROWSERS)[]) {
 		});
 
 		test('?preset=random is replaced by a random preset, alone in the URL', async () => {
-			const page = await open(kind, '/create?preset=random&template=vite');
-			assert.match(search(page), /^\?preset=b\w+$/);
-			assert.notEqual(search(page), '?preset=random');
+			const page = await open(kind, '/create?preset=random&template=vite', undefined, 0.3);
+			assert.equal(search(page), '?preset=b2c3AMVcun', "generateRandomPreset's pick for 0.3 in every field");
 			await page.close();
 		});
 

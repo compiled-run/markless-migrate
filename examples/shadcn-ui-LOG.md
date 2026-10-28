@@ -301,7 +301,10 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   undo history over the preset code, hover previews, the iframe's `design-system-params` and the keys it forwards, the
   shortcuts), handed to the page as `createcommand` events. The preview page's side is the site part
   `designSystemPreview`, which loads `create-preview.ts` on `/preview/{base}/{name}` alone (DesignSystemProvider: body
-  classes, fonts, the theme's variables, the menu color) and forwards the preview's keys. Two quirks of the old page
+  classes, fonts, the theme's variables, the menu color); the preview's keys reach the designer through the old page's
+  own forward scripts, which the converted page serves in its head. The palette opens only by a key, so no capture
+  shows its markup: `components.json` names the `cmdk` port for the component (`"ports"`), and the page's registry
+  carries it. The iframe is rendered once the page runs, not on the server (bug 30). Two quirks of the old page
   are kept because a user sees them: R draws twice (MainMenu's and RandomButton's `useRandom` both listen; nuqs writes
   the second draw), and Shift+R resets at once when pressed on the page (use-reset's two listeners undo each other's
   dialog state across React's synchronous flush) but opens the dialog when the preview forwards it. Parts changes:
@@ -318,7 +321,9 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   control on the component built alone (`fixtures/shadcn-create`), in both browsers.
   Not the original's yet: the preview pages are not in the plan (#311, so the port's iframe shows 404 until they are);
   the preview's icons stay in the captured library when another is picked (#352); the welcome dialog is #295's; the
-  preview applies a shared link's design once idle, where the old one rendered nothing until then.
+  preview applies a shared link's design once idle, where the old one rendered nothing until then. `?preset=random`
+  can draw base color `gray`, which the pinned site's registry lacks: the old page throws and shows no designer; the
+  port's designer works and its preview, which throws applying that design, keeps the one it had.
 - Patterns convert could generate instead of a hand port (found on /typeset, the same on /create): the pages a control
   loads into a frame (#311); URL state as nuqs keeps it, with its serializer and an undo history over it (#312, with
   /create's push history, preset encoding and batching); dialogs a page opens from its own state rather than a trigger
