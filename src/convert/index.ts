@@ -927,9 +927,20 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
 	}
 	const kids = elementChildren(body(doc));
-	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
+	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
 	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
+}
+
+const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
+
+/**
+ * The body child that is the page's own content: the one holding its main landmark, else the largest. A shared header
+ * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
+ */
+export function pageRoot(kids: readonly Element[]): Element {
+	const holding = kids.filter((el) => isMain(el) || [...walk(el)].some(isMain));
+	return (holding.length ? holding : kids).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
 
 function headModule(byRoute: Map<string, Prepared>): string {
