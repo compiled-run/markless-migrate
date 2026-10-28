@@ -162,29 +162,37 @@ test('Base UI menu keys: opening skips disabled items, the arrows loop over ever
 
 test('Base UI menu typeahead: a letter moves to the next item starting with it, the same letter again cycles, a word matches as typed', async () => {
 	const page = await open(menu(['Profile', 'Billing', 'Settings', 'Support', 'Sign out']), ['base-ui/menu']);
+	// The typing session ends after 500 ms without a key: the page's clock is the test's, not the machine's.
+	await page.clock.install();
+	await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10);
+	const type = async (key: string) => {
+		await page.keyboard.press(key);
+		await page.clock.runFor(10);
+	};
 	await page.locator('#dd').focus();
-	await press(page, 'Enter');
+	await type('Enter');
 	for (const [key, expected] of [
 		['s', 'Settings'],
 		['s', 'Support'],
 		['s', 'Sign out'],
 		['s', 'Settings'],
 	] as const) {
-		await press(page, key);
+		await type(key);
 		assert.equal(await state(page), `true focus=${expected} highlighted=${expected}`, `after ${key}`);
 	}
-	await page.waitForTimeout(600);
-	await press(page, 'b');
+	await page.clock.runFor(600);
+	await type('b');
 	assert.equal(await state(page), 'true focus=Billing highlighted=Billing');
-	await page.waitForTimeout(600);
-	for (const key of ['s', 'i']) await press(page, key);
+	await page.clock.runFor(600);
+	for (const key of ['s', 'i']) await type(key);
 	assert.equal(await state(page), 'true focus=Sign out highlighted=Sign out');
 	// Space continues a typing session rather than choosing the item.
-	await page.waitForTimeout(600);
-	for (const key of ['s', 'i', 'g', 'n', ' ']) await press(page, key);
+	await page.clock.runFor(600);
+	for (const key of ['s', 'i', 'g', 'n', ' ']) await type(key);
 	assert.equal(await state(page), 'true focus=Sign out highlighted=Sign out');
 	await page.close();
 });
+
 
 test('a Base UI menu opened by a press focuses its popup with nothing highlighted, each time; ArrowDown then highlights the first item', async () => {
 	const page = await open(menu(['Profile', 'Billing', 'Settings']), ['base-ui/menu']);
