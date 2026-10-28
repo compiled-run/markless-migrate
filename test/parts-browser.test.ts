@@ -589,6 +589,19 @@ test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s che
 	await page.close();
 });
 
+test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s frame again', async () => {
+	const page = await open(`<div id="sidebar-03" data-view="preview"><div><button data-slot="button" title="Refresh Preview"><span class="sr-only">Refresh Preview</span></button></div><iframe height="100"></iframe></div>`, ['site']);
+	let loads = 0;
+	await page.route('http://parts.test/frame/**', (route) => (loads++, route.fulfill({ contentType: 'text/html', body: '<p>block</p>' })));
+	await page.evaluate(() => (document.querySelector('iframe')!.src = '/frame/sidebar-03'));
+	await page.waitForFunction(() => document.querySelector('iframe')!.contentDocument?.querySelector('p'));
+	const before = loads;
+	await page.getByRole('button', { name: 'Refresh Preview' }).click();
+	await page.waitForTimeout(500);
+	assert.equal(loads, before + 1, 'setIframeKey mounts the frame afresh, which loads its page again');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
