@@ -69,6 +69,13 @@ test("a class holding quotes, brackets and parentheses is found whole, in markup
 	assert.equal(usedCss(sheet, classTokens([html, code])), sheet.replace('.gone{a:b}', ''));
 });
 
+test('a class with brackets and commas is found whole when markup follows it with no space, as a page module writes it', () => {
+	const swatches = '<span></span>'.repeat(5) + '<button class="h-3 w-3"></button>'.repeat(30);
+	const page = `<label class="block">Primary</label><div class="flex justify-end"><div class="grid grid-cols-[repeat(22,0fr)]">${swatches}</div></div>`;
+	const sheet = '.grid-cols-\\[repeat\\(22\\,0fr\\)\\]{grid-template-columns:repeat(22,0fr)}.gone{a:b}';
+	assert.equal(usedCss(sheet, classTokens([page])), sheet.replace('.gone{a:b}', ''));
+});
+
 test('a selector the parser cannot read is kept', () => {
 	const sheet = '.flex{display:flex}.a:unknown-thing((){color:red}';
 	assert.equal(usedCss(sheet, classTokens(['flex'])), sheet);
