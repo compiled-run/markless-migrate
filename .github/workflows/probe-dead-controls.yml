@@ -1,0 +1,36 @@
+name: probe dead controls
+on:
+  push:
+    branches: [probe/dead-controls]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium
+      - name: Probe
+        run: |
+          mkdir -p out/strips
+          for w in 0 1; do
+            WORKERS=2 WORKER=$w STRIPS=out/strips MAX_ACTIONS=30 node scripts/probe/dead-controls.mjs deploy/shadcn-ui/check-targets.json out/shard-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
+          done
+          wait
+          tail -5 out/log-*.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dead-controls-${{ matrix.shard }}
+          path: out
+          retention-days: 7
