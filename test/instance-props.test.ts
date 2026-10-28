@@ -140,6 +140,24 @@ test("a React Aria popover gets the placement and offsets its own instance was g
 	await page.close();
 });
 
+test('a popup records the side and alignment it asked for, not where a flip away from an edge put it', async () => {
+	const page = await browser.newPage();
+	const SIDE = INSTANCE_PROPS.filter((s) => s.port === 'base-ui/popup' || s.port === 'popper');
+	// Base UI: the positioner the Positioner component renders, given side and align by shadcn's wrapper; flipped to top.
+	// Radix: PopperContent given no side or align, flipped to top: the library's defaults.
+	await fibers(
+		page,
+		`<div id="b" data-base-ui-portal=""><div id="bp" role="presentation" data-side="top" data-align="end"></div></div><div data-radix-popper-content-wrapper=""><div id="rc" data-side="top" data-align="center" role="menu"></div></div>`,
+		[3, {}, [
+			[4, {}, [[0, { side: 'bottom', align: 'start', children: [] }, [[11, { sideOffset: 4 }, [[5, '#bp']]]]]]],
+			[0, { loop: true, children: [] }, [[11, { avoidCollisions: true }, [[5, '#rc']]]]],
+		]],
+	);
+	await page.evaluate(markInstanceProps, { specs: SIDE, added: false });
+	assert.deepEqual([await attrs(page, 'data-mm-side'), await attrs(page, 'data-mm-align')], [{ b: null, bp: 'bottom', rc: 'bottom' }, { b: null, bp: 'start', rc: 'center' }]);
+	await page.close();
+});
+
 test("a Base UI menu item gets the closeOnClick its instance was given, and none when left to its default", async () => {
 	const page = await browser.newPage();
 	const item = (id: string, role: string) => `<div id="${id}" role="${role}" tabindex="-1">${id}</div>`;
