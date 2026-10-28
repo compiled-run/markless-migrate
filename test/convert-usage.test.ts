@@ -69,3 +69,22 @@ test("the offsets a wrapper passes on with a slot of its own are its own, else t
 	assert.deepEqual(offsets('dropdown-menu-content'), [undefined, undefined], 'a slot written on the library part itself is not forwarded');
 	await rm(dir, { recursive: true, force: true });
 });
+
+test('a slot a wrapper writes from its own parameter\'s default names the library part, with the props written at that site', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-slot-param-'));
+	await mkdir(join(dir, 'ui'), { recursive: true });
+	// React Aria's dropdown menu: the Popover takes data-slot={dataSlot}, the default of the wrapper's "data-slot" param.
+	await writeFile(
+		join(dir, 'ui/dropdown-menu.tsx'),
+		'import { Popover } from "react-aria-components";\nexport function DropdownMenu({\n\t"data-slot": dataSlot = "dropdown-menu-content",\n\toffset = 4,\n\t...props\n}) {\n\treturn <Popover data-slot={dataSlot} offset={offset} />;\n}\n',
+	);
+	await writeFile(join(dir, 'ui/popover.tsx'), 'import { Popover } from "react-aria-components";\nexport function PopoverContent({ offset = 8 }) {\n\treturn <Popover data-slot="popover-content" offset={offset} />;\n}\nexport function Other({ offset = 8 }) {\n\treturn <Popover data-slot="other-content" offset={offset} />;\n}\n');
+	const site = (file: string, line: number, slot: string) => ({ file, line, kind: 'element', props: { 'data-slot': slot, offset: '{offset}' } });
+	const libraries = { libraries: [{ name: 'react-aria-components', class: 'parity', exports: [{ name: 'Popover', sites: [site('ui/dropdown-menu.tsx', 7, '{dataSlot}'), site('ui/popover.tsx', 3, '"popover-content"'), site('ui/popover.tsx', 6, '"other-content"')] }] }] };
+	await writeFile(join(dir, 'libraries.json'), JSON.stringify(libraries));
+	const resolver = await sourceSlotResolver(join(dir, 'libraries.json'), dir);
+	assert.deepEqual(resolver.candidates('dropdown-menu-content').map((c) => c.export), ['Popover']);
+	assert.equal(resolver.slotProp?.('react-aria-components', 'Popover', 'dropdown-menu-content', 'offset'), '4', 'the offset written where that slot is, not the most common one');
+	assert.equal(resolver.prop('react-aria-components', 'Popover', 'offset'), '8');
+	await rm(dir, { recursive: true, force: true });
+});

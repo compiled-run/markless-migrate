@@ -192,12 +192,28 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 	const file = JSON.parse(await readFile(librariesPath, 'utf8')) as LibrariesFile;
 	const bySlot = new Map<string, PartUsage[]>();
 	const counts = new Map<string, number>();
+	const modules = new Map<string, Module | undefined>();
+	const moduleOf = async (rel: string) => {
+		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => parseModule(rel, text), () => undefined) : undefined);
+		return modules.get(rel);
+	};
+	// A value written on a site: a literal, or the default of the wrapper's parameter it passes (`data-slot={dataSlot}`).
+	const valueAt = async (site: { readonly file: string; readonly line: number }, written: string): Promise<string | undefined> => {
+		const value = literal(written) ?? (/^\{-?\d+(\.\d+)?\}$/.test(written) ? written.slice(1, -1) : undefined);
+		const param = /^\{([A-Za-z_$][\w$]*)\}$/.exec(written)?.[1];
+		if (value !== undefined || !param) return value;
+		const mod = await moduleOf(site.file);
+		return mod ? paramDefault(mod, site.line, param) : undefined;
+	};
+	const slotOf = new Map<object, string>();
 	for (const lib of file.libraries) {
 		if (!RENDERING.has(lib.class)) continue;
 		for (const e of lib.exports) {
 			for (const site of e.sites ?? []) {
-				const slot = literal(site.props?.['data-slot']);
+				const written = site.props?.['data-slot'];
+				const slot = written === undefined ? undefined : await valueAt(site, written);
 				if (!slot) continue;
+				slotOf.set(site, slot);
 				const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
 				if (list.some((u) => u.library === lib.name && u.export === e.name)) continue;
 				list.push({ library: lib.name, export: e.name, file: site.file, line: site.line });
@@ -210,30 +226,26 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
 		if (!list.some((x) => x.library === u.library && x.export === u.export)) list.push(u);
 	}
-	const modules = new Map<string, Module | undefined>();
-	const moduleOf = async (rel: string) => {
-		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => parseModule(rel, text), () => undefined) : undefined);
-		return modules.get(rel);
-	};
 	const props = new Map<string, string | undefined>();
+	const slotProps = new Map<string, string | undefined>();
 	for (const lib of file.libraries) {
 		if (!RENDERING.has(lib.class)) continue;
 		for (const e of lib.exports) {
 			const seen = new Map<string, Map<string, number>>();
+			const vote = (key: string, value: string) => {
+				const votes = seen.get(key) ?? seen.set(key, new Map()).get(key)!;
+				votes.set(value, (votes.get(value) ?? 0) + 1);
+			};
 			for (const site of e.sites ?? []) {
+				const slot = slotOf.get(site);
 				for (const [name, written] of Object.entries(site.props ?? {})) {
-					let value = literal(written) ?? (/^\{-?\d+(\.\d+)?\}$/.test(written) ? written.slice(1, -1) : undefined);
-					const param = /^\{([A-Za-z_$][\w$]*)\}$/.exec(written)?.[1];
-					if (value === undefined && param) {
-						const mod = await moduleOf(site.file);
-						if (mod) value = paramDefault(mod, site.line, param);
-					}
+					const value = await valueAt(site, written);
 					if (value === undefined) continue;
-					const votes = seen.get(name) ?? seen.set(name, new Map()).get(name)!;
-					votes.set(value, (votes.get(value) ?? 0) + 1);
+					vote(name, value);
+					if (slot) vote(`${slot} ${name}`, value);
 				}
 			}
-			for (const [name, votes] of seen) props.set(`${lib.name} ${e.name} ${name}`, [...votes].sort((a, b) => b[1] - a[1])[0]?.[0]);
+			for (const [key, votes] of seen) (key.includes(' ') ? slotProps : props).set(`${lib.name} ${e.name} ${key}`, [...votes].sort((a, b) => b[1] - a[1])[0]?.[0]);
 		}
 	}
 	return {
@@ -241,6 +253,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		candidates: (slot) => bySlot.get(slot) ?? [],
 		libraries: () => counts,
 		prop: (library, exportName, prop) => props.get(`${library} ${exportName} ${prop}`),
+		slotProp: (library, exportName, slot, prop) => slotProps.get(`${library} ${exportName} ${slot} ${prop}`),
 		forwardedProp: (slot, prop) => forwarded.props(slot, prop),
 	};
 }
@@ -345,7 +358,8 @@ function paramDefault(mod: Module, line: number, name: string): string | undefin
 			const pattern = param.type === 'AssignmentPattern' ? param.left : param;
 			if (pattern?.type !== 'ObjectPattern') continue;
 			for (const p of pattern.properties as N[]) {
-				if (p.type !== 'Property' || p.key?.name !== name || p.value?.type !== 'AssignmentPattern') continue;
+				// By its key (`offset = 4`) or the name it is bound to (`"data-slot": dataSlot = "dropdown-menu-content"`).
+				if (p.type !== 'Property' || p.value?.type !== 'AssignmentPattern' || (p.key?.name !== name && p.value.left?.name !== name)) continue;
 				const d = p.value.right;
 				if (d.type === 'Literal' && (typeof d.value === 'string' || typeof d.value === 'number' || typeof d.value === 'boolean')) found = String(d.value);
 				else if (d.type === 'UnaryExpression' && d.operator === '-' && d.argument.type === 'Literal') found = `-${d.argument.value}`;
