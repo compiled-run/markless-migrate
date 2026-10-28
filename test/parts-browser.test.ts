@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -49,7 +49,10 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
 		// The site's JSON (its RTL translations) as the module a bundler makes of it.
 		if (path.startsWith('/parts/') && path.endsWith('.json')) return route.fulfill({ contentType: 'text/javascript', body: `export default ${await readFile(join(dirname(SITE), path.replace(/^\/parts\//, '')), 'utf8')};` });
-		const text = path === '/parts/registry.ts' ? registry : path === '/parts/site.ts' ? (await readFile(SITE, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
+		// The site's parts import their siblings in lib/site (the theme toggle, the typeset params) as well as the ports.
+		const name = path.replace(/^\/parts\//, '');
+		const sibling = path === '/parts/site.ts' ? SITE : await stat(join(PARTS, name)).then(() => undefined, () => join(dirname(SITE), name));
+		const text = path === '/parts/registry.ts' ? registry : sibling ? (await readFile(sibling, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, name), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
 	});
 	await page.goto('http://parts.test/');
@@ -340,6 +343,18 @@ test("a Base UI menu whose Positioner takes another anchor than its trigger (the
 	await page.locator('#dd').click();
 	await page.waitForFunction(() => ((globalThis as { placedAgainst?: string[] }).placedAgainst ?? []).length > 0);
 	assert.deepEqual([...new Set(await page.evaluate(() => (globalThis as { placedAgainst?: string[] }).placedAgainst))], ['card']);
+	await page.close();
+});
+
+test("the typeset preview takes its params as CSS variables on <html>, beside the preview fonts' variables: its URL's once idle, then each set the designer posts", async () => {
+	const page = await open('<div class="inter_e8e54af-module__r7opxW__variable lora_89cfb44c-module__fAxLeq__variable"><div class="preview-params w-full"><div class="typeset w-full"><h1>Building a Streaming Chatbot</h1></div></div></div><div class="flex"></div>', ['site']);
+	assert.deepEqual(await page.evaluate(() => [...document.documentElement.classList]), ['inter_e8e54af-module__r7opxW__variable', 'lora_89cfb44c-module__fAxLeq__variable'], "the preview layout's font variables go on <html>, a page's other classes do not");
+	const vars = () => page.evaluate(() => ['--preview-size', '--preview-font', '--preview-font-heading', '--preview-measure'].map((v) => document.documentElement.style.getPropertyValue(v)));
+	assert.deepEqual(await vars(), ['15px', "var(--font-geist-sans), 'Geist Variable', sans-serif", "var(--font-geist-sans), 'Geist Variable', sans-serif", '37em']);
+	await page.evaluate(() => window.postMessage({ type: 'typeset-params', data: { body: 'inter', heading: 'inherit', mono: 'geist-mono', scale: '18', measure: '60', flow: '1.25em', leading: '1.75', item: 'docs' } }, location.origin));
+	await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--preview-size') === '18px');
+	assert.deepEqual(await vars(), ['18px', "var(--font-inter), 'Inter Variable', sans-serif", "var(--font-inter), 'Inter Variable', sans-serif", '28em']);
+	assert.equal(await page.evaluate(() => location.search), '?body=inter&scale=18&measure=60', 'the preview keeps them in its own URL, as its nuqs setParams did');
 	await page.close();
 });
 
