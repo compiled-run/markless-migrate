@@ -206,6 +206,18 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   selection and select-all, the selected count and the page buttons did nothing on all six tables. After: every step
   of a 22-step journey matches the old page on each of the three routes in the local witness: row order, cell text,
   checked states, `aria-sort`, the count and the page buttons.
+- TanStack tables, continued: `/examples/tasks` and dashboard-01. A column's own `filterFn` or `sortingFn` is the old
+  page's code (its source, read from the instance) when it reads only its arguments and the language's globals. A
+  column header's menu items sort one way whatever the direction was. The toolbar's Reset (shown only while a column is
+  filtered) is an arm that clears every filter, and the filter field shows its column's filter. A faceted filter's
+  popover options toggle their value in the column's filter list, and show their check and their count among the rows
+  the other filters keep. Clear filters shows once a value is chosen. The trigger shows the chosen labels, or their count
+  past two: one template learned from each value chosen alone and two and three chosen, rendered always and hidden by the
+  count, because Markless rebuilds no arm on another module's state. A Rows per page select sets the page size. Pages are
+  recorded at the table's own page size when the rows fill three pages, so a page-size select shows its value. Before:
+  `/examples/tasks`'s table was left static (its status and priority columns have filter functions). After: filter,
+  Reset, header-menu sorting, faceted filters, row selection, page size and the page buttons match the old page step by
+  step in the local witness. dashboard-01 matches as before.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer

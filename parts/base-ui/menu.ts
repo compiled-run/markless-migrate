@@ -234,9 +234,14 @@ export function click(target: Element, event?: MouseEvent): boolean {
 		if (pointer !== 'mouse' && pointer !== 'pen') openSub(p, item, 'pointer');
 		return true;
 	}
-	// Menu.RadioItem and Menu.CheckboxItem default closeOnClick to false; items rendered with closeOnClick sit in data-mm-close-on-click="true".
-	if (!item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]') || item.closest('[data-mm-close-on-click="true"]')) closeTree(p, 'item');
+	if (closesOnClick(item)) closeTree(p, 'item');
 	return true;
+}
+
+/** An item's closeOnClick: its instance's (convert writes it, or a page on the items' group), else Menu.Item's true and Menu.CheckboxItem's and Menu.RadioItem's false. */
+export function closesOnClick(item: Element): boolean {
+	const own = item.closest('[data-mm-close-on-click]')?.getAttribute('data-mm-close-on-click') ?? null;
+	return own === null || own === '' ? !item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]') : own !== 'false';
 }
 export function pointerover(target: Element): boolean {
 	const bar = triggerOf(target);

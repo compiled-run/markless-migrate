@@ -125,3 +125,16 @@ test("a dialog trigger gets its root's disablePointerDismissal, which Drawer.Roo
 	assert.deepEqual(await attrs(page, 'data-mm-disable-pointer-dismissal'), { page: null, kept: 'true', plain: null });
 	await page.close();
 });
+
+test("a Base UI menu item gets the closeOnClick its instance was given, and none when left to its default", async () => {
+	const page = await browser.newPage();
+	const item = (id: string, role: string) => `<div id="${id}" role="${role}" tabindex="-1">${id}</div>`;
+	await fibers(page, `<div id="menu" role="menu" data-base-ui-focusable>${item('closes', 'menuitemradio')}${item('stays', 'menuitem')}${item('plain', 'menuitemcheckbox')}</div>`, [3, {}, [[5, '#menu', [
+		[0, { value: 'a', closeOnClick: true }, [[11, {}, [[5, '#closes']]]]],
+		[0, { closeOnClick: false }, [[11, {}, [[5, '#stays']]]]],
+		[0, { checked: true }, [[11, {}, [[5, '#plain']]]]],
+	]]]]);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS.filter((s) => s.port === 'base-ui/menu'), added: false });
+	assert.deepEqual(await attrs(page, 'data-mm-close-on-click'), { menu: null, closes: 'true', stays: 'false', plain: null });
+	await page.close();
+});

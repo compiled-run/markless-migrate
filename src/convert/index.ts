@@ -237,6 +237,8 @@ interface Prepared {
 	readonly siteLayers: readonly SiteComponent[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** The file each listed download control saved on the old page, by its signature#nth, as JSON ({ name, type, text }). */
+	readonly downloads: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
@@ -253,6 +255,7 @@ function elementAt(root: Element, path: readonly number[]): Element | undefined 
 }
 
 function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
+	if (added.into === 'download') return '';
 	if (added.into === 'clipboard') return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into="clipboard">{${JSON.stringify(added.html)}}</template>`;
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
@@ -398,6 +401,7 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+let currentDownloads: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -825,6 +829,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+			} else if (added.into === 'download') {
+				if (reveal.sig !== undefined) currentDownloads[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
@@ -939,10 +945,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentDownloads = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const downloads = currentDownloads;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
@@ -997,7 +1005,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, downloads, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1800,7 +1808,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
