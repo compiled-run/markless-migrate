@@ -610,8 +610,8 @@ cd examples/shadcn-ui-markless            # the app; or pass --app <dir>
 - It runs the dead-controls probe on each route against the original (`--old`, default the plan's origin: a
   local build such as `deploy/shadcn-ui/serve-old.sh` on :4000, or the reference URL). The probe compares what
   each control changes, its box, hit points, pop-up anchor, motion (with frame strips), keyboard and input.
-  It prints the differences it found. The probe comes from `scripts/probe/dead-controls.mjs`, or from
-  `origin/probe/dead-controls` until that lands; `--probe <file>` picks another. `--check` also runs
+  It prints the differences it found. The probe is `scripts/probe/dead-controls.mjs`; `--probe <file>` picks
+  another. `--check` also runs
   `check --only probes`.
 - `--control <regex>` probes only the uses whose id matches. One control takes about 20 s; a page's comboboxes
   about 70 s. `--widths` sets the widths compared (default 1280), and `--full` runs the probe's whole sweep.
