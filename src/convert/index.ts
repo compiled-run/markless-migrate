@@ -322,8 +322,8 @@ function placement(kept: readonly Element[]): string {
 			const own = candidatesOf(el, placementResolver);
 			for (const c of own.length ? own : placementResolver.candidates(slot)) {
 				// A slot a wrapper renders another wrapper with (a submenu's content) has that site's offsets.
-				const side = placementResolver.forwardedProp?.(slot, 'sideOffset') ?? placementResolver.prop(c.library, c.export, 'sideOffset');
-				const align = placementResolver.forwardedProp?.(slot, 'alignOffset') ?? placementResolver.prop(c.library, c.export, 'alignOffset');
+				const side = placementResolver.forwardedProp?.(slot, 'sideOffset', c.library) ?? placementResolver.prop(c.library, c.export, 'sideOffset');
+				const align = placementResolver.forwardedProp?.(slot, 'alignOffset', c.library) ?? placementResolver.prop(c.library, c.export, 'alignOffset');
 				if (side === undefined && align === undefined) continue;
 				return `${side !== undefined ? ` data-mm-side-offset="${side}"` : ''}${align !== undefined ? ` data-mm-align-offset="${align}"` : ''}`;
 			}
@@ -712,7 +712,7 @@ function combined(first: PartResolver, then: PartResolver): PartResolver {
 		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
 		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
 		slotProp: (library, exportName, slot, prop) => first.slotProp?.(library, exportName, slot, prop) ?? then.slotProp?.(library, exportName, slot, prop),
-		forwardedProp: (slot, prop) => first.forwardedProp?.(slot, prop) ?? then.forwardedProp?.(slot, prop),
+		forwardedProp: (slot, prop, library) => first.forwardedProp?.(slot, prop, library) ?? then.forwardedProp?.(slot, prop, library),
 	};
 }
 
