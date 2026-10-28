@@ -55,7 +55,7 @@ case "${1:-}" in
 		(cd "$APP" && node "$ROOT/src/cli.ts" cache output)
 		# Over Vercel's 15,000-file upload limit (one prerendered fallback per page and fragment): send one archive.
 		URL=$(cd "$APP" && vercel deploy --prebuilt --archive=tgz --yes --scope "$SCOPE")
-		BYPASS=$(vercel api "/v9/projects/mm-shadcn-ui-new?teamId=$SCOPE" --silent | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).protectionBypass??{};process.stdout.write(Object.keys(p).find((k)=>p[k].scope==="automation-bypass")??"")')
+		BYPASS=${SHADCN_BYPASS:-}; [ -n "$BYPASS" ] || BYPASS=$(vercel api "/v9/projects/mm-shadcn-ui-new?teamId=$SCOPE" | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).protectionBypass??{};process.stdout.write(Object.keys(p).find((k)=>p[k].scope==="automation-bypass")??"")')
 		# The preview is promoted only when the CDN keeps its pages and their fragment URLs.
 		(cd "$APP" && node "$ROOT/src/cli.ts" cache check --new "$URL" --no-psi --expiry-wait 0 ${BYPASS:+--header "x-vercel-protection-bypass:$BYPASS"} \
 			--route / --route /docs --route /docs/components/radix/button --route /blocks --route /charts/area)
