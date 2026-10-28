@@ -1,4 +1,4 @@
-import type { BrowserContext, Page, Response } from 'playwright';
+import type { BrowserContext, Frame, Page, Request, Response } from 'playwright';
 import type { Infrastructure, InfrastructureCause } from './types.ts';
 
 /** How long one page load may take before it is retried, then reported as an infrastructure failure. */
@@ -73,8 +73,10 @@ export class Scope {
 	closed = false;
 	readonly contexts = new Set<BrowserContext>();
 	/** Requests the route's pages are waiting on, by when each was sent; when each origin last answered, and when a request last failed. */
-	readonly waiting = new Map<object, { url: string; at: number }>();
+	readonly waiting = new Map<Request, { url: string; at: number }>();
 	readonly answered = new Map<string, number>();
+	/** When each frame last committed a navigation. */
+	private readonly navigated = new WeakMap<Frame, number>();
 	failed = 0;
 	track(context: BrowserContext): void {
 		if (this.closed) {
@@ -83,6 +85,7 @@ export class Scope {
 		}
 		this.contexts.add(context);
 		context.on('close', () => this.contexts.delete(context));
+		context.on('page', (page) => page.on('framenavigated', (frame) => this.navigated.set(frame, Date.now())));
 		context.on('request', (request) => this.waiting.set(request, { url: request.url(), at: Date.now() }));
 		context.on('requestfinished', (request) => {
 			this.waiting.delete(request);
@@ -98,7 +101,17 @@ export class Scope {
 	/** The oldest request still waiting for an answer after `ms`, if any: a server that stopped answering. */
 	stalled(ms: number): { url: string; at: number } | undefined {
 		const now = Date.now();
-		return [...this.waiting.values()].filter((w) => now - w.at >= ms).sort((a, b) => a.at - b.at)[0];
+		return [...this.waiting].filter(([request, w]) => now - w.at >= ms && !this.orphaned(request, w.at)).map(([, w]) => w).sort((a, b) => a.at - b.at)[0];
+	}
+	// Playwright sends no requestfailed for a request its page dropped by closing or navigating away.
+	private orphaned(request: Request, at: number): boolean {
+		try {
+			const frame = request.frame();
+			if (frame.isDetached() || frame.page().isClosed()) return true;
+			return !request.isNavigationRequest() && (this.navigated.get(frame) ?? 0) > at;
+		} catch {
+			return false;
+		}
 	}
 	/** How long ago `origin` last answered a request of the route's pages. */
 	sinceAnswer(origin: string): number | undefined {
