@@ -361,6 +361,12 @@ export class CheckablePlan {
  * aria-controls; Base UI renders only the chosen panel, so the panel element binds the chosen panel's id, label and
  * index and renders the content each tab showed on the old page (captured by choosing it) in an @if arm.
  */
+// Each tab's panel content in an arm; content Markless cannot rebuild in an arm (a shared component) stays rendered, hidden while its tab is not chosen.
+function panelArms(name: string, contents: readonly (string | undefined)[], inner: string): string {
+	if (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner)) return contents.map((c, k) => `<div hidden={${name} !== ${k}}>${c ?? inner}</div>`).join('');
+	return contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('');
+}
+
 export class BaseTabsPlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -412,7 +418,7 @@ export class BaseTabsPlan {
 					});
 				});
 				const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => new Set(panels.map((p) => p!.attrs[a])).size > 1);
-				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')) });
+				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => panelArms(name, contents, inner) });
 				groups++;
 				continue;
 			}
@@ -445,8 +451,7 @@ export class BaseTabsPlan {
 				declare,
 				omit: [...varying, 'data-activation-direction'],
 				extra: [...varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), direction],
-				// The chosen panel's own content, when Markless cannot rebuild it in an arm, stays as the only content.
-				wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')),
+				wrap: (inner) => panelArms(name, contents, inner),
 			});
 			groups++;
 		}
