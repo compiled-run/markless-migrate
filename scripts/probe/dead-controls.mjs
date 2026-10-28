@@ -74,7 +74,10 @@ function arm(control) {
 		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const visible = [...document.querySelectorAll(SEL)].filter((el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !el.closest('[hidden], [inert], [aria-hidden=true]') && el.getBoundingClientRect().width >= 2);
-	const same = visible.filter((el) => roleOf(el) === control.role && nameOf(el) === control.name);
+	// A calendar marks its build date's day "Today, …": the same day on the other side may lack the mark.
+	const untoday = (n) => n.replace(/^Today, /, '');
+	let same = visible.filter((el) => roleOf(el) === control.role && nameOf(el) === control.name);
+	if (!same.length) same = visible.filter((el) => roleOf(el) === control.role && untoday(nameOf(el)) === untoday(control.name));
 	const el = same[control.nth];
 	if (!el) return null;
 	for (const o of document.querySelectorAll('[data-dc-used]')) o.removeAttribute('data-dc-used');
@@ -466,7 +469,7 @@ function popupSummary() {
 	const before = globalThis.__dc?.openBefore ?? new Set();
 	const pop = [...document.querySelectorAll('[role=dialog], [role=listbox], [role=menu], [role=grid], [data-slot=popover-content]')].find((x) => !before.has(x) && x.checkVisibility() && !x.closest('main [data-dc-used]'));
 	if (!pop) return '';
-	const picked = [...pop.querySelectorAll('[aria-selected=true], [data-selected=true], [data-selected-single=true], [aria-checked=true], [aria-current=date]')].filter((x) => x.checkVisibility()).map((x) => `${x.textContent.trim().slice(0, 30)}${x.getAttribute('data-day') ? ` (${x.getAttribute('data-day')})` : ''}`);
+	const picked = [...pop.querySelectorAll('[aria-selected=true], [data-selected=true], [data-selected-single=true], [aria-checked=true]')].filter((x) => x.checkVisibility()).map((x) => `${x.textContent.trim().slice(0, 30)}${x.getAttribute('data-day') ? ` (${x.getAttribute('data-day')})` : ''}`);
 	const caption = [...pop.querySelectorAll('[role=status], [aria-live], [class*=caption]')].filter((x) => x.checkVisibility()).map((x) => x.textContent.trim().slice(0, 40));
 	return [...new Set([...caption, ...picked])].join('; ').slice(0, 200) || `${pop.getAttribute('role') ?? 'pop-up'} open`;
 }
@@ -529,7 +532,7 @@ function keyFindings(findings, base, old, port) {
 	if (port.missing || port.failed || port.error) return void findings.push({ ...base, kind: 'key-unusable', expected: `focusable and answers: ${describe(old)}`, actual: port.missing ?? port.failed ?? port.error });
 	const did = (r) => Boolean(r.affected?.length || r.url || r.popupRole);
 	if (did(old) && !did(port) && old.focus !== 'the page' && port.focus === old.focus) findings.push({ ...base, kind: 'key-dead', expected: describe(old), actual: 'nothing changed on the port' });
-	if (old.focus !== port.focus) findings.push({ ...base, kind: 'key-focus', expected: `focus ends on ${old.focus}`, actual: `on ${port.focus}` });
+	if (dayless(old.focus ?? '') !== dayless(port.focus ?? '')) findings.push({ ...base, kind: 'key-focus', expected: `focus ends on ${old.focus}`, actual: `on ${port.focus}` });
 	if ((old.url ?? '') !== (port.url ?? '')) findings.push({ ...base, kind: 'key-address', expected: old.url ? `address becomes ${old.url}` : 'the address stays', actual: port.url ? `becomes ${port.url}` : 'the address stays' });
 	if ((old.popupRole ?? '') !== (port.popupRole ?? '')) findings.push({ ...base, kind: 'key-popup', expected: old.popupRole ? `a ${old.popupRole} is open` : 'no pop-up open', actual: port.popupRole ? `a ${port.popupRole} is open` : 'no pop-up open' });
 	const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
@@ -545,6 +548,10 @@ async function armAt(p, control) {
 	await p.waitForTimeout(SCROLL_SETTLE);
 	return p.evaluate(arm, control);
 }
+
+// A calendar day's name carries each site's build date ("Today, Tuesday, October 28th, 2026"): it is compared without it.
+const DAY = /(?:Today, )?(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, )?(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(?:st|nd|rd|th)?,? \d{4}/g;
+const dayless = (k) => k.replace(DAY, 'a day');
 
 const ambient = { old: undefined, new: undefined };
 async function measureAmbient(side, route) {
@@ -613,10 +620,10 @@ for (const route of mine) {
 			// Namesakes (the page's many Copy buttons) pair by place, not by count: one missing does not shift every later pair.
 			const portByKey = new Map();
 			const pool = new Map();
-			for (const n of news) (pool.get(`${n.role}|${n.name}`) ?? pool.set(`${n.role}|${n.name}`, []).get(`${n.role}|${n.name}`)).push(n);
+			for (const n of news) (pool.get(dayless(`${n.role}|${n.name}`)) ?? pool.set(dayless(`${n.role}|${n.name}`), []).get(dayless(`${n.role}|${n.name}`))).push(n);
 			let drift = 0;
 			for (const c of [...olds].sort((a, b) => a.pageY - b.pageY)) {
-				const left = pool.get(`${c.role}|${c.name}`) ?? [];
+				const left = pool.get(dayless(`${c.role}|${c.name}`)) ?? [];
 				if (!left.length) continue;
 				const best = left.reduce((a, b) => (Math.abs(b.pageY - c.pageY - drift) < Math.abs(a.pageY - c.pageY - drift) ? b : a));
 				if (left.length > 1 && Math.abs(best.pageY - c.pageY - drift) > 400) continue;
