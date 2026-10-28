@@ -201,7 +201,9 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 		return `Layer${ids.get(markup)}`;
 	};
 	const routes = [...layers.keys()];
-	const everywhere = (layers.get(routes[0] ?? '') ?? []).filter((l) => routes.every((r) => layers.get(r)?.some((x) => x.markup === l.markup))).map((l) => l.markup);
+	// The router never wires the Document in the browser, so a layer with a site component or state stays in its pages.
+	const plain = (l: { readonly imports?: readonly string[]; readonly declare?: readonly string[] }) => !l.imports?.length && !l.declare?.length;
+	const everywhere = (layers.get(routes[0] ?? '') ?? []).filter((l) => plain(l) && routes.every((r) => layers.get(r)?.some((x) => x.markup === l.markup))).map((l) => l.markup);
 	const shared = new Set(everywhere);
 	const top = everywhere.map((m) => nameOf(m));
 	const own = new Map(routes.map((r) => [r, [...new Set((layers.get(r) ?? []).filter((l) => !shared.has(l.markup)).map((l) => nameOf(l.markup)))]]));
