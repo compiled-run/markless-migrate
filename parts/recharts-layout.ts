@@ -20,6 +20,9 @@ export interface Axis {
 	readonly off: number;
 	readonly num?: true;
 	readonly rev?: true;
+	readonly v?: readonly string[];
+	readonly f?: Intl.DateTimeFormatOptions;
+	readonly lo?: string;
 	readonly pad?: readonly [number, number] | string;
 	readonly c: readonly number[];
 	readonly l: readonly string[];

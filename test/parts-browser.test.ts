@@ -2055,3 +2055,32 @@ test('recharts: at another width, a step line\'s corners stay halfway between it
 	assert.equal(await page.locator('path.recharts-line-curve').getAttribute('d'), draw(600));
 	await page.close();
 });
+
+test('recharts: behind UTC, ticks a formatter wrote with toLocaleDateString read as the visitor\'s page writes them, where no clock part does', async () => {
+	const values = ['2024-07-15', '2024-07-16', '2024-07-17', '2024-07-18'];
+	const utc = ['Mon', 'Tue', 'Wed', 'Thu'];
+	const coords = [50, 150, 250, 350];
+	const axis = { t: 'xAxis', o: 'bottom', box: [0, 170, 400, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 50, pad: [0, 0], c: coords, l: utc, v: values, f: { weekday: 'short' }, lo: 'en-US' };
+	const facts = JSON.stringify({ w: 400, h: 200, v: [0, 0, 400, 170], m: 'x', g: [], p: [], a: [axis], l: 'horizontal' });
+	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="178" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${utc[i]}</tspan></text></g>`;
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${coords.map((_, i) => tick(i)).join('')}</g></g></svg>`;
+	const body = `<div style="width:400px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	const read = (page: Page) => page.evaluate(() => [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].map((t) => t.textContent));
+	const utcPage = await open(body, ['recharts', 'clock'], undefined, '', 'Asia/Tokyo');
+	await utcPage.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await utcPage.waitForTimeout(300);
+	assert.deepEqual(await read(utcPage), utc, 'east of UTC the capture stands');
+	await utcPage.close();
+	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent === 'Sun', undefined, { timeout: 5000 }).catch(() => {});
+	assert.deepEqual(await read(page), ['Sun', 'Mon', 'Tue', 'Wed']);
+	await page.close();
+	// In a chart whose tooltip dates the clock part writes (a region of fixed instants), weekdays alone are still the page's to write.
+	const region = await open(`<div data-slot="chart" data-mm-clock='[{"*":2024}]'>${body}</div>`, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await region.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await region.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
+	await region.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent === 'Sun', undefined, { timeout: 5000 }).catch(() => {});
+	assert.deepEqual(await read(region), ['Sun', 'Mon', 'Tue', 'Wed']);
+	await region.close();
+});

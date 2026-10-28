@@ -179,6 +179,7 @@ export function mount(el: Element): void {
 // The drawing laid out for the chart's own size and the visitor's time zone (recharts-layout), where either differs
 // from the capture's: a width the old page was not captured at, or dates read a day earlier behind UTC.
 type Layout = typeof import('./recharts-layout.ts');
+type Axis = import('./recharts-layout.ts').Axis;
 type Clock = typeof import('./clock.ts');
 let layoutLoad: Promise<[Layout, Clock]> | undefined;
 let layoutIn: [Layout, Clock] | undefined;
@@ -207,10 +208,23 @@ function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wr
 	const H = Math.round(box.height);
 	const clock = clockOf(wrapper);
 	const west = !!clock && behind(clock.year);
-	const key = `${W}x${H}${west ? 'w' : ''}`;
-	if (laid.get(svg) === key || (!laid.has(svg) && f.w === W && f.h === H && !west)) return;
+	const axes = (f.a ?? []) as (Axis | null)[];
+	// Dates an axis' formatter wrote with toLocaleDateString: this visitor's (a chart's clock region writes those with
+	// a month itself; a weekday alone it leaves).
+	const intl = (axis: Axis) => (axis.f && axis.v ? axis.v.map((v) => new Date(v).toLocaleDateString(axis.lo, axis.f)) : undefined);
+	const dated = axes.some((a) => a && intl(a)?.some((l, i) => l !== a.l[i]));
+	const key = `${W}x${H}${west || dated ? 'w' : ''}`;
+	if (laid.get(svg) === key || (!laid.has(svg) && f.w === W && f.h === H && !west && !dated)) return;
 	const run = ([layout, c]: [Layout, Clock]) => {
-		const local = west ? (axis: { l: readonly string[] }) => { const may = c.monthNamesIn(axis.l.join('\n')); return axis.l.map((l) => c.rewrite(l, clock!.rules as never, Date.now(), may)); } : undefined;
+		// The axis' text for this visitor, written in place; the clock part is told it is written.
+		const local = (axis: Axis) => {
+			const own = intl(axis);
+			const clocked = !!clock && axis.l.some((l) => new RegExp(c.DATE_TEXT.source).test(l));
+			if (own && !clocked) return own;
+			if (!west) return undefined;
+			const may = c.monthNamesIn(axis.l.join('\n'));
+			return axis.l.map((l) => c.rewrite(l, clock!.rules as never, Date.now(), may));
+		};
 		layout.fit(svg, W, H, local, c.claim);
 		laid.set(svg, key);
 		parsed.delete(svg);

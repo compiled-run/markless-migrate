@@ -72,6 +72,10 @@ export interface AxisModel {
 	readonly off: number;
 	/** A number axis (recharts' `type`); a category axis otherwise. */
 	readonly num?: true;
+	/** Each tick's value and the date format its formatter writes it in (toLocaleDateString's options), where it is one. */
+	readonly v?: readonly string[];
+	readonly f?: Intl.DateTimeFormatOptions;
+	readonly lo?: string;
 	readonly rev?: true;
 	/** The axis' padding along its length: [start, end] in px, or recharts' 'gap' / 'no-gap'. */
 	readonly pad?: readonly [number, number] | string;
@@ -313,7 +317,16 @@ export function chartModel(svg: Element): ChartModel {
 			...(typeof p.padding === 'string' ? { pad: p.padding } : p.padding && typeof p.padding === 'object' ? { pad: (p.axisType === 'xAxis' ? [num((p.padding as Record<string, unknown>).left), num((p.padding as Record<string, unknown>).right)] : [num((p.padding as Record<string, unknown>).top), num((p.padding as Record<string, unknown>).bottom)]) as [number, number] } : {}),
 			c: ticks.map((t) => t.coordinate),
 			l: ticks.map((t, i) => String(format(t.value, i))),
+			...intlOf(ticks.map((t) => t.value), ticks.map((t, i) => String(format(t.value, i)))),
 		});
+	}
+	// A formatter that writes each value as one of these date formats in the page's locale (the capture's UTC): the
+	// part writes them again in the visitor's time zone.
+	function intlOf(values: unknown[], labels: string[]): { v: string[]; f: Intl.DateTimeFormatOptions; lo: string } | Record<string, never> {
+		if (!values.length || !values.every((v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v))) return {};
+		const formats: Intl.DateTimeFormatOptions[] = [{ weekday: 'short' }, { weekday: 'long' }, { weekday: 'narrow' }, { month: 'short', day: 'numeric' }, { month: 'long', day: 'numeric' }, { month: 'short' }, { month: 'long' }, { day: 'numeric' }, { month: 'numeric', day: 'numeric' }, { month: 'short', day: 'numeric', year: 'numeric' }, { month: 'long', day: 'numeric', year: 'numeric' }, { weekday: 'short', month: 'short', day: 'numeric' }];
+		const f = formats.find((o) => values.every((v, i) => new Date(v as string).toLocaleDateString(navigator.language, o) === labels[i]));
+		return f ? { v: values as string[], f, lo: navigator.language } : {};
 	}
 	const store = up(svg, (q) => !!(q.value as { store?: { getState?: unknown } } | undefined)?.store?.getState || !!(q.store as { getState?: unknown } | undefined)?.getState);
 	type State = { rootProps?: Record<string, unknown>; layout?: { layoutType?: string }; graphicalItems?: { cartesianItems?: Record<string, unknown>[] } };
