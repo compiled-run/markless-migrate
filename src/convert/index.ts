@@ -71,7 +71,7 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
@@ -1460,6 +1460,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const raw of captured.pickers) if (raw.opener) {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
+			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
+			if (field && trigger) dayPickers.field(route, field, trigger, raw.opener);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
