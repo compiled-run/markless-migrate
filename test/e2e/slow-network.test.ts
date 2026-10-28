@@ -123,7 +123,7 @@ test('a resource only Firefox requests turns the route red in the Firefox cell a
 		assert.ok(failing.length && failing.every((c) => c.startsWith('page load: slow network, firefox ')), networkFailures('/', red).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
 		assert.ok(red.new.cells.every((c) => !c.unavailable), 'every browser measured');
 		const green = (await measureRoutesNetwork({ old: 'http://old.test', new: 'http://same.test' }, ['/'], options)).get('/')!;
-		assert.deepEqual(networkFailures('/', green).map((f) => f.check), []);
+		assert.deepEqual(networkFailures('/', green).map((f) => f.check), [], networkFailures('/', green).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
 	} finally {
 		for (const s of [old, slower, same]) s.server.close();
 	}
