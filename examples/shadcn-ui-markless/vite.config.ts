@@ -24,5 +24,6 @@ export default defineConfig({
 		traceDeps: ["@vercel/analytics","@vercel/blob","@vercel/og","cn","dedent","fumadocs-core","shadcn","ts-morph","zod","@ts-morph/common*"],
 		traceOpts: { nft: { ignore: (path: string) => ["@ts-morph/common/dist/typescript.js"].some((file) => path.endsWith(file)) } },
 	},
-	plugins: [migrateCache(), markless(), router()],
+	// `markless-migrate dev` turns off the dev server's execution log: it writes <html> attributes on every interaction.
+	plugins: [migrateCache(), markless(process.env.MARKLESS_MIGRATE_DEV ? { executionLog: 'never' } : {}), router()],
 });
