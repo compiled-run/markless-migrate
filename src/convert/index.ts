@@ -1576,7 +1576,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (handledForms.size) templatePorts.plan('form');
 	const notifyPlan = new NotifyPlan();
 	let notifyCount = 0;
-	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	// A form-library form's toast on a passing submit is a notification too, shown by its form's region.
+	for (const [route, p] of prepared) notifyCount += notifyPlan.add([...(notified.get(route) ?? []), ...(formLibsRead.get(route) ?? []).flatMap((f) => (f.toast ? [f.toast] : []))], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
 	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
 	if (notifyPlan.sonner) templatePorts.add('sonner');
 	// The shared body children holding a live region a page shows its notifications in: that page renders them.

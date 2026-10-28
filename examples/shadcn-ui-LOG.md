@@ -236,7 +236,10 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   differ reads the row's index. What an error changed in a row follows that row's errors, rendered always and hidden
   while it has none, since a keyed row holds no arm. Remove is hidden while a row is alone, and Add is disabled at the
   rows it stops at. react-hook-form focuses a row it adds; Formisch validates again on a row added or taken out once
-  submitted. Not ported: TanStack Form's list demo (validated on blur), and the toast a valid submit shows.
+  submitted. A submit that passes shows the old page's toast of the values submitted. Convert records it by letting the
+  library pass whatever the values, and the values' JSON in it is the toast's own text, given by the form part's
+  `mmformsubmit` (the schema's output for react-hook-form and Formisch, the state's values for TanStack Form). Not
+  ported: TanStack Form's list demo (validated on blur).
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer

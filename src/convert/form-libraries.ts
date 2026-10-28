@@ -9,6 +9,7 @@ import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
 import { attr, childrenOf, elementChildren, isElement, isText, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { matchSource, type SourceForm } from './form-schemas.ts';
+import { recordNotification, type Notify } from './toggles.ts';
 import { emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
 
 // What a page's form library (react-hook-form, TanStack Form, Formisch) was given and how its form showed each field's
@@ -62,6 +63,8 @@ export interface CapturedForm extends Located {
 	readonly resets: readonly Located[];
 	/** The element the library focuses when a submit finds the field invalid. */
 	readonly focus: Readonly<Record<string, Located>>;
+	/** What a submit that passes shows (a toast of the values), with the values' text as the slot `v`. */
+	readonly toast?: Notify;
 	/** Its list of rows a visitor adds to and removes from, as using its Add and Remove showed. */
 	readonly list?: CapturedList;
 	readonly snapshots: readonly FormSnapshot[];
@@ -82,7 +85,7 @@ export interface FormLibraryCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'form-libraries-9';
+const VERSION = 'form-libraries-11';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** The error messages a field is given while its markup is recorded: unlike any message a schema writes. */
@@ -117,6 +120,8 @@ function findForms(): Found[] {
 		options(): Record<string, unknown>;
 		order(): string[];
 		focusOf(name: string): Element | undefined;
+		/** Lets the next submit pass whatever the values (to see what passing shows). */
+		pass(): void;
 	}
 	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const counts = new Map<string, number>();
@@ -155,6 +160,9 @@ function findForms(): Found[] {
 					(was as HTMLElement | null)?.focus?.();
 					return now && now !== was && now !== document.body ? now : undefined;
 				},
+				pass: () => {
+					c.control._options.resolver = async (values: unknown) => ({ values, errors: {} });
+				},
 			};
 		if (isTanstack(c))
 			return {
@@ -167,6 +175,7 @@ function findForms(): Found[] {
 				options: () => ({ validators: Object.keys(c.options.validators ?? {}).filter((k) => c.options.validators[k]) }),
 				order: () => Object.keys(c.fieldInfo),
 				focusOf: () => undefined,
+				pass: () => c.update({ ...c.options, validators: {} }),
 			};
 		if (isFormisch(c)) {
 			const root = c['~internal'];
@@ -199,6 +208,10 @@ function findForms(): Found[] {
 					return names;
 				},
 				focusOf: (name) => (kid(name)?.elements as Element[] | undefined)?.[0],
+				// Formisch validates through its store's parse (valibot's safeParse of the schema).
+				pass: () => {
+					root.parse = (input: unknown) => ({ typed: true, success: true, output: input, issues: undefined });
+				},
 			};
 		}
 		return undefined;
@@ -553,6 +566,38 @@ async function recordList(page: Page, url: string, i: number, list: CapturedList
 	return out;
 }
 
+/**
+ * What a submit that passes shows: the library is let pass whatever the values, the form submitted with its Submit, and
+ * what that added in a live region recorded, with the text of the values JSON as the slot `v`.
+ */
+async function recordToast(page: Page, url: string, i: number, found: Found): Promise<Notify | undefined> {
+	const submit = found.submits?.[0];
+	if (!submit || !found.region) return undefined;
+	await ready(page, url);
+	const values = await page.evaluate((i) => {
+		const entry = (window as unknown as { __mmFL: { adapter: { pass(): void; values(): unknown } }[] }).__mmFL[i]!;
+		entry.adapter.pass();
+		return JSON.stringify(entry.adapter.values(), null, 2);
+	}, i);
+	const note = await recordNotification(
+		page,
+		() =>
+			page
+				.evaluate(([sig, nth]) => {
+					const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+					const button = [...document.body.querySelectorAll('*')].filter((el) => !el.closest('template') && sigOf(el) === sig)[nth] as HTMLElement | undefined;
+					button?.click();
+					return Boolean(button);
+				}, [submit.sig, submit.nth] as const)
+				.catch(() => false),
+		found.region,
+	);
+	await ready(page, url);
+	if (!note?.sonner) return undefined;
+	const shows = note.sonner.phases.some((p) => p.inner.includes(values.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')) || p.inner.includes(values));
+	return { ...note, onSubmit: true, ...(shows ? { texts: { v: values } } : {}) };
+}
+
 /** The region in each state a binding is learned from: as loaded, each field with one and with two errors, each text field holding two values. */
 async function record(page: Page, url: string, i: number, found: Found, controls: readonly FormControl[]): Promise<FormSnapshot[]> {
 	const out: FormSnapshot[] = [{ name: 'initial', html: await markup(page, i) }];
@@ -605,7 +650,8 @@ export async function captureFormLibraries(browser: Browser, origin: string, rou
 			const list = await probeList(page, url, i, f.fields ?? [], f.submits ?? []);
 			const snapshots = await record(page, url, i, f, controls);
 			if (list) snapshots.push(...(await recordList(page, url, i, list, f.submits ?? [])));
-			forms.push({ sig: f.sig, nth: f.nth, library: f.library, region: f.region, options: f.options ?? {}, fields: f.fields ?? [], defaults: f.defaults ?? {}, controls, submits: f.submits ?? [], resets: resets.filter((r) => !list || r.sig !== list.append.sig || r.nth !== list.append.nth), focus: f.focus ?? {}, ...(list ? { list } : {}), snapshots });
+			const toast = await recordToast(page, url, i, f);
+			forms.push({ sig: f.sig, nth: f.nth, library: f.library, region: f.region, options: f.options ?? {}, fields: f.fields ?? [], defaults: f.defaults ?? {}, controls, submits: f.submits ?? [], resets: resets.filter((r) => !list || r.sig !== list.append.sig || r.nth !== list.append.nth), focus: f.focus ?? {}, ...(list ? { list } : {}), ...(toast ? { toast } : {}), snapshots });
 		}
 	} finally {
 		await context.close().catch(() => {});
@@ -859,7 +905,7 @@ export class FormPlan {
 		for (const r of form.resets) mark(r.sig, r.nth, { 'data-mm-fl-reset': '' });
 		for (const [field, el] of Object.entries(form.focus)) if (!inList(field)) mark(el.sig, el.nth, { 'data-mm-fl-focus': field });
 		const listDefaults = lists.flatMap((l) => Array.from({ length: l.rows }, (_, row) => l.subs.map((sub) => [`${l.name}.${row}.${sub.name}`, valueAt([...l.path, row, ...sub.path]) ?? sub.item] as const)).flat());
-		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), ...(lists.length ? { lists } : {}), defaults: Object.fromEntries([...fields.map((f) => [f.name, valueAt(f.path) ?? null] as const), ...listDefaults]) };
+		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), ...(lists.length ? { lists } : {}), shape: form.defaults, defaults: Object.fromEntries([...fields.map((f) => [f.name, valueAt(f.path) ?? null] as const), ...listDefaults]) };
 		const schemaName = `fs_${hash(source.module)}`;
 		const specName = `fl_${hash([entry, schemaName])}`;
 		this.schemas.set(schemaName, source.module);

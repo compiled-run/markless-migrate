@@ -115,7 +115,7 @@ test('the form\'s spec and its schema module: the old source\'s schema and what 
 	assert.match(schema, /import \* as z from "zod";\n\nconst MAX = 100\n\nconst formSchema = z\.object\(\{[\s\S]*about: z\.string\(\)\.max\(MAX, "Too long\."\),\n\}\)\n\nexport const schema = formSchema;\n$/);
 	assert.doesNotMatch(schema, /Input|BugReportForm|hookform/);
 	const forms = files.get('form-libraries.ts')!;
-	assert.match(forms, /"fl_[0-9a-f]{10}": \{ \.\.\.\{"library":"react-hook-form","fields":\[\{"name":"title","path":\["title"\]\},\{"name":"about","path":\["about"\]\}\],"defaults":\{"title":"","about":""\}\}, schema: \(\) => import\('\.\/form-schemas\/fs_[0-9a-f]{10}\.ts'\)\.then\(\(m\) => m\.schema\) \}/);
+	assert.match(forms, /"fl_[0-9a-f]{10}": \{ \.\.\.\{"library":"react-hook-form","fields":\[\{"name":"title","path":\["title"\]\},\{"name":"about","path":\["about"\]\}\],"shape":\{"title":"","about":""\},"defaults":\{"title":"","about":""\}\}, schema: \(\) => import\('\.\/form-schemas\/fs_[0-9a-f]{10}\.ts'\)\.then\(\(m\) => m\.schema\) \}/);
 	assert.deepEqual([...plan.packages], [['zod', '^3.25.76']]);
 });
 
@@ -191,7 +191,7 @@ test('a list\'s rows are one keyed @for from the first row, each place the rows 
 	assert.match(out, /<div role="alert" data-slot="field-error" class="text-destructive" hidden=\{r\.e0\.length !== 1\}>\{r\.m0\}<\/div><div role="alert" data-slot="field-error" class="text-destructive" hidden=\{r\.e0\.length < 2\}><ul class="list-disc">@for \(const m of r\.e0; key m\) \{ <li>\{m\}<\/li> \}<\/ul><\/div><\/div> \}<button type="button" data-slot="button" data-mm-fl-append="emails" disabled=\{fl0r\.length >= 5\}>Add Email Address<\/button>/);
 	assert.equal((out.match(/name=\{"emails\./g) ?? []).length, 1, 'the second row is the first one\'s copy');
 	assert.deepEqual([...new Set(declarations)], ['let fl0r = state([{"k":0,"i":0,"e0":[],"m0":""},{"k":1,"i":1,"e0":[],"m0":""}] as { k: number; i: number; e0: string[]; m0: string }[]);']);
-	assert.match(plan.files().get('form-libraries.ts')!, /"lists":\[\{"name":"emails","path":\["emails"\],"subs":\[\{"name":"address","path":\["address"\],"item":""\}\],"rows":2\}\],"defaults":\{"emails\.0\.address":"","emails\.1\.address":""\}/);
+	assert.match(plan.files().get('form-libraries.ts')!, /"lists":\[\{"name":"emails","path":\["emails"\],"subs":\[\{"name":"address","path":\["address"\],"item":""\}\],"rows":2\}\],"shape":\{"emails":\[\{"address":""\},\{"address":""\}\]\},"defaults":\{"emails\.0\.address":"","emails\.1\.address":""\}/);
 	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
 	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source: `import { state } from '@markless/core';\nexport default function Page() @{\n\t${[...new Set(declarations)].join('\n\t')}\n\t${out.replace(/^<body>|<\/body>$/g, '')}\n}\n`, symbols: [] });
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);

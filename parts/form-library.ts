@@ -35,6 +35,8 @@ export interface FormSpec {
 	readonly fields: readonly FieldSpec[];
 	readonly lists?: readonly ListSpec[];
 	readonly defaults: Readonly<Record<string, Json>>;
+	/** The values as the form was given them, whose key order the values it submits keep (TanStack Form's state). */
+	readonly shape?: Json;
 }
 
 export interface FormState {
@@ -81,7 +83,7 @@ export function fieldsOf(spec: FormSpec, state: FormState): FieldSpec[] {
 
 /** The form's values as one object, each field's value at its path, and each list as many rows as it has. */
 export function formValues(spec: FormSpec, values: Readonly<Record<string, Json>>, state?: FormState): Json {
-	const out: Record<string, Json> = {};
+	const out: Record<string, Json> = spec.shape && typeof spec.shape === 'object' && !Array.isArray(spec.shape) ? structuredClone(spec.shape as Record<string, Json>) : {};
 	for (const l of spec.lists ?? []) {
 		let at = out as Record<string | number, Json>;
 		l.path.forEach((key, i) => (at = (i === l.path.length - 1 ? (at[key] = []) : (at[key] ??= {})) as Record<string | number, Json>));
@@ -201,6 +203,8 @@ interface Live {
 	readonly spec: FormEntry;
 	state: FormState;
 	validate?: Validate;
+	/** The values a passing validation gives (the schema's output, in its keys' order). */
+	output?: (values: Json) => Json;
 }
 const live = new WeakMap<Element, Promise<Live | undefined>>();
 
@@ -215,7 +219,11 @@ function liveOf(region: Element): Promise<Live | undefined> {
 				const result = schema['~standard'].validate(values) as { issues?: readonly Issue[] } | Promise<unknown>;
 				return result instanceof Promise ? [] : (result.issues ?? []);
 			};
-			return { spec, state: initialState(spec), validate };
+			const output = (values: Json): Json => {
+				const result = schema['~standard'].validate(values) as { value?: Json } | Promise<unknown>;
+				return result instanceof Promise || result.value === undefined ? values : result.value;
+			};
+			return { spec, state: initialState(spec), validate, output };
 		});
 		live.set(region, found);
 	}
@@ -364,7 +372,8 @@ export function submit(target: Element, event: SubmitEvent): boolean {
 		l.state = result.state;
 		commit(region, l);
 		if (result.focus) focusField(region, l.spec, result.focus);
-		if (result.submit !== undefined) region.dispatchEvent(new CustomEvent('mmformsubmit', { detail: result.submit, bubbles: true }));
+		// The site's onSubmit gets the resolver's or schema's output (react-hook-form, Formisch), TanStack Form its state's values.
+		if (result.submit !== undefined) region.dispatchEvent(new CustomEvent('mmformsubmit', { detail: l.spec.library === 'tanstack-form' ? result.submit : l.output!(result.submit), bubbles: true }));
 	});
 	return true;
 }

@@ -606,6 +606,10 @@ export interface Notify {
 	readonly ms: number;
 	/** A sonner toast: what its Toast and Toaster were given, and its markup over its life. */
 	readonly sonner?: SonnerToast;
+	/** It shows when its form is submitted and passes (the form-library part's mmformsubmit), not on a press. */
+	readonly onSubmit?: boolean;
+	/** Text the use put in it, by a slot name: what it shows there is what the use gives at the time (the values submitted). */
+	readonly texts?: Readonly<Record<string, string>>;
 }
 
 /** A sonner toast as the old page's React tree held it (parts/sonner.ts runs it). */
@@ -654,54 +658,15 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 						return n;
 					};
 					const control = [...document.body.querySelectorAll(selector)].filter((el) => el.getBoundingClientRect().width > 0)[i]!;
-					const w = window as unknown as { __mmAdded: { node: Element; region: Element }[]; __mmRegions: Map<Element, { sig: string; nth: number }> };
-					w.__mmAdded = [];
-					w.__mmRegions = new Map([...document.body.querySelectorAll('[aria-live]')].map((r) => [r, { sig: sigOf(r), nth: nthOf(r) }]));
-					new MutationObserver((records) => {
-						for (const r of records)
-							for (const n of r.addedNodes) {
-								if (!(n instanceof Element)) continue;
-								const region = [...w.__mmRegions.keys()].find((x) => x.contains(n) && x !== n);
-								if (region && !w.__mmAdded.some((a) => a.node.contains(n))) w.__mmAdded.push({ node: n, region });
-							}
-					}).observe(document.body, { childList: true, subtree: true });
 					(window as unknown as { __mmControl: Element }).__mmControl = control;
 					return { sig: sigOf(control), nth: nthOf(control) };
 				},
 				{ selector: selectors.join(', '), i },
 			);
 			const handle = (await page.evaluateHandle(() => (window as unknown as { __mmControl: Element }).__mmControl)).asElement();
-			if (!handle || (await handle.click({ timeout: 2000 }).then(() => false, () => true))) continue;
-			const started = Date.now();
-			await page.waitForTimeout(600);
-			const added = await page.evaluate(() => {
-				const w = window as unknown as { __mmAdded: { node: Element; region: Element }[]; __mmRegions: Map<Element, { sig: string; nth: number }> };
-				// The region's own top element the addition went under: the notification's outermost new node.
-				return w.__mmAdded.filter((a) => a.node.isConnected).map((a) => {
-					let top = a.node;
-					while (top.parentElement && top.parentElement !== a.region && !w.__mmAdded.some((b) => b.node === top.parentElement)) top = top.parentElement;
-					return { into: w.__mmRegions.get(a.region)!, html: a.node.outerHTML };
-				})[0];
-			});
-			if (!added) continue;
-			const sonner = await page.evaluate(readSonner).catch(() => undefined);
-			const phases = sonner ? [...sonner.phases] : [];
-			let ms = 0;
-			while (Date.now() - started < 15000) {
-				const gone = await page.evaluate(() => (window as unknown as { __mmAdded: { node: Element }[] }).__mmAdded.every((a) => !a.node.isConnected));
-				if (gone) {
-					ms = Date.now() - started;
-					break;
-				}
-				// A toast whose content changes while it shows (a promise's result) is recorded at each change.
-				if (sonner) {
-					const now = await page.evaluate(sonnerPhase).catch(() => undefined);
-					const last = phases[phases.length - 1]!;
-					if (now && (now.inner !== last.inner || now.type !== last.type)) phases.push({ ...now, at: Date.now() - started });
-				}
-				await page.waitForTimeout(sonner ? 100 : 250);
-			}
-			notifications.push({ sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}) });
+			if (!handle) continue;
+			const note = await recordNotification(page, () => handle.click({ timeout: 2000 }).then(() => true, () => false), found);
+			if (note) notifications.push(note);
 		}
 	} finally {
 		await context.close().catch(() => {});
@@ -710,6 +675,72 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+/** Watches the page's live regions for what a use adds (run in the page). */
+export function watchLiveRegions(): void {
+	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+	const nthOf = (el: Element) => {
+		const sig = sigOf(el);
+		let n = 0;
+		for (const e of document.body.querySelectorAll('*')) {
+			if (e === el) break;
+			if (sigOf(e) === sig) n++;
+		}
+		return n;
+	};
+	const w = window as unknown as { __mmAdded: { node: Element; region: Element }[]; __mmRegions: Map<Element, { sig: string; nth: number }>; __mmWatch?: MutationObserver };
+	w.__mmAdded = [];
+	w.__mmRegions = new Map([...document.body.querySelectorAll('[aria-live]')].map((r) => [r, { sig: sigOf(r), nth: nthOf(r) }]));
+	w.__mmWatch?.disconnect();
+	w.__mmWatch = new MutationObserver((records) => {
+		for (const r of records)
+			for (const n of r.addedNodes) {
+				if (!(n instanceof Element)) continue;
+				const region = [...w.__mmRegions.keys()].find((x) => x.contains(n) && x !== n);
+				if (region && !w.__mmAdded.some((a) => a.node.contains(n))) w.__mmAdded.push({ node: n, region });
+			}
+	});
+	w.__mmWatch.observe(document.body, { childList: true, subtree: true });
+}
+
+/**
+ * What a use (`use`, after the live regions are watched) added inside a live region until it went away: its markup and
+ * lifetime, and for a sonner toast its props and each markup it showed over its life. `found` names the control.
+ */
+export async function recordNotification(page: Page, use: () => Promise<boolean>, found: { sig: string; nth: number }): Promise<Notify | undefined> {
+	await page.evaluate(watchLiveRegions);
+	if (!(await use())) return undefined;
+	const started = Date.now();
+	await page.waitForTimeout(600);
+	const added = await page.evaluate(() => {
+		const w = window as unknown as { __mmAdded: { node: Element; region: Element }[]; __mmRegions: Map<Element, { sig: string; nth: number }> };
+		// The region's own top element the addition went under: the notification's outermost new node.
+		return w.__mmAdded.filter((a) => a.node.isConnected).map((a) => {
+			let top = a.node;
+			while (top.parentElement && top.parentElement !== a.region && !w.__mmAdded.some((b) => b.node === top.parentElement)) top = top.parentElement;
+			return { into: w.__mmRegions.get(a.region)!, html: a.node.outerHTML };
+		})[0];
+	});
+	if (!added) return undefined;
+	const sonner = await page.evaluate(readSonner).catch(() => undefined);
+	const phases = sonner ? [...sonner.phases] : [];
+	let ms = 0;
+	while (Date.now() - started < 15000) {
+		const gone = await page.evaluate(() => (window as unknown as { __mmAdded: { node: Element }[] }).__mmAdded.every((a) => !a.node.isConnected));
+		if (gone) {
+			ms = Date.now() - started;
+			break;
+		}
+		// A toast whose content changes while it shows (a promise's result) is recorded at each change.
+		if (sonner) {
+			const now = await page.evaluate(sonnerPhase).catch(() => undefined);
+			const last = phases[phases.length - 1]!;
+			if (now && (now.inner !== last.inner || now.type !== last.type)) phases.push({ ...now, at: Date.now() - started });
+		}
+		await page.waitForTimeout(sonner ? 100 : 250);
+	}
+	return { sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}) };
 }
 
 /** The newest sonner toast's markup and type (run in the page). */
