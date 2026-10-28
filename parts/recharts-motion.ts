@@ -245,9 +245,9 @@ export function morph(wrapper: Element, from: Element, to: Element, lag: number,
 	const stop = () => cancelAnimationFrame(frame);
 	drawn.set(wrapper, { surface: to, shapes, stop });
 	if (!marks.length || reduced()) return render(1);
-	const timing = marks[0]!.geo.a ?? [0, 1500, 'ease'];
-	const ease = easing(timing[2]);
-	if (!ease) return render(1);
+	const timing = marks[0]!.geo.a;
+	const ease = timing && easing(timing[2]);
+	if (!timing || !ease) return render(1);
 	render(0);
 	let count = since;
 	let begin: number | undefined;

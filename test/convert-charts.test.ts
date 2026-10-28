@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { animationLag, ChartPlan, template } from '../src/convert/charts.ts';
-import { attr, body, find, parseDocument, textContent } from '../src/convert/dom.ts';
+import { animationLag, ChartPlan, spare, spareCounts, template } from '../src/convert/charts.ts';
+import { attr, body, find, parseDocument, textContent, walk } from '../src/convert/dom.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 
 const textOf = (el: Parameters<typeof textContent>[0]) => textContent(el).trim();
@@ -86,4 +86,35 @@ test('the update animation\'s lag is read off a film of the marks from the input
 	assert.equal(animationLag(['a', 'b', 'b', 'b', 'b', 'b', 'c', 'd', 'e', 'f']), 4);
 	assert.equal(animationLag(['a', 'a', 'a', 'a', 'a', 'a', 'b', 'c', 'd']), 4, 'a switch whose first shape is the old one');
 	assert.equal(animationLag(['a', 'a', 'b', 'b', 'a', 'a']), undefined, 'no run of motion: no animation');
+});
+
+test('each drawing\'s facts carry its axes\' every possible tick, which the part picks the shown ones from', () => {
+	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"><g class="recharts-cartesian-axis recharts-xAxis"></g></svg><div class="recharts-tooltip-wrapper"></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const axis = { t: 'xAxis' as const, o: 'bottom' as const, box: [5, 187, 1220, 30] as const, vb: [0, 0, 1230, 250] as const, gap: 32, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c: [5, 18.555555555555557], l: ['Apr 1', 'Apr 2'] };
+	const variant = { svg: '<svg class="recharts-surface"></svg>', mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 1, model: { axes: [null, axis], bars: { gap: 4, cat: '10%', groups: [{}] } } };
+	const plan = new ChartPlan();
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 1230, height: 250, view: [5, 0, 1220, 187] as const, variants: [variant], drivers: [] }], (sig) => (sig === 'w' ? wrapper : undefined), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	const facts = /data-mm-facts=\{("(?:[^"\\]|\\.)*")\}/.exec(out);
+	assert.ok(facts, out.slice(0, 300));
+	const parsed = JSON.parse(JSON.parse(facts[1]!)) as { a: unknown[]; b: unknown };
+	assert.deepEqual(parsed.a, [null, axis], 'the coordinates at full precision, the axis with a custom tick as null');
+	assert.deepEqual(parsed.b, { gap: 4, cat: '10%', groups: [{}] });
+});
+
+test('each drawing carries hidden copies of its first tick and grid line, up to what the chart\'s busiest drawing shows and three more', () => {
+	const svg = (ticks: number, lines: number) => parseDocument(`<body><svg><g class="recharts-cartesian-grid-horizontal">${'<line y1="1"></line>'.repeat(lines)}</g><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${'<g class="recharts-layer recharts-cartesian-axis-tick-label"><text><tspan>Apr 1</tspan></text></g>'.repeat(ticks)}</g></svg></body>`);
+	const tree = (doc: ReturnType<typeof parseDocument>) => find(body(doc), (el) => el.tagName === 'svg')!;
+	const narrow = tree(svg(4, 3));
+	const counts = spareCounts([narrow, tree(svg(9, 5))]);
+	spare(narrow, counts);
+	const labels = find(narrow, (el) => (attr(el, 'class') ?? '').includes('recharts-xAxis-tick-labels'))!;
+	const kids = [...walk(labels)].filter((el) => (attr(el, 'class') ?? '').split(' ').includes('recharts-cartesian-axis-tick-label'));
+	assert.equal(kids.length, 12);
+	assert.deepEqual(kids.map((k) => attr(k, 'display') ?? ''), [...Array(4).fill(''), ...Array(8).fill('none')]);
+	assert.equal(textContent(kids[11]!), 'Apr 1', 'a copy of the first');
+	const grid = find(narrow, (el) => (attr(el, 'class') ?? '').includes('recharts-cartesian-grid-horizontal'))!;
+	assert.equal([...walk(grid)].filter((el) => el.tagName === 'line').length, 8);
 });

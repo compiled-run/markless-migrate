@@ -161,6 +161,21 @@ export function mount(el: Element): void {
 	if (!(el instanceof HTMLElement) || !el.matches(WRAPPER)) return;
 	wire(el);
 	watch(el);
+	relabel(el);
+}
+
+// Behind UTC, the dates recharts formats from UTC midnights read a day earlier, so their axis keeps other ticks.
+function relabel(wrapper: HTMLElement): void {
+	const region = wrapper.closest('[data-mm-clock]');
+	let rules: { '*'?: number }[];
+	try {
+		rules = JSON.parse(region?.getAttribute('data-mm-clock') ?? '[]') as { '*'?: number }[];
+	} catch {
+		return;
+	}
+	const year = rules.find((r) => r['*'] !== undefined)?.['*'];
+	if (year === undefined || ![0, 6].some((month) => new Date(Date.UTC(year, month, 1)).getTimezoneOffset() > 0)) return;
+	void Promise.all([import('./recharts-layout.ts'), import('./clock.ts')]).then(([layout, clock]) => layout.relabel(wrapper, rules, clock));
 }
 
 // recharts' update animation runs in its own module, fetched once a card whose controls switch its chart is about to be used.

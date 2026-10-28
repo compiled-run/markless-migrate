@@ -128,7 +128,7 @@ export const PORTS: readonly Port[] = [
 	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
 	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
-	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion'] },
+	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion', 'recharts-layout', 'clock'] },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).
 	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown', 'focusin'], locate: (el) => radix(el) },
 	// Radix ScrollArea: the scrollbars it mounts on hover are rendered hidden in the area (convert's companions).
