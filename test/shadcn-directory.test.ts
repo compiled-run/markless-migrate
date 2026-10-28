@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fc from 'fast-check';
-import { directoryView, pageHref, pageNumbers, rank, type DirectoryEntry } from '../examples/shadcn-ui-markless/lib/site/directory.ts';
+import { address, directoryView, pageHref, pageNumbers, rank, type DirectoryEntry } from '../examples/shadcn-ui-markless/lib/site/directory.ts';
 
 const entry = (name: string, description = `${name} components`): DirectoryEntry => ({ name, homepage: `https://${name.slice(1)}.dev`, description, logo: name.slice(1), viewBox: '0 0 24 24' });
 const NOW = Date.parse('2026-10-27T12:00:00Z');
@@ -81,4 +81,10 @@ test('page links keep the query and leave out page 1', () => {
 	assert.equal(pageHref('/docs/directory', 'magic ui', 1), '/docs/directory?q=magic+ui');
 	assert.equal(pageHref('/docs/directory', 'magic', 3), '/docs/directory?q=magic&page=3');
 	assert.equal(pageHref('/docs/directory', '', 1), '/docs/directory');
+});
+
+test('the address carries the query as nuqs writes it: commas kept, spaces as +, and the page after it', () => {
+	assert.equal(address('/docs/directory', 'May 28, 2025', 1), '/docs/directory?q=May+28,+2025');
+	assert.equal(address('/docs/directory', 'a+b&c', 2), '/docs/directory?q=a%2Bb%26c&page=2');
+	assert.equal(address('/docs/directory', '', 1), '/docs/directory');
 });

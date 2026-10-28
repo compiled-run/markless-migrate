@@ -198,16 +198,23 @@ export function storeManager(m: Manager): void {
 	localStorage.setItem('config', JSON.stringify({ ...config, packageManager: m }));
 }
 
+// nuqs's renderQueryString: a value keeps its commas, colons and slashes, a space is "+" (the links' hrefs use URLSearchParams).
+const encodeQueryValue = (input: string) => input.replace(/%/g, '%25').replace(/\+/g, '%2B').replace(/ /g, '+').replace(/#/g, '%23').replace(/&/g, '%26').replace(/"/g, '%22').replace(/'/g, '%27').replace(/`/g, '%60').replace(/</g, '%3C').replace(/>/g, '%3E').replace(/[\x00-\x1F]/g, (c) => encodeURIComponent(c));
+export function address(pathname: string, query: string, page: number): string {
+	const parts = [...(query ? [`q=${encodeQueryValue(query)}`] : []), ...(page > 1 ? [`page=${page}`] : [])];
+	return parts.length ? `${pathname}?${parts.join('&')}` : pathname;
+}
+
 let addressTimer: ReturnType<typeof setTimeout> | undefined;
 /** nuqs's useQueryState("q", { limitUrlUpdates: debounce(250) }): the address follows the query 250 ms after typing stops, replacing the entry. */
 export function writeQuery(query: string): void {
 	clearTimeout(addressTimer);
-	addressTimer = setTimeout(() => history.replaceState(history.state, '', pageHref(location.pathname, query, 1)), 250);
+	addressTimer = setTimeout(() => history.replaceState(history.state, '', address(location.pathname, query, 1)), 250);
 }
 /** useQueryState("page", { history: "push" }): a page change is a new history entry. */
 export function writePage(query: string, page: number): void {
 	clearTimeout(addressTimer);
-	history.pushState(history.state, '', pageHref(location.pathname, query, page));
+	history.pushState(history.state, '', address(location.pathname, query, page));
 }
 export function readAddress(): { readonly query: string; readonly page: number } {
 	const params = new URLSearchParams(location.search);
