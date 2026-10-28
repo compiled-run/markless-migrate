@@ -433,6 +433,41 @@ test('ComboBox: typing shows the options containing the text, ArrowDown and Ente
 	await page.close();
 });
 
+test("ComboBox: its popover sits under the input, as wide as the input and button together (the input is useComboBox's trigger)", async () => {
+	const page = await open(combobox.replace('<input id="cb"', '<input id="cb" style="width:180px;height:30px;margin-left:200px"').replace('<button id="cbb"', '<button id="cbb" style="width:24px;height:30px"').replace('style="position:absolute" data-placement="bottom">', 'style="position:absolute;width:var(--trigger-width)" data-placement="bottom">'));
+	await page.click('#cbb');
+	await page.waitForTimeout(50);
+	const [input, button, pop] = await page.evaluate(() => ['cb', 'cbb'].map((id) => document.getElementById(id)!.getBoundingClientRect().toJSON()).concat([document.querySelector('[data-slot="combobox-content"]')!.getBoundingClientRect().toJSON()]));
+	assert.equal(Math.round(pop.left), Math.round(input.left));
+	assert.equal(Math.round(pop.width), Math.round(button.right - input.left));
+	assert.ok(Math.abs(pop.top - (input.bottom + 8)) <= 1, JSON.stringify({ input, pop }));
+	await page.close();
+});
+
+test("ComboBox: a popover the site anchored to the input group (its recorded --trigger-width is the group's) sits under the group, as wide", async () => {
+	const page = await open(combobox.replace('data-slot="input-group" data-rac="" role="group">', 'data-slot="input-group" data-rac="" role="group" style="display:flex;width:230px;padding:0 3px;margin-left:200px;box-sizing:border-box">').replace('<input id="cb"', '<input id="cb" style="width:180px;height:30px"').replace('<button id="cbb"', '<button id="cbb" style="width:24px;height:30px"').replace('style="position:absolute" data-placement="bottom">', 'style="position:absolute;width:var(--trigger-width);--trigger-width: 230px" data-placement="bottom">'));
+	await page.click('#cbb');
+	await page.waitForTimeout(50);
+	const [group, pop] = await page.evaluate(() => [document.querySelector('[data-slot="input-group"]')!, document.querySelector('[data-slot="combobox-content"]')!].map((e) => e.getBoundingClientRect().toJSON()));
+	assert.equal(Math.round(pop.left), Math.round(group.left));
+	assert.equal(Math.round(pop.width), Math.round(group.width));
+	await page.close();
+});
+
+test('ComboBox: ArrowDown on its focused button opens the list on the first option, focus staying on the button; again closes it', async () => {
+	const page = await open(combobox);
+	await page.focus('#cbb');
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'true');
+	assert.equal(await page.getAttribute('#cb', 'aria-activedescendant'), 'c1');
+	assert.equal(await active(page), 'cbb');
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false');
+	await page.close();
+});
+
 test('ComboBox: while open, everything but its input and popover is hidden from assistive technology, not made inert', async () => {
 	const page = await open(combobox);
 	await page.focus('#cb');
