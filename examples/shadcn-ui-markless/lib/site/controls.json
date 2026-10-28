@@ -14,5 +14,7 @@
 	{"selector": "[data-slot=\"preview\"] [data-slot=\"collapsible-trigger\"], [data-slot=\"preview\"] [data-slot=\"collapsible\"] > button[slot=\"trigger\"]", "action": "play", "routes": "^/docs/components/[^/]+/bubble$"},
 	{"action": "theme", "name": "Toggle theme", "key": "d", "metaColors": {"light": "#ffffff", "dark": "#0a0a0a"}, "disableTransitionOnChange": true},
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-haspopup]):not([aria-expanded])", "action": "open", "routes": "^/docs/components/[^/]+/command$"},
-	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"]", "action": "play", "routes": "^(/docs/ai-elements/[^/]+/(chat|model-selector|prompt-input|suggestion)|/docs/changelog|/docs/changelog/2026-10-ai-elements)$"}
+	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"]", "action": "play", "routes": "^/docs/ai-elements/[^/]+/(chat|model-selector|prompt-input|suggestion)$"},
+	{"selector": "[data-slot=\"preview\"] button", "action": "play", "text": "^Replay$", "routes": "^/docs/ai-elements/[^/]+/(chain-of-thought|plan|queue|reasoning|sources|stack-trace|subagent|task|terminal|test-results|tool)$"},
+	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"], [data-slot=\"preview\"] button", "action": "play", "text": "^Replay$", "routes": "^/docs/changelog(/2026-10-ai-elements)?$"}
 ]

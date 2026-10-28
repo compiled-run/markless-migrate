@@ -203,7 +203,7 @@ const hash = (node: SceneNode) => createHash('sha256').update(shape(node)).diges
 
 // Runs in the page: the demo's listed controls that can be used now, each by its tag, data-slot and text, and which
 // element with them it is inside the demo.
-function controlsIn([selector, index, listed]: readonly [string, number, string]): string[] {
+function controlsIn([selector, index, listed, text]: readonly [string, number, string, string]): string[] {
 	const root = document.querySelectorAll(selector)[index]!;
 	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? (el.matches('textarea, input') ? el.getAttribute('placeholder') : null) ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const counts = new Map<string, number>();
@@ -214,6 +214,8 @@ function controlsIn([selector, index, listed]: readonly [string, number, string]
 		counts.set(sig, n + 1);
 		const r = el.getBoundingClientRect();
 		if (r.width < 1 || r.height < 1 || el.matches(':disabled, [aria-disabled="true"], [inert], [inert] *')) continue;
+		// A listing that names its controls by text (Replay) leaves the demo's other controls alone.
+		if (text && !el.matches('textarea, input') && !new RegExp(text).test(sig.split('|')[2]!)) continue;
 		if (el.matches('textarea, input:not([type]), input[type="text"], input[type="search"]')) for (const u of ['fill', 'clear', 'enter']) out.push(`${sig}#${n}|${u}`);
 		else out.push(`${sig}#${n}`);
 	}
@@ -260,8 +262,8 @@ async function use(page: Page, selector: string, index: number, listed: string, 
  * Uses the listed controls of each demo on the old page, from every settled state they lead to (breadth first, within
  * `limits`), and records each use frame by frame. A state is reached again by replaying the uses that led to it.
  */
-export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS): Promise<SceneCapture> {
-	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
+export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = ''): Promise<SceneCapture> {
+	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
@@ -288,7 +290,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 		await page.addInitScript(`globalThis.__mmSnapshot = ${snapshotIn.toString()};`);
 		await loadPage(page, url);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-		const demos = await page.evaluate(([selector, listed]) => {
+		const demos = await page.evaluate(([selector, listed, text]) => {
 			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 			const counts = new Map<string, number>();
 			const order = new Map<Element, number>();
@@ -297,8 +299,9 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 				order.set(el, counts.get(sig) ?? 0);
 				counts.set(sig, (counts.get(sig) ?? 0) + 1);
 			}
-			return [...document.querySelectorAll(selector)].map((el, index) => ({ index, sig: sigOf(el), nth: order.get(el) ?? 0, has: el.querySelector(listed) !== null })).filter((d) => d.has);
-		}, [PREVIEW, listed] as const);
+			const named = (el: Element) => !text || el.matches('textarea, input') || new RegExp(text).test((el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60));
+			return [...document.querySelectorAll(selector)].map((el, index) => ({ index, sig: sigOf(el), nth: order.get(el) ?? 0, has: [...el.querySelectorAll(listed)].some(named) })).filter((d) => d.has);
+		}, [PREVIEW, listed, text] as const);
 		for (const demo of demos) {
 			const skipped: string[] = [];
 			const states: SceneNode[] = [];
@@ -344,7 +347,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 				if (paths[at]!.length >= limits.depth) continue;
 				await fresh(demo.index);
 				for (const step of paths[at]!) await replay(step);
-				const controls = await page.evaluate(controlsIn, [PREVIEW, demo.index, listed] as const);
+				const controls = await page.evaluate(controlsIn, [PREVIEW, demo.index, listed, text] as const);
 				for (const control of controls) {
 					if (edges.some((e) => e.from === at && e.control === control)) continue;
 					await fresh(demo.index);
