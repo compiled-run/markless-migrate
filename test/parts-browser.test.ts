@@ -602,6 +602,19 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('a control listed as a download saves the file its use saved on the old page: name, type and content', async () => {
+	const page = await open(
+		`<div data-slot="code-block"><button aria-label="Download">D</button></div><template data-mm-download="button||D#0" data-mm-name="route.ts" data-mm-type="text/plain" data-mm-text="import { streamText } from &quot;ai&quot;"></template>`,
+		[],
+		'body',
+	);
+	const [saved] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download' }).click()]);
+	assert.equal(saved.suggestedFilename(), 'route.ts');
+	const path = await saved.path();
+	assert.equal(await readFile(path, 'utf8'), 'import { streamText } from "ai"');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
