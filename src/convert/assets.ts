@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { cp, mkdir, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { attr, walk, type Document } from './dom.ts';
 
@@ -69,7 +69,8 @@ export interface CopiedAsset {
  * Copies every path from the old origin into `publicDir` at the same path, byte for byte, following stylesheets'
  * `url()`s. A path the old origin does not answer with 200 is reported and left out.
  */
-export async function copyAssets(origin: string, paths: Iterable<string>, publicDir: string, log: (line: string) => void = () => {}): Promise<{ copied: CopiedAsset[]; missing: string[] }> {
+/** With `reuse`, an asset already in `publicDir` is read from there instead of fetched again. */
+export async function copyAssets(origin: string, paths: Iterable<string>, publicDir: string, log: (line: string) => void = () => {}, reuse = false): Promise<{ copied: CopiedAsset[]; missing: string[] }> {
 	const queue = [...new Set(paths)];
 	const seen = new Set(queue);
 	const copied: CopiedAsset[] = [];
@@ -77,15 +78,18 @@ export async function copyAssets(origin: string, paths: Iterable<string>, public
 	for (let i = 0; i < queue.length; i++) {
 		const path = queue[i]!;
 		const target = join(publicDir, decodeURIComponent(path));
-		const response = await fetch(new URL(path, origin)).catch(() => undefined);
-		if (!response || response.status !== 200) {
+		const kept = reuse ? await readFile(target).catch(() => undefined) : undefined;
+		const response = kept ? undefined : await fetch(new URL(path, origin)).catch(() => undefined);
+		if (!kept && (!response || response.status !== 200)) {
 			missing.push(`${path} (${response ? response.status : 'no answer'})`);
 			continue;
 		}
-		const bytes = Buffer.from(await response.arrayBuffer());
-		const contentType = response.headers.get('content-type') ?? '';
-		await mkdir(dirname(target), { recursive: true });
-		await writeFile(target, bytes);
+		const bytes = kept ?? Buffer.from(await response!.arrayBuffer());
+		const contentType = response?.headers.get('content-type') ?? (path.endsWith('.css') ? 'text/css' : '');
+		if (!kept) {
+			await mkdir(dirname(target), { recursive: true });
+			await writeFile(target, bytes);
+		}
 		copied.push({ path, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), contentType });
 		if (/text\/css/.test(contentType) || path.endsWith('.css'))
 			for (const next of stylesheetPaths(bytes.toString('utf8'), path, origin))

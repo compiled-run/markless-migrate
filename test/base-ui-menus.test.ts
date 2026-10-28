@@ -565,3 +565,56 @@ test("a Base UI combobox's own alignOffset (convert reads it per instance) moves
 	assert.deepEqual(placed.middleware[0], { mainAxis: 6, crossAxis: -28, alignmentAxis: -28 });
 	await page.close();
 });
+
+// A context menu with a plain item, a checkbox and a radio item; `marks` adds convert's per-instance closeOnClick.
+const choiceMenu = (marks: Record<string, string> = {}) => `<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
+	<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px">${[
+		['menuitem', 'Back'],
+		['menuitemcheckbox', 'Show Full URLs'],
+		['menuitemradio', 'Colm Tuite'],
+	]
+		.map(([role, t]) => `<div role="${role}" tabindex="-1"${role === 'menuitem' ? '' : ' aria-checked="false"'}${marks[t!] === undefined ? '' : ` data-mm-close-on-click="${marks[t!]}"`}>${t}</div>`)
+		.join('')}</div></div></div>`;
+
+test("a press on a Base UI context menu's checkbox or radio item leaves the menu open, a plain item closes it, as each item's closeOnClick default says", async () => {
+	const page = await open(choiceMenu(), ['base-ui/context-menu']);
+	const shown = () => page.evaluate(() => !document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden);
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	for (const item of ['Show Full URLs', 'Colm Tuite']) {
+		await page.getByText(item).click();
+		await settled(page);
+		assert.equal(await shown(), true, item);
+	}
+	await page.getByText('Back').click();
+	await settled(page);
+	assert.equal(await shown(), false);
+	await page.close();
+});
+
+test('a Base UI menu item given closeOnClick, as convert writes it per instance, closes or keeps the menu open as told', async () => {
+	const page = await open(choiceMenu({ 'Show Full URLs': 'true', Back: 'false' }), ['base-ui/context-menu']);
+	const shown = () => page.evaluate(() => !document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden);
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	await page.getByText('Back').click();
+	await settled(page);
+	assert.equal(await shown(), true);
+	await page.getByText('Show Full URLs').click();
+	await settled(page);
+	assert.equal(await shown(), false);
+	await page.close();
+});
+
+test('a Base UI dropdown radio item given closeOnClick closes the menu; one without it keeps it open', async () => {
+	const page = await open(menu(['Apple', 'Banana']).replace('<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">Apple', '<div role="menuitemradio" aria-checked="false" tabindex="-1" data-mm-close-on-click="true">Apple').replace('<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">Banana', '<div role="menuitemradio" aria-checked="false" tabindex="-1">Banana'), ['base-ui/menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await page.getByText('Banana').click();
+	await settled(page);
+	assert.match(await state(page), /^true /);
+	await page.getByText('Apple').click();
+	await settled(page);
+	assert.match(await state(page), /^false /);
+	await page.close();
+});

@@ -17,14 +17,20 @@ export interface BaseOptions {
 const PHYSICAL: Record<string, string> = { top: 'top', right: 'right', bottom: 'bottom', left: 'left', 'inline-end': 'right', 'inline-start': 'left' };
 
 export function place(anchor: Element | { getBoundingClientRect(): DOMRect }, positioner: HTMLElement, popup: HTMLElement | null, options: BaseOptions): () => void {
-	const rtl = anchor instanceof Element && getComputedStyle(anchor).direction === 'rtl';
+	// A point (a context menu's pointer) has no direction of its own: the popup's is the one its DirectionProvider gave.
+	const directed = anchor instanceof Element ? anchor : popup;
+	const rtl = Boolean(directed) && getComputedStyle(directed!).direction === 'rtl';
 	const side = options.side === 'inline-end' ? (rtl ? 'left' : 'right') : options.side === 'inline-start' ? (rtl ? 'right' : 'left') : (PHYSICAL[options.side] ?? 'bottom');
 	const placement = (options.align === 'center' ? side : `${side}-${options.align}`) as Placement;
 	const pad = options.collisionPadding ?? 5;
 	const padding = { top: pad + (options.side === 'bottom' ? 1 : 0), right: pad + (options.side === 'left' ? 1 : 0), bottom: pad + (options.side === 'top' ? 1 : 0), left: pad + (options.side === 'right' ? 1 : 0) };
 	const flipPadding = { top: padding.top + 1, right: padding.right + 1, bottom: padding.bottom + 1, left: padding.left + 1 };
-	const shiftMw = shift({ padding, mainAxis: true, crossAxis: false, limiter: limitShift() });
-	const flipMw = flip({ padding: flipPadding, mainAxis: true, crossAxis: 'alignment', fallbackAxisSideDirection: 'end' });
+	// Placed at the pointer (a context menu, Base UI's shiftCrossAxis): never flipped off its side nor held to a 0x0 point,
+	// shifted on both axes within the layout viewport.
+	const atPoint = !(anchor instanceof Element);
+	const html = document.documentElement;
+	const shiftMw = atPoint ? shift({ padding, mainAxis: true, crossAxis: true, rootBoundary: { x: 0, y: 0, width: html.clientWidth, height: html.clientHeight } }) : shift({ padding, mainAxis: true, crossAxis: false, limiter: limitShift() });
+	const flipMw = flip({ padding: flipPadding, mainAxis: !atPoint, crossAxis: 'alignment', fallbackAxisSideDirection: atPoint ? 'none' : 'end' });
 	// Tooltip.Arrow and the like: the popup's own absolutely placed, aria-hidden child.
 	const arrowEl = popup ? [...popup.children].find((c): c is HTMLElement => c instanceof HTMLElement && c.getAttribute('aria-hidden') === 'true' && getComputedStyle(c).position === 'absolute') : undefined;
 	const stand = document.createElement('div');
@@ -63,7 +69,8 @@ export function place(anchor: Element | { getBoundingClientRect(): DOMRect }, po
 						st.setProperty('--anchor-height', `${(Math.round((y + height) * dpr) - Math.round(y * dpr)) / dpr}px`);
 					},
 				}),
-				arrow({ element: arrowEl ?? stand, padding: 5 }),
+				// A context menu's arrow padding is 0 (Base UI's MenuPositioner): 5 pushes the popup off a 0x0 point.
+				arrow({ element: arrowEl ?? stand, padding: atPoint ? 0 : 5 }),
 				transformOrigin,
 			],
 		}).then(({ x, y, placement: at, middlewareData }) => {

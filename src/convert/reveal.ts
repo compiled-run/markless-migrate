@@ -18,13 +18,13 @@ async function markAdded(page: Page): Promise<void> {
 }
 
 /** How a control shows what it holds back. */
-/** `copy`: a click whose effect kept is what it writes to the clipboard. */
-export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy';
+/** `copy`: a click whose effect kept is what it writes to the clipboard. `download`: the file it saves (name, type, text). */
+export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy' | 'download';
 
 /** Where a revealed subtree went: under `body`, or under the element at `path` (child element indexes from the body). */
 export interface Revealed {
 	/** `body`, the path of the element it went under, or `replace`: the control took itself away and this is what its container then held. */
-	readonly into: 'body' | 'replace' | 'clipboard' | readonly number[];
+	readonly into: 'body' | 'replace' | 'clipboard' | 'download' | readonly number[];
 	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. For `replace`, how many levels above the control the replaced container is. */
 	readonly before: number;
 	readonly html: string;
@@ -164,6 +164,31 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	}, candidate.path);
 	const el = target.asElement();
 	if (!el) return 'not found';
+	if (candidate.action === 'download') {
+		await page.evaluate(() => {
+			const w = window as unknown as { __mmSaved?: { name: string; blob: Blob | undefined }[] };
+			w.__mmSaved = [];
+			const blobs = new Map<string, Blob>();
+			const create = URL.createObjectURL.bind(URL);
+			URL.createObjectURL = (o: Blob | MediaSource) => {
+				const url = create(o);
+				if (o instanceof Blob) blobs.set(url, o);
+				return url;
+			};
+			URL.revokeObjectURL = () => {};
+			// The anchor's click saves the file: recorded, and the browser's save is left out.
+			HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+				if (this.hasAttribute('download')) w.__mmSaved!.push({ name: this.download, blob: blobs.get(this.href) });
+			};
+		});
+		await el.click({ timeout: 2000 }).catch(() => {});
+		await quiet(page, 300);
+		const saved = await page.evaluate(async () => {
+			const last = (window as unknown as { __mmSaved?: { name: string; blob: Blob | undefined }[] }).__mmSaved?.at(-1);
+			return last?.blob ? { name: last.name, type: last.blob.type, text: await last.blob.text() } : undefined;
+		});
+		return saved ? [{ into: 'download', before: -1, html: JSON.stringify(saved) }] : [];
+	}
 	if (candidate.action === 'copy') {
 		await page.evaluate(() => {
 			const w = window as unknown as { __mmClipboard?: string[] };
@@ -314,7 +339,7 @@ type Open = { context: BrowserContext; page: Page; baseline: string };
 async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
 	const previous = await selectedSibling(open.page, candidate.path);
 	const raw = await reveal(open.page, candidate);
-	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard') : raw;
+	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
 	if (!(await undo(open.page, previous, open.baseline))) {
 		await open.context.close().catch(() => {});
 		open = await again();
@@ -407,7 +432,7 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
 	const listed = extra.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
 	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
-	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
+	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download'))), ...listed.reveals] : own.reveals;
 	const child = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
 	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);

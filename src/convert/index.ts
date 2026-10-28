@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
@@ -38,7 +38,7 @@ import { usedStylesheets } from './used-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
-import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
+import { keepRouting, nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
@@ -129,7 +129,8 @@ export default defineConfig({
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
 		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],${traceConfig(packages)}
 	},
-	plugins: [markless(), router()],
+	// \`markless-migrate dev\` turns off the dev server's execution log: it writes <html> attributes on every interaction.
+	plugins: [markless(process.env.MARKLESS_MIGRATE_DEV ? { executionLog: 'never' } : {}), router()],
 });
 `;
 
@@ -156,6 +157,8 @@ export interface ConvertOptions {
 	readonly reveal?: boolean;
 	/** Take every capture of the old pages into .migrate/convert and stop there: no page is written. */
 	readonly captureOnly?: boolean;
+	/** For `markless-migrate dev`: the app already holds this convert's static files and server; only what is missing is fetched, and the server only learns the pages. */
+	readonly reuse?: boolean;
 }
 
 export interface HeadTag {
@@ -171,6 +174,8 @@ export interface ConvertedRoute {
 	readonly page: string;
 	readonly bytes: number;
 	readonly parts: readonly PartUse[];
+	/** The port modules (under `parts/`) its page's registry loads: a change to one can break this route. */
+	readonly ports?: readonly string[];
 }
 
 export interface ConvertReport {
@@ -232,6 +237,8 @@ interface Prepared {
 	readonly siteLayers: readonly SiteComponent[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** The file each listed download control saved on the old page, by its signature#nth, as JSON ({ name, type, text }). */
+	readonly downloads: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
@@ -248,6 +255,7 @@ function elementAt(root: Element, path: readonly number[]): Element | undefined 
 }
 
 function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
+	if (added.into === 'download') return '';
 	if (added.into === 'clipboard') return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into="clipboard">{${JSON.stringify(added.html)}}</template>`;
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
@@ -393,6 +401,7 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+let currentDownloads: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -820,6 +829,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+			} else if (added.into === 'download') {
+				if (reveal.sig !== undefined) currentDownloads[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
@@ -934,10 +945,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentDownloads = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const downloads = currentDownloads;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
@@ -992,7 +1005,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, downloads, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1794,7 +1807,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
@@ -1930,19 +1943,22 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await mkdir(dirname(join(publicDir, path)), { recursive: true });
 		await writeFile(join(publicDir, path), css);
 	}
-	if (options.source) await copyStaticDir(join(options.source, 'public'), publicDir);
+	const kept = options.reuse && (await readdir(publicDir).then((names) => names.length > 0, () => false));
+	if (options.source && !kept) await copyStaticDir(join(options.source, 'public'), publicDir);
 	const paths = new Set<string>();
 	for (const p of prepared.values()) for (const path of p.resources) if (!path.startsWith('/_converted/')) paths.add(path);
 	// Resources a query picks are served by the routing middleware from the old build's answers, not as files.
 	const queried = [...paths].filter((p) => p.includes('?'));
-	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log);
+	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log, options.reuse);
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const endpoints: EndpointPort[] = [];
-	if (options.source) {
+	const serverKept = options.reuse && (await keepRouting(app, [...new Set(out.map((r) => new URL(r.route, options.old).pathname))]));
+	if (serverKept) log('server: kept as written before, with these pages');
+	if (options.source && !serverKept) {
 		const scanned = await readSource(options.source);
 		const handlerRoutes = scanned.routes.filter((r) => r.kind === 'endpoint' && r.file).map((r) => ({ route: r.path, file: r.file! }));
 		const rewrites = (scanned.redirects ?? []).filter((r) => r.kind === 'rewrite' && r.to.startsWith('/'));
@@ -1978,7 +1994,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort()));
 	}
 	const report: ConvertReport = {
-		routes: out,
+		routes: out.map((r) => ({ ...r, ports: [...usedPorts.of([r.route])].sort() })),
 		dropped: Object.fromEntries(dropped),
 		shared: factored.components.map((c) => ({ component: c.file, pages: c.pages, bytes: c.source.length })),
 		assets: { copied: assets.copied.length, missing: assets.missing },

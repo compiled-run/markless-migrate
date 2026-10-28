@@ -103,6 +103,7 @@ for (const seed of [7, 1234, 98765]) {
 				assert.ok(imported, `${r.route} imports the parts runtime`);
 				const loaded = await portsOf(join(dirname(join(app, r.page)), imported));
 				assert.deepEqual(loaded, expected, `${r.route}: its registry holds only the ports its markup uses`);
+				assert.deepEqual(r.ports, loaded, `${r.route}: the report names the ports its page loads, for the routes a port's change can break`);
 				for (const other of usedAnywhere) if (!expected.includes(other)) assert.ok(!loaded.includes(other), `${r.route} does not load ${other}, which only other pages use`);
 				const events = new Set(PORTS.filter((p) => expected.includes(p.module)).flatMap((p) => p.events));
 				const handlers = [...source.matchAll(/ on(\w+)=\{\(event\) => behave\(event\)\}/g)].map((m) => m[1]!.toLowerCase()).sort();
