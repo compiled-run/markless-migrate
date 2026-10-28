@@ -556,6 +556,20 @@ export function trailingPolicy(nextConfig: string | undefined, observed: Routing
 	return undefined;
 }
 
+/**
+ * Keeps the app's routing middleware (server/routing.ts) as it was written, its handlers and outputs included, for the
+ * pages given: only the list of pages the app renders is written again. False when the app has none to keep.
+ */
+export async function keepRouting(app: string, pages: readonly string[]): Promise<boolean> {
+	const file = join(app, 'server', 'routing.ts');
+	const text = await readFile(file, 'utf8').catch(() => undefined);
+	const line = /^const PAGES = new Set<string>\(.*\);$/m;
+	if (!text || !line.test(text)) return false;
+	const next = text.replace(line, () => `const PAGES = new Set<string>(${JSON.stringify(pages)});`);
+	if (next !== text) await writeFile(file, next);
+	return true;
+}
+
 export async function writeRouting(input: RoutingInput): Promise<{ ports: EndpointPort[]; packages: Record<string, string>; overrides: Record<string, Record<string, string>> }> {
 	const { app, source } = input;
 	const out = join(app, 'server', 'handlers');

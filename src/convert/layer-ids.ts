@@ -5,6 +5,8 @@ import { GENERATED_ID } from './factor.ts';
 export interface CapturedLayer {
 	readonly key: string;
 	readonly kept: readonly Element[];
+	/** The layer whose content holds this one's trigger, when the capture knows it (a submenu opened from its menu). */
+	readonly from?: string;
 }
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 8);
@@ -64,6 +66,7 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 	const page = new Map(keys);
 	for (const names of own.values()) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
 	const opener = new Map<string, string>();
+	for (const l of layers) if (l.from !== undefined && own.has(l.from)) opener.set(l.key, l.from);
 	for (const l of layers)
 		for (const top of l.kept)
 			for (const el of walk(top))
