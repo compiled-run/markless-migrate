@@ -37,9 +37,10 @@ export interface PartResolver {
 	slotProp?(library: string, exportName: string, slot: string, prop: string): string | undefined;
 	/**
 	 * A prop where a wrapper renders another wrapper with this literal `data-slot` (a submenu's content rendering the
-	 * menu's content with its own offsets): the value written there, else the default of the wrapper it renders.
+	 * menu's content with its own offsets): the value written there, else the default of the wrapper it renders. With a
+	 * library, only sites that end on that library's parts count.
 	 */
-	forwardedProp?(slot: string, prop: string): string | undefined;
+	forwardedProp?(slot: string, prop: string, library?: string): string | undefined;
 }
 
 interface LibrariesFile {
@@ -192,12 +193,28 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 	const file = JSON.parse(await readFile(librariesPath, 'utf8')) as LibrariesFile;
 	const bySlot = new Map<string, PartUsage[]>();
 	const counts = new Map<string, number>();
+	const modules = new Map<string, Module | undefined>();
+	const moduleOf = async (rel: string) => {
+		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => parseModule(rel, text), () => undefined) : undefined);
+		return modules.get(rel);
+	};
+	// A value written on a site: a literal, or the default of the wrapper's parameter it passes (`data-slot={dataSlot}`).
+	const valueAt = async (site: { readonly file: string; readonly line: number }, written: string): Promise<string | undefined> => {
+		const value = literal(written) ?? (/^\{-?\d+(\.\d+)?\}$/.test(written) ? written.slice(1, -1) : undefined);
+		const param = /^\{([A-Za-z_$][\w$]*)\}$/.exec(written)?.[1];
+		if (value !== undefined || !param) return value;
+		const mod = await moduleOf(site.file);
+		return mod ? paramDefault(mod, site.line, param) : undefined;
+	};
+	const slotOf = new Map<object, string>();
 	for (const lib of file.libraries) {
 		if (!RENDERING.has(lib.class)) continue;
 		for (const e of lib.exports) {
 			for (const site of e.sites ?? []) {
-				const slot = literal(site.props?.['data-slot']);
+				const written = site.props?.['data-slot'];
+				const slot = written === undefined ? undefined : await valueAt(site, written);
 				if (!slot) continue;
+				slotOf.set(site, slot);
 				const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
 				if (list.some((u) => u.library === lib.name && u.export === e.name)) continue;
 				list.push({ library: lib.name, export: e.name, file: site.file, line: site.line });
@@ -205,35 +222,31 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 			}
 		}
 	}
-	const forwarded = source ? await forwardedSlots(file, source) : { slots: new Map<string, PartUsage[]>(), props: () => undefined };
+	const forwarded = source ? await forwardedSlots(file, source) : { slots: new Map<string, PartUsage[]>(), props: (): string | undefined => undefined };
 	for (const [slot, uses] of forwarded.slots) for (const u of uses) {
 		const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
 		if (!list.some((x) => x.library === u.library && x.export === u.export)) list.push(u);
 	}
-	const modules = new Map<string, Module | undefined>();
-	const moduleOf = async (rel: string) => {
-		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => parseModule(rel, text), () => undefined) : undefined);
-		return modules.get(rel);
-	};
 	const props = new Map<string, string | undefined>();
+	const slotProps = new Map<string, string | undefined>();
 	for (const lib of file.libraries) {
 		if (!RENDERING.has(lib.class)) continue;
 		for (const e of lib.exports) {
 			const seen = new Map<string, Map<string, number>>();
+			const vote = (key: string, value: string) => {
+				const votes = seen.get(key) ?? seen.set(key, new Map()).get(key)!;
+				votes.set(value, (votes.get(value) ?? 0) + 1);
+			};
 			for (const site of e.sites ?? []) {
+				const slot = slotOf.get(site);
 				for (const [name, written] of Object.entries(site.props ?? {})) {
-					let value = literal(written) ?? (/^\{-?\d+(\.\d+)?\}$/.test(written) ? written.slice(1, -1) : undefined);
-					const param = /^\{([A-Za-z_$][\w$]*)\}$/.exec(written)?.[1];
-					if (value === undefined && param) {
-						const mod = await moduleOf(site.file);
-						if (mod) value = paramDefault(mod, site.line, param);
-					}
+					const value = await valueAt(site, written);
 					if (value === undefined) continue;
-					const votes = seen.get(name) ?? seen.set(name, new Map()).get(name)!;
-					votes.set(value, (votes.get(value) ?? 0) + 1);
+					vote(name, value);
+					if (slot) vote(`${slot} ${name}`, value);
 				}
 			}
-			for (const [name, votes] of seen) props.set(`${lib.name} ${e.name} ${name}`, [...votes].sort((a, b) => b[1] - a[1])[0]?.[0]);
+			for (const [key, votes] of seen) (key.includes(' ') ? slotProps : props).set(`${lib.name} ${e.name} ${key}`, [...votes].sort((a, b) => b[1] - a[1])[0]?.[0]);
 		}
 	}
 	return {
@@ -241,7 +254,8 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		candidates: (slot) => bySlot.get(slot) ?? [],
 		libraries: () => counts,
 		prop: (library, exportName, prop) => props.get(`${library} ${exportName} ${prop}`),
-		forwardedProp: (slot, prop) => forwarded.props(slot, prop),
+		slotProp: (library, exportName, slot, prop) => slotProps.get(`${library} ${exportName} ${slot} ${prop}`),
+		forwardedProp: (slot, prop, library) => forwarded.props(slot, prop, library),
 	};
 }
 
@@ -250,7 +264,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
  * where DropdownMenuTrigger renders `<Menu.Trigger data-slot="dropdown-menu-trigger" {...props} />` is a Menu.Trigger
  * the page marks menubar-trigger (the spread after the component's own slot wins), through any chain of such wrappers.
  */
-async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ slots: Map<string, PartUsage[]>; props: (slot: string, prop: string) => string | undefined }> {
+async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ slots: Map<string, PartUsage[]>; props: (slot: string, prop: string, library?: string) => string | undefined }> {
 	const forwards = new Map<string, PartUsage[]>();
 	const spreadsLast = (props: Readonly<Record<string, string>>) => {
 		const keys = Object.keys(props);
@@ -322,9 +336,10 @@ async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ sl
 		const fn = mod?.bindings.get(name);
 		return mod && fn ? paramDefault(mod, mod.line(fn.start), prop) : undefined;
 	};
-	const props = (slot: string, prop: string) => {
+	const props = (slot: string, prop: string, library?: string) => {
 		const votes = new Map<string, number>();
 		for (const e of sites.get(slot) ?? []) {
+			if (library !== undefined && !forwards.get(e.target)?.some((u) => u.library === library)) continue;
 			const mod = modules.get(e.file)!;
 			const value = slotSiteProp(mod, e.line, slot, prop) ?? defaultOf(e.target, prop);
 			if (value !== undefined) votes.set(value, (votes.get(value) ?? 0) + 1);
@@ -345,7 +360,8 @@ function paramDefault(mod: Module, line: number, name: string): string | undefin
 			const pattern = param.type === 'AssignmentPattern' ? param.left : param;
 			if (pattern?.type !== 'ObjectPattern') continue;
 			for (const p of pattern.properties as N[]) {
-				if (p.type !== 'Property' || p.key?.name !== name || p.value?.type !== 'AssignmentPattern') continue;
+				// By its key (`offset = 4`) or the name it is bound to (`"data-slot": dataSlot = "dropdown-menu-content"`).
+				if (p.type !== 'Property' || p.value?.type !== 'AssignmentPattern' || (p.key?.name !== name && p.value.left?.name !== name)) continue;
 				const d = p.value.right;
 				if (d.type === 'Literal' && (typeof d.value === 'string' || typeof d.value === 'number' || typeof d.value === 'boolean')) found = String(d.value);
 				else if (d.type === 'UnaryExpression' && d.operator === '-' && d.argument.type === 'Literal') found = `-${d.argument.value}`;

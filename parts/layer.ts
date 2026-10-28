@@ -3,6 +3,7 @@ import { leave, stay } from './presence.ts';
 import { layersFor, showCompanions } from './reveal.ts';
 import { hideOthers } from './aria-hidden.ts';
 import { lockScroll } from './remove-scroll.ts';
+import { raiseOver } from './stacking.ts';
 
 // What Radix's Portal, DismissableLayer and FocusScope do around a popover, menu, select or tooltip, on the content
 // Markless renders at the end of the body: shown on open, Escape and a press outside closing the top layer, focus
@@ -68,17 +69,10 @@ export function focusFirst(container: HTMLElement): void {
 	container.focus({ preventScroll: true });
 }
 
-// Radix's Portal mounts an opening layer last, over every open one; Markless owns node order, so z-index does it here.
 const raised = new WeakMap<Layer, () => void>();
 function raise(layer: Layer): void {
-	const z = (n: Element) => Number.parseInt(getComputedStyle(n).zIndex, 10) || 0;
-	let over = -Infinity;
-	for (const other of open) for (const n of other.nodes) if (layer.nodes[0]!.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING) over = Math.max(over, z(n));
-	const low = layer.nodes.filter((n) => getComputedStyle(n).position !== 'static' && z(n) <= over);
-	if (!low.length) return;
-	const was = low.map((n) => n.style.zIndex);
-	for (const n of low) n.style.zIndex = String(over + 1);
-	raised.set(layer, () => low.forEach((n, i) => (n.style.zIndex = was[i]!)));
+	const undo = raiseOver(layer.nodes, open.flatMap((o) => o.nodes));
+	if (undo) raised.set(layer, undo);
 }
 
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */

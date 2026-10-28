@@ -88,7 +88,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only]
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse]
           Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
           browser holds it once settled (loaded as check loads it), without the old framework's runtime;
           shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
@@ -103,13 +103,31 @@ const USAGE = `markless-migrate ${VERSION}
           A fumadocs content collection's pages are ordered by path; --page-order-from orders them as that
           deployment's sitemap lists them (when the old app's sitemap lists its source's pages), so tied
           search results come in that deployment's order.
-${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
+          --reuse (what dev passes) keeps what the app already holds: assets on disk are not fetched, the old
+          app's public/ is not copied again, and the server is kept, with only its list of pages written again.
+${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) [--app <dir>] [--old <origin>] [--source <path>]
+          [--fallthrough <old deployment>] [--control <regex>] [--widths <px,...>] [--full] [--watch] [--build] [--check]
+          [--concurrency <n>] [--port <n>] [--probe <file>] [--no-probes]
+          The fast loop for fixing a port: converts only these routes (from the cached captures, taking only what a
+          capture lacks) into an app of their own beside the app (.migrate/dev/app, its pages, parts and server apart;
+          the app's full convert is left as it was), serves them with Markless's dev server (--build: a production build
+          of just them), and runs the dead-controls probe on each against the original (--old, default the plan's
+          origin; a local build or the reference URL): what each control does on both sides, its box, hit points, pop-up
+          anchor, motion, keyboard and input, printed as the differences found, with frame strips for motion. Run it
+          under ~/.claude/bin/heavy where the machine is shared. --control keeps the uses whose id matches (combobox);
+          --widths sets the widths compared (default 1280), --full runs the probe's whole sweep. --watch keeps it
+          running: a saved part (parts/) is copied into the dev app and the routes loading it are probed again; a
+          saved converter file (src/convert/) converts again first; each run prints what got fixed and what is new.
+          --routes takes a glob (* within a path segment, ** across), --part every route whose page loads that port
+          (base-ui/combobox, or a module it needs), from the full convert's report; --concurrency probes that many
+          routes at once (each probe holds one browser context). --check also runs check --only probes on them.
+  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -179,6 +197,20 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           is loaded again with the clock moved 40 days into Pacific/Auckland: text the old page changes with
           the clock must change on new.
           --no-probes leaves them out; --only probes runs them alone.
+          Control parity, with the probes: each width's controls (1280, 1440, 390) are listed on both apps
+          and a control the original shows at a width the port lacks is red; each control's box and its
+          parent's and example frame's boxes must agree within 2 px; what a click reaches at five points
+          over each control and over a grid and every control of each landmark in view must match; each
+          pop-up's side, offset and width against its trigger must agree within 4 px at 1280 and 1440,
+          in Chromium, and in WebKit too with --control-webkit; on routes that carry motion the
+          first pop-up of each kind is filmed opening and closing (Escape), and one side moving while the
+          other jumps, or another duration or cadence, is red; a standard key set (arrows, Enter, Space,
+          Escape, Tab, Home, End, short sequences) from each kind of control must leave focus, regions,
+          address and pop-ups as the original does; realistic values (dates in several formats, numbers,
+          text, invalid input) typed into each field then Enter and a blur must leave the same value,
+          aria-invalid, regions, address and the pop-up it drives; an error thrown only by the port after
+          any of these is red. A difference stands only when a second run of each side repeats it.
+          --no-control-parity leaves it out.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -431,6 +463,8 @@ const TIMING_FLAGS = {
 	'no-motion': { type: 'boolean' },
 	'no-embeds': { type: 'boolean' },
 	'no-probes': { type: 'boolean' },
+	'no-control-parity': { type: 'boolean' },
+	'control-webkit': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -738,6 +772,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(values['no-probes'] ? {} : { probes: {} }),
+					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
@@ -973,6 +1008,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				...(values['no-probes'] ? {} : { probes: {} }),
+				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),
@@ -1004,6 +1040,33 @@ async function main(argv: string[]): Promise<number> {
 			if (!red) err(`markless-migrate: nothing is red, but ${report.routes.filter((r) => r.infrastructure).length} route check(s) could not be done for an infrastructure failure; check them again.\n`);
 			return red ? 1 : 3;
 		}
+		case 'dev': {
+			const { values } = parseArgs({ args: rest, options: { app: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, part: { type: 'string' }, old: { type: 'string' }, source: { type: 'string' }, fallthrough: { type: 'string' }, control: { type: 'string' }, widths: { type: 'string' }, full: { type: 'boolean' }, watch: { type: 'boolean' }, build: { type: 'boolean' }, check: { type: 'boolean' }, concurrency: { type: 'string' }, port: { type: 'string' }, probe: { type: 'string' }, 'no-probes': { type: 'boolean' } } });
+			const { dev } = await import('./dev/index.ts');
+			try {
+				return await dev({
+					app: resolve(values.app ?? cwd),
+					route: values.route ?? [],
+					...(values.routes ? { routes: values.routes } : {}),
+					...(values.part ? { part: values.part } : {}),
+					...(values.old ? { old: values.old } : {}),
+					...(values.source ? { source: resolve(values.source) } : {}),
+					...(values.fallthrough ? { fallthrough: values.fallthrough } : {}),
+					...(values.control ? { control: values.control } : {}),
+					...(values.widths ? { widths: values.widths } : {}),
+					...(values.probe ? { probe: values.probe } : {}),
+					...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}),
+					...(values.port ? { port: Number(values.port) } : {}),
+					full: values.full === true,
+					watch: values.watch === true,
+					build: values.build === true,
+					check: values.check === true,
+					noProbes: values['no-probes'] === true,
+				});
+			} catch (error) {
+				fail((error as Error).message);
+			}
+		}
 		case 'status':
 			out(summarizeStatus(await status(cwd)));
 			return 0;
@@ -1027,10 +1090,10 @@ async function main(argv: string[]): Promise<number> {
 			return report.ok ? 0 : 1;
 		}
 		case 'convert': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' } } });
 			if (!values.old) fail('convert needs --old <origin>');
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
-			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), log: (line) => out(`${line}\n`) });
+			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), log: (line) => out(`${line}\n`) });
 			if (values['capture-only']) {
 				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}\n`);
 				return 0;

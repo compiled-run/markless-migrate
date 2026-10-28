@@ -143,3 +143,31 @@ test('a popup records the side and alignment it asked for, not where a flip away
 	assert.deepEqual([await attrs(page, 'data-mm-side'), await attrs(page, 'data-mm-align')], [{ b: null, bp: 'bottom', rc: 'bottom' }, { b: null, bp: 'start', rc: 'center' }]);
 	await page.close();
 });
+
+test("a Base UI menu item gets the closeOnClick its instance was given, and none when left to its default", async () => {
+	const page = await browser.newPage();
+	const item = (id: string, role: string) => `<div id="${id}" role="${role}" tabindex="-1">${id}</div>`;
+	await fibers(page, `<div id="menu" role="menu" data-base-ui-focusable>${item('closes', 'menuitemradio')}${item('stays', 'menuitem')}${item('plain', 'menuitemcheckbox')}</div>`, [3, {}, [[5, '#menu', [
+		[0, { value: 'a', closeOnClick: true }, [[11, {}, [[5, '#closes']]]]],
+		[0, { closeOnClick: false }, [[11, {}, [[5, '#stays']]]]],
+		[0, { checked: true }, [[11, {}, [[5, '#plain']]]]],
+	]]]]);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS.filter((s) => s.port === 'base-ui/menu'), added: false });
+	assert.deepEqual(await attrs(page, 'data-mm-close-on-click'), { menu: null, closes: 'true', stays: 'false', plain: null });
+	await page.close();
+});
+
+test('a React Aria popover gets the placement and offsets its instance was given, as a submenu wrapper passes its own on', async () => {
+	const page = await browser.newPage();
+	await fibers(page, `<div id="page"><div id="sub" data-rac data-trigger="SubmenuTrigger" data-placement="right"></div><div id="plain" data-rac data-trigger="MenuTrigger"></div></div>`, [3, {}, [[5, '#page', [
+		[0, { placement: 'end top', crossOffset: -3, offset: 0 }, [[0, { 'data-slot': 'context-menu-sub-content', placement: 'end top', offset: 0, crossOffset: -3 }, [[11, {}, [[5, '#sub']]]]]]],
+		[0, { children: [] }, [[11, {}, [[5, '#plain']]]]],
+	]]]]);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS.filter((s) => s.port === 'react-aria/overlay'), added: false });
+	assert.deepEqual([await attrs(page, 'data-mm-placement'), await attrs(page, 'data-mm-offset'), await attrs(page, 'data-mm-cross-offset')], [
+		{ page: null, sub: 'end top', plain: null },
+		{ page: null, sub: '0', plain: null },
+		{ page: null, sub: '-3', plain: null },
+	]);
+	await page.close();
+});
