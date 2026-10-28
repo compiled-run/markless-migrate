@@ -68,12 +68,23 @@ const groupsOf = (el: Element) => {
 	return groups;
 };
 
+// RovingFocusGroupItem: the item last focused or pressed is the group's one tab stop (tabindex 0), the others -1.
+const RADIX_ITEM = '[data-radix-collection-item]';
+function makeTabStop(target: Element): void {
+	const item = target.closest<HTMLElement>(RADIX_ITEM);
+	const group = item?.parentElement?.closest('[role="tablist"], [role="radiogroup"], [role="group"]');
+	if (!item || !group || item.hasAttribute('disabled') || item.hasAttribute('data-disabled')) return;
+	for (const other of group.querySelectorAll<HTMLElement>(RADIX_ITEM)) if (other.parentElement?.closest('[role="tablist"], [role="radiogroup"], [role="group"]') === group) other.tabIndex = other === item ? 0 : -1;
+}
+
 export function pointerdown(target: Element): boolean {
 	for (const g of groupsOf(target)) pressed.add(g);
+	makeTabStop(target);
 	return false;
 }
 
 export function focusin(target: Element, event: FocusEvent): boolean {
+	makeTabStop(target);
 	const byPointer = target instanceof HTMLElement && target.matches(GROUP) && pressed.has(target);
 	for (const g of groupsOf(target)) pressed.delete(g);
 	if (!(target instanceof HTMLElement) || !target.matches(GROUP) || byPointer) return false;

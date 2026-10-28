@@ -33,8 +33,10 @@ runs:
         path: ~/.cache/apt-archives
         key: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-
+    # The runner's packages.microsoft.com source has answered 403, failing the browsers' apt-get update; they need nothing from it.
     - id: apt
       run: |
+        { grep -rl packages.microsoft.com /etc/apt/sources.list.d || true; } | xargs -r sudo rm -f
         echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded > /dev/null
         mkdir -p ~/.cache/apt-archives
         if compgen -G ~/.cache/apt-archives/'*.deb' > /dev/null; then sudo cp ~/.cache/apt-archives/*.deb /var/cache/apt/archives/; fi

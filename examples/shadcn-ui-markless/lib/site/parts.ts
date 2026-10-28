@@ -15,25 +15,30 @@ const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isC
 
 // @tabler/icons-react's IconCopy (lucide-react's Terminal) turned into IconCheck (lucide's Check) by its attributes (the
 // svg is Markless's: no node is swapped).
-const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10' };
-const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5' };
-const copied = new WeakMap<Element, { timer: number; saved: { cls: string | null; d: (string | null)[] } }>();
+const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10', points: '5 12 10 17 20 7' };
+const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5', points: '20 6 9 17 4 12' };
+type Saved = { cls: string | null; shape: (string | null)[] };
+const copied = new WeakMap<Element, { timer: number; saved: Saved }>();
 
-function setIcon(svg: SVGElement, saved: { cls: string | null; d: (string | null)[] }, check: boolean): void {
-	const paths = [...svg.querySelectorAll('path')];
-	// The check is one path: the icon's other shapes (lucide Copy's rect) are not drawn meanwhile.
-	const others = [...svg.children].filter((el) => el !== paths[0]);
+// The check is drawn by the icon's first path, or its first polyline (lucide's Terminal has no path); the rest are hidden meanwhile.
+const shapeOf = (svg: SVGElement) => svg.querySelector('path') ?? svg.querySelector('polyline');
+const geometry = (el: Element) => (el.tagName === 'path' ? 'd' : 'points');
+const savedOf = (svg: SVGElement): Saved => ({ cls: svg.getAttribute('class'), shape: [...svg.children].map((el) => el.getAttribute(geometry(el))) });
+
+function setIcon(svg: SVGElement, saved: Saved, check: boolean): void {
+	const shape = shapeOf(svg);
+	const others = [...svg.children].filter((el) => el !== shape);
 	if (check) {
 		const icon = (saved.cls ?? '').includes('lucide') ? LUCIDE_CHECK : TABLER_CHECK;
 		svg.setAttribute('class', icon.class);
-		paths[0]?.setAttribute('d', icon.d);
+		if (shape) shape.setAttribute(geometry(shape), shape.tagName === 'path' ? icon.d : icon.points);
 		for (const el of others) el.setAttribute('display', 'none');
 	} else {
 		if (saved.cls === null) svg.removeAttribute('class');
 		else svg.setAttribute('class', saved.cls);
-		paths.forEach((p, i) => {
-			const d = saved.d[i];
-			if (d) p.setAttribute('d', d);
+		[...svg.children].forEach((el, i) => {
+			const value = saved.shape[i];
+			if (value) el.setAttribute(geometry(el), value);
 		});
 		for (const el of others) el.removeAttribute('display');
 	}
@@ -95,7 +100,7 @@ function showCopied(button: HTMLElement): void {
 	if (!svg) return;
 	const was = copied.get(button);
 	if (was) clearTimeout(was.timer);
-	const saved = was?.saved ?? { cls: svg.getAttribute('class'), d: [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')) };
+	const saved = was?.saved ?? savedOf(svg);
 	setIcon(svg, saved, true);
 	const codeBlock = button.dataset.slot === 'code-block-copy-button';
 	const marks = button.hasAttribute('data-copied') || codeBlock;

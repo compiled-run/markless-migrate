@@ -1647,7 +1647,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes) });
+	// Their bind is a lookup; a TanStack table's emits its rows on first bind, so it is left out.
+	const statePlans = [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps, scenePlan, dayPickers, racCalendars, racTables, charts];
+	const declares = (el: Element) => statePlans.flatMap((plan) => plan.bind(el)?.declare ?? []);
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes), declares });
 	usedPorts.routes = undefined;
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);

@@ -722,6 +722,16 @@ the prefix read from the app's `@markless/router`) gets each cached page's fragm
 as the page. Content-hashed files in `public/` are marked immutable (a directory holding only hashed files as
 one rule); Markless's `/build/` and Nitro's `/assets/` already are.
 
+Both read the app's installed `@markless/router` and Nitro, so `cache apply` and `cache check` refuse an app
+that declares them but has not installed them: rules written without the router leave every fragment URL to
+the server function.
+
+`cache output [--vercel <dir>]` reads the app's Vercel build (default `.vercel/output`) before it is deployed
+and exits 1 when a page the plan caches, or its fragment URL, has neither an ISR function nor a static file
+there. The deploy scripts run it before uploading. The shadcn deploy script then deploys a preview, runs
+`cache check` on it with the project's protection bypass (`--header name:value` is sent with every request)
+and promotes it only when that is green.
+
 `cache check --new <deployment>` reads the deployment route by route: three GETs (a miss, then hits),
 a fragment request and the document straight after it, and a new visitor's page view in Chromium. It
 writes `.migrate/caching-report.json` with each route's answers and exits 1 when a page the plan never

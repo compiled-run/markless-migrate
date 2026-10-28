@@ -46,6 +46,25 @@ test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, wit
 	assert.match(out, /btab0d = 1 > btab0 \? "right"/);
 });
 
+test('Base UI tabs whose chosen panel holds a shared component keep every tab\'s content rendered and show the chosen one', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs"><div role="tablist"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a"><figure>a</figure></div></div></body>');
+	const b = [...walk(body(doc))].find((el) => attr(el, 'id') === 'base-ui-b')!;
+	const figure = [...walk(body(doc))].find((el) => el.tagName === 'figure')!;
+	const plan = new BaseTabsPlan();
+	plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), (t) => (t === b ? { attrs: { role: 'tabpanel', id: 'p-b', 'aria-labelledby': 'base-ui-b' }, inner: '<figure>b</figure>' } : undefined), (h) => h);
+	// The page's code block is a component several pages share (factor.ts).
+	const out = emitElement(body(doc), { bind: (el) => (el === figure ? { replace: '<CodeBlock path={path} />' } : plan.bind(el)) });
+	assert.match(out, /<div hidden=\{btab0 !== 0\}><CodeBlock path=\{path\} \/><\/div><div hidden=\{btab0 !== 1\}><figure>b<\/figure><\/div>/);
+	// React Aria's Tabs alike.
+	const rac = parseDocument('<body><div><div role="tablist"><div role="tab" data-rac="" id="react-aria-a" aria-selected="true" aria-controls="p-a">A</div><div role="tab" data-rac="" id="react-aria-b" aria-selected="false">B</div></div><div role="tabpanel" id="p-a" aria-labelledby="react-aria-a"><figure>a</figure></div></div></body>');
+	const rb = [...walk(body(rac))].find((el) => attr(el, 'id') === 'react-aria-b')!;
+	const rfigure = [...walk(body(rac))].find((el) => el.tagName === 'figure')!;
+	const racPlan = new BaseTabsPlan();
+	racPlan.add(body(rac), (el) => /^react-aria-/.test(attr(el, 'id') ?? ''), (t) => (t === rb ? { attrs: { role: 'tabpanel', id: 'p-b', 'aria-labelledby': 'react-aria-b' }, inner: '<figure>b</figure>' } : undefined), (h) => h);
+	assert.match(emitElement(body(rac), { bind: (el) => (el === rfigure ? { replace: '<CodeBlock path={path} />' } : racPlan.bind(el)) }), /<div hidden=\{btab0 !== 0\}><CodeBlock path=\{path\} \/><\/div><div hidden=\{btab0 !== 1\}><figure>b<\/figure><\/div>/);
+});
+
 test('a disclosure that mounts its content where it opens renders that content in an arm at the same place', async () => {
 	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div><button id="base-ui-t" aria-expanded="false">More</button><p>after</p></div></body>');
@@ -131,6 +150,17 @@ test('a Base UI tab list without panels (the line and vertical variants) still s
 	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
 	assert.match(out, /aria-selected=\{btab0 === 1 \? "true" : "false"\}/);
 	assert.doesNotMatch(out, /aria-controls=\{/);
+});
+
+test('a Base UI tab list in a header beside other controls switches the panels of its Tabs root (the typeset Docs and Prompt tabs)', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div class="header"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="">Docs</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">Prompt</button></div><button>Next.js</button></div><div><div role="tabpanel" id="base-ui-p" aria-labelledby="base-ui-a" data-index="0"><p>docs</p></div></div></div></body>');
+	const plan = new BaseTabsPlan();
+	const revealed = (t: Element) => (attr(t, 'id') === 'base-ui-b' ? { attrs: { role: 'tabpanel', id: 'base-ui-q', 'aria-labelledby': 'base-ui-b', 'data-index': '1' }, inner: '<p>prompt</p>' } : undefined);
+	assert.equal(plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), revealed, (h) => h), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /@if \(btab0 === 0\) \{ <><p>docs<\/p><\/> \}@if \(btab0 === 1\) \{ <><p>prompt<\/p><\/> \}/);
+	assert.match(out, /<div data-slot="tabs" data-activation-direction=\{btab0d\}>/);
 });
 
 test('a Radix collapsible whose trigger renders its child (asChild, data-slot="button") opens its content on state', async () => {
