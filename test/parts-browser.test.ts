@@ -608,6 +608,27 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+// sidebar-13's settings dialog: its state opens it on mount, so the page came with it open and Radix's marks on the rest.
+const shownDialog = `<main data-aria-hidden="true" aria-hidden="true"><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="true" aria-controls="dlg" data-state="open">Open Dialog</button><button type="button">Behind</button></main>
+	<div data-state="open" data-slot="dialog-overlay" style="position:fixed;inset:0"></div><div role="dialog" id="dlg" data-state="open" data-slot="dialog-content" tabindex="-1" style="pointer-events:auto;position:fixed;top:40px;left:40px"><a href="#x">Link</a><button type="button" data-slot="dialog-close">Close</button></div>`;
+
+for (const how of ['Escape', 'outside', 'close'] as const)
+	test(`a Radix dialog the page shows open at load is taken as open: focus moves into it, and ${how === 'close' ? 'its Close' : how === 'Escape' ? 'Escape' : 'a press outside'} closes it and shows the page again`, async () => {
+		const page = await open(shownDialog, ['radix/dialog']);
+		await page.evaluate(() => (document.body.style.pointerEvents = 'none'));
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-slot') === 'dialog-close', undefined, { timeout: 3000 }).catch(() => {});
+		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), 'dialog-close', 'Radix focuses its first tabbable control that is not a link');
+		if (how === 'Escape') await page.keyboard.press('Escape');
+		else if (how === 'outside') await page.mouse.click(600, 700);
+		else await page.getByText('Close').click();
+		await page.waitForTimeout(100);
+		assert.deepEqual(await page.evaluate(() => ({ state: document.getElementById('dlg')!.getAttribute('data-state'), trigger: document.querySelector('[data-slot="dialog-trigger"]')!.getAttribute('aria-expanded'), main: document.querySelector('main')!.getAttribute('aria-hidden'), body: document.body.style.pointerEvents })), { state: 'closed', trigger: 'false', main: null, body: '' });
+		await page.getByText('Open Dialog').click();
+		await page.waitForTimeout(100);
+		assert.deepEqual(await page.evaluate(() => ({ state: document.getElementById('dlg')!.getAttribute('data-state'), shown: document.getElementById('dlg')!.checkVisibility(), focus: document.activeElement?.getAttribute('data-slot') })), { state: 'open', shown: true, focus: 'dialog-close' }, 'its trigger opens it again');
+		await page.close();
+	});
+
 // Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
 test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
 	for (const bound of [true, false]) {
