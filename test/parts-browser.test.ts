@@ -1665,6 +1665,8 @@ test("day picker: a key DayPicker handles on a day does not scroll the page, eve
 		return result;
 	});
 	assert.equal(prevented, true);
+	await page.close();
+});
 
 // recharts 3.8's easing.js, as an oracle for the frames the part draws: Newton's method with its own stopping rule.
 function rechartsEase(t0: number): number {
