@@ -31,7 +31,7 @@ case "${1:-}" in
 		# A cached page or fragment URL without its ISR function runs the server function on every click: refuse before uploading.
 		(cd "$APP" && node "$ROOT/src/cli.ts" cache output)
 		URL=$(cd "$APP" && vercel deploy --prebuilt --yes --scope "$SCOPE")
-		BYPASS=$(vercel api "/v9/projects/vite-dev-markless?teamId=$SCOPE" --silent | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).protectionBypass??{};process.stdout.write(Object.keys(p).find((k)=>p[k].scope==="automation-bypass")??"")')
+		BYPASS=$(vercel api "/v9/projects/vite-dev-markless?teamId=$SCOPE" 2>/dev/null | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).protectionBypass??{};process.stdout.write(Object.keys(p).find((k)=>p[k].scope==="automation-bypass")??"")')
 		# The preview is promoted only when the CDN keeps its pages and their fragment URLs.
 		(cd "$APP" && node "$ROOT/src/cli.ts" cache check --new "$URL" --no-psi --expiry-wait 0 ${BYPASS:+--header "x-vercel-protection-bypass:$BYPASS"} \
 			--route / --route /guide/ --route /guide/features --route /config/build-options --route /blog/announcing-vite8)
