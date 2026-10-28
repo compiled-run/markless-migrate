@@ -36,7 +36,7 @@ export interface Issue {
 
 export type Validate = (values: Json) => readonly Issue[];
 
-export type FormAction = { readonly k: 'change'; readonly field: string; readonly value: Json } | { readonly k: 'submit' } | { readonly k: 'reset' };
+export type FormAction = { readonly k: 'change'; readonly field: string; readonly value: Json } | { readonly k: 'blur'; readonly field: string } | { readonly k: 'submit' } | { readonly k: 'reset' };
 
 export interface FormResult {
 	readonly state: FormState;
@@ -87,6 +87,8 @@ export function shown(spec: FormSpec, errors: readonly string[] | undefined): st
 
 export function formAct(spec: FormSpec, state: FormState, action: FormAction, validate: Validate): FormResult {
 	if (action.k === 'reset') return { state: initialState(spec) };
+	// A control whose blur the site's code hands the library (TanStack Form's handleBlur): its field's submit errors go.
+	if (action.k === 'blur') return { state: { ...state, errors: { ...state.errors, [action.field]: [] } } };
 	if (action.k === 'change') {
 		const values = { ...state.values, [action.field]: action.value };
 		if (spec.library === 'tanstack-form') return { state: { ...state, values, errors: { ...state.errors, [action.field]: [] } } };
@@ -200,6 +202,17 @@ export function click(target: Element): boolean {
 	const reset = target.closest('[data-mm-fl-reset]');
 	const region = reset?.closest(REGION);
 	if (reset && region) void doReset(region);
+	return false;
+}
+
+export function focusout(target: Element): boolean {
+	const region = target.closest(REGION);
+	if (!region || !target.hasAttribute('data-mm-fl-blur')) return false;
+	void liveOf(region).then((l) => {
+		if (!l) return;
+		l.state = formAct(l.spec, l.state, { k: 'blur', field: target.getAttribute(FIELD)! }, l.validate!).state;
+		commit(region, l);
+	});
 	return false;
 }
 

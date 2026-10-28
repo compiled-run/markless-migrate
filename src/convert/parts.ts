@@ -146,7 +146,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'form', library: 'markless-migrate', exports: [], events: ['submit'], locate: () => false },
 	// Form-library forms (react-hook-form, TanStack Form, Formisch): each field's errors are Markless state (convert's
 	// FormPlan); the part runs the library's timing and the site's schema.
-	{ module: 'form-library', library: 'markless-migrate', exports: [], events: ['input', 'click', 'keydown', 'submit'], locate: () => false },
+	{ module: 'form-library', library: 'markless-migrate', exports: [], events: ['input', 'click', 'keydown', 'submit', 'focusout'], locate: () => false },
 	// React Aria Components: each part's markup carries data-rac, so the library is known; the parts act on what the
 	// captured overlay holds (its trigger's id is its layer's key).
 	{ module: 'react-aria/select', library: 'react-aria-components', exports: ['Select', 'SelectValue', 'ListBox', 'ListBoxItem', 'ListBoxSection'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },

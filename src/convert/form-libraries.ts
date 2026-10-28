@@ -35,6 +35,8 @@ export interface FormControl extends Located {
 	readonly item?: Json;
 	/** A select's options: the value choosing each gave the field, by the text the trigger then shows. */
 	readonly items?: Readonly<Record<string, Json>>;
+	/** Its blur takes its field's errors away (the site hands the library its blur: TanStack Form's handleBlur). */
+	readonly blurs?: boolean;
 }
 
 /** The region in one state: `initial`; `error` with the field's errors set; `value` with a text field holding `value`. */
@@ -69,7 +71,7 @@ export interface FormLibraryCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'form-libraries-6';
+const VERSION = 'form-libraries-7';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** The error messages a field is given while its markup is recorded: unlike any message a schema writes. */
@@ -348,6 +350,22 @@ async function probeSelect(page: Page, i: number, k: number, initial: Record<str
 	return field ? { field, kind: 'select', items } : undefined;
 }
 
+/** Whether the control losing focus takes its field's errors away: an error is set on the field, then the control focused and left. */
+async function blurClears(page: Page, i: number, k: number, field: string): Promise<boolean> {
+	await setErrors(page, i, field, MESSAGES.slice(0, 1));
+	await settle(page);
+	await page.evaluate((k) => {
+		const el = (window as unknown as { __mmFormControls: HTMLElement[] }).__mmFormControls[k]!;
+		el.focus();
+		el.blur();
+	}, k);
+	await settle(page);
+	const left = await page.evaluate(([i, field]) => (window as unknown as { __mmFL: { adapter: { errors(): Record<string, string[]> } }[] }).__mmFL[i]!.adapter.errors()[field] ?? [], [i, field] as const);
+	await setErrors(page, i, field, []);
+	await settle(page);
+	return left.length === 0;
+}
+
 /** Uses each control of the form once, from the form as loaded, and records which field it sets and how. */
 async function probeControls(page: Page, url: string, i: number, log: (line: string) => void): Promise<FormControl[]> {
 	const out: FormControl[] = [];
@@ -363,7 +381,7 @@ async function probeControls(page: Page, url: string, i: number, log: (line: str
 			await settle(page);
 			const after = await fieldValues(page, i);
 			const field = changedFields(initial, after).find((f) => after[f] === 'zq');
-			if (field) out.push({ sig: c.sig, nth: c.nth, field, kind: 'text' });
+			if (field) out.push({ sig: c.sig, nth: c.nth, field, kind: 'text', ...((await blurClears(page, i, k, field)) ? { blurs: true } : {}) });
 			else log(`  form control ${c.sig}#${c.nth}: typing set no field to what was typed`);
 			await el.fill('').catch(() => {});
 			continue;
@@ -731,7 +749,7 @@ export class FormPlan {
 			this.set(el, { extra: Object.entries(attrs).map(([a, v]) => `${a}=${/["{}\\&@\n<>]/.test(v) ? `{${lit(v)}}` : `"${v}"`}`) });
 			return true;
 		};
-		for (const c of form.controls) mark(c.sig, c.nth, { 'data-mm-fl-field': c.field, 'data-mm-fl-kind': c.kind, ...(c.item !== undefined ? { 'data-mm-fl-item': JSON.stringify(c.item) } : {}), ...(c.items ? { 'data-mm-fl-items': JSON.stringify(c.items) } : {}) });
+		for (const c of form.controls) mark(c.sig, c.nth, { 'data-mm-fl-field': c.field, 'data-mm-fl-kind': c.kind, ...(c.blurs ? { 'data-mm-fl-blur': '' } : {}), ...(c.item !== undefined ? { 'data-mm-fl-item': JSON.stringify(c.item) } : {}), ...(c.items ? { 'data-mm-fl-items': JSON.stringify(c.items) } : {}) });
 		for (const r of form.resets) mark(r.sig, r.nth, { 'data-mm-fl-reset': '' });
 		for (const [field, el] of Object.entries(form.focus)) mark(el.sig, el.nth, { 'data-mm-fl-focus': field });
 		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), defaults: Object.fromEntries(fields.map((f) => [f.name, valueAt(f.path) ?? null])) };

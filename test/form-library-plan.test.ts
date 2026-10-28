@@ -57,7 +57,7 @@ function capture(library: FormLibrary): CapturedForm {
 		fields: ['title', 'about'],
 		defaults: { title: '', about: '' },
 		controls: [
-			{ sig: 'input', nth: 0, field: 'title', kind: 'text' },
+			{ sig: 'input', nth: 0, field: 'title', kind: 'text', ...(library === 'tanstack-form' ? { blurs: true } : {}) },
 			{ sig: 'textarea', nth: 0, field: 'about', kind: 'text' },
 		],
 		submits: [{ sig: 'submit', nth: 0 }],
@@ -103,6 +103,7 @@ test('where the library shows several messages, one message is the FieldError\'s
 	for (const library of ['tanstack-form', 'formisch'] as const) {
 		const { placed, out, plan } = convert(library);
 		assert.equal(placed, 1, plan.notes.join('\n'));
+		assert.equal(/data-mm-fl-kind="text" data-mm-fl-blur=""/.test(out), library === 'tanstack-form', 'a field whose blur the old page handled says so');
 		assert.match(out, /@if \(fl0e0\.length === 1\) \{ <div role="alert" data-slot="field-error" class="text-destructive">\{fl0m0\}<\/div> \}@if \(fl0e0\.length > 1\) \{ <div role="alert" data-slot="field-error" class="text-destructive"><ul class="list-disc">@for \(const m of fl0e0; key m\) \{ <li>\{m\}<\/li> \}<\/ul><\/div> \}/);
 	}
 });

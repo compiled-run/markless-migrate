@@ -88,3 +88,12 @@ test('a field\'s value sits at its path in the values the schema validates, and 
 	assert.deepEqual(formValues(s, s.defaults), { emails: [{ address: '' }, { address: 'b@c.de' }] });
 	assert.deepEqual(issuesByField(s, [{ message: 'Enter a valid email address.', path: ['emails', 0, { key: 'address' }] }]), { 'emails.0.address': ['Enter a valid email address.'] });
 });
+
+test('a control whose blur the old page handled (TanStack Form\'s handleBlur) takes its field\'s errors away when it loses focus', () => {
+	const s = spec('tanstack-form', ['title', 'description']);
+	let state = formAct(s, initialState(s), SUBMIT, validator(bugReport)).state;
+	assert.deepEqual(state.errors.title, ['Bug title must be at least 5 characters.']);
+	state = formAct(s, state, { k: 'blur', field: 'title' }, validator(bugReport)).state;
+	assert.deepEqual(state.errors.title, []);
+	assert.deepEqual(state.errors.description, ['Description must be at least 20 characters.']);
+});
