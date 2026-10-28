@@ -32,6 +32,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth 4] [--timeout 1800]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
     [--no-navigation] [--nav-entries 2] [--nav-destinations 40]
+markless-migrate dev (--route <path>... | --routes <glob> | --part <module>) [--control <regex>] [--watch] [--build] [--old <origin>]   # see How to iterate on a port
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
 markless-migrate guard build [--dir .output]
 markless-migrate guard page --old http://localhost:3000 --new http://localhost:5173 [--route /about]...
@@ -591,6 +592,40 @@ reported as not ported. `.migrate/convert/report.json` lists what was left out, 
 answered, and the library parts no port implements yet. `--only <file>` converts the routes listed;
 `--fallthrough <old deployment>` makes a preview answer every other page from there, marked
 `x-markless-migrate-side: old`.
+
+### How to iterate on a port
+
+Fixing one part does not need a full convert, a full build or a deploy. `dev` converts only the routes you name,
+serves them, and compares them with the original in about a minute:
+
+```bash
+cd examples/shadcn-ui-markless            # the app; or pass --app <dir>
+~/.claude/bin/heavy node ../../src/cli.ts dev --route /docs/components/base/combobox --control '^combobox' --watch
+```
+
+- It converts the routes from the cached captures (`.migrate/convert`) into an app of their own,
+  `.migrate/dev/app`, and leaves the app's full convert alone. A capture is taken again only when a change
+  invalidates it (a mark's version went up). Assets and the server already there are kept.
+- It serves those routes with Markless's dev server. `--build` serves a production build of just them instead.
+- It runs the dead-controls probe on each route against the original (`--old`, default the plan's origin: a
+  local build such as `deploy/shadcn-ui/serve-old.sh` on :4000, or the reference URL). The probe compares what
+  each control changes, its box, hit points, pop-up anchor, motion (with frame strips), keyboard and input.
+  It prints the differences it found. The probe comes from `scripts/probe/dead-controls.mjs`, or from
+  `origin/probe/dead-controls` until that lands; `--probe <file>` picks another. `--check` also runs
+  `check --only probes`.
+- `--control <regex>` probes only the uses whose id matches. One control takes about 20 s; a page's comboboxes
+  about 70 s. `--widths` sets the widths compared (default 1280), and `--full` runs the probe's whole sweep.
+- With `--watch`, saving a file under `parts/` copies it into the dev app and probes again the routes whose
+  page loads it. Saving one under `src/convert/` converts again first. Each run prints what got fixed and
+  what is new.
+- `--routes '/docs/components/*/combobox'` (a glob) or `--part base-ui/combobox` takes several routes at once,
+  to check that a part fix broke no other page. `--part` reads which pages load each part from the last full
+  convert's report. `--concurrency <n>` probes n routes at once, with one browser context each.
+
+Measured on the shadcn port (combobox anchor fix, PR #309): save to verified result took 90 s. That was 19 s to
+convert again, including taking the combobox captures again for the new instance prop, and 71 s to probe the
+page's 9 comboboxes. All 3 anchor differences showed as fixed. Before, the same proof took a full convert, a
+build of about 27 GB, a deploy and a check of several hours.
 
 ## Command-line tools
 
