@@ -24,6 +24,10 @@ const SHAPES: Record<string, { old: string; dead: string }> = {
 		old: page(`<select aria-label="Framework"><option>Next.js</option><option>Vite</option></select><pre id="steps">npx create-next-app</pre>`, `document.querySelector('select').addEventListener('change', (e) => { document.getElementById('steps').textContent = e.target.value === 'Vite' ? 'npm create vite' : 'npx create-next-app'; });`),
 		dead: page(`<select aria-label="Framework"><option>Next.js</option><option>Vite</option></select><pre id="steps">npx create-next-app</pre>`),
 	},
+	'a button that switches the font of a preview beside a text field': {
+		old: page(`<label>Name <input></label><button>Font: Inter</button><p id="preview" style="font-family: sans-serif; font-size: 32px">The quick brown fox</p>`, `document.querySelector('button').addEventListener('click', () => { const p = document.getElementById('preview'); p.style.fontFamily = p.style.fontFamily === 'serif' ? 'sans-serif' : 'serif'; });`),
+		dead: page(`<label>Name <input></label><button>Font: Inter</button><p id="preview" style="font-family: sans-serif; font-size: 32px">The quick brown fox</p>`),
+	},
 	'a button that switches the font of a preview': {
 		old: page(`<button>Font: Inter</button><p id="preview" style="font-family: sans-serif; font-size: 32px">The quick brown fox</p>`, `document.querySelector('button').addEventListener('click', (e) => { const p = document.getElementById('preview'); const serif = p.style.fontFamily === 'serif'; p.style.fontFamily = serif ? 'sans-serif' : 'serif'; });`),
 		dead: page(`<button>Font: Inter</button><p id="preview" style="font-family: sans-serif; font-size: 32px">The quick brown fox</p>`),
@@ -33,6 +37,8 @@ const DIFFERENT = 'a search box that empties the whole list';
 SHAPES[DIFFERENT] = { old: SHAPES['a search box that filters a list in place']!.old, dead: page(`<input placeholder="Search" aria-label="Search">${list}`, `document.querySelector('input').addEventListener('input', () => { document.getElementById('list').replaceChildren(); });`) };
 const LAYER = 'a search box that only changes a hidden layer';
 SHAPES[LAYER] = { old: SHAPES['a search box that filters a list in place']!.old, dead: page(`<input placeholder="Search" aria-label="Search">${list}<div hidden data-mm-layer="x"><ul id="layer"><li>a</li></ul></div>`, `document.querySelector('input').addEventListener('input', (e) => { document.getElementById('layer').firstElementChild.textContent = e.target.value; });`) };
+const RESET = 'a search box whose framework only sets a hidden input\'s attribute to the value it had';
+SHAPES[RESET] = { old: SHAPES['a search box that filters a list in place']!.old, dead: page(`<input placeholder="Search" aria-label="Search"><input id="q" name="q" type="checkbox" tabindex="-1" aria-hidden="true" style="clip-path: inset(50%); position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: -1px">${list}`, `document.querySelector('input').addEventListener('input', () => { const h = document.getElementById('q'); h.removeAttribute('name'); h.setAttribute('name', 'q'); });`) };
 
 let browser: Browser;
 let server: Server;
@@ -65,6 +71,8 @@ const EFFECTS: Record<string, { control: string; region: string }> = {
 	'a search box that filters a list and writes the query to the address': { control: 'textbox "Search"', region: 'list in main' },
 	'a select whose choice swaps the instructions below it': { control: 'combobox "Framework"', region: 'main' },
 	'a button that switches the font of a preview': { control: 'button "Font: Inter"', region: 'main' },
+	// A screenshot of the page leaves an empty style attribute on its text fields: no region the page changed on its own.
+	'a button that switches the font of a preview beside a text field': { control: 'button "Font: Inter"', region: 'main' },
 };
 
 for (const name of Object.keys(EFFECTS)) {
@@ -86,5 +94,10 @@ test('a port whose filter answers differently is red, but not as a control that 
 
 test('a hidden layer the port changes is not an answer a visitor sees: the filter is still dead', async () => {
 	const failures = await run(Object.keys(SHAPES).indexOf(LAYER));
+	assert.ok(failures.some((f) => f.actual.startsWith('nothing changed on the port')), failures.map((f) => `${f.check}: ${f.actual}`).join('\n'));
+});
+
+test('an attribute set again to the value it had is no change: the filter is still dead', async () => {
+	const failures = await run(Object.keys(SHAPES).indexOf(RESET));
 	assert.ok(failures.some((f) => f.actual.startsWith('nothing changed on the port')), failures.map((f) => `${f.check}: ${f.actual}`).join('\n'));
 });

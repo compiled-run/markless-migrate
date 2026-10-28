@@ -778,7 +778,7 @@ function watchReaction(): void {
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
 			if (r.type === 'childList') for (const n of r.addedNodes) inserted.add(n);
-			if (!(r.type === 'attributes' && r.attributeName?.startsWith('data-markless-migrate'))) touched.add(r.target);
+			if (r.type !== 'attributes') touched.add(r.target);
 			if (r.type === 'childList') for (const n of r.addedNodes) touched.add(n);
 			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
 			let attrs = changed.get(r.target);
@@ -909,7 +909,9 @@ function readReaction(): { changes: string[]; affected: string[]; scrolled: bool
 	};
 	const used = document.querySelector('[data-markless-migrate-used]');
 	const affected = new Set<string>();
-	for (const node of watch.touched) {
+	// An attribute counts only when it ends the step with another value: a framework setting it again (or a screenshot's empty style) is no change.
+	const retouched = [...watch.changed].filter(([el, attrs]) => [...attrs].some(([name, was]) => (name === 'style' ? (el.getAttribute(name) ?? '') !== (was ?? '') : el.getAttribute(name) !== was)));
+	for (const node of [...watch.touched, ...retouched.map(([el]) => el)]) {
 		const el = node instanceof Element ? node : node.parentElement;
 		if (!el?.isConnected || used?.contains(el)) continue;
 		if (!el.checkVisibility() && !el.parentElement?.checkVisibility()) continue;
