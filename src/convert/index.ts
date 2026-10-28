@@ -6,7 +6,7 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -760,6 +760,23 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			continue;
 		}
 		if (panel) {
+			// Content holding controls revealed in turn (a file tree's nested folders) goes into the page, so those are bound too.
+			const into = reveal.added.find((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)?.into as readonly number[] | undefined;
+			const holds = into && reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v));
+			if (holds) {
+				for (const a of reveal.added) {
+					if (typeof a.into === 'string' || elementAt(root, a.into) !== panel) continue;
+					for (const el of childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)) {
+						el.parentNode = panel as never;
+						panel.childNodes.push(el as never);
+						for (const x of [el, ...walkAll(el)]) {
+							const id = attr(x, 'id');
+							if (id) byId.set(id, x);
+						}
+					}
+				}
+				continue;
+			}
 			// Only what went into this panel: a tab that also switches its page's other lists (shadcn's package manager
 			// choice) fills their panels in the same use.
 			const markup = reveal.added
@@ -786,6 +803,10 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			} else {
 				const kept = besideTrigger(added.html);
 				if (!kept.length) continue;
+				if (!trigger) {
+					unplaced.push(`${reveal.key}: its control is not on the converted page`);
+					continue;
+				}
 				const parent = elementAt(root, added.into);
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
@@ -1111,6 +1132,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const before = reveals;
 				const base = await limit(() => captureBaseSubmenus(browser, options.old, route, at('reveals'), before));
 				if (base.length) reveals = [...before.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !before.some((r) => same(r, s) || r.key === s.key))];
+				// Controls inside content another revealed in place (a file tree's nested folders), after the ones holding them.
+				const outer = reveals;
+				const nested = await limit(() => captureNestedReveals(browser, options.old, route, at('reveals'), outer));
+				if (nested.length) reveals = [...outer, ...nested.filter((n) => !outer.some((r) => r.key === n.key))];
 			}
 			// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 			const comboboxes = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
@@ -1436,6 +1461,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let disclosureGroups = 0;
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
+	// A closed control whose panel is empty and got no captured content opens nothing on the port: never silently.
+	for (const [route, p] of prepared) {
+		const ids = new Map<string, Element>();
+		for (const el of walk(p.root)) if (attr(el, 'id')) ids.set(attr(el, 'id')!, el);
+		const missing = [...walk(p.root)].filter((t) => {
+			if (attr(t, 'aria-expanded') !== 'false') return false;
+			const panel = ids.get(attr(t, 'aria-controls') ?? '');
+			return panel !== undefined && !elementChildren(panel).length && !panelContent.has(panel);
+		});
+		if (missing.length) log(`  ${route}: ${missing.length} control(s) open a panel no capture filled: ${missing.slice(0, 5).map((t) => JSON.stringify(sigOf(t))).join(', ')}${missing.length > 5 ? ', …' : ''}`);
+	}
 	const insertedDisclosures = new InsertedDisclosurePlan();
 	let pickerCount = 0;
 	for (const [route, p] of prepared) {
