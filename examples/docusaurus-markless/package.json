@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "vp build",
+		"build": "rm -rf public/lazy && LAZY_ENTRY=docsearch vp build -c lazy.config.ts && LAZY_ENTRY=playground-runtime vp build -c lazy.config.ts && NODE_OPTIONS=--max-old-space-size=32768 vp build",
 		"preview": "vp preview",
 		"check": "vp check",
 		"doctor": "node scripts/markless-doctor.mjs",
@@ -12,19 +12,37 @@
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@docsearch/js": "^4.7.0",
-		"@markless/core": "0.5.0",
-		"@markless/router": "0.5.0",
-		"nitro": "3.0.260429-beta",
-		"vite-plus": "0.3.1"
+		"@algolia/autocomplete-core": "1.19.2",
+		"@markless/core": "file:./.markless-local/markless-core-0.9.0.tgz",
+		"@markless/router": "file:./.markless-local/markless-router-0.9.0.tgz",
+		"ai": "5.0.93",
+		"algoliasearch": "5.57.0",
+		"algoliasearch-docsearch": "npm:algoliasearch@5.43.0",
+		"algoliasearch-helper": "3.29.3",
+		"marked": "16.4.2",
+		"nitro": "3.0.260903-beta",
+		"nprogress": "^0.2.0",
+		"prismjs": "^1.29.0",
+		"sucrase": "^3.35.1",
+		"vite-plus": "1.3.0"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "0.5.0",
-		"@markless/typescript-plugin": "0.5.0",
+		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.9.0.tgz",
+		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.9.0.tgz",
+		"@types/nprogress": "^0.2.3",
 		"typescript": "^5.9.3",
-		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
+		"vite": "npm:@voidzero-dev/vite-plus-core@1.3.0"
 	},
 	"overrides": {
-		"vite": "$vite"
+		"vite": "$vite",
+		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.9.0.tgz",
+		"@markless/bundler": "file:./.markless-local/markless-bundler-0.9.0.tgz",
+		"@markless/compiler": "file:./.markless-local/markless-compiler-0.9.0.tgz",
+		"@markless/core": "file:./.markless-local/markless-core-0.9.0.tgz",
+		"@markless/router": "file:./.markless-local/markless-router-0.9.0.tgz",
+		"@markless/runtime": "file:./.markless-local/markless-runtime-0.9.0.tgz",
+		"@markless/serializer": "file:./.markless-local/markless-serializer-0.9.0.tgz",
+		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.9.0.tgz",
+		"@markless/web": "file:./.markless-local/markless-web-0.9.0.tgz"
 	}
 }

@@ -15,6 +15,8 @@ const RUNTIMES: readonly [string, readonly RegExp[]][] = [
 	['Qwik', [/["'`](?:\[?q\\{0,2}:container\]?)["'`]|\bqwikevents\b/, /qwik\/json|qwikevents|__q_context__/]],
 	['htmx', [/htmx:configRequest/, /htmx:afterSwap/]],
 	['Alpine.js', [/\bAlpine\b/, /x-data/, /x-init/]],
+	// A lazy chunk of a webpack or Rspack build: the old bundler's module loader, whatever framework the build is for.
+	['webpack', [/\b(?:self|globalThis|window)\.(?:webpack|rspack)Chunk[\w$]*/]],
 ];
 
 /** Libraries that keep storage of their own, found in a bundle whatever UI framework it also carries. */
