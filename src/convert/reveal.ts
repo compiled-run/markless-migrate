@@ -184,6 +184,12 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
 	await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
 	await settleScroll(page);
+	// What changed while scrolling to the control (a late header update) is not the gesture's doing.
+	await page.evaluate(() => {
+		const w = window as unknown as { __mmAdded: unknown[]; __mmChanged: unknown[] };
+		w.__mmAdded = [];
+		w.__mmChanged = [];
+	});
 	try {
 		if (candidate.action === 'click') await el.click({ timeout: 2000 });
 		else if (candidate.action === 'hover') {
