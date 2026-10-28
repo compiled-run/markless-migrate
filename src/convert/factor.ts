@@ -40,6 +40,8 @@ export interface RegionOptions {
 	readonly name?: (el: Element) => string | undefined;
 	/** Whether a value that differs may be an expression of the path besides the current page's link (default true); false reads it from the table. */
 	readonly derive?: boolean;
+	/** The state statements an element's binding declares: a region declaring one an element outside it also declares stays each page's own. */
+	readonly declares?: (el: Element) => readonly string[] | undefined;
 }
 
 /** One region several pages render alike: its markup is `element` (the first page's copy) with `expressions` of `path` for what differs. */
@@ -166,9 +168,10 @@ export function sharedRegions(roots: ReadonlyMap<string, Element>, options: Regi
 	for (const page of pages) for (const [el, h] of page.hash) if (el !== page.root && page.size.get(el)! >= MIN_SHARED) (pagesWith.get(h) ?? pagesWith.set(h, new Set()).get(h)!).add(page.route);
 	const clusters = new Map<string, Cluster>();
 	for (const page of pages) {
+		const owns = ownsItsState(page.root, options.declares);
 		const select = (el: Element) => {
 			const h = page.hash.get(el)!;
-			if (el !== page.root && page.size.get(el)! >= MIN_SHARED && (pagesWith.get(h)?.size ?? 0) >= 2) {
+			if (el !== page.root && page.size.get(el)! >= MIN_SHARED && (pagesWith.get(h)?.size ?? 0) >= 2 && owns(el)) {
 				const cluster = clusters.get(h) ?? clusters.set(h, { hash: h, members: [] }).get(h)!;
 				if (!cluster.members.some((m) => m.page === page)) cluster.members.push({ page, el });
 				return;
@@ -233,6 +236,19 @@ export function sharedRegions(roots: ReadonlyMap<string, Element>, options: Regi
 	return regions;
 }
 
+// A shared component declares the state its markup reads: a statement an element outside it also declares (a tab panel
+// whose triggers are outside) would split the one state in two, the panel never following its triggers.
+function ownsItsState(root: Element, declares: RegionOptions['declares']): (el: Element) => boolean {
+	if (!declares) return () => true;
+	const by = new Map<string, Element[]>();
+	for (const el of elementsOf(root)) for (const statement of declares(el) ?? []) (by.get(statement) ?? by.set(statement, []).get(statement)!).push(el);
+	const within = (el: Element, region: Element) => {
+		for (let n: Element | null = el; n; n = isElement(n.parentNode as Element) ? (n.parentNode as Element) : null) if (n === region) return true;
+		return false;
+	};
+	return (region) => elementsOf(region).every((el) => (declares(el) ?? []).every((statement) => by.get(statement)!.every((other) => within(other, region))));
+}
+
 /** The module of a shared region's component, around its emitted markup: `({ path })`, its table of values when it needs one, and the statements its markup reads (`declarations`). */
 export function regionModule(region: SharedRegion, markup: string, head: { readonly comment: string; readonly imports?: readonly string[]; readonly declarations?: readonly string[] }): string {
 	const hasTable = Object.keys(region.table).length > 0;
@@ -249,13 +265,13 @@ ${hasTable ? '\tconst values = VALUES[path] ?? {};\n' : ''}${(head.declarations 
  * Writes each region several pages render alike as one component taking the page's path (see sharedRegions), for the
  * converter's pages.
  */
-export function factor(roots: ReadonlyMap<string, Element>, options: { readonly bind?: EmitOptions['bind']; readonly dir?: string; readonly extra?: (el: Element) => string | undefined; readonly enter?: (routes: readonly string[]) => void } = {}): Factored {
+export function factor(roots: ReadonlyMap<string, Element>, options: { readonly bind?: EmitOptions['bind']; readonly dir?: string; readonly extra?: (el: Element) => string | undefined; readonly enter?: (routes: readonly string[]) => void; readonly declares?: RegionOptions['declares'] } = {}): Factored {
 	const byElement = new Map<Element, SharedComponent>();
 	const usedBy = new Map<string, SharedComponent[]>();
 	const components: SharedComponent[] = [];
 	const dir = options.dir ?? 'components/converted';
 	// Markless cannot rebuild an @if arm whose attributes are expressions of a prop; a table read it can.
-	for (const region of sharedRegions(roots, { extra: options.extra, derive: false })) {
+	for (const region of sharedRegions(roots, { extra: options.extra, derive: false, ...(options.declares ? { declares: options.declares } : {}) })) {
 		const declarations: string[] = [];
 		options.enter?.(region.members.map((m) => m.route));
 		const markup = emitElement(region.element, {

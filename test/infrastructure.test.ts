@@ -144,6 +144,33 @@ test('a route whose check is still going at --timeout while both apps keep answe
 	assert.match(route.failures[0]!.actual, /ran out of time: it did not finish within 2 s \(--timeout\), and both apps were still answering/);
 });
 
+test('a request its page dropped by navigating away or closing does not make a route that ran out of time an infrastructure failure', async () => {
+	const { withDeadline } = await import('../src/check/run.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const run = { old: defaultEnv(origin(good)), new: defaultEnv(origin(good)), frozen: false };
+	const hung = await listen(() => {});
+	try {
+		const route = await withDeadline('/thread', run, 2_000, async (scoped) => {
+			const context = await browser.newContext();
+			scoped.old.scope!.track(context);
+			const closed = await context.newPage();
+			await closed.goto(origin(good));
+			await closed.evaluate((url) => void fetch(url, { mode: 'no-cors' }).catch(() => {}), `${origin(hung)}/closed`);
+			const page = await context.newPage();
+			await page.goto(origin(good));
+			await page.evaluate((url) => void fetch(url, { mode: 'no-cors' }).catch(() => {}), `${origin(hung)}/left`);
+			await new Promise((done) => setTimeout(done, 100));
+			await closed.close();
+			for (;;) await page.goto(origin(good));
+		});
+		assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
+		assert.match(route.failures[0]!.actual, /ran out of time/);
+	} finally {
+		hung.closeAllConnections();
+		hung.close();
+	}
+});
+
 test('at --timeout, an app that has not answered the route\'s pages is an infrastructure failure even while the other keeps answering', async () => {
 	const { withDeadline } = await import('../src/check/run.ts');
 	const { defaultEnv } = await import('../src/check/browser.ts');

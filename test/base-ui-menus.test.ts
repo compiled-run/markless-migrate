@@ -436,6 +436,20 @@ test('a Base UI submenu opens once the pointer rests on its trigger, focus stayi
 	await page.close();
 });
 
+test("a mouse press on a Base UI submenu trigger does not open it: the pointer's 100 ms rest does, as useClick ignores the mouse with openOnHover", async () => {
+	const page = await open(withSub(), ['base-ui/menu']);
+	await page.locator('#dd').click();
+	const box = (await page.getByText('Invite users').boundingBox())!;
+	await page.mouse.move(box.x + 20, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.up();
+	await settled(page);
+	assert.match(await subState(page), /sub=false/, 'still closed right after the press');
+	await page.waitForTimeout(250);
+	assert.match(await subState(page), /sub=true/, 'open once the pointer rested 100 ms');
+	await page.close();
+});
+
 test('the pointer leaving a Base UI submenu trigger away from its submenu closes the submenu, with nothing highlighted', async () => {
 	const page = await open(withSub(), ['base-ui/menu']);
 	await page.locator('#dd').click();
@@ -476,7 +490,7 @@ test('a Base UI context menu opened under the pointer highlights nothing until i
 	const page = await open(
 		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
 		<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px">${['Back', 'Forward', 'Reload'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="context-menu-item">${t}</div>`).join('')}</div></div></div>`,
-		['base-ui/context-menu', 'base-ui/menu'],
+		['base-ui/context-menu'],
 	);
 	// The stub places the menu at the page's corner: under the pointer that opens it.
 	await page.mouse.click(30, 30, { button: 'right' });
@@ -495,7 +509,7 @@ test("a click on a Base UI context menu's submenu trigger leaves the menu open a
 		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
 		<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px"><div role="menuitem" tabindex="-1" data-slot="context-menu-item">Back</div><div role="menuitem" tabindex="-1" id="sub1" aria-haspopup="menu" aria-expanded="false" data-mm-key="ctx-sub-1" data-slot="context-menu-sub-trigger">More Tools</div></div></div></div>
 		<div data-base-ui-portal hidden data-mm-layer="ctx-sub-1"><div data-side="right" data-align="start" data-nested role="presentation" style="position:absolute;left:400px;top:0" data-closed><div tabindex="-1" role="menu" data-side="right" data-align="start" data-nested aria-labelledby="sub1" data-slot="context-menu-sub-content" data-closed style="width:200px">${['Save Page', 'Developer Tools'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="context-menu-item">${t}</div>`).join('')}</div></div></div>`,
-		['base-ui/context-menu', 'base-ui/menu'],
+		['base-ui/context-menu'],
 	);
 	const st = () => page.evaluate(() => `menu=${!document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden} sub=${!document.querySelector<HTMLElement>('[data-mm-layer="ctx-sub-1"]')!.hidden && document.getElementById('sub1')!.getAttribute('aria-expanded') === 'true'}`);
 	await page.mouse.click(30, 30, { button: 'right' });

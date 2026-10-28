@@ -21,6 +21,18 @@ async function routerConstant(app: string, name: string): Promise<string | undef
 	return undefined;
 }
 
+/** The packages cache apply and check read from the app's node_modules; one the app declares but has not installed would silently drop its rules. */
+const READ_FROM_INSTALL = ['@markless/router', 'nitro'];
+
+/** Fails when the app declares a package whose installed build the caching rules are read from, but it is not installed. */
+export async function requireInstalled(app: string): Promise<void> {
+	const pkg = JSON.parse(await readFile(join(app, 'package.json'), 'utf8').catch(() => '{}')) as Record<string, Record<string, string> | undefined>;
+	const declared = READ_FROM_INSTALL.filter((name) => pkg.dependencies?.[name] ?? pkg.devDependencies?.[name]);
+	const missing: string[] = [];
+	for (const name of declared) if (!(await readFile(join(app, 'node_modules', name, 'package.json'), 'utf8').catch(() => undefined))) missing.push(name);
+	if (missing.length) throw new Error(`${missing.join(', ')} declared in ${join(app, 'package.json')} but not installed in its node_modules: the rules read the fragment URL prefix and Nitro's query support from them, so without them no page's fragment URL is cached and every navigation runs a function. install the app's dependencies first`);
+}
+
 /** The fragment request header the app's own @markless/router sends (up to 0.5), read from its build; undefined when it has none. */
 export const fragmentHeader = (app: string): Promise<string | undefined> => routerConstant(app, 'FRAGMENT_REQUEST_HEADER');
 
@@ -187,6 +199,7 @@ export interface ApplyResult {
 
 /** Writes the caching rules into the Markless app and wires them into its vite.config.ts. */
 export async function applyCaching(plan: CachingPlan, app: string, pageFiles: Readonly<Record<string, string>> = {}, options: { readonly prerender?: boolean } = {}): Promise<ApplyResult> {
+	await requireInstalled(app);
 	const routes = await refineWithNewSource(plan, app, pageFiles);
 	const header = await fragmentHeader(app);
 	const prefix = await fragmentPath(app);

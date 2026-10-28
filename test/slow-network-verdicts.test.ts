@@ -95,3 +95,13 @@ test('an old site that stops answering leaves the slow network not measured, and
 	assert.match(labDown!.infrastructure?.message ?? '', /^page load \(lab\) not measured: no Lighthouse run of the old page finished/);
 	assert.equal(report.ok, false);
 });
+
+test('a largest paint later by less than a frame is not a difference: paint times come one frame apart', () => {
+	// CI run 40576060649: the same page on both sides, WebKit on Regular 3G, LCP 0.38, 0.39, 0.38, 0.38 s against 0.39 s four times, red.
+	const lcp = (ms: number): NetworkRun => ({ ...run(3000), lcp: ms });
+	const old = summarizeCell('regular-3g', 'webkit', [lcp(378), lcp(386), lcp(379), lcp(381)]);
+	const next = summarizeCell('regular-3g', 'webkit', [lcp(388), lcp(389), lcp(391), lcp(390)]);
+	assert.ok(networkVerdicts(old, next).find((v) => v.metric === 'lcp')!.ok);
+	const later = summarizeCell('regular-3g', 'webkit', [lcp(420), lcp(420), lcp(430), lcp(420)]);
+	assert.equal(networkVerdicts(old, later).find((v) => v.metric === 'lcp')!.ok, false, 'two frames later still is');
+});

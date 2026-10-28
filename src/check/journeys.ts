@@ -2281,7 +2281,6 @@ export function missingReaction(olds: readonly StepResult[], next: StepResult): 
 	return { changes, regions };
 }
 
-/** Failures that are a slower answer alone, with the journey and step to time again one side at a time before they stand. */
 /** The regions every old run changed outside the used control, when the new page changed none: a control whose effect never reaches the page. */
 export function deadControl(olds: readonly StepResult[], next: StepResult): string[] | undefined {
 	const mine = next.reaction?.affected;
@@ -2291,7 +2290,8 @@ export function deadControl(olds: readonly StepResult[], next: StepResult): stri
 	return common.length ? common : [...first!];
 }
 
-export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number }>();
+/** Failures that are a slower answer alone, or a view in between alone, with the journey and step to time again one side at a time before they stand. */
+export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number; readonly views?: true }>();
 
 const SHIFT_PX = 4;
 const SHIFT_SCORE = 0.02;
@@ -2552,6 +2552,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 				const lead = (side: 'old' | 'new') => (!dead ? '' : side === 'old' ? `${describeTarget(step.target)} changes ${dead.join(', ')} on the original; ` : 'nothing changed on the port; ');
 				const failure: Failure = { route, dimension, check, expected: lead('old') + where('old', format(shown(a!), parts, missing, true)), actual: lead('new') + where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
+				// A placeholder shown only while an answer is late follows the server's speed that time, as an answer time does.
+				if (parts.length === 1 && parts[0] === 'in between') timedOnly.set(failure, { journey: j, step: k, views: true });
 				failures.push(failure);
 				break;
 			}

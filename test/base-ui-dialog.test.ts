@@ -179,3 +179,21 @@ test('Base UI Drawer with disablePointerDismissal: a press outside leaves it ope
 		await page.close();
 	}
 });
+
+// shadcn's /create welcome dialog: open when the page loads, so the page came with markOthers' marks on everything else.
+const shownAtLoad = `<main aria-hidden="true" data-base-ui-inert="" style="height:3000px"><button type="button">Behind</button></main>
+	<div data-base-ui-portal>${INTERNAL_BACKDROP}<div data-open role="presentation" data-slot="dialog-overlay" aria-hidden="true" data-base-ui-inert=""></div><div data-open role="dialog" tabindex="-1" data-base-ui-focusable data-slot="dialog-content" style="position:relative;z-index:1"><p>Build your own</p><button type="button" data-slot="dialog-close">Get Started</button></div></div>`;
+const shownState = (page: Page) => page.evaluate(() => `open=${!document.querySelector<HTMLElement>('[data-base-ui-portal]')!.hidden && document.querySelector('[role=dialog]')!.hasAttribute('data-open')} main-hidden=${document.querySelector('main')!.getAttribute('aria-hidden')}`);
+
+test('a Base UI dialog the page shows open at load closes from its Close part, Escape or its backdrop, and the page behind is shown again', async () => {
+	for (const how of ['close', 'escape', 'backdrop'] as const) {
+		const page = await open(shownAtLoad, ['base-ui/dialog']);
+		assert.equal(await shownState(page), 'open=true main-hidden=true');
+		if (how === 'close') await page.getByText('Get Started').click();
+		else if (how === 'escape') await press(page, 'Escape');
+		else await page.mouse.click(5, 5);
+		await page.waitForTimeout(100);
+		assert.equal(await shownState(page), 'open=false main-hidden=null', how);
+		await page.close();
+	}
+});

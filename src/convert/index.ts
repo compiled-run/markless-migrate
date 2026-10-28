@@ -39,7 +39,7 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, splitBody } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { componentImport, componentName, readSiteComponents, siteComponentOf, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
@@ -308,8 +308,9 @@ function placement(kept: readonly Element[]): string {
 			// content share a data-slot, with defaults of 4 and 0.
 			const own = candidatesOf(el, placementResolver);
 			for (const c of own.length ? own : placementResolver.candidates(slot)) {
-				const side = placementResolver.prop(c.library, c.export, 'sideOffset');
-				const align = placementResolver.prop(c.library, c.export, 'alignOffset');
+				// A slot a wrapper renders another wrapper with (a submenu's content) has that site's offsets.
+				const side = placementResolver.forwardedProp?.(slot, 'sideOffset') ?? placementResolver.prop(c.library, c.export, 'sideOffset');
+				const align = placementResolver.forwardedProp?.(slot, 'alignOffset') ?? placementResolver.prop(c.library, c.export, 'alignOffset');
 				if (side === undefined && align === undefined) continue;
 				return `${side !== undefined ? ` data-mm-side-offset="${side}"` : ''}${align !== undefined ? ` data-mm-align-offset="${align}"` : ''}`;
 			}
@@ -698,6 +699,7 @@ function combined(first: PartResolver, then: PartResolver): PartResolver {
 		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
 		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
 		slotProp: (library, exportName, slot, prop) => first.slotProp?.(library, exportName, slot, prop) ?? then.slotProp?.(library, exportName, slot, prop),
+		forwardedProp: (slot, prop) => first.forwardedProp?.(slot, prop) ?? then.forwardedProp?.(slot, prop),
 	};
 }
 
@@ -927,9 +929,20 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
 	}
 	const kids = elementChildren(body(doc));
-	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
+	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
 	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
+}
+
+const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
+
+/**
+ * The body child that is the page's own content: the one holding its main landmark, else the largest. A shared header
+ * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
+ */
+export function pageRoot(kids: readonly Element[]): Element {
+	const holding = kids.filter((el) => isMain(el) || [...walk(el)].some(isMain));
+	return (holding.length ? holding : kids).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
 
 function headModule(byRoute: Map<string, Prepared>): string {
@@ -1625,7 +1638,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes) });
+	// Their bind is a lookup; a TanStack table's emits its rows on first bind, so it is left out.
+	const statePlans = [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps, scenePlan, dayPickers, racCalendars, racTables, charts];
+	const declares = (el: Element) => statePlans.flatMap((plan) => plan.bind(el)?.declare ?? []);
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes), declares });
 	usedPorts.routes = undefined;
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
@@ -1654,35 +1670,24 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// carries only its own. Markless renders a fragment root of components only inside branches: both are arms of
 		// a branch on a module constant, which never changes.
 		const pageLayers = layers.own(route);
-		let after = bodyAfter ? `<BodyAfter route={${lit(route)}} />` : '';
-		// A toaster nests a repeat in a repeat's rows, which Markless renders only outside a branch: it follows the arms.
-		let toasters = '';
+		// A toaster nests a repeat in a repeat's rows, which Markless renders only outside a branch: it stays in the old order between them.
+		const after: { markup: string; toaster?: boolean }[] = [];
 		const owned = ownAfter.get(route);
 		if (bodyAfter && owned?.length) {
 			let from = 0;
-			after = '';
 			for (const i of owned) {
-				for (let j = from; j < i; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
+				for (let j = from; j < i; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
 				const el = bodyParts.after[i]!.byRoute.get(route)!;
-				const markup = emitElement(el, { declarations, bind: (x) => mergeBindings(bindParts(x, usedPorts), notifyPlan.bind(x)), dropped: noteDropped });
-				if (notifyPlan.rendersToasts(el)) toasters += markup;
-				else after += markup;
+				after.push({ markup: emitElement(el, { declarations, bind: (x) => mergeBindings(bindParts(x, usedPorts), notifyPlan.bind(x)), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
 				from = i + 1;
 			}
-			for (let j = from; j < bodyParts.after.length; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
-		}
-		const extras = (ownExtras.get(route) ?? [])
-			.map((el) => {
-				const markup = emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped });
-				if (!notifyPlan.rendersToasts(el)) return markup;
-				toasters += markup;
-				return '';
-			})
-			.join('');
+			for (let j = from; j < bodyParts.after.length; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
+		} else if (bodyAfter) after.push({ markup: `<BodyAfter route={${lit(route)}} />` });
+		for (const el of ownExtras.get(route) ?? []) after.push({ markup: emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
-		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}${copied}`;
-		const markup = tail || toasters ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }${tail ? `@if (${PAGE_SHOWN}) { <>${tail}</> }` : ''}${toasters}</>` : rootMarkup;
+		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
+		const markup = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);

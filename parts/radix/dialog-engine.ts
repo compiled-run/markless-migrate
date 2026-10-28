@@ -38,6 +38,8 @@ export function installDialog(triggers: readonly HTMLElement[] | undefined, over
 	for (const el of content.querySelectorAll('[aschild]')) el.removeAttribute('aschild');
 	const dialog: Dialog = { triggers: triggers ?? [], overlay, content, cancel, alert, autofocus };
 	dialogs.set(content, dialog);
+	// Markless finds a bound element by its place in the page's element order: a dialog holding handlers stays where it was rendered.
+	if (content.matches('[m\\:on]') || content.querySelector('[m\\:on]')) for (const el of [overlay, content]) if (el) staying.add(el);
 	if (overlay) watchPresence(overlay, () => mountOverlay(dialog), () => unmountOverlay(dialog));
 	watchPresence(content, () => mountContent(dialog), () => unmountContent(dialog), (open) => setTrapped(dialog, open));
 }
@@ -108,7 +110,10 @@ function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => vo
 const CONTAINER = '[data-async-container]';
 const PAGE_END = 'markless:page-end';
 
+const staying = new WeakSet<HTMLElement>();
+
 function portal(el: HTMLElement): void {
+	if (staying.has(el)) return;
 	const host = el.parentElement?.closest(CONTAINER);
 	if (!host) return;
 	let end: ChildNode | null = null;

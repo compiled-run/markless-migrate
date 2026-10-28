@@ -215,13 +215,15 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	else openMenu(trigger, 'popup');
 	return true;
 }
-export function click(target: Element): boolean {
+export function click(target: Element, event?: MouseEvent): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
 	const p = item && popupOf(item);
 	if (!item || !p) return Boolean(triggerOf(target));
 	if (!enabled(item) || item.hasAttribute('data-disabled')) return true;
 	if (item.matches(OPENER)) {
-		openSub(p, item, 'pointer');
+		// useClick with ignoreMouse (openOnHover): a mouse or pen press leaves opening to the hover rest.
+		const pointer = event instanceof PointerEvent ? event.pointerType : undefined;
+		if (pointer !== 'mouse' && pointer !== 'pen') openSub(p, item, 'pointer');
 		return true;
 	}
 	closeTree(p, 'item');

@@ -39,7 +39,7 @@ on:
         required: false
         default: '3600'
       max_parallel:
-        description: Shards run at once (the org runs 60 jobs; leave room for every repository's CI)
+        description: Shards run at once, 1 to 20 (the org runs 60 jobs; leave room for every repository's CI)
         required: false
         default: '20'
   # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on thirteen runners, two routes each:
@@ -79,6 +79,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Cap the shards run at once
+        env:
+          MAX_PARALLEL: ${{ inputs.max_parallel || '20' }}
+        run: |
+          case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 20, got '$MAX_PARALLEL'"; exit 1 ;; esac
+          if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 20 ]; then echo "::error::max_parallel must be from 1 to 20, got $MAX_PARALLEL"; exit 1; fi
       - id: split
         run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
