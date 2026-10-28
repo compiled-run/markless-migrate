@@ -540,3 +540,28 @@ export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShif
 	assert.equal(await page.evaluate(() => document.querySelector<HTMLElement>('[data-mm-layer="cur"] > [data-side]')!.style.transform), 'translate(10px, 0px)');
 	await page.close();
 });
+
+// Floating UI as the part calls it: which element anchors the popup and the offsets it is placed with.
+const RECORDING_FLOATING = `export const computePosition = async (anchor, floating, o) => { window.placed = { anchor: anchor.getAttribute('data-slot') ?? anchor.tagName, placement: o.placement, middleware: o.middleware.map((m) => m && m.options) }; return { x: 0, y: 0, placement: o.placement, middlewareData: {} }; };
+export const autoUpdate = () => () => {};
+export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), size = () => ({}), shift = () => ({});
+export const offset = (options) => ({ options });`;
+const combo = (input: string, content: string) => `<main style="padding:100px">${input}</main><div data-base-ui-portal hidden data-mm-layer="c1"><div role="presentation" data-side="bottom" data-align="start" style="position:absolute"><div data-slot="combobox-content" data-side="bottom" data-align="start" ${content} data-closed><div role="listbox" id="c1-list"><div role="option" aria-selected="false" tabindex="-1">Next.js</div></div></div></div></div>`;
+
+test("a Base UI combobox with chips is placed off its chips, the anchor shadcn hands its content (data-chips)", async () => {
+	const page = await open(combo('<div data-slot="combobox-chips" style="width:320px"><span>chip</span><input id="c1" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="combobox-chip-input"></div>', 'data-chips="true"'), ['base-ui/combobox'], {}, RECORDING_FLOATING);
+	await page.locator('#c1').click();
+	await page.waitForTimeout(100);
+	assert.equal(await page.evaluate(() => (window as unknown as { placed: { anchor: string } }).placed.anchor), 'combobox-chips');
+	await page.close();
+});
+
+test("a Base UI combobox's own alignOffset (convert reads it per instance) moves its popup along its side", async () => {
+	const page = await open(combo('<div data-slot="input-group"><input id="c1" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="input-group-control"></div>', 'data-chips="false" data-mm-align-offset="-28" data-mm-side-offset="6"'), ['base-ui/combobox'], {}, RECORDING_FLOATING);
+	await page.locator('#c1').click();
+	await page.waitForTimeout(100);
+	const placed = await page.evaluate(() => (window as unknown as { placed: { anchor: string; middleware: unknown[] } }).placed);
+	assert.equal(placed.anchor, 'input-group-control');
+	assert.deepEqual(placed.middleware[0], { mainAxis: 6, crossAxis: -28, alignmentAxis: -28 });
+	await page.close();
+});

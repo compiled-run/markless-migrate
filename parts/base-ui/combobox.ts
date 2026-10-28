@@ -190,7 +190,8 @@ function hover(p: Popup): void {
 function open(input: HTMLInputElement, typed = false): Popup | undefined {
 	const existing = popupFor(input);
 	if (existing) return existing;
-	const p = openPopup(input, { popupSelector: '[data-slot="combobox-content"], [role="listbox"]', outsidePress: false, onDismiss: (x) => close(x) });
+	// shadcn hands a combobox with chips its chips as the anchor (data-chips on the content); else Base UI's is the input.
+	const p = openPopup(input, { popupSelector: '[data-slot="combobox-content"], [role="listbox"]', outsidePress: false, onDismiss: (x) => close(x), anchorOf: (popup) => (popup.getAttribute('data-chips') === 'true' ? input.closest('[data-slot="combobox-chips"]') : undefined) });
 	if (!p) return undefined;
 	const list = p.popup.querySelector<HTMLElement>('[role="listbox"]') ?? p.popup;
 	if (list.id) input.setAttribute('aria-controls', list.id);
