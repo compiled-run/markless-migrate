@@ -76,7 +76,11 @@ const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[
 // Radix ScrollArea (type "hover") mounts its scrollbars when the pointer enters it: hovered in a pass of its own.
 const SCROLL_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [['[data-slot="scroll-area"]:not([data-base-ui-scroll-area-root])', 'hover']];
 
-const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:2:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
+/** A wide screen, for controls a page shows only from about 1440 px. */
+export const WIDE: Viewport = { name: 'wide', width: 1920, height: 1080, isMobile: false };
+
+// reveal:3: older captures could hold another page's content for a control several pages share.
+const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:3:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
 	/** Listed by the site: only a control that takes itself away is recorded. */
@@ -181,6 +185,12 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
 	await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
 	await settleScroll(page);
+	// What changed while scrolling to the control (a late header update) is not the gesture's doing.
+	await page.evaluate(() => {
+		const w = window as unknown as { __mmAdded: unknown[]; __mmChanged: unknown[] };
+		w.__mmAdded = [];
+		w.__mmChanged = [];
+	});
 	try {
 		if (candidate.action === 'click') await el.click({ timeout: 2000 });
 		else if (candidate.action === 'hover') {
@@ -311,11 +321,11 @@ async function useCandidate(open: Open, candidate: Candidate, again: () => Promi
 }
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks()): Promise<RevealCapture> {
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) {
-		// A capture under the reveal:2 key had its text values marked.
+		// A capture under the reveal:2 key and later had its text values marked.
 		const marked = markedOf(cached, { [textValuesMark.id]: 1 });
 		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
 		if (!stale.length) return cached;
@@ -327,7 +337,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	}
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
-	const done = new Set<string>();
+	const done = new Set<string>(taken);
 	let hidden = true;
 	for (const viewport of viewports) {
 		// A control another viewport could not show is the only reason to load the page again at this one.
@@ -402,8 +412,10 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	const opened = opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
 	const scroll = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
 	const keys = new Set(base.map((r) => r.key));
-	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals];
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
+	// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
+	const wide = await captureReveals(browser, origin, route, dir, [WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys).catch(failed);
+	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
@@ -497,13 +509,22 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 
 /**
  * React Aria's submenus: a menu item with aria-haspopup opens its own popover when hovered, which no control in the
- * page shows. Each menu a reveal opened is opened again, each such item in it hovered, and what it showed recorded as a
- * reveal keyed by the item's id (one level deep). Cached by route.
+ * page shows. Each menu a reveal opened (a press, or a right click on a context menu's area) is opened again, each such
+ * item in it hovered, and what it showed recorded as a reveal keyed by the item's id as the menu's reveal has it: the
+ * ids React generates on the client follow what mounted before, so an item is found again by its place (one level
+ * deep). Cached by route.
  */
 export async function captureRacSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
-	const menus = reveals.filter((r) => r.action === 'click' && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
+	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`rac-submenus:2:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-submenus:3:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const SUB_ITEM = '[role^="menuitem"][aria-haspopup="menu"]';
+	// The submenu items of the open menus, or of the reveal's markup when given.
+	const itemsIn = (page: Page, html?: string): Promise<string[]> =>
+		page.evaluate(
+			([selector, markup]) => (markup === null ? [...document.querySelectorAll(`[data-trigger="MenuTrigger"] ${selector}, [data-trigger] [role="menu"] ${selector}`)] : [...Object.assign(document.createElement('template'), { innerHTML: markup }).content.querySelectorAll(selector)]).map((e) => e.id),
+			[SUB_ITEM, html ?? null] as const,
+		);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -521,13 +542,15 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 					}, menu.path)
 				).asElement();
 				if (!el) return false;
-				await el.click({ timeout: 2000 });
+				await el.click({ timeout: 2000, button: menu.action === 'contextmenu' ? 'right' : 'left' });
 				await quiet(page, 400);
 				return true;
 			};
 			if (!(await open())) continue;
-			const ids = await page.evaluate(() => [...document.querySelectorAll('[data-trigger="MenuTrigger"] [role^="menuitem"][aria-haspopup="menu"], [data-trigger] [role="menu"] [role^="menuitem"][aria-haspopup="menu"]')].map((e) => e.id).filter(Boolean));
-			for (const id of [...new Set(ids)]) {
+			const recorded = await itemsIn(page, menu.added.map((a) => a.html).join(''));
+			for (const [k, want] of recorded.entries()) {
+				const id = (await itemsIn(page))[k];
+				if (!id || !want) continue;
 				await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmAdded = [];
@@ -548,7 +571,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 					// The submenu's popover, outermost first, without what is inside another added node.
 					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
 				});
-				if (added.length) out.push({ key: id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+				if (added.length) out.push({ key: want, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: html.split(id).join(want) })) });
 				// Back to the menu alone: away from the item, so the submenu closes, then the menu is the only layer.
 				await page.keyboard.press('Escape').catch(() => {});
 				await quiet(page, 300);
@@ -809,4 +832,73 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ route, reveals: [...marked, ...out] }));
 	return [...marked, ...out];
+}
+
+/** How deep controls inside revealed content are followed (a file tree's folder in a folder in a folder). */
+const NESTED_DEPTH = 3;
+/** At most this many nested controls are used on one route. */
+const NESTED_MAX = 60;
+
+/**
+ * Controls that hold content back inside what another one revealed in place (a file tree's nested folders): each is used on
+ * a fresh load with the controls it sits under opened first, to NESTED_DEPTH levels, and recorded like a page's own. The
+ * reveals come in the order they can be placed: a control's after the one whose content holds it. Cached by route.
+ */
+export async function captureNestedReveals(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
+	const [selector] = CONTROLS[0]!;
+	const inPlace = (r: Reveal) => r.action === 'click' && r.viewport === VIEWPORTS[0]!.name && r.added.some((a) => Array.isArray(a.into) && /aria-expanded="false"/.test(a.html));
+	const roots = reveals.filter(inPlace);
+	if (!roots.length) return [];
+	const file = join(dir, `${createHash('sha256').update(`nested:1:${route}|${JSON.stringify(roots.map((r) => [r.key, r.path]))}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const viewport = VIEWPORTS[0]!;
+	const seen = new Set(reveals.map((r) => r.key));
+	const out: Reveal[] = [];
+	const within = (path: readonly number[], prefix: readonly number[]) => path.length > prefix.length && prefix.every((v, i) => path[i] === v);
+	const queue: Reveal[][] = roots.map((r) => [r]);
+	while (queue.length && out.length < NESTED_MAX) {
+		const chain = queue.shift()!;
+		const last = chain[chain.length - 1]!;
+		const containers = last.added.flatMap((a) => (Array.isArray(a.into) ? [a.into as readonly number[]] : []));
+		// The controls inside the last one's content, found with the chain open.
+		const open = async () => {
+			const opened = await fresh(browser, origin, route, viewport);
+			for (const r of chain) {
+				const shown = await reveal(opened.page, { path: [...r.path], key: r.key, sig: r.sig ?? '', nth: r.nth ?? 0, action: 'click', visible: true });
+				if (typeof shown === 'string' || !shown.length) {
+					await opened.context.close().catch(() => {});
+					return undefined;
+				}
+			}
+			return opened;
+		};
+		let opened = await open();
+		if (!opened) continue;
+		try {
+			const inside = (await candidates(opened.page, [], [[selector, 'click']])).filter((c) => c.visible && !seen.has(c.key) && containers.some((p) => within(c.path, p)));
+			for (const [i, c] of inside.entries()) {
+				if (out.length >= NESTED_MAX) break;
+				// Each from the chain alone: one already opened would move what follows it.
+				if (i > 0) {
+					await opened.context.close().catch(() => {});
+					opened = await open();
+					if (!opened) break;
+				}
+				const added = await reveal(opened.page, c);
+				seen.add(c.key);
+				if (typeof added === 'string' || !added.length) continue;
+				const found: Reveal = { key: c.key, path: c.path, sig: c.sig, nth: c.nth, action: 'click', viewport: viewport.name, added };
+				out.push(found);
+				if (chain.length < NESTED_DEPTH) queue.push([...chain, found]);
+			}
+		} catch {
+			// a chain that cannot be opened again keeps what it held so far
+		} finally {
+			await opened?.context.close().catch(() => {});
+		}
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	return out;
 }

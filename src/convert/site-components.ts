@@ -11,6 +11,8 @@ import { attr, walk, type Element } from './dom.ts';
 export interface SiteComponent {
 	readonly selector: string;
 	readonly component: string;
+	/** `page`: it stands in for an element of the page itself (no layer, no `fill`), rendering what it shows itself. */
+	readonly in?: 'page';
 }
 
 export async function readSiteComponents(app: string): Promise<readonly SiteComponent[]> {
@@ -84,7 +86,18 @@ function matches(el: Element, c: Compound): boolean {
 	return c.has.every((inner) => [...walk(el)].some((d) => d !== el && matches(d, inner)));
 }
 
-/** The site component `el` is the element of, if any. */
+/** The layer site component `el` is the element of, if any. */
 export function siteComponentOf(el: Element, components: readonly SiteComponent[]): SiteComponent | undefined {
-	return components.find((c) => matches(el, parseSelector(c.selector)));
+	return components.find((c) => c.in !== 'page' && matches(el, parseSelector(c.selector)));
+}
+
+/** The page site component `el` is the element of, if any. */
+export function pageComponentOf(el: Element, components: readonly SiteComponent[]): SiteComponent | undefined {
+	return components.find((c) => c.in === 'page' && matches(el, parseSelector(c.selector)));
+}
+
+/** A generated module with an import, after its first line, of each page site component its markup renders. */
+export function withSiteImports(source: string, components: readonly SiteComponent[], fromDir: string): string {
+	const used = components.filter((c) => c.in === 'page' && new RegExp(`<${componentName(c)}\\b`).test(source));
+	return used.length ? source.replace('\n', `\n${used.map((c) => componentImport(c, fromDir)).join('\n')}\n`) : source;
 }

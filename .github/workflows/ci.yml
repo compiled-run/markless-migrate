@@ -5,14 +5,37 @@ on:
     branches: [main]
   pull_request:
 
+# A main push gets a group of its own: a shared group cancels the waiting run whenever a newer merge lands, so main never finished one.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && format('main-{0}', github.sha) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # No e2e suite reads examples/, deploy/ or docs/, so a pull request touching only those (or Markdown) skips them; main always runs every suite.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      e2e: ${{ steps.files.outputs.e2e }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then echo e2e=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          reach=$(printf '%s\n' "$files" | grep -Ev '^(examples|deploy|docs)/|\.md$' || true)
+          if [ -n "$reach" ]; then echo e2e=true >> "$GITHUB_OUTPUT"; else echo e2e=false >> "$GITHUB_OUTPUT"; fi
+          echo "e2e suites run: $([ -n "$reach" ] && echo yes || echo 'no, only examples/, deploy/, docs/ or Markdown changed')" >> "$GITHUB_STEP_SUMMARY"
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -35,6 +58,8 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # With the e2e cap, one pull request holds at most 8 of the org's 60 runners.
+      max-parallel: 2
       matrix:
         # Four shards: with journeys after in-place arrival and each route's 3.5 s look at what moves on its own, shard 1 of 3 measured 30 min, its whole budget.
         shard: [1, 2, 3, 4]
@@ -47,26 +72,21 @@ jobs:
 
   e2e:
     name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # The org runs 60 jobs at once for every repository: ten pull requests at 23 jobs each held all 60 and queued Markless's CI.
+      max-parallel: 5
       matrix:
         include:
-          - suite: convert-compiles
-          - suite: dev-builds
-          - suite: embeds
-          - suite: markless-site
-          - suite: motion
-          - suite: nav-parity
-          - suite: page-load
-          - suite: proxy
-          - suite: radix-dialog-port
-          - suite: responsiveness
-          - suite: waste
-          - { suite: slow-network, browsers: chromium firefox webkit }
-          - { suite: late-fonts, browsers: chromium firefox webkit }
-          - { suite: control-parity, browsers: chromium webkit }
+          # Suites of 0 to 4 minutes share a runner, one file after another, instead of each paying its own setup.
+          - { suite: quick, files: convert-compiles dev-builds markless-site proxy waste responsiveness nav-parity }
+          - { suite: pages, files: motion page-load radix-dialog-port embeds }
+          - { suite: networks, files: slow-network late-fonts, browsers: chromium firefox webkit }
+          - { suite: parity, files: control-parity, browsers: chromium webkit }
           - { suite: next-app, shard: 1/6 }
           - { suite: next-app, shard: 2/6 }
           - { suite: next-app, shard: 3/6 }
@@ -82,14 +102,18 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           browsers: ${{ matrix.browsers || 'chromium' }}
-      - run: node --test test/e2e/${{ matrix.suite }}.test.ts
+      - run: |
+          files=()
+          for suite in $SUITES; do files+=("test/e2e/$suite.test.ts"); done
+          node --test --test-concurrency=1 "${files[@]}"
         env:
+          SUITES: ${{ matrix.files || matrix.suite }}
           E2E_SHARD: ${{ matrix.shard }}
 
   passed:
     name: CI passed
     if: always()
-    needs: [typecheck, unit, e2e]
+    needs: [changes, typecheck, unit, e2e]
     runs-on: ubuntu-latest
     steps:
-      - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
+      - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.changes.result == 'success' && needs.typecheck.result == 'success' && needs.unit.result == 'success' && (needs.e2e.result == 'success' || (needs.e2e.result == 'skipped' && needs.changes.outputs.e2e == 'false')) }}" = true
