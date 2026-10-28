@@ -21,6 +21,8 @@ export interface Popup {
 	readonly dismiss: (reason: Dismissal) => void;
 	stop?: () => void;
 	cleanup: (() => void)[];
+	/** Whether opening it gave its trigger aria-controls, which the trigger carries while the popup is mounted. */
+	controls?: boolean;
 }
 
 export type Dismissal = 'escape' | 'outside' | 'tab' | 'item';
@@ -226,6 +228,11 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	// Menu, Select, Popover, Tooltip and Combobox popups start with transitions off; a Dialog's (not anchored) does not.
 	if (!options.shown) enter(popup, around, options.anchored !== false);
 	setTrigger(trigger, true, pressable);
+	// Base UI's menu, popover and dialog triggers name the popup they mounted (aria-controls={popupId}) until it unmounts.
+	if (/^(menu|dialog|true)$/.test(trigger.getAttribute('aria-haspopup') ?? '') && !trigger.hasAttribute('aria-controls') && popup.id) {
+		trigger.setAttribute('aria-controls', popup.id);
+		p.controls = true;
+	}
 	showCompanions(key, true);
 	open.push(p);
 	if (options.lockScroll ?? popup.matches('[role="menu"]')) p.cleanup.push(acquireScrollLock());
@@ -305,6 +312,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false, focus: Fo
 			(p.positioner ?? p.popup).hidden = true;
 			if (p.backdrop) p.backdrop.hidden = true;
 		} else p.portal.hidden = true;
+		if (p.controls) p.trigger.removeAttribute('aria-controls');
 	});
 }
 
