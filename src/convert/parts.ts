@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attr, childrenOf, elementChildren, walk, type Element } from './dom.ts';
@@ -365,11 +365,26 @@ async function exists(path: string): Promise<boolean> {
 	);
 }
 
+/** The parts modules (`lib/parts/<module>.ts`) the files under `dir` import. */
+async function siteImports(dir: string, depth = 1): Promise<string[]> {
+	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+	const out: string[] = [];
+	for (const e of entries) {
+		const path = join(dir, e.name);
+		if (e.isDirectory()) out.push(...(await siteImports(path, depth + 1)));
+		else if (/\.(ts|tsrx)$/.test(e.name)) {
+			const prefix = `${'../'.repeat(depth)}parts/`;
+			for (const m of (await readFile(path, 'utf8')).matchAll(/\bfrom\s+'([^']+)\.ts'/g)) if (m[1]!.startsWith(prefix)) out.push(m[1]!.slice(prefix.length));
+		}
+	}
+	return out;
+}
+
 /**
  * Copies the used ports, and the shared modules they import, into the app's `lib/parts/`; each page's registry
  * (`writeRegistries`) lists the ones it can use after the app's own parts (`lib/site/parts.ts`), when there are any.
  */
-export async function writeParts(app: string, modules: ReadonlySet<string>, choices: Readonly<Record<string, unknown>> = {}, imported: readonly string[] = []): Promise<{ readonly files: string[]; readonly site: boolean }> {
+export async function writeParts(app: string, modules: ReadonlySet<string>, choices: Readonly<Record<string, unknown>> = {}, imported: readonly string[] = [], appDependencies: Readonly<Record<string, string>> = {}): Promise<{ readonly files: string[]; readonly site: boolean }> {
 	const out = join(app, APP_PARTS_DIR);
 	const files: string[] = [];
 	const copy = async (rel: string) => {
@@ -389,6 +404,8 @@ export async function writeParts(app: string, modules: ReadonlySet<string>, choi
 	for (const m of modules) add(m);
 	// Modules the generated code imports itself (no event handlers of their own): copied, never in the registry.
 	for (const m of imported) add(m);
+	// And those the site's own components import (lib/site), though no page's ports use them.
+	for (const m of await siteImports(join(app, 'lib', 'site'))) add(m);
 	// And every module a copied one imports, whether or not its port lists it in `needs`.
 	for (const module of all) {
 		if (module === 'choices') continue;
@@ -400,7 +417,8 @@ export async function writeParts(app: string, modules: ReadonlySet<string>, choi
 	const site = await exists(join(app, 'lib', 'site', 'parts.ts'));
 	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
 	let added = false;
-	for (const [name, version] of Object.entries(PART_DEPENDENCIES)) {
+	// appDependencies: the old app's own packages a port runs as the page did (its chrono-node), at the old app's version.
+	for (const [name, version] of [...Object.entries(PART_DEPENDENCIES), ...Object.entries(appDependencies)]) {
 		if (manifest.dependencies?.[name]) continue;
 		if (DEPENDENCY_USERS[name] && !DEPENDENCY_USERS[name]!.some((m) => all.has(m))) continue;
 		(manifest.dependencies ??= {})[name] = version;

@@ -238,14 +238,14 @@ export function calculate(target: Target, overlay: HTMLElement, options: Positio
 }
 
 /** Places an overlay and keeps it placed as useOverlayPosition does (window and element resizes); returns the stop. */
-export function placeOverlay(target: Target, overlay: HTMLElement, options: PositionOptions & { readonly widthVar?: boolean }): () => void {
+export function placeOverlay(target: Target, overlay: HTMLElement, options: PositionOptions & { readonly widthVar?: boolean; readonly triggerWidth?: () => number }): () => void {
 	const element = elementOf(target);
 	const update = () => {
 		if (!overlay.isConnected || !element.isConnected) return;
 		overlay.style.top = '0px';
 		overlay.style.bottom = '';
 		overlay.style.maxHeight = `${window.visualViewport?.height ?? window.innerHeight}px`;
-		if (options.widthVar !== false && element instanceof HTMLElement) overlay.style.setProperty('--trigger-width', `${element.getBoundingClientRect().width}px`);
+		if (options.widthVar !== false && element instanceof HTMLElement) overlay.style.setProperty('--trigger-width', `${options.triggerWidth?.() ?? element.getBoundingClientRect().width}px`);
 		// OverlayArrow: the overlay's own child carrying data-placement; its width is the arrow's size.
 		const arrow = [...overlay.children].find((c): c is HTMLElement => c instanceof HTMLElement && c.hasAttribute('data-rac') && c.hasAttribute('data-placement'));
 		const placed = calculate(target, overlay, { ...options, arrowSize: arrow ? arrow.offsetWidth : 0 });

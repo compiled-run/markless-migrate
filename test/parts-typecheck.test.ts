@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -50,4 +50,18 @@ test('each port written alone carries every parts module it imports, so a page u
 		}
 	}
 	assert.deepEqual(missing, []);
+});
+
+test("a part a site component imports is copied though no page's ports use it, with what it imports in turn", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'parts-site-'));
+	try {
+		await writeFile(join(app, 'package.json'), '{}');
+		await mkdir(join(app, 'lib', 'site', 'nested'), { recursive: true });
+		await writeFile(join(app, 'lib', 'site', 'list.tsrx'), "import { showRendered } from '../parts/base-ui/tooltip.ts';\nexport default function List() @{ <p /> }\n");
+		await writeFile(join(app, 'lib', 'site', 'nested', 'helper.ts'), "export { openRendered } from '../../parts/base-ui/dialog.ts';\n");
+		const { files } = await writeParts(app, new Set(['cmdk']));
+		for (const file of ['base-ui/tooltip.ts', 'base-ui/popup.ts', 'base-ui/dialog.ts']) assert.ok(files.includes(file), `${file} in ${files.join(', ')}`);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
 });
