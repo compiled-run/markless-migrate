@@ -19,7 +19,7 @@ case "${1:-}" in
 		for path in / /docs /docs/installation; do curl -s -o /dev/null -w "old $path: %{http_code} in %{time_total} s\n" "http://localhost:4000$path"; done
 		;;
 	new)
-		spec="${2:?usage: ci-serve.sh new <url of the built port's .tar.gz>}"
+		spec="${2:?usage: ci-serve.sh new <url of the built port .tar.gz>}"
 		dest="$RUNNER_TEMP/new"
 		mkdir -p "$dest"
 		curl -fsSL "$spec" | tar -xz -C "$dest"
