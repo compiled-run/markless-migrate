@@ -651,6 +651,24 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('shadcn-ui site: a long code block\'s Expand opens it and reads Collapse, and its fade under the code opens it too', async () => {
+	const page = await open(
+		`<figure><pre id="_R_1_" data-state="closed" class="data-[state=closed]:max-h-64"><code>line</code></pre><button data-slot="button" type="button" aria-expanded="false" aria-controls="_R_1_">Expand</button><button type="button" tabindex="-1" aria-hidden="true">Expand</button></figure>`,
+		['site'],
+	);
+	const look = () => page.evaluate(() => { const pre = document.querySelector('pre')!; const [button, fade] = document.querySelectorAll('button'); return [pre.dataset.state, button!.getAttribute('aria-expanded'), button!.textContent, fade!.hidden].join(' '); });
+	const nodes = () => page.evaluate(() => document.querySelectorAll('*').length);
+	const before = await nodes();
+	await page.getByRole('button', { name: 'Expand' }).click();
+	assert.equal(await look(), 'open true Collapse true');
+	await page.getByRole('button', { name: 'Collapse' }).click();
+	assert.equal(await look(), 'closed false Expand false');
+	await page.locator('button[aria-hidden]').click();
+	assert.equal(await look(), 'open true Collapse true', 'the fade opens it (it is not there while open)');
+	assert.equal(await nodes(), before, 'no node is added or removed');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
