@@ -3,6 +3,7 @@ import { linkUrl, pageRouting, routeLinks, routePath, shownUrl } from './hash-ro
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv, databaseFramesReceived } from './browser.ts';
+import { clickOnce } from './click.ts';
 import { clockLine } from './clock.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
@@ -1295,27 +1296,6 @@ async function stepTarget(page: Page, step: Step): Promise<Locator> {
 	return (step.action === 'key' || step.action === 'outside') && (await marked.count().catch(() => 0)) ? marked : locate(page, step.target);
 }
 
-// A click the page acknowledged only after its timeout (a handler holding a busy runner's main thread) has still landed: sent again, a toggle closes.
-async function clickOnce(page: Page, target: Locator, timeout: number, noWaitAfter = false): Promise<void> {
-	const seen = () => page.evaluate(() => (globalThis as unknown as { __mmTrustedClicks?: number }).__mmTrustedClicks ?? 0).catch(() => undefined);
-	await page
-		.evaluate(() => {
-			const w = globalThis as unknown as { __mmTrustedClicks?: number };
-			if (w.__mmTrustedClicks !== undefined) return;
-			w.__mmTrustedClicks = 0;
-			addEventListener('click', (event) => void (event.isTrusted && w.__mmTrustedClicks!++), true);
-		})
-		.catch(() => {});
-	const before = await seen();
-	try {
-		await target.click({ timeout, ...(noWaitAfter ? { noWaitAfter } : {}) });
-	} catch (error) {
-		const after = await seen();
-		if (before !== undefined && after !== undefined && after > before) return;
-		throw error;
-	}
-}
-
 async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
 	if (step.action === 'live') {
 		const databases = sessionDatabases(page.context());
@@ -1335,7 +1315,7 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 		.catch(() => {});
 	switch (step.action) {
 		case 'click':
-			return reach(page, target, (t, timeout) => clickOnce(page, t, timeout), true, patience);
+			return reach(page, target, (t, timeout) => clickOnce(t, { timeout }), true, patience);
 		case 'press':
 			await reach(page, target, (t, timeout) => t.focus({ timeout }), false, patience);
 			return page.keyboard.press(step.key);
@@ -1363,16 +1343,16 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 			return reach(page, target, (t, timeout) => t.selectOption(step.value, { timeout }), false, patience);
 		case 'submit':
 			for (const field of step.fields) await reach(page, locate(page, field.target), (t, timeout) => (field.check ? t.check({ timeout }) : t.fill(field.value, { timeout })), false, patience);
-			return reach(page, target, (t, timeout) => clickOnce(page, t, timeout), false, patience);
+			return reach(page, target, (t, timeout) => clickOnce(t, { timeout }), false, patience);
 		case 'scroll':
 			// The wheel brings the section to the top, as a reader scrolls, so what follows the scroll position (a contents list's current link) answers.
 			return void (await reach(page, target, (t, timeout) => t.evaluate((el) => el.scrollIntoView({ block: 'start' }), undefined, { timeout }), false, patience));
 		case 'race': {
-			await reach(page, target, (t, timeout) => clickOnce(page, t, timeout, true), true, patience);
+			await reach(page, target, (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
 			await sleep(RACE_GAP_MS);
 			// Back is queued so it can leave the document without destroying this evaluate's context.
 			if (step.then === 'back') return void (await page.evaluate(() => void setTimeout(() => history.back())));
-			return reach(page, locate(page, step.then), (t, timeout) => clickOnce(page, t, timeout, true), true, patience);
+			return reach(page, locate(page, step.then), (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
 		}
 		case 'type':
 			await reach(page, target, (t, timeout) => t.fill('', { timeout }), false, patience);
