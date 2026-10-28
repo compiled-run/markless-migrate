@@ -423,7 +423,8 @@ function writeColors(config: ColorsConfig): void {
 	localStorage.setItem(COLORS, JSON.stringify(config));
 	for (const trigger of document.querySelectorAll('[data-slot="select-trigger"]')) {
 		const shown = trigger.textContent?.startsWith('Format:') ? trigger.querySelector('.font-mono') : null;
-		if (shown) shown.textContent = config.format;
+		const text = shown && [...shown.childNodes].find((n): n is Text => n.nodeType === Node.TEXT_NODE);
+		if (text) text.data = config.format;
 	}
 	for (const swatch of document.querySelectorAll('button[data-mm-color]')) swatch.setAttribute('data-last-copied', String(colorOf(swatch)[config.format] === config.lastCopied));
 }
