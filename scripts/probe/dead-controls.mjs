@@ -364,8 +364,9 @@ for (const route of mine) {
 			}
 			const om = old.motion, nm = port.motion;
 			if (om && nm) {
-				const moving = (m) => m.distinct >= 4 && m.durationMs >= 60;
-				const jump = moving(om) !== moving(nm);
+				const moving = (m) => m.distinct >= 4 && m.durationMs >= 80;
+				// One side moves through frames while the other goes straight to its result.
+				const jump = (moving(om) && nm.distinct <= 1) || (moving(nm) && om.distinct <= 1);
 				const duration = moving(om) && moving(nm) && Math.abs(om.durationMs - nm.durationMs) > Math.max(150, 0.5 * om.durationMs);
 				const cadence = moving(om) && moving(nm) && (nm.distinct < om.distinct * 0.5 || om.distinct < nm.distinct * 0.5 || nm.maxGapMs > Math.max(2 * om.maxGapMs, om.maxGapMs + 100));
 				if (jump || duration || cadence) {
