@@ -662,6 +662,26 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('a control listed as showing in place does what its use did on the old page: shows its view and sets its attributes, each found from the control', async () => {
+	const effects = (active: number, view: string) => JSON.stringify([{ up: 0, down: [], attrs: { 'data-active': 'true' } }, { up: 2, down: [1 - active, 0], attrs: { 'data-active': 'false' } }, { up: 3, down: [1], view }]).replace(/"/g, '&quot;');
+	const page = await open(
+		`<div data-view="code"><ul><li><button data-slot="sidebar-menu-button" data-active="true">page.tsx</button></li><li><button data-slot="sidebar-menu-button" data-active="false">nav.tsx</button></li></ul><figure><div data-mm-show-view="p" style="display: contents"><pre>page code</pre></div><div data-mm-show-view="n" style="display: none"><pre>nav code</pre></div></figure></div>
+		<template data-mm-show="button|sidebar-menu-button|nav.tsx#0" data-mm-effects="${effects(1, 'n')}"></template>
+		<template data-mm-show="button|sidebar-menu-button|page.tsx#0" data-mm-effects="${effects(0, 'p')}"></template>`,
+		[],
+		'body',
+	);
+	const look = () => page.evaluate(() => [(document.querySelector('figure') as HTMLElement).innerText.trim(), ...[...document.querySelectorAll('button')].map((b) => b.dataset.active)].join(' '));
+	const nodes = () => page.evaluate(() => document.querySelectorAll('*').length);
+	const before = await nodes();
+	await page.getByText('nav.tsx').click();
+	assert.equal(await look(), 'nav code false true');
+	await page.getByText('page.tsx').click();
+	assert.equal(await look(), 'page code true false');
+	assert.equal(await nodes(), before, 'no node is added or removed');
+	await page.close();
+});
+
 test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
 	const page = await open('<main id="main"></main>', ['site'], 'body');
 	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));

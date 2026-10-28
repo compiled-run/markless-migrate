@@ -159,6 +159,46 @@ function signature(el: Element): string {
 	return `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 }
 
+interface ShownEffect {
+	readonly up: number;
+	readonly down: readonly number[];
+	readonly view?: string;
+	readonly attrs?: Readonly<Record<string, string | null>>;
+}
+
+/**
+ * A control the site lists as showing something in place (a block viewer's file): what using it did on the old page, from
+ * the page's own template, done again: the view it showed in each place (every view is rendered there, the others in a
+ * box that does not lay out) and the attributes it set, each found from the control. False when none is listed.
+ */
+export function show(target: Element): boolean {
+	if (!document.querySelector('template[data-mm-show]')) return false;
+	for (let control: Element | null = target; control && control !== document.body; control = control.parentElement) {
+		const sig = signature(control);
+		if (!document.querySelector(`template[data-mm-show^="${CSS.escape(`${sig}#`)}"]`)) continue;
+		let nth = 0;
+		for (const el of document.body.querySelectorAll('*')) {
+			if (el === control) break;
+			if (signature(el) === sig) nth++;
+		}
+		const template = document.querySelector(`template[data-mm-show="${CSS.escape(`${sig}#${nth}`)}"]`);
+		if (!template) return false;
+		for (const effect of JSON.parse(template.getAttribute('data-mm-effects') ?? '[]') as ShownEffect[]) {
+			let el: Element | null | undefined = control;
+			for (let i = 0; i < effect.up && el; i++) el = el.parentElement;
+			for (const i of effect.down) el = el?.children[i];
+			if (!el) continue;
+			if (effect.view !== undefined) for (const view of el.querySelectorAll<HTMLElement>(':scope > [data-mm-show-view]')) view.style.display = view.dataset.mmShowView === effect.view ? 'contents' : 'none';
+			for (const [name, value] of Object.entries(effect.attrs ?? {})) {
+				if (value === null) el.removeAttribute(name);
+				else el.setAttribute(name, value);
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
 /** What a copy control wrote on the old page, from the page's own template; undefined for a control that copied nothing. */
 export function clipboardFor(control: Element): Promise<string> | undefined {
 	const sig = signature(control);

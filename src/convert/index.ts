@@ -6,12 +6,13 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal, type ShownEffect } from './reveal.ts';
+import { completeShown, type Baseline } from './shown.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
-import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
+import { attr, body, childrenOf, elementChildren, head, html, inner, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
@@ -228,6 +229,8 @@ interface Prepared {
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** What each listed `show` control changed in place, by its signature#nth (shown.ts), as JSON. */
+	readonly shown: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
@@ -244,6 +247,7 @@ function elementAt(root: Element, path: readonly number[]): Element | undefined 
 }
 
 function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
+	if (added.into === 'show') return '';
 	if (added.into === 'clipboard') return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into="clipboard">{${JSON.stringify(added.html)}}</template>`;
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
@@ -389,6 +393,10 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+let currentShown: Record<string, string> = {};
+// The content each listed `show` control puts in a place, every one rendered there, the page's own shown (Markless owns
+// every node: the part only switches which shows).
+const shownViews = new Map<Element, { readonly id: string; readonly html: string; readonly first: boolean }[]>();
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -760,6 +768,29 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		const id = attr(el, 'id');
 		if (id) byId.set(id, el);
 	}
+	// A listed control that changes things in place: what it changed, made whole against the page as captured, before anything moves.
+	const showing = reveals.flatMap((r) => r.added.filter((a) => a.into === 'show').map((a) => ({ key: `${r.sig}#${r.nth ?? 0}`, path: r.path, effects: JSON.parse(a.html) as ShownEffect[] })));
+	if (showing.length) {
+		const first: Baseline = (path) => {
+			const el = elementAt(root, path);
+			return el && { html: inner(el), attr: (name) => attr(el, name) ?? null };
+		};
+		for (const [key, effects] of completeShown(showing, first)) {
+			const control = showing.find((c) => c.key === key)!;
+			// A place's content is one of its views, by id: the part shows it and hides the others.
+			currentShown[key] = JSON.stringify(
+				effects.map((e) => {
+					if (e.html === undefined) return e;
+					const at = elementAt(root, [...control.path.slice(0, control.path.length - e.up), ...e.down]);
+					if (!at) return { up: e.up, down: e.down };
+					const id = createHash('sha256').update(e.html).digest('hex').slice(0, 10);
+					const views = shownViews.get(at) ?? shownViews.set(at, []).get(at)!;
+					if (!views.some((v) => v.id === id)) views.push({ id, html: e.html, first: e.html === inner(at) });
+					return { up: e.up, down: e.down, view: id };
+				}),
+			);
+		}
+	}
 	const pendingLayers: { reveal: Reveal; added: Reveal['added'][number]; trigger: Element | undefined; kept: Element[] }[] = [];
 	const companions: { parent: Element; before: Element | null; kept: Element[]; key: string }[] = [];
 	for (const reveal of reveals) {
@@ -804,6 +835,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+			} else if (added.into === 'show') {
+				continue;
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
@@ -917,10 +950,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentShown = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const shown = currentShown;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
@@ -975,7 +1010,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, shown, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1063,6 +1098,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
+	shownViews.clear();
 	layerChoices = choices;
 	try {
 		const limit = limiter(width);
@@ -1644,6 +1680,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (standIn) return { replace: `<${componentName(standIn)} />` };
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
+		const views = shownViews.get(el);
+		if (views) {
+			// The page's own content is the view shown first; the others wait, each in a box that does not lay out.
+			const shownFirst = views.some((v) => v.first) ? views : [{ id: '', html: inner(el), first: true }, ...views];
+			const markup = shownFirst.map((v) => `<div data-mm-show-view=${lit(v.id)} style=${lit(v.first ? 'display: contents' : 'display: none')}>${emitChildren(parseFragment(v.html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1), bind: (x) => bindParts(x, templatePorts) })}</div>`).join('');
+			binding = mergeBindings(binding, { children: markup });
+		}
 		const keyed = triggerKeys.get(el);
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
@@ -1702,7 +1745,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const ownContent = (el: Element): string | undefined => {
 		const panel = basePanels.get(el);
-		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
+		const own = [appended.get(el), shownViews.get(el)?.map((v) => v.id).join(','), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	// Their bind is a lookup; a TanStack table's emits its rows on first bind, so it is left out.
@@ -1771,7 +1814,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.shown).map(([key, effects]) => `<template data-mm-show=${lit(key)} data-mm-effects={${lit(effects)}}></template>`).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
