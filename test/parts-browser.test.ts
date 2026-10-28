@@ -441,6 +441,17 @@ test('cmdk: aria-activedescendant names an item a key or the pointer selected; a
 	await page.close();
 });
 
+test('cmdk: as each mounted command scrolls its selected item into view, the page ends where the last one below the fold put it; one in a hidden layer moves nothing', async () => {
+	const page = await open(`<div style="height:3000px">top</div>${COMMAND}<div style="height:2000px"></div><div data-mm-layer="k" hidden>${COMMAND.replaceAll('id="', 'id="h')}</div>`, ['cmdk']);
+	const got = await page.evaluate(() => {
+		const item = document.getElementById('cal')!.getBoundingClientRect();
+		return { scrollY: Math.round(scrollY), bottom: Math.round(item.bottom), inner: innerHeight };
+	});
+	assert.ok(got.scrollY > 2000, `the page scrolled to the command (${got.scrollY})`);
+	assert.equal(got.bottom, got.inner, 'block: nearest brings the selected item to the bottom edge');
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
@@ -650,6 +661,37 @@ test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s che
 	assert.deepEqual(await look(), ['lucide lucide-check', 'polyline:20 6 9 17 4 12', 'line:12 hidden'], 'the check is drawn, not just the terminal hidden');
 	await page.waitForTimeout(2100);
 	assert.deepEqual(await look(), ['lucide lucide-terminal', 'polyline:4 17 10 11 4 5', 'line:12']);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s frame again', async () => {
+	const page = await open(`<div id="sidebar-03" data-view="preview"><div><button data-slot="button" title="Refresh Preview"><span class="sr-only">Refresh Preview</span></button></div><iframe height="100"></iframe></div>`, ['site']);
+	let loads = 0;
+	await page.route('http://parts.test/frame/**', (route) => (loads++, route.fulfill({ contentType: 'text/html', body: '<p>block</p>' })));
+	await page.evaluate(() => (document.querySelector('iframe')!.src = '/frame/sidebar-03'));
+	await page.waitForFunction(() => document.querySelector('iframe')!.contentDocument?.querySelector('p'));
+	const before = loads;
+	await page.getByRole('button', { name: 'Refresh Preview' }).click();
+	await page.waitForTimeout(500);
+	assert.equal(loads, before + 1, 'setIframeKey mounts the frame afresh, which loads its page again');
+	await page.close();
+});
+
+test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
+	const page = await open('<main id="main"></main>', ['site'], 'body');
+	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
+	const seen = await page.evaluate(
+		() =>
+			new Promise<string>((done) => {
+				const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
+				// The page an in-place navigation swaps in, its tab state its own (the converter's mousedown handler).
+				document.getElementById('main')!.innerHTML = `<div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div>`;
+				const list = document.querySelector('[role="tablist"]')!;
+				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
+			}),
+	);
+	assert.equal(seen, 'npm', 'chosen before the next frame');
 	await page.close();
 });
 
@@ -1186,6 +1228,18 @@ test('a Base UI select icon carries data-popup-open while its select is open, as
 	await page.close();
 });
 
+test('a Base UI select opened by a press shows no focus ring on its option, nor on its trigger once an option is chosen', async () => {
+	const page = await open(baseSelect, ['base-ui/select'], 'body');
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	const ring = () => page.evaluate(() => `${document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName}:${document.activeElement?.matches(':focus-visible')}`);
+	assert.equal(await ring(), 'option:false', 'Base UI focuses the option after a mouse focused the trigger');
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await ring(), 'combobox:false');
+	await page.close();
+});
+
 test('a press outside a Radix or Base UI select closes it with focus back on its trigger, as each library does', async () => {
 	for (const [markup, port] of [
 		[radixSelect(), 'radix/select'],
@@ -1589,6 +1643,29 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.close();
 });
 
+test('shadcn-ui site: a chart\'s frame captured shown but still loading when it is mounted goes transparent at once, without fading out', async () => {
+	const css = '<style>.transition-opacity{transition-property:opacity;transition-duration:300ms}.opacity-0{opacity:0}.opacity-100{opacity:1}</style>';
+	const page = await open(`${css}<div style="height:5000px"></div><iframe src="/frame/slow" class="w-full border-none transition-opacity duration-300 opacity-100" height="100" loading="lazy" title="chart"></iframe>`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg></svg>' });
+	});
+	await page.locator('iframe').scrollIntoViewIfNeeded();
+	await page.evaluate(() => {
+		const w = window as unknown as { faded: number; mountParts: (a: string) => void };
+		w.faded = 0;
+		document.querySelector('iframe')!.addEventListener('transitionrun', () => w.faded++);
+		w.mountParts('iframe[loading]');
+	});
+	await page.waitForTimeout(400);
+	assert.match(await page.locator('iframe').evaluate((f) => f.className), / opacity-0$/);
+	assert.equal(await page.evaluate(() => (window as unknown as { faded: number }).faded), 0, 'the old frame starts transparent: nothing fades out');
+	release();
+	await page.close();
+});
+
 test('shadcn-ui site: a chart\'s frame stays transparent until its page has loaded, then shows, whatever the capture caught it in', async () => {
 	const frame = (name: string, opacity: string) => `<iframe src="/frame/${name}" class="w-full border-none transition-opacity duration-300 ${opacity}" height="100" loading="lazy" title="chart-${name}"></iframe>`;
 	const page = await open(`<div style="height:5000px"></div>${frame('slow', 'opacity-100')}<div style="height:5000px"></div>${frame('loaded', 'opacity-0')}`, ['site']);
@@ -1613,5 +1690,29 @@ test('shadcn-ui site: a chart\'s frame stays transparent until its page has load
 	release();
 	await loaded(0);
 	await page.waitForFunction(() => document.querySelector('iframe')!.className.endsWith(' opacity-100'));
+	await page.close();
+});
+
+test("day picker: a key DayPicker handles on a day does not scroll the page, even when the page's render removes that day's button at once", async () => {
+	const page = await open('<div style="height:3000px"></div><div data-mm-day-picker><table><tbody><tr><td role="gridcell"><button id="d">6</button></td></tr></tbody></table></div><div style="height:3000px"></div>', []);
+	const prevented = await page.evaluate(async () => {
+		const { dayPickerEvent, dayPickerView } = await import('/parts/day-picker.ts' as string);
+		const loc = { ws: 0, fwcd: 1, full: 'PP', months: {}, days: {}, ord: [] };
+		const config = { loc, mode: 'single', interactive: true, n: 1, caption: 'label', cls: {} };
+		const button = document.getElementById('d')!;
+		const root = document.querySelector('[data-mm-day-picker]')!;
+		let result = false;
+		root.addEventListener('keydown', (event) => {
+			// A month change rendered in the same task replaces the grid's cells.
+			queueMicrotask(() => button.remove());
+			dayPickerEvent(config, dayPickerView(config, 20000), event, 'k');
+		});
+		window.addEventListener('keydown', (event) => setTimeout(() => (result = event.defaultPrevented)), true);
+		button.focus();
+		button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+		await new Promise((r) => setTimeout(r, 50));
+		return result;
+	});
+	assert.equal(prevented, true);
 	await page.close();
 });

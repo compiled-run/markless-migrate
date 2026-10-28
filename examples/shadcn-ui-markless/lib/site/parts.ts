@@ -187,6 +187,16 @@ const viewCode: Part = {
 	},
 };
 
+// components/block-viewer.tsx's Refresh Preview: setIframeKey mounts the block's frame afresh, which loads its page again.
+const refreshPreview: Part = {
+	click(target) {
+		const frame = target.closest('button[title="Refresh Preview"]')?.closest('[data-view]')?.querySelector('iframe');
+		if (!frame) return false;
+		frame.src = frame.src;
+		return true;
+	},
+};
+
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
 // active. A page shown in place (or by Back) keeps the list where both pages have one, so the list is synced again then.
@@ -329,6 +339,16 @@ const sharedTabs: Part = {
 	},
 };
 
+// A page shown in place renders its lists from the atom it shares with the page before: the kept choice is there before the
+// first paint, so a list the router brings in is switched before the next frame (an observer's callback runs first).
+new MutationObserver((records) => {
+	if (localStorage.getItem(CONFIG_KEY) === null) return;
+	const added = records.some((r) => [...r.addedNodes].some((n) => n instanceof Element && (n.matches('[role="tablist"]') || n.querySelector('[role="tablist"]'))));
+	if (!added) return;
+	const config = readConfig();
+	for (const key of Object.keys(SHARED)) if (config[key]) chooseEverywhere(key, config[key]!);
+}).observe(document.documentElement, { childList: true, subtree: true });
+
 // components/chart-iframe.tsx: a chart's frame is opacity-0 until its onLoad, then opacity-100 (the capture holds either).
 const frameLoaded = (frame: HTMLIFrameElement): boolean | undefined => {
 	const doc = frame.contentDocument;
@@ -340,7 +360,14 @@ const chartFrame: Part = {
 		if (!(el instanceof HTMLIFrameElement) || !el.classList.contains('transition-opacity') || !(el.classList.contains('opacity-0') || el.classList.contains('opacity-100'))) return;
 		el.addEventListener('load', () => showFrame(el, true));
 		const loaded = frameLoaded(el);
-		if (loaded !== undefined) showFrame(el, loaded);
+		if (loaded) showFrame(el, true);
+		else if (loaded === false) {
+			// The old frame starts transparent: one captured shown goes there without fading out.
+			el.style.transition = 'none';
+			showFrame(el, false);
+			void getComputedStyle(el).opacity;
+			el.style.removeProperty('transition');
+		}
 	},
 };
 
@@ -402,4 +429,4 @@ const typesetPreview: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview];

@@ -201,11 +201,29 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 		return `Layer${ids.get(markup)}`;
 	};
 	const routes = [...layers.keys()];
-	const everywhere = (layers.get(routes[0] ?? '') ?? []).filter((l) => routes.every((r) => layers.get(r)?.some((x) => x.markup === l.markup))).map((l) => l.markup);
+	// The router never wires the Document in the browser, so a layer with a site component or state stays in its pages.
+	const plain = (l: { readonly imports?: readonly string[]; readonly declare?: readonly string[] }) => !l.imports?.length && !l.declare?.length;
+	const everywhere = (layers.get(routes[0] ?? '') ?? []).filter((l) => plain(l) && routes.every((r) => layers.get(r)?.some((x) => x.markup === l.markup))).map((l) => l.markup);
 	const shared = new Set(everywhere);
 	const top = everywhere.map((m) => nameOf(m));
 	const own = new Map(routes.map((r) => [r, [...new Set((layers.get(r) ?? []).filter((l) => !shared.has(l.markup)).map((l) => nameOf(l.markup)))]]));
 	return { files, served, everywhere: top, own: (route) => own.get(route) ?? [] };
+}
+
+/**
+ * A page's markup: its root, then what it renders after it (body children, layers) in the old body's order. A toaster
+ * renders outside a branch (its repeat nests a repeat), the rest in branches on `shown`, one per run between toasters.
+ */
+export function pageBody(root: string, after: readonly { readonly markup: string; readonly toaster?: boolean }[], shown: string): string {
+	if (!after.some((a) => a.markup)) return root;
+	const runs: { markup: string; toaster: boolean }[] = [];
+	for (const a of after) {
+		if (!a.markup) continue;
+		const last = runs.at(-1);
+		if (last && !last.toaster && !a.toaster) last.markup += a.markup;
+		else runs.push({ markup: a.markup, toaster: Boolean(a.toaster) });
+	}
+	return `<>@if (${shown}) { ${root} }${runs.map((r) => (r.toaster ? r.markup : `@if (${shown}) { <>${r.markup}</> }`)).join('')}</>`;
 }
 
 /**
