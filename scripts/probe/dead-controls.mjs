@@ -12,6 +12,9 @@ const NEW = process.env.NEW ?? 'https://mm-shadcn-ui-new.vercel.app';
 const BYPASS = process.env.BYPASS ?? '';
 const MAX_ACTIONS = Number(process.env.MAX_ACTIONS ?? 60);
 const SETTLE = Number(process.env.SETTLE ?? 700);
+const BOX_TOLERANCE = Number(process.env.BOX_TOLERANCE ?? 2);
+const KEY_MAX = Number(process.env.KEY_MAX ?? 24);
+const KEYS_PER_CONTROL = Number(process.env.KEYS_PER_CONTROL ?? 4);
 const [routesFile, out, shardArg, countArg] = process.argv.slice(2);
 const all = JSON.parse(readFileSync(routesFile, 'utf8'));
 const routes = (Array.isArray(all) ? all : Array.isArray(all.routes) ? all.routes : Object.keys(all.routes ?? all)).filter((r) => typeof r === 'string' && r.startsWith('/'));
@@ -49,7 +52,8 @@ function listControls() {
 		const frame = el.closest('[data-slot=preview], figure, section, [role=dialog], main') ?? document.body;
 		const f = frame.getBoundingClientRect();
 		const slot = el.closest('[data-slot]')?.getAttribute('data-slot') ?? '';
-		out.push({ key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
+		const pr = el.parentElement?.getBoundingClientRect() ?? r;
+		out.push({ parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: { w: Math.round(f.width), h: Math.round(f.height) }, key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
 	}
 	return out;
 }
@@ -73,9 +77,13 @@ function arm(control) {
 	el.scrollIntoView({ block: 'center', inline: 'center' });
 	const r = el.getBoundingClientRect();
 	const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
-	const hitEl = document.elementFromPoint(cx, cy);
-	const owner = hitEl?.closest(SEL);
-	const hit = !hitEl ? 'nothing' : owner === el || el.contains(hitEl) ? 'itself' : owner ? `${roleOf(owner)} "${nameOf(owner)}"` : `${hitEl.localName} (no control)`;
+	const reach = (x, y) => {
+		const hitEl = document.elementFromPoint(x, y);
+		const owner = hitEl?.closest(SEL);
+		return !hitEl ? 'nothing' : owner === el || el.contains(hitEl) ? 'itself' : owner ? `${roleOf(owner)} "${nameOf(owner)}"` : `${hitEl.localName} (no control)`;
+	};
+	const hits = [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]].map(([fx, fy]) => reach(r.x + r.width * fx, r.y + r.height * fy));
+	const hit = hits[0];
 	const openBefore = new Set([...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [role=tooltip]')].filter((p) => p.checkVisibility()));
 	const touched = new Set();
 	// First value of each attribute the use changed: one set again to what it was (a framework re-render, a screenshot's empty style) is no change.
@@ -114,13 +122,29 @@ function arm(control) {
 	requestAnimationFrame(tick);
 	const url = location.pathname + location.search;
 	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el };
-	return { hit, x: cx, y: cy };
+	return { hit, hits, x: cx, y: cy };
 }
 
 // In the page: what the use changed outside the control and the pop-ups that were already open.
 function read(prefix) {
 	const st = globalThis.__dc;
 	st.observer.disconnect();
+	const CSEL = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=slider], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=link], [role=treeitem]';
+	const CIMPLICIT = { button: 'button', a: 'link', select: 'combobox', textarea: 'textbox', summary: 'button' };
+	const croleOf = (el) => el.getAttribute('role') ?? (el.localName === 'input' ? ({ checkbox: 'checkbox', radio: 'radio', range: 'slider', button: 'button', submit: 'button', search: 'searchbox' }[el.type] ?? 'textbox') : CIMPLICIT[el.localName] ?? el.localName);
+	const cnameOf = (el) => {
+		const by = el.getAttribute('aria-labelledby');
+		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
+		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+	};
+	const focusKey = () => {
+		const a = document.activeElement;
+		if (!a || a === document.body || a === document.documentElement) return 'the page';
+		if (!a.matches(CSEL)) return `${a.getAttribute('role') ?? a.localName}${a.getAttribute('aria-label') ? ` "${a.getAttribute('aria-label').slice(0, 40)}"` : ''}`;
+		const same = [...document.querySelectorAll(CSEL)].filter((el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && croleOf(el) === croleOf(a) && cnameOf(el) === cnameOf(a));
+		const nth = same.indexOf(a);
+		return `${croleOf(a)} "${cnameOf(a)}"${nth > 0 ? ` #${nth + 1}` : ''}`;
+	};
 	const IMPLICIT = { button: 'button', a: 'link', select: 'combobox', textarea: 'textbox', dialog: 'dialog', nav: 'navigation', main: 'main', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', ul: 'list', ol: 'list', section: 'region', figure: 'figure' };
 	const roleOf = (el) => el.getAttribute('role') ?? IMPLICIT[el.localName];
 	const label = (el) => (el.getAttribute('aria-label') ?? (el.getAttribute('aria-labelledby') ? el.getAttribute('aria-labelledby').split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '')).replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -163,7 +187,47 @@ function read(prefix) {
 		const t = st.el.getBoundingClientRect(), p = shownPopup.getBoundingClientRect();
 		anchor = { side: p.top >= t.bottom - 2 ? 'below' : p.bottom <= t.top + 2 ? 'above' : p.left >= t.right - 2 ? 'right' : p.right <= t.left + 2 ? 'left' : 'over', dx: Math.round(p.left - t.left), dy: Math.round(p.top - t.bottom), w: Math.round(p.width), h: Math.round(p.height), tw: Math.round(t.width) };
 	}
-	return { affected: [...affected].sort().slice(0, 6), url: location.pathname + location.search !== st.url ? location.pathname + location.search : '', popup: first ? { firstMs: first.ms, opacity: Math.round(first.opacity * 100) / 100, transform: first.transform, anims: [...new Set(vis.flatMap((f) => f.anims))].sort(), ...(anchor ? { anchor } : {}) } : undefined };
+	return { focus: focusKey(), popupRole: shownPopup ? shownPopup.getAttribute('role') : '', affected: [...affected].sort().slice(0, 6), url: location.pathname + location.search !== st.url ? location.pathname + location.search : '', popup: first ? { firstMs: first.ms, opacity: Math.round(first.opacity * 100) / 100, transform: first.transform, anims: [...new Set(vis.flatMap((f) => f.anims))].sort(), ...(anchor ? { anchor } : {}) } : undefined };
+}
+
+// In the page: the control a click reaches at points spread over each landmark region in view, by fraction of the region.
+function regionGrid(points) {
+	const SEL = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=slider], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=link], [role=treeitem]';
+	const IMPLICIT = { button: 'button', a: 'link', select: 'combobox', textarea: 'textbox', summary: 'button' };
+	const roleOf = (el) => el.getAttribute('role') ?? (el.localName === 'input' ? ({ checkbox: 'checkbox', radio: 'radio', range: 'slider', button: 'button', submit: 'button', search: 'searchbox' }[el.type] ?? 'textbox') : IMPLICIT[el.localName] ?? el.localName);
+	const nameOf = (el) => {
+		const by = el.getAttribute('aria-labelledby');
+		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '') ?? '';
+		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+	};
+	const keyOf = (x, y) => {
+		const e = document.elementFromPoint(x, y);
+		if (!e) return 'nothing';
+		const c = e.closest(SEL);
+		return c ? `${roleOf(c)} "${nameOf(c)}"` : 'no control';
+	};
+	const LAND = 'header, nav, main, aside, footer, [role=banner], [role=navigation], [role=main], [role=complementary], [role=contentinfo]';
+	const seen = new Map();
+	const regions = [];
+	for (const el of document.querySelectorAll(LAND)) {
+		if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || el.closest('[hidden], [inert]')) continue;
+		const r = el.getBoundingClientRect();
+		const top = Math.max(r.top, 0), bottom = Math.min(r.bottom, innerHeight), left = Math.max(r.left, 0), right = Math.min(r.right, innerWidth);
+		if (bottom - top < 20 || right - left < 20) continue;
+		const name = `${el.getAttribute('role') ?? el.localName}${el.getAttribute('aria-label') ? ` "${el.getAttribute('aria-label')}"` : ''}`;
+		const nth = seen.get(name) ?? 0;
+		seen.set(name, nth + 1);
+		const id = `${name}${nth ? ` #${nth + 1}` : ''}`;
+		const box = { left, top, w: right - left, h: bottom - top };
+		if (points) {
+			const mine = points.filter((p) => p.region === id);
+			// A point counts as reaching the same control when it does within 4 px, so a layout a pixel off is no difference.
+			regions.push(...mine.map((p) => { const x = box.left + p.fx * box.w, y = box.top + p.fy * box.h; return { ...p, near: [...new Set([[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4]].map(([dx, dy]) => keyOf(x + dx, y + dy)))] }; }));
+			continue;
+		}
+		for (const fy of [0.1, 0.3, 0.5, 0.7, 0.9]) for (const fx of [0.1, 0.3, 0.5, 0.7, 0.9]) regions.push({ region: id, fx, fy, key: keyOf(box.left + fx * box.w, box.top + fy * box.h) });
+	}
+	return regions;
 }
 
 const ENGINE = process.env.ENGINE ?? 'chromium';
@@ -175,6 +239,7 @@ const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Bo
 // Every use starts from a fresh context: what one use stored (a colour mode, a package manager, an intro dismissed) is not the next one's.
 const pages = {};
 const cdp = {};
+const errors = { old: [], new: [] };
 let context;
 async function fresh(width = WIDTH) {
 	await context?.close().catch(() => {});
@@ -183,10 +248,12 @@ async function fresh(width = WIDTH) {
 	for (const side of ['old', 'new']) {
 		pages[side] = await context.newPage();
 		pages[side].on('dialog', (d) => d.dismiss().catch(() => {}));
+		pages[side].on('pageerror', (e) => errors[side].push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
 		if (ENGINE === 'chromium') cdp[side] = await context.newCDPSession(pages[side]);
 	}
 }
 const layoutDone = new Set();
+const keyDone = new Set();
 const motionTemplates = new Set();
 let motionMs = 0;
 const STRIPS = process.env.STRIPS ?? '';
@@ -265,6 +332,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	if (!armed) return { missing: 'not on the page' };
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	let film_;
+	const errorsBefore = errors[side].length;
 	try {
 		if (film) {
 			const t0 = Date.now();
@@ -279,7 +347,15 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	// What changes on its own (an animated preview, a ticking demo) is no answer of the control's.
 	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
 	const opened = await p.evaluate(listControls).catch(() => []);
-	return { hit: armed.hit, ...r, opened, ...(film_ ? { motion: motionOf(film_.frames) } : {}) };
+	// The close of the pop-up the use opened, filmed too: Escape, then whether it is gone.
+	let close;
+	if (film && r.popup) {
+		const shot = await filmed(side, () => p.keyboard.press('Escape'));
+		await p.waitForTimeout(SETTLE);
+		const still = await p.evaluate(() => [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].some((x) => !globalThis.__dc.openBefore.has(x) && x.checkVisibility())).catch(() => false);
+		close = { motion: motionOf(shot.frames), still };
+	}
+	return { hit: armed.hit, hits: armed.hits, ...r, opened, errors: errors[side].slice(errorsBefore), ...(film_ ? { motion: motionOf(film_.frames) } : {}), ...(close ? { close } : {}) };
 }
 
 async function act(p, c) {
@@ -288,6 +364,48 @@ async function act(p, c) {
 	if (c.options) return loc.selectOption(c.options[1] ?? c.options[0], { timeout: 3000 });
 	if (c.role === 'slider') { await loc.focus({ timeout: 3000 }); return p.keyboard.press('ArrowRight'); }
 	return loc.click({ timeout: 3000 });
+}
+
+function keySet(c) {
+	if (/^(tab|radio|menuitemradio|treeitem|option)$/.test(c.role)) return [['ArrowRight'], ['End'], ['ArrowRight', 'Enter'], ['Tab'], ['ArrowLeft'], ['ArrowDown'], ['Home']];
+	if (/^(textbox|searchbox)$/.test(c.role)) return [['ArrowDown', 'Enter'], ['Escape'], ['Tab'], ['ArrowDown'], ['Enter']];
+	if (c.role === 'combobox') return [['Enter'], ['ArrowDown', 'ArrowDown', 'Enter'], ['Enter', 'Escape'], ['Tab'], ['Space'], ['ArrowDown'], ['ArrowUp'], ['Escape']];
+	if (c.role === 'slider') return [['ArrowRight'], ['End'], ['ArrowLeft'], ['Home'], ['PageUp']];
+	if (/^(checkbox|switch|menuitemcheckbox)$/.test(c.role)) return [['Space'], ['Enter'], ['Tab']];
+	if (c.role === 'link') return [['Tab'], ['Shift+Tab']];
+	return [['Enter'], ['Space'], ['Enter', 'ArrowDown', 'ArrowDown', 'Enter'], ['Enter', 'Escape'], ['Tab'], ['Shift+Tab'], ['ArrowDown'], ['Escape']];
+}
+
+async function press(side, route, control, keys) {
+	if (side === 'old') await fresh();
+	const p = pages[side];
+	await load(side, route);
+	const armed = await p.evaluate(arm, control).catch((e) => ({ error: e.message }));
+	if (!armed) return { missing: 'not on the page' };
+	if (armed.error) return { missing: armed.error.split('\n')[0] };
+	const before = errors[side].length;
+	await p.locator('[data-dc-used]').first().focus({ timeout: 3000 });
+	for (const k of keys) {
+		await p.keyboard.press(k);
+		await p.waitForTimeout(150);
+	}
+	await p.waitForTimeout(SETTLE);
+	const r = await p.evaluate(read, []).catch((e) => ({ error: e.message }));
+	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
+	return { ...r, errors: errors[side].slice(before) };
+}
+
+function keyFindings(findings, base, old, port) {
+	if (port.missing || port.failed || port.error) return void findings.push({ ...base, kind: 'key-unusable', expected: `focusable and answers: ${describe(old)}`, actual: port.missing ?? port.failed ?? port.error });
+	const did = (r) => Boolean(r.affected?.length || r.url || r.popupRole);
+	if (did(old) && !did(port) && old.focus !== 'the page' && port.focus === old.focus) findings.push({ ...base, kind: 'key-dead', expected: describe(old), actual: 'nothing changed on the port' });
+	if (old.focus !== port.focus) findings.push({ ...base, kind: 'key-focus', expected: `focus ends on ${old.focus}`, actual: `on ${port.focus}` });
+	if ((old.url ?? '') !== (port.url ?? '')) findings.push({ ...base, kind: 'key-address', expected: old.url ? `address becomes ${old.url}` : 'the address stays', actual: port.url ? `becomes ${port.url}` : 'the address stays' });
+	if ((old.popupRole ?? '') !== (port.popupRole ?? '')) findings.push({ ...base, kind: 'key-popup', expected: old.popupRole ? `a ${old.popupRole} is open` : 'no pop-up open', actual: port.popupRole ? `a ${port.popupRole} is open` : 'no pop-up open' });
+	const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
+	if (did(port) && old.affected?.length && lost.length === old.affected.length) findings.push({ ...base, kind: 'key-region', expected: `changes ${old.affected.join(', ')}`, actual: `changes ${port.affected?.join(', ') || 'no region'}` });
+	const thrown = (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
+	if (thrown.length) findings.push({ ...base, kind: 'key-error', expected: old.errors?.length ? `throws ${old.errors.join('; ')}` : 'throws nothing', actual: `throws ${thrown.slice(0, 3).join('; ')}` });
 }
 
 const ambient = { old: undefined, new: undefined };
@@ -339,11 +457,21 @@ for (const route of mine) {
 			await fresh(width);
 			await load('old', route);
 			const olds = await pages.old.evaluate(listControls);
+			const grid = await pages.old.evaluate(regionGrid, null).catch(() => []);
 			await load('new', route);
 			const news = await pages.new.evaluate(listControls).catch(() => []);
+			const portGrid = await pages.new.evaluate(regionGrid, grid.filter((g) => g.key !== 'no control')).catch(() => []);
+			let gridMisses = 0;
+			const portRegions = new Set(portGrid.map((g) => g.region));
+			for (const g of portGrid) {
+				if (g.near.includes(g.key) || gridMisses++ >= 10) continue;
+				findings.push({ route, control: g.region, kind: 'hit-region', width, expected: `a click ${Math.round(g.fx * 100)}% across and ${Math.round(g.fy * 100)}% down the region in view reaches ${g.key}`, actual: `reaches ${g.near.join(' / ')}` });
+			}
+			for (const r of new Set(grid.map((g) => g.region))) if (!portRegions.has(r) && grid.some((g) => g.region === r && g.key !== 'no control')) findings.push({ route, control: r, kind: 'hit-region', width, expected: `${r} in view with controls`, actual: 'no such region in view on the port' });
 			if (width === WIDTH) controls = olds.filter((c) => !c.leaves);
 			const portByKey = new Map(news.map((c) => [c.key, c]));
 			let boxes = 0, missing = 0;
+			const containers = new Set();
 			for (const c of olds) {
 				if (c.layout) continue;
 				const n = portByKey.get(c.key);
@@ -352,7 +480,14 @@ for (const route of mine) {
 					continue;
 				}
 				const d = { w: n.box.w - c.box.w, h: n.box.h - c.box.h, x: n.box.x - c.box.x, y: n.box.y - c.box.y };
-				if ((Math.abs(d.w) > 3 || Math.abs(d.h) > 3 || Math.abs(d.x) > 4 || Math.abs(d.y) > 4) && boxes++ < 20) findings.push({ route, control: c.key, kind: 'box', width, expected: `${c.box.w}x${c.box.h} at (${c.box.x}, ${c.box.y}) in its frame`, actual: `${n.box.w}x${n.box.h} at (${n.box.x}, ${n.box.y})` });
+				if (Math.max(...Object.values(d).map(Math.abs)) > BOX_TOLERANCE && boxes++ < 20) findings.push({ route, control: c.key, kind: 'box', width, expected: `${c.box.w}x${c.box.h} at (${c.box.x}, ${c.box.y}) in its frame`, actual: `${n.box.w}x${n.box.h} at (${n.box.x}, ${n.box.y})` });
+				for (const [what, a, b] of [['its parent', c.parent, n.parent], ['its example frame', c.frameBox, n.frameBox]]) {
+					if (!a || !b) continue;
+					const k = `${what}|${a.w}x${a.h}|${c.template}`;
+					if (containers.has(k) || (Math.abs(a.w - b.w) <= BOX_TOLERANCE && Math.abs(a.h - b.h) <= BOX_TOLERANCE)) continue;
+					containers.add(k);
+					if (boxes++ < 20) findings.push({ route, control: c.key, kind: 'box-container', width, expected: `${what} ${a.w}x${a.h}`, actual: `${b.w}x${b.h}` });
+				}
 			}
 		}
 		const popups = [];
@@ -401,21 +536,18 @@ for (const route of mine) {
 					anchorFinding(findings, base, o.anchor, n.anchor, WIDTH);
 				}
 			}
-			const om = old.motion, nm = port.motion;
-			if (om && nm) {
-				const moving = (m) => m.distinct >= 4 && m.durationMs >= 80;
-				// One side moves through frames while the other goes straight to its result.
-				const jump = (moving(om) && nm.distinct <= 1) || (moving(nm) && om.distinct <= 1);
-				const duration = moving(om) && moving(nm) && Math.abs(om.durationMs - nm.durationMs) > Math.max(150, 0.5 * om.durationMs);
-				const cadence = moving(om) && moving(nm) && (nm.distinct < om.distinct * 0.5 || om.distinct < nm.distinct * 0.5 || nm.maxGapMs > Math.max(2 * om.maxGapMs, om.maxGapMs + 100));
-				if (jump || duration || cadence) {
-					const file = STRIPS ? `${STRIPS}/${route.replace(/[^\w]+/g, '_')}-${tried}.png` : '';
-					if (file) strip(file, om.imgs, nm.imgs);
-					const line = (m) => `${m.distinct} painted changes over ${m.durationMs} ms (longest gap ${m.maxGapMs} ms, median ${m.medianGapMs ?? 0} ms)`;
-					findings.push({ ...base, kind: jump ? 'motion' : duration ? 'motion-duration' : 'motion-cadence', expected: line(om), actual: line(nm), ...(file ? { strip: file } : {}) });
-				}
+			motionFinding(findings, base, old.motion, port.motion, '', `${tried}`);
+			if (old.close && port.close) {
+				motionFinding(findings, base, old.close.motion, port.close.motion, 'close-', `${tried}-close`);
+				if (!old.close.still && port.close.still) findings.push({ ...base, kind: 'close', expected: 'Escape closes the pop-up it opened', actual: 'the pop-up stays open on the port' });
 			}
-			if (old.hit && port.hit && old.hit !== port.hit && !port.missing) findings.push({ ...base, kind: 'hit-target', expected: `a click at its centre reaches ${old.hit}`, actual: `reaches ${port.hit}` });
+			const POINTS = ['centre', 'left quarter', 'right quarter', 'top quarter', 'bottom quarter'];
+			if (old.hits && port.hits && !port.missing) {
+				const off = old.hits.map((h, i) => (h !== port.hits[i] ? `${POINTS[i]}: ${h} -> ${port.hits[i]}` : '')).filter(Boolean);
+				if (off.length) findings.push({ ...base, kind: 'hit-target', expected: `a click reaches ${[...new Set(old.hits)].join(' / ')}`, actual: off.join('; ') });
+			}
+			const newErrors = (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
+			if (newErrors.length) findings.push({ ...base, kind: 'error', expected: old.errors?.length ? `throws ${old.errors.join('; ')}` : 'throws nothing', actual: `throws ${newErrors.slice(0, 3).join('; ')}` });
 			// What the use revealed (a dialog's select, a menu's items, a panel an intro uncovers) is used too, up to two levels down.
 			if (prefix.length < 2 && old.opened) {
 				const before = new Set(controls.map((c) => c.key));
@@ -427,6 +559,27 @@ for (const route of mine) {
 					names.set(`${c.role}|${c.name}`, n);
 					if (n <= 2 && added++ < 40) queue.push({ prefix: [...prefix, control], control: c });
 				}
+			}
+		}
+		// Keyboard: a standard key set, one key and short sequences, from one control of each kind focused on a fresh load.
+		const keyTemplates = new Set();
+		let keyTrials = 0;
+		const rank = (c) => (c.layout ? 2 : c.role === 'link' ? 1 : 0);
+		for (const control of [...controls].sort((a, b) => rank(a) - rank(b))) {
+			if (keyTrials >= KEY_MAX) break;
+			if ((control.layout && keyDone.has(control.key)) || keyTemplates.has(control.template)) continue;
+			keyTemplates.add(control.template);
+			if (control.layout) keyDone.add(control.key);
+			for (const keys of keySet(control).slice(0, KEYS_PER_CONTROL)) {
+				if (keyTrials >= KEY_MAX) break;
+				const id = `${control.key} + ${keys.join(' ')}`;
+				if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
+				keyTrials++;
+				const old = await press('old', route, control, keys).catch((e) => ({ failed: e.message.split('\n')[0] }));
+				if (old.failed || old.missing || leftPage(old, route)) continue;
+				const port = await press('new', route, control, keys).catch((e) => ({ failed: e.message.split('\n')[0] }));
+				if (process.env.DEBUG) console.log('  ', id, '\n     old', JSON.stringify(old), '\n     new', JSON.stringify(port));
+				keyFindings(findings, { route, control: id }, old, port);
 			}
 		}
 		// Where each pop-up opens, at the other widths a layout changes at.
@@ -446,6 +599,20 @@ for (const route of mine) {
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await browser.close();
+
+function motionFinding(findings, base, om, nm, prefix, tag) {
+	if (!om || !nm) return;
+	const moving = (m) => m.distinct >= 4 && m.durationMs >= 80;
+	// One side moves through frames while the other goes straight to its result.
+	const jump = (moving(om) && nm.distinct <= 1) || (moving(nm) && om.distinct <= 1);
+	const duration = moving(om) && moving(nm) && Math.abs(om.durationMs - nm.durationMs) > Math.max(150, 0.5 * om.durationMs);
+	const cadence = moving(om) && moving(nm) && (nm.distinct < om.distinct * 0.5 || om.distinct < nm.distinct * 0.5 || nm.maxGapMs > Math.max(2 * om.maxGapMs, om.maxGapMs + 100));
+	if (!(jump || duration || cadence)) return;
+	const file = STRIPS ? `${STRIPS}/${base.route.replace(/[^\w]+/g, '_')}-${tag}.png` : '';
+	if (file) strip(file, om.imgs, nm.imgs);
+	const line = (m) => `${m.distinct} painted changes over ${m.durationMs} ms (longest gap ${m.maxGapMs} ms, median ${m.medianGapMs ?? 0} ms)`;
+	findings.push({ ...base, kind: `${prefix}${jump ? 'motion' : duration ? 'motion-duration' : 'motion-cadence'}`, expected: line(om), actual: line(nm), ...(file ? { strip: file } : {}) });
+}
 
 function anchorFinding(findings, base, a, b, width) {
 	if (a && b && (a.side !== b.side || Math.abs(a.dx - b.dx) > 4 || Math.abs(a.dy - b.dy) > 4 || Math.abs(a.w - b.w) > 4)) findings.push({ ...base, kind: 'popup-anchor', width, expected: `${a.side} its trigger, ${a.dx} px across and ${a.dy} px down from its corner, ${a.w}x${a.h} (trigger ${a.tw} wide)`, actual: `${b.side}, ${b.dx} px across, ${b.dy} px down, ${b.w}x${b.h} (trigger ${b.tw} wide)` });
