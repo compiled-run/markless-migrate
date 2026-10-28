@@ -13,7 +13,7 @@ import { captureChoices } from '../src/convert/choices.ts';
 import type { Reveal } from '../src/convert/reveal.ts';
 
 const OPTIONS = [['Eastern Standard Time', 'est', 'Eastern Standard Time'], ['٠٢', '02', '02']];
-const PAGE = `<!doctype html><html><body><button id="t" role="combobox" aria-haspopup="listbox" aria-expanded="false"><span data-slot="select-value">Select</span></button><input aria-hidden="true" tabindex="-1" value=""><script>
+const PAGE = `<!doctype html><html><body><button id="t" role="combobox" aria-haspopup="listbox" aria-expanded="false"><span data-slot="select-value">Select</span></button><input aria-hidden="true" tabindex="-1" value=""><div role="menubar"><button role="menuitem">File</button></div><script>
 const t = document.getElementById('t');
 t.addEventListener('click', () => {
 	const portal = document.createElement('div');

@@ -24,7 +24,8 @@ export interface Choice {
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
-const OPTION = '[cmdk-item], [role="option"]:not(a), [role="menuitem"]:not(a)';
+// In the list or menu the control opened: a menubar's own triggers are menuitems too.
+const OPTION = '[cmdk-item], [role="listbox"] [role="option"]:not(a), [role="menu"] [role="menuitem"]:not(a)';
 
 const isOption = (el: Tree) => el.tagName !== 'a' && (attr(el, 'cmdk-item') !== undefined || /^(option|menuitem)$/.test(attr(el, 'role') ?? ''));
 /** What choosing `el` is recorded under: cmdk's data-value, else the option's text, as captureChoices reads it in the page. */
