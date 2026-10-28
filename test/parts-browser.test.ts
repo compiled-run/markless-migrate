@@ -1835,11 +1835,13 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	const shown = [2, 5, 8, 11];
 	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="184" text-anchor="middle" fill="#666" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${labels[i]}</tspan></text></g>`;
 	const line = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick"><line class="recharts-cartesian-axis-tick-line" x1="${coords[i]}" y1="176" x2="${coords[i]}" y2="170"></line></g>`;
-	const body = `<div data-slot="chart" data-mm-clock='[{"*":2024}]' style="width:300px;font:12px monospace"><div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"><g class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines">${shown.map(line).join('')}</g></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${shown.map(tick).join('')}</g></g></svg><div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	// Convert's spare ticks: copies of the first, hidden, which the part shows when more ticks fit.
+	const spares = (html: string) => html.replace('<g class="recharts-layer', '<g display="none" class="recharts-layer').repeat(4);
+	const body = `<div data-slot="chart" data-mm-clock='[{"*":2024}]' style="width:300px;font:12px monospace"><div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"><g class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines">${shown.map(line).join('')}${spares(line(shown[0]!))}</g></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${shown.map(tick).join('')}${spares(tick(shown[0]!))}</g></g></svg><div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
 	const read = (page: Page) =>
 		page.evaluate(() => ({
-			labels: [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`),
-			lines: [...document.querySelectorAll('.recharts-xAxis-tick-lines line')].map((l) => l.getAttribute('x1')),
+			labels: [...document.querySelectorAll('.recharts-xAxis-tick-labels > g:not([display="none"]) text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`),
+			lines: [...document.querySelectorAll('.recharts-xAxis-tick-lines > g:not([display="none"]) line')].map((l) => l.getAttribute('x1')),
 		}));
 	for (const zone of ['UTC', 'Asia/Tokyo']) {
 		const page = await open(body, ['recharts', 'clock'], undefined, '', zone);

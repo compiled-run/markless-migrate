@@ -6,7 +6,7 @@ import type { Browser, Locator, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
-import { attr, childrenOf, isElement, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 
 /** What a recharts chart shows for one active data point, as the old page drew it with that point active. */
@@ -960,6 +960,7 @@ export class ChartPlan {
 			const many = chart.variants.length > 1;
 			const declare = [`let ${name} = state(-1);`, ...(many ? [`let ${v} = state(0);`] : [])];
 			const entries: ChartWidth[] = [{ viewport: 0, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
+			const spares = spareCounts(entries.flatMap((entry) => entry.variants.map((v) => parsedSvg(v.svg ?? ''))));
 			// Each width's variants by the reference's: the rest is 0, a control's state is the one the same control (by its text) shows.
 			const refOf = (entry: ChartWidth, j: number): number => {
 				if (entry === entries[0]) return j;
@@ -1003,6 +1004,7 @@ export class ChartPlan {
 					const prefix = `${name}w${e}v${k}`;
 					const local = new Map<Tree, Binding>();
 					this.states(tree, variant, prefix, name, on, arms, local, declare);
+					spare(tree, spares);
 					motion(tree, entry.view);
 					const style = attr(tree, 'style');
 					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(many && chart.lag ? { z: chart.lag } : {}) }))}}`];
@@ -1183,6 +1185,64 @@ function snap(variant: ChartVariant, value: number, tree: Tree | undefined): num
 		return near !== undefined && Math.abs(near - value) < 3 ? near : value;
 	}
 	return value;
+}
+
+// The groups whose children the part shows and hides for a width or a time zone the capture did not see: an axis'
+// tick labels and tick lines, and a horizontal grid's lines. Markless owns the page's nodes, so the part never adds
+// one; each drawing carries as many as the chart's busiest drawing shows, and three more.
+const SPARED: readonly (readonly [string, (el: Tree) => boolean])[] = [
+	['recharts-xAxis-tick-labels', (el) => classes(el).includes('recharts-cartesian-axis-tick-label')],
+	['recharts-yAxis-tick-labels', (el) => classes(el).includes('recharts-cartesian-axis-tick-label')],
+	['recharts-xAxis-tick-lines', (el) => classes(el).includes('recharts-cartesian-axis-tick')],
+	['recharts-yAxis-tick-lines', (el) => classes(el).includes('recharts-cartesian-axis-tick')],
+	['recharts-cartesian-grid-horizontal', (el) => el.tagName === 'line'],
+];
+const SPARE = 3;
+
+const sparedGroups = (svg: Tree): Map<string, Tree[]> => {
+	const out = new Map<string, Tree[]>();
+	for (const el of walk(svg))
+		for (const [cls] of SPARED)
+			if (classes(el).includes(cls)) {
+				const list = out.get(cls) ?? out.set(cls, []).get(cls)!;
+				list.push(el);
+			}
+	return out;
+};
+
+/** The most children each spared group (by its class and place) has in any of the chart's drawings, plus the spares. */
+export function spareCounts(svgs: readonly (Tree | undefined)[]): Map<string, number> {
+	const most = new Map<string, number>();
+	for (const svg of svgs) {
+		if (!svg) continue;
+		for (const [cls, groups] of sparedGroups(svg)) {
+			const counts = SPARED.find(([c]) => c === cls)![1];
+			groups.forEach((g, i) => {
+				const key = `${cls}#${i}`;
+				most.set(key, Math.max(most.get(key) ?? 0, elementChildren(g).filter(counts).length));
+			});
+		}
+	}
+	for (const [key, n] of most) most.set(key, n + SPARE);
+	return most;
+}
+
+/** Fills each spared group up to its count with hidden copies of its first child. */
+export function spare(svg: Tree, counts: ReadonlyMap<string, number>): void {
+	for (const [cls, groups] of sparedGroups(svg)) {
+		const counts_ = SPARED.find(([c]) => c === cls)![1];
+		groups.forEach((g, i) => {
+			const kids = elementChildren(g).filter(counts_);
+			const first = kids[0];
+			if (!first) return;
+			for (let n = kids.length; n < (counts.get(`${cls}#${i}`) ?? 0); n++) {
+				const copy = elementChildren(svgTree(outer(first)))[0]!;
+				setAttr(copy, 'display', 'none');
+				copy.parentNode = g;
+				childrenOf(g).push(copy);
+			}
+		});
+	}
 }
 
 /** The page's own SVG takes the marks' `data-mm-geo` from the capture of the same drawing, element for element. */

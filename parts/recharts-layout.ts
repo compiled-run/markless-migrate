@@ -29,24 +29,29 @@ interface Tick {
 
 type Size = (tick: Tick, index: number) => number;
 
-const SPAN_ID = 'recharts_measurement_span';
 const sizes = new Map<string, { width: number; height: number }>();
+let measure: Text | undefined;
+
+// A node of the part's own past the end of the page Markless renders (as recharts' span is the body's last child).
+function afterPage(node: Element): void {
+	document.body.append(node);
+}
 
 // recharts' getStringSize: a span at the end of the body, in the tick's font size and letter spacing.
 function stringSize(text: string, style: { fontSize: string; letterSpacing: string }): { width: number; height: number } {
 	const key = `${text}|${style.fontSize}|${style.letterSpacing}`;
 	const known = sizes.get(key);
 	if (known) return known;
-	let span = document.getElementById(SPAN_ID);
-	if (!span) {
-		span = document.createElement('span');
-		span.setAttribute('id', SPAN_ID);
+	if (!measure?.parentElement?.isConnected) {
+		const span = document.createElement('span');
 		span.setAttribute('aria-hidden', 'true');
-		document.body.appendChild(span);
+		measure = document.createTextNode('');
+		span.append(measure);
+		afterPage(span);
 	}
-	Object.assign(span.style, { position: 'absolute', top: '-20000px', left: 0, padding: 0, margin: 0, border: 'none', whiteSpace: 'pre' }, style);
-	span.textContent = text;
-	const rect = span.getBoundingClientRect();
+	Object.assign(measure.parentElement!.style, { position: 'absolute', top: '-20000px', left: 0, padding: 0, margin: 0, border: 'none', whiteSpace: 'pre' }, style);
+	measure.data = text;
+	const rect = measure.parentElement!.getBoundingClientRect();
 	const size = { width: rect.width, height: rect.height };
 	sizes.set(key, size);
 	return size;
@@ -223,10 +228,10 @@ const set = (el: Element, name: string, value: number | string) => {
 
 /**
  * Draws the axis' ticks for `labels` (the formatter's text as this visitor's page shows it): the ones getTicks keeps,
- * text and line placed as CartesianAxis places them. `written` is each label as the page writes it into the text (the
- * capture's, which the clock part then writes for this visitor). Does nothing where the drawing is not recharts' own.
+ * text and line placed as CartesianAxis places them. `claim` tells the clock part a text is written for this visitor
+ * already. Does nothing where the drawing is not recharts' own.
  */
-export function drawTicks(svg: SVGSVGElement, axis: Axis, nth: number, labels: readonly string[], written: readonly string[] = labels): void {
+export function drawTicks(svg: SVGSVGElement, axis: Axis, nth: number, labels: readonly string[], claim?: (node: Text) => void): void {
 	const group = svg.querySelectorAll(`g.recharts-${axis.t}-tick-labels`)[nth];
 	const lines = svg.querySelectorAll(`g.recharts-${axis.t}-tick-lines`)[nth];
 	const template = group?.querySelector(':scope > g.recharts-cartesian-axis-tick-label');
@@ -234,30 +239,36 @@ export function drawTicks(svg: SVGSVGElement, axis: Axis, nth: number, labels: r
 	if (!group || !template || !value || value.querySelectorAll('tspan').length !== 1) return;
 	const style = getComputedStyle(value);
 	const shown = chooseTicks(axis, labels, { fontSize: style.fontSize, letterSpacing: style.letterSpacing });
+	// Markless owns these nodes: convert gave each drawing spare ticks (display none), which are shown or hidden here.
 	const labelsNow = [...group.querySelectorAll(':scope > g.recharts-cartesian-axis-tick-label')];
 	const linesNow = lines ? [...lines.querySelectorAll(':scope > g.recharts-cartesian-axis-tick')] : [];
-	const lineTemplate = linesNow[0];
+	if (shown.length > labelsNow.length || (lines && linesNow.length && shown.length > linesNow.length)) return;
 	shown.forEach((tick, i) => {
 		const place = placeOf(axis, tick);
-		const label = labelsNow[i] ?? group.appendChild(template.cloneNode(true) as Element);
+		const label = labelsNow[i]!;
+		label.removeAttribute('display');
 		const text = label.querySelector('text.recharts-cartesian-axis-tick-value')!;
 		const span = text.querySelector('tspan')!;
 		set(text, 'x', place.text.x);
 		set(text, 'y', place.text.y);
 		set(span, 'x', place.text.x);
-		// A fresh text node each time: the one there may hold the clock part's writing of another tick's date.
-		span.textContent = `${written[tick.index] ?? ''}${axis.u ?? ''}`;
-		if (!lines || !lineTemplate) return;
-		const line = (linesNow[i] ?? lines.appendChild(lineTemplate.cloneNode(true) as Element)).querySelector('line');
+		const node = span.firstChild;
+		if (node instanceof Text) {
+			node.data = `${labels[tick.index] ?? ''}${axis.u ?? ''}`;
+			claim?.(node);
+		}
+		const line = linesNow[i]?.querySelector('line');
+		linesNow[i]?.removeAttribute('display');
 		if (line) for (const [k, v] of Object.entries(place.line)) set(line, k, v);
 	});
-	for (const extra of labelsNow.slice(shown.length)) extra.remove();
-	for (const extra of linesNow.slice(shown.length)) extra.remove();
+	for (const extra of labelsNow.slice(shown.length)) extra.setAttribute('display', 'none');
+	for (const extra of linesNow.slice(shown.length)) extra.setAttribute('display', 'none');
 }
 
 interface Clock {
 	rewrite(text: string, rules: readonly unknown[], now?: number, may?: 'long' | 'short'): string;
 	monthNamesIn(text: string): 'long' | 'short' | undefined;
+	claim(node: Text): void;
 }
 
 /**
@@ -279,7 +290,7 @@ export function relabel(wrapper: Element, rules: readonly unknown[], clock: Cloc
 			const may = clock.monthNamesIn(axis.l.join('\n'));
 			const local = axis.l.map((l) => clock.rewrite(l, rules, Date.now(), may));
 			if (local.every((l, i) => l === axis.l[i])) continue;
-			drawTicks(svg, axis, nth, local, axis.l);
+			drawTicks(svg, axis, nth, local, clock.claim);
 		}
 	}
 }
