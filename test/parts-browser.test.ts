@@ -442,8 +442,13 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('bil');
 	await page.keyboard.press('ArrowDown');
+	// Focus leaves as an outside press starts closing the layer: what it shows stays while it animates out, as React's does.
 	await page.locator('#trigger').focus();
-	assert.equal(await page.locator('[cmdk-input]').inputValue(), '');
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), 'bil');
+	assert.equal((await commandState(page)).selected, 'bil');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => (document.querySelector('[cmdk-input]') as HTMLInputElement).value === '');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
 	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
 	await page.close();
 });
