@@ -1636,3 +1636,27 @@ test('shadcn-ui site: a chart\'s frame stays transparent until its page has load
 	await page.waitForFunction(() => document.querySelector('iframe')!.className.endsWith(' opacity-100'));
 	await page.close();
 });
+
+test("day picker: a key DayPicker handles on a day does not scroll the page, even when the page's render removes that day's button at once", async () => {
+	const page = await open('<div style="height:3000px"></div><div data-mm-day-picker><table><tbody><tr><td role="gridcell"><button id="d">6</button></td></tr></tbody></table></div><div style="height:3000px"></div>', []);
+	const prevented = await page.evaluate(async () => {
+		const { dayPickerEvent, dayPickerView } = await import('/parts/day-picker.ts' as string);
+		const loc = { ws: 0, fwcd: 1, full: 'PP', months: {}, days: {}, ord: [] };
+		const config = { loc, mode: 'single', interactive: true, n: 1, caption: 'label', cls: {} };
+		const button = document.getElementById('d')!;
+		const root = document.querySelector('[data-mm-day-picker]')!;
+		let result = false;
+		root.addEventListener('keydown', (event) => {
+			// A month change rendered in the same task replaces the grid's cells.
+			queueMicrotask(() => button.remove());
+			dayPickerEvent(config, dayPickerView(config, 20000), event, 'k');
+		});
+		window.addEventListener('keydown', (event) => setTimeout(() => (result = event.defaultPrevented)), true);
+		button.focus();
+		button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+		await new Promise((r) => setTimeout(r, 50));
+		return result;
+	});
+	assert.equal(prevented, true);
+	await page.close();
+});
