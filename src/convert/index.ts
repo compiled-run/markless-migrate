@@ -383,7 +383,7 @@ let currentClipboard: Record<string, string> = {};
 let currentShown: Record<string, string> = {};
 // The content each listed `show` control puts in a place, every one rendered there, the page's own shown (Markless owns
 // every node: the part only switches which shows).
-const shownViews = new Map<Element, { readonly id: string; readonly html: string; readonly first: boolean }[]>();
+const shownViews = new Map<Element, { readonly id: string; readonly html: string; readonly first: boolean; readonly copied?: Readonly<Record<string, string>> }[]>();
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -772,7 +772,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 					if (!at) return { up: e.up, down: e.down };
 					const id = createHash('sha256').update(e.html).digest('hex').slice(0, 10);
 					const views = shownViews.get(at) ?? shownViews.set(at, []).get(at)!;
-					if (!views.some((v) => v.id === id)) views.push({ id, html: e.html, first: e.html === inner(at) });
+					if (!views.some((v) => v.id === id)) views.push({ id, html: e.html, first: e.html === inner(at), ...(e.copied ? { copied: e.copied } : {}) });
 					return { up: e.up, down: e.down, view: id };
 				}),
 			);
@@ -1617,7 +1617,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (views) {
 			// The page's own content is the view shown first; the others wait, each in a box that does not lay out.
 			const shownFirst = views.some((v) => v.first) ? views : [{ id: '', html: inner(el), first: true }, ...views];
-			const markup = shownFirst.map((v) => `<div data-mm-show-view=${lit(v.id)} style=${lit(v.first ? 'display: contents' : 'display: none')}>${emitChildren(parseFragment(v.html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1), bind: (x) => bindParts(x, templatePorts) })}</div>`).join('');
+			// A later view's copy controls write what they wrote with that view shown, keyed within the view (parts/reveal.ts).
+			const copies = (v: (typeof shownFirst)[number]) => (v.first ? '' : Object.entries(v.copied ?? {}).map(([key, text]) => `<template data-mm-view-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join(''));
+			const markup = shownFirst.map((v) => `<div data-mm-show-view=${lit(v.id)}${v.first ? ' data-mm-show-first=""' : ''} style=${lit(v.first ? 'display: contents' : 'display: none')}>${emitChildren(parseFragment(v.html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1), bind: (x) => bindParts(x, templatePorts) })}${copies(v)}</div>`).join('');
 			binding = mergeBindings(binding, { children: markup });
 		}
 		const keyed = triggerKeys.get(el);
@@ -1678,7 +1680,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const ownContent = (el: Element): string | undefined => {
 		const panel = basePanels.get(el);
-		const own = [appended.get(el), shownViews.get(el)?.map((v) => v.id).join(','), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
+		const own = [appended.get(el), shownViews.get(el)?.map((v) => `${v.id}${v.copied ? JSON.stringify(v.copied) : ''}`).join(','), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	// Their bind is a lookup; a TanStack table's emits its rows on first bind, so it is left out.

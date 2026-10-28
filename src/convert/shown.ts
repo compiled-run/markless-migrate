@@ -56,7 +56,7 @@ export function completeShown(controls: readonly ShownControl[], baseline: Basel
 				const at = relative(control.path, place.path);
 				if (place.html) {
 					const html = own?.html ?? first?.html;
-					if (html !== undefined) effects.push({ ...at, html });
+					if (html !== undefined) effects.push({ ...at, html, ...(own?.html !== undefined && own.copied ? { copied: own.copied } : {}) });
 				}
 				if (place.attrs.size && !place.html) {
 					const attrs = Object.fromEntries([...place.attrs].sort().map((name) => [name, own?.attrs && name in own.attrs ? own.attrs[name]! : (first?.attr(name) ?? null)]));

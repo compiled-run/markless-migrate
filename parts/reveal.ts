@@ -176,12 +176,7 @@ export function show(target: Element): boolean {
 	for (let control: Element | null = target; control && control !== document.body; control = control.parentElement) {
 		const sig = signature(control);
 		if (!document.querySelector(`template[data-mm-show^="${CSS.escape(`${sig}#`)}"]`)) continue;
-		let nth = 0;
-		for (const el of document.body.querySelectorAll('*')) {
-			if (el === control) break;
-			if (signature(el) === sig) nth++;
-		}
-		const template = document.querySelector(`template[data-mm-show="${CSS.escape(`${sig}#${nth}`)}"]`);
+		const template = document.querySelector(`template[data-mm-show="${CSS.escape(occurrence(control).key)}"]`);
 		if (!template) return false;
 		for (const effect of JSON.parse(template.getAttribute('data-mm-effects') ?? '[]') as ShownEffect[]) {
 			let el: Element | null | undefined = control;
@@ -201,12 +196,22 @@ export function show(target: Element): boolean {
 
 /** What a copy control wrote on the old page, from the page's own template; undefined for a control that copied nothing. */
 export function clipboardFor(control: Element): Promise<string> | undefined {
-	const sig = signature(control);
-	let nth = 0;
-	for (const el of document.body.querySelectorAll('*')) {
-		if (el === control) break;
-		if (signature(el) === sig) nth++;
-	}
-	const copied = document.querySelector<HTMLTemplateElement>(`template[data-mm-clipboard="${CSS.escape(`${sig}#${nth}`)}"]`);
+	const { view, key } = occurrence(control);
+	const copied = view ? view.querySelector(`:scope > template[data-mm-view-clipboard="${CSS.escape(key)}"]`) : document.querySelector(`template[data-mm-clipboard="${CSS.escape(key)}"]`);
 	return copied ? Promise.resolve(copied.getAttribute('data-mm-text') ?? '') : undefined;
+}
+
+const LATER_VIEW = '[data-mm-show-view]:not([data-mm-show-first])';
+
+/**
+ * A control's signature and which element with it it is in document order, as the capture keyed it. A shown view other
+ * than the page's own was not on the old page: a control in one is counted within it, and the others skip it.
+ */
+function occurrence(control: Element): { view: Element | undefined; key: string } {
+	const sig = signature(control);
+	const view = control.closest(LATER_VIEW) ?? undefined;
+	const walker = document.createTreeWalker(view ?? document.body, NodeFilter.SHOW_ELEMENT, { acceptNode: (n) => (!view && (n as Element).matches(LATER_VIEW) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+	let nth = 0;
+	for (let el = walker.nextNode() as Element | null; el && el !== control; el = walker.nextNode() as Element | null) if (signature(el) === sig) nth++;
+	return { view, key: `${sig}#${nth}` };
 }

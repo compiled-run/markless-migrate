@@ -622,6 +622,38 @@ test('a control listed as showing in place does what its use did on the old page
 	await page.close();
 });
 
+test('shadcn-ui site: a copy button in a shown view writes what it wrote with that view shown, and later views do not shift the count of the page\'s own', async () => {
+	const effects = (active: number, view: string) => JSON.stringify([{ up: 0, down: [], attrs: { 'data-active': 'true' } }, { up: 2, down: [1 - active, 0], attrs: { 'data-active': 'false' } }, { up: 3, down: [1], view }]).replace(/"/g, '&quot;');
+	const copyIcon = '<svg class="lucide lucide-clipboard"><rect></rect><path d="M4 16"></path></svg>';
+	const page = await open(
+		`<div data-view="code"><ul><li><button data-slot="sidebar-menu-button" data-active="true">page.tsx</button></li><li><button data-slot="sidebar-menu-button" data-active="false">nav.tsx</button></li></ul><figure><div data-mm-show-view="p" data-mm-show-first="" style="display: contents"><figcaption>page.tsx<button data-slot="button" type="button">${copyIcon}</button></figcaption></div><div data-mm-show-view="n" style="display: none"><figcaption>nav.tsx<button data-slot="button" type="button">${copyIcon}</button></figcaption><template data-mm-view-clipboard="button|button|#0" data-mm-text="nav source"></template></div></figure></div>
+		<button data-slot="button" type="button" id="after">${copyIcon}</button>
+		<template data-mm-show="button|sidebar-menu-button|nav.tsx#0" data-mm-effects="${effects(1, 'n')}"></template>
+		<template data-mm-show="button|sidebar-menu-button|page.tsx#0" data-mm-effects="${effects(0, 'p')}"></template>
+		<template data-mm-clipboard="button|button|#0" data-mm-text="page source"></template>
+		<template data-mm-clipboard="button|button|#1" data-mm-text="after source"></template>`,
+		['site'],
+		'body',
+	);
+	await page.evaluate(() => {
+		const w = window as unknown as { written: string[] };
+		w.written = [];
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.written.push(t), Promise.resolve()) } });
+	});
+	const copyIn = async (view: string) => {
+		await page.locator(`[data-mm-show-view="${view}"] figcaption button`).click();
+		await page.waitForTimeout(50);
+	};
+	await page.getByText('nav.tsx', { exact: true }).first().click();
+	await copyIn('n');
+	await page.locator('#after').click();
+	await page.waitForTimeout(50);
+	await page.getByText('page.tsx', { exact: true }).first().click();
+	await copyIn('p');
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { written: string[] }).written), ['nav source', 'after source', 'page source']);
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
