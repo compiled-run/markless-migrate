@@ -369,7 +369,7 @@ async function exists(path: string): Promise<boolean> {
  * Copies the used ports, and the shared modules they import, into the app's `lib/parts/`; each page's registry
  * (`writeRegistries`) lists the ones it can use after the app's own parts (`lib/site/parts.ts`), when there are any.
  */
-export async function writeParts(app: string, modules: ReadonlySet<string>, choices: Readonly<Record<string, unknown>> = {}, imported: readonly string[] = []): Promise<{ readonly files: string[]; readonly site: boolean }> {
+export async function writeParts(app: string, modules: ReadonlySet<string>, choices: Readonly<Record<string, unknown>> = {}, imported: readonly string[] = [], appDependencies: Readonly<Record<string, string>> = {}): Promise<{ readonly files: string[]; readonly site: boolean }> {
 	const out = join(app, APP_PARTS_DIR);
 	const files: string[] = [];
 	const copy = async (rel: string) => {
@@ -400,7 +400,8 @@ export async function writeParts(app: string, modules: ReadonlySet<string>, choi
 	const site = await exists(join(app, 'lib', 'site', 'parts.ts'));
 	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
 	let added = false;
-	for (const [name, version] of Object.entries(PART_DEPENDENCIES)) {
+	// appDependencies: the old app's own packages a port runs as the page did (its chrono-node), at the old app's version.
+	for (const [name, version] of [...Object.entries(PART_DEPENDENCIES), ...Object.entries(appDependencies)]) {
 		if (manifest.dependencies?.[name]) continue;
 		if (DEPENDENCY_USERS[name] && !DEPENDENCY_USERS[name]!.some((m) => all.has(m))) continue;
 		(manifest.dependencies ??= {})[name] = version;
