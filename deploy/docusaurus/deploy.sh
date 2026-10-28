@@ -21,7 +21,7 @@ case "$1" in
 		[ "${BUILT:-}" = 1 ] || node "$DIR/build.ts" new
 		# A cached page or fragment URL without its ISR function runs the server function on every click: refuse before uploading.
 		(cd "$CWD" && node "$ROOT/src/cli.ts" cache output)
-		URL=$(cd "$CWD" && vercel deploy --prebuilt --archive=tgz --yes --scope "$SCOPE")
+		URL=$(cd "$CWD" && vercel deploy --prebuilt --archive=tgz --yes --scope "$SCOPE" | grep -o "https://[^ ]*\.vercel\.app" | tail -1)
 		BYPASS=$(vercel api "/v9/projects/$PROJECT?teamId=$SCOPE" 2>/dev/null | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).protectionBypass??{};process.stdout.write(Object.keys(p).find((k)=>p[k].scope==="automation-bypass")??"")')
 		# The preview is promoted only when the CDN keeps its pages and their fragment URLs.
 		(cd "$CWD" && node "$ROOT/src/cli.ts" cache check --new "$URL" --no-psi --expiry-wait 0 ${BYPASS:+--header "x-vercel-protection-bypass:$BYPASS"} \
