@@ -1808,3 +1808,62 @@ test('recharts: a control switching the chart moves each mark from its old shape
 	assert.ok(time(painted.length - 1) - begin > 1550, 'the samples reach the end of the animation');
 	await page.close();
 });
+
+// recharts 3.8's getTicks with interval preserveEnd (getTicksEnd), as an oracle: from the last tick back, each kept
+// where its text fits before the one after it, minTickGap apart; the last one's text pulled inside the end.
+function preserveEnd(coords: readonly number[], widths: readonly number[], start: number, end: number, gap: number): { i: number; at: number }[] {
+	const out: { i: number; at: number }[] = [];
+	for (let i = coords.length - 1; i >= 0; i--) {
+		const w = widths[i]!;
+		const over = coords[i]! + w / 2 - end;
+		const at = i === coords.length - 1 && over > 0 ? coords[i]! - over : coords[i]!;
+		if (at < start || at > end) continue;
+		if (at - w / 2 - start >= 0 && at + w / 2 - end <= 0) {
+			out.unshift({ i, at });
+			end = at - (w / 2 + gap);
+		}
+	}
+	return out;
+}
+
+test('recharts: behind UTC, the axis shows the ticks recharts keeps for the dates read a day earlier, measured in the tick\'s font', async () => {
+	const labels = ['Apr 1', 'Apr 2', 'Apr 3', 'Apr 4', 'Apr 5', 'Apr 6', 'Apr 7', 'Apr 8', 'Apr 9', 'Apr 10', 'Apr 11', 'Apr 12'];
+	const coords = labels.map((_, i) => 10 + i * 25);
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 280, 30], vb: [0, 0, 300, 200], gap: 8, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c: coords, l: labels };
+	const facts = JSON.stringify({ w: 300, h: 200, v: [10, 0, 280, 170], m: 'x', g: [], p: [], a: [axis] });
+	// What the capture shows in UTC: every third tick from the end.
+	const shown = [2, 5, 8, 11];
+	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="184" text-anchor="middle" fill="#666" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${labels[i]}</tspan></text></g>`;
+	const line = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick"><line class="recharts-cartesian-axis-tick-line" x1="${coords[i]}" y1="176" x2="${coords[i]}" y2="170"></line></g>`;
+	const body = `<div data-slot="chart" data-mm-clock='[{"*":2024}]' style="width:300px;font:12px monospace"><div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"><g class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines">${shown.map(line).join('')}</g></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${shown.map(tick).join('')}</g></g></svg><div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	const read = (page: Page) =>
+		page.evaluate(() => ({
+			labels: [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`),
+			lines: [...document.querySelectorAll('.recharts-xAxis-tick-lines line')].map((l) => l.getAttribute('x1')),
+		}));
+	for (const zone of ['UTC', 'Asia/Tokyo']) {
+		const page = await open(body, ['recharts', 'clock'], undefined, '', zone);
+		await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+		await page.waitForTimeout(300);
+		assert.deepEqual((await read(page)).labels, shown.map((i) => `${labels[i]}@${coords[i]}`), `${zone}: the capture's ticks`);
+		await page.close();
+	}
+	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
+	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent?.startsWith('Mar') || [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].some((t) => t.textContent === 'Apr 11'), undefined, { timeout: 5000 }).catch(() => {});
+	await page.waitForTimeout(300);
+	const west = ['Mar 31', ...labels.slice(0, -1)];
+	const widths = await page.evaluate((texts) => {
+		const span = document.createElement('span');
+		Object.assign(span.style, { position: 'absolute', top: '-20000px', whiteSpace: 'pre', fontSize: '12px' });
+		document.body.appendChild(span);
+		return texts.map((t) => ((span.textContent = t), span.getBoundingClientRect().width));
+	}, west);
+	const expected = preserveEnd(coords, widths, 0, 300, 8);
+	assert.notDeepEqual(expected.map((e) => e.i), shown, 'the west dates keep other ticks');
+	const seen = await read(page);
+	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
+	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
+	await page.close();
+});

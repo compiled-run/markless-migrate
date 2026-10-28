@@ -87,3 +87,19 @@ test('the update animation\'s lag is read off a film of the marks from the input
 	assert.equal(animationLag(['a', 'a', 'a', 'a', 'a', 'a', 'b', 'c', 'd']), 4, 'a switch whose first shape is the old one');
 	assert.equal(animationLag(['a', 'a', 'b', 'b', 'a', 'a']), undefined, 'no run of motion: no animation');
 });
+
+test('each drawing\'s facts carry its axes\' every possible tick, which the part picks the shown ones from', () => {
+	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"><g class="recharts-cartesian-axis recharts-xAxis"></g></svg><div class="recharts-tooltip-wrapper"></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const axis = { t: 'xAxis' as const, o: 'bottom' as const, box: [5, 187, 1220, 30] as const, vb: [0, 0, 1230, 250] as const, gap: 32, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c: [5, 18.555555555555557], l: ['Apr 1', 'Apr 2'] };
+	const variant = { svg: '<svg class="recharts-surface"></svg>', mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 1, model: { axes: [null, axis], bars: { gap: 4, cat: '10%', groups: [{}] } } };
+	const plan = new ChartPlan();
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 1230, height: 250, view: [5, 0, 1220, 187] as const, variants: [variant], drivers: [] }], (sig) => (sig === 'w' ? wrapper : undefined), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	const facts = /data-mm-facts=\{("(?:[^"\\]|\\.)*")\}/.exec(out);
+	assert.ok(facts, out.slice(0, 300));
+	const parsed = JSON.parse(JSON.parse(facts[1]!)) as { a: unknown[]; b: unknown };
+	assert.deepEqual(parsed.a, [null, axis], 'the coordinates at full precision, the axis with a custom tick as null');
+	assert.deepEqual(parsed.b, { gap: 4, cat: '10%', groups: [{}] });
+});

@@ -2556,10 +2556,19 @@ Frame-by-frame check (each frame read after it was painted, 1280 px, against the
 | docs `chart` (radix) | Mobile | 9 / 24 | 0.034 px at equal progress: the old docs page drops frames under its other charts' work; the frames it paints sit on the port's curve |
 | pie-interactive | February (select) | 1 / 1 (no animation) | 0 px |
 
+Time zones (second change): convert reads each axis' every possible tick off the props recharts' CartesianAxis was
+given (coordinates and the formatter's text, `a` in the drawing's facts) and each chart's layout and bar settings off
+its store. Behind UTC (checked once, on Jan 1 and Jul 1 of the chart's year) `parts/recharts-layout.ts` takes the
+dates as the clock part writes them for the visitor, keeps the ticks recharts' `getTicks` keeps (its `preserveEnd`
+and the other intervals as written, each text measured in a span on the body in the tick's font size and letter
+spacing, as `getStringSize` does) and draws them where `getTickLineCoord` puts them. Clock capture now finds a chart's
+dates as a whole too: on `chart-line-interactive` and `dashboard-01` the axis shows another number of ticks behind
+UTC, so the place-by-place reading found nothing. Old and port agree on every tick's text and place in UTC,
+Asia/Tokyo, America/Los_Angeles, Pacific/Honolulu and America/St_Johns on area-interactive, bar-interactive,
+line-interactive, dashboard-01 and area-default (1280 px), and the tooltips' dates at three points of each.
+
 Next, same part family, from the same captures: the layout at any width (recharts' band and bar sizes, which it
-truncates to whole pixels, so the drawing cannot simply scale, and the ticks `getTicks` keeps for the width), and the
-ticks for the visitor's time zone (behind UTC the dates read a day earlier, their widths change, and `preserveEnd`
-keeps other ticks).
+truncates to whole pixels, so the drawing cannot simply scale, and the ticks `getTicks` keeps for the width).
 
 ## Open work
 
