@@ -55,7 +55,7 @@ function listControls() {
 		const slot = el.closest('[data-slot]')?.getAttribute('data-slot') ?? '';
 		const pr = el.parentElement?.getBoundingClientRect() ?? r;
 		const hint = [el.getAttribute('placeholder'), el.getAttribute('name'), el.id, el.getAttribute('inputmode'), el.getAttribute('aria-label')].filter(Boolean).join(' ');
-		out.push({ hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: { w: Math.round(f.width), h: Math.round(f.height) }, key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
+		out.push({ popup: el.hasAttribute('aria-haspopup') || el.hasAttribute('aria-expanded'), hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: { w: Math.round(f.width), h: Math.round(f.height) }, key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
 	}
 	return out;
 }
@@ -227,7 +227,13 @@ function regionGrid(points) {
 			regions.push(...mine.map((p) => { const x = box.left + p.fx * box.w, y = box.top + p.fy * box.h; return { ...p, near: [...new Set([[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4]].map(([dx, dy]) => keyOf(x + dx, y + dy)))] }; }));
 			continue;
 		}
-		for (const fy of [0.1, 0.3, 0.5, 0.7, 0.9]) for (const fx of [0.1, 0.3, 0.5, 0.7, 0.9]) regions.push({ region: id, fx, fy, key: keyOf(box.left + fx * box.w, box.top + fy * box.h) });
+		const spots = [0.1, 0.3, 0.5, 0.7, 0.9].flatMap((fy) => [0.1, 0.3, 0.5, 0.7, 0.9].map((fx) => [fx, fy]));
+		for (const c of [...el.querySelectorAll(SEL)].filter((c) => c.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !c.closest('[hidden], [inert], [aria-hidden=true]')).slice(0, 20)) {
+			const b = c.getBoundingClientRect();
+			const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+			if (b.width >= 2 && cx > box.left && cx < box.left + box.w && cy > box.top && cy < box.top + box.h) spots.push([(cx - box.left) / box.w, (cy - box.top) / box.h]);
+		}
+		for (const [fx, fy] of spots) regions.push({ region: id, fx, fy, key: keyOf(box.left + fx * box.w, box.top + fy * box.h) });
 	}
 	return regions;
 }
@@ -298,7 +304,8 @@ async function filmed(side, run) {
 function motionOf(frames) {
 	const imgs = frames.map((f) => ({ t: f.t, png: PNG.sync.read(Buffer.from(f.data, 'base64')) })).filter((f) => f.png.width);
 	if (imgs.length < 2) return { distinct: 0, durationMs: 0, maxGapMs: 0, imgs };
-	const differs = (a, b) => a.width === b.width && a.height === b.height ? pixelmatch(a.data, b.data, null, a.width, a.height, { threshold: 0.1 }) > a.width * a.height * 0.0005 : true;
+	// A fade steps through small colour changes: a low colour threshold counts each step.
+	const differs = (a, b) => a.width === b.width && a.height === b.height ? pixelmatch(a.data, b.data, null, a.width, a.height, { threshold: 0.02 }) > Math.max(8, a.width * a.height * 0.0001) : true;
 	const distinct = [imgs[0]];
 	for (const f of imgs.slice(1)) if (differs(distinct.at(-1).png, f.png)) distinct.push(f);
 	const end = distinct.at(-1);
@@ -461,6 +468,7 @@ function inputFindings(findings, base, old, port) {
 }
 
 function keySet(c) {
+	if (c.popup && c.role === 'button') return [['ArrowDown'], ['Enter'], ['Enter', 'Escape'], ['Space'], ['ArrowUp'], ['Enter', 'ArrowDown', 'ArrowDown', 'Enter']];
 	if (/^(tab|radio|menuitemradio|treeitem|option)$/.test(c.role)) return [['ArrowRight'], ['End'], ['ArrowRight', 'Enter'], ['Tab'], ['ArrowLeft'], ['ArrowDown'], ['Home']];
 	if (/^(textbox|searchbox)$/.test(c.role)) return [['ArrowDown', 'Enter'], ['Escape'], ['Tab'], ['ArrowDown'], ['Enter']];
 	if (c.role === 'combobox') return [['Enter'], ['ArrowDown', 'ArrowDown', 'Enter'], ['Enter', 'Escape'], ['Tab'], ['Space'], ['ArrowDown'], ['ArrowUp'], ['Escape']];
