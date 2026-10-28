@@ -618,3 +618,17 @@ test('a Base UI dropdown radio item given closeOnClick closes the menu; one with
 	assert.match(await state(page), /^false /);
 	await page.close();
 });
+
+test('an opening Base UI submenu is painted over its menu, as its portal mounts it last, though convert rendered it first', async () => {
+	const [menuPart, subPart] = withSub().split(/(?=<div data-base-ui-portal hidden data-mm-layer="dd-sub-1")/);
+	const page = await open(subPart!.replace('role="presentation" style="position:absolute;', 'role="presentation" style="z-index:50;position:absolute;') + menuPart!.replaceAll('role="presentation" style="position:absolute;', 'role="presentation" style="z-index:50;position:absolute;'), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	await press(page, 'Enter');
+	await press(page, 'ArrowDown');
+	await press(page, 'ArrowRight');
+	assert.match(await subState(page), /sub=true/);
+	// The stub leaves the submenu on its menu: the point over its first item is in both.
+	const email = (await page.getByText('Email').boundingBox())!;
+	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="menu"]')?.getAttribute('aria-labelledby'), [email.x + 5, email.y + 5]), 'sub1');
+	await page.close();
+});

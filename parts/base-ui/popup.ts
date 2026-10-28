@@ -1,6 +1,7 @@
 import { layersFor, showCompanions } from '../reveal.ts';
 import { place, type BaseOptions } from './positioner.ts';
 import { enter, exit } from './transition.ts';
+import { raiseOver } from '../stacking.ts';
 
 // What Base UI's FloatingPortal, FloatingFocusManager and dismissal do around a popover, menu, select or tooltip: the
 // portal container appended to the body, Escape and a press outside closing the top popup, the trigger marked open.
@@ -20,6 +21,7 @@ export interface Popup {
 	/** Closes it as its part does (the part's onDismiss). */
 	readonly dismiss: (reason: Dismissal) => void;
 	stop?: () => void;
+	lower?: () => void;
 	cleanup: (() => void)[];
 }
 
@@ -227,6 +229,8 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	if (!options.shown) enter(popup, around, options.anchored !== false);
 	setTrigger(trigger, true, pressable);
 	showCompanions(key, true);
+	const stacked = (q: HTMLElement) => [...q.children].filter((c): c is HTMLElement => c instanceof HTMLElement);
+	p.lower = raiseOver(stacked(portal), open.flatMap((o) => stacked(o.portal)));
 	open.push(p);
 	if (options.lockScroll ?? popup.matches('[role="menu"]')) p.cleanup.push(acquireScrollLock());
 	const onKey = (event: KeyboardEvent) => {
@@ -297,8 +301,13 @@ export function closePopup(p: Popup, returnFocus = true, keep = false, focus: Fo
 	}
 	exit(p.popup, p.around, () => {
 		p.stop?.();
-		// Opened again before this exit ended: it stays mounted.
-		if (open.some((o) => o.portal === p.portal)) return;
+		// Opened again before this exit ended: it stays mounted, raised as it was.
+		const again = open.find((o) => o.portal === p.portal);
+		if (again) {
+			again.lower ??= p.lower;
+			return;
+		}
+		p.lower?.();
 		if (returnFocus && !keep) refocus();
 		// Base UI's Select keeps its popup mounted once opened, hidden; other popups leave, here hidden with their portal.
 		if (keep) {
