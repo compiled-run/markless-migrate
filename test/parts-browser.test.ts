@@ -47,6 +47,8 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
 		// What choosing each option did on the old page, which convert writes beside the ports.
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
+		// The site's JSON (its RTL translations) as the module a bundler makes of it.
+		if (path.startsWith('/parts/') && path.endsWith('.json')) return route.fulfill({ contentType: 'text/javascript', body: `export default ${await readFile(join(dirname(SITE), path.replace(/^\/parts\//, '')), 'utf8')};` });
 		const text = path === '/parts/registry.ts' ? registry : path === '/parts/site.ts' ? (await readFile(SITE, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
 	});
@@ -693,6 +695,57 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.getByRole('button', { name: 'Refresh Preview' }).click();
 	await page.waitForTimeout(500);
 	assert.equal(loads, before + 1, 'setIframeKey mounts the frame afresh, which loads its page again');
+	await page.close();
+});
+
+test('shadcn-ui site: an RTL preview\'s language selector writes the example\'s text, direction and data-lang in that language', async () => {
+	const badge = (t: string) => `<span data-slot="badge">${t}</span>`;
+	const page = await open(
+		`<div data-slot="component-preview"><div><button type="button" role="combobox" data-slot="select-trigger" dir="ltr" data-name="language-selector"><span data-slot="select-value">Arabic (العربية)</span></button></div>
+		<div data-slot="preview" dir="rtl" data-lang="ar"><div class="flex" dir="rtl">${badge('شارة')}${badge('ثانوي')}${badge('مدمر')}${badge('مخطط')}${badge('متحقق')}${badge('إشارة مرجعية')}<span>١٢</span><p>3 مدمر</p></div></div></div>
+		<script>window.choose = (label) => (document.querySelector('[data-slot="select-value"]').textContent = label);</script>`,
+		['site'],
+		'body',
+		'<meta charset="utf-8">',
+	);
+	await page.locator('[data-name="language-selector"]').click();
+	const look = () => page.evaluate(() => { const p = document.querySelector('[data-slot="preview"]')!; return [p.getAttribute('dir'), p.getAttribute('data-lang'), p.firstElementChild!.getAttribute('dir'), p.textContent].join(' | '); });
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('Hebrew (עברית)'));
+	await page.waitForFunction(() => document.querySelector('[data-slot="preview"]')!.getAttribute('data-lang') === 'he');
+	assert.equal(await look(), 'rtl | he | rtl | תגמשניהרסניקווי מתארמאומתסימנייה123 הרסני');
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('English'));
+	await page.waitForFunction(() => document.querySelector('[data-slot="preview"]')!.getAttribute('dir') === 'ltr');
+	assert.equal(await look(), 'ltr |  | ltr | BadgeSecondaryDestructiveOutlineVerifiedBookmark123 Destructive');
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('Arabic (العربية)'));
+	await page.waitForFunction(() => document.querySelector('[data-slot="preview"]')!.getAttribute('dir') === 'rtl');
+	assert.equal(await look(), 'rtl | ar | rtl | شارةثانويمدمرمخططمتحققإشارة مرجعية١٢3 مدمر');
+	await page.close();
+});
+
+test('shadcn-ui site: an RTL preview\'s language reaches the layers its controls open, by capture key, opened after the switch, and their placement', async () => {
+	// Base UI's dropdown-menu-rtl: its trigger keyed by the capture, its menu a layer, align end in Arabic and start otherwise.
+	const page = await open(
+		`<div data-slot="component-preview"><div><button type="button" role="combobox" data-slot="select-trigger" dir="ltr" data-name="language-selector"><span data-slot="select-value">Arabic (العربية)</span></button></div>
+		<div data-slot="preview" dir="rtl" data-lang="ar"><button data-slot="dropdown-menu-trigger" data-mm-key="p:1" dir="rtl">افتح القائمة</button></div></div>
+		<script>
+		history.replaceState(null, '', '/docs/components/base/dropdown-menu');
+		window.choose = (label) => (document.querySelector('[data-slot="select-value"]').textContent = label);
+		window.mount = () => document.body.insertAdjacentHTML('beforeend', '<div data-mm-layer="p:1"><div data-side="bottom" data-align="end" data-mm-align="end"><div role="menu" dir="rtl" data-lang="ar"><div role="menuitem">الحساب</div><div role="menuitem">١٢</div></div></div></div>');
+		</script>`,
+		['site'],
+		'body',
+		'<meta charset="utf-8">',
+	);
+	await page.locator('[data-name="language-selector"]').click();
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('English'));
+	await page.waitForFunction(() => document.querySelector('[data-mm-key="p:1"]')!.textContent === 'Open');
+	await page.evaluate(() => (window as unknown as { mount: () => void }).mount());
+	await page.waitForFunction(() => document.querySelector('[role="menu"]')!.getAttribute('dir') === 'ltr');
+	const look = () => page.evaluate(() => { const l = document.querySelector('[data-mm-layer]')!.firstElementChild!; return [l.getAttribute('data-align'), l.getAttribute('data-mm-align'), l.textContent].join(' | '); });
+	assert.equal(await look(), 'start | start | Account12');
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('Arabic (العربية)'));
+	await page.waitForFunction(() => document.querySelector('[role="menu"]')!.getAttribute('dir') === 'rtl');
+	assert.equal(await look(), 'end | end | الحساب١٢');
 	await page.close();
 });
 
