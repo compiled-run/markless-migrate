@@ -128,10 +128,21 @@ export function clockMarks(at: readonly ClockText[], behind: readonly ClockText[
 			else if (clockDay - day === utcDay(times.t1) - utcDay(times.t0)) add(a.sig, a.nth, { x: whole, in: day - utcDay(times.t0) });
 		});
 	}
+	// A chart's axis keeps other ticks behind UTC (their text is wider or narrower), so its texts are not read place by
+	// place: its dates as a whole hold at the later clock and move behind UTC.
+	const charts = new Set(at.flatMap((a) => (a.chart !== undefined ? [a.chart] : [])));
+	for (const chart of charts) {
+		if (marks.has(`chart#${chart}`)) continue;
+		const datesIn = (list: readonly ClockText[]) => list.filter((c) => c.chart === chart).flatMap((c) => dates(c.text).map((d) => d.whole));
+		const [da, db, dl] = [datesIn(at), datesIn(behind), datesIn(later)];
+		if (!da.length || !db.length || da.join('|') !== dl.join('|') || da.join('|') === db.join('|')) continue;
+		const year = dates(at.find((c) => c.chart === chart && dates(c.text).length)!.text)[0]!.date.year ?? y0;
+		add('', 0, { '*': year }, chart);
+	}
 	return [...marks.values()];
 }
 
-const READ_VERSION = 2;
+const READ_VERSION = 3;
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`clock:${READ_VERSION}:${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** The dates on a route that follow the visitor's clock or time zone, read from the old page at three settings. */

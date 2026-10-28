@@ -35,5 +35,5 @@ The repository's Actions caches share one 10 GB limit, and a cache saved by a pu
 
 ## Secrets
 
-`SHADCN_BYPASS` is the Vercel protection bypass for the shadcn-ui port's preview deployments. Only workflows that run on `workflow_dispatch` read it (today the dead-control probe on the `probe/dead-controls` branch), never one that runs on `push` or `pull_request`, so a fork's run cannot read it. It is sent only as the `x-vercel-protection-bypass` header on requests to the port's host. GitHub masks it in logs, and no step prints it. It was set on 2026-10-28 from the bypass file the shadcn workers use. To rotate it, regenerate the bypass in the Vercel project and run `gh secret set SHADCN_BYPASS < <file>`.
+`SHADCN_BYPASS` is the Vercel protection bypass for the shadcn-ui port's preview deployments. Only workflows that run on `workflow_dispatch` read it (today the dead-control probe, `.github/workflows/probe-dead-controls.yml`), never one that runs on `push` or `pull_request`, so a fork's run cannot read it. It is sent only as the `x-vercel-protection-bypass` header on requests to the port's host. GitHub masks it in logs, and no step prints it. It was set on 2026-10-28 from the bypass file the shadcn workers use. To rotate it, regenerate the bypass in the Vercel project and run `gh secret set SHADCN_BYPASS < <file>`.
 
