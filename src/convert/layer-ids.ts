@@ -58,10 +58,11 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 			mine.set(from, name);
 		}
 	}
-	const page = new Map<string, string>();
-	for (const names of own.values()) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
 	const keys = new Map<string, string>();
 	for (const [key, names] of own) if (names.has(key)) keys.set(key, names.get(key)!);
+	// A trigger in the page names the layer it opens by its key, before any other layer holding that id from another load.
+	const page = new Map(keys);
+	for (const names of own.values()) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
 	const opener = new Map<string, string>();
 	for (const l of layers)
 		for (const top of l.kept)
