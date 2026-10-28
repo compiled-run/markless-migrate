@@ -196,7 +196,9 @@ export function installParity(): void {
 		/** Marks the control and brings it into view; the scroll alone can restyle the page (a sticky header), so it settles before `arm`. */
 		mark(key: string) {
 			const all = shownControls();
-			const el = all.find((e) => keyOf(e, all) === key);
+			// A calendar marks its build date's day "Today, …": the same day button on the other side may lack the mark.
+			const untoday = (k: string) => k.replace(/"Today, /, '"');
+			const el = all.find((e) => keyOf(e, all) === key) ?? all.find((e) => untoday(keyOf(e, all)) === untoday(key));
 			if (!el) return false;
 			for (const o of document.querySelectorAll(`[${MARK}]`)) o.removeAttribute(MARK);
 			el.setAttribute(MARK, '');
@@ -285,7 +287,7 @@ export function installParity(): void {
 			const before = armed?.openBefore ?? new Set<Element>();
 			const pop = shownPopups().find((x) => !before.has(x));
 			if (!pop) return '';
-			const picked = [...pop.querySelectorAll('[aria-selected=true], [data-selected=true], [data-selected-single=true], [aria-checked=true], [aria-current=date]')].filter((x) => x.checkVisibility()).map((x) => `${(x.textContent ?? '').trim().slice(0, 30)}${x.getAttribute('data-day') ? ` (${x.getAttribute('data-day')})` : ''}`);
+			const picked = [...pop.querySelectorAll('[aria-selected=true], [data-selected=true], [data-selected-single=true], [aria-checked=true]')].filter((x) => x.checkVisibility()).map((x) => `${(x.textContent ?? '').trim().slice(0, 30)}${x.getAttribute('data-day') ? ` (${x.getAttribute('data-day')})` : ''}`);
 			const caption = [...pop.querySelectorAll('[role=status], [aria-live]')].filter((x) => x.checkVisibility()).map((x) => (x.textContent ?? '').trim().slice(0, 40));
 			return [...new Set([...caption, ...picked])].join('; ').slice(0, 200) || `${pop.getAttribute('role') ?? 'pop-up'} open`;
 		},

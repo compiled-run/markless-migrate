@@ -50,6 +50,10 @@ const CASES: Record<string, { old: string; new: string }> = {
 		new: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
 	},
 	scroller: { old: '', new: '' },
+	today: {
+		old: page(`<div role="grid" aria-label="October 2026">${[26, 27, 28].map((d) => `<button ${d === 28 ? 'data-today="true" ' : ''}aria-label="${d === 28 ? 'Today, ' : ''}${['Monday', 'Tuesday', 'Wednesday'][d - 26]}, October ${d}th, 2026">${d}</button>`).join('')}</div>`),
+		new: page(`<div role="grid" aria-label="October 2026">${[26, 27, 28].map((d) => `<button ${d === 26 ? 'data-today="true" ' : ''}aria-label="${d === 26 ? 'Today, ' : ''}${['Monday', 'Tuesday', 'Wednesday'][d - 26]}, October ${d}th, 2026">${d}</button>`).join('')}</div>`),
+	},
 	stars: { old: page(`${menuBody}<button>Star 127k</button>`, menuScript()), new: page(`${menuBody}<button>Star 126k</button>`, menuScript()) },
 	noisy: { old: '', new: page(`${menuBody}<button id="n">Count</button>`, menuScript()) },
 };
@@ -181,4 +185,8 @@ test('one of many namesake buttons missing on the port: one finding, not one for
 
 test('a sidebar its script scrolls to a different place on each load: its links are compared from the top, so nothing is red', async () => {
 	assert.deepEqual(checks(await check('scroller', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 0 })), []);
+});
+
+test('a calendar whose "today" is another day on each side (each site\'s build date): the same controls, nothing red', async () => {
+	assert.deepEqual(checks(await check('today', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 4 })), []);
 });

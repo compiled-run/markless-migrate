@@ -277,7 +277,7 @@ const effect = (u: Use) => [u.affected?.length ? `changes ${u.affected.join(', '
 export function keyDifferences(old: Use, port: Use): [string, string, string][] {
 	const out: [string, string, string][] = [];
 	if (did(old) && !did(port) && old.focus === port.focus) out.push(['answer', effect(old), 'nothing changed on the port']);
-	if (old.focus !== port.focus) out.push(['focus', `focus ends on ${old.focus}`, `on ${port.focus}`]);
+	if (!sameControl(old.focus ?? '', port.focus ?? '')) out.push(['focus', `focus ends on ${old.focus}`, `on ${port.focus}`]);
 	if ((old.url ?? '') !== (port.url ?? '')) out.push(['address', old.url ? `address becomes ${old.url}` : 'the address stays', port.url ? `becomes ${port.url}` : 'the address stays']);
 	if ((old.popupRole ?? '') !== (port.popupRole ?? '')) out.push(['pop-up', old.popupRole ? `a ${old.popupRole} is open` : 'no pop-up open', port.popupRole ? `a ${port.popupRole} is open` : 'no pop-up open']);
 	const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
@@ -300,9 +300,11 @@ export function inputDifferences(old: Use, port: Use): [string, string, string][
 	return out;
 }
 
-// A count in a control's name (stars, downloads) is live data, not which control it is.
-export const sameControl = (a: string, b: string): boolean => a === b || a.replace(/\d[\d.,]*[kKmM]?/g, '#') === b.replace(/\d[\d.,]*[kKmM]?/g, '#');
-const countless = (key: string) => key.replace(/\d[\d.,]*[kKmM]?/g, '#');
+// A count in a control's name (stars, downloads) is live data, and a calendar day's name ("Today, Tuesday, October 28th,
+// 2026") is each site's build date: neither tells which control it is.
+const DAY = /(?:Today, )?(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, )?(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(?:st|nd|rd|th)?,? \d{4}/g;
+const countless = (key: string) => key.replace(DAY, 'a day').replace(/\d[\d.,]*[kKmM]?/g, '#');
+export const sameControl = (a: string, b: string): boolean => a === b || countless(a) === countless(b);
 
 const thrownOnlyBy = (old: Use, port: Use) => (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
 
