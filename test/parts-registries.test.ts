@@ -50,3 +50,29 @@ test('a second registry adds its ports in module order after the site parts, run
 	assert.deepEqual(await log(), ['site', 'dialog', 'menu', 'tabs']);
 	await page.close();
 });
+
+test('every module a port imports is copied with it: its needs reach every relative import of its file', async () => {
+	const { readFile } = await import('node:fs/promises');
+	const { join, dirname, normalize } = await import('node:path');
+	const { PORTS } = await import('../src/convert/parts.ts');
+	const root = join(import.meta.dirname, '..', 'parts');
+	const always = new Set(['index', 'reveal', 'choices', 'next-themes']);
+	const missing: string[] = [];
+	for (const port of PORTS) {
+		const reach = new Set<string>();
+		const add = (m: string) => {
+			if (reach.has(m)) return;
+			reach.add(m);
+			for (const n of PORTS.find((p) => p.module === m)?.needs ?? []) add(n);
+		};
+		add(port.module);
+		for (const m of reach) {
+			const text = await readFile(join(root, `${m}.ts`), 'utf8').catch(() => '');
+			for (const [, spec] of text.matchAll(/^import[^'"]*['"](\.{1,2}\/[^'"]+)\.ts['"]/gm)) {
+				const target = normalize(join(dirname(m), spec!)).replace(/\\/g, '/');
+				if (!reach.has(target) && !always.has(target)) missing.push(`${port.module}: ${m} imports ${target}`);
+			}
+		}
+	}
+	assert.deepEqual([...new Set(missing)], []);
+});
