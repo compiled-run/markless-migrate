@@ -231,8 +231,12 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   use. The part runs each library's timing, held to what the old page did step by step: react-hook-form and Formisch
   validate on submit, then the changed field on every change after that, and a failed submit focuses the first
   invalid field. TanStack Form shows its submit errors until the field changes. react-hook-form shows a field's first
-  message; the others show every message. Not ported: the email-list demos (rows a visitor adds and removes), and the
-  toast a valid submit shows.
+  message; the others show every message. The email-list demos (react-hook-form's useFieldArray, Formisch's
+  FieldArray) are a keyed @for over a state() of rows built from the first row's markup. Every place the first two rows
+  differ reads the row's index. What an error changed in a row follows that row's errors, rendered always and hidden
+  while it has none, since a keyed row holds no arm. Remove is hidden while a row is alone, and Add is disabled at the
+  rows it stops at. react-hook-form focuses a row it adds; Formisch validates again on a row added or taken out once
+  submitted. Not ported: TanStack Form's list demo (validated on blur), and the toast a valid submit shows.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer

@@ -1716,6 +1716,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// A table's rows and hideable cells are emitted by its plan, with every plan's bindings, as their page is.
 	tables.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)), dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
 	tables.emitHtml = emitHtml;
+	// A form's list rows are emitted by its plan once, as their row template, with every plan's bindings.
+	formLibs.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)) });
 	// What a page gives an element beyond its markup (what a control shows on use, a trigger's layer key, measured
 	// props) is part of its identity: two pages' alike code blocks whose View Code shows different sources are not one.
 	const insertedInto = new Map<Element, string>();

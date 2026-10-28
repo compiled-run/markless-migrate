@@ -97,3 +97,31 @@ test('a control whose blur the old page handled (TanStack Form\'s handleBlur) ta
 	assert.deepEqual(state.errors.title, []);
 	assert.deepEqual(state.errors.description, ['Description must be at least 20 characters.']);
 });
+
+// shadcn's array demo: a list of email rows, each valid as an email; react-hook-form's zod schema and Formisch's valibot
+// one give an empty row one message (react-hook-form) or two (Formisch: an address is required, and must be an email).
+const contacts = z.object({ emails: z.array(z.object({ address: z.string().min(1, 'Enter an email address.').email('Enter a valid email address.') })).min(1).max(5) });
+const listSpec = (library: FormLibrary): FormSpec => ({ library, fields: [], lists: [{ name: 'emails', path: ['emails'], subs: [{ name: 'address', path: ['address'], item: '' }], rows: 2, ...(library === 'react-hook-form' ? { focusAppended: true } : {}) }], defaults: { 'emails.0.address': '', 'emails.1.address': '' } });
+
+function runList(s: FormSpec, steps: readonly (readonly [FormAction, string])[]): void {
+	let state = initialState(s);
+	for (const [action, expected] of steps) {
+		const result = formAct(s, state, action, validator(contacts));
+		state = result.state;
+		const rows = (state.rows?.emails ?? []).map((_, i) => `${state.values[`emails.${i}.address`] || '_'}:${(state.errors[`emails.${i}.address`] ?? []).map((m) => (m.startsWith('Enter a valid') ? 'V' : 'E')).join('')}`).join(' ');
+		assert.equal(`${rows}${result.focus ? ` focus=${result.focus}` : ''}`, expected, JSON.stringify(action));
+	}
+}
+
+test('a list: rows added and taken out move their values and errors; Formisch validates again on each once submitted, react-hook-form focuses a row it adds', () => {
+	const steps = (library: FormLibrary) => [
+		[SUBMIT, `_:${library === 'formisch' ? 'EV' : 'E'} _:${library === 'formisch' ? 'EV' : 'E'} focus=emails.0.address`],
+		[change('emails.0.address', 'a@b.co'), `a@b.co: _:${library === 'formisch' ? 'EV' : 'E'}`],
+		[change('emails.1.address', 'x'), 'a@b.co: x:V'],
+		[{ k: 'append', list: 'emails' }, library === 'formisch' ? 'a@b.co: x:V _:EV' : 'a@b.co: x:V _: focus=emails.2.address'],
+		[{ k: 'remove', list: 'emails', row: 0 }, library === 'formisch' ? 'x:V _:EV' : 'x:V _:'],
+		[{ k: 'remove', list: 'emails', row: 1 }, 'x:V'],
+		[{ k: 'reset' }, '_: _:'],
+	] as const;
+	for (const library of ['react-hook-form', 'formisch'] as const) runList(listSpec(library), steps(library));
+});

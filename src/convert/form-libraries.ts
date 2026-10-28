@@ -7,9 +7,9 @@ import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
-import { attr, childrenOf, elementChildren, isElement, isText, outer, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, isElement, isText, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { matchSource, type SourceForm } from './form-schemas.ts';
-import { lit, mergeBindings, type Binding } from './tsrx.ts';
+import { emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
 
 // What a page's form library (react-hook-form, TanStack Form, Formisch) was given and how its form showed each field's
 // state, read from the old page's React tree and by using the form there. The port validates with the site's own schema
@@ -62,7 +62,18 @@ export interface CapturedForm extends Located {
 	readonly resets: readonly Located[];
 	/** The element the library focuses when a submit finds the field invalid. */
 	readonly focus: Readonly<Record<string, Located>>;
+	/** Its list of rows a visitor adds to and removes from, as using its Add and Remove showed. */
+	readonly list?: CapturedList;
 	readonly snapshots: readonly FormSnapshot[];
+}
+
+/** A form's list of rows: where its value sits, its Add, a row's value when added, how many rows Add stops at, and whether an added row takes focus. */
+export interface CapturedList {
+	readonly path: readonly (string | number)[];
+	readonly append: Located;
+	readonly item: Json;
+	readonly max?: number;
+	readonly focusAppended: boolean;
 }
 
 export interface FormLibraryCapture {
@@ -71,7 +82,7 @@ export interface FormLibraryCapture {
 	readonly skipped: readonly string[];
 }
 
-const VERSION = 'form-libraries-7';
+const VERSION = 'form-libraries-9';
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`${VERSION}|${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** The error messages a field is given while its markup is recorded: unlike any message a schema writes. */
@@ -367,7 +378,7 @@ async function blurClears(page: Page, i: number, k: number, field: string): Prom
 }
 
 /** Uses each control of the form once, from the form as loaded, and records which field it sets and how. */
-async function probeControls(page: Page, url: string, i: number, log: (line: string) => void): Promise<FormControl[]> {
+async function probeControls(page: Page, url: string, i: number, library: FormLibrary, log: (line: string) => void): Promise<FormControl[]> {
 	const out: FormControl[] = [];
 	const controls = await page.evaluate(controlsOf, i);
 	const initial = await fieldValues(page, i);
@@ -381,7 +392,9 @@ async function probeControls(page: Page, url: string, i: number, log: (line: str
 			await settle(page);
 			const after = await fieldValues(page, i);
 			const field = changedFields(initial, after).find((f) => after[f] === 'zq');
-			if (field) out.push({ sig: c.sig, nth: c.nth, field, kind: 'text', ...((await blurClears(page, i, k, field)) ? { blurs: true } : {}) });
+			// Only TanStack Form hands a field's blur to the library (handleBlur); the others' manual errors may go on a
+			// blur that leaves the errors validation gives in place.
+			if (field) out.push({ sig: c.sig, nth: c.nth, field, kind: 'text', ...(library === 'tanstack-form' && (await blurClears(page, i, k, field)) ? { blurs: true } : {}) });
 			else log(`  form control ${c.sig}#${c.nth}: typing set no field to what was typed`);
 			await el.fill('').catch(() => {});
 			continue;
@@ -463,6 +476,83 @@ async function probeResets(page: Page, url: string, i: number, controls: readonl
 	return out;
 }
 
+/** The rows of a form's list as the library holds them, at `path` in its values. */
+const listRows = (page: Page, i: number, path: readonly (string | number)[]) =>
+	page.evaluate(([i, path]) => {
+		let v = (window as unknown as { __mmFL: { adapter: { values(): unknown } }[] }).__mmFL[i]!.adapter.values() as unknown;
+		for (const k of path) v = (v as Record<string | number, unknown> | undefined)?.[k];
+		return Array.isArray(v) ? (JSON.parse(JSON.stringify(v)) as Json[]) : undefined;
+	}, [i, path] as const);
+
+/**
+ * A list form's Add: the button among the region's whose press adds a row to the list. Pressed until it is disabled, it
+ * tells how many rows the list stops at; the row it added first, whether it took focus and what it holds.
+ */
+async function probeList(page: Page, url: string, i: number, fields: readonly string[], submits: readonly Located[]): Promise<CapturedList | undefined> {
+	const segments = fields.map((f) => f.split(/[.[\]]+/).filter(Boolean));
+	const at = segments[0]?.findIndex((s) => /^\d+$/.test(s)) ?? -1;
+	if (at < 0) return undefined;
+	const path = segments[0]!.slice(0, at).map((s) => (/^\d+$/.test(s) ? Number(s) : s));
+	const buttons = await page.evaluate(buttonsOf, [i, submits] as const);
+	for (let k = 0; k < buttons.length; k++) {
+		await ready(page, url);
+		const before = (await listRows(page, i, path))?.length ?? 0;
+		await page.evaluate(buttonsOf, [i, submits] as const);
+		const button = (await page.evaluateHandle((k) => (window as unknown as { __mmFormButtons: Element[] }).__mmFormButtons[k]!, k)).asElement();
+		if (!button || !(await button.click({ timeout: 2000 }).then(() => true, () => false))) continue;
+		await settle(page);
+		const rows = await listRows(page, i, path);
+		if (!rows || rows.length !== before + 1) continue;
+		const focusAppended = await page.evaluate((i) => {
+			const w = window as unknown as { __mmFL: { root: Element }[] };
+			const el = document.activeElement;
+			return Boolean(el && w.__mmFL[i]!.root.contains(el) && el.matches('input, textarea'));
+		}, i);
+		let max: number | undefined;
+		for (let n = 0; n < 20; n++) {
+			if (await button.isDisabled().catch(() => true)) {
+				max = (await listRows(page, i, path))?.length;
+				break;
+			}
+			await button.click({ timeout: 2000 }).catch(() => {});
+			await settle(page);
+		}
+		await ready(page, url);
+		return { path, append: buttons[k]!, item: rows[rows.length - 1]!, ...(max !== undefined ? { max } : {}), focusAppended };
+	}
+	await ready(page, url);
+	return undefined;
+}
+
+/** The region with its list down to one row (each row's Remove pressed in turn) and up to as many as Add allows. */
+async function recordList(page: Page, url: string, i: number, list: CapturedList, submits: readonly Located[]): Promise<FormSnapshot[]> {
+	const out: FormSnapshot[] = [];
+	for (let n = 0; n < 20 && ((await listRows(page, i, list.path))?.length ?? 0) > 1; n++) {
+		const removed = await page.evaluate((i) => {
+			const w = window as unknown as { __mmFL: { root: Element }[] };
+			const button = [...w.__mmFL[i]!.root.querySelectorAll<HTMLButtonElement>('button[type="button"]')].find((b) => /remove/i.test(b.getAttribute('aria-label') ?? b.textContent ?? ''));
+			button?.click();
+			return Boolean(button);
+		}, i);
+		if (!removed) break;
+		await settle(page);
+	}
+	if (((await listRows(page, i, list.path))?.length ?? 0) === 1) out.push({ name: 'rows', value: '1', html: await markup(page, i) });
+	await ready(page, url);
+	if (list.max !== undefined) {
+		const buttons = await page.evaluate(buttonsOf, [i, submits] as const);
+		const k = buttons.findIndex((b) => b.sig === list.append.sig && b.nth === list.append.nth);
+		const button = k >= 0 ? (await page.evaluateHandle((k) => (window as unknown as { __mmFormButtons: Element[] }).__mmFormButtons[k]!, k)).asElement() : null;
+		for (let n = 0; button && n < 20 && !(await button.isDisabled().catch(() => true)); n++) {
+			await button.click({ timeout: 2000 }).catch(() => {});
+			await settle(page);
+		}
+		if (((await listRows(page, i, list.path))?.length ?? 0) === list.max) out.push({ name: 'rows', value: String(list.max), html: await markup(page, i) });
+		await ready(page, url);
+	}
+	return out;
+}
+
 /** The region in each state a binding is learned from: as loaded, each field with one and with two errors, each text field holding two values. */
 async function record(page: Page, url: string, i: number, found: Found, controls: readonly FormControl[]): Promise<FormSnapshot[]> {
 	const out: FormSnapshot[] = [{ name: 'initial', html: await markup(page, i) }];
@@ -509,11 +599,13 @@ export async function captureFormLibraries(browser: Browser, origin: string, rou
 				continue;
 			}
 			const i = index++;
-			const controls = await probeControls(page, url, i, log);
+			const controls = await probeControls(page, url, i, f.library, log);
 			await ready(page, url);
 			const resets = await probeResets(page, url, i, controls, f.submits ?? []);
+			const list = await probeList(page, url, i, f.fields ?? [], f.submits ?? []);
 			const snapshots = await record(page, url, i, f, controls);
-			forms.push({ sig: f.sig, nth: f.nth, library: f.library, region: f.region, options: f.options ?? {}, fields: f.fields ?? [], defaults: f.defaults ?? {}, controls, submits: f.submits ?? [], resets, focus: f.focus ?? {}, snapshots });
+			if (list) snapshots.push(...(await recordList(page, url, i, list, f.submits ?? [])));
+			forms.push({ sig: f.sig, nth: f.nth, library: f.library, region: f.region, options: f.options ?? {}, fields: f.fields ?? [], defaults: f.defaults ?? {}, controls, submits: f.submits ?? [], resets: resets.filter((r) => !list || r.sig !== list.append.sig || r.nth !== list.append.nth), focus: f.focus ?? {}, ...(list ? { list } : {}), snapshots });
 		}
 	} finally {
 		await context.close().catch(() => {});
@@ -628,6 +720,10 @@ export interface FormSources {
  */
 export class FormPlan {
 	private readonly bindings = new Map<Tree, Binding>();
+	private readonly lazy = new Map<Tree, () => Binding | undefined>();
+	private readonly emitting = new Set<Tree>();
+	/** Emits an element with every plan's bindings (set by convert), for markup a form plan repeats (a list's rows). */
+	emitter: (el: Tree, declarations: string[]) => string = (el, declarations) => emitElement(el, { declarations, bind: (x) => this.bind(x) });
 	readonly notes: string[] = [];
 	private readonly entries = new Map<string, string>();
 	private readonly schemas = new Map<string, string>();
@@ -641,7 +737,8 @@ export class FormPlan {
 	}
 
 	bind(el: Tree): Binding | undefined {
-		return this.bindings.get(el);
+		const lazy = this.lazy.get(el);
+		return lazy && !this.emitting.has(el) ? mergeBindings(this.bindings.get(el), lazy()) : this.bindings.get(el);
 	}
 
 	get used(): boolean {
@@ -671,16 +768,25 @@ export class FormPlan {
 		const differs = mismatch(region, initial, region.tagName);
 		if (differs) return `its markup differs from the old page's (${differs})`;
 		// A list of rows a visitor adds to and removes from registers a field per row (emails.0.address): its rows come and go.
-		if (form.fields.some((f) => /(^|[.[])\d+([.\]]|$)/.test(f))) return 'its fields include a list a visitor adds to and removes from';
+		const inList = (f: string) => /(^|[.[])\d+([.\]]|$)/.test(f);
+		if (form.fields.some(inList) && !form.list) return 'its fields include a list a visitor adds to and removes from, whose Add was not found';
 		const source = matchSource(textContent(initial), this.sources.forms.filter((f) => f.library === form.library));
 		if (!source) return 'no useForm call of the old source renders it';
 		if (!source.module) return source.why ?? 'its schema cannot be copied';
 		const k = this.n++;
 		const name = `fl${k}`;
-		const fields = form.fields.map((f, j) => ({ name: f, path: f.split(/[.[\]]+/).filter(Boolean).map((p) => (/^\d+$/.test(p) ? Number(p) : p)), errors: `${name}e${j}`, first: `${name}m${j}`, value: `${name}v${j}` }));
+		const fields = form.fields.filter((f) => !inList(f)).map((f, j) => ({ name: f, path: f.split(/[.[\]]+/).filter(Boolean).map((p) => (/^\d+$/.test(p) ? Number(p) : p)), errors: `${name}e${j}`, first: `${name}m${j}`, value: `${name}v${j}` }));
 		const valueAt = (path: readonly (string | number)[]) => path.reduce<Json | undefined>((v, key) => (v && typeof v === 'object' ? (v as Record<string | number, Json>)[key] : undefined), form.defaults as Json);
 		const declare: string[] = [];
 		const handler: string[] = [];
+		let lists: ListSpecOut[] = [];
+		if (form.list) {
+			const placed = this.placeList(form, form.list, form.fields.filter(inList), region, initial, snaps, locate, emit, `${name}r`);
+			if (typeof placed === 'string') return placed;
+			declare.push(...placed.declare);
+			handler.push(...placed.handler);
+			lists = [placed.spec];
+		}
 		for (const f of fields) {
 			const e = snaps.filter((s) => s.name === 'error' && s.field === f.name);
 			const one = e.find((s) => s.errors?.length === 1)?.root;
@@ -749,17 +855,181 @@ export class FormPlan {
 			this.set(el, { extra: Object.entries(attrs).map(([a, v]) => `${a}=${/["{}\\&@\n<>]/.test(v) ? `{${lit(v)}}` : `"${v}"`}`) });
 			return true;
 		};
-		for (const c of form.controls) mark(c.sig, c.nth, { 'data-mm-fl-field': c.field, 'data-mm-fl-kind': c.kind, ...(c.blurs ? { 'data-mm-fl-blur': '' } : {}), ...(c.item !== undefined ? { 'data-mm-fl-item': JSON.stringify(c.item) } : {}), ...(c.items ? { 'data-mm-fl-items': JSON.stringify(c.items) } : {}) });
+		for (const c of form.controls.filter((x) => !inList(x.field))) mark(c.sig, c.nth, { 'data-mm-fl-field': c.field, 'data-mm-fl-kind': c.kind, ...(c.blurs ? { 'data-mm-fl-blur': '' } : {}), ...(c.item !== undefined ? { 'data-mm-fl-item': JSON.stringify(c.item) } : {}), ...(c.items ? { 'data-mm-fl-items': JSON.stringify(c.items) } : {}) });
 		for (const r of form.resets) mark(r.sig, r.nth, { 'data-mm-fl-reset': '' });
-		for (const [field, el] of Object.entries(form.focus)) mark(el.sig, el.nth, { 'data-mm-fl-focus': field });
-		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), defaults: Object.fromEntries(fields.map((f) => [f.name, valueAt(f.path) ?? null])) };
+		for (const [field, el] of Object.entries(form.focus)) if (!inList(field)) mark(el.sig, el.nth, { 'data-mm-fl-focus': field });
+		const listDefaults = lists.flatMap((l) => Array.from({ length: l.rows }, (_, row) => l.subs.map((sub) => [`${l.name}.${row}.${sub.name}`, valueAt([...l.path, row, ...sub.path]) ?? sub.item] as const)).flat());
+		const entry = { library: form.library, fields: fields.map((f) => ({ name: f.name, path: f.path })), ...(lists.length ? { lists } : {}), defaults: Object.fromEntries([...fields.map((f) => [f.name, valueAt(f.path) ?? null] as const), ...listDefaults]) };
 		const schemaName = `fs_${hash(source.module)}`;
 		const specName = `fl_${hash([entry, schemaName])}`;
 		this.schemas.set(schemaName, source.module);
 		this.entries.set(specName, `${lit(specName)}: { ...${JSON.stringify(entry)}, schema: () => import('./${SCHEMAS_DIR}/${schemaName}.ts').then((m) => m.schema) }`);
 		for (const p of source.packages) this.packages.set(p, this.sources.version(p) ?? 'latest');
-		this.set(region, { declare, extra: [`data-mm-fl="${specName}"`, ...(handler.length ? [`onMmform={(event) => { const d = (event as CustomEvent<{ e: Record<string, string[]>; v: Record<string, unknown> }>).detail; ${handler.join(' ')} }}`] : [])] });
+		this.set(region, { declare, extra: [`data-mm-fl="${specName}"`, ...(handler.length ? [`onMmform={(event) => { const d = (event as CustomEvent<{ e: Record<string, string[]>; v: Record<string, unknown>; rows: Record<string, unknown[]> }>).detail; ${handler.join(' ')} }}`] : [])] });
 		return undefined;
+	}
+
+	/**
+	 * A form's list on Markless state: its rows one keyed @for over a state() of rows (each row's key, index, and each
+	 * field's errors and first message) from the first row's markup, every place the first two rows differ by their
+	 * index reading the row's. What an error changed in a row follows the row's errors, rendered always and hidden while
+	 * it has none (a keyed row holds no arm); what a row shows only while there are others (its Remove) is hidden while it
+	 * is alone; Add is disabled at the rows it stops at.
+	 */
+	private placeList(form: CapturedForm, list: CapturedList, listFields: readonly string[], region: Tree, initial: Tree, snaps: readonly (FormSnapshot & { root: Tree })[], locate: (sig: string, nth: number) => Tree | undefined, emit: (html: string) => string, rows: string): { declare: string[]; handler: string[]; spec: ListSpecOut } | string {
+		const listName = list.path.join('.');
+		const parsed = listFields.map((f) => {
+			const parts = f.split(/[.[\]]+/).filter(Boolean);
+			const row = Number(parts[list.path.length]);
+			return { field: f, row, sub: parts.slice(list.path.length + 1).map((p) => (/^\d+$/.test(p) ? Number(p) : p)) };
+		});
+		const subs = [...new Map(parsed.map((p) => [p.sub.join('.'), p.sub])).values()];
+		const count = Math.max(...parsed.map((p) => p.row)) + 1;
+		if (count < 2) return 'its list loads with one row, which shows no row template';
+		const controlOf = (row: number) => {
+			const c = form.controls.find((x) => parsed.some((p) => p.field === x.field && p.row === row));
+			return c ? locate(c.sig, c.nth) : undefined;
+		};
+		const first = controlOf(0);
+		const second = controlOf(1);
+		if (!first || !second) return 'its rows\' fields are not on the converted page';
+		// The rows are the children of the element holding the first two rows' fields that hold each.
+		let container: Tree | undefined = first;
+		while (container && !pathInside(container, second)) container = container.parentNode as Tree;
+		if (!container || !pathInside(region, container)) return 'its rows are not in its region';
+		const rowOf = (control: Tree) => kids(container!).find((k) => pathInside(k, control));
+		const rowEls = Array.from({ length: count }, (_, r) => (controlOf(r) ? rowOf(controlOf(r)!) : undefined));
+		if (rowEls.some((r) => !r) || new Set(rowEls).size !== count) return 'its rows are not one element each';
+		const row0 = rowEls[0]!;
+		const bindings = new Map<Tree, Binding>();
+		const add = (el: Tree, b: Binding) => bindings.set(el, mergeBindings(bindings.get(el), b)!);
+		// Where the first two rows differ: their index (or its count from one) in attributes and text.
+		const indexed = (a: string, b: string): string | undefined => {
+			const pa = a.split(/(\d+)/);
+			const pb = b.split(/(\d+)/);
+			if (pa.length !== pb.length) return undefined;
+			const out: string[] = [];
+			for (let i = 0; i < pa.length; i++) {
+				if (pa[i] === pb[i]) out.push(lit(pa[i]!));
+				else if (pa[i] === '0' && pb[i] === '1') out.push('r.i');
+				else if (pa[i] === '1' && pb[i] === '2') out.push('(r.i + 1)');
+				else return undefined;
+			}
+			return out.filter((x) => x !== '""').join(' + ') || '""';
+		};
+		const template = (a: Tree, b: Tree): string | undefined => {
+			if (a.tagName !== b.tagName || kids(a).length !== kids(b).length) return `<${a.tagName}> and <${b.tagName}> differ in shape`;
+			const expressions: Record<string, string> = {};
+			for (const name of new Set([...a.attrs, ...b.attrs].map((x) => x.name))) {
+				const va = attr(a, name);
+				const vb = attr(b, name);
+				if (va === vb) continue;
+				const expr = va !== undefined && vb !== undefined ? indexed(va, vb) : undefined;
+				if (!expr) return `${name} differs by more than the row's index`;
+				expressions[name] = expr;
+			}
+			const ta = ownText(a);
+			const tb = ownText(b);
+			if (ta !== tb) {
+				const expr = kids(a).length ? undefined : indexed(ta, tb);
+				if (!expr) return 'its text differs by more than the row\'s index';
+				add(a, { children: `{${expr}}` });
+			}
+			if (Object.keys(expressions).length) add(a, { expressions });
+			for (let i = 0; i < kids(a).length; i++) {
+				const why = template(kids(a)[i]!, kids(b)[i]!);
+				if (why) return why;
+			}
+			return undefined;
+		};
+		const why = template(row0, rowEls[1]!);
+		if (why) return `its rows differ: ${why}`;
+		// A row's fields: their name follows the row.
+		for (const c of form.controls) {
+			const p = parsed.find((x) => x.field === c.field && x.row === 0);
+			const el = p && locate(c.sig, c.nth);
+			if (!p || !el || !pathInside(row0, el)) continue;
+			add(el, { extra: [`data-mm-fl-field={${lit(`${listName}.`)} + r.i + ${lit(`.${p.sub.join('.')}`)}}`, 'data-mm-fl-kind="text"', ...(c.blurs ? ['data-mm-fl-blur=""'] : [])] });
+		}
+		// What an error on a row's field changed, within the row, follows that row's errors.
+		const rowPath = pathIn(region, row0)!;
+		for (const [n, sub] of subs.entries()) {
+			const field = parsed.find((p) => p.row === 0 && p.sub.join('.') === sub.join('.'))!.field;
+			const e = snaps.filter((x) => x.name === 'error' && x.field === field);
+			const one = e.find((x) => x.errors?.length === 1)?.root;
+			const two = e.find((x) => x.errors?.length === 2)?.root;
+			if (!one || !two) continue;
+			const c1 = changes(initial, one);
+			const c2 = changes(initial, two);
+			const inside = (path: readonly number[]) => rowPath.every((k, i) => path[i] === k);
+			const E = `r.e${n}`;
+			for (const a of c1.attrs.filter((x) => inside(x.path))) {
+				const el = at(region, a.path);
+				if (!el) continue;
+				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+				add(el, { omit: [a.name], extra: [`${a.name}={${E}.length ? ${value(a.to)} : ${value(a.from)}}`] });
+			}
+			for (const ins of c1.inserts.filter((x) => inside(x.path))) {
+				const parent = at(region, ins.path);
+				if (!parent) continue;
+				const many = c2.inserts.find((x) => x.path.join('/') === ins.path.join('/') && x.before === ins.before);
+				const listed = many && many.html !== ins.html;
+				const single = errorMarkup(hideMarked(ins.html), E, `r.m${n}`, emit)?.replace(`${HIDE}=""`, `hidden={${listed ? `${E}.length !== 1` : `${E}.length === 0`}}`);
+				const several = listed ? errorMarkup(hideMarked(many.html), E, `r.m${n}`, emit)?.replace(`${HIDE}=""`, `hidden={${E}.length < 2}`) : '';
+				if (!single || several === undefined) return `what an error on ${field} adds does not show its message`;
+				add(parent, { inserts: [{ before: kids(parent)[ins.before] ?? null, markup: single + several }] });
+			}
+		}
+		// What a row shows only while others are there (its Remove), from the list down to one row.
+		const alone = snaps.find((x) => x.name === 'rows' && x.value === '1')?.root;
+		const aloneRow = alone ? kids(at(alone, pathIn(region, container)!) ?? alone)[rowPath.at(-1)!] : undefined;
+		if (!aloneRow) return 'its list was not seen down to one row';
+		const removes: Tree[] = [];
+		const onlyWithOthers = (page: Tree, rec: Tree): void => {
+			const a = kids(page);
+			const b = kids(rec);
+			let j = 0;
+			for (const child of a) {
+				if (j < b.length && child.tagName === b[j]!.tagName && attr(child, 'data-slot') === attr(b[j]!, 'data-slot')) {
+					onlyWithOthers(child, b[j]!);
+					j++;
+				} else {
+					add(child, { omit: ['hidden'], extra: [`hidden={${rows}.length < 2}`] });
+					removes.push(...[...walk(child)].filter((x) => x.tagName === 'button'));
+				}
+			}
+		};
+		onlyWithOthers(row0, aloneRow);
+		if (!removes.length) return 'a row shows no Remove only while others are there';
+		for (const b of removes) add(b, { extra: [`data-mm-fl-remove=${lit(listName)}`] });
+		add(row0, { extra: ['data-mm-fl-row={r.i}'] });
+		// Add, disabled at the rows it stops at.
+		const append = locate(list.append.sig, list.append.nth);
+		if (!append || !pathInside(region, append)) return 'its Add is not on the converted page';
+		const full = list.max !== undefined ? snaps.find((x) => x.name === 'rows' && x.value === String(list.max))?.root : undefined;
+		const fullAdd = full ? [...walk(full)].find((x) => `${x.tagName}|${attr(x, 'data-slot') ?? ''}|${textContent(x).trim().replace(/\s+/g, ' ').slice(0, 60)}` === list.append.sig) : undefined;
+		this.set(append, { extra: [`data-mm-fl-append=${lit(listName)}`] });
+		if (fullAdd && attr(fullAdd, 'disabled') !== undefined && attr(append, 'disabled') === undefined) this.set(append, { omit: ['disabled'], extra: [`disabled={${rows}.length >= ${list.max}}`] });
+		// The rows: the first one's markup, for each row the state holds; the others are its copies.
+		const local = new Map(bindings);
+		for (const [el, b] of local) this.set(el, b);
+		this.lazy.set(row0, () => {
+			this.emitting.add(row0);
+			const declarations: string[] = [];
+			try {
+				return { declare: declarations, replace: `@for (const r of ${rows}; key r.k) { ${this.emitter(row0, declarations)} }` };
+			} finally {
+				this.emitting.delete(row0);
+			}
+		});
+		for (const el of rowEls.slice(1)) this.set(el!, { replace: '' });
+		const initialRows = Array.from({ length: count }, (_, i) => ({ k: i, i, ...Object.fromEntries(subs.flatMap((_, n) => [[`e${n}`, []], [`m${n}`, '']])) }));
+		const subSpecs = subs.map((sub) => ({ name: sub.join('.'), path: sub, item: sub.reduce<Json | undefined>((v, k) => (v && typeof v === 'object' ? (v as Record<string | number, Json>)[k] : undefined), list.item) ?? '' }));
+		return {
+			declare: [`let ${rows} = state(${JSON.stringify(initialRows)} as { k: number; i: number; ${subs.map((_, n) => `e${n}: string[]; m${n}: string`).join('; ')} }[]);`],
+			handler: [`${rows} = (d.rows?.[${lit(listName)}] as typeof ${rows} | undefined) ?? ${rows};`],
+			spec: { name: listName, path: list.path, subs: subSpecs, rows: count, ...(list.focusAppended ? { focusAppended: true } : {}) },
+		};
 	}
 
 	/** The module of every placed form's spec, and each schema module, by its file under lib/parts/. */
@@ -772,10 +1042,40 @@ export class FormPlan {
 	}
 }
 
+/** Where `el` is under `root`, by element child indexes. */
+function pathIn(root: Tree, el: Tree): number[] | undefined {
+	const path: number[] = [];
+	for (let x = el; x !== root; ) {
+		const parent = x.parentNode as Tree | null;
+		if (!parent || !isElement(parent)) return undefined;
+		path.unshift(kids(parent).indexOf(x));
+		x = parent;
+	}
+	return path;
+}
+
 const pathInside = (root: Tree, el: Tree): boolean => {
 	for (let x: Tree | null = el; x; x = isElement(x.parentNode as Tree) ? (x.parentNode as Tree) : null) if (x === root) return true;
 	return false;
 };
+
+/** A list's spec as the form-library part reads it. */
+interface ListSpecOut {
+	readonly name: string;
+	readonly path: readonly (string | number)[];
+	readonly subs: readonly { readonly name: string; readonly path: readonly (string | number)[]; readonly item: Json }[];
+	readonly rows: number;
+	readonly focusAppended?: boolean;
+}
+
+const HIDE = 'data-mm-fl-hide';
+/** Markup with its top element marked, for the hidden attribute bound in its place once emitted. */
+function hideMarked(html: string): string {
+	const fragment = parseFragment(html) as unknown as Tree;
+	const top = kids(fragment)[0];
+	if (top) setAttr(top, HIDE, '');
+	return outer(top ?? fragment);
+}
 
 /** What an error added, as tsrx: the first recorded message as the field's first error (`message`), two messages in siblings as one per error. */
 function errorMarkup(html: string, errors: string, message: string, emit: (html: string) => string): string | undefined {
