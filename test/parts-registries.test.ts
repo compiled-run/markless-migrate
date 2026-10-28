@@ -50,3 +50,11 @@ test('a second registry adds its ports in module order after the site parts, run
 	assert.deepEqual(await log(), ['site', 'dialog', 'menu', 'tabs']);
 	await page.close();
 });
+
+test('a page whose layer a React Aria PreviewTrigger opens runs the tooltip port, though no element of its own names it', async () => {
+	const { triggerPorts } = await import('../src/convert/parts.ts');
+	const { body, parseDocument, walk } = await import('../src/convert/dom.ts');
+	const layer = (html: string) => [...walk(body(parseDocument(`<body>${html}</body>`)))].filter((e) => e.tagName === 'div').slice(0, 1);
+	assert.deepEqual(triggerPorts(layer('<div><div data-slot="hover-card-content" data-rac="" role="dialog" data-trigger="PreviewTrigger"></div></div>')), ['react-aria/tooltip']);
+	assert.deepEqual(triggerPorts(layer('<div><div data-slot="popover-content" data-rac="" role="dialog" data-trigger="DialogTrigger"></div></div>')), []);
+});

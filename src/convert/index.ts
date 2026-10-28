@@ -23,7 +23,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -655,6 +655,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	// A calendar the popover shows is Markless state of the layer's own component, which is then never a served file.
 	const captured = racLayer && reveal.sig ? racLayer.captured.get(racLayer.route) : undefined;
 	if (racLayer && captured && reveal.sig && racLayer.plan.addLayer(racLayer.route, captured, racLayer.messages, { sig: reveal.sig, nth: reveal.nth ?? 0 }, kept)) templatePorts.add('react-aria/calendar');
+	for (const port of triggerPorts(kept)) templatePorts.add(port);
 	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
