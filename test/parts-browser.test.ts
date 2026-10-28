@@ -651,6 +651,24 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
+	const page = await open('<main id="main"></main>', ['site'], 'body');
+	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
+	const seen = await page.evaluate(
+		() =>
+			new Promise<string>((done) => {
+				const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
+				// The page an in-place navigation swaps in, its tab state its own (the converter's mousedown handler).
+				document.getElementById('main')!.innerHTML = `<div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div>`;
+				const list = document.querySelector('[role="tablist"]')!;
+				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
+			}),
+	);
+	assert.equal(seen, 'npm', 'chosen before the next frame');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
