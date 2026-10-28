@@ -19,6 +19,8 @@ export const typesetState = shared(
 			canGoBack: false,
 			canGoForward: false,
 			previewSrc: START.previewSrc,
+			// The old page rendered the designer in the browser only: the preview's iframe gets its URL once the URL's params are read.
+			ready: false,
 			mobile: false,
 			mac: false,
 			packageManager: 'pnpm',
@@ -87,6 +89,7 @@ export default function Typeset() @{
 			const command = (event as CustomEvent<string>).detail;
 			if (command === 'load') {
 				t.show(now());
+				t.ready = true;
 				t.mobile = isMobile();
 				t.mac = isMac();
 				t.packageManager = packageManager();
@@ -107,7 +110,7 @@ export default function Typeset() @{
 			<a role="button" tabindex="0" data-slot="button" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 underline-offset-4 hover:underline h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5 text-muted-foreground" href="/docs/typeset">Read the docs</a>
 		</div>
 		<div class="relative isolate flex size-full min-h-0 flex-1 overflow-hidden rounded-2xl bg-background ring-1 ring-foreground/10">
-			<iframe src={t.previewSrc} title="typeset preview" class="size-full"></iframe>
+			<iframe src={t.ready ? t.previewSrc : undefined} title="typeset preview" class="size-full"></iframe>
 			<div class="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center justify-center gap-1.5">
 				<div class="dark flex items-center gap-1 rounded-xl bg-card/90 p-1 shadow-xl backdrop-blur-xl">
 					<ItemPill item="docs" number="01" />

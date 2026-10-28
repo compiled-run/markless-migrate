@@ -1,7 +1,9 @@
 // The check workflow's two ends: `split <targets.json> <n> <dir>` deals a --write-targets file into n shard files and
 // prints the matrix; `merge <dir of report.json files> <out dir> [<shard files dir>]` joins the shards' reports into one
 // report.json and a markdown summary (counts, leading causes, every route); `representatives <targets.json> <old origin>
-// <out.json>` writes the pages check's template grouping measures page load on, one per group of the whole site.
+// <out.json>` writes the pages check's template grouping measures page load on, one per group of the whole site;
+// `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
+// routes without page load, page load on the representatives) into one result per route.
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -32,9 +34,51 @@ export function split(targets: Targets, n: number): Targets[] {
 	return shards;
 }
 
-/** Every target of a shard that wrote no report (its job timed out, was cancelled or failed), as not checked. */
-export function unreported(shards: ReadonlyMap<number, Targets>, reported: ReadonlySet<number>): ReportRoute[] {
-	return [...shards].filter(([n]) => !reported.has(n)).flatMap(([n, t]) => [...t.routes, ...(t.endpoints ?? []), ...(t.redirects ?? [])].map((route) => ({ route, ok: false, infrastructure: { cause: 'shard not finished', message: `shard ${n} wrote no report (its job timed out, was cancelled or failed), so this route was not checked` } })));
+const targetsOf = (t: Targets) => [...t.routes, ...(t.endpoints ?? []), ...(t.redirects ?? [])];
+
+/** Every target of a shard that wrote no report (its job timed out, was cancelled or failed), or that its report leaves out, as not checked. */
+export function unreported(shards: ReadonlyMap<number, Targets>, reported: ReadonlyMap<number, ReadonlySet<string>>): ReportRoute[] {
+	return [...shards].flatMap(([n, t]) => {
+		const got = reported.get(n);
+		const message = got ? `shard ${n}'s report has no result for this route, so it was not checked` : `shard ${n} wrote no report (its job timed out, was cancelled or failed), so this route was not checked`;
+		return targetsOf(t).filter((route) => !got?.has(route)).map((route) => ({ route, ok: false, infrastructure: { cause: 'shard not finished', message } }));
+	});
+}
+
+/** One result per route from runs that each checked a part of it: green only when every part is, and a route a part's targets name but its reports lack is not checked. */
+export function combine(parts: readonly { readonly name: string; readonly targets: Targets; readonly routes: readonly ReportRoute[] }[]): ReportRoute[] {
+	const joined = new Map<string, ReportRoute>();
+	const add = (r: ReportRoute) => {
+		const key = `${r.route}\0${r.role ?? ''}`;
+		const was = joined.get(key);
+		joined.set(key, was ? { ...was, ok: was.ok && r.ok, blocked: was.blocked ?? r.blocked, infrastructure: was.infrastructure ?? r.infrastructure, notPorted: was.notPorted ?? r.notPorted, failures: [...(was.failures ?? []), ...(r.failures ?? [])] } : r);
+	};
+	for (const part of parts) {
+		const got = new Set(part.routes.map((r) => r.route));
+		for (const r of part.routes) add(r);
+		for (const route of targetsOf(part.targets)) if (!got.has(route)) add({ route, ok: false, infrastructure: { cause: 'not measured', message: `${part.name} has no result for this route, so it was not checked` } });
+	}
+	return [...joined.values()];
+}
+
+/** Every report.json under a directory, leaving out a merged one. */
+async function reports(dir: string): Promise<{ path: string; routes: ReportRoute[] }[]> {
+	const out: { path: string; routes: ReportRoute[] }[] = [];
+	for (const entry of await readdir(dir, { withFileTypes: true })) {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (entry.name !== 'check-merged') out.push(...(await reports(path)));
+		} else if (entry.name === 'report.json') out.push({ path, routes: (JSON.parse(await readFile(path, 'utf8')) as { routes?: ReportRoute[] }).routes ?? [] });
+	}
+	return out;
+}
+
+async function write(dir: string, routes: readonly ReportRoute[]): Promise<void> {
+	await mkdir(dir, { recursive: true });
+	await writeFile(join(dir, 'report.json'), `${JSON.stringify({ routes }, null, '\t')}\n`);
+	const text = summary(routes);
+	await writeFile(join(dir, 'summary.md'), text);
+	console.log(text.split('\n')[0]);
 }
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red');
@@ -84,18 +128,12 @@ async function main(): Promise<void> {
 	}
 	if (command === 'merge' && a && b) {
 		const routes: ReportRoute[] = [];
-		const reported = new Set<number>();
-		const walk = async (dir: string, shard?: number): Promise<void> => {
-			for (const entry of await readdir(dir, { withFileTypes: true })) {
-				const path = join(dir, entry.name);
-				if (entry.isDirectory()) await walk(path, shard ?? (/^check-(\d+)$/.exec(entry.name) ? Number(entry.name.slice(6)) : undefined));
-				else if (entry.name === 'report.json') {
-					routes.push(...((JSON.parse(await readFile(path, 'utf8')) as { routes: ReportRoute[] }).routes ?? []));
-					if (shard !== undefined) reported.add(shard);
-				}
-			}
-		};
-		await walk(a);
+		const reported = new Map<number, Set<string>>();
+		for (const { path, routes: got } of await reports(a)) {
+			routes.push(...got);
+			const shard = /(?:^|\/)check-(\d+)\//.exec(path)?.[1];
+			if (shard) reported.set(Number(shard), new Set([...(reported.get(Number(shard)) ?? []), ...got.map((r) => r.route)]));
+		}
 		if (c) {
 			const shards = new Map<number, Targets>();
 			for (const name of await readdir(c)) {
@@ -104,11 +142,21 @@ async function main(): Promise<void> {
 			}
 			routes.push(...unreported(shards, reported));
 		}
-		await mkdir(b, { recursive: true });
-		await writeFile(join(b, 'report.json'), `${JSON.stringify({ routes }, null, '\t')}\n`);
-		const text = summary(routes);
-		await writeFile(join(b, 'summary.md'), text);
-		console.log(text.split('\n')[0]);
+		await write(b, routes);
+		return;
+	}
+	if (command === 'combine' && a) {
+		const parts: { name: string; targets: Targets; routes: ReportRoute[] }[] = [];
+		const args = process.argv.slice(4);
+		for (let i = 0; i < args.length; i++) {
+			if (args[i] !== '--part' || !args[i + 1]) throw new Error(`combine: expected --part <targets.json> <dir>..., got ${args[i]}`);
+			const targetsPath = args[++i]!;
+			const part = { name: `the run(s) for ${targetsPath}`, targets: JSON.parse(await readFile(targetsPath, 'utf8')) as Targets, routes: [] as ReportRoute[] };
+			while (args[i + 1] && args[i + 1] !== '--part') for (const r of await reports(args[++i]!)) part.routes.push(...r.routes);
+			parts.push(part);
+		}
+		if (!parts.length) throw new Error('combine: no --part given');
+		await write(a, combine(parts));
 		return;
 	}
 	if (command === 'representatives' && a && b && c) {
@@ -121,7 +169,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json>');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...]');
 	process.exit(2);
 }
 

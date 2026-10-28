@@ -8,6 +8,9 @@ import { parseParams, previewDesign, radiusFix, setParamsUpdate, updateSearch, t
 const THEME_STYLE_ELEMENT_ID = 'design-system-theme-vars';
 const MANAGED_BODY_CLASS_PREFIXES = ['style-', 'base-color-'];
 
+const themeStyle = document.createElement('style');
+themeStyle.id = THEME_STYLE_ELEMENT_ID;
+
 let menuColor: { inverted: boolean; translucent: boolean } | null = null;
 
 function updateMenuElements(): void {
@@ -38,13 +41,8 @@ function apply(params: CreateParams): void {
 	const root = document.documentElement.style;
 	if (design.fontSans) root.setProperty('--font-sans', design.fontSans);
 	if (design.fontHeading) root.setProperty('--font-heading', design.fontHeading);
-	let style = document.getElementById(THEME_STYLE_ELEMENT_ID);
-	if (!style) {
-		style = document.createElement('style');
-		style.id = THEME_STYLE_ELEMENT_ID;
-		document.head.appendChild(style);
-	}
-	style.textContent = design.themeCss;
+	if (!themeStyle.isConnected) document.head.appendChild(themeStyle);
+	themeStyle.replaceChildren(design.themeCss);
 	menuColor = { inverted: design.menuInverted, translucent: design.menuTranslucent };
 	updateMenuElements();
 }

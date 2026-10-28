@@ -164,6 +164,11 @@ export class DisclosurePlan {
 					],
 				});
 				for (const el of [i.item, i.header]) if (el) this.bindings.set(el, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+				// forceMount: Radix keeps a closed content mounted and shown, so only its data-state follows.
+				if (attr(i.trigger, 'aria-expanded') === 'false' && attr(i.content, 'hidden') === undefined) {
+					this.bindings.set(i.content, { declare, omit: ['data-state'], extra: [`data-state={${isOpen} ? "open" : "closed"}`] });
+					return;
+				}
 				const revealed = content(i.content);
 				this.bindings.set(i.content, {
 					declare,
@@ -361,6 +366,12 @@ export class CheckablePlan {
  * aria-controls; Base UI renders only the chosen panel, so the panel element binds the chosen panel's id, label and
  * index and renders the content each tab showed on the old page (captured by choosing it) in an @if arm.
  */
+// Each tab's panel content in an arm; content Markless cannot rebuild in an arm (a shared component) stays rendered, hidden while its tab is not chosen.
+function panelArms(name: string, contents: readonly (string | undefined)[], inner: string): string {
+	if (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner)) return contents.map((c, k) => `<div hidden={${name} !== ${k}}>${c ?? inner}</div>`).join('');
+	return contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('');
+}
+
 export class BaseTabsPlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -376,11 +387,20 @@ export class BaseTabsPlan {
 			const triggers = [...walk(list)].filter((t) => attr(t, 'role') === 'tab' && isBaseTab(t));
 			if (triggers.length < 2) continue;
 			const active = triggers.findIndex((t) => attr(t, 'aria-selected') === 'true');
-			const tabs = list.parentNode as Element | null;
+			let tabs = list.parentNode as Element | null;
 			if (active < 0 || !tabs || !('tagName' in tabs)) continue;
 			const activeId = attr(triggers[active]!, 'id');
+			const panelIn = (el: Element) => [...walk(el)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
+			// The list may sit in a header beside other controls: the Tabs root is the nearest ancestor holding its panel.
+			for (let up: Element | null = tabs; up && 'tagName' in up && up !== root; up = up.parentNode as Element | null) {
+				if (panelIn(up)) {
+					tabs = up;
+					break;
+				}
+				if (attr(up, 'data-slot') === 'tabs') break;
+			}
 			// A list without panels (shadcn's line, vertical and icon variants) still switches its triggers.
-			const panel = [...walk(tabs)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
+			const panel = panelIn(tabs);
 			const own = panel && { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
 			const panels = panel ? triggers.map((t, k) => (k === active ? own : revealed(t))) : [];
 			if (panels.some((p) => !p)) continue;
@@ -403,7 +423,7 @@ export class BaseTabsPlan {
 					});
 				});
 				const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => new Set(panels.map((p) => p!.attrs[a])).size > 1);
-				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')) });
+				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => panelArms(name, contents, inner) });
 				groups++;
 				continue;
 			}
@@ -436,8 +456,7 @@ export class BaseTabsPlan {
 				declare,
 				omit: [...varying, 'data-activation-direction'],
 				extra: [...varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), direction],
-				// The chosen panel's own content, when Markless cannot rebuild it in an arm, stays as the only content.
-				wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')),
+				wrap: (inner) => panelArms(name, contents, inner),
 			});
 			groups++;
 		}
@@ -464,7 +483,7 @@ export class InsertedDisclosurePlan {
 	 * `roots`: the pages, where a Base UI disclosure open on load (its content in the page, named by aria-controls)
 	 * closes and opens again on the same state.
 	 */
-	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly nodes?: readonly Element[]; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
 		const byTrigger = new Map<Element, (typeof items)[number][]>();
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
 		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
@@ -564,6 +583,11 @@ export class InsertedDisclosurePlan {
 				const panel = panels.get(trigger);
 				if (panel) this.bindings.set(panel, { declare, omit: ['hidden', 'data-open', 'data-closed'], extra: [`hidden={!${shown}}`, `data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
 				for (const i of byTrigger.get(trigger) ?? []) {
+					// Content placed in the page (it holds disclosures of its own) shows while open, its own disclosures bound inside.
+					if (i.nodes) {
+						for (const node of i.nodes) if (!this.bindings.has(node)) this.bindings.set(node, { declare, omit: ['hidden'], extra: [`hidden={!${shown}}`] });
+						continue;
+					}
 					const list = inserts.get(i.parent) ?? inserts.set(i.parent, []).get(i.parent)!;
 					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if ${shown} { <>${i.markup}</> }`;
 					if (markup && !list.some((l) => l.before === i.before && l.markup === markup)) list.push({ before: i.before, markup, declare });

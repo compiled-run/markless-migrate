@@ -441,6 +441,17 @@ test('cmdk: aria-activedescendant names an item a key or the pointer selected; a
 	await page.close();
 });
 
+test('cmdk: as each mounted command scrolls its selected item into view, the page ends where the last one below the fold put it; one in a hidden layer moves nothing', async () => {
+	const page = await open(`<div style="height:3000px">top</div>${COMMAND}<div style="height:2000px"></div><div data-mm-layer="k" hidden>${COMMAND.replaceAll('id="', 'id="h')}</div>`, ['cmdk']);
+	const got = await page.evaluate(() => {
+		const item = document.getElementById('cal')!.getBoundingClientRect();
+		return { scrollY: Math.round(scrollY), bottom: Math.round(item.bottom), inner: innerHeight };
+	});
+	assert.ok(got.scrollY > 2000, `the page scrolled to the command (${got.scrollY})`);
+	assert.equal(got.bottom, got.inner, 'block: nearest brings the selected item to the bottom edge');
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
@@ -607,6 +618,19 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+// Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
+test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
+	for (const bound of [true, false]) {
+		const layer = dialogLayer('ad').replace(/alert-dialog/g, 'dialog').replace('role="alertdialog"', 'role="dialog"').replace('<button data-slot="dialog-cancel">Cancel</button>', `<input${bound ? ' m:on="input:0"' : ''}>`);
+		const page = await open(`<div data-async-container><main><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Search</button></main>${layer}<div id="later"></div><!--markless:page-end--></div>`, ['radix/dialog']);
+		await page.getByText('Search').click();
+		assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+		const order = await page.evaluate(() => [...document.querySelector('[data-async-container]')!.children].map((e) => e.id || e.getAttribute('data-slot') || e.tagName.toLowerCase()).join(','));
+		assert.equal(order, bound ? 'main,dialog-overlay,ad,later' : 'main,later,dialog-overlay,ad');
+		await page.close();
+	}
+});
+
 test('shadcn-ui site: a code block\'s copy button writes what it copied on the old page and shows Copied with the check for 2 s', async () => {
 	const icon = '<svg class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
 	const button = `<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button>`;
@@ -624,6 +648,50 @@ test('shadcn-ui site: a code block\'s copy button writes what it copied on the o
 	assert.deepEqual(await look(), ['Copied', 'true', 'lucide lucide-check', 'none']);
 	await page.waitForTimeout(2100);
 	assert.deepEqual(await look(), ['Copy', null, 'lucide lucide-copy', null]);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s check over its Terminal icon (a polyline and a line) for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg>';
+	const page = await open(`<button data-slot="button" type="button">${icon}<span>npx shadcn add sidebar-07</span></button><template data-mm-clipboard="button|button|npx shadcn add sidebar-07#0" data-mm-text="npx shadcn@latest add sidebar-07"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button svg').evaluate((svg) => [svg.getAttribute('class'), ...[...svg.children].map((c) => `${c.tagName}:${c.getAttribute('points') ?? c.getAttribute('d') ?? c.getAttribute('x1')}${c.getAttribute('display') ? ' hidden' : ''}`)]);
+	assert.deepEqual(await look(), ['lucide lucide-check', 'polyline:20 6 9 17 4 12', 'line:12 hidden'], 'the check is drawn, not just the terminal hidden');
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['lucide lucide-terminal', 'polyline:4 17 10 11 4 5', 'line:12']);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s frame again', async () => {
+	const page = await open(`<div id="sidebar-03" data-view="preview"><div><button data-slot="button" title="Refresh Preview"><span class="sr-only">Refresh Preview</span></button></div><iframe height="100"></iframe></div>`, ['site']);
+	let loads = 0;
+	await page.route('http://parts.test/frame/**', (route) => (loads++, route.fulfill({ contentType: 'text/html', body: '<p>block</p>' })));
+	await page.evaluate(() => (document.querySelector('iframe')!.src = '/frame/sidebar-03'));
+	await page.waitForFunction(() => document.querySelector('iframe')!.contentDocument?.querySelector('p'));
+	const before = loads;
+	await page.getByRole('button', { name: 'Refresh Preview' }).click();
+	await page.waitForTimeout(500);
+	assert.equal(loads, before + 1, 'setIframeKey mounts the frame afresh, which loads its page again');
+	await page.close();
+});
+
+test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
+	const page = await open('<main id="main"></main>', ['site'], 'body');
+	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
+	const seen = await page.evaluate(
+		() =>
+			new Promise<string>((done) => {
+				const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
+				// The page an in-place navigation swaps in, its tab state its own (the converter's mousedown handler).
+				document.getElementById('main')!.innerHTML = `<div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div>`;
+				const list = document.querySelector('[role="tablist"]')!;
+				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
+			}),
+	);
+	assert.equal(seen, 'npm', 'chosen before the next frame');
 	await page.close();
 });
 
@@ -754,6 +822,23 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 	await page.close();
 });
 
+
+test('react-resizable-panels: a press within the separator\'s 10 px hit area drags it, though another element is on top there', async () => {
+	// The second panel is drawn over the separator, as a block viewer's panel is once a viewport button has resized it.
+	const page = await open(
+		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:2px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px;margin-left:-2px;position:relative;background:#eee"></div></div></div>`,
+		['resizable'],
+	);
+	const separator = page.locator('[role="separator"]');
+	const box = (await separator.boundingBox())!;
+	await page.mouse.move(box.x + 4, box.y + 50);
+	await page.mouse.down();
+	assert.equal(await separator.getAttribute('data-separator'), 'active', 'the press is within 10 px around the separator');
+	await page.mouse.move(box.x + 44, box.y + 50, { steps: 4 });
+	await page.mouse.up();
+	assert.equal(await separator.getAttribute('aria-valuenow'), '60', 'dragged by 40 of the panels\' 400 px');
+	await page.close();
+});
 
 test('react-resizable-panels: the arrows do not follow the text direction, and the other orientation\'s arrows do nothing', async () => {
 	const page = await open(
@@ -990,6 +1075,26 @@ test('a press on a Radix roving group itself leaves focus on the group; Tab into
 	await page.close();
 });
 
+test('a Radix roving item focused, by Tab into its group, a press or an arrow, becomes the one item in the tab order (Radix RovingFocusGroup)', async () => {
+	const item = (t: string, selected: boolean) => `<button role="tab" aria-selected="${selected}" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">${t}</button>`;
+	const page = await open(`<main><button id="before">Before</button><div role="tablist" tabindex="0" data-orientation="horizontal" style="outline:none">${item('A', true)}${item('B', false)}${item('C', false)}</div><button id="after">After</button></main>`, ['radix/roving']);
+	await page.evaluate(async () => {
+		const { roving } = await import('/parts/radix/roving.ts' as string);
+		document.querySelector('[role="tablist"]')!.addEventListener('keydown', (e) => roving(e as KeyboardEvent));
+	});
+	const stops = () => page.$$eval('[role="tab"]', (tabs) => tabs.map((t) => `${t.textContent}:${t.getAttribute('tabindex')}`).join(' '));
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button[tab]:A');
+	assert.equal(await stops(), 'A:0 B:-1 C:-1', 'Tab into the group moves on to the selected item, which becomes the tab stop');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'button[tab]:B');
+	assert.equal(await stops(), 'A:-1 B:0 C:-1');
+	await page.locator('[role="tab"]', { hasText: 'C' }).click();
+	assert.equal(await stops(), 'A:-1 B:-1 C:0', 'a press makes the pressed item the tab stop');
+	await page.close();
+});
+
 test('React Aria tabs keep React Aria\'s keys: Left/Right also step a vertical list, Up/Down only a vertical one, disabled tabs are skipped', async () => {
 	const tabs = (orientation: string, p: string) => `<div role="tablist" aria-orientation="${orientation}" data-rac="" data-slot="tabs-list"><div role="tab" data-rac="" tabindex="0" id="${p}a">${p}A</div><div role="tab" data-rac="" tabindex="-1">${p}B</div><div role="tab" data-rac="" tabindex="-1" aria-disabled="true" data-disabled="true">${p}C</div></div>`;
 	const page = await open(`${tabs('vertical', 'V')}${tabs('horizontal', 'H')}`, ['radix/roving']);
@@ -1107,6 +1212,31 @@ test('a Radix select layer captured open is converted at rest with no option ari
 	await settled(page);
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Banana');
 	assert.deepEqual(await page.evaluate(() => (window as any).changes), ['false>true']);
+	await page.close();
+});
+
+test('a Base UI select icon carries data-popup-open while its select is open, as SelectIcon does', async () => {
+	const page = await open(baseSelect.replace('<span data-slot="select-value">Select a fruit</span>', '<span data-slot="select-value">Select a fruit</span><svg aria-hidden="true" width="8" height="8"><path d="m6 9 6 6 6-6"></path>&#9660;</svg>'), ['base-ui/select'], 'body');
+	const icon = () => page.locator('[data-slot="select-trigger"] svg').evaluate((s) => s.hasAttribute('data-popup-open'));
+	assert.equal(await icon(), false);
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	assert.equal(await icon(), true);
+	await page.keyboard.press('Escape');
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await icon(), false);
+	await page.close();
+});
+
+test('a Base UI select opened by a press shows no focus ring on its option, nor on its trigger once an option is chosen', async () => {
+	const page = await open(baseSelect, ['base-ui/select'], 'body');
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	const ring = () => page.evaluate(() => `${document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName}:${document.activeElement?.matches(':focus-visible')}`);
+	assert.equal(await ring(), 'option:false', 'Base UI focuses the option after a mouse focused the trigger');
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await ring(), 'combobox:false');
 	await page.close();
 });
 
@@ -1513,6 +1643,29 @@ test('sonner: a toast\'s action button dismisses it through its list\'s handlers
 	await page.close();
 });
 
+test('shadcn-ui site: a chart\'s frame captured shown but still loading when it is mounted goes transparent at once, without fading out', async () => {
+	const css = '<style>.transition-opacity{transition-property:opacity;transition-duration:300ms}.opacity-0{opacity:0}.opacity-100{opacity:1}</style>';
+	const page = await open(`${css}<div style="height:5000px"></div><iframe src="/frame/slow" class="w-full border-none transition-opacity duration-300 opacity-100" height="100" loading="lazy" title="chart"></iframe>`, ['site']);
+	let release!: () => void;
+	const held = new Promise<void>((done) => (release = done));
+	await page.route('http://parts.test/frame/**', async (route) => {
+		await held;
+		await route.fulfill({ contentType: 'text/html', body: '<svg></svg>' });
+	});
+	await page.locator('iframe').scrollIntoViewIfNeeded();
+	await page.evaluate(() => {
+		const w = window as unknown as { faded: number; mountParts: (a: string) => void };
+		w.faded = 0;
+		document.querySelector('iframe')!.addEventListener('transitionrun', () => w.faded++);
+		w.mountParts('iframe[loading]');
+	});
+	await page.waitForTimeout(400);
+	assert.match(await page.locator('iframe').evaluate((f) => f.className), / opacity-0$/);
+	assert.equal(await page.evaluate(() => (window as unknown as { faded: number }).faded), 0, 'the old frame starts transparent: nothing fades out');
+	release();
+	await page.close();
+});
+
 test('shadcn-ui site: a chart\'s frame stays transparent until its page has loaded, then shows, whatever the capture caught it in', async () => {
 	const frame = (name: string, opacity: string) => `<iframe src="/frame/${name}" class="w-full border-none transition-opacity duration-300 ${opacity}" height="100" loading="lazy" title="chart-${name}"></iframe>`;
 	const page = await open(`<div style="height:5000px"></div>${frame('slow', 'opacity-100')}<div style="height:5000px"></div>${frame('loaded', 'opacity-0')}`, ['site']);
@@ -1537,5 +1690,29 @@ test('shadcn-ui site: a chart\'s frame stays transparent until its page has load
 	release();
 	await loaded(0);
 	await page.waitForFunction(() => document.querySelector('iframe')!.className.endsWith(' opacity-100'));
+	await page.close();
+});
+
+test("day picker: a key DayPicker handles on a day does not scroll the page, even when the page's render removes that day's button at once", async () => {
+	const page = await open('<div style="height:3000px"></div><div data-mm-day-picker><table><tbody><tr><td role="gridcell"><button id="d">6</button></td></tr></tbody></table></div><div style="height:3000px"></div>', []);
+	const prevented = await page.evaluate(async () => {
+		const { dayPickerEvent, dayPickerView } = await import('/parts/day-picker.ts' as string);
+		const loc = { ws: 0, fwcd: 1, full: 'PP', months: {}, days: {}, ord: [] };
+		const config = { loc, mode: 'single', interactive: true, n: 1, caption: 'label', cls: {} };
+		const button = document.getElementById('d')!;
+		const root = document.querySelector('[data-mm-day-picker]')!;
+		let result = false;
+		root.addEventListener('keydown', (event) => {
+			// A month change rendered in the same task replaces the grid's cells.
+			queueMicrotask(() => button.remove());
+			dayPickerEvent(config, dayPickerView(config, 20000), event, 'k');
+		});
+		window.addEventListener('keydown', (event) => setTimeout(() => (result = event.defaultPrevented)), true);
+		button.focus();
+		button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+		await new Promise((r) => setTimeout(r, 50));
+		return result;
+	});
+	assert.equal(prevented, true);
 	await page.close();
 });

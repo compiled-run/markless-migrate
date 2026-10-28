@@ -8,8 +8,10 @@ export const GATED: readonly RunMetric[] = ['firstFrame', 'lcp', 'answered'];
 const BAND_QUANTILE = 0.9;
 /** Old runs a band needs: fewer cannot be split in two halves of two. */
 const MIN_OLD_RUNS = 4;
-/** The instrument's own step: a first frame is read from screenshots this far apart, and a click is sent no more often than this, so a smaller difference cannot be seen. */
-export const resolution = (metric: RunMetric): number => (metric === 'firstFrame' ? FRAME_EVERY_MS : metric === 'answered' ? CLICK_EVERY_MS : 0);
+// A paint's time is the frame it was presented in (60 Hz): content ready a few ms later can land a whole frame later.
+const PAINT_FRAME_MS = 17;
+/** The instrument's own step: a first frame is read from screenshots this far apart, a click is sent no more often than this, and a largest paint is timed to its frame, so a smaller difference cannot be seen. */
+export const resolution = (metric: RunMetric): number => (metric === 'firstFrame' ? FRAME_EVERY_MS : metric === 'answered' ? CLICK_EVERY_MS : metric === 'lcp' ? PAINT_FRAME_MS : 0);
 
 /** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
 export function noiseBand(old: readonly number[]): number | undefined {

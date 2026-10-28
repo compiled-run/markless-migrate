@@ -26,7 +26,7 @@ import { checkClock } from './clock-shift.ts';
 import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, describeTarget, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -46,6 +46,7 @@ import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
 import { renderHtmlParts } from './html.ts';
 import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
+import { learnLiveCounts, pinnedCounts } from './live-counts.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
 import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteCoverage, RouteResult, Shot, Viewport } from './types.ts';
@@ -226,11 +227,13 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	// The new page gets the third-party answers the cached old page read; one this run already got differently means the old page is loaded again.
 	if (cached && (await adoptAnswers(cached.answers ?? []))) {
 		for (const page of cached.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], run.old.origin);
+		if (run.new.liveCounts) await learnLiveCounts(cached.olds, run.new.liveCounts);
 		return { olds: cached.olds, loads: cached.loads, next: await steadyWeight(browser, run, route, viewports, cached.olds, await captureRoute(browser, run.new.origin, route, viewports, run.new)) };
 	}
 	if (cached) run.oldCache?.demote();
 	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
 	const oldA = await captureRoute(browser, run.old.origin, route, viewports, run.old);
+	if (run.new.liveCounts) await learnLiveCounts([oldA], run.new.liveCounts);
 	const [oldB, next] = await Promise.all([captureRoute(browser, run.old.origin, route, viewports, run.old), captureRoute(browser, run.new.origin, route, viewports, run.new)]);
 	const olds = [oldA, oldB];
 	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, viewports, run.old));
@@ -428,8 +431,8 @@ const RETIMED = 10;
 const RETIMES = 2;
 
 /**
- * A step answered more slowly on the new page is timed again one side at a time (old, then new, twice), since a busy machine
- * slows whichever side it happens to: it stands only when the new page is slower every time.
+ * A step answered more slowly on the new page, or showing a view in between only there, is timed again one side at a time
+ * (old, then new, twice), since a busy machine slows whichever side it happens to: it stands only when it happens every time.
  */
 async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[]): Promise<Failure[]> {
 	const slow = failures.filter((f) => timedOnly.has(f)).slice(0, RETIMED);
@@ -437,12 +440,20 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 	const dropped = new Set<Failure>();
 	const notes = new Map<Failure, string>();
 	for (const failure of slow) {
-		const { journey, step } = timedOnly.get(failure)!;
+		const { journey, step, views } = timedOnly.get(failure)!;
 		const times: { old?: number; next?: number }[] = [];
+		const shown: (string | undefined | null)[] = [];
 		for (let i = 0; i < RETIMES; i++) {
-			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
-			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
-			times.push({ old, next });
+			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step];
+			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
+			times.push({ old: old?.reaction?.answeredMs, next: next?.reaction?.answeredMs });
+			shown.push(old?.reaction?.views && next?.reaction?.views ? interimViews([old], next) : null);
+		}
+		if (views) {
+			if (shown.some((s) => s === null)) notes.set(failure, '; it could not be timed again one side at a time');
+			else if (shown.some((s) => s === undefined)) dropped.add(failure);
+			else notes.set(failure, `; timed again one side at a time, the new page showed it every time (${shown.join('; ')})`);
+			continue;
 		}
 		// Timed again only where both sides answered: a step that could not be timed again keeps its failure, unconfirmed.
 		if (times.some((t) => t.old === undefined || t.next === undefined)) notes.set(failure, '; it could not be timed again one side at a time');
@@ -789,7 +800,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -944,7 +955,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			startedAt,
 			ok: routes.every((r) => r.ok) && logins.every((l) => l.ok),
 			routes,
-			pinned: pinnedSummary(freeze),
+			pinned: [...pinnedSummary(freeze), ...pinnedCounts(base.new.liveCounts ?? new Map())],
 			...(sources ? { sources } : {}),
 			...(options.data ? { data: options.data } : {}),
 			writes: shared.sendWrites ? 'sent' : 'held back',

@@ -77,7 +77,7 @@ export const LATER = Date.UTC(2027, 4, 20, 12, 0, 0);
 export const BEHIND = 'America/Los_Angeles';
 
 // Bumped when what is read changes, so a cached read is taken again.
-const READ_VERSION = 7;
+const READ_VERSION = 8;
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`day-picker:${READ_VERSION}:${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Reads every DayPicker on a route at the capture clock and at LATER, and whether its keys move the browser's focus. */
@@ -154,6 +154,7 @@ async function openerPickers(page: Page, opener: { readonly sig: string; readonl
 		const all = await page.evaluate(readPickers, [time - 150 * 365 * 86_400_000, time + 60 * 365 * 86_400_000] as const);
 		const own = all.filter((p) => p.inLayer);
 		if (!probe || own.length !== 1 || own[0]!.why) return own.map((p) => ({ ...p, opener: { sig: opener.sig, nth: opener.nth, k, before, picks: [] } }));
+		const focuses = await movesFocus(page, all.indexOf(own[0]!));
 		const picks: { days: Triple[]; html: string; open: boolean }[] = [];
 		const count = own[0]!.config?.mode === 'range' ? 2 : 1;
 		for (let k = 0; k < count; k++) {
@@ -175,7 +176,7 @@ async function openerPickers(page: Page, opener: { readonly sig: string; readonl
 			picks.push({ days: [...(picks.at(-1)?.days ?? []), day], html, open });
 			if (!open) break;
 		}
-		return [{ ...own[0]!, opener: { sig: opener.sig, nth: opener.nth, k, before, picks } }];
+		return [{ ...own[0]!, movesFocus: focuses, opener: { sig: opener.sig, nth: opener.nth, k, before, picks } }];
 	} catch {
 		return [];
 	} finally {
@@ -197,12 +198,21 @@ async function movesFocus(page: Page, index: number): Promise<boolean> {
 	try {
 		await page.focus('[data-mm-probe]');
 		await page.keyboard.press('ArrowRight');
-		await page.waitForTimeout(150);
-		return await page.evaluate(() => {
-			const probe = document.querySelector('[data-mm-probe]');
-			const active = document.activeElement;
-			return Boolean(active && probe && active !== probe && active.tagName === 'BUTTON' && active.parentElement?.getAttribute('role') === 'gridcell');
-		});
+		// React focuses the day in an effect after paint: a loaded machine can take well over a frame.
+		return await page
+			.waitForFunction(
+				() => {
+					const probe = document.querySelector('[data-mm-probe]');
+					const active = document.activeElement;
+					return Boolean(active && probe && active !== probe && active.tagName === 'BUTTON' && active.parentElement?.getAttribute('role') === 'gridcell');
+				},
+				undefined,
+				{ timeout: 1000 },
+			)
+			.then(
+				() => true,
+				() => false,
+			);
 	} finally {
 		await page.evaluate(() => document.querySelector('[data-mm-probe]')?.removeAttribute('data-mm-probe')).catch(() => {});
 	}

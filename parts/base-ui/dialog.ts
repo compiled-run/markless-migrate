@@ -33,8 +33,8 @@ function close(p: Popup, returnFocus = true): void {
 	closePopup(p, returnFocus);
 }
 
-function open(trigger: HTMLElement, key = trigger.id || layerKey(trigger)): Popup | undefined {
-	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key });
+function open(trigger: HTMLElement, { shown, key = trigger.id || layerKey(trigger) }: { readonly shown?: HTMLElement; readonly key?: string } = {}): Popup | undefined {
+	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: shown ? `shown:${shown.id || 'dialog'}` : key, portal: shown, shown: Boolean(shown) });
 	if (!p) return undefined;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
 	// disablePointerDismissal (convert reads it per instance; always set for an alert dialog): no outside-press or focus-out close.
@@ -42,8 +42,14 @@ function open(trigger: HTMLElement, key = trigger.id || layerKey(trigger)): Popu
 	// DialogPortal renders its InternalBackdrop only for modal={true}: the page behind is then inert and does not scroll.
 	const modal = Boolean(p.portal.querySelector(':scope > [role="presentation"][data-base-ui-inert]:not([data-slot])'));
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
-	if (overlay) enter(overlay);
-	const shown = modal ? hideOthers([p.portal]) : () => {};
+	if (overlay && !shown) enter(overlay);
+	// Open at load, the page came with the marks markOthers left on everything else; they are taken again, so they go on close.
+	if (shown) for (const el of document.querySelectorAll('[data-base-ui-inert]')) if (!p.portal.contains(el)) {
+		el.removeAttribute('data-base-ui-inert');
+		el.removeAttribute('aria-hidden');
+		el.removeAttribute('inert');
+	}
+	const others = modal ? hideOthers([p.portal]) : () => {};
 	const unlock = modal ? acquireScrollLock() : () => {};
 	const onKey = (event: KeyboardEvent) => {
 		if (event.key !== 'Tab') return;
@@ -89,9 +95,10 @@ function open(trigger: HTMLElement, key = trigger.id || layerKey(trigger)): Popu
 		clearTimeout(timer);
 		document.removeEventListener('keydown', onKey, true);
 		document.removeEventListener('pointerdown', onPress, true);
-		shown();
+		others();
 		unlock();
 	});
+	if (shown) return p;
 	// DrawerPopup's initialFocus is the popup itself; DialogPopup's is its first tabbable element.
 	(p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup, false)[0] ?? p.popup)).focus({ preventScroll: true });
 	return p;
@@ -104,14 +111,29 @@ export function click(target: Element): boolean {
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 		// useClick toggles: a press on the trigger of an open dialog (only reachable when it is not modal) closes it.
 		if (p) close(p);
-		else open(trigger);
+		// A plain button whose layer is no Base UI portal (a Radix dialog's) is another port's.
+		else if (!open(trigger) && !trigger.matches(TRIGGER)) return false;
 		return true;
 	}
 	const closer = target.closest(CLOSE);
+	if (closer) adoptShown();
 	const p = closer && popupOf(closer);
 	if (!p || !undo.has(p)) return false;
 	close(p);
 	return true;
+}
+
+/** A dialog the page shows open when it loads (a welcome dialog its state opened on mount) is taken as open, so its Close, Escape and backdrop close it. */
+function adoptShown(): void {
+	for (const portal of document.querySelectorAll<HTMLElement>('[data-base-ui-portal]:not([hidden])')) {
+		if (popupOf(portal)) continue;
+		const popup = portal.querySelector<HTMLElement>('[role="dialog"][data-open], [role="alertdialog"][data-open]');
+		if (popup && !popup.closest('[hidden]')) open(document.createElement('button'), { shown: portal });
+	}
+}
+
+export function idle(): void {
+	adoptShown();
 }
 
 /**
@@ -125,7 +147,7 @@ export function show(key: string): boolean {
 	const before = (at && popupOf(at)?.trigger) || at;
 	const stand = document.createElement('button');
 	stand.focus = (options?: FocusOptions) => before?.focus(options);
-	const p = open(stand, key);
+	const p = open(stand, { key });
 	if (!p) return false;
 	const trigger = document.getElementById(key);
 	if (trigger?.matches(TRIGGER)) {

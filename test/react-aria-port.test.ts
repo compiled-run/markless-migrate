@@ -304,6 +304,40 @@ test('Menu: a submenu opened by hovering its item leaves focus on the item', asy
 	await page.close();
 });
 
+test('Menu: the pointer heading for an open submenu across the items below its trigger keeps it open, as useSafelyMouseToSubmenu does', async () => {
+	const page = await open(submenu.replace('Invite users</div>', 'Invite users</div><div data-rac="" role="menuitem" tabindex="-1" id="i3">New Team</div><div data-rac="" role="menuitem" tabindex="-1" id="i4">GitHub</div>'));
+	await page.click('#m1');
+	const from = (await page.locator('#i2').boundingBox())!;
+	await page.mouse.move(from.x + 10, from.y + from.height / 2);
+	await page.waitForTimeout(300);
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	const to = (await page.locator('#s2').boundingBox())!;
+	// Down and right across New Team, a move every 60 ms as a hand makes them.
+	for (let i = 1; i <= 6; i++) {
+		await page.mouse.move(from.x + 10 + ((to.x + 5 - from.x - 10) * i) / 6, from.y + from.height / 2 + ((to.y + to.height / 2 - from.y - from.height / 2) * i) / 6);
+		await page.waitForTimeout(60);
+	}
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	assert.equal(await page.evaluate(() => document.getElementById('menu')!.style.pointerEvents), '');
+	await page.close();
+});
+
+test('Menu: the pointer moving away from an open submenu onto another item closes it', async () => {
+	const page = await open(submenu.replace('Invite users</div>', 'Invite users</div><div data-rac="" role="menuitem" tabindex="-1" id="i3">New Team</div>'));
+	await page.click('#m1');
+	const from = (await page.locator('#i2').boundingBox())!;
+	await page.mouse.move(from.x + 10, from.y + from.height / 2);
+	await page.waitForTimeout(300);
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	for (let i = 1; i <= 3; i++) {
+		await page.mouse.move(from.x + 10 - i, from.y + from.height / 2 + (from.height * i) / 3);
+		await page.waitForTimeout(60);
+	}
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'false');
+	assert.equal(await active(page), 'i3');
+	await page.close();
+});
+
 test('Dialog: a press opens it focused, Tab stays inside, its close button closes it', async () => {
 	const page = await open(dialog);
 	await page.click('#d1');

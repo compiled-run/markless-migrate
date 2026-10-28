@@ -90,3 +90,17 @@ test("the old site's trailing-slash answer is kept: from next.config, else from 
 	assert.deepEqual(trailingPolicy(undefined, [{ route: '/docs/', status: 308, redirectsTo: '/docs' }]), { mode: 'strip', status: 308, pagesOnly: true });
 	assert.equal(trailingPolicy(undefined, [{ route: '/old', status: 301, redirectsTo: '/new' }]), undefined);
 });
+
+test("the generated config keeps one of each Nitro handler and server asset directory, though the router hands Vite the app's nitro config again", async () => {
+	const { viteConfig } = await import('../src/convert/index.ts');
+	const config = viteConfig([]);
+	const source = /const nitroOnce: \(options: Record<string, unknown>\) => void = ([\s\S]+?);\n\nexport default/.exec(config)?.[1];
+	assert.ok(source, config);
+	assert.match(config, /modules: \[\{ name: 'markless-migrate:once', setup: \(nitro: \{ options: Record<string, unknown> \}\) => nitroOnce\(nitro\.options\) \}\]/);
+	const once = new Function(`return ${source}`)() as (options: Record<string, unknown>) => void;
+	const handler = { middleware: true, handler: '/app/server/routing.ts' };
+	const assets = { baseName: 'built', dir: '/app/server/built' };
+	const options: Record<string, unknown> = { handlers: [handler, { ...handler }, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { ...assets }, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'a', 'b'] };
+	once(options);
+	assert.deepEqual(options, { handlers: [handler, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'b'] });
+});

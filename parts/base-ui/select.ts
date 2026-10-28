@@ -13,11 +13,13 @@ const options = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)]
 // isElementDisabled; a captured Base UI item carries data-disabled as well.
 const enabled = (o: HTMLElement) => !o.hasAttribute('disabled') && o.getAttribute('aria-disabled') !== 'true' && !o.hasAttribute('data-disabled');
 const enabledOptions = (p: Popup) => options(p).filter(enabled);
+// A press focuses as a mouse does, without a focus ring (Base UI's trigger takes the mousedown's focus, the option a script's).
+const quietly = { preventScroll: true, focusVisible: false } as FocusOptions;
 function highlight(p: Popup, option: HTMLElement | undefined, keyboard = false): void {
 	for (const o of options(p)) o.removeAttribute('data-highlighted');
 	if (!option) return;
 	option.setAttribute('data-highlighted', '');
-	option.focus({ preventScroll: true });
+	option.focus(keyboard ? { preventScroll: true } : quietly);
 	if (keyboard) option.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 const selectedValue = new WeakMap<HTMLElement, string>();
@@ -110,22 +112,30 @@ function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): vo
 	}
 }
 // Its highlight goes with activeIndex, reset as the popup's exit completes.
-function dismiss(p: Popup): void {
+function dismiss(p: Popup, focus?: FocusOptions): void {
 	highlight(p, undefined);
-	closePopup(p, true, true);
+	closePopup(p, true, true, focus);
 }
-function choose(p: Popup, option: HTMLElement): void {
+function choose(p: Popup, option: HTMLElement, pressed = false): void {
 	select(p.trigger, p.popup, option);
-	dismiss(p);
+	dismiss(p, pressed ? quietly : undefined);
 }
 
 const popupFor = (trigger: HTMLElement) => [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 const typings = new WeakMap<HTMLElement, Typing>();
 const typingOf = (trigger: HTMLElement) => typings.get(trigger) ?? typings.set(trigger, newTyping()).get(trigger)!;
 
+// SelectIcon (aria-hidden, its default child ▼ kept beside a rendered svg) carries data-popup-open while the select is open.
+const iconOf = (trigger: HTMLElement) => [...trigger.children].find((c) => c.getAttribute('aria-hidden') === 'true' && (c.textContent ?? '').includes('▼'));
+
 function openSelect(trigger: HTMLElement, key?: string): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: dismiss });
+	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: (q) => dismiss(q) });
 	if (!p) return false;
+	const icon = iconOf(trigger);
+	if (icon) {
+		icon.setAttribute('data-popup-open', '');
+		p.cleanup.push(() => icon.removeAttribute('data-popup-open'));
+	}
 	endTyping(typingOf(trigger));
 	const label = selectedValue.get(trigger);
 	if (label !== undefined) for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) {
@@ -142,7 +152,7 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	// useListNavigation: the selected item, else from ArrowUp the last enabled one, else the first.
 	const list = options(p);
 	const selected = list.find((o) => o.getAttribute('aria-selected') === 'true');
-	highlight(p, selected ?? (key === 'ArrowUp' ? list.findLast(enabled) : undefined) ?? enabledOptions(p)[0]);
+	highlight(p, selected ?? (key === 'ArrowUp' ? list.findLast(enabled) : undefined) ?? enabledOptions(p)[0], key !== undefined);
 	return true;
 }
 
@@ -152,7 +162,10 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	const p = popupFor(trigger);
 	event.preventDefault();
 	if (p) dismiss(p);
-	else openSelect(trigger);
+	else {
+		trigger.focus(quietly);
+		openSelect(trigger);
+	}
 	return true;
 }
 export function click(target: Element): boolean {
@@ -160,7 +173,7 @@ export function click(target: Element): boolean {
 	const option = target.closest<HTMLElement>(OPTION);
 	const p = option && popupOf(option);
 	if (!option || !p) return false;
-	if (enabled(option)) choose(p, option);
+	if (enabled(option)) choose(p, option, true);
 	return true;
 }
 export function pointerover(target: Element): boolean {

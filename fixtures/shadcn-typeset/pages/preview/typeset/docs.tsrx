@@ -1,7 +1,8 @@
 import type { PageProps } from '@markless/router';
 import { behave, listen } from '../../../registry.ts';
 
-// The preview layout's wrapper (its classes the preview fonts' next/font variables) around the specimen.
+// The preview layout's wrapper (its classes the preview fonts' next/font variables) around the specimen, and the old
+// page's scripts that forward its keys (the converted page serves them in its head).
 export default function Page(_props: PageProps) @{
 	<div class="inter_e8e54af-module__r7opxW__variable lora_89cfb44c-module__fAxLeq__variable" onKeyDown={(event) => behave(event)} onIdle={() => listen()}>
 		<div class="preview-params w-full">
@@ -10,5 +11,6 @@ export default function Page(_props: PageProps) @{
 				<p>Specimen text.</p>
 			</div>
 		</div>
+		<script src="/preview-keys.js"></script>
 	</div>
 }

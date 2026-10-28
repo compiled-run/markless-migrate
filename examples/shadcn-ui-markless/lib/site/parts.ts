@@ -4,8 +4,8 @@ import { THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
-import { parseParams, previewValues, TYPESET_COMMAND_MESSAGE, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
-import { CMD_K_FORWARD_TYPE, DARK_MODE_FORWARD_TYPE, isCreatePreview, OPEN_PRESET_FORWARD_TYPE, RANDOMIZE_FORWARD_TYPE, REDO_FORWARD_TYPE, RESET_FORWARD_TYPE, UNDO_FORWARD_TYPE } from './create-messages.ts';
+import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
+import { isCreatePreview } from './create-messages.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -16,25 +16,30 @@ const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isC
 
 // @tabler/icons-react's IconCopy (lucide-react's Terminal) turned into IconCheck (lucide's Check) by its attributes (the
 // svg is Markless's: no node is swapped).
-const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10' };
-const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5' };
-const copied = new WeakMap<Element, { timer: number; saved: { cls: string | null; d: (string | null)[] } }>();
+const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10', points: '5 12 10 17 20 7' };
+const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5', points: '20 6 9 17 4 12' };
+type Saved = { cls: string | null; shape: (string | null)[] };
+const copied = new WeakMap<Element, { timer: number; saved: Saved }>();
 
-function setIcon(svg: SVGElement, saved: { cls: string | null; d: (string | null)[] }, check: boolean): void {
-	const paths = [...svg.querySelectorAll('path')];
-	// The check is one path: the icon's other shapes (lucide Copy's rect) are not drawn meanwhile.
-	const others = [...svg.children].filter((el) => el !== paths[0]);
+// The check is drawn by the icon's first path, or its first polyline (lucide's Terminal has no path); the rest are hidden meanwhile.
+const shapeOf = (svg: SVGElement) => svg.querySelector('path') ?? svg.querySelector('polyline');
+const geometry = (el: Element) => (el.tagName === 'path' ? 'd' : 'points');
+const savedOf = (svg: SVGElement): Saved => ({ cls: svg.getAttribute('class'), shape: [...svg.children].map((el) => el.getAttribute(geometry(el))) });
+
+function setIcon(svg: SVGElement, saved: Saved, check: boolean): void {
+	const shape = shapeOf(svg);
+	const others = [...svg.children].filter((el) => el !== shape);
 	if (check) {
 		const icon = (saved.cls ?? '').includes('lucide') ? LUCIDE_CHECK : TABLER_CHECK;
 		svg.setAttribute('class', icon.class);
-		paths[0]?.setAttribute('d', icon.d);
+		if (shape) shape.setAttribute(geometry(shape), shape.tagName === 'path' ? icon.d : icon.points);
 		for (const el of others) el.setAttribute('display', 'none');
 	} else {
 		if (saved.cls === null) svg.removeAttribute('class');
 		else svg.setAttribute('class', saved.cls);
-		paths.forEach((p, i) => {
-			const d = saved.d[i];
-			if (d) p.setAttribute('d', d);
+		[...svg.children].forEach((el, i) => {
+			const value = saved.shape[i];
+			if (value) el.setAttribute(geometry(el), value);
 		});
 		for (const el of others) el.removeAttribute('display');
 	}
@@ -96,7 +101,7 @@ function showCopied(button: HTMLElement): void {
 	if (!svg) return;
 	const was = copied.get(button);
 	if (was) clearTimeout(was.timer);
-	const saved = was?.saved ?? { cls: svg.getAttribute('class'), d: [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')) };
+	const saved = was?.saved ?? savedOf(svg);
 	setIcon(svg, saved, true);
 	const codeBlock = button.dataset.slot === 'code-block-copy-button';
 	const marks = button.hasAttribute('data-copied') || codeBlock;
@@ -179,6 +184,16 @@ const viewCode: Part = {
 		const code = target.closest('[data-mm-replace]')?.closest<HTMLElement>('[data-slot="code"][data-mobile-code-visible]');
 		if (!code) return false;
 		code.setAttribute('data-mobile-code-visible', 'true');
+		return true;
+	},
+};
+
+// components/block-viewer.tsx's Refresh Preview: setIframeKey mounts the block's frame afresh, which loads its page again.
+const refreshPreview: Part = {
+	click(target) {
+		const frame = target.closest('button[title="Refresh Preview"]')?.closest('[data-view]')?.querySelector('iframe');
+		if (!frame) return false;
+		frame.src = frame.src;
 		return true;
 	},
 };
@@ -325,6 +340,16 @@ const sharedTabs: Part = {
 	},
 };
 
+// A page shown in place renders its lists from the atom it shares with the page before: the kept choice is there before the
+// first paint, so a list the router brings in is switched before the next frame (an observer's callback runs first).
+new MutationObserver((records) => {
+	if (localStorage.getItem(CONFIG_KEY) === null) return;
+	const added = records.some((r) => [...r.addedNodes].some((n) => n instanceof Element && (n.matches('[role="tablist"]') || n.querySelector('[role="tablist"]'))));
+	if (!added) return;
+	const config = readConfig();
+	for (const key of Object.keys(SHARED)) if (config[key]) chooseEverywhere(key, config[key]!);
+}).observe(document.documentElement, { childList: true, subtree: true });
+
 // components/chart-iframe.tsx: a chart's frame is opacity-0 until its onLoad, then opacity-100 (the capture holds either).
 const frameLoaded = (frame: HTMLIFrameElement): boolean | undefined => {
 	const doc = frame.contentDocument;
@@ -336,7 +361,14 @@ const chartFrame: Part = {
 		if (!(el instanceof HTMLIFrameElement) || !el.classList.contains('transition-opacity') || !(el.classList.contains('opacity-0') || el.classList.contains('opacity-100'))) return;
 		el.addEventListener('load', () => showFrame(el, true));
 		const loaded = frameLoaded(el);
-		if (loaded !== undefined) showFrame(el, loaded);
+		if (loaded) showFrame(el, true);
+		else if (loaded === false) {
+			// The old frame starts transparent: one captured shown goes there without fading out.
+			el.style.transition = 'none';
+			showFrame(el, false);
+			void getComputedStyle(el).opacity;
+			el.style.removeProperty('transition');
+		}
 	},
 };
 
@@ -374,8 +406,8 @@ const previewFontVariables: Part = {
 };
 
 // app/(view)/preview/typeset: the specimen /typeset shows in its iframe. TypesetPreviewProvider puts the params (its URL's,
-// then each the parent posts) on <html> as CSS variables, and forward-scripts.tsx hands R, ⇧R, D and the undo keys to
-// the parent as commands.
+// then each the parent posts) on <html> as CSS variables; forward-scripts.tsx's scripts, which the converted page serves
+// in its head, hand R, ⇧R, D and the undo keys to the parent.
 const isTypesetPreview = () => document.querySelector('.preview-params > .typeset, .preview-params > div > .typeset') !== null;
 function applyPreview(params: TypesetParams): void {
 	const style = document.documentElement.style;
@@ -396,26 +428,16 @@ const typesetPreview: Part = {
 			applyPreview(parseParams(search));
 		});
 	},
-	shortcut(target, event) {
-		if (window.parent === window || isEditable(target) || !isTypesetPreview()) return;
-		let command: string | undefined;
-		const key = event.key.toLowerCase();
-		if (event.metaKey || event.ctrlKey) command = (key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey) ? 'redo' : key === 'z' ? 'undo' : undefined;
-		else if (key === 'r') command = event.shiftKey ? 'reset' : 'shuffle';
-		else if (key === 'd' && !event.altKey) command = 'toggle-theme';
-		if (!command) return;
-		event.preventDefault();
-		window.parent.postMessage({ type: TYPESET_COMMAND_MESSAGE, command }, location.origin);
-	},
 };
 
 // app/(view)/preview/[base]/[name]: the page /create shows in its iframe. DesignSystemProvider applies the params (its
 // URL's, then each the designer posts), loaded on that page alone; the beforeInteractive scripts (ActionMenuScript,
-// OpenPresetScript, RandomizeScript, HistoryScript, DarkModeScript) forward their keys to the designer.
+// OpenPresetScript, RandomizeScript, HistoryScript, DarkModeScript), which the converted page serves in its head, forward
+// its keys to the designer.
 const designSystemPreview: Part = {
 	idle() {
 		if (isCreatePreview(location.pathname)) void import('./create-preview.ts').then((m) => m.startPreview());
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview];

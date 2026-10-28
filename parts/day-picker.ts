@@ -91,8 +91,7 @@ export interface DayPickerView {
 	readonly f: readonly [number, number] | null;
 	readonly lf: readonly [number, number] | null;
 	/**
-	 * The day whose button has the browser's focus. The cells here stay as the month changes, where React's are mounted
-	 * per day: a blur from a day React no longer renders never reached DayPicker.
+	 * The day whose button has the browser's focus: a blur from a day React no longer renders never reached DayPicker.
 	 */
 	readonly d?: readonly [number, number] | null;
 	/** Whether a person changed the view since the server rendered it. */
@@ -733,12 +732,12 @@ export function dayPickerModel(config: DayPickerConfig, view: DayPickerView): Da
 				monthLabel: monthLabel(cm.month),
 				yearLabel: yearOptions.length ? format(lib, cm.month, 'yyyy') : '',
 				yearText: format(lib, cm.month, 'yyyy'),
-				// Rows and cells are keyed by place: another month updates them in place, as few nodes as possible change.
-				weeks: cm.weeks.map((w, wi) => ({
-					key: `w${wi}`,
+				// DayPicker's keys: a week by its number, a day by its date and month (another month's cells are new ones).
+				weeks: cm.weeks.map((w) => ({
+					key: `w${w.number}`,
 					number: w.number < 10 ? digits(config, `0${w.number.toLocaleString()}`) : digits(config, w.number.toLocaleString()),
 					numberLabel: `Week ${w.number}`,
-					days: w.days.map((d, di) => ({ ...dayModel(d), key: `d${di}` })),
+					days: w.days.map((d) => dayModel(d)),
 				})),
 			};
 		}),
@@ -990,6 +989,8 @@ function actionOf(config: DayPickerConfig, view: DayPickerView, event: Event): D
 export function dayPickerEvent(config: DayPickerConfig, read: DayPickerView, event: Event, key: string): DayPickerView | undefined {
 	const view = latest(key, read);
 	const action = actionOf(config, view, event);
+	// DayPicker prevents a key it handles before acting: the render that follows may remove the day the key was pressed on.
+	if (action?.t === 'key') event.preventDefault();
 	const next = action ? dayPickerNext(config, view, action) : view;
 	if (next === view) return undefined;
 	const out = write(key, view, next);
