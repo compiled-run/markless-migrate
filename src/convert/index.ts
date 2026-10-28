@@ -15,7 +15,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
-import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
@@ -786,7 +786,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		if (panel) {
 			// Content holding controls revealed in turn (a file tree's nested folders) goes into the page, so those are bound too.
 			const into = reveal.added.find((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)?.into as readonly number[] | undefined;
-			const holds = into && reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v));
+			// So does content holding a Collapsible of its own (a Manual tab's long code block), which nothing reveals.
+			const holds = into && (reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v)) || holdsRadixDisclosure(reveal.added.filter((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel).flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement))));
 			if (holds) {
 				for (const a of reveal.added) {
 					if (typeof a.into === 'string' || elementAt(root, a.into) !== panel) continue;
