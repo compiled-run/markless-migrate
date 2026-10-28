@@ -39,9 +39,9 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, splitBody } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
-import { componentImport, componentName, readSiteComponents, siteComponentOf, type SiteComponent } from './site-components.ts';
+import { componentImport, componentName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -1634,6 +1634,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		replacedParts.set(r.trigger, mergeBindings(replacedParts.get(r.trigger), { extra: [`data-mm-replace=${JSON.stringify(r.key)}`] })!);
 	}
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
+		// A site component the site lists for a page element renders it, and what it shows, itself.
+		const standIn = pageComponentOf(el, siteComponents);
+		if (standIn) return { replace: `<${componentName(standIn)} />` };
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
 		const keyed = triggerKeys.get(el);
@@ -1710,6 +1713,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const noteDropped = (what: string) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1);
 	const layers = layerTable(new Map([...prepared].map(([route, p]) => [route, p.layers])));
 	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, ownAfter.size > 0);
+	// Markless wires no handler and no state the Document renders: a page's own body children that hold some (a header
+	// with a site component, a control on Markless state) are rendered by the page, in their place around its root.
+	const wired = (x: Element) => {
+		if (pageComponentOf(x, siteComponents)) return true;
+		const b = withAppend(x, undefined);
+		return Boolean(b?.declare?.length || b?.extra?.some((e) => /^on[A-Z]/.test(e)));
+	};
+	for (const [route, extras] of pagesWiring(bodyParts.extras, wired)) if (!ownExtras.has(route)) ownExtras.set(route, extras);
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
 		const file = route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(url.pathname, folders);
@@ -1742,11 +1753,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 			for (let j = from; j < bodyParts.after.length; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
 		} else if (bodyAfter) after.push({ markup: `<BodyAfter route={${lit(route)}} />` });
-		for (const el of ownExtras.get(route) ?? []) after.push({ markup: emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
+		const emitOwn = (el: Element) =>
+			emitElement(el, {
+				declarations,
+				bind: (x) => {
+					const own = withAppend(x, bindParts(x, usedPorts));
+					return x === el && !own?.replace ? mergeBindings(own, { extra: [ROOT_HANDLERS] }) : own;
+				},
+				dropped: noteDropped,
+			});
+		const ownedExtras = ownExtras.get(route) ?? [];
+		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
+		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
-		const markup = pageBody(rootMarkup, after, PAGE_SHOWN);
+		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
+		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
@@ -1784,6 +1807,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (docsearchConfigured()) usedPorts.add('docsearch');
 	if (lateFontPages.size) usedPorts.add('late-fonts');
 	const siteParts = await stat(join(app, 'lib', 'site', 'parts.ts')).then(() => true, () => false);
+	// The library parts of what each page holds outside its root count for that page, before its registry and handlers are written.
+	for (const [route, els] of bodyParts.extras) {
+		usedPorts.routes = [route];
+		for (const el of els) for (const x of walk(el)) bindParts(x, usedPorts);
+	}
+	usedPorts.routes = undefined;
+	const appDir = (from: string) => relative(dirname(join(app, from)), app).replace(/^(?!\.)/, './');
 	// Each page's root delegates to a registry of only the ports its own markup, the regions it shares and its layers use.
 	const registrySets = new Map<string, ReadonlySet<string>>();
 	const registry = (modules: ReadonlySet<string>) => {
@@ -1795,7 +1825,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [file, source] of written) {
 		const ports = usedPorts.of(byFile.get(file)!.map((v) => v.route));
 		const handlers = bodyHandlers(ports, siteParts).join(' ');
-		written.set(file, withPartImports(source.replaceAll(ROOT_HANDLERS, handlers), partsDir(file), { ...shared, behave: () => registry(ports) }));
+		written.set(file, withSiteImports(withPartImports(source.replaceAll(ROOT_HANDLERS, handlers), partsDir(file), { ...shared, behave: () => registry(ports) }), siteComponents, appDir(file)));
 	}
 	if (!options.only?.length) await rm(join(app, 'pages'), { recursive: true, force: true });
 	await rm(join(app, 'components', 'converted'), { recursive: true, force: true });
@@ -1806,7 +1836,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const component of factored.components) {
 		const imports = [...new Set(sharedParts.map((part) => part.import(partsDir(component.file))))].join('\n');
 		await mkdir(dirname(join(app, component.file)), { recursive: true });
-		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file), shared)));
+		await writeFile(join(app, component.file), appUrlDeclaration(withSiteImports(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file), shared), siteComponents, appDir(component.file))));
 	}
 	const documentParts: PartUse[] = [];
 	// DocSearch's button keys and loading on intent run from the head, before the first paint and the first press.
@@ -1852,7 +1882,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });
 		await writeFile(join(app, 'public', layer.path), layer.html);
 	}
-	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers)));
+	// What a page holds outside its own root (a header that differs per page) is bound as the root is: its library parts
+	// recorded and the site's page components in place.
+	const extrasBind = (el: Element): Binding | undefined => {
+		const standIn = pageComponentOf(el, siteComponents);
+		return standIn ? { replace: `<${componentName(standIn)} />` } : bindParts(el, usedPorts);
+	};
+	const extrasFile = join('components', 'converted', 'body-extras.tsrx');
+	await writeFile(join(app, extrasFile), appUrlDeclaration(withSiteImports(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers, extrasBind), siteComponents, appDir(extrasFile))));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
 	for (const line of tables.notes.slice(tableNotesPlaced)) log(`  ${line}; it renders as the old page showed it`);
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page; ${layers.served.length} served as files and mounted on use`);
