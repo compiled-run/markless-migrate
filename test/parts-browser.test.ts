@@ -926,6 +926,26 @@ test('a press on a Radix roving group itself leaves focus on the group; Tab into
 	await page.close();
 });
 
+test('a Radix roving item focused, by Tab into its group, a press or an arrow, becomes the one item in the tab order (Radix RovingFocusGroup)', async () => {
+	const item = (t: string, selected: boolean) => `<button role="tab" aria-selected="${selected}" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">${t}</button>`;
+	const page = await open(`<main><button id="before">Before</button><div role="tablist" tabindex="0" data-orientation="horizontal" style="outline:none">${item('A', true)}${item('B', false)}${item('C', false)}</div><button id="after">After</button></main>`, ['radix/roving']);
+	await page.evaluate(async () => {
+		const { roving } = await import('/parts/radix/roving.ts' as string);
+		document.querySelector('[role="tablist"]')!.addEventListener('keydown', (e) => roving(e as KeyboardEvent));
+	});
+	const stops = () => page.$$eval('[role="tab"]', (tabs) => tabs.map((t) => `${t.textContent}:${t.getAttribute('tabindex')}`).join(' '));
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button[tab]:A');
+	assert.equal(await stops(), 'A:0 B:-1 C:-1', 'Tab into the group moves on to the selected item, which becomes the tab stop');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'button[tab]:B');
+	assert.equal(await stops(), 'A:-1 B:0 C:-1');
+	await page.locator('[role="tab"]', { hasText: 'C' }).click();
+	assert.equal(await stops(), 'A:-1 B:-1 C:0', 'a press makes the pressed item the tab stop');
+	await page.close();
+});
+
 test('React Aria tabs keep React Aria\'s keys: Left/Right also step a vertical list, Up/Down only a vertical one, disabled tabs are skipped', async () => {
 	const tabs = (orientation: string, p: string) => `<div role="tablist" aria-orientation="${orientation}" data-rac="" data-slot="tabs-list"><div role="tab" data-rac="" tabindex="0" id="${p}a">${p}A</div><div role="tab" data-rac="" tabindex="-1">${p}B</div><div role="tab" data-rac="" tabindex="-1" aria-disabled="true" data-disabled="true">${p}C</div></div>`;
 	const page = await open(`${tabs('vertical', 'V')}${tabs('horizontal', 'H')}`, ['radix/roving']);
