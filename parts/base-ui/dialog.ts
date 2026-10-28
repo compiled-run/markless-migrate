@@ -1,5 +1,5 @@
 import { hideOthers } from '../aria-hidden.ts';
-import { acquireScrollLock, closePopup, openPopup, popupOf, type Popup } from './popup.ts';
+import { acquireScrollLock, closePopup, openPopup, popupOf, top, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
 import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
 
@@ -83,7 +83,8 @@ function open(trigger: HTMLElement, shown?: HTMLElement): boolean {
 	// A press on the backdrop, or anywhere outside a non-modal one, closes it.
 	const onPress = (event: PointerEvent) => {
 		const target = event.target as Node | null;
-		if (!dismissible || !target || p.popup.contains(target) || trigger.contains(target)) return;
+		// A popup opened on top of it (a select inside a drawer) is part of its floating tree: its own press handling answers.
+		if (!dismissible || !target || p.popup.contains(target) || trigger.contains(target) || top() !== p) return;
 		close(p);
 	};
 	document.addEventListener('keydown', onKey, true);
@@ -108,7 +109,8 @@ export function click(target: Element): boolean {
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 		// useClick toggles: a press on the trigger of an open dialog (only reachable when it is not modal) closes it.
 		if (p) close(p);
-		else open(trigger);
+		// A plain button whose layer is no Base UI portal (a Radix dialog's) is another port's.
+		else if (!open(trigger) && !trigger.matches(TRIGGER)) return false;
 		return true;
 	}
 	const closer = target.closest(CLOSE);

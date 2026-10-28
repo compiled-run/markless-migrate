@@ -16,6 +16,8 @@ export interface FumadocsCollection {
 	readonly source: string;
 	readonly data: string;
 	readonly entries: number;
+	/** How many pages took another place than the old app's file listing gave them (sorted, or the reference's order). */
+	readonly moved: number;
 	/** Copies fumadocs-mdx's runtime (plain Node code) next to the replacement. */
 	copyRuntime(dir: string): Promise<void>;
 }
@@ -26,11 +28,12 @@ export interface FumadocsCollection {
  * structuredData, extracted references; a toc of JSX is left out), so the handlers' own code reads the same collection
  * without the content's React components.
  */
-export async function fumadocsCollection(oldApp: string): Promise<FumadocsCollection | undefined> {
+export async function fumadocsCollection(oldApp: string, order?: readonly string[]): Promise<FumadocsCollection | undefined> {
 	const source = resolve(oldApp);
 	const file = '.source/server.ts';
-	const text = await readFile(join(source, file), 'utf8').catch(() => undefined);
-	if (!text || !/from ['"]fumadocs-mdx\/runtime\/server['"]/.test(text)) return undefined;
+	const read = await readFile(join(source, file), 'utf8').catch(() => undefined);
+	if (!read || !/from ['"]fumadocs-mdx\/runtime\/server['"]/.test(read)) return undefined;
+	const { text, moved } = orderCollection(read, order);
 	const { stdout } = await run(process.execPath, [DUMP, file], { cwd: source, maxBuffer: 256 * 1024 * 1024 });
 	const data = JSON.parse(stdout) as Record<string, Record<string, unknown>>;
 	const rewritten = text
@@ -48,10 +51,47 @@ export async function fumadocsCollection(oldApp: string): Promise<FumadocsCollec
 		source: header + rewritten,
 		data: JSON.stringify(data),
 		entries: Object.keys(data).length,
+		moved,
 		async copyRuntime(dir) {
 			await copyFile(runtime, join(dir, 'fumadocs-runtime.mjs'));
 			if (!(await stat(join(dirname(runtime), '..', '..', 'LICENSE')).catch(() => undefined))) return;
 			await copyFile(join(dirname(runtime), '..', '..', 'LICENSE'), join(dir, 'fumadocs-mdx.LICENSE'));
 		},
 	};
+}
+
+/**
+ * The collection file with each collection's pages in a fixed order. fumadocs-mdx lists them as the build machine's
+ * directory listing returns them, so two builds of one source can order pages, and so tied search results, differently:
+ * by path, then, given `order` (page paths as a reference deployment lists them, its sitemap of getPages()), as it does.
+ */
+export function orderCollection(text: string, order?: readonly string[]): { readonly text: string; readonly moved: number } {
+	let moved = 0;
+	const out = text.replace(/\{((?:"[^"]+\.mdx?": __fd_glob_\d+, )+)\}/g, (_, body: string) => {
+		const pairs = [...body.matchAll(/"([^"]+\.mdx?)": (__fd_glob_\d+), /g)].map((m) => [m[1]!, m[2]!] as const);
+		const slug = (path: string) => path.replace(/\.mdx?$/, '').split('/').filter((seg) => !/^\(.*\)$/.test(seg)).join('/').replace(/(^|\/)index$/, '');
+		const at = order ? positions(pairs.map(([path]) => slug(path)), order) : new Map<string, number>();
+		const sorted = [...pairs].sort(([a], [b]) => (at.get(slug(a)) ?? Infinity) - (at.get(slug(b)) ?? Infinity) || (a < b ? -1 : a > b ? 1 : 0));
+		moved += sorted.filter((p, i) => p !== pairs[i]).length;
+		return `{${sorted.map(([path, glob]) => `"${path}": ${glob}, `).join('')}}`;
+	});
+	return { text: out, moved };
+}
+
+/** Each slug's place in `order`, under the base path most slugs share there (/docs for /docs/components/x). */
+function positions(slugs: readonly string[], order: readonly string[]): Map<string, number> {
+	const bases = new Map<string, number>();
+	for (const slug of slugs) {
+		if (!slug) continue;
+		for (const path of order) if (path.endsWith(`/${slug}`)) bases.set(path.slice(0, -slug.length - 1), (bases.get(path.slice(0, -slug.length - 1)) ?? 0) + 1);
+	}
+	const base = [...bases].sort((a, b) => b[1] - a[1])[0]?.[0];
+	if (base === undefined) return new Map();
+	const index = new Map(order.map((path, i) => [path.replace(/\/$/, '') || '/', i]));
+	const at = new Map<string, number>();
+	for (const slug of slugs) {
+		const i = index.get(slug ? `${base}/${slug}` : base || '/');
+		if (i !== undefined) at.set(slug, i);
+	}
+	return at;
 }
