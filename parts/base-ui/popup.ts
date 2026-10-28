@@ -217,11 +217,14 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
 		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
-		p.stop = place(options.anchor ?? trigger, positioner, popup, opts);
+		// A Positioner given another anchor than its trigger (an element ref): the portal names that element.
+		const named = portal.dataset.mmAnchor ? document.getElementById(portal.dataset.mmAnchor) : null;
+		p.stop = place(options.anchor ?? named ?? trigger, positioner, popup, opts);
 	}
 	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
 	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
-	if (!options.shown) enter(popup, around);
+	// Menu, Select, Popover, Tooltip and Combobox popups start with transitions off; a Dialog's (not anchored) does not.
+	if (!options.shown) enter(popup, around, options.anchored !== false);
 	setTrigger(trigger, true, pressable);
 	showCompanions(key, true);
 	open.push(p);
@@ -271,7 +274,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	return p;
 }
 
-export function closePopup(p: Popup, returnFocus = true, keep = false): void {
+export function closePopup(p: Popup, returnFocus = true, keep = false, focus: FocusOptions = {}): void {
 	const at = open.indexOf(p);
 	if (at < 0) return;
 	open.splice(at, 1);
@@ -288,7 +291,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (!at || at === document.body || p.portal.contains(at)) p.trigger.focus({ preventScroll: true });
 	};
 	if (returnFocus && keep) {
-		p.trigger.focus({ preventScroll: true });
+		p.trigger.focus({ preventScroll: true, ...focus });
 		// The outside press's own mousedown then blurs to the body: focus comes back after it.
 		if (pressedOutside === p) setTimeout(refocus);
 	}

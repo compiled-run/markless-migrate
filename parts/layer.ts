@@ -68,6 +68,19 @@ export function focusFirst(container: HTMLElement): void {
 	container.focus({ preventScroll: true });
 }
 
+// Radix's Portal mounts an opening layer last, over every open one; Markless owns node order, so z-index does it here.
+const raised = new WeakMap<Layer, () => void>();
+function raise(layer: Layer): void {
+	const z = (n: Element) => Number.parseInt(getComputedStyle(n).zIndex, 10) || 0;
+	let over = -Infinity;
+	for (const other of open) for (const n of other.nodes) if (layer.nodes[0]!.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING) over = Math.max(over, z(n));
+	const low = layer.nodes.filter((n) => getComputedStyle(n).position !== 'static' && z(n) <= over);
+	if (!low.length) return;
+	const was = low.map((n) => n.style.zIndex);
+	for (const n of low) n.style.zIndex = String(over + 1);
+	raised.set(layer, () => low.forEach((n, i) => (n.style.zIndex = was[i]!)));
+}
+
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
 export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly loop?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus', event?: Event) => void }): Layer | undefined {
 	if (isOpen(key)) return open.find((l) => l.key === key);
@@ -87,6 +100,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		layer.stop = place(options.anchor ?? trigger, wrapper, optionsOf(wrapper, content));
 	}
 	content.setAttribute('data-state', 'open');
+	raise(layer);
 	if (layer.modal) {
 		if (!open.some((l) => l.modal)) {
 			bodyPointerEvents = document.body.style.pointerEvents;
@@ -179,6 +193,8 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 		() => layer.content.setAttribute('data-state', 'closed'),
 		() => {
 			layer.stop?.();
+			raised.get(layer)?.();
+			raised.delete(layer);
 			for (const n of layer.nodes) n.hidden = true;
 		},
 	);

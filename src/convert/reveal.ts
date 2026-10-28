@@ -79,7 +79,8 @@ const SCROLL_HOVER: readonly (readonly [selector: string, action: RevealAction])
 /** A wide screen, for controls a page shows only from about 1440 px. */
 export const WIDE: Viewport = { name: 'wide', width: 1920, height: 1080, isMobile: false };
 
-const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:2:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
+// reveal:3: older captures could hold another page's content for a control several pages share.
+const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:3:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
 	/** Listed by the site: only a control that takes itself away is recorded. */
@@ -349,7 +350,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) {
-		// A capture under the reveal:2 key had its text values marked.
+		// A capture under the reveal:2 key and later had its text values marked.
 		const marked = markedOf(cached, { [textValuesMark.id]: 1 });
 		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
 		if (!stale.length) return cached;
@@ -856,4 +857,73 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ route, reveals: [...marked, ...out] }));
 	return [...marked, ...out];
+}
+
+/** How deep controls inside revealed content are followed (a file tree's folder in a folder in a folder). */
+const NESTED_DEPTH = 3;
+/** At most this many nested controls are used on one route. */
+const NESTED_MAX = 60;
+
+/**
+ * Controls that hold content back inside what another one revealed in place (a file tree's nested folders): each is used on
+ * a fresh load with the controls it sits under opened first, to NESTED_DEPTH levels, and recorded like a page's own. The
+ * reveals come in the order they can be placed: a control's after the one whose content holds it. Cached by route.
+ */
+export async function captureNestedReveals(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
+	const [selector] = CONTROLS[0]!;
+	const inPlace = (r: Reveal) => r.action === 'click' && r.viewport === VIEWPORTS[0]!.name && r.added.some((a) => Array.isArray(a.into) && /aria-expanded="false"/.test(a.html));
+	const roots = reveals.filter(inPlace);
+	if (!roots.length) return [];
+	const file = join(dir, `${createHash('sha256').update(`nested:1:${route}|${JSON.stringify(roots.map((r) => [r.key, r.path]))}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const viewport = VIEWPORTS[0]!;
+	const seen = new Set(reveals.map((r) => r.key));
+	const out: Reveal[] = [];
+	const within = (path: readonly number[], prefix: readonly number[]) => path.length > prefix.length && prefix.every((v, i) => path[i] === v);
+	const queue: Reveal[][] = roots.map((r) => [r]);
+	while (queue.length && out.length < NESTED_MAX) {
+		const chain = queue.shift()!;
+		const last = chain[chain.length - 1]!;
+		const containers = last.added.flatMap((a) => (Array.isArray(a.into) ? [a.into as readonly number[]] : []));
+		// The controls inside the last one's content, found with the chain open.
+		const open = async () => {
+			const opened = await fresh(browser, origin, route, viewport);
+			for (const r of chain) {
+				const shown = await reveal(opened.page, { path: [...r.path], key: r.key, sig: r.sig ?? '', nth: r.nth ?? 0, action: 'click', visible: true });
+				if (typeof shown === 'string' || !shown.length) {
+					await opened.context.close().catch(() => {});
+					return undefined;
+				}
+			}
+			return opened;
+		};
+		let opened = await open();
+		if (!opened) continue;
+		try {
+			const inside = (await candidates(opened.page, [], [[selector, 'click']])).filter((c) => c.visible && !seen.has(c.key) && containers.some((p) => within(c.path, p)));
+			for (const [i, c] of inside.entries()) {
+				if (out.length >= NESTED_MAX) break;
+				// Each from the chain alone: one already opened would move what follows it.
+				if (i > 0) {
+					await opened.context.close().catch(() => {});
+					opened = await open();
+					if (!opened) break;
+				}
+				const added = await reveal(opened.page, c);
+				seen.add(c.key);
+				if (typeof added === 'string' || !added.length) continue;
+				const found: Reveal = { key: c.key, path: c.path, sig: c.sig, nth: c.nth, action: 'click', viewport: viewport.name, added };
+				out.push(found);
+				if (chain.length < NESTED_DEPTH) queue.push([...chain, found]);
+			}
+		} catch {
+			// a chain that cannot be opened again keeps what it held so far
+		} finally {
+			await opened?.context.close().catch(() => {});
+		}
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	return out;
 }

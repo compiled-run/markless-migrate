@@ -89,6 +89,8 @@ export interface Reaction {
 	readonly regions: readonly Box[];
 	/** `slider "Volume" aria-valuenow: 50 → 51`, `region (carousel) moved`, `list "Results" scrolled`. */
 	readonly changes: readonly string[];
+	/** The regions of the page outside the used control whose content or state the step changed, as a visitor names them: `list in main`, `dialog "Get started"`. */
+	readonly affected?: readonly string[];
 	/** The window scrolled during the step, so every pixel moved and regions say nothing about what answered. */
 	readonly scrolled?: boolean;
 	/** Milliseconds from the step to the page's first change. */
@@ -735,13 +737,14 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
 	g.__markless_migrate_reaction__?.stop();
 	const changed = new Map<Element, Map<string, string | null>>();
 	const inserted = new Set<Node>();
+	const touched = new Set<Node>();
 	const timing = { started: performance.now(), first: undefined as number | undefined, input: undefined as number | undefined };
 	// Timed from the input the page received, not from when the checker asked for it: how fast the checker's own clicks land is no page's.
 	const input = (event: Event) => {
@@ -775,6 +778,8 @@ function watchReaction(): void {
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
 			if (r.type === 'childList') for (const n of r.addedNodes) inserted.add(n);
+			if (r.type !== 'attributes') touched.add(r.target);
+			if (r.type === 'childList') for (const n of r.addedNodes) touched.add(n);
 			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
 			let attrs = changed.get(r.target);
 			if (!attrs) changed.set(r.target, (attrs = new Map()));
@@ -806,15 +811,15 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, inserted, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, inserted, touched, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[] } } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
+function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[] } } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
-	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [] };
+	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [] };
 	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
 		watch.shift.score += entry.value;
 		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
@@ -890,6 +895,28 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 		const at = anchorOf(r.el);
 		return `${at === r.el || !at ? (at ? describe(at) : r.el.localName) : `${r.el.localName} in ${describe(at)}`} ${r.what}`;
 	}))].sort();
+	// Where the page changed outside the control used, by the region a visitor would name; a hidden subtree (a layer shipped for later) is no change they see.
+	const REGION = /^(dialog|alertdialog|menu|listbox|list|table|grid|tree|tablist|tabpanel|region|form|figure|group|status|log|tooltip|main|navigation|complementary|banner|contentinfo|search)$/;
+	const LANDMARK = /^(main|navigation|complementary|banner|contentinfo|search|dialog|alertdialog)$/;
+	const regionOf = (el: Element) => {
+		let region: Element | undefined;
+		for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) {
+			const role = roleOf(at) ?? '';
+			if (!region && REGION.test(role) && (role !== 'group' || label(at))) region = at;
+			if (LANDMARK.test(role)) return region && region !== at ? `${describe(region)} in ${describe(at)}` : describe(at);
+		}
+		return region ? describe(region) : 'the page';
+	};
+	const used = document.querySelector('[data-markless-migrate-used]');
+	const affected = new Set<string>();
+	// An attribute counts only when it ends the step with another value: a framework setting it again (or a screenshot's empty style) is no change.
+	const retouched = [...watch.changed].filter(([el, attrs]) => [...attrs].some(([name, was]) => (name === 'style' ? (el.getAttribute(name) ?? '') !== (was ?? '') : el.getAttribute(name) !== was)));
+	for (const node of [...watch.touched, ...retouched.map(([el]) => el)]) {
+		const el = node instanceof Element ? node : node.parentElement;
+		if (!el?.isConnected || used?.contains(el)) continue;
+		if (!el.checkVisibility() && !el.parentElement?.checkVisibility()) continue;
+		affected.add(regionOf(el));
+	}
 	const views = watch.views;
 	const result = (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim();
 	if (views.length && result !== views[views.length - 1]!.text) views.push({ at: performance.now(), text: result });
@@ -902,7 +929,7 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 		const line = own.length ? own.slice(0, 8).join(' ') + (own.length > 8 ? ' …' : '') : '(part of the page gone)';
 		if (interim.length < 5 && !interim.includes(line)) interim.push(line);
 	}
-	return { transitions, changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) }, ...(views.length ? { views: { swaps: views.length - 1, interimMs: Math.round(interimMs), interim } } : {}) };
+	return { transitions, changes: [...out].sort(), affected: [...affected].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) }, ...(views.length ? { views: { swaps: views.length - 1, interimMs: Math.round(interimMs), interim } } : {}) };
 }
 
 type TimerWindow = { __markless_migrate_timer_mark__?: () => number; __markless_migrate_timers_after__?: (mark: number) => number; __markless_migrate_hold_timers__?: (on: boolean) => void };
@@ -922,10 +949,10 @@ async function timersOut(page: Page, mark: number, cap = 3_500): Promise<void> {
 
 // Long enough to see a page's own 3 s cycle once (htmx's class-tools demo toggling a class every 3 s).
 const AMBIENT_MS = 3_500;
-const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[]; lines: readonly string[]; unsettled?: boolean }>>();
+const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; affected: readonly string[]; regions: readonly Box[]; lines: readonly string[]; unsettled?: boolean }>>();
 
 // Measured on a route's first session on each side and reused by its later sessions, so a journey does not wait a second for it.
-function ambientOnce(origin: string, route: string, page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; regions: readonly Box[]; lines: readonly string[] }> {
+function ambientOnce(origin: string, route: string, page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; affected: readonly string[]; regions: readonly Box[]; lines: readonly string[] }> {
 	const key = `${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
 	let found = ambientSeen.get(key);
 	if (!found) {
@@ -939,9 +966,9 @@ function ambientOnce(origin: string, route: string, page: Page, hosts: readonly 
 }
 
 /** What the settled page changes on its own while nothing is used: the widgets and regions of the view that move without a step. */
-async function ambientMotion(page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; regions: readonly Box[]; lines: readonly string[]; unsettled?: boolean }> {
+async function ambientMotion(page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; affected: readonly string[]; regions: readonly Box[]; lines: readonly string[]; unsettled?: boolean }> {
 	const before = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
-	if (!before) return { changes: [], regions: [], lines: [] };
+	if (!before) return { changes: [], affected: [], regions: [], lines: [] };
 	const treeBefore = await snapshot(page, hosts);
 	await page.evaluate(watchReaction).catch(() => {});
 	// The tree is read again part way through and at the end, so a cycle back to where it started is still seen.
@@ -961,7 +988,7 @@ async function ambientMotion(page: Page, hosts: readonly string[]): Promise<{ ch
 	const both = first.filter((box) => second.some((other) => near(box, other)));
 	const viewport = page.viewportSize();
 	const huge = viewport ? both.some((box) => box.width * box.height > viewport.width * viewport.height * 0.4) : false;
-	return { changes: read?.changes ?? [], regions: [...moving, ...(huge ? [] : both)], lines, ...(huge ? { unsettled: true } : {}) };
+	return { changes: read?.changes ?? [], affected: read?.affected ?? [], regions: [...moving, ...(huge ? [] : both)], lines, ...(huge ? { unsettled: true } : {}) };
 }
 
 // Runs in the page: starts recording when a node was last added, removed or retexted; returns how long ago that was, in ms.
@@ -1481,7 +1508,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
 			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
 			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}) };
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), affected: read.affected.filter((a) => !ambient.affected.includes(a)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}) };
 		}
 		const done: StepResult = {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
@@ -2254,6 +2281,15 @@ export function missingReaction(olds: readonly StepResult[], next: StepResult): 
 	return { changes, regions };
 }
 
+/** The regions every old run changed outside the used control, when the new page changed none: a control whose effect never reaches the page. */
+export function deadControl(olds: readonly StepResult[], next: StepResult): string[] | undefined {
+	const mine = next.reaction?.affected;
+	if (!mine || mine.length || !olds.length || olds.some((o) => !o.reaction?.affected?.length)) return undefined;
+	const [first, ...rest] = olds.map((o) => o.reaction!.affected!);
+	const common = first!.filter((r) => rest.every((o) => o.includes(r)));
+	return common.length ? common : [...first!];
+}
+
 /** Failures that are a slower answer alone, or a view in between alone, with the journey and step to time again one side at a time before they stand. */
 export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number; readonly views?: true }>();
 
@@ -2512,7 +2548,9 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
 			if (n.stale?.length && !n.door && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
 			if (parts.length) {
-				const failure: Failure = { route, dimension, check, expected: where('old', format(shown(a!), parts, missing, true)), actual: where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
+				const dead = act || navigated || reloaded ? undefined : deadControl(oldSteps as StepResult[], n);
+				const lead = (side: 'old' | 'new') => (!dead ? '' : side === 'old' ? `${describeTarget(step.target)} changes ${dead.join(', ')} on the original; ` : 'nothing changed on the port; ');
+				const failure: Failure = { route, dimension, check, expected: lead('old') + where('old', format(shown(a!), parts, missing, true)), actual: lead('new') + where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
 				// A placeholder shown only while an answer is late follows the server's speed that time, as an answer time does.
 				if (parts.length === 1 && parts[0] === 'in between') timedOnly.set(failure, { journey: j, step: k, views: true });

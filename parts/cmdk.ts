@@ -204,7 +204,10 @@ function select(root: HTMLElement, item: HTMLElement | undefined, by: 'key' | 'p
 	item.setAttribute('aria-selected', 'true');
 	item.setAttribute('data-selected', 'true');
 	// scrollSelectedIntoView, which a pointer's selection skips.
-	if (by === 'pointer') return;
+	if (by !== 'pointer') scrollSelectedIntoView(root, item);
+}
+
+function scrollSelectedIntoView(root: HTMLElement, item: HTMLElement): void {
 	if (commandOf(root).order.get(containerOf(item))?.find((k) => !k.hidden) === item) item.closest(GROUP)?.querySelector('[cmdk-group-heading]')?.scrollIntoView({ block: 'nearest' });
 	item.scrollIntoView({ block: 'nearest' });
 }
@@ -295,6 +298,15 @@ function choose(item: HTMLElement): void {
 	const href = choice?.href ?? item.dataset.mmHref;
 	if (choice?.copied !== undefined) void navigator.clipboard?.writeText(choice.copied).catch(() => {});
 	else if (href) void navigate(href);
+}
+
+// Command's mount layout effect (scrollSelectedIntoView), for each command the page shows, in document order.
+export function idle(): void {
+	for (const root of document.querySelectorAll<HTMLElement>('[cmdk-root]')) {
+		if (!root.checkVisibility()) continue;
+		const item = selected(root) ?? items(root)[0];
+		if (item) scrollSelectedIntoView(root, item);
+	}
 }
 
 export function input(target: Element): boolean {

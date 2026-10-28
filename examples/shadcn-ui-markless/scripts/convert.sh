@@ -15,4 +15,5 @@ cd "$APP"
 node "$ROOT/src/cli.ts" convert --old "$OLD" --source "$SOURCE" ${ONLY:+--only "$ONLY"} ${FALLTHROUGH:+--fallthrough "$FALLTHROUGH"} ${CAPTURE_ONLY:+--capture-only} ${CONCURRENCY:+--concurrency "$CONCURRENCY"}
 [ -z "${CAPTURE_ONLY:-}" ] || exit 0
 [ -f .migrate/caching.json ] || node "$ROOT/src/cli.ts" cache plan --old "$OLD"
-node "$ROOT/src/cli.ts" cache apply --prerender
+# cache apply reads the installed @markless/router; before the install (the convert workflow's emit) it is left to the build.
+if [ -d node_modules/@markless/router ]; then node "$ROOT/src/cli.ts" cache apply --prerender; else echo 'cache apply: skipped until the dependencies are installed (the deploy script and the workflow build run it)' >&2; fi
