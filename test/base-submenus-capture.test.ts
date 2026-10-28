@@ -20,9 +20,12 @@ t.addEventListener('click', () => {
 		+ '<div role="menuitem" id="base-ui-_r_' + m + 'a_" aria-haspopup="menu" aria-expanded="false">Invite users</div>'
 		+ '<div role="menuitem" id="base-ui-_r_' + m + 'b_" aria-haspopup="menu" aria-expanded="false" aria-disabled="true" data-disabled="">Disabled</div>'
 		+ '<div role="menuitem" id="base-ui-_r_' + m + 'c_" aria-haspopup="menu" aria-expanded="false">Share</div></div>');
+	// Base UI's MenuRoot: a submenu opens on hover only once the pointer has moved on the menu (allowMouseEnter).
+	let allow = false;
+	root.querySelector('[role="menu"]').addEventListener('pointermove', () => (allow = true));
 	for (const [k, text] of [['a', 'Email'], ['c', 'Link']]) {
 		const item = root.querySelector('#base-ui-_r_' + m + k + '_');
-		item.addEventListener('pointermove', () => setTimeout(() => {
+		item.addEventListener('pointermove', () => allow && setTimeout(() => {
 			if (item.getAttribute('aria-expanded') === 'true') return;
 			item.setAttribute('aria-expanded', 'true');
 			const sub = portal('<div role="menu" data-nested="" id="_r_' + m + k + 'p_" aria-labelledby="' + item.id + '"><div role="menuitem">' + text + '</div></div>');

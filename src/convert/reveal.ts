@@ -745,7 +745,7 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 	const SUB_TRIGGER = '[data-base-ui-portal] [role="menu"]:not([data-nested]) [role^="menuitem"][aria-haspopup="menu"]';
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-base-ui-portal') && /role="menu"/.test(a.html) && /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html)));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`base-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`base-submenus:2:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -785,9 +785,14 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 				if (!(await opened()) && !(await open())) break;
 				const mine = (await triggersIn(page))[k];
 				if (!mine?.id) break;
-				const hovered = await page.locator(`[id="${mine.id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
-				// Base UI opens a submenu once the pointer has rested 100 ms on its trigger.
-				if (hovered) await quiet(page, 500);
+				const trigger = page.locator(`[id="${mine.id}"]`);
+				const hovered = await trigger.hover({ timeout: 2000 }).then(() => true, () => false);
+				// Base UI opens a submenu only on a move once the pointer has moved on the menu (MenuRoot's allowMouseEnter),
+				// then once it has rested 100 ms on its trigger.
+				if (hovered) {
+					await trigger.hover({ timeout: 2000, position: { x: 3, y: 3 } }).catch(() => {});
+					await quiet(page, 500);
+				}
 				const added = await page.evaluate((id) => document.querySelector(`[role="menu"][aria-labelledby="${CSS.escape(id)}"]`)?.closest('[data-base-ui-portal]')?.outerHTML, mine.id);
 				const named = (html: string) => [[mine.id, want.id], [mine.controls, want.controls]].reduce((h, [from, to]) => (from && to ? h.split(from).join(to) : h), html);
 				const key = `${menu.key}-sub-${k}`;
