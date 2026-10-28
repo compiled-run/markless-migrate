@@ -40,6 +40,8 @@ export interface Reveal {
 	readonly action: RevealAction;
 	readonly viewport: string;
 	readonly added: readonly Revealed[];
+	/** The reveal whose content holds this one's trigger (a submenu captured from its menu). */
+	readonly from?: string;
 }
 
 export interface RevealCapture {
@@ -517,7 +519,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 export async function captureRacSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`rac-submenus:3:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-submenus:4:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const SUB_ITEM = '[role^="menuitem"][aria-haspopup="menu"]';
 	// The submenu items of the open menus, or of the reveal's markup when given.
 	const itemsIn = (page: Page, html?: string): Promise<string[]> =>
@@ -571,7 +573,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 					// The submenu's popover, outermost first, without what is inside another added node.
 					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
 				});
-				if (added.length) out.push({ key: want, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: html.split(id).join(want) })) });
+				if (added.length) out.push({ key: want, from: menu.key, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: html.split(id).join(want) })) });
 				// Back to the menu alone: away from the item, so the submenu closes, then the menu is the only layer.
 				await page.keyboard.press('Escape').catch(() => {});
 				await quiet(page, 300);
@@ -768,7 +770,7 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 	const SUB_TRIGGER = '[data-base-ui-portal] [role="menu"]:not([data-nested]) [role^="menuitem"][aria-haspopup="menu"]';
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-base-ui-portal') && /role="menu"/.test(a.html) && /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html)));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`base-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`base-submenus:2:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -808,9 +810,14 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 				if (!(await opened()) && !(await open())) break;
 				const mine = (await triggersIn(page))[k];
 				if (!mine?.id) break;
-				const hovered = await page.locator(`[id="${mine.id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
-				// Base UI opens a submenu once the pointer has rested 100 ms on its trigger.
-				if (hovered) await quiet(page, 500);
+				const trigger = page.locator(`[id="${mine.id}"]`);
+				const hovered = await trigger.hover({ timeout: 2000 }).then(() => true, () => false);
+				// The first item hovered takes focus, which scrolls a menu at the viewport's edge away from the pointer: a
+				// second move finds the trigger again, then Base UI opens the submenu once the pointer has rested 100 ms on it.
+				if (hovered) {
+					await trigger.hover({ timeout: 2000, position: { x: 3, y: 3 } }).catch(() => {});
+					await quiet(page, 500);
+				}
 				const added = await page.evaluate((id) => document.querySelector(`[role="menu"][aria-labelledby="${CSS.escape(id)}"]`)?.closest('[data-base-ui-portal]')?.outerHTML, mine.id);
 				const named = (html: string) => [[mine.id, want.id], [mine.controls, want.controls]].reduce((h, [from, to]) => (from && to ? h.split(from).join(to) : h), html);
 				const key = `${menu.key}-sub-${k}`;

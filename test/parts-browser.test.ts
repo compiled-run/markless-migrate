@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -16,6 +17,10 @@ const SITE = join(import.meta.dirname, '..', 'examples', 'shadcn-ui-markless', '
 const FLOATING_STUB = `export const computePosition = async (reference) => ((globalThis.placedAgainst ??= []).push(reference?.id ?? ''), { x: 0, y: 0, placement: 'bottom', middlewareData: {} });
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
+
+// The recharts update animation draws with d3-shape, which the app installs; here, the repo's own copy.
+const D3_SHAPE = realpathSync(join(import.meta.dirname, '..', 'node_modules', 'd3-shape'));
+const D3 = { 'd3-shape': D3_SHAPE, 'd3-path': join(dirname(D3_SHAPE), 'd3-path') };
 
 let browser: Browser;
 before(async () => {
@@ -34,8 +39,10 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 	const registry = registryModule(ports.filter((p) => p !== 'site'), '.', ports.includes('site') ? './site.ts' : undefined);
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/registry.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js","d3-shape":"/d3-shape/src/index.js","d3-path":"/d3-path/src/index.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/registry.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
+		const d3 = /^\/(d3-shape|d3-path)\/(.*)$/.exec(path);
+		if (d3) return route.fulfill({ contentType: 'text/javascript', body: await readFile(join(D3[d3[1] as 'd3-shape' | 'd3-path'], d3[2]!), 'utf8') });
 		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
 		// What choosing each option did on the old page, which convert writes beside the ports.
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
@@ -457,8 +464,13 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('bil');
 	await page.keyboard.press('ArrowDown');
+	// Focus leaves as an outside press starts closing the layer: what it shows stays while it animates out, as React's does.
 	await page.locator('#trigger').focus();
-	assert.equal(await page.locator('[cmdk-input]').inputValue(), '');
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), 'bil');
+	assert.equal((await commandState(page)).selected, 'bil');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => (document.querySelector('[cmdk-input]') as HTMLInputElement).value === '');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
 	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
 	await page.close();
 });
@@ -1714,5 +1726,100 @@ test("day picker: a key DayPicker handles on a day does not scroll the page, eve
 		return result;
 	});
 	assert.equal(prevented, true);
+	await page.close();
+});
+
+// recharts 3.8's easing.js, as an oracle for the frames the part draws: Newton's method with its own stopping rule.
+function rechartsEase(t0: number): number {
+	const poly = (p: number[], t: number) => p.map((q, i) => q * t ** i).reduce((a, b) => a + b);
+	const fx = [0, 0.75, -0.75, 1];
+	const fy = [0, 0.3, 2.4, -1.7];
+	const t = t0 > 1 ? 1 : t0;
+	let x = t;
+	for (let i = 0; i < 8; ++i) {
+		const e = poly(fx, x) - t;
+		const der = poly([0.75, -1.5, 3, 0], x);
+		if (Math.abs(e - t) < 1e-4 || der < 1e-4) return poly(fy, x);
+		x = Math.min(1, Math.max(0, x - e / der));
+	}
+	return poly(fy, x);
+}
+
+test('recharts: a control switching the chart moves each mark from its old shape to the new one, timed, eased and drawn as recharts animates an update', async () => {
+	const { area, line, curveMonotoneX } = await import('d3-shape');
+	type P = [number, number];
+	const lineA: P[] = [[10, 80], [60, 20], [110, 60], [160, 30]];
+	const lineB: P[] = [[10, 30], [60, 70], [110, 20], [160, 60]];
+	const areaA: P[] = [[10, 50], [40, 60], [70, 40], [100, 70], [130, 45], [160, 55]];
+	const areaB: P[] = [[10, 20], [85, 75], [160, 30]];
+	const drawLine = (ps: readonly P[]) => line().curve(curveMonotoneX)(ps as P[])!;
+	const drawArea = (ps: readonly P[]) => area().curve(curveMonotoneX).y0(95)(ps as P[])!;
+	const geo = (k: string) => JSON.stringify({ k, t: 'monotone', l: 'horizontal', a: [0, 1500, 'ease'] });
+	const bar = ([x, y, w, h]: readonly number[]) => `x="${x}" y="${y}" width="${w}" height="${h}" radius="0" data-mm-geo='${JSON.stringify({ k: 'bar', a: [0, 1500, 'ease'] })}'`;
+	const rect = ([x, y, w, h]: readonly number[]) => `M ${x},${y} h ${w} v ${h} h ${-w!} Z`;
+	const barA = [170, 40, 20, 55];
+	const barB = [170, 10, 20, 85];
+	const facts = JSON.stringify({ w: 200, h: 100, v: [5, 5, 190, 90], m: 'x', g: [], p: [], z: 5 });
+	// Each drawing covers the widths it is nearest to; a control's drawings may split the widths differently.
+	const svg = (ln: readonly P[], ar: readonly P[], br: readonly number[], style: string, widths: string) =>
+		`<svg class="recharts-surface" width="200" height="100" style="${style}" data-mm-b="${widths}" data-mm-facts='${facts}'><path class="recharts-curve recharts-area-area" d="${drawArea(ar)}" data-mm-geo='${geo('area')}'></path><path class="recharts-curve recharts-line-curve" d="${drawLine(ln)}" data-mm-geo='${geo('line')}'></path><path class="recharts-rectangle" d="${rect(br)}" ${bar(br)}></path></svg>`;
+	const page = await open(
+		`<div data-mm-morph><button>Mobile</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1">${svg(lineA, areaA, barA, 'display:block', '0 1 2')}${svg(lineB, areaB, barB, 'display: none;', '2 3')}<div class="recharts-tooltip-wrapper" style="visibility: hidden"></div></div></div>`,
+		['recharts'],
+	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	// The pointer over the card fetches the animation before its control is used; the module is in once it and
+	// d3-shape's modules have all loaded (the same module record the part imported).
+	await page.hover('button');
+	await page.evaluate('import("/parts/recharts-motion.ts")');
+	await page.waitForTimeout(50);
+	type Sample = { ts: number; d: string[] };
+	const run = await page.evaluate(
+		() =>
+			new Promise<{ sync: string[]; frames: Sample[]; moved: boolean }>((resolve) => {
+				const [a, b] = [...document.querySelectorAll('svg.recharts-surface')] as SVGSVGElement[];
+				const read = () => [...b!.querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+				const frames: Sample[] = [];
+				let sync: string[] = [];
+				const sample = (ts: number) => {
+					frames.push({ ts, d: read() });
+					if (frames.length < 120) requestAnimationFrame(sample);
+					else resolve({ sync, frames, moved: b!.parentElement!.hasAttribute('data-mm-moved') });
+				};
+				requestAnimationFrame(() => {
+					a!.setAttribute('style', 'display: none;');
+					b!.setAttribute('style', 'display:block');
+					queueMicrotask(() => (sync = read()));
+					requestAnimationFrame(sample);
+				});
+			}),
+	);
+	assert.ok(run.moved, 'the chart is marked as switched, so its entry animation does not play again');
+	// recharts maps each new point to the old one at its index scaled by the old count: 6 points to 3 take 0, 2 and 4.
+	const t0 = [drawArea([areaA[0]!, areaA[2]!, areaA[4]!]), drawLine(lineA), rect(barA)];
+	assert.deepEqual(run.sync, t0, 'before the first paint, the new SVG holds the old shapes');
+	// The sample taken in frame j+1 reads what frame j painted. recharts' clock begins in frame 5 (the facts' lag); React
+	// paints the shape for frame j-1's time in frame j.
+	const painted = run.frames.map((f) => f.d);
+	const time = (j: number) => run.frames[j - 1]!.ts;
+	const begin = time(5);
+	for (let j = 1; j < painted.length; j++) {
+		if (j < 7) {
+			assert.deepEqual(painted[j], t0, `frame ${j}: the old shapes hold until the frame after the clock's first tick`);
+			continue;
+		}
+		const t = (time(j - 1) - begin) / 1500;
+		if (t >= 1) {
+			assert.deepEqual(painted[j], [drawArea(areaB), drawLine(lineB), rect(barB)], `frame ${j}: the new shapes once the animation ends`);
+			continue;
+		}
+		const e = rechartsEase(t);
+		const near = (from: readonly P[], i: number, n: number) => from[Math.floor((i * from.length) / n)]!;
+		const mix = (from: readonly P[], to: readonly P[]) => to.map((p, i) => [near(from, i, to.length)[0] + e * (p[0] - near(from, i, to.length)[0]), near(from, i, to.length)[1] + e * (p[1] - near(from, i, to.length)[1])] as P);
+		const box = barA.map((v, i) => v + e * (barB[i]! - v));
+		const round = (n: number) => Math.round(n * 1e4) / 1e4;
+		assert.deepEqual(painted[j], [drawArea(mix(areaA, areaB)), drawLine(mix(lineA, lineB)), `M ${round(box[0]!)},${round(box[1]!)} h ${round(box[2]!)} v ${round(box[3]!)} h ${round(-box[2]!)} Z`], `frame ${j} at ${Math.round(time(j - 1) - begin)} ms`);
+	}
+	assert.ok(time(painted.length - 1) - begin > 1550, 'the samples reach the end of the animation');
 	await page.close();
 });

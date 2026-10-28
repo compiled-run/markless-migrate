@@ -368,12 +368,30 @@ export function click(target: Element): boolean {
 	return true;
 }
 
-// A Command inside a layer is unmounted when its layer closes (focus leaves it): it opens again with no search, its first
-// item selected and nothing active.
+// A Command inside a layer is unmounted when its layer closes: once focus has left it and the layer is hidden (its exit
+// animation shows it as it was), it opens again with no search, its first item selected and nothing active.
+const awaiting = new WeakSet<Element>();
 export function focusout(target: Element, event: FocusEvent): boolean {
 	const root = rootOf(target);
-	const layer = root?.closest('[data-mm-layer]');
+	const layer = root?.closest<HTMLElement>('[data-mm-layer]');
 	if (!root || !layer || (event.relatedTarget instanceof Node && layer.contains(event.relatedTarget))) return false;
+	if (awaiting.has(root)) return false;
+	if (layer.hidden) {
+		reset(root);
+		return false;
+	}
+	awaiting.add(root);
+	const watch = new MutationObserver(() => {
+		if (!layer.hidden) return;
+		watch.disconnect();
+		awaiting.delete(root);
+		reset(root);
+	});
+	watch.observe(layer, { attributes: true, attributeFilter: ['hidden'] });
+	return false;
+}
+
+function reset(root: HTMLElement): void {
 	const field = root.querySelector<HTMLInputElement>('[cmdk-input]');
 	if (field) field.value = '';
 	const c = commandOf(root);
@@ -389,5 +407,4 @@ export function focusout(target: Element, event: FocusEvent): boolean {
 	setDescendant(root, undefined);
 	const scroller = root.querySelector<HTMLElement>('[cmdk-list]');
 	if (scroller) scroller.scrollTop = 0;
-	return false;
 }

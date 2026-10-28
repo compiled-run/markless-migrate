@@ -23,7 +23,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -71,7 +71,7 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
@@ -148,6 +148,8 @@ export interface ConvertOptions {
 	readonly only?: readonly string[];
 	/** For a preview of some pages: the old deployment that answers every page not converted. */
 	readonly fallthrough?: string;
+	/** A deployment of the old site whose sitemap orders the content collection's pages (search ties), when it lists them. */
+	readonly pageOrderFrom?: string;
 	/** Which library part renders each element, from the old source; by default plan's libraries.json. */
 	readonly resolver?: PartResolver;
 	/** Use every control that holds content back on the old pages, to carry that content (default on). */
@@ -324,8 +326,8 @@ function placement(kept: readonly Element[]): string {
 			const own = candidatesOf(el, placementResolver);
 			for (const c of own.length ? own : placementResolver.candidates(slot)) {
 				// A slot a wrapper renders another wrapper with (a submenu's content) has that site's offsets.
-				const side = placementResolver.forwardedProp?.(slot, 'sideOffset') ?? placementResolver.prop(c.library, c.export, 'sideOffset');
-				const align = placementResolver.forwardedProp?.(slot, 'alignOffset') ?? placementResolver.prop(c.library, c.export, 'alignOffset');
+				const side = placementResolver.forwardedProp?.(slot, 'sideOffset', c.library) ?? placementResolver.prop(c.library, c.export, 'sideOffset');
+				const align = placementResolver.forwardedProp?.(slot, 'alignOffset', c.library) ?? placementResolver.prop(c.library, c.export, 'alignOffset');
 				if (side === undefined && align === undefined) continue;
 				return `${side !== undefined ? ` data-mm-side-offset="${side}"` : ''}${align !== undefined ? ` data-mm-align-offset="${align}"` : ''}`;
 			}
@@ -430,12 +432,21 @@ function selectIndicators(top: Element): void {
  * Base UI Combobox mounts an item's indicator only while it is selected: every other item of a captured list gets a
  * hidden copy of a selected one's, so choosing one only switches `hidden`.
  */
-function comboboxIndicators(top: Element): void {
+const comboboxIndicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
+/** A selected Base UI Combobox item's indicator from any captured list: shadcn's ComboboxItem renders the same one in every list. */
+export function comboboxIndicatorIn(tops: readonly Element[]): Element | undefined {
+	for (const top of tops) for (const list of [top, ...walkAll(top)]) if (attr(list, 'data-slot') === 'combobox-list') for (const o of walkAll(list)) if (attr(o, 'role') === 'option' && comboboxIndicatorOf(o)) return comboboxIndicatorOf(o);
+	return undefined;
+}
+let comboboxIndicatorFallback: Element | undefined;
+
+export function comboboxIndicators(top: Element, fallback: Element | undefined = comboboxIndicatorFallback): void {
 	for (const list of [top, ...walkAll(top)]) {
 		if (attr(list, 'data-slot') !== 'combobox-list') continue;
 		const items = walkAll(list).filter((o) => attr(o, 'role') === 'option');
-		const indicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
-		const template = items.map(indicatorOf).find((i) => i !== undefined);
+		const indicatorOf = comboboxIndicatorOf;
+		// A list no item was selected in when captured takes the indicator another list of the site showed.
+		const template = items.map(indicatorOf).find((i) => i !== undefined) ?? fallback;
 		if (!template) continue;
 		for (const o of items) {
 			const own = indicatorOf(o);
@@ -657,6 +668,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	// A calendar the popover shows is Markless state of the layer's own component, which is then never a served file.
 	const captured = racLayer && reveal.sig ? racLayer.captured.get(racLayer.route) : undefined;
 	if (racLayer && captured && reveal.sig && racLayer.plan.addLayer(racLayer.route, captured, racLayer.messages, { sig: reveal.sig, nth: reveal.nth ?? 0 }, kept)) templatePorts.add('react-aria/calendar');
+	for (const port of triggerPorts(kept)) templatePorts.add(port);
 	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
@@ -714,7 +726,7 @@ function combined(first: PartResolver, then: PartResolver): PartResolver {
 		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
 		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
 		slotProp: (library, exportName, slot, prop) => first.slotProp?.(library, exportName, slot, prop) ?? then.slotProp?.(library, exportName, slot, prop),
-		forwardedProp: (slot, prop) => first.forwardedProp?.(slot, prop) ?? then.forwardedProp?.(slot, prop),
+		forwardedProp: (slot, prop, library) => first.forwardedProp?.(slot, prop, library) ?? then.forwardedProp?.(slot, prop, library),
 	};
 }
 
@@ -856,7 +868,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		l.trigger!.attrs = l.trigger!.attrs.map((a) => (a.name === 'id' ? { ...a, value: l.reveal.key } : a));
 		for (const top of l.kept) for (const el of [top, ...walkAll(top)]) el.attrs = el.attrs.map((a) => (/^aria-(labelledby|describedby)$/.test(a.name) ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t === id ? l.reveal.key : t)).join('') } : a));
 	}
-	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined })));
+	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined, ...(l.reveal.from !== undefined ? { from: l.reveal.from } : {}) })));
 	const placedWith = new Set<string>();
 	for (const c of companions) {
 		const at = `${c.key}|${outer(c.kept[0]!)}`;
@@ -874,6 +886,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	renameIds([...walk(root)], names.page);
+	comboboxIndicatorFallback = comboboxIndicatorIn(pendingLayers.flatMap((l) => l.kept)) ?? comboboxIndicatorFallback;
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
 		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
@@ -1515,6 +1528,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const raw of captured.pickers) if (raw.opener) {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
+			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
+			if (field && trigger) dayPickers.field(route, field, trigger, raw.opener);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
@@ -1954,7 +1969,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (route.status !== 200 || route.route.includes('?') || (route.contentType ?? 'text/html').includes('html')) continue;
 			if (!(await stat(join(publicDir, route.route)).then((x) => x.isFile(), () => false))) builtPaths.add(route.route);
 		}
-		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
+		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), ...(options.pageOrderFrom ? { pageOrderFrom: options.pageOrderFrom } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], observed: planned.allRoutes ?? [], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string>; overrides?: Record<string, unknown> };

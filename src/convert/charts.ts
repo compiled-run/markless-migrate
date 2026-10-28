@@ -83,6 +83,8 @@ export interface ChartFacts {
 	readonly variants: readonly ChartVariant[];
 	readonly drivers: readonly ChartDriver[];
 	readonly widths: readonly ChartWidth[];
+	/** Frames from a control's use to the one the old page's update animation began at (`animationLag`). */
+	readonly lag?: number;
 }
 
 declare global {
@@ -139,6 +141,47 @@ function installProbe(): void {
 			return { visible, tooltip: visible ? tip!.innerHTML : '', x: m ? Number(m[1]) : null, y: m ? Number(m[2]) : null, added, changed };
 		},
 	};
+}
+
+/**
+ * Runs in the old page: marks each line, area and bar of a chart with what recharts' update animation needs and its
+ * path does not say (`data-mm-geo`: its kind, curve, layout and animation, read off the props recharts rendered it
+ * with), and returns the marked elements. The part (recharts-motion) reads each mark's points off its path.
+ */
+export function markGeometry(svg: Element): Element[] {
+	type Fiber = { memoizedProps?: Record<string, unknown> | null; return?: Fiber | null };
+	const fiberOf = (el: Element): Fiber | undefined => (el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$')) ?? ''];
+	const up = (el: Element, has: (p: Record<string, unknown>) => boolean) => {
+		for (let f: Fiber | null | undefined = fiberOf(el); f; f = f.return) if (f.memoizedProps && typeof f.memoizedProps === 'object' && has(f.memoizedProps)) return f.memoizedProps;
+		return undefined;
+	};
+	const kinds: [string, string][] = [['recharts-line-curve', 'line'], ['recharts-area-area', 'area'], ['recharts-area-curve', 'curve'], ['recharts-rectangle', 'bar']];
+	const marked: Element[] = [];
+	for (const el of svg.querySelectorAll('path')) {
+		const k = kinds.find(([c]) => el.classList.contains(c))?.[1];
+		if (!k || (k === 'bar' && !el.closest('.recharts-bar-rectangle'))) continue;
+		const a = up(el, (p) => 'animationDuration' in p);
+		const curve = k === 'bar' ? undefined : up(el, (p) => Array.isArray(p.points));
+		const layout = up(el, (p) => p.layout === 'horizontal' || p.layout === 'vertical')?.layout;
+		// An easing recharts was given as a function, or a spring, is no curve the part can draw: it shows the end.
+		const easing = typeof a?.animationEasing === 'string' ? a.animationEasing : undefined;
+		if (!a || a.isAnimationActive === false || !easing || (curve && typeof curve.type !== 'string')) continue;
+		const geo = { k, ...(curve ? { t: curve.type ?? 'linear' } : {}), ...(layout ? { l: layout } : {}), ...(curve?.connectNulls ? { n: 1 } : {}), a: [Number(a.animationBegin ?? 0), Number(a.animationDuration ?? 0), easing] };
+		el.setAttribute('data-mm-geo', JSON.stringify(geo));
+		marked.push(el);
+	}
+	return marked;
+}
+
+/**
+ * Frames from a control's use to the one recharts' update animation's clock begins at, as the old page took them, from
+ * a film of the chart's marks: the first of three frames in a row that each change them is its first frames of motion.
+ */
+export function animationLag(frames: readonly string[]): number | undefined {
+	// frames[0] is read at the input, frames[j] at the start of the j-th frame after it: what frame j-1 painted, which
+	// React drew from frame j-2's tick. The first sample of the run of motion is two frames after the clock's start.
+	for (let k = 1; k + 2 < frames.length; k++) if (frames[k] !== frames[k - 1] && frames[k + 1] !== frames[k] && frames[k + 2] !== frames[k + 1]) return Math.max(0, k - 2);
+	return undefined;
 }
 
 interface Sample {
@@ -400,6 +443,7 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 		await page.waitForTimeout(2200);
 		await page.evaluate(installProbe);
+		await page.evaluate(`window.markGeometry = ${markGeometry.toString()}`);
 	};
 	try {
 		await load();
@@ -433,10 +477,15 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 				const drivers = card ? [...card.querySelectorAll(controls)].filter((el) => visible(el) && !root.contains(el)).map((el) => ({ sig: sigOf(el), nth: nthOf(el), select: el.getAttribute('data-slot') === 'select-trigger', active: el.hasAttribute('data-active') })) : [];
 				return { sig: sigOf(root), nth: nthOf(root), w, h, view, drivers };
 			}, CONTROLS);
-			const svgNow = () => wrapper.evaluate((root) => {
-				const clean = (el: Element | null) => (el ? el.outerHTML.replace(/ data-mm-old=""/g, '') : '');
-				return { svg: clean(root.querySelector('svg.recharts-surface')), legend: clean(root.querySelector('.recharts-legend-wrapper')) };
-			});
+			const svgNow = () =>
+				wrapper.evaluate((root, marked) => {
+					const clean = (el: Element | null) => (el ? el.outerHTML.replace(/ data-mm-old=""/g, '') : '');
+					const svg = root.querySelector('svg.recharts-surface');
+					const geo = marked && svg ? markGeometry(svg) : [];
+					const out = { svg: clean(svg), legend: clean(root.querySelector('.recharts-legend-wrapper')) };
+					for (const el of geo) el.removeAttribute('data-mm-geo');
+					return out;
+				}, found.drivers.length > 0);
 			const variants: ChartVariant[] = [];
 			const seen = new Map<string, number>();
 			const rest = await svgNow();
@@ -506,7 +555,8 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
 export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
 	const file = join(dir, `${createHash('sha256').update(`charts4:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
-	const known = cached?.route === route ? cached.charts : undefined;
+	// A capture from before the update animation was read (a chart with controls and no lag) is taken again.
+	const known = cached?.route === route && !cached.charts.some((c) => c.drivers.length && c.lag === undefined) ? cached.charts : undefined;
 	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
 	const missing = known && !known.length ? [] : CHART_WIDTHS.filter((w) => !have.has(w));
 	if (known && !missing.length) return { route, charts: known };
@@ -518,10 +568,71 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 			if (same) (chart.widths as ChartWidth[]).push({ viewport: width, width: same.width, height: same.height, view: same.view, variants: same.variants, drivers: same.drivers });
 		}
 	}
+	if (charts.some((c) => c.drivers.length && c.lag === undefined)) await measureLags(browser, origin, route, charts);
 	const capture = { route, charts };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+/**
+ * Uses each chart's controls on the old page with motion allowed (the captures run with reduced motion, where recharts
+ * does not animate), filming its marks frame by frame from the input: the chart's lag is the one most of them took.
+ */
+async function measureLags(browser: Browser, origin: string, route: string, charts: ChartFacts[]): Promise<void> {
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	try {
+		await page.emulateMedia({ reducedMotion: 'no-preference' });
+		for (const chart of charts) {
+			if (!chart.drivers.length) continue;
+			const lags: number[] = [];
+			for (const d of chart.drivers) {
+				await loadPage(page, new URL(route, origin).href);
+				await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+				// The entry animation ends first.
+				await page.waitForTimeout(2500);
+				const found = await page.locator('body *').evaluateAll(
+					(els, [s, n]) => {
+						const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+						const hit = els.filter((e) => sigOf(e) === s)[n as number];
+						hit?.setAttribute('data-mm-driver', '');
+						return !!hit;
+					},
+					[d.sig, d.nth] as const,
+				);
+				if (!found) continue;
+				const control = page.locator('[data-mm-driver]').first();
+				if (d.kind === 'choose') {
+					await control.click({ timeout: 3000 }).catch(() => {});
+					await page.waitForTimeout(400);
+				}
+				await page.evaluate((index) => {
+					const root = document.querySelectorAll('.recharts-wrapper')[index];
+					const film: string[] = [];
+					const read = () => [...(root?.querySelectorAll('svg.recharts-surface path') ?? [])].map((p) => p.getAttribute('d')).join('|');
+					(window as unknown as { __mmFilm: string[] }).__mmFilm = film;
+					let started = false;
+					document.addEventListener('pointerup', () => ((started = true), film.push(read())), { capture: true, once: true });
+					const tick = () => {
+						if (started) film.push(read());
+						if (film.length < 40) requestAnimationFrame(tick);
+					};
+					requestAnimationFrame(tick);
+				}, chart.index);
+				if (d.kind === 'choose') await page.locator('[role="option"]').filter({ hasText: d.label ?? '' }).first().click({ timeout: 3000 }).catch(() => {});
+				else await control.click({ timeout: 3000 }).catch(() => {});
+				await page.waitForTimeout(1000);
+				const lag = animationLag(await page.evaluate(() => (window as unknown as { __mmFilm: string[] }).__mmFilm));
+				if (lag !== undefined) lags.push(lag);
+			}
+			const counts = new Map<number, number>();
+			for (const lag of lags) counts.set(lag, (counts.get(lag) ?? 0) + 1);
+			const lag = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+			(chart as { lag?: number }).lag = lag ?? 0;
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
 }
 
 const HOLE = (k: number) => `MMHOLE${k}MMHOLE`;
@@ -673,6 +784,7 @@ export const MOTION_CSS = `@property --mm-t { syntax: '<number>'; inherits: fals
 }
 [data-mm-chart] .recharts-pie .recharts-sector { animation: mm-sweep 1500ms ease 400ms backwards; }
 [data-mm-chart] .recharts-radial-bar-sector { animation: mm-sweep 1500ms ease backwards; }
+[data-mm-chart][data-mm-moved] * { animation: none !important; }
 }
 `;
 
@@ -768,14 +880,15 @@ export class ChartPlan {
 					const own = buckets.get(`${e}/${k}`);
 					if (!own?.length) continue;
 					const variant = e === 0 ? reference : align(entry.variants[j]!, reference);
-					const tree = e === 0 && k === 0 ? svg : parsedSvg(entry.variants[j]!.svg ?? '');
+					const tree: Tree | undefined = e === 0 && k === 0 ? svg : parsedSvg(entry.variants[j]!.svg ?? '');
 					if (!tree) continue;
+					if (tree === svg && many) copyGeometry(parsedSvg(reference.svg ?? ''), tree);
 					const prefix = `${name}w${e}v${k}`;
 					const local = new Map<Tree, Binding>();
 					this.states(tree, variant, prefix, name, on, arms, local, declare);
 					motion(tree, entry.view);
 					const style = attr(tree, 'style');
-					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify(this.factsOf(entry, variant, tree)))}}`];
+					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(many && chart.lag ? { z: chart.lag } : {}) }))}}`];
 					const hide = `${v} === ${k} ? ${lit(style ?? '')} : ${lit(`${style ? `${style.replace(/;?\s*$/, ';')} ` : ''}display: none;`)}`;
 					if (many && style === undefined) extra.unshift(`style={${hide}}`);
 					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
@@ -903,7 +1016,8 @@ export class ChartPlan {
 			const active = controls.find((c) => c.el === el)?.d.active;
 			this.bindings.set(el, active ? { ...own, expressions: { 'data-active': `${v} === ${k} ? "true" : "false"` } } : own);
 		}
-		const extra: string[] = [];
+		// The pointer or focus coming to the card fetches the update animation before a control is used.
+		const extra: string[] = ['data-mm-morph=""'];
 		if (pressed.size) extra.push(`onClick={(event) => { const k = (event.target as Element).closest('[data-mm-variant]')?.getAttribute('data-mm-variant'); if (k != null && ${v} !== Number(k)) { ${v} = Number(k); ${name} = -1; } }}`);
 		if (Object.keys(chosen).length) {
 			declare.push(`const ${name}o: Record<string, number> = ${JSON.stringify(chosen)};`);
@@ -949,6 +1063,18 @@ function snap(variant: ChartVariant, value: number, tree: Tree | undefined): num
 		return near !== undefined && Math.abs(near - value) < 3 ? near : value;
 	}
 	return value;
+}
+
+/** The page's own SVG takes the marks' `data-mm-geo` from the capture of the same drawing, element for element. */
+function copyGeometry(from: Tree | undefined, to: Tree): void {
+	if (!from) return;
+	const a = [...walk(from)];
+	const b = [...walk(to)];
+	if (a.length !== b.length) return;
+	a.forEach((el, i) => {
+		const geo = attr(el, 'data-mm-geo');
+		if (geo !== undefined && b[i]!.tagName === el.tagName && attr(b[i]!, 'class') === attr(el, 'class')) setAttr(b[i]!, 'data-mm-geo', geo);
+	});
 }
 
 /** A captured SVG as a tree, with its own attributes (each width's size and view box). */

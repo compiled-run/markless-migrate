@@ -2622,10 +2622,60 @@ Leading causes (routes):
 
 </details>
 
+## Charts: how they move, fit and date (decision, 2026-10-27)
+
+The port draws each chart from SVGs captured on the old page. Three things differed from recharts: a card's control
+(Desktop 7,324 / Mobile 7,250, a range select, a toggle group) swapped one drawing for another instead of moving the
+lines, areas and bars to their new shape; a width the capture did not see stretched the nearest drawing; and behind
+UTC the axis showed other ticks than the old page.
+
+Inventory (old site, 74 routes with a chart): 68 `/view` chart pages, the three docs `chart` pages, `/sera`, and the
+two dashboards. Charts whose card controls change them: bar-interactive (docs `chart` pages and `/view`), line-interactive, area-interactive,
+`dashboard-01` and `/examples/dashboard` (toggle group and select), pie-interactive (a month select: recharts
+redraws it at once, no update animation). Every chart has a tooltip; 44 of them change size with the page (most are
+`aspect-video`); the pie, radar and radial charts are 250 px squares at every captured width but pie-interactive and
+pie-legend.
+
+Approaches, measured on `/view/new-york-v4/chart-line-interactive` (1280 px, Chromium, V8 coverage):
+
+| | Downloaded on first use | Executed at load | Executed by a switch |
+| --- | --- | --- | --- |
+| Old page (React, recharts 3.8) | (already loaded) | 666 KB | 207 KB |
+| Run recharts lazily over the capture | about 215 KB gzip (React DOM 71 KB, recharts chunks 144 KB) | 0 | more than the old page's 207 KB the first time (React and recharts start too; not measured) |
+| Markless part with recharts' own animation code | 17.4 KB gzip (57 KB: the part, d3-shape's curves, d3-path) | 0 | 7.3 KB in the part |
+
+Running recharts needs React in the port, which the catalog rules out (`react`, `react-dom`: the old framework
+itself), and the chart's component source. Decision: a Markless part. `parts/recharts-motion.ts` ports recharts 3.8's
+update animation as written: `JavascriptAnimate`'s clock (the frame its timer starts in, `animationBegin`), the
+`configBezier` easing with its Newton step and stopping rule, `animationDuration` (1500 ms for lines and areas, 400
+ms for bars), the point mapping (`prevPoints[floor(i * prev / next)]`, an area's baseline too), and the paths drawn
+with d3-shape 3.2 curves and recharts' `Rectangle` path. Convert reads each mark's curve, layout and animation off
+the props recharts rendered it with (`data-mm-geo`) and the frames the old page waited from the input to the first
+moving frame (`lag`, 4 on the bar and line charts, 3 on area-interactive). The part is fetched when the pointer or
+focus comes to a card with such a control, so nothing of it runs at load; a control used before it arrives shows the
+old shapes, and the frames it took count towards the wait.
+
+Frame-by-frame check (each frame read after it was painted, 1280 px, against the old site served locally):
+
+| Chart | Control | Moving frames old / port | Largest gap in the same frame |
+| --- | --- | --- | --- |
+| line-interactive | Mobile | 90 / 91 | 0.011 px |
+| bar-interactive | Mobile | 24 / 24 | 0.019 px |
+| area-interactive | Last 30 days (select) | 92 / 92 | 0.017 px |
+| dashboard-01 | Last 30 days (toggle) | 91 / 91 | 0.038 px; the first 2 frames hold the old shape when the click comes at once after the pointer (the part was still loading) |
+| docs `chart` (radix) | Mobile | 9 / 24 | 0.034 px at equal progress: the old docs page drops frames under its other charts' work; the frames it paints sit on the port's curve |
+| pie-interactive | February (select) | 1 / 1 (no animation) | 0 px |
+
+Next, same part family, from the same captures: the layout at any width (recharts' band and bar sizes, which it
+truncates to whole pixels, so the drawing cannot simply scale, and the ticks `getTicks` keeps for the width), and the
+ticks for the visitor's time zone (behind UTC the dates read a day earlier, their widths change, and `preserveEnd`
+keeps other ticks).
+
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
-  the interactive charts' pages are 3-5x the original's HTML. Next: one SVG laid out from the captured data at any width.
+  the interactive charts' pages are 3-5x the original's HTML, and other widths stretch the nearest. Next: the chart
+  laid out at any width and for the visitor's time zone (see "Charts: how they move, fit and date").
 - `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.
