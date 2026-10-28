@@ -25,8 +25,11 @@ async function open(body: string, ports: readonly string[]): Promise<Page> {
 	const registry = registryModule(ports, '.');
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/registry.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'input']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/registry.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'input']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
+		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async () => {};' });
+		// What choosing each option did on the old page, which convert writes beside the ports (cmdk reads it).
+		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
 	});
@@ -206,5 +209,19 @@ test("a plain button a page opens a Radix dialog from is left to the Radix port 
 	await page.getByText('Open Menu').click();
 	await page.waitForTimeout(100);
 	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+	await page.close();
+});
+
+test("a cmdk command in a Base UI dialog is cmdk's: the pointer selects its items and the select port leaves them alone", async () => {
+	const item = (v: string) => `<div cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-selected="false" data-value="${v}">${v}</div>`;
+	const page = await open(
+		`<main><button type="button" data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="cmd">Open Menu</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="cmd">${INTERNAL_BACKDROP}<div role="dialog" data-slot="dialog-content" data-closed tabindex="-1" style="position:relative;z-index:1"><div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" type="text" value=""><div cmdk-list="" role="listbox"><div cmdk-list-sizer=""><div cmdk-group="" role="presentation"><div cmdk-group-items="" role="group">${item('Calendar')}${item('Search Emoji')}${item('Settings')}</div></div></div></div></div></div></div>`,
+		['base-ui/dialog', 'base-ui/select', 'cmdk'],
+	);
+	await page.getByText('Open Menu').click();
+	await page.getByText('Settings').hover();
+	await settled(page);
+	assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[cmdk-item]')].map((i) => `${i.getAttribute('data-value')}:${i.getAttribute('data-selected')}:${i.hasAttribute('data-highlighted')}`)), ['Calendar:false:false', 'Search Emoji:false:false', 'Settings:true:false']);
 	await page.close();
 });
