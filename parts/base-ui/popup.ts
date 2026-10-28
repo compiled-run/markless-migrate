@@ -274,7 +274,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	return p;
 }
 
-export function closePopup(p: Popup, returnFocus = true, keep = false): void {
+export function closePopup(p: Popup, returnFocus = true, keep = false, focus: FocusOptions = {}): void {
 	const at = open.indexOf(p);
 	if (at < 0) return;
 	open.splice(at, 1);
@@ -291,7 +291,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (!at || at === document.body || p.portal.contains(at)) p.trigger.focus({ preventScroll: true });
 	};
 	if (returnFocus && keep) {
-		p.trigger.focus({ preventScroll: true });
+		p.trigger.focus({ preventScroll: true, ...focus });
 		// The outside press's own mousedown then blurs to the body: focus comes back after it.
 		if (pressedOutside === p) setTimeout(refocus);
 	}
