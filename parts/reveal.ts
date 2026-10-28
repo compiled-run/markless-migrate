@@ -159,6 +159,51 @@ function signature(el: Element): string {
 	return `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 }
 
+interface ShownEffect {
+	readonly up: number;
+	readonly down: readonly number[];
+	readonly html?: string;
+	readonly attrs?: Readonly<Record<string, string | null>>;
+}
+
+const effectsAt = new Map<string, Promise<readonly ShownEffect[]>>();
+const effectsOf = (src: string) => effectsAt.get(src) ?? effectsAt.set(src, fetch(src).then((r) => (r.ok ? (r.json() as Promise<ShownEffect[]>) : []), () => [])).get(src)!;
+
+/**
+ * A control the site lists as showing something in place (a block viewer's file): what using it did on the old page, from
+ * the file its template names, done again (its content and attributes, each found from the control). False when none is listed.
+ */
+export function show(target: Element): boolean {
+	if (!document.querySelector('template[data-mm-show]')) return false;
+	for (let control: Element | null = target; control && control !== document.body; control = control.parentElement) {
+		const sig = signature(control);
+		if (!document.querySelector(`template[data-mm-show^="${CSS.escape(`${sig}#`)}"]`)) continue;
+		let nth = 0;
+		for (const el of document.body.querySelectorAll('*')) {
+			if (el === control) break;
+			if (signature(el) === sig) nth++;
+		}
+		const src = document.querySelector(`template[data-mm-show="${CSS.escape(`${sig}#${nth}`)}"]`)?.getAttribute('data-mm-effects-src');
+		if (!src) return false;
+		const from = control;
+		void effectsOf(src).then((effects) => {
+			for (const effect of effects) {
+				let el: Element | null | undefined = from;
+				for (let i = 0; i < effect.up && el; i++) el = el.parentElement;
+				for (const i of effect.down) el = el?.children[i];
+				if (!el) continue;
+				if (effect.html !== undefined) el.innerHTML = effect.html.split('@@MM_APP_URL@@').join(location.origin);
+				for (const [name, value] of Object.entries(effect.attrs ?? {})) {
+					if (value === null) el.removeAttribute(name);
+					else el.setAttribute(name, value);
+				}
+			}
+		});
+		return true;
+	}
+	return false;
+}
+
 /** What a copy control wrote on the old page, from the page's own template; undefined for a control that copied nothing. */
 export function clipboardFor(control: Element): Promise<string> | undefined {
 	const sig = signature(control);

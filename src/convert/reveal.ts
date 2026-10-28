@@ -18,16 +18,24 @@ async function markAdded(page: Page): Promise<void> {
 }
 
 /** How a control shows what it holds back. */
-/** `copy`: a click whose effect kept is what it writes to the clipboard. */
-export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy';
+/** `copy`: a click whose effect kept is what it writes to the clipboard. `show`: a click whose effect kept is what it changed in place (ShownEffect). */
+export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy' | 'show';
 
 /** Where a revealed subtree went: under `body`, or under the element at `path` (child element indexes from the body). */
 export interface Revealed {
 	/** `body`, the path of the element it went under, or `replace`: the control took itself away and this is what its container then held. */
-	readonly into: 'body' | 'replace' | 'clipboard' | readonly number[];
+	readonly into: 'body' | 'replace' | 'clipboard' | 'show' | readonly number[];
 	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. For `replace`, how many levels above the control the replaced container is. */
 	readonly before: number;
 	readonly html: string;
+}
+
+/** One element a `show` control changed: `up` parents from the control, then down by child index; its new content or attribute values. */
+export interface ShownEffect {
+	readonly up: number;
+	readonly down: readonly number[];
+	readonly html?: string;
+	readonly attrs?: Readonly<Record<string, string | null>>;
 }
 
 export interface Reveal {
@@ -161,6 +169,46 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	}, candidate.path);
 	const el = target.asElement();
 	if (!el) return 'not found';
+	if (candidate.action === 'show') {
+		await page.evaluate(() => {
+			const w = window as unknown as { __mmShown?: { content: Set<Element>; attrs: Map<Element, Set<string>> }; __mmShowObserver?: MutationObserver };
+			const shown = { content: new Set<Element>(), attrs: new Map<Element, Set<string>>() };
+			w.__mmShown = shown;
+			w.__mmShowObserver = new MutationObserver((records) => {
+				for (const r of records) {
+					if (!(r.target instanceof Element)) continue;
+					if (r.type === 'childList') shown.content.add(r.target);
+					else if (r.attributeName) (shown.attrs.get(r.target) ?? shown.attrs.set(r.target, new Set()).get(r.target)!).add(r.attributeName);
+				}
+			});
+			w.__mmShowObserver.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+		});
+		await el.evaluate((e) => (e as HTMLElement).click()).catch(() => {});
+		await quiet(page, 300);
+		const effects = await el.evaluate((control) => {
+			const w = window as unknown as { __mmShown: { content: Set<Element>; attrs: Map<Element, Set<string>> }; __mmShowObserver: MutationObserver };
+			w.__mmShowObserver.disconnect();
+			const { content, attrs } = w.__mmShown;
+			const live = [...content].filter((e) => e.isConnected);
+			// Content inside content that changed is part of it; attributes inside it come with it.
+			const outer = live.filter((e) => !live.some((o) => o !== e && o.contains(e)));
+			const within = (e: Element) => outer.some((o) => o !== e && o.contains(e));
+			const changed = [...new Set([...outer, ...[...attrs.keys()].filter((e) => e.isConnected && !within(e))])].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+			return changed.map((e) => {
+				let up = 0;
+				let at: Element = control;
+				while (!at.contains(e)) {
+					at = at.parentElement!;
+					up++;
+				}
+				const down: number[] = [];
+				for (let n: Element = e; n !== at; n = n.parentElement!) down.unshift([...n.parentElement!.children].indexOf(n));
+				const names = outer.includes(e) ? [] : [...(attrs.get(e) ?? [])].sort();
+				return { up, down, ...(outer.includes(e) ? { html: e.innerHTML } : { attrs: Object.fromEntries(names.map((n) => [n, e.getAttribute(n)])) }) };
+			});
+		});
+		return effects.length ? [{ into: 'show', before: -1, html: JSON.stringify(effects) }] : [];
+	}
 	if (candidate.action === 'copy') {
 		await page.evaluate(() => {
 			const w = window as unknown as { __mmClipboard?: string[] };
@@ -311,7 +359,7 @@ type Open = { context: BrowserContext; page: Page; baseline: string };
 async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
 	const previous = await selectedSibling(open.page, candidate.path);
 	const raw = await reveal(open.page, candidate);
-	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard') : raw;
+	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'show') : raw;
 	if (!(await undo(open.page, previous, open.baseline))) {
 		await open.context.close().catch(() => {});
 		open = await again();
@@ -345,9 +393,11 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		let open = await fresh(browser, origin, route, viewport);
 		try {
 			const found = await candidates(open.page, extra, pass.controls);
-			hidden = found.some((c) => !c.visible && !done.has(c.key));
+			// A listed `show` control may sit in a view another control shows (a block viewer's Code): it is used where it is.
+			const usable = (c: Candidate) => c.visible || c.action === 'show';
+			hidden = found.some((c) => !usable(c) && !done.has(c.key));
 			for (const candidate of found) {
-				if (!candidate.visible || done.has(candidate.key)) continue;
+				if (!usable(candidate) || done.has(candidate.key)) continue;
 				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
 				open = used.open;
 				const added = used.added;
@@ -404,7 +454,7 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
 	const listed = extra.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
 	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
-	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
+	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'show'))), ...listed.reveals] : own.reveals;
 	const child = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
 	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);

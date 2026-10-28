@@ -6,7 +6,8 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal, type ShownEffect } from './reveal.ts';
+import { completeShown, type Baseline } from './shown.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -215,6 +216,8 @@ interface Prepared {
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** What each listed `show` control changed in place, by its signature#nth (shown.ts), as JSON. */
+	readonly shown: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
@@ -231,6 +234,7 @@ function elementAt(root: Element, path: readonly number[]): Element | undefined 
 }
 
 function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
+	if (added.into === 'show') return '';
 	if (added.into === 'clipboard') return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into="clipboard">{${JSON.stringify(added.html)}}</template>`;
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
@@ -376,6 +380,14 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+let currentShown: Record<string, string> = {};
+// What a `show` control did is fetched on its first use (a code view's highlighted files run to hundreds of kB), one file per distinct effect.
+const shownFiles = new Map<string, string>();
+const shownFile = (effects: string) => {
+	const path = `/_converted/shown/${createHash('sha256').update(effects).digest('hex').slice(0, 16)}.json`;
+	shownFiles.set(path, effects);
+	return path;
+};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -747,6 +759,16 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		const id = attr(el, 'id');
 		if (id) byId.set(id, el);
 	}
+	// A listed control that changes things in place: what it changed, made whole against the page as captured, before anything moves.
+	const asHtml = (html: string) => emitHtmlChildren(childrenOf(parseFragment(`<div>${html}</div>`) as unknown as Element).find(isElement)!, { dropped });
+	const showing = reveals.flatMap((r) => r.added.filter((a) => a.into === 'show').map((a) => ({ key: `${r.sig}#${r.nth ?? 0}`, path: r.path, effects: (JSON.parse(a.html) as ShownEffect[]).map((e) => (e.html === undefined ? e : { ...e, html: asHtml(e.html) })) })));
+	if (showing.length) {
+		const first: Baseline = (path) => {
+			const el = elementAt(root, path);
+			return el && { html: emitHtmlChildren(el, { dropped }), attr: (name) => attr(el, name) ?? null };
+		};
+		for (const [key, effects] of completeShown(showing, first)) currentShown[key] = JSON.stringify(effects);
+	}
 	const pendingLayers: { reveal: Reveal; added: Reveal['added'][number]; trigger: Element | undefined; kept: Element[] }[] = [];
 	const companions: { parent: Element; before: Element | null; kept: Element[]; key: string }[] = [];
 	for (const reveal of reveals) {
@@ -774,6 +796,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+			} else if (added.into === 'show') {
+				continue;
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
@@ -873,10 +897,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentShown = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const shown = currentShown;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
@@ -931,7 +957,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, shown, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1014,6 +1040,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
+	shownFiles.clear();
 	layerChoices = choices;
 	try {
 		const limit = limiter(width);
@@ -1685,7 +1712,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		} else if (bodyAfter) after.push({ markup: `<BodyAfter route={${lit(route)}} />` });
 		for (const el of ownExtras.get(route) ?? []) after.push({ markup: emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.shown).map(([key, effects]) => `<template data-mm-show=${lit(key)} data-mm-effects-src=${lit(shownFile(effects))}></template>`).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
 		const markup = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const list = byFile.get(file) ?? [];
@@ -1789,6 +1816,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const sharedTables = tables.sharedModule('../../lib/parts');
 	if (sharedTables) await writeFile(join(app, 'components', 'converted', TABLES_SHARED), sharedTables);
 	await rm(join(app, 'public', '_converted', 'layers'), { recursive: true, force: true });
+	await rm(join(app, 'public', '_converted', 'shown'), { recursive: true, force: true });
+	for (const [path, effects] of shownFiles) {
+		await mkdir(dirname(join(app, 'public', path)), { recursive: true });
+		await writeFile(join(app, 'public', path), effects);
+	}
 	for (const layer of layers.served) {
 		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });
 		await writeFile(join(app, 'public', layer.path), layer.html);

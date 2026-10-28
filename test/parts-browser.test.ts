@@ -602,6 +602,30 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('a control listed as showing in place does what its use did on the old page, each change found from the control', async () => {
+	const effects = (active: number, code: string) => JSON.stringify([{ up: 0, down: [], attrs: { 'data-active': 'true' } }, { up: 2, down: [1 - active, 0], attrs: { 'data-active': 'false' } }, { up: 3, down: [1], html: code }]);
+	const page = await open(
+		`<div data-view="code"><ul><li><button data-slot="sidebar-menu-button" data-active="true">page.tsx</button></li><li><button data-slot="sidebar-menu-button" data-active="false">nav.tsx</button></li></ul><figure><pre>page code</pre></figure></div>
+		<template data-mm-show="button|sidebar-menu-button|nav.tsx#0" data-mm-effects-src="/shown/nav.json"></template>
+		<template data-mm-show="button|sidebar-menu-button|page.tsx#0" data-mm-effects-src="/shown/page.json"></template>`,
+		[],
+		'body',
+	);
+	let fetched = 0;
+	await page.route('http://parts.test/shown/*', (route) => (fetched++, route.fulfill({ contentType: 'application/json', body: route.request().url().endsWith('nav.json') ? effects(1, '<pre>nav code</pre>') : effects(0, '<pre>page code</pre>') })));
+	const look = () => page.evaluate(() => [document.querySelector('figure')!.textContent, ...[...document.querySelectorAll('button')].map((b) => b.dataset.active)].join(' '));
+	await page.getByText('nav.tsx').click();
+	await page.waitForFunction(() => document.querySelector('figure')!.textContent === 'nav code');
+	assert.equal(await look(), 'nav code false true');
+	await page.getByText('page.tsx').click();
+	await page.waitForFunction(() => document.querySelector('figure')!.textContent === 'page code');
+	assert.equal(await look(), 'page code true false');
+	await page.getByText('nav.tsx').click();
+	await page.waitForFunction(() => document.querySelector('figure')!.textContent === 'nav code');
+	assert.equal(fetched, 2, 'each file is fetched once');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);

@@ -1,4 +1,4 @@
-import { layersPending, loadLayers, swap } from './reveal.ts';
+import { layersPending, loadLayers, show, swap } from './reveal.ts';
 
 export interface Part {
 	readonly click?: (target: Element, event: MouseEvent) => boolean;
@@ -56,6 +56,7 @@ export function behave(event: Event): void {
 	if (kind === 'click') {
 		const control = target.closest('[data-mm-replace]');
 		if (control) swap(control);
+		show(target);
 	}
 	const claimed = run(kind, target, event);
 	if (kind === 'keydown' && !event.cancelBubble) for (const part of PARTS) part.shortcut?.(target, event as KeyboardEvent);
