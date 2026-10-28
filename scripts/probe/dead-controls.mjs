@@ -280,10 +280,15 @@ async function load(side, route) {
 	// A tab in the background gets no animation frames: the side in use is always the one in front.
 	await p.bringToFront();
 	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
-	await p.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+	// A slow live answer (the directory's /r/registries.json) can still change the layout: wait for the network to rest.
+	await p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
 	await p.waitForTimeout(300);
 	await settleScroll(p);
 }
+
+// Where a page's own script leaves its inner scrollers (the docs sidebar centred on its link while the page streams) varies
+// from load to load: before boxes and hit points are read, every inner scroller is put back at its top on both sides.
+const resetScrollers = (p) => p.evaluate(() => { for (const e of document.querySelectorAll('*')) if (e !== document.scrollingElement && e.scrollTop && e.scrollHeight > e.clientHeight + 1) e.scrollTop = 0; }).catch(() => {});
 
 // A page scrolls some of its parts after load (a sidebar to its active link): boxes are read once every scroll position holds.
 async function settleScroll(p) {
@@ -589,9 +594,11 @@ for (const route of mine) {
 		for (const width of STATIC_WIDTHS) {
 			await fresh(width);
 			await load('old', route);
+			await resetScrollers(pages.old);
 			const olds = await pages.old.evaluate(listControls);
 			const grid = await pages.old.evaluate(regionGrid, null).catch(() => []);
 			await load('new', route);
+			await resetScrollers(pages.new);
 			const news = await pages.new.evaluate(listControls).catch(() => []);
 			const portGrid = await pages.new.evaluate(regionGrid, grid.filter((g) => g.key !== 'no control')).catch(() => []);
 			let gridMisses = 0;
