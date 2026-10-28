@@ -230,6 +230,8 @@ interface Prepared {
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** The label a copy control took once it had copied, by the same key. */
+	readonly copyLabels: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
@@ -391,6 +393,8 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+// The label each copy control took once it had copied, where it changed (a message's Copy reads Copied).
+let currentCopyLabels: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
 let fontPreloadCount = 0;
@@ -815,6 +819,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+				if (reveal.sig !== undefined && added.label !== undefined) currentCopyLabels[`${reveal.sig}#${reveal.nth ?? 0}`] = added.label;
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
@@ -929,10 +934,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentCopyLabels = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const copyLabels = currentCopyLabels;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
@@ -987,7 +994,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, copyLabels, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1785,7 +1792,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}${p.copyLabels[key] !== undefined ? ` data-mm-label=${lit(p.copyLabels[key]!)}` : ''}></template>`).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;

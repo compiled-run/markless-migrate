@@ -28,6 +28,8 @@ export interface Revealed {
 	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. For `replace`, how many levels above the control the replaced container is. */
 	readonly before: number;
 	readonly html: string;
+	/** `clipboard`: the label (aria-label) the control took once it had copied, where it changed. */
+	readonly label?: string;
 }
 
 export interface Reveal {
@@ -174,10 +176,12 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			};
 			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write, write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 		});
+		const before = await el.getAttribute('aria-label').catch(() => null);
 		await el.click({ timeout: 2000 }).catch(() => {});
 		await quiet(page, 300);
 		const written = await page.evaluate(() => (window as unknown as { __mmClipboard?: string[] }).__mmClipboard ?? []);
-		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]! }] : [];
+		const after = await el.getAttribute('aria-label').catch(() => null);
+		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]!, ...(after !== null && after !== before ? { label: after } : {}) }] : [];
 	}
 	await el.evaluate((e) => {
 		const chain: Element[] = [];
