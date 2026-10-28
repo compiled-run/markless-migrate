@@ -36,6 +36,7 @@ function listControls() {
 	const LAYOUT = 'header, nav, aside, footer, [role=banner], [role=navigation], [role=complementary], [role=contentinfo]';
 	const seen = new Map();
 	const out = [];
+	const frames = new Map();
 	for (const el of document.querySelectorAll(SEL)) {
 		if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || el.closest('[hidden], [inert], [aria-hidden=true]')) continue;
 		if (el.matches(':disabled, [aria-disabled=true]')) continue;
@@ -48,14 +49,16 @@ function listControls() {
 		const href = el.localName === 'a' ? el.getAttribute('href') : null;
 		let leaves = false;
 		if (href !== null) {
-			try { const u = new URL(href, location.href); leaves = u.origin !== location.origin || u.pathname !== location.pathname || (u.hash !== '' && u.search === location.search); } catch { leaves = true; }
+			// A link to the page itself navigates to it again: what each app re-renders for that is no control's effect.
+			try { const u = new URL(href, location.href); leaves = u.origin !== location.origin || u.pathname !== location.pathname || (u.hash !== '' && u.search === location.search) || (u.search === location.search && u.hash === ''); } catch { leaves = true; }
 		}
 		const frame = el.closest('[data-slot=preview], figure, section, [role=dialog], main') ?? document.body;
+		if (!frames.has(frame)) frames.set(frame, frames.size);
 		const f = frame.getBoundingClientRect();
 		const slot = el.closest('[data-slot]')?.getAttribute('data-slot') ?? '';
 		const pr = el.parentElement?.getBoundingClientRect() ?? r;
 		const hint = [el.getAttribute('placeholder'), el.getAttribute('name'), el.id, el.getAttribute('inputmode'), el.getAttribute('aria-label')].filter(Boolean).join(' ');
-		out.push({ popup: el.hasAttribute('aria-haspopup') || el.hasAttribute('aria-expanded'), hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: { w: Math.round(f.width), h: Math.round(f.height) }, key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
+		out.push({ popup: el.hasAttribute('aria-haspopup') || el.hasAttribute('aria-expanded'), hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: frame.matches('main') || frame === document.body ? undefined : { w: Math.round(f.width), h: Math.round(f.height) }, frameId: frames.get(frame), key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, pageY: Math.round(r.y + scrollY), template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
 	}
 	return out;
 }
@@ -77,6 +80,8 @@ function arm(control) {
 	for (const o of document.querySelectorAll('[data-dc-used]')) o.removeAttribute('data-dc-used');
 	el.setAttribute('data-dc-used', '');
 	el.scrollIntoView({ block: 'center', inline: 'center' });
+	// The scroll alone can restyle the page (a sticky header): it settles before anything is watched.
+	if (control.scrollOnly) return { scrolled: true };
 	const r = el.getBoundingClientRect();
 	const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
 	const reach = (x, y) => {
@@ -86,7 +91,9 @@ function arm(control) {
 	};
 	const hits = [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]].map(([fx, fy]) => reach(r.x + r.width * fx, r.y + r.height * fy));
 	const hit = hits[0];
-	const openBefore = new Set([...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [role=tooltip]')].filter((p) => p.checkVisibility()));
+	// Pop-ups already open float over the page; a list laid out in it (a cmdk command list) is the page itself.
+	const floating = (p) => { for (let at = p; at && at !== document.body; at = at.parentElement) if (/fixed|absolute/.test(getComputedStyle(at).position) || at.hasAttribute('popover')) return true; return false; };
+	const openBefore = new Set([...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [role=tooltip]')].filter((p) => p.checkVisibility() && floating(p)));
 	const touched = new Set();
 	// First value of each attribute the use changed: one set again to what it was (a framework re-render, a screenshot's empty style) is no change.
 	const was = new Map();
@@ -114,7 +121,7 @@ function arm(control) {
 	addEventListener('keydown', (e) => { firstInput ??= performance.now(); }, { capture: true, once: true });
 	const tick = () => {
 		const now = performance.now();
-		const popup = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].find((p) => !openBefore.has(p) && p.checkVisibility());
+		const popup = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].find((p) => !openBefore.has(p) && p.checkVisibility() && floating(p));
 		if (popup && firstInput !== undefined) {
 			const cs = getComputedStyle(popup);
 			frames.push({ ms: Math.round(now - firstInput), opacity: Number(cs.opacity), transform: cs.transform, anims: popup.getAnimations().map((a) => a.animationName ?? a.transitionProperty ?? 'animation') });
@@ -123,7 +130,7 @@ function arm(control) {
 	};
 	requestAnimationFrame(tick);
 	const url = location.pathname + location.search;
-	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el };
+	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el, floating };
 	return { hit, hits, x: cx, y: cy };
 }
 
@@ -178,12 +185,14 @@ function read(prefix) {
 		// The page's own colour mode or scroll lock is set on <html> or <body>; a pop-up put into <body> is named by itself.
 		if (el === document.body || el === document.documentElement) { if (node === el && attrs.has(el)) affected.add('the page'); continue; }
 		if (skip.some((s) => s && (s === el || s.contains(el)))) continue;
-		if (!el.checkVisibility() && !el.parentElement?.checkVisibility()) continue;
+		// What the use hid (items a filter leaves out) changed the page too, even though it is hidden now.
+		const hid = attrs.has(el) && [...st.was.get(el).keys()].some((n) => /^(hidden|style|class|aria-hidden|data-state|data-hidden)$/.test(n));
+		if (!el.checkVisibility() && !el.parentElement?.checkVisibility() && !hid) continue;
 		affected.add(regionOf(el));
 	}
 	const vis = st.frames;
 	const first = vis[0];
-	const shownPopup = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].find((p) => !st.openBefore.has(p) && p.checkVisibility());
+	const shownPopup = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].find((p) => !st.openBefore.has(p) && p.checkVisibility() && (st.floating?.(p) ?? true));
 	let anchor;
 	if (shownPopup && st.el.isConnected) {
 		const t = st.el.getBoundingClientRect(), p = shownPopup.getBoundingClientRect();
@@ -273,6 +282,19 @@ async function load(side, route) {
 	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
 	await p.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 	await p.waitForTimeout(300);
+	await settleScroll(p);
+}
+
+// A page scrolls some of its parts after load (a sidebar to its active link): boxes are read once every scroll position holds.
+async function settleScroll(p) {
+	const read = () => p.evaluate(() => [scrollY, ...[...document.querySelectorAll('*')].filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY)).map((e) => e.scrollTop)].join(',')).catch(() => '');
+	let last = await read();
+	for (let waited = 0; waited < 3000; waited += 250) {
+		await p.waitForTimeout(250);
+		const now = await read();
+		if (now === last) return;
+		last = now;
+	}
 }
 
 // Every frame the compositor paints while the use runs (a screencast only sends a frame when the picture changed): CSS, script, SVG and canvas motion alike.
@@ -328,7 +350,7 @@ async function replay(side, route, prefix) {
 	const p = pages[side];
 	await load(side, route);
 	for (const step of prefix) {
-		const armed = await p.evaluate(arm, step).catch(() => null);
+		const armed = await armAt(p, step).catch(() => null);
 		// A step the page remembers having taken (an intro dismissed for good) is not offered again.
 		if (!armed) continue;
 		await act(p, step).catch(() => {});
@@ -342,7 +364,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	if (side === 'old') await fresh(width);
 	const p = pages[side];
 	await replay(side, route, prefix);
-	const armed = await p.evaluate(arm, control).catch((e) => ({ error: e.message }));
+	const armed = await armAt(p, control).catch((e) => ({ error: e.message }));
 	if (!armed) return { missing: 'not on the page' };
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	let film_;
@@ -398,7 +420,7 @@ async function typeInto(side, route, prefix, control, value) {
 	if (side === 'old') await fresh();
 	const p = pages[side];
 	await replay(side, route, prefix);
-	const armed = await p.evaluate(arm, control).catch((e) => ({ error: e.message }));
+	const armed = await armAt(p, control).catch((e) => ({ error: e.message }));
 	if (!armed) return { missing: 'not on the page' };
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	const before = errors[side].length;
@@ -482,7 +504,7 @@ async function press(side, route, control, keys) {
 	if (side === 'old') await fresh();
 	const p = pages[side];
 	await load(side, route);
-	const armed = await p.evaluate(arm, control).catch((e) => ({ error: e.message }));
+	const armed = await armAt(p, control).catch((e) => ({ error: e.message }));
 	if (!armed) return { missing: 'not on the page' };
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	const before = errors[side].length;
@@ -508,6 +530,14 @@ function keyFindings(findings, base, old, port) {
 	if (did(port) && old.affected?.length && lost.length === old.affected.length) findings.push({ ...base, kind: 'key-region', expected: `changes ${old.affected.join(', ')}`, actual: `changes ${port.affected?.join(', ') || 'no region'}` });
 	const thrown = (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
 	if (thrown.length) findings.push({ ...base, kind: 'key-error', expected: old.errors?.length ? `throws ${old.errors.join('; ')}` : 'throws nothing', actual: `throws ${thrown.slice(0, 3).join('; ')}` });
+}
+
+const SCROLL_SETTLE = Number(process.env.SCROLL_SETTLE ?? 500);
+async function armAt(p, control) {
+	const at = await p.evaluate(arm, { ...control, scrollOnly: true });
+	if (!at) return at;
+	await p.waitForTimeout(SCROLL_SETTLE);
+	return p.evaluate(arm, control);
 }
 
 const ambient = { old: undefined, new: undefined };
@@ -566,26 +596,45 @@ for (const route of mine) {
 			let gridMisses = 0;
 			const portRegions = new Set(portGrid.map((g) => g.region));
 			for (const g of portGrid) {
-				if (g.near.includes(g.key) || gridMisses++ >= 10) continue;
+				const countless = (k) => k.replace(/\d[\d.,]*[kKmM]?/g, '#');
+				if (g.near.some((k) => countless(k) === countless(g.key)) || gridMisses++ >= 10) continue;
 				findings.push({ route, control: g.region, kind: 'hit-region', width, expected: `a click ${Math.round(g.fx * 100)}% across and ${Math.round(g.fy * 100)}% down the region in view reaches ${g.key}`, actual: `reaches ${g.near.join(' / ')}` });
 			}
 			for (const r of new Set(grid.map((g) => g.region))) if (!portRegions.has(r) && grid.some((g) => g.region === r && g.key !== 'no control')) findings.push({ route, control: r, kind: 'hit-region', width, expected: `${r} in view with controls`, actual: 'no such region in view on the port' });
 			if (width === WIDTH) controls = olds.filter((c) => !c.leaves);
-			const portByKey = new Map(news.map((c) => [c.key, c]));
+			// Namesakes (the page's many Copy buttons) pair by place, not by count: one missing does not shift every later pair.
+			const portByKey = new Map();
+			const pool = new Map();
+			for (const n of news) (pool.get(`${n.role}|${n.name}`) ?? pool.set(`${n.role}|${n.name}`, []).get(`${n.role}|${n.name}`)).push(n);
+			let drift = 0;
+			for (const c of [...olds].sort((a, b) => a.pageY - b.pageY)) {
+				const left = pool.get(`${c.role}|${c.name}`) ?? [];
+				if (!left.length) continue;
+				const best = left.reduce((a, b) => (Math.abs(b.pageY - c.pageY - drift) < Math.abs(a.pageY - c.pageY - drift) ? b : a));
+				if (left.length > 1 && Math.abs(best.pageY - c.pageY - drift) > 400) continue;
+				left.splice(left.indexOf(best), 1);
+				drift = best.pageY - c.pageY;
+				portByKey.set(c.key, best);
+			}
 			let boxes = 0, missing = 0;
 			const containers = new Set();
-			for (const c of olds) {
+			// A control moved only by what moved above it in its frame is no finding of its own: only where the shift changes.
+			const shiftIn = new Map();
+			for (const c of [...olds].sort((a, b) => a.frameId - b.frameId || a.box.y - b.box.y)) {
 				if (c.layout) continue;
 				const n = portByKey.get(c.key);
 				if (!n) {
 					if (missing++ < 10) findings.push({ route, control: c.key, kind: 'missing-at-width', width, expected: `shown at ${width} px wide`, actual: 'not on the port at this width' });
 					continue;
 				}
-				const d = { w: n.box.w - c.box.w, h: n.box.h - c.box.h, x: n.box.x - c.box.x, y: n.box.y - c.box.y };
+				const dy = n.box.y - c.box.y;
+				const before = shiftIn.get(c.frameId) ?? 0;
+				shiftIn.set(c.frameId, dy);
+				const d = { w: n.box.w - c.box.w, h: n.box.h - c.box.h, x: n.box.x - c.box.x, y: dy - before };
 				if (Math.max(...Object.values(d).map(Math.abs)) > BOX_TOLERANCE && boxes++ < 20) findings.push({ route, control: c.key, kind: 'box', width, expected: `${c.box.w}x${c.box.h} at (${c.box.x}, ${c.box.y}) in its frame`, actual: `${n.box.w}x${n.box.h} at (${n.box.x}, ${n.box.y})` });
 				for (const [what, a, b] of [['its parent', c.parent, n.parent], ['its example frame', c.frameBox, n.frameBox]]) {
 					if (!a || !b) continue;
-					const k = `${what}|${a.w}x${a.h}|${c.template}`;
+					const k = `${what}|${a.w}x${a.h}|${b.w}x${b.h}`;
 					if (containers.has(k) || (Math.abs(a.w - b.w) <= BOX_TOLERANCE && Math.abs(a.h - b.h) <= BOX_TOLERANCE)) continue;
 					containers.add(k);
 					if (boxes++ < 20) findings.push({ route, control: c.key, kind: 'box-container', width, expected: `${what} ${a.w}x${a.h}`, actual: `${b.w}x${b.h}` });
@@ -596,6 +645,7 @@ for (const route of mine) {
 		await fresh();
 		ambient.old = await measureAmbient('old', route);
 		ambient.new = await measureAmbient('new', route);
+		if (process.env.DEBUG) console.log('ambient', [...ambient.old], [...ambient.new]);
 		const perName = new Map();
 		const queue = controls
 			.filter((c) => !(c.layout && layoutDone.has(c.key)))
