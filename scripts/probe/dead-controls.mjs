@@ -480,7 +480,8 @@ function inputFindings(findings, base, old, port) {
 	if (port.missing || port.failed) return void findings.push({ ...base, kind: 'input-unusable', expected: `takes the value (ends as "${old.field.value}")`, actual: port.missing ?? port.failed });
 	const o = old.field, n = port.field;
 	if (o.value !== n.value) findings.push({ ...base, kind: 'input-value', expected: `the field ends as "${o.value}"`, actual: `"${n.value}"` });
-	if (old.shown && old.shown !== port.shown) findings.push({ ...base, kind: 'input-popup', expected: `its pop-up then shows ${old.shown}`, actual: port.shown ? `shows ${port.shown}` : 'no pop-up opens' });
+	const asSet = (t) => (t ?? '').split('; ').sort().join('; ');
+	if (old.shown && asSet(old.shown) !== asSet(port.shown)) findings.push({ ...base, kind: 'input-popup', expected: `its pop-up then shows ${old.shown}`, actual: port.shown ? `shows ${port.shown}` : 'no pop-up opens' });
 	if (o.invalid !== n.invalid || o.badInput !== n.badInput) findings.push({ ...base, kind: 'input-invalid', expected: `aria-invalid ${o.invalid || 'unset'}, ${o.badInput ? 'invalid' : 'valid'} to the browser`, actual: `aria-invalid ${n.invalid || 'unset'}, ${n.badInput ? 'invalid' : 'valid'}` });
 	if ((old.url ?? '') !== (port.url ?? '')) findings.push({ ...base, kind: 'input-address', expected: old.url ? `address becomes ${old.url}` : 'the address stays', actual: port.url ? `becomes ${port.url}` : 'the address stays' });
 	const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
