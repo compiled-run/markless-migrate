@@ -376,11 +376,20 @@ export class BaseTabsPlan {
 			const triggers = [...walk(list)].filter((t) => attr(t, 'role') === 'tab' && isBaseTab(t));
 			if (triggers.length < 2) continue;
 			const active = triggers.findIndex((t) => attr(t, 'aria-selected') === 'true');
-			const tabs = list.parentNode as Element | null;
+			let tabs = list.parentNode as Element | null;
 			if (active < 0 || !tabs || !('tagName' in tabs)) continue;
 			const activeId = attr(triggers[active]!, 'id');
+			const panelIn = (el: Element) => [...walk(el)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
+			// The list may sit in a header beside other controls: the Tabs root is the nearest ancestor holding its panel.
+			for (let up: Element | null = tabs; up && 'tagName' in up && up !== root; up = up.parentNode as Element | null) {
+				if (panelIn(up)) {
+					tabs = up;
+					break;
+				}
+				if (attr(up, 'data-slot') === 'tabs') break;
+			}
 			// A list without panels (shadcn's line, vertical and icon variants) still switches its triggers.
-			const panel = [...walk(tabs)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
+			const panel = panelIn(tabs);
 			const own = panel && { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
 			const panels = panel ? triggers.map((t, k) => (k === active ? own : revealed(t))) : [];
 			if (panels.some((p) => !p)) continue;

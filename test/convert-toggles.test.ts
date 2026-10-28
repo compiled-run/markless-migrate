@@ -133,6 +133,17 @@ test('a Base UI tab list without panels (the line and vertical variants) still s
 	assert.doesNotMatch(out, /aria-controls=\{/);
 });
 
+test('a Base UI tab list in a header beside other controls switches the panels of its Tabs root (the typeset Docs and Prompt tabs)', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div class="header"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="">Docs</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">Prompt</button></div><button>Next.js</button></div><div><div role="tabpanel" id="base-ui-p" aria-labelledby="base-ui-a" data-index="0"><p>docs</p></div></div></div></body>');
+	const plan = new BaseTabsPlan();
+	const revealed = (t: Element) => (attr(t, 'id') === 'base-ui-b' ? { attrs: { role: 'tabpanel', id: 'base-ui-q', 'aria-labelledby': 'base-ui-b', 'data-index': '1' }, inner: '<p>prompt</p>' } : undefined);
+	assert.equal(plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), revealed, (h) => h), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /@if \(btab0 === 0\) \{ <><p>docs<\/p><\/> \}@if \(btab0 === 1\) \{ <><p>prompt<\/p><\/> \}/);
+	assert.match(out, /<div data-slot="tabs" data-activation-direction=\{btab0d\}>/);
+});
+
 test('a Radix collapsible whose trigger renders its child (asChild, data-slot="button") opens its content on state', async () => {
 	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="button" aria-controls="c1" aria-expanded="false" data-state="closed">Product details</button><div id="c1" data-slot="collapsible-content" data-state="closed" hidden></div></div></body>');
