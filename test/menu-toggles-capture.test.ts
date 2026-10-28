@@ -92,6 +92,7 @@ test("captureMenuToggles: a menu's checkbox and radio items with their markup on
 		assert.equal(bar.on.attrs.id, bar.off.attrs.id, 'an id generated on each opening is not part of the state');
 		const reset = found.find((m) => m.key === 'reset')!;
 		assert.deepEqual(reset.groups.map((g) => [g.kind, g.lasts]), [['toggle', 'reset']]);
+		assert.equal(reset.groups[0]!.controls[0]!.on.attrs['data-mm-press'], undefined, 'the mark the capture presses by is not part of the state');
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
