@@ -20,7 +20,7 @@ export function installParity(): void {
 	const nameOf = (el: Element) => {
 		const by = el.getAttribute('aria-labelledby');
 		const n = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '');
-		return (n || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...((el as HTMLInputElement).labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const shownControls = () => [...document.querySelectorAll(SEL)].filter((el) => visible(el) && el.getBoundingClientRect().width >= 2 && el.getBoundingClientRect().height >= 2);
 	const keyOf = (el: Element, among: readonly Element[]) => {
@@ -76,16 +76,19 @@ export function installParity(): void {
 		readonly frames: { ms: number; opacity: number; transform: string; anims: string[] }[];
 		readonly url: string;
 		readonly openBefore: Set<Element>;
+		readonly checks: Map<HTMLInputElement, boolean>;
 		firstInput?: number;
 	}
 	let armed: Armed | undefined;
 	const observe = (st: Armed, doc: Document) => st.observer.observe(doc, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
 	const startWatch = (el: Element): Armed => {
-		const st: Armed = { el, observer: undefined as unknown as MutationObserver, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(shownPopups()) };
+		const st: Armed = { el, observer: undefined as unknown as MutationObserver, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(shownPopups()), checks: new Map([...document.querySelectorAll<HTMLInputElement>('input[type=checkbox], input[type=radio]')].map((i) => [i, i.checked])) };
 		(st as { observer: MutationObserver }).observer = new MutationObserver((records) => {
 			for (const rec of records) {
 				if (rec.type === 'attributes') {
 					if (rec.attributeName?.startsWith(MARK)) continue;
+					// React writes a hidden native input's checked and value as attributes, a port as properties: properties are read instead.
+					if (rec.target instanceof HTMLInputElement && (rec.attributeName === 'checked' || rec.attributeName === 'value')) continue;
 					const target = rec.target as Element;
 					const m = st.was.get(target) ?? st.was.set(target, new Map()).get(target)!;
 					if (!m.has(rec.attributeName!)) m.set(rec.attributeName!, rec.oldValue);
@@ -221,7 +224,9 @@ export function installParity(): void {
 			if (!st) return { affected: [], url: '', focus: focusKey(), popupRole: '' };
 			st.observer.disconnect();
 			const affected = new Set<string>();
+			const flipped = [...st.checks].filter(([i, was]) => i.isConnected && i.checked !== was).map(([i]) => i.parentElement ?? i);
 			const changedAttrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? (el.getAttribute(n) ?? '') !== (v ?? '') : el.getAttribute(n) !== v))).map(([el]) => el));
+			for (const el of flipped) if (st.el !== document.body && !(st.el === el || st.el.contains(el))) affected.add(regionOf(el));
 			for (const node of [...st.touched, ...changedAttrs]) {
 				const doc = node.ownerDocument ?? (node as Document);
 				if (doc !== document) {

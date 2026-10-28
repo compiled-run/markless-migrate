@@ -50,6 +50,14 @@ const CASES: Record<string, { old: string; new: string }> = {
 		new: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
 	},
 	scroller: { old: '', new: '' },
+	bubble: {
+		old: page(`<label>Airplane mode <button role="switch" aria-checked="false" id="sw">Airplane mode</button></label><input type="checkbox" aria-hidden="true" tabindex="-1" style="position: absolute; opacity: 0; width: 1px; height: 1px">`, `document.getElementById('sw').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-checked') !== 'true'; e.currentTarget.setAttribute('aria-checked', String(on)); const i = document.querySelector('input'); if (on) i.setAttribute('checked', ''); else i.removeAttribute('checked'); });`),
+		new: page(`<label>Airplane mode <button role="switch" aria-checked="false" id="sw">Airplane mode</button></label><input type="checkbox" aria-hidden="true" tabindex="-1" style="position: absolute; opacity: 0; width: 1px; height: 1px">`, `document.getElementById('sw').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-checked') !== 'true'; e.currentTarget.setAttribute('aria-checked', String(on)); document.querySelector('input').checked = on; });`),
+	},
+	notes: {
+		old: page(`<label for="bio">Bio</label><textarea id="bio">Hello</textarea>`, `document.getElementById('bio').addEventListener('input', (e) => { e.target.textContent = e.target.value; });`),
+		new: page(`<label for="bio">Bio</label><textarea id="bio">Hello</textarea>`),
+	},
 	today: {
 		old: page(`<div role="grid" aria-label="October 2026">${[26, 27, 28].map((d) => `<button ${d === 28 ? 'data-today="true" ' : ''}aria-label="${d === 28 ? 'Today, ' : ''}${['Monday', 'Tuesday', 'Wednesday'][d - 26]}, October ${d}th, 2026">${d}</button>`).join('')}</div>`),
 		new: page(`<div role="grid" aria-label="October 2026">${[26, 27, 28].map((d) => `<button ${d === 26 ? 'data-today="true" ' : ''}aria-label="${d === 26 ? 'Today, ' : ''}${['Monday', 'Tuesday', 'Wednesday'][d - 26]}, October ${d}th, 2026">${d}</button>`).join('')}</div>`),
@@ -189,4 +197,12 @@ test('a sidebar its script scrolls to a different place on each load: its links 
 
 test('a calendar whose "today" is another day on each side (each site\'s build date): the same controls, nothing red', async () => {
 	assert.deepEqual(checks(await check('today', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 4 })), []);
+});
+
+test('a switch whose hidden native input one side checks by attribute and the other by property: the same answer', async () => {
+	assert.deepEqual(checks(await check('bubble', { ...FAST, widths: [1280], maxUses: 2, maxKeys: 3 })), []);
+});
+
+test('a textarea is named by its label, so what is typed into it does not rename it', async () => {
+	assert.deepEqual(checks(await check('notes', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 4, maxInputs: 2 })), []);
 });
