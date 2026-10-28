@@ -12,5 +12,6 @@ export function itemsAfterFirstPaint(el: HTMLElement): void {
 	}
 	if (!later.length) return;
 	for (const [group] of later) group.style.display = 'none';
-	requestAnimationFrame(() => setTimeout(() => later.forEach(([group, display]) => (group.style.display = display))));
+	// A search in that frame may have laid a group out itself (cmdk's paintOrder); that display stands.
+	requestAnimationFrame(() => setTimeout(() => later.forEach(([group, display]) => group.style.display === 'none' && (group.style.display = display))));
 }
