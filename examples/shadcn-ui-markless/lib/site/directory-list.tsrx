@@ -133,7 +133,7 @@ export default function DirectoryList() @{
 			<>
 			<div role="list" data-slot="item-group" class="group/item-group flex w-full flex-col gap-4 has-data-[size=sm]:gap-2.5 has-data-[size=xs]:gap-2 my-8">
 				@for (const row of view.rows; key row.name) {
-					<>
+					<div style="display: contents">
 					<div data-slot="item" data-variant="default" data-size="default" class="group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted border-transparent py-2.5 group/item relative gap-6 px-0">
 						<div data-slot="item-media" data-variant="image" class="flex shrink-0 items-center justify-center gap-2 group-has-data-[slot=item-description]/item:translate-y-0.5 group-has-data-[slot=item-description]/item:self-start [&_svg]:pointer-events-none size-10 overflow-hidden rounded-sm group-data-[size=sm]/item:size-8 group-data-[size=xs]/item:size-6 [&_img]:size-full [&_img]:object-cover grayscale *:[svg]:size-8 *:[svg]:fill-foreground">
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox={row.viewBox} hidden={row.noLogo}>
@@ -173,7 +173,7 @@ export default function DirectoryList() @{
 						</div>
 					</div>
 					<div data-orientation="horizontal" role="separator" aria-orientation="horizontal" data-slot="item-separator" class="shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch my-1" hidden={row.last}></div>
-					</>
+					</div>
 				}
 			</div>
 			<nav role="navigation" aria-label="pagination" data-slot="pagination" class="mx-auto flex w-full justify-center" hidden={view.navHidden}>
