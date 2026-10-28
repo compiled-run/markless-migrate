@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { attr, walk, type Element } from './dom.ts';
+import { PORTS } from './parts.ts';
 
 /**
  * A site's own client component, ported to Markless by hand (`lib/site/<file>.tsrx`), that stands in for the element of
@@ -18,6 +19,8 @@ export interface SiteComponent {
 	 * converter leaves those layers out, and the file's `Layers` export renders them there, with the page's layers.
 	 */
 	readonly layers?: boolean;
+	/** Library ports its own markup uses that the old page's markup did not show (a palette opened only by a key). */
+	readonly ports?: readonly string[];
 }
 
 export async function readSiteComponents(app: string): Promise<readonly SiteComponent[]> {
@@ -27,6 +30,7 @@ export async function readSiteComponents(app: string): Promise<readonly SiteComp
 	for (const c of listed) {
 		parseSelector(c.selector);
 		if (!/^[a-z0-9-]+\.tsrx$/.test(c.component)) throw new Error(`lib/site/components.json: "${c.component}" is not a .tsrx file in lib/site`);
+		for (const port of c.ports ?? []) if (!PORTS.some((p) => p.module === port)) throw new Error(`lib/site/components.json: ${c.component} names "${port}", which is not a library port`);
 		if (c.layers && c.in !== 'page') throw new Error(`lib/site/components.json: ${c.component} renders its own layers ("layers") but is not "in": "page"`);
 	}
 	return listed;

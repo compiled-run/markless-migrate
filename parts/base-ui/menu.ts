@@ -205,7 +205,13 @@ function switchTo(p: Popup, to: HTMLElement | undefined, focus: 'popup'): boolea
 	return openMenu(to, focus);
 }
 
+// The item a press or Enter activated while it was enabled: Base UI's handler read `disabled` as rendered then, so an
+// item whose own onClick disables it (Undo at the start of the history) still closes the menu.
+let activated: HTMLElement | null = null;
+const activate = (item: HTMLElement | null) => (activated = item && enabled(item) && !item.hasAttribute('data-disabled') ? item : null);
+
 export function pointerdown(target: Element, event: PointerEvent): boolean {
+	activate(target.closest<HTMLElement>(ITEM));
 	const trigger = triggerOf(target);
 	if (!trigger || event.button !== 0) return false;
 	// The press's own focus would land on the trigger after the menu took it.
@@ -219,15 +225,17 @@ export function click(target: Element, event?: MouseEvent): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
 	const p = item && popupOf(item);
 	if (!item || !p) return Boolean(triggerOf(target));
-	if (!enabled(item) || item.hasAttribute('data-disabled')) return true;
+	const wasEnabled = activated === item;
+	activated = null;
+	if (!wasEnabled && (!enabled(item) || item.hasAttribute('data-disabled'))) return true;
 	if (item.matches(OPENER)) {
 		// useClick with ignoreMouse (openOnHover): a mouse or pen press leaves opening to the hover rest.
 		const pointer = event instanceof PointerEvent ? event.pointerType : undefined;
 		if (pointer !== 'mouse' && pointer !== 'pen') openSub(p, item, 'pointer');
 		return true;
 	}
-	// Menu.RadioItem and Menu.CheckboxItem default closeOnClick to false.
-	if (!item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]')) closeTree(p, 'item');
+	// Menu.RadioItem and Menu.CheckboxItem default closeOnClick to false; items rendered with closeOnClick sit in data-mm-close-on-click="true".
+	if (!item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]') || item.closest('[data-mm-close-on-click="true"]')) closeTree(p, 'item');
 	return true;
 }
 export function pointerover(target: Element): boolean {
@@ -356,6 +364,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
 		event.preventDefault();
+		activate(list[at]!);
 		list[at]!.click();
 		return true;
 	}

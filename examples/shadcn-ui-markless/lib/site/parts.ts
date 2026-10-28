@@ -5,6 +5,7 @@ import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 import { parseParams, previewValues, TYPESET_COMMAND_MESSAGE, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
+import { CMD_K_FORWARD_TYPE, DARK_MODE_FORWARD_TYPE, isCreatePreview, OPEN_PRESET_FORWARD_TYPE, RANDOMIZE_FORWARD_TYPE, REDO_FORWARD_TYPE, RESET_FORWARD_TYPE, UNDO_FORWARD_TYPE } from './create-messages.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -408,4 +409,13 @@ const typesetPreview: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview];
+// app/(view)/preview/[base]/[name]: the page /create shows in its iframe. DesignSystemProvider applies the params (its
+// URL's, then each the designer posts), loaded on that page alone; the beforeInteractive scripts (ActionMenuScript,
+// OpenPresetScript, RandomizeScript, HistoryScript, DarkModeScript) forward their keys to the designer.
+const designSystemPreview: Part = {
+	idle() {
+		if (isCreatePreview(location.pathname)) void import('./create-preview.ts').then((m) => m.startPreview());
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview];

@@ -1582,6 +1582,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (standIn) {
 			// It renders the controls the old page had there, so the page's registry carries their parts.
 			for (const x of walk(el)) if (x !== el) bindParts(x, usedPorts);
+			for (const port of standIn.ports ?? []) usedPorts.add(port);
 			return { replace: `<${componentName(standIn)} />` };
 		}
 		const markup = appended.get(el);

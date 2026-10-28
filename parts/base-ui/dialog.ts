@@ -1,5 +1,5 @@
 import { hideOthers } from '../aria-hidden.ts';
-import { acquireScrollLock, closePopup, openPopup, popupOf, top, type Popup } from './popup.ts';
+import { acquireScrollLock, closePopup, isOpen, openPopup, popupOf, setTrigger, top, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
 import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
 
@@ -26,14 +26,16 @@ const tabbables = (root: HTMLElement, scrollers = true) => [...root.querySelecto
 
 function close(p: Popup, returnFocus = true): void {
 	undo.get(p)?.();
+	// onOpenChange(false): the page's own state about the dialog (a field it clears) hears it closing.
+	p.popup.dispatchEvent(new CustomEvent('mmclose', { bubbles: true }));
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
 	if (overlay) exit(overlay, [], () => {});
 	closePopup(p, returnFocus);
 }
 
-function open(trigger: HTMLElement): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: trigger.id || layerKey(trigger) });
-	if (!p) return false;
+function open(trigger: HTMLElement, key = trigger.id || layerKey(trigger)): Popup | undefined {
+	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key });
+	if (!p) return undefined;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
 	// disablePointerDismissal (convert reads it per instance; always set for an alert dialog): no outside-press or focus-out close.
 	const dismissible = !alert && trigger.getAttribute('data-mm-disable-pointer-dismissal') !== 'true';
@@ -92,7 +94,7 @@ function open(trigger: HTMLElement): boolean {
 	});
 	// DrawerPopup's initialFocus is the popup itself; DialogPopup's is its first tabbable element.
 	(p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup, false)[0] ?? p.popup)).focus({ preventScroll: true });
-	return true;
+	return p;
 }
 
 export function click(target: Element): boolean {
@@ -111,3 +113,39 @@ export function click(target: Element): boolean {
 	close(p);
 	return true;
 }
+
+/**
+ * A dialog the page opens itself (its open prop): focus goes back where it was when it closes, as Base UI's
+ * FloatingFocusManager returns it; a trigger the page has for it shows it open meanwhile.
+ */
+export function show(key: string): boolean {
+	if (isOpen(key)) return false;
+	const at = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+	// Opened from a menu item: the menu closes first and gives focus back to its trigger, where the dialog returns it.
+	const before = (at && popupOf(at)?.trigger) || at;
+	const stand = document.createElement('button');
+	stand.focus = (options?: FocusOptions) => before?.focus(options);
+	const p = open(stand, key);
+	if (!p) return false;
+	const trigger = document.getElementById(key);
+	if (trigger?.matches(TRIGGER)) {
+		setTrigger(trigger, true);
+		const done = undo.get(p);
+		undo.set(p, () => {
+			done?.();
+			setTrigger(trigger, false);
+		});
+	}
+	return true;
+}
+
+/** Closes the dialog of a layer key, as its open prop turning false does. */
+export function hide(key: string): boolean {
+	const portal = layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
+	const p = portal && popupOf(portal);
+	if (!p || !undo.has(p)) return false;
+	close(p);
+	return true;
+}
+
+export const shown = (key: string): boolean => isOpen(key);

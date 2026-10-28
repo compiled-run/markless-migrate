@@ -1,0 +1,22 @@
+// Two arms, as the converter writes a page's query variants.
+import type { PageProps } from '@markless/router';
+import Create, { Layers as CreateLayers } from '../../../examples/shadcn-ui-markless/lib/site/create.tsrx';
+import { behave, listen } from '../registry.ts';
+
+export default function Page({ url }: PageProps) @{
+	const search = url.search;
+	@switch (search) {
+		@case "?template=vite": {
+			<><div data-slot="layout" onClick={(event) => behave(event)} onKeyDown={(event) => behave(event)} onPointerOver={(event) => behave(event)} onPointerOut={(event) => behave(event)} onPointerDown={(event) => behave(event)} onFocusIn={(event) => behave(event)} onFocusOut={(event) => behave(event)} onInput={(event) => behave(event)} onIdle={() => listen()}>
+				<Create />
+			</div>
+			<CreateLayers /></>
+		}
+		@default: {
+			<><div data-slot="layout" onClick={(event) => behave(event)} onKeyDown={(event) => behave(event)} onPointerOver={(event) => behave(event)} onPointerOut={(event) => behave(event)} onPointerDown={(event) => behave(event)} onFocusIn={(event) => behave(event)} onFocusOut={(event) => behave(event)} onInput={(event) => behave(event)} onIdle={() => listen()}>
+				<Create />
+			</div>
+			<CreateLayers /></>
+		}
+	}
+}
