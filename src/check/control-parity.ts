@@ -290,7 +290,9 @@ export function inputDifferences(old: Use, port: Use): [string, string, string][
 	const o = old.field, n = port.field;
 	if (o && n && o.value !== n.value) out.push(['value', `the field ends as "${o.value}"`, `"${n.value}"`]);
 	if (o && n && (o.invalid !== n.invalid || o.badInput !== n.badInput)) out.push(['validity', `aria-invalid ${o.invalid || 'unset'}, ${o.badInput ? 'invalid' : 'valid'} to the browser`, `aria-invalid ${n.invalid || 'unset'}, ${n.badInput ? 'invalid' : 'valid'}`]);
-	if (old.shown && old.shown !== port.shown) out.push(['pop-up', `its pop-up then shows ${old.shown}`, port.shown ? `shows ${port.shown}` : 'no pop-up opens']);
+	// Equal-score search results can come in another order from a CI-built original: what a pop-up shows is compared as a set.
+	const asSet = (t?: string) => (t ?? '').split('; ').sort().join('; ');
+	if (old.shown && asSet(old.shown) !== asSet(port.shown)) out.push(['pop-up', `its pop-up then shows ${old.shown}`, port.shown ? `shows ${port.shown}` : 'no pop-up opens']);
 	if ((old.url ?? '') !== (port.url ?? '')) out.push(['address', old.url ? `address becomes ${old.url}` : 'the address stays', port.url ? `becomes ${port.url}` : 'the address stays']);
 	const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
 	if (old.affected?.length && lost.length === old.affected.length) out.push(['region', `changes ${old.affected.join(', ')}`, port.affected?.length ? `changes ${port.affected.join(', ')}` : 'nothing changed on the port']);
