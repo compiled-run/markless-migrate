@@ -543,6 +543,19 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+// Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
+test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
+	for (const bound of [true, false]) {
+		const layer = dialogLayer('ad').replace(/alert-dialog/g, 'dialog').replace('role="alertdialog"', 'role="dialog"').replace('<button data-slot="dialog-cancel">Cancel</button>', `<input${bound ? ' m:on="input:0"' : ''}>`);
+		const page = await open(`<div data-async-container><main><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Search</button></main>${layer}<div id="later"></div><!--markless:page-end--></div>`, ['radix/dialog']);
+		await page.getByText('Search').click();
+		assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+		const order = await page.evaluate(() => [...document.querySelector('[data-async-container]')!.children].map((e) => e.id || e.getAttribute('data-slot') || e.tagName.toLowerCase()).join(','));
+		assert.equal(order, bound ? 'main,dialog-overlay,ad,later' : 'main,later,dialog-overlay,ad');
+		await page.close();
+	}
+});
+
 test('shadcn-ui site: a code block\'s copy button writes what it copied on the old page and shows Copied with the check for 2 s', async () => {
 	const icon = '<svg class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
 	const button = `<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button>`;
@@ -560,6 +573,19 @@ test('shadcn-ui site: a code block\'s copy button writes what it copied on the o
 	assert.deepEqual(await look(), ['Copied', 'true', 'lucide lucide-check', 'none']);
 	await page.waitForTimeout(2100);
 	assert.deepEqual(await look(), ['Copy', null, 'lucide lucide-copy', null]);
+	await page.close();
+});
+
+test('shadcn-ui site: the block viewer\'s npx command button draws lucide\'s check over its Terminal icon (a polyline and a line) for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg>';
+	const page = await open(`<button data-slot="button" type="button">${icon}<span>npx shadcn add sidebar-07</span></button><template data-mm-clipboard="button|button|npx shadcn add sidebar-07#0" data-mm-text="npx shadcn@latest add sidebar-07"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button svg').evaluate((svg) => [svg.getAttribute('class'), ...[...svg.children].map((c) => `${c.tagName}:${c.getAttribute('points') ?? c.getAttribute('d') ?? c.getAttribute('x1')}${c.getAttribute('display') ? ' hidden' : ''}`)]);
+	assert.deepEqual(await look(), ['lucide lucide-check', 'polyline:20 6 9 17 4 12', 'line:12 hidden'], 'the check is drawn, not just the terminal hidden');
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['lucide lucide-terminal', 'polyline:4 17 10 11 4 5', 'line:12']);
 	await page.close();
 });
 
@@ -690,6 +716,23 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 	await page.close();
 });
 
+
+test('react-resizable-panels: a press within the separator\'s 10 px hit area drags it, though another element is on top there', async () => {
+	// The second panel is drawn over the separator, as a block viewer's panel is once a viewport button has resized it.
+	const page = await open(
+		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:2px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px;margin-left:-2px;position:relative;background:#eee"></div></div></div>`,
+		['resizable'],
+	);
+	const separator = page.locator('[role="separator"]');
+	const box = (await separator.boundingBox())!;
+	await page.mouse.move(box.x + 4, box.y + 50);
+	await page.mouse.down();
+	assert.equal(await separator.getAttribute('data-separator'), 'active', 'the press is within 10 px around the separator');
+	await page.mouse.move(box.x + 44, box.y + 50, { steps: 4 });
+	await page.mouse.up();
+	assert.equal(await separator.getAttribute('aria-valuenow'), '60', 'dragged by 40 of the panels\' 400 px');
+	await page.close();
+});
 
 test('react-resizable-panels: the arrows do not follow the text direction, and the other orientation\'s arrows do nothing', async () => {
 	const page = await open(
@@ -926,6 +969,26 @@ test('a press on a Radix roving group itself leaves focus on the group; Tab into
 	await page.close();
 });
 
+test('a Radix roving item focused, by Tab into its group, a press or an arrow, becomes the one item in the tab order (Radix RovingFocusGroup)', async () => {
+	const item = (t: string, selected: boolean) => `<button role="tab" aria-selected="${selected}" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">${t}</button>`;
+	const page = await open(`<main><button id="before">Before</button><div role="tablist" tabindex="0" data-orientation="horizontal" style="outline:none">${item('A', true)}${item('B', false)}${item('C', false)}</div><button id="after">After</button></main>`, ['radix/roving']);
+	await page.evaluate(async () => {
+		const { roving } = await import('/parts/radix/roving.ts' as string);
+		document.querySelector('[role="tablist"]')!.addEventListener('keydown', (e) => roving(e as KeyboardEvent));
+	});
+	const stops = () => page.$$eval('[role="tab"]', (tabs) => tabs.map((t) => `${t.textContent}:${t.getAttribute('tabindex')}`).join(' '));
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button[tab]:A');
+	assert.equal(await stops(), 'A:0 B:-1 C:-1', 'Tab into the group moves on to the selected item, which becomes the tab stop');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'button[tab]:B');
+	assert.equal(await stops(), 'A:-1 B:0 C:-1');
+	await page.locator('[role="tab"]', { hasText: 'C' }).click();
+	assert.equal(await stops(), 'A:-1 B:-1 C:0', 'a press makes the pressed item the tab stop');
+	await page.close();
+});
+
 test('React Aria tabs keep React Aria\'s keys: Left/Right also step a vertical list, Up/Down only a vertical one, disabled tabs are skipped', async () => {
 	const tabs = (orientation: string, p: string) => `<div role="tablist" aria-orientation="${orientation}" data-rac="" data-slot="tabs-list"><div role="tab" data-rac="" tabindex="0" id="${p}a">${p}A</div><div role="tab" data-rac="" tabindex="-1">${p}B</div><div role="tab" data-rac="" tabindex="-1" aria-disabled="true" data-disabled="true">${p}C</div></div>`;
 	const page = await open(`${tabs('vertical', 'V')}${tabs('horizontal', 'H')}`, ['radix/roving']);
@@ -1043,6 +1106,19 @@ test('a Radix select layer captured open is converted at rest with no option ari
 	await settled(page);
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Banana');
 	assert.deepEqual(await page.evaluate(() => (window as any).changes), ['false>true']);
+	await page.close();
+});
+
+test('a Base UI select icon carries data-popup-open while its select is open, as SelectIcon does', async () => {
+	const page = await open(baseSelect.replace('<span data-slot="select-value">Select a fruit</span>', '<span data-slot="select-value">Select a fruit</span><svg aria-hidden="true" width="8" height="8"><path d="m6 9 6 6 6-6"></path>&#9660;</svg>'), ['base-ui/select'], 'body');
+	const icon = () => page.locator('[data-slot="select-trigger"] svg').evaluate((s) => s.hasAttribute('data-popup-open'));
+	assert.equal(await icon(), false);
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	assert.equal(await icon(), true);
+	await page.keyboard.press('Escape');
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await icon(), false);
 	await page.close();
 });
 

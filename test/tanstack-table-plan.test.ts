@@ -71,9 +71,9 @@ function capture(region: (s: Shape) => string): CapturedTable {
 	};
 }
 
-function convert(region: (s: Shape) => string) {
+function convert(region: (s: Shape) => string, page: (html: string) => string = (html) => html) {
 	const table = capture(region);
-	const doc = parseDocument(`<body>${table.snapshots[0]!.html}</body>`);
+	const doc = parseDocument(`<body>${page(table.snapshots[0]!.html)}</body>`);
 	const root = body(doc);
 	const els = [...walk(root)];
 	const boxes = els.filter((el) => attr(el, 'role') === 'checkbox');
@@ -229,4 +229,13 @@ test('a table whose rows are no one template renders as the old page showed it, 
 	const source = `export default function Page() @{\n\t${out}\n}\n`;
 	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
+});
+
+test('a web font that only some rows draw waits on the table body, so the rows stay one template', () => {
+	// The capture marks the blocks a late font draws: here only beta's name (an Arabic status in the RTL data table).
+	const { placed, out, plan } = convert(radixRegion, (html) => html.replace('<div class="lowercase">beta</div>', '<div class="lowercase" data-mm-late-font="">beta</div>'));
+	assert.equal(placed, 1, plan.notes.join('\n'));
+	assert.deepEqual(plan.notes, []);
+	assert.match(out, /<tbody data-mm-late-font="">@for \(const row of tt0v\.rows; key row\.id\) \{ /);
+	assert.match(out, /<div class="lowercase">\{row\.c0\}<\/div>/);
 });

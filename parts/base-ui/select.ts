@@ -123,9 +123,17 @@ const popupFor = (trigger: HTMLElement) => [...document.querySelectorAll('[data-
 const typings = new WeakMap<HTMLElement, Typing>();
 const typingOf = (trigger: HTMLElement) => typings.get(trigger) ?? typings.set(trigger, newTyping()).get(trigger)!;
 
+// SelectIcon (aria-hidden, its default child ▼ kept beside a rendered svg) carries data-popup-open while the select is open.
+const iconOf = (trigger: HTMLElement) => [...trigger.children].find((c) => c.getAttribute('aria-hidden') === 'true' && (c.textContent ?? '').includes('▼'));
+
 function openSelect(trigger: HTMLElement, key?: string): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: dismiss });
 	if (!p) return false;
+	const icon = iconOf(trigger);
+	if (icon) {
+		icon.setAttribute('data-popup-open', '');
+		p.cleanup.push(() => icon.removeAttribute('data-popup-open'));
+	}
 	endTyping(typingOf(trigger));
 	const label = selectedValue.get(trigger);
 	if (label !== undefined) for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) {

@@ -26,6 +26,21 @@ function pairOf(target: Element): Pair | undefined {
 	return { separator, group, before, after, row: getComputedStyle(group).flexDirection !== 'column' };
 }
 
+// A separator's hit area is its box grown to 10 px (20 px for a coarse pointer), found by position: another element may
+// be drawn over it (react-resizable-panels 4's resizeTargetMinimumSize and its document-level pointer handling).
+function pairAt(target: Element, x: number, y: number): Pair | undefined {
+	const min = matchMedia('(pointer: coarse)').matches ? 20 : 10;
+	for (let group = target.closest<HTMLElement>('[data-group]'); group; group = group.parentElement?.closest<HTMLElement>('[data-group]') ?? null) {
+		for (const separator of group.querySelectorAll<HTMLElement>(':scope > [role="separator"]')) {
+			const r = separator.getBoundingClientRect();
+			const [w, h] = [Math.max(r.width, min), Math.max(r.height, min)];
+			const [left, top] = [r.left - (w - r.width) / 2, r.top - (h - r.height) / 2];
+			if (x >= left && x <= left + w && y >= top && y <= top + h) return pairOf(separator);
+		}
+	}
+	return undefined;
+}
+
 const sizeOf = (panel: HTMLElement) => parseFloat(panel.style.flexGrow || getComputedStyle(panel).flexGrow) || 0;
 const limit = (panel: HTMLElement, name: 'min' | 'max', fallback: number) => {
 	const v = parseFloat(panel.dataset[name === 'min' ? 'mmMinSize' : 'mmMaxSize'] ?? '');
@@ -57,7 +72,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 }
 
 export function pointerdown(target: Element, event: PointerEvent): boolean {
-	const p = pairOf(target);
+	const p = pairOf(target) ?? pairAt(target, event.clientX, event.clientY);
 	if (!p || event.button !== 0) return false;
 	event.preventDefault();
 	// calculateAvailableGroupSize: the panels' own sizes, without the separators between them.

@@ -189,11 +189,12 @@ function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement |
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
 // pressable: data-pressed on the trigger while open (pressableTriggerOpenStateMapping); lockScroll: modal; tabOut: Tab leaves.
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean }): Popup | undefined {
 	// A context menu's trigger area has no id: its layer key, and the point it opens at.
 	const key = options.key || trigger.id;
 	if (!key || isOpen(key)) return undefined;
-	const portal = layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
+	// `portal` with `shown`: a popup the page already shows open (open at load), taken as it is.
+	const portal = options.portal ?? layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
 	if (!portal) return undefined;
 	const popup = portal.querySelector<HTMLElement>(options.popupSelector);
 	if (!popup) return undefined;
@@ -220,7 +221,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	}
 	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
 	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
-	enter(popup, around);
+	if (!options.shown) enter(popup, around);
 	setTrigger(trigger, true, pressable);
 	showCompanions(key, true);
 	open.push(p);

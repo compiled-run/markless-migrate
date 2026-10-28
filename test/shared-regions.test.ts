@@ -116,3 +116,17 @@ test("a link to the page itself is the path, also when only two pages share it",
 	assert.equal(region!.expressions.get(elementsOf(region!.element).find((el) => el.tagName === 'a')!)!.href, '`${path}`');
 	assertReproduces(region!);
 });
+
+test("a region whose state an element outside it also reads stays each page's own; what inside it holds no such state is still shared", () => {
+	const routes = ['/a', '/b', '/c'];
+	const tabs = (route: string) =>
+		`<div data-slot="tabs"><div role="tablist"><button role="tab">Command</button><button role="tab">Manual ${route}</button></div><div role="tabpanel" id="cli"><figure class="code">${filler(2100)}</figure></div><div role="tabpanel" id="manual">${route} own steps</div></div>`;
+	const pages = Object.fromEntries(routes.map((route) => [route, `<div id="app">${tabs(route)}</div>`]));
+	const declares = (el: Element) => (['tablist', 'tab', 'tabpanel'].includes(attr(el, 'role') ?? '') ? ['let tab0 = state("cli");'] : undefined);
+	const regions = sharedRegions(roots(pages), { declares });
+	assert.deepEqual(
+		regions.map((r) => r.element.tagName),
+		['figure'],
+		'the Command panel shares state with the triggers outside it: the code inside it is shared instead',
+	);
+});
