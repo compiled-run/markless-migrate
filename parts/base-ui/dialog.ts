@@ -33,8 +33,8 @@ function close(p: Popup, returnFocus = true): void {
 	closePopup(p, returnFocus);
 }
 
-function open(trigger: HTMLElement, { shown, key = trigger.id || layerKey(trigger) }: { readonly shown?: HTMLElement; readonly key?: string } = {}): Popup | undefined {
-	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: shown ? `shown:${shown.id || 'dialog'}` : key, portal: shown, shown: Boolean(shown) });
+function open(trigger: HTMLElement, { shown, rendered, key = trigger.id || layerKey(trigger) }: { readonly shown?: HTMLElement; readonly rendered?: HTMLElement; readonly key?: string } = {}): Popup | undefined {
+	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: shown ? `shown:${shown.id || 'dialog'}` : rendered ? `rendered:${rendered.id}` : key, portal: shown ?? rendered, shown: Boolean(shown) });
 	if (!p) return undefined;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
 	// disablePointerDismissal (convert reads it per instance; always set for an alert dialog): no outside-press or focus-out close.
@@ -121,6 +121,16 @@ export function click(target: Element): boolean {
 	if (!p || !undo.has(p)) return false;
 	close(p);
 	return true;
+}
+
+/** A dialog a site component renders itself (its portal in the page, hidden until used), opened from `trigger` as a converted one opens. */
+export function openRendered(trigger: HTMLElement, portal: HTMLElement): boolean {
+	return Boolean(open(trigger, { rendered: portal }));
+}
+
+export function closeRendered(portal: HTMLElement): void {
+	const p = popupOf(portal);
+	if (p && undo.has(p)) close(p);
 }
 
 /** A dialog the page shows open when it loads (a welcome dialog its state opened on mount) is taken as open, so its Close, Escape and backdrop close it. */

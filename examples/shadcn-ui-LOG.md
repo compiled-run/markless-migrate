@@ -2680,16 +2680,65 @@ Frame-by-frame check (each frame read after it was painted, 1280 px, against the
 | docs `chart` (radix) | Mobile | 9 / 24 | 0.034 px at equal progress: the old docs page drops frames under its other charts' work; the frames it paints sit on the port's curve |
 | pie-interactive | February (select) | 1 / 1 (no animation) | 0 px |
 
-Next, same part family, from the same captures: the layout at any width (recharts' band and bar sizes, which it
-truncates to whole pixels, so the drawing cannot simply scale, and the ticks `getTicks` keeps for the width), and the
-ticks for the visitor's time zone (behind UTC the dates read a day earlier, their widths change, and `preserveEnd`
-keeps other ticks).
+Time zones (second change): convert reads each axis' every possible tick off the props recharts' CartesianAxis was
+given (coordinates and the formatter's text, `a` in the drawing's facts) and each chart's layout and bar settings off
+its store. Behind UTC (checked once, on Jan 1 and Jul 1 of the chart's year) `parts/recharts-layout.ts` takes the
+dates as the clock part writes them for the visitor, keeps the ticks recharts' `getTicks` keeps (its `preserveEnd`
+and the other intervals as written, each text measured in a span on the body in the tick's font size and letter
+spacing, as `getStringSize` does) and draws them where `getTickLineCoord` puts them. Clock capture now finds a chart's
+dates as a whole too: on `chart-line-interactive` and `dashboard-01` the axis shows another number of ticks behind
+UTC, so the place-by-place reading found nothing. Old and port agree on every tick's text and place in UTC,
+Asia/Tokyo, America/Los_Angeles, Pacific/Honolulu and America/St_Johns on area-interactive, bar-interactive,
+line-interactive, dashboard-01 and area-default (1280 px), and the tooltips' dates at three points of each.
+
+Any width (third change): the drawing the old page made at the nearest captured width is laid out again for the
+chart's container, as recharts would lay it out there, when the container's whole-pixel size differs (the wrapper
+gets that size, as ResponsiveContainer gives it). The plot box keeps its margins and axis sizes; the band and point
+scales are d3-scale's, recomputed (`at = start + step * i`, so a coordinate is the float recharts has); bars take
+`getBarPositions` (10% category gap, the size truncated to whole pixels, so a bar chart cannot simply be scaled); the
+number axis is affine in the plot box; lines and areas are drawn again through their mapped points with d3-shape;
+dots, the tooltip cursor (`getCursorRectangle`, `getCursorPoints`), an area's animation clip, the bars' growth
+origin, LabelList labels (`getCartesianPosition`, with the size it clamps their text to), custom dots, the axes
+(`getTicks` again) and the horizontal grid (`getTicks` over the number axis' ticks in the body's font, then the
+plot's edges, as CartesianGrid does; convert reads where its lines could go off the tallest drawing) follow. A chart
+with no category axis drawn uses recharts' implicit one, one category per bar or point. The tooltip's hit ranges are
+recharts' `calculateActiveTickIndex` (halfway between neighbouring tick coordinates, added and halved as recharts
+does, so a pointer exactly on a boundary goes where recharts sends it; the captured ranges were a sweep's,
+quarter-pixel steps off, and are now exact at the captured widths too) and its fixed axis is anchored at the
+active category's middle. The pointer is read from `mousemove` and rounded as `getRelativeCoordinate` does (the
+port used pointermove's fractional coordinates: tooltips sat up to 1 px off). What a tooltip's state puts into the
+drawing is laid out the same way as Markless inserts it. Morphs at a new width start from the drawing on screen
+(the same state's drawing for another width is hidden in the same mutation). Executed at load on
+`chart-area-interactive`: 87.5 KB at a captured width, 96.5 KB at 1100 px (the layout part, 9 KB), against the old
+page's 666 KB.
+
+Parity sweep against the old site served locally, 27 chart routes (33 charts) at 400, 700, 1000 and 1512 px (no
+captured width among them), each in UTC and America/Los_Angeles: every element's geometry at rest and with the
+pointer at 30% and 70% of the plot, and the tooltip's text and place. "Same" is every coordinate within 0.002 px
+(d3-shape writes three decimals) and the same tooltip at the same place. Morphs at 700, 1100 and 1512 px (line, bar,
+area, dashboard): every frame within 0.04 px of the original.
+
+| Chart | 8 runs (4 widths x 2 zones) |
+| --- | --- |
+| area: default, axes, gradient, interactive, stacked, stacked-expand, step | same |
+| bar: interactive, active, horizontal, label, label-custom, mixed, multiple, negative, stacked | same |
+| line: default, dots, dots-custom, interactive, label, multiple, step | same |
+| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month) |
+| docs `chart` page, its 7 charts | same |
+| pie-interactive | same (300 px at all four widths) |
+| dashboard-01 | same at 1000 and 1512 px; below 768 px the old page switches to the last 7 days on load (`useIsMobile`), the port keeps 3 months |
+
+Not yet: pie, radar and radial charts are laid out only at the sizes captured (they are 250 or 300 px squares, so
+this shows only in containers narrower than that: pie-interactive and pie-legend at 342 px show the 300 px drawing
+where the old page draws 292 px); weekday-only date ticks behind UTC; the dashboards' phone default range.
+
 
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
-  the interactive charts' pages are 3-5x the original's HTML, and other widths stretch the nearest. Next: the chart
-  laid out at any width and for the visitor's time zone (see "Charts: how they move, fit and date").
+  the interactive charts' pages are 3-5x the original's HTML; any other width is laid out again from the nearest.
+  One SVG laid out from the captured data would do. Polar charts at sizes not captured, weekday-only ticks behind UTC,
+  and the dashboards' range on phones (see "Charts: how they move, fit and date").
 - `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.
