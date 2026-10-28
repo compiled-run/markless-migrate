@@ -9,7 +9,7 @@ import { createGzip } from 'node:zlib';
 const port = Number(process.argv[2] ?? 4000);
 const root = new URL('./old/public', import.meta.url).pathname;
 const config = JSON.parse(readFileSync(new URL('./old/vercel.json', import.meta.url), 'utf8'));
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.xml': 'application/xml', '.rss': 'application/rss+xml', '.ico': 'image/x-icon', '.riv': 'application/octet-stream', '.wasm': 'application/wasm' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.xml': 'application/xml', '.rss': 'application/rss+xml', '.ico': 'image/x-icon', '.riv': 'application/octet-stream', '.mp3': 'audio/mpeg', '.wasm': 'application/wasm' };
 
 // A vercel.json source (`/x`, `/assets/:splat*`, `/:path(regex)\\.txt`) as a regular expression with named groups.
 function pattern(source) {
