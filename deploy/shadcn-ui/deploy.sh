@@ -30,6 +30,7 @@ case "${1:-}" in
 		[[ "${VITE_APP_URL:-}" =~ ^https?://[^/]+$ ]] || { echo "FAIL: set VITE_APP_URL to the public origin, e.g. VITE_APP_URL=$NEW_URL $0 $1" >&2; exit 1; }
 		link "$APP" mm-shadcn-ui-new
 		rm -rf "$APP/.vercel/output"
+		(cd "$APP" && node "$ROOT/src/cli.ts" cache apply --prerender)
 		(cd "$APP" && NITRO_PRESET=vercel VITE_APP_URL="$VITE_APP_URL" npm run build)
 		# Built without VITE_APP_URL, "Open in v0" hands v0 a path with no host.
 		if grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.vercel/output"; then echo 'FAIL: pages link v0 to a hostless URL: build with VITE_APP_URL set' >&2; exit 1; fi
