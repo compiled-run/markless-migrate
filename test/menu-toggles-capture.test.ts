@@ -48,7 +48,15 @@ document.getElementById('reset').addEventListener('click', () => {
 	menu = document.createElement('div');
 	const draw = () => (menu.innerHTML = '<div role="menu">' + item('menuitemcheckbox', 'Full URLs', own.urls) + '</div>');
 	draw();
-	menu.addEventListener('click', (e) => { if (e.target.closest('[role^=menuitem]')) { own.urls = !own.urls; draw(); } });
+	// Switched in place, as React updates the item it rendered.
+	menu.addEventListener('click', (e) => {
+		const el = e.target.closest('[role^=menuitem]');
+		if (!el) return;
+		own.urls = !own.urls;
+		el.setAttribute('aria-checked', String(own.urls));
+		el.setAttribute('data-state', own.urls ? 'checked' : 'unchecked');
+		el.firstElementChild.innerHTML = own.urls ? '<svg data-check=""></svg>' : '';
+	});
 	document.body.append(menu);
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
