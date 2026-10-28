@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { attr, walk, type Element } from './dom.ts';
 import { PORTS } from './parts.ts';
@@ -34,6 +34,17 @@ export async function readSiteComponents(app: string): Promise<readonly SiteComp
 		if (c.layers && c.in !== 'page') throw new Error(`lib/site/components.json: ${c.component} renders its own layers ("layers") but is not "in": "page"`);
 	}
 	return listed;
+}
+
+/** The library parts the site's own code imports (`lib/site`, `from '../parts/<module>.ts'`): the app needs their files whether or not a page's markup uses them. */
+export async function siteImportedParts(app: string): Promise<string[]> {
+	const dir = join(app, 'lib', 'site');
+	const names = await readdir(dir).catch(() => [] as string[]);
+	const modules = new Set<string>();
+	for (const name of names.filter((n) => /\.(ts|tsrx)$/.test(n))) {
+		for (const m of (await readFile(join(dir, name), 'utf8')).matchAll(/from\s+'\.\.\/parts\/([\w/-]+)\.ts'/g)) modules.add(m[1]!);
+	}
+	return [...modules].sort();
 }
 
 /** The component's import name: its file name in PascalCase (`command-menu.tsrx` is CommandMenu). */

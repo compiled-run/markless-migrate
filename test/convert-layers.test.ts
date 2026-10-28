@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { extrasModule, LAYER_FILL, layerTable, pagesWiring, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
-import { componentImport, componentName, inPageComponent, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports } from '../src/convert/site-components.ts';
+import { componentImport, componentName, inPageComponent, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -204,6 +204,18 @@ test('what a control inside a page site component opens is that component\'s; on
 	const tail = "// Generated\nexport default function Page() @{\n\t<><div><Typeset /></div><TypesetLayers /></>\n}\n";
 	assert.equal(withSiteImports(tail, site, '..').split('\n')[1], "import Typeset, { Layers as TypesetLayers } from '../lib/site/typeset.tsrx';");
 	assert.equal(withSiteImports(tail, site, '..').split('\n').filter((l) => l.startsWith('import')).length, 1);
+});
+
+test("the parts the site's own code imports are found, so the app gets their files", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'site-parts-'));
+	try {
+		await mkdir(join(app, 'lib', 'site'), { recursive: true });
+		await writeFile(join(app, 'lib', 'site', 'a.tsrx'), "import { roving } from '../parts/radix/roving.ts';\nimport { show } from '../parts/base-ui/dialog.ts';\n");
+		await writeFile(join(app, 'lib', 'site', 'b.ts'), "import { configure } from '../parts/cmdk.ts';\nimport { x } from './a.tsrx';\n");
+		assert.deepEqual(await siteImportedParts(app), ['base-ui/dialog', 'cmdk', 'radix/roving']);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
 });
 
 test('a page site component names the library ports its own markup uses; a name that is no port is refused', async () => {

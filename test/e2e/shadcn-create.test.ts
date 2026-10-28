@@ -266,6 +266,13 @@ for (const kind of Object.keys(BROWSERS) as (keyof typeof BROWSERS)[]) {
 			await page.close();
 		});
 
+		test("the site header's Get Code (DesignerActions) opens the same Get Code dialog", async () => {
+			const page = await open(kind, '/create?preset=b4GlTyYWVs');
+			await page.locator('header button').filter({ hasText: /^Get Code$/ }).click();
+			await until(page, async () => (await page.locator('[role="dialog"]:visible code:visible').first().innerText().catch(() => '')) === 'shadcn init --preset b4GlTyYWVs --template next', 'the dialog');
+			await page.close();
+		});
+
 		test('Get Code writes the init command from the template, base and options, the apply command per mode, and the theme', async () => {
 			const page = await open(kind, '/create?preset=b4GlTyYWVs');
 			await page.locator('[data-slot="designer"] button').filter({ hasText: /^Get Code$/ }).click();

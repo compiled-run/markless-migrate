@@ -125,7 +125,7 @@ export const COPY_BACK = 'M16.9999 9C16.9975 6.04291 16.9528 4.51121 16.092 3.46
 export const OPEN_PRESET = 'create-open-preset';
 export const RESET = 'create-reset';
 export const ACTION_MENU = 'create-action-menu';
-export const GET_CODE = 'create-get-code';
+export { GET_CODE } from './create-messages.ts';
 
 export const themeOf = (name: string) => THEMES.find((t) => t.name === name);
 export const isBaseColor = (name: string) => BASE_COLORS.some((b) => b.name === name);

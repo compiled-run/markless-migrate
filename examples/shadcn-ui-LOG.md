@@ -304,7 +304,9 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   classes, fonts, the theme's variables, the menu color); the preview's keys reach the designer through the old page's
   own forward scripts, which the converted page serves in its head. The palette opens only by a key, so no capture
   shows its markup: `components.json` names the `cmdk` port for the component (`"ports"`), and the page's registry
-  carries it. The iframe is rendered once the page runs, not on the server (bug 30). Two quirks of the old page
+  carries it. Convert copies the library parts the site's own code imports (`lib/site`, `../parts/radix/roving.ts`) even when
+  no page's markup uses them. The site header's Get Code (DesignerActions' ProjectForm) opens the same Get Code dialog,
+  through the site part `designerGetCode`. The iframe is rendered once the page runs, not on the server (bug 30). Two quirks of the old page
   are kept because a user sees them: R draws twice (MainMenu's and RandomButton's `useRandom` both listen; nuqs writes
   the second draw), and Shift+R resets at once when pressed on the page (use-reset's two listeners undo each other's
   dialog state across React's synchronous flush) but opens the dialog when the preview forwards it. Parts changes:

@@ -5,7 +5,8 @@ import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
-import { isCreatePreview } from './create-messages.ts';
+import { show } from '../parts/base-ui/dialog.ts';
+import { GET_CODE, isCreatePreview } from './create-messages.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -440,4 +441,14 @@ const designSystemPreview: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview];
+// components/designer-actions.tsx: the site header's ProjectForm on /create, the same Get Code dialog as the designer's.
+const designerGetCode: Part = {
+	click(target) {
+		const button = target.closest('header [data-slot="dialog-trigger"]');
+		if (!button || button.textContent?.trim() !== 'Get Code' || !document.querySelector(`[data-mm-layer="${GET_CODE}"]`)) return false;
+		show(GET_CODE);
+		return true;
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode];

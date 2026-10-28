@@ -11,5 +11,8 @@ export const UNDO_FORWARD_TYPE = 'undo-forward';
 export const REDO_FORWARD_TYPE = 'redo-forward';
 export const DARK_MODE_FORWARD_TYPE = 'dark-mode-forward';
 
+/** The layer key of /create's Get Code dialog (ProjectForm), which the site header's Get Code opens too. */
+export const GET_CODE = 'create-get-code';
+
 /** /preview/{base}/{name}: the page /create shows in its iframe. */
 export const isCreatePreview = (pathname: string): boolean => /^\/preview\/(base|radix|aria)\/[^/]+\/?$/.test(pathname);
