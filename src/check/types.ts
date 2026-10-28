@@ -270,6 +270,8 @@ export interface RouteResult {
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** Each control the widget probes drove, alike controls they let one of their kind stand for, and why any was not driven; how long they took. */
 	readonly probes?: { readonly controls: readonly { readonly control: string; readonly cls: string; readonly state: string; readonly ms?: number }[]; readonly ms: number };
+	/** How many uses, keys and typed values control parity tried, how many its budget left out, and how long it took. */
+	readonly controlParity?: { readonly tried: number; readonly leftOut: number; readonly ms: number };
 	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: Responsiveness;
 	/** The template group the route was put in (by URL pattern, page structure and the kinds of control it renders); visual, responsiveness and motion were checked on its representative. */
