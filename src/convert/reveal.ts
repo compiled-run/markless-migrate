@@ -17,6 +17,14 @@ async function markAdded(page: Page): Promise<void> {
 	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: true }).catch(() => {});
 }
 
+// A cache of content gestures added and markAdded marked: kept while it holds every mark that applies to it.
+async function markedCache(file: string, route: string): Promise<Reveal[] | undefined> {
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[]; marks?: Marked }, () => undefined);
+	if (!cached || cached.route !== route) return undefined;
+	return missingMarks(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.marks ?? {}, addedMarks()).length ? undefined : cached.reveals;
+}
+const saveMarked = (file: string, route: string, reveals: readonly Reveal[]) => writeFile(file, JSON.stringify({ route, reveals, marks: marksOf(addedMarks()) }));
+
 /** How a control shows what it holds back. */
 /** `copy`: a click whose effect kept is what it writes to the clipboard. `download`: the file it saves (name, type, text). */
 export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy' | 'download';
@@ -454,8 +462,8 @@ const RAC_HOVER_MAX = 60;
 /** Hovers each React Aria control that may hold a tooltip or preview and records what it showed. Cached by route. */
 export async function captureRacHovers(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
 	const file = join(dir, `${createHash('sha256').update(`rac-hover:3:${route}|${RAC_HOVER}`).digest('hex').slice(0, 16)}.json`);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
-	if (cached && cached.route === route) return cached.reveals;
+	const cached = await markedCache(file, route);
+	if (cached) return cached;
 	const viewport = VIEWPORTS[0]!;
 	let open = await fresh(browser, origin, route, viewport);
 	const reveals: Reveal[] = [];
@@ -530,7 +538,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 		await open.context.close().catch(() => {});
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals }));
+	await saveMarked(file, route, reveals);
 	return reveals;
 }
 
@@ -552,8 +560,8 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 			([selector, markup]) => (markup === null ? [...document.querySelectorAll(`[data-trigger="MenuTrigger"] ${selector}, [data-trigger] [role="menu"] ${selector}`)] : [...Object.assign(document.createElement('template'), { innerHTML: markup }).content.querySelectorAll(selector)]).map((e) => e.id),
 			[SUB_ITEM, html ?? null] as const,
 		);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
-	if (cached && cached.route === route) return cached.reveals;
+	const cached = await markedCache(file, route);
+	if (cached) return cached;
 	const out: Reveal[] = [];
 	const viewport = VIEWPORTS[0]!;
 	for (const menu of menus) {
@@ -611,7 +619,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	await saveMarked(file, route, out);
 	return out;
 }
 
@@ -717,8 +725,8 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
  */
 export async function captureRacComboInputs(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
 	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:6:${route}`).digest('hex').slice(0, 16)}.json`);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
-	if (cached && cached.route === route) return cached.reveals;
+	const cached = await markedCache(file, route);
+	if (cached) return cached;
 	const out: Reveal[] = [];
 	const viewport = VIEWPORTS[0]!;
 	const list = async (page: Page) =>
@@ -778,7 +786,7 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	await saveMarked(file, route, out);
 	return out;
 }
 
