@@ -1135,6 +1135,18 @@ test('a Base UI select icon carries data-popup-open while its select is open, as
 	await page.close();
 });
 
+test('a Base UI select opened by a press shows no focus ring on its option, nor on its trigger once an option is chosen', async () => {
+	const page = await open(baseSelect, ['base-ui/select'], 'body');
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	const ring = () => page.evaluate(() => `${document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName}:${document.activeElement?.matches(':focus-visible')}`);
+	assert.equal(await ring(), 'option:false', 'Base UI focuses the option after a mouse focused the trigger');
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await ring(), 'combobox:false');
+	await page.close();
+});
+
 test('a press outside a Radix or Base UI select closes it with focus back on its trigger, as each library does', async () => {
 	for (const [markup, port] of [
 		[radixSelect(), 'radix/select'],
