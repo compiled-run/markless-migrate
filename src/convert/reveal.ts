@@ -502,13 +502,22 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 
 /**
  * React Aria's submenus: a menu item with aria-haspopup opens its own popover when hovered, which no control in the
- * page shows. Each menu a reveal opened is opened again, each such item in it hovered, and what it showed recorded as a
- * reveal keyed by the item's id (one level deep). Cached by route.
+ * page shows. Each menu a reveal opened (a press, or a right click on a context menu's area) is opened again, each such
+ * item in it hovered, and what it showed recorded as a reveal keyed by the item's id as the menu's reveal has it: the
+ * ids React generates on the client follow what mounted before, so an item is found again by its place (one level
+ * deep). Cached by route.
  */
 export async function captureRacSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
-	const menus = reveals.filter((r) => r.action === 'click' && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
+	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`rac-submenus:2:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-submenus:3:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const SUB_ITEM = '[role^="menuitem"][aria-haspopup="menu"]';
+	// The submenu items of the open menus, or of the reveal's markup when given.
+	const itemsIn = (page: Page, html?: string): Promise<string[]> =>
+		page.evaluate(
+			([selector, markup]) => (markup === null ? [...document.querySelectorAll(`[data-trigger="MenuTrigger"] ${selector}, [data-trigger] [role="menu"] ${selector}`)] : [...Object.assign(document.createElement('template'), { innerHTML: markup }).content.querySelectorAll(selector)]).map((e) => e.id),
+			[SUB_ITEM, html ?? null] as const,
+		);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -526,13 +535,15 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 					}, menu.path)
 				).asElement();
 				if (!el) return false;
-				await el.click({ timeout: 2000 });
+				await el.click({ timeout: 2000, button: menu.action === 'contextmenu' ? 'right' : 'left' });
 				await quiet(page, 400);
 				return true;
 			};
 			if (!(await open())) continue;
-			const ids = await page.evaluate(() => [...document.querySelectorAll('[data-trigger="MenuTrigger"] [role^="menuitem"][aria-haspopup="menu"], [data-trigger] [role="menu"] [role^="menuitem"][aria-haspopup="menu"]')].map((e) => e.id).filter(Boolean));
-			for (const id of [...new Set(ids)]) {
+			const recorded = await itemsIn(page, menu.added.map((a) => a.html).join(''));
+			for (const [k, want] of recorded.entries()) {
+				const id = (await itemsIn(page))[k];
+				if (!id || !want) continue;
 				await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmAdded = [];
@@ -553,7 +564,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 					// The submenu's popover, outermost first, without what is inside another added node.
 					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
 				});
-				if (added.length) out.push({ key: id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+				if (added.length) out.push({ key: want, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: html.split(id).join(want) })) });
 				// Back to the menu alone: away from the item, so the submenu closes, then the menu is the only layer.
 				await page.keyboard.press('Escape').catch(() => {});
 				await quiet(page, 300);
