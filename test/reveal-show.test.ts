@@ -18,6 +18,7 @@ const PAGE = `<!doctype html><html><body><div data-view="preview"><ul style="dis
 <script>
 const code = { 'page.tsx': ['app/page.tsx', 'export default function Page() {}'], 'nav.tsx': ['components/nav.tsx', 'export function Nav() {}'] };
 for (const b of document.querySelectorAll('button')) b.addEventListener('click', () => {
+	if (b.dataset.active === 'true') return;
 	for (const o of document.querySelectorAll('button')) o.dataset.active = String(o === b);
 	const [title, text] = code[b.textContent];
 	document.querySelector('figure').innerHTML = '<figcaption>' + title + '</figcaption><pre><code>' + text + '</code></pre>';
@@ -42,6 +43,8 @@ test('a listed "show" control records the content and attributes it changed, eac
 	const dir = await mkdtemp(join(tmpdir(), 'reveal-show-'));
 	try {
 		const capture = await captureReveals(browser, origin, '/', dir, [VIEWPORTS[0]!], [['[data-view] button[data-slot="sidebar-menu-button"]', 'show']], { controls: [], tag: 'listed-v2:' });
+		const page = capture.reveals.find((r) => r.sig?.endsWith('|page.tsx'));
+		assert.deepEqual(page?.added, [{ into: 'show', before: -1, html: '[]' }], 'the file already shown is recorded, changing nothing, so the port can show it again');
 		const nav = capture.reveals.find((r) => r.sig?.endsWith('|nav.tsx'));
 		assert.ok(nav, JSON.stringify(capture.reveals.map((r) => r.sig)));
 		assert.equal(nav.added.length, 1);

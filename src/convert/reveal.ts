@@ -208,7 +208,8 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 				return { up, down, ...(outer.includes(e) ? { html: e.innerHTML } : { attrs: Object.fromEntries(names.map((n) => [n, e.getAttribute(n)])) }) };
 			});
 		});
-		return effects.length ? [{ into: 'show', before: -1, html: JSON.stringify(effects) }] : [];
+		// The control already shown changes nothing, and is still recorded: the port completes it from the page (shown.ts).
+		return [{ into: 'show', before: -1, html: JSON.stringify(effects) }];
 	}
 	if (candidate.action === 'copy') {
 		await page.evaluate(() => {
