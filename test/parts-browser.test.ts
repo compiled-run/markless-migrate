@@ -6,6 +6,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
+import { chartModel } from '../src/convert/charts.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { earlyThemeScript } from '../parts/next-themes.ts';
 import { registryModule } from '../src/convert/parts.ts';
@@ -404,7 +405,7 @@ async function commandState(page: Page) {
 	});
 }
 
-test('cmdk: command-score filters and sorts the items left after the disabled ones, groups by their best item; nothing left shows the empty state', async () => {
+test('cmdk: command-score filters and sorts the items left after the disabled ones; nothing left shows the empty state', async () => {
 	const page = await open(COMMAND, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('se');
@@ -614,6 +615,27 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'closed');
 	await page.close();
 });
+
+// sidebar-13's settings dialog: its state opens it on mount, so the page came with it open and Radix's marks on the rest.
+const shownDialog = `<main data-aria-hidden="true" aria-hidden="true"><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="true" aria-controls="dlg" data-state="open">Open Dialog</button><button type="button">Behind</button></main>
+	<div data-state="open" data-slot="dialog-overlay" style="position:fixed;inset:0"></div><div role="dialog" id="dlg" data-state="open" data-slot="dialog-content" tabindex="-1" style="pointer-events:auto;position:fixed;top:40px;left:40px"><a href="#x">Link</a><button type="button" data-slot="dialog-close">Close</button></div>`;
+
+for (const how of ['Escape', 'outside', 'close'] as const)
+	test(`a Radix dialog the page shows open at load is taken as open: focus moves into it, and ${how === 'close' ? 'its Close' : how === 'Escape' ? 'Escape' : 'a press outside'} closes it and shows the page again`, async () => {
+		const page = await open(shownDialog, ['radix/dialog']);
+		await page.evaluate(() => (document.body.style.pointerEvents = 'none'));
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-slot') === 'dialog-close', undefined, { timeout: 3000 }).catch(() => {});
+		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), 'dialog-close', 'Radix focuses its first tabbable control that is not a link');
+		if (how === 'Escape') await page.keyboard.press('Escape');
+		else if (how === 'outside') await page.mouse.click(600, 700);
+		else await page.getByText('Close').click();
+		await page.waitForTimeout(100);
+		assert.deepEqual(await page.evaluate(() => ({ state: document.getElementById('dlg')!.getAttribute('data-state'), trigger: document.querySelector('[data-slot="dialog-trigger"]')!.getAttribute('aria-expanded'), main: document.querySelector('main')!.getAttribute('aria-hidden'), body: document.body.style.pointerEvents })), { state: 'closed', trigger: 'false', main: null, body: '' });
+		await page.getByText('Open Dialog').click();
+		await page.waitForTimeout(100);
+		assert.deepEqual(await page.evaluate(() => ({ state: document.getElementById('dlg')!.getAttribute('data-state'), shown: document.getElementById('dlg')!.checkVisibility(), focus: document.activeElement?.getAttribute('data-slot') })), { state: 'open', shown: true, focus: 'dialog-close' }, 'its trigger opens it again');
+		await page.close();
+	});
 
 // Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
 test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
@@ -1819,5 +1841,238 @@ test('recharts: a control switching the chart moves each mark from its old shape
 		assert.deepEqual(painted[j], [drawArea(mix(areaA, areaB)), drawLine(mix(lineA, lineB)), `M ${round(box[0]!)},${round(box[1]!)} h ${round(box[2]!)} v ${round(box[3]!)} h ${round(-box[2]!)} Z`], `frame ${j} at ${Math.round(time(j - 1) - begin)} ms`);
 	}
 	assert.ok(time(painted.length - 1) - begin > 1550, 'the samples reach the end of the animation');
+});
+
+test('cmdk: a search keeps the groups where they are, sorts the items it kept, then puts back the ones it brings back where React mounts them, and selects the first', async () => {
+	const page = await open(COMMAND, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('cal');
+	assert.deepEqual((await commandState(page)).order, 'calc,cal');
+	for (let k = 0; k < 2; k++) await page.keyboard.press('Backspace');
+	// cmdk 1.1.1 sorts the mounted items synchronously; Search Emoji mounts after, before the next item React renders after it.
+	const back = await commandState(page);
+	assert.deepEqual([back.order, back.selected], ['emo,calc,cal', 'emo']);
+	await page.keyboard.press('Backspace');
+	// Its group lookup never matches (it queries a group by its id among their values): the groups never move.
+	const cleared = await commandState(page);
+	assert.deepEqual([cleared.order, cleared.selected, cleared.separator], ['emo,calc,cal,pro,bil,set', 'emo', false]);
+	await page.close();
+});
+
+// recharts 3.8's getTicks with interval preserveEnd (getTicksEnd), as an oracle: from the last tick back, each kept
+// where its text fits before the one after it, minTickGap apart; the last one's text pulled inside the end.
+function preserveEnd(coords: readonly number[], widths: readonly number[], start: number, end: number, gap: number): { i: number; at: number }[] {
+	const out: { i: number; at: number }[] = [];
+	for (let i = coords.length - 1; i >= 0; i--) {
+		const w = widths[i]!;
+		const over = coords[i]! + w / 2 - end;
+		const at = i === coords.length - 1 && over > 0 ? coords[i]! - over : coords[i]!;
+		if (at < start || at > end) continue;
+		if (at - w / 2 - start >= 0 && at + w / 2 - end <= 0) {
+			out.unshift({ i, at });
+			end = at - (w / 2 + gap);
+		}
+	}
+	return out;
+}
+
+test('recharts: behind UTC, the axis shows the ticks recharts keeps for the dates read a day earlier, measured in the tick\'s font', async () => {
+	const labels = ['Apr 1', 'Apr 2', 'Apr 3', 'Apr 4', 'Apr 5', 'Apr 6', 'Apr 7', 'Apr 8', 'Apr 9', 'Apr 10', 'Apr 11', 'Apr 12'];
+	const coords = labels.map((_, i) => 10 + i * 25);
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 280, 30], vb: [0, 0, 300, 200], gap: 8, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c: coords, l: labels };
+	const facts = JSON.stringify({ w: 300, h: 200, v: [10, 0, 280, 170], m: 'x', g: [], p: [], a: [axis] });
+	// What the capture shows in UTC: every third tick from the end.
+	const shown = [2, 5, 8, 11];
+	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="184" text-anchor="middle" fill="#666" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${labels[i]}</tspan></text></g>`;
+	const line = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick"><line class="recharts-cartesian-axis-tick-line" x1="${coords[i]}" y1="176" x2="${coords[i]}" y2="170"></line></g>`;
+	// Convert's spare ticks: copies of the first, hidden, which the part shows when more ticks fit.
+	const spares = (html: string) => html.replace('<g class="recharts-layer', '<g display="none" class="recharts-layer').repeat(4);
+	const body = `<div data-slot="chart" data-mm-clock='[{"*":2024}]' style="width:300px;font:12px monospace"><div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"><g class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines">${shown.map(line).join('')}${spares(line(shown[0]!))}</g></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${shown.map(tick).join('')}${spares(tick(shown[0]!))}</g></g></svg><div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	const read = (page: Page) =>
+		page.evaluate(() => ({
+			labels: [...document.querySelectorAll('.recharts-xAxis-tick-labels > g:not([display="none"]) text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`),
+			lines: [...document.querySelectorAll('.recharts-xAxis-tick-lines > g:not([display="none"]) line')].map((l) => l.getAttribute('x1')),
+		}));
+	for (const zone of ['UTC', 'Asia/Tokyo']) {
+		const page = await open(body, ['recharts', 'clock'], undefined, '', zone);
+		await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+		await page.waitForTimeout(300);
+		assert.deepEqual((await read(page)).labels, shown.map((i) => `${labels[i]}@${coords[i]}`), `${zone}: the capture's ticks`);
+		await page.close();
+	}
+	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
+	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent?.startsWith('Mar') || [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].some((t) => t.textContent === 'Apr 11'), undefined, { timeout: 5000 }).catch(() => {});
+	await page.waitForTimeout(300);
+	const west = ['Mar 31', ...labels.slice(0, -1)];
+	const widths = await page.evaluate((texts) => {
+		const span = document.createElement('span');
+		Object.assign(span.style, { position: 'absolute', top: '-20000px', whiteSpace: 'pre', fontSize: '12px' });
+		document.body.appendChild(span);
+		return texts.map((t) => ((span.textContent = t), span.getBoundingClientRect().width));
+	}, west);
+	const expected = preserveEnd(coords, widths, 0, 300, 8);
+	assert.notDeepEqual(expected.map((e) => e.i), shown, 'the west dates keep other ticks');
+	const seen = await read(page);
+	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
+	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
+	await page.close();
+});
+
+test('capture: a chart\'s axes are read off React\'s current tree, not the stale fiber a DOM node may still point at', async () => {
+	const page = await browser.newPage();
+	await page.setContent('<svg class="recharts-surface"><g class="recharts-cartesian-axis"></g></svg>');
+	const axes = await page.evaluate(`(() => {
+		const chartModel = ${chartModel.toString()};
+		const props = (n) => ({ ticks: Array.from({ length: n }, (_, i) => ({ coordinate: i, value: i })), orientation: 'bottom', tickFormatter: undefined, axisType: 'xAxis', x: 0, y: 0, width: 10, height: 10, viewBox: {} });
+		// React's two trees: the root points at the current one; the axis' DOM node kept the fiber of the first render.
+		const stale = { memoizedProps: props(91) };
+		const fresh = { memoizedProps: props(8), alternate: stale };
+		stale.alternate = fresh;
+		const rootFresh = { child: fresh };
+		const fiberRoot = { current: rootFresh };
+		rootFresh.stateNode = fiberRoot;
+		// A stale fiber's return can point into the current tree: only the walk from the root tells them apart.
+		stale.return = rootFresh;
+		fresh.return = rootFresh;
+		document.querySelector('g')['__reactFiber$x'] = stale;
+		return chartModel(document.querySelector('svg')).axes.map((a) => a && a.c.length);
+	})()`);
+	assert.deepEqual(axes, [8]);
+	await page.close();
+});
+
+test('recharts: at a width the capture did not see, the drawing is laid out as recharts lays it out: band, whole-pixel bar size, ticks, grid and tooltip areas', async () => {
+	// Captured at 400 x 200, plot box [10, 0, 380, 170]: four bands of 95 px; recharts' bar is 10% in from each side and
+	// its size truncated, 76 px.
+	const cats = ['Q1', 'Q2', 'Q3', 'Q4'];
+	const band = (w: number) => (w - 20) / 4;
+	const bar = (w: number, i: number) => ({ x: 10 + band(w) * i + band(w) * 0.1, width: Math.trunc(band(w) - 2 * band(w) * 0.1) });
+	const heights = [100, 60, 140, 30];
+	const rect = (x: number, y: number, w: number, h: number) => `M ${x},${y} h ${w} v ${h} h ${-w} Z`;
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 380, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: band(400) / 2, pad: [0, 0], c: cats.map((_, i) => 10 + band(400) * (i + 0.5)), l: cats };
+	const segments = cats.map((_, i) => [10 + band(400) * i, 10 + band(400) * (i + 1), i]);
+	const facts = JSON.stringify({ w: 400, h: 200, v: [10, 0, 380, 170], m: 'x', g: segments, sp: [0, 170], p: cats.map(() => [null, null]), a: [axis], b: { gap: 4, cat: '10%', groups: [{}] }, l: 'horizontal' });
+	const bars = heights.map((h, i) => { const b = bar(400, i); return `<g class="recharts-layer recharts-bar-rectangle"><path class="recharts-rectangle" x="${b.x}" y="${170 - h}" width="${b.width}" height="${h}" radius="0" d="${rect(b.x, 170 - h, b.width, h)}" data-mm-geo='{"k":"bar"}'></path></g>`; }).join('');
+	const grid = [0, 85, 170].map((y) => `<line x="10" y="0" width="380" height="170" x1="10" y1="${y}" x2="390" y2="${y}"></line>`).join('');
+	const ticks = cats.map((c, i) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" width="380" height="30" x="${axis.c[i]}" y="178" style="font-size:12px"><tspan x="${axis.c[i]}" dy="0.71em">${c}</tspan></text></g>`).join('');
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts}'><defs><clipPath id="c"><rect x="10" y="0" width="380" height="170"></rect></clipPath></defs><g class="recharts-cartesian-grid"><g class="recharts-cartesian-grid-horizontal">${grid}</g></g><g class="recharts-layer recharts-bar"><g class="recharts-layer recharts-bar-rectangles">${bars}</g></g><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${ticks}</g></g></svg>`;
+	const page = await open(`<div style="width:600px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '600', undefined, { timeout: 5000 }).catch(() => {});
+	const seen = await page.evaluate(() => {
+		const svg = document.querySelector('svg.recharts-surface')!;
+		const attrs = (el: Element, names: string[]) => names.map((n) => el.getAttribute(n));
+		return {
+			svg: attrs(svg, ['width', 'height', 'viewBox']),
+			clip: attrs(svg.querySelector('clipPath rect')!, ['x', 'y', 'width', 'height']),
+			bars: [...svg.querySelectorAll('path.recharts-rectangle')].map((p) => attrs(p, ['x', 'y', 'width', 'height', 'd'])),
+			grid: [...svg.querySelectorAll('.recharts-cartesian-grid-horizontal line')].map((l) => attrs(l, ['width', 'x1', 'x2', 'y1'])),
+			ticks: [...svg.querySelectorAll('.recharts-xAxis-tick-labels text')].map((t) => `${t.textContent}@${t.getAttribute('x')}/${t.getAttribute('width')}`),
+		};
+	});
+	assert.deepEqual(seen.svg, ['600', '200', '0 0 600 200']);
+	assert.deepEqual(seen.clip, ['10', '0', '580', '170']);
+	assert.deepEqual(seen.bars, heights.map((h, i) => { const b = bar(600, i); return [String(Math.round(b.x * 1e4) / 1e4), String(170 - h), String(b.width), String(h), rect(Math.round(b.x * 1e4) / 1e4, 170 - h, b.width, h)]; }), 'each band 145 px, its bar 116 px');
+	assert.deepEqual(seen.grid, [0, 85, 170].map((y) => ['580', '10', '590', String(y)]));
+	assert.deepEqual(seen.ticks, cats.map((c, i) => `${c}@${10 + band(600) * (i + 0.5)}/580`));
+	// The pointer over the third band's middle at the new width picks its point.
+	const picked = page.evaluate(() => new Promise<number>((resolve) => document.querySelector('.recharts-wrapper')!.addEventListener('mmchart', (e) => resolve((e as CustomEvent<number>).detail), { once: true })));
+	const box = (await page.locator('svg.recharts-surface').boundingBox())!;
+	await page.mouse.move(box.x + 10 + band(600) * 2.5, box.y + 100);
+	assert.equal(await picked, 2);
+	await page.close();
+});
+
+test('recharts: a switch moves the marks from the drawing that was on screen, not from the same state\'s drawing for another width', async () => {
+	const { line, curveMonotoneX } = await import('d3-shape');
+	type P = [number, number];
+	const draw = (ps: readonly P[]) => line().curve(curveMonotoneX)(ps as P[])!;
+	const shownA: P[] = [[10, 80], [60, 20], [110, 60]];
+	const otherWidthA: P[] = [[10, 10], [30, 10], [50, 10]];
+	const toB: P[] = [[10, 30], [60, 70], [110, 20]];
+	const geo = JSON.stringify({ k: 'line', t: 'monotone', l: 'horizontal', a: [0, 1500, 'ease'] });
+	const facts = JSON.stringify({ w: 200, h: 100, v: [5, 5, 190, 90], m: 'x', g: [], p: [], z: 0 });
+	const svg = (ps: readonly P[], style: string, widths: string, cls = '') => `<svg class="recharts-surface ${cls}" width="200" height="100" style="${style}" data-mm-b="${widths}" data-mm-facts='${facts}'><path class="recharts-curve recharts-line-curve" d="${draw(ps)}" data-mm-geo='${geo}'></path></svg>`;
+	// The first drawing is the same state at a width the container does not have (a container query hides it).
+	const page = await open(`<style>.narrow{display:none!important}</style><div data-mm-morph><button>Mobile</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1">${svg(otherWidthA, 'display:block', '2 3', 'narrow')}${svg(shownA, 'display:block', '1 2')}${svg(toB, 'display: none;', '1 2 3')}<div class="recharts-tooltip-wrapper" style="visibility: hidden"></div></div></div>`, ['recharts']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.hover('button');
+	await page.evaluate('import("/parts/recharts-motion.ts")');
+	await page.waitForTimeout(50);
+	const first = await page.evaluate(
+		() =>
+			new Promise<string>((resolve) => {
+				const [a, b, c] = [...document.querySelectorAll('svg.recharts-surface')] as SVGSVGElement[];
+				a!.setAttribute('style', 'display: none;');
+				b!.setAttribute('style', 'display: none;');
+				c!.setAttribute('style', 'display:block');
+				queueMicrotask(() => resolve(c!.querySelector('path')!.getAttribute('d')!));
+			}),
+	);
+	assert.equal(first, draw(shownA), 'the marks start where the drawing on screen had them');
+	await page.close();
+});
+
+test('recharts: at another width, a LabelList label sits where getCartesianPosition puts it against its new bar, and the grid keeps the lines getTicks keeps', async () => {
+	const band = (w: number) => (w - 20) / 2;
+	const bar = (w: number, i: number) => ({ x: 10 + band(w) * i + band(w) * 0.1, width: Math.trunc(band(w) * 0.8) });
+	const tops = [50, 110];
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 380, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: band(400) / 2, pad: [0, 0], c: [0, 1].map((i) => 10 + band(400) * (i + 0.5)), l: ['A', 'B'] };
+	// Five grid lines at the drawing's capture, the tallest; a 70 px plot keeps three of them for a 16 px body font.
+	const gy = [0, 0.25, 0.5, 0.75, 1];
+	const facts = (h: number) => JSON.stringify({ w: 400, h, v: [10, 0, 380, h - 30], m: 'x', g: [], p: [], a: [{ ...axis, box: [10, h - 30, 380, 30], vb: [0, 0, 400, h] }], b: { gap: 4, cat: '10%', groups: [{}] }, l: 'horizontal', gy });
+	const bars = tops.map((y, i) => { const b = bar(400, i); return `<g class="recharts-layer recharts-bar-rectangle"><path class="recharts-rectangle" x="${b.x}" y="${y}" width="${b.width}" height="${170 - y}" radius="0" d="M ${b.x},${y} h ${b.width} v ${170 - y} h ${-b.width} Z" data-mm-geo='{"k":"bar"}'></path></g>`; }).join('');
+	const labels = tops.map((y, i) => { const b = bar(400, i); return `<text class="recharts-text" width="${b.width}" height="${y}" offset="12" x="${b.x + b.width / 2}" y="${y - 12}"><tspan x="${b.x + b.width / 2}" dy="0em">${i}</tspan></text>`; }).join('');
+	const grid = gy.map((f) => `<line x="10" y="0" width="380" height="170" x1="10" y1="${170 - f * 170}" x2="390" y2="${170 - f * 170}"></line>`).join('');
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts(200)}'><g class="recharts-cartesian-grid"><g class="recharts-cartesian-grid-horizontal">${grid}</g></g><g class="recharts-layer recharts-bar" id="recharts-bar-x"><g class="recharts-layer recharts-bar-rectangles">${bars}</g></g><g class="recharts-layer recharts-label-list" data-mm-geo='{"k":"labels","s":"recharts-bar-x","p":"top","o":12}'>${labels}</g></svg>`;
+	const page = await open(`<div id="box" style="width:600px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '600', undefined, { timeout: 5000 }).catch(() => {});
+	const read = () => page.evaluate(() => ({
+		labels: [...document.querySelectorAll('.recharts-label-list text')].map((t) => [t.getAttribute('x'), t.getAttribute('y'), t.getAttribute('width'), t.getAttribute('height'), t.querySelector('tspan')!.getAttribute('x')]),
+		grid: [...document.querySelectorAll('.recharts-cartesian-grid-horizontal line:not([display="none"])')].map((l) => l.getAttribute('y1')),
+	}));
+	const wide = await read();
+	assert.deepEqual(wide.labels, tops.map((y, i) => { const b = bar(600, i); const x = String(b.x + b.width / 2); return [x, String(y - 12), String(b.width), String(y), x]; }), 'top: the bar\'s middle, offset above it; clamped to its width and the room above');
+	assert.deepEqual(wide.grid, gy.map((f) => String(170 - f * 170)), 'a tall plot keeps every line');
+	// recharts' getTicks over the grid's ticks, each as tall as a line of the body's font, minTickGap 5 apart.
+	await page.evaluate(() => (document.getElementById('box')!.style.height = '100px'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('height') === '100', undefined, { timeout: 5000 }).catch(() => {});
+	const lineHeight = await page.evaluate(() => { const s = document.createElement('span'); s.textContent = '0'; s.style.position = 'absolute'; document.body.appendChild(s); return s.getBoundingClientRect().height; });
+	// recharts' getTicksEnd for an axis whose ticks run up the plot (sign -1, from the bottom of the 100 px chart to its top).
+	const coords = gy.map((f) => 70 - f * 70);
+	const kept: number[] = [];
+	let end = 0;
+	for (let i = coords.length - 1; i >= 0; i--) {
+		const c = coords[i]!;
+		const over = -(c - lineHeight / 2 - end);
+		const at = i === coords.length - 1 && over > 0 ? c + over : c;
+		if (-at < -100 || -at > -end) continue;
+		if (-(at + lineHeight / 2 - 100) >= 0 && -(at - lineHeight / 2 - end) <= 0) {
+			kept.unshift(c);
+			end = at + lineHeight / 2 + 5;
+		}
+	}
+	const expected = [...kept, ...(kept.includes(0) ? [] : [0]), ...(kept.includes(70) ? [] : [70])];
+	assert.ok(expected.length < 5, `a short plot keeps fewer lines (${expected})`);
+	assert.deepEqual((await read()).grid, expected.map(String));
+	await page.close();
+});
+
+test('recharts: at another width, a step line\'s corners stay halfway between its points, as curveStep draws them', async () => {
+	const { line, curveStep } = await import('d3-shape');
+	type P = [number, number];
+	const xs = (w: number) => [10, 10 + (w - 20) / 2, w - 10];
+	const ys = [150, 60, 110];
+	const draw = (w: number) => line().curve(curveStep).digits(3)(xs(w).map((x, i) => [x, ys[i]!] as P))!;
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 380, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, pad: [0, 0], c: xs(400), l: ['a', 'b', 'c'] };
+	const facts = JSON.stringify({ w: 400, h: 200, v: [10, 0, 380, 170], m: 'x', g: [], p: [], a: [axis], l: 'horizontal' });
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts}'><path class="recharts-curve recharts-line-curve" d="${draw(400)}" data-mm-geo='{"k":"line","t":"step","l":"horizontal"}'></path><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"></g></svg>`;
+	const page = await open(`<div style="width:600px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '600', undefined, { timeout: 5000 }).catch(() => {});
+	assert.equal(await page.locator('path.recharts-line-curve').getAttribute('d'), draw(600));
 	await page.close();
 });

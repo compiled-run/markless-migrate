@@ -95,6 +95,11 @@ export function rewrite(text: string, rules: readonly ClockRule[], now = Date.no
 
 const RULES = 'data-mm-clock';
 const written = new WeakMap<Node, string>();
+
+/** A text another part wrote for this visitor already (a chart's axis): left as it is until its text changes again. */
+export function claim(node: Text): void {
+	written.set(node, node.data);
+}
 const observed = new WeakSet<Element>();
 
 function apply(el: Element, rules: readonly ClockRule[]): void {

@@ -147,3 +147,18 @@ test('a prop read `as: json` is written as its JSON, an object a site part reads
 	assert.deepEqual(JSON.parse((await attrs(page, 'data-mm-color')).swatch!), { hex: '#fff', hsl: 'hsl(0 0% 100%)' });
 	await page.close();
 });
+
+test('a React Aria popover gets the placement and offsets its instance was given, as a submenu wrapper passes its own on', async () => {
+	const page = await browser.newPage();
+	await fibers(page, `<div id="page"><div id="sub" data-rac data-trigger="SubmenuTrigger" data-placement="right"></div><div id="plain" data-rac data-trigger="MenuTrigger"></div></div>`, [3, {}, [[5, '#page', [
+		[0, { placement: 'end top', crossOffset: -3, offset: 0 }, [[0, { 'data-slot': 'context-menu-sub-content', placement: 'end top', offset: 0, crossOffset: -3 }, [[11, {}, [[5, '#sub']]]]]]],
+		[0, { children: [] }, [[11, {}, [[5, '#plain']]]]],
+	]]]]);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS.filter((s) => s.port === 'react-aria/overlay'), added: false });
+	assert.deepEqual([await attrs(page, 'data-mm-placement'), await attrs(page, 'data-mm-offset'), await attrs(page, 'data-mm-cross-offset')], [
+		{ page: null, sub: 'end top', plain: null },
+		{ page: null, sub: '0', plain: null },
+		{ page: null, sub: '-3', plain: null },
+	]);
+	await page.close();
+});

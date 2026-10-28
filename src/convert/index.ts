@@ -6,7 +6,7 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -15,7 +15,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
-import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
@@ -77,10 +77,12 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
+	const chronoNames = ['chronoDate', 'loadChrono'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (chronoNames.length) out = out.replace('\n', `\nimport { ${chronoNames.join(', ')} } from '${dir}/chrono-date.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
 	const racCalendar = ['racCalendarView', 'racCalendarModel', 'racCalendarEvent', 'racCalendarWake', 'racDateLabel'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -351,7 +353,16 @@ function placement(kept: readonly Element[]): string {
 // React Aria's Popover and Tooltip: the side is the content's own data-placement; the alignment along it is where the
 // trigger's anchor point sat (--trigger-anchor-point: at the start, the middle or the end of --trigger-width); the
 // offsets are the source's where it renders the part with this element's data-slot.
-function racPlacement(el: Element, resolver: PartResolver): string {
+export function racPlacement(el: Element, resolver: PartResolver): string {
+	// What this instance was given (convert's instance props): taken off the element, written on its layer.
+	const given = (name: string) => {
+		const value = attr(el, name);
+		el.attrs = el.attrs.filter((a) => a.name !== name);
+		return value;
+	};
+	const ownPlacement = given('data-mm-placement');
+	const ownOffset = given('data-mm-offset');
+	const ownCross = given('data-mm-cross-offset');
 	const style = attr(el, 'style') ?? '';
 	const side = attr(el, 'data-placement') ?? 'bottom';
 	const [x = 0, y = 0] = (/--trigger-anchor-point:\s*(-?[\d.]+)px\s+(-?[\d.]+)px/.exec(style) ?? []).slice(1).map(Number);
@@ -366,8 +377,10 @@ function racPlacement(el: Element, resolver: PartResolver): string {
 		}
 		return undefined;
 	};
-	const offset = read('offset');
-	const cross = read('crossOffset');
+	const number = (v: string | undefined) => (v !== undefined && /^-?\d+(\.\d+)?$/.test(v) ? v : undefined);
+	const offset = number(ownOffset) ?? read('offset');
+	const cross = number(ownCross) ?? read('crossOffset');
+	if (ownPlacement && /^(top|bottom|left|right|start|end)( (top|bottom|left|right|start|end|center))?$/.test(ownPlacement)) return ` data-mm-placement="${ownPlacement}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 	return ` data-mm-placement="${side}${along}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 }
 
@@ -802,7 +815,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		if (panel) {
 			// Content holding controls revealed in turn (a file tree's nested folders) goes into the page, so those are bound too.
 			const into = reveal.added.find((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)?.into as readonly number[] | undefined;
-			const holds = into && reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v));
+			// So does content holding a Collapsible of its own (a Manual tab's long code block), which nothing reveals.
+			const holds = into && (reveals.some((o) => o !== reveal && o.path.length > into.length && into.every((v, i) => o.path[i] === v)) || holdsRadixDisclosure(reveal.added.filter((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel).flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement))));
 			if (holds) {
 				for (const a of reveal.added) {
 					if (typeof a.into === 'string' || elementAt(root, a.into) !== panel) continue;
@@ -1170,7 +1184,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
 			if (reveal && routes.includes(route)) {
-				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens }));
+				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
+				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens, loadDialog }));
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
 				await scenesRead;
 				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
@@ -1374,7 +1389,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	// A calendar in a layer (a date picker's popover) is bound as its layer is rendered, in prepare.
-	const dayPickers = new DayPickerPlan();
+	const dayPickers = new DayPickerPlan(options.source);
 	layerPickers = (route, reveal, kept) => {
 		const captured = pickers.get(route);
 		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
@@ -1546,7 +1561,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
 			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
-			if (field && trigger) dayPickers.field(route, field, trigger, raw.opener);
+			if (field && trigger) dayPickers.field(route, captured, field, trigger, raw.opener, locate);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
@@ -1903,7 +1918,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts, choices, tables.used ? ['tanstack-table'] : []);
+	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : [])], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
 	const tableSpecs = tables.specsModule();
 	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);

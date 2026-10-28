@@ -63,6 +63,19 @@ const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
 const select = `<main style="height:3000px;padding:200px"><button type="button" id="before">Before</button><button type="button" id="base" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Select a fruit</span></button><input id="base-ui-x-hidden-input" tabindex="-1" aria-hidden="true" value="" style="position:fixed;width:1px;height:1px;clip-path:inset(50%)"><button type="button" id="after">After</button></main>
 	<div data-base-ui-portal hidden data-mm-layer="base"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="none" data-align="center" role="presentation" style="position:fixed" data-closed><div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox" style="position:relative">${FRUITS.map((f) => `<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`;
 
+test('a Base UI menu trigger names its popup in aria-controls while the popup is mounted, as MenuTrigger does', async () => {
+	const page = await open(menu(FRUITS).replace('role="menu" aria-labelledby="dd"', 'role="menu" id="dd-popup" aria-labelledby="dd"'), ['base-ui/menu']);
+	const controls = () => page.evaluate(() => document.getElementById('dd')!.getAttribute('aria-controls'));
+	assert.equal(await controls(), null);
+	await page.click('#dd');
+	await settled(page);
+	assert.equal(await controls(), 'dd-popup');
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await controls(), null);
+	await page.close();
+});
+
 test('Base UI menu and select triggers carry data-pressed while their popup is open, as pressableTriggerOpenStateMapping maps it', async () => {
 	for (const [markup, port, popup] of [
 		[menu(['Profile', 'Billing']), 'base-ui/menu', 'dropdown-menu-trigger'],
@@ -616,5 +629,19 @@ test('a Base UI dropdown radio item given closeOnClick closes the menu; one with
 	await page.getByText('Apple').click();
 	await settled(page);
 	assert.match(await state(page), /^false /);
+	await page.close();
+});
+
+test('an opening Base UI submenu is painted over its menu, as its portal mounts it last, though convert rendered it first', async () => {
+	const [menuPart, subPart] = withSub().split(/(?=<div data-base-ui-portal hidden data-mm-layer="dd-sub-1")/);
+	const page = await open(subPart!.replace('role="presentation" style="position:absolute;', 'role="presentation" style="z-index:50;position:absolute;') + menuPart!.replaceAll('role="presentation" style="position:absolute;', 'role="presentation" style="z-index:50;position:absolute;'), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	await press(page, 'Enter');
+	await press(page, 'ArrowDown');
+	await press(page, 'ArrowRight');
+	assert.match(await subState(page), /sub=true/);
+	// The stub leaves the submenu on its menu: the point over its first item is in both.
+	const email = (await page.getByText('Email').boundingBox())!;
+	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="menu"]')?.getAttribute('aria-labelledby'), [email.x + 5, email.y + 5]), 'sub1');
 	await page.close();
 });

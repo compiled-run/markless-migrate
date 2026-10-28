@@ -105,3 +105,39 @@ test('a largest paint later by less than a frame is not a difference: paint time
 	const later = summarizeCell('regular-3g', 'webkit', [lcp(420), lcp(420), lcp(430), lcp(420)]);
 	assert.equal(networkVerdicts(old, later).find((v) => v.metric === 'lcp')!.ok, false, 'two frames later still is');
 });
+
+// One page measured twice, 8 largest paints a set: CI run 40636265801 (Firefox, Regular 3G) and CI run 40576060649 (WebKit).
+const SAME_PAGE_LCP = [
+	[370, 350, 360, 360, 420, 380, 360, 380],
+	[378, 386, 379, 381, 388, 389, 391, 390],
+];
+// Every way to deal one set's 8 runs into an old side and a new side of 4: the page against itself, as often as it can be drawn.
+const splits = (shift: number) =>
+	SAME_PAGE_LCP.flatMap((set) => {
+		const out: { old: NetworkCell; next: NetworkCell }[] = [];
+		const lcp = (ms: number): NetworkRun => ({ ...run(3000), lcp: ms });
+		const pick = (start: number, chosen: number[]) => {
+			if (chosen.length === 4) {
+				const rest = set.filter((_, i) => !chosen.includes(i));
+				out.push({ old: summarizeCell('regular-3g', 'firefox', chosen.map((i) => lcp(set[i]!))), next: summarizeCell('regular-3g', 'firefox', rest.map((ms) => lcp(ms + shift))) });
+				return;
+			}
+			for (let i = start; i < set.length; i++) pick(i + 1, [...chosen, i]);
+		};
+		pick(0, []);
+		return out;
+	});
+const lcpOk = ({ old, next }: { old: NetworkCell; next: NetworkCell }) => networkVerdicts(old, next).find((v) => v.metric === 'lcp')!.ok;
+const show = ({ old, next }: { old: NetworkCell; next: NetworkCell }) => `${old.runs.map((r) => r.lcp)} / ${next.runs.map((r) => r.lcp)}`;
+
+test('the same page against itself is green in each of the 140 ways its measured runs split 4 against 4', () => {
+	const all = splits(0);
+	assert.equal(all.length, 140);
+	const red = all.filter((draw) => !lcpOk(draw));
+	assert.equal(red.length, 0, red.map(show).join('\n'));
+});
+
+test('a largest paint 100 ms later is red in each of those 140 splits', () => {
+	const green = splits(100).filter(lcpOk);
+	assert.equal(green.length, 0, green.map(show).join('\n'));
+});

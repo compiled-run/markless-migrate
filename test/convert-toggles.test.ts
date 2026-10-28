@@ -342,3 +342,21 @@ test("a Base UI Select whose trigger renders the chosen value as bare text (butt
 	const handler = binding.extra!.find((e) => e.startsWith('onMmchoose'))!;
 	assert.match(handler, /"▼"/);
 });
+
+test('a Radix Collapsible with two triggers (a code block\'s Expand and the fade under it) is one state, either trigger toggling it', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-state="closed" data-slot="collapsible"><div aria-controls="radix-_r_5_" aria-expanded="false" data-state="closed" data-slot="collapsible-trigger"><button>Expand</button></div><div id="radix-_r_5_" data-state="closed" data-slot="collapsible-content"><pre>code</pre></div><button type="button" aria-controls="radix-_r_5_" aria-expanded="false" data-state="closed" data-slot="collapsible-trigger">Expand</button></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1, 'one group');
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.equal(out.match(/aria-expanded=\{acc0 === 0 \? "true" : "false"\}/g)?.length, 2, out);
+	assert.match(out, /id="radix-_r_5_" [^>]*data-state=\{acc0 === 0 \? "open" : "closed"\}/);
+	assert.doesNotMatch(out, /acc1|acc0 === 1/, 'both triggers open the one content');
+});
+
+test('content a tab reveals holding a Radix Collapsible of its own is kept in the page, where the Collapsible is bound', async () => {
+	const { holdsRadixDisclosure } = await import('../src/convert/stateful.ts');
+	const roots = (html: string) => [...walk(body(parseDocument(`<body>${html}</body>`)))].slice(0, 1);
+	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="c">Expand</button><div id="c" data-state="closed" data-slot="collapsible-content"></div></div>')), true);
+	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="p">Expand</button><pre id="p" data-state="closed"></pre></div>')), false);
+});
