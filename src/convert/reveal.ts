@@ -8,13 +8,13 @@ import { loadPage } from '../check/infrastructure.ts';
 import { commandEmptyMark, keepCommandEmpty, markedOf } from './capture.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { markTextValues } from './rac-text.ts';
-import { INSTANCE_PROPS, instancePropMarks, markInstanceProps } from './instance-props.ts';
+import { instancePropMarks, instanceSpecs, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 
 // What the old page's React tree knows of the content a gesture added, written on it before it is read.
 async function markAdded(page: Page): Promise<void> {
 	await page.evaluate(markTextValues);
-	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: true }).catch(() => {});
+	await page.evaluate(markInstanceProps, { specs: instanceSpecs(), added: true }).catch(() => {});
 }
 
 /** How a control shows what it holds back. */

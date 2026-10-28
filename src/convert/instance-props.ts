@@ -5,8 +5,8 @@ export interface InstanceProp {
 	readonly name: string;
 	/** The attribute written, `data-mm-<name in kebab case>` unless given. */
 	readonly attr?: string;
-	/** `form-value`: the string a form submits for the value, as Base UI serializes it (stringifyAsValue). */
-	readonly as?: 'form-value';
+	/** `form-value`: the string a form submits for the value, as Base UI serializes it (stringifyAsValue); `json`: an object, as JSON. */
+	readonly as?: 'form-value' | 'json';
 }
 
 /** The props a port needs on the elements of one kind it handles, each read from that element's own instance. */
@@ -30,8 +30,16 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/combobox', selector: '[data-slot="combobox-content"]', props: [{ name: 'alignOffset' }, { name: 'sideOffset' }], hints: ['data-slot="combobox-content"'], version: 2 },
 ];
 
+let siteSpecs: readonly InstanceSpec[] = [];
+/** The site's own specs (lib/site/instance-props.json): props its own components' parts read, read like the libraries'. */
+export function useSiteInstanceProps(specs: readonly InstanceSpec[]): void {
+	siteSpecs = specs;
+}
+/** The libraries' specs, then the site's. */
+export const instanceSpecs = (): readonly InstanceSpec[] => [...INSTANCE_PROPS, ...siteSpecs];
+
 /** Each spec as a mark of its own, so a spec that reads more takes again only the captures holding its hints. */
-export const instancePropMarks = (specs: readonly InstanceSpec[] = INSTANCE_PROPS): Mark[] => specs.map((s) => ({ id: `instance-props:${s.port}:${s.selector}`, version: s.version ?? 1, applies: (html) => s.hints.every((hint) => html.includes(hint)) }));
+export const instancePropMarks = (specs: readonly InstanceSpec[] = instanceSpecs()): Mark[] => specs.map((s) => ({ id: `instance-props:${s.port}:${s.selector}`, version: s.version ?? 1, applies: (html) => s.hints.every((hint) => html.includes(hint)) }));
 
 /** A capture written before each spec had its own version: `instanceProps: 1` was read as holding every spec. */
 export const legacyInstanceProps = (instanceProps: number | undefined, specs: readonly InstanceSpec[] = INSTANCE_PROPS): Marked => (instanceProps === 1 ? Object.fromEntries(specs.map((s) => [`instance-props:${s.port}:${s.selector}`, 1])) : {});
@@ -93,8 +101,8 @@ export function markInstanceProps({ specs, added }: { readonly specs: readonly I
 			for (const p of spec.props) {
 				if (!found.has(p.name)) continue;
 				const value = found.get(p.name);
-				if (value === undefined || (p.as !== 'form-value' && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')) continue;
-				el.setAttribute(p.attr ?? kebab(p.name), p.as === 'form-value' ? formValue(value, toString) : String(value));
+				if (value === undefined || (!p.as && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')) continue;
+				el.setAttribute(p.attr ?? kebab(p.name), p.as === 'form-value' ? formValue(value, toString) : p.as === 'json' ? JSON.stringify(value) : String(value));
 			}
 		}
 	}

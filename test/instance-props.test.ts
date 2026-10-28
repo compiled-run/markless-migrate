@@ -138,3 +138,12 @@ test("a Base UI menu item gets the closeOnClick its instance was given, and none
 	assert.deepEqual(await attrs(page, 'data-mm-close-on-click'), { menu: null, closes: 'true', stays: 'false', plain: null });
 	await page.close();
 });
+
+test('a prop read `as: json` is written as its JSON, an object a site part reads back whole', async () => {
+	const page = await browser.newPage();
+	await fibers(page, `<div id="page"><button id="swatch" data-last-copied="false"></button></div>`, [3, {}, [[5, '#page', [[0, { color: { hex: '#fff', hsl: 'hsl(0 0% 100%)' } }, [[5, '#swatch']]]]]]]);
+	const swatch: InstanceSpec = { port: 'site', selector: 'button[data-last-copied]', props: [{ name: 'color', as: 'json' }], hints: ['data-last-copied'] };
+	await page.evaluate(markInstanceProps, { specs: [swatch], added: false });
+	assert.deepEqual(JSON.parse((await attrs(page, 'data-mm-color')).swatch!), { hex: '#fff', hsl: 'hsl(0 0% 100%)' });
+	await page.close();
+});

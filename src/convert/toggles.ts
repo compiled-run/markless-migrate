@@ -606,6 +606,11 @@ export interface Notify {
 	readonly ms: number;
 	/** A sonner toast: what its Toast and Toaster were given, and its markup over its life. */
 	readonly sonner?: SonnerToast;
+	/**
+	 * A listing's toast template: the one toast taken, the text its control copied (which the toast names), the site
+	 * function that copies and gives the text for any of them, and every control it stands for.
+	 */
+	readonly template?: { readonly name: string; readonly copied: string; readonly controls: readonly { readonly sig: string; readonly nth: number }[] };
 }
 
 /** A sonner toast as the old page's React tree held it (parts/sonner.ts runs it). */
@@ -624,8 +629,8 @@ export interface NotifyCapture {
 }
 
 /** Uses each listed control on a fresh load and records what it added inside a live region, until that went away. */
-export async function captureNotifications(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[]): Promise<NotifyCapture> {
-	const file = join(dir, `${createHash('sha256').update(`notify2:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
+export async function captureNotifications(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[], template?: string): Promise<NotifyCapture> {
+	const file = join(dir, `${createHash('sha256').update(`notify2:${route}|${JSON.stringify(selectors)}${template ? `|template:${template}` : ''}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as NotifyCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const notifications: Notify[] = [];
@@ -637,9 +642,16 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 		await page.waitForTimeout(300);
 	};
 	try {
+		// A template's text is what its control copied: the clipboard records it.
+		if (template)
+			await page.addInitScript(() => {
+				const writes: string[] = [];
+				(window as unknown as { __mmCopied: string[] }).__mmCopied = writes;
+				Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (writes.push(String(t)), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
+			});
 		await fresh();
 		const count = await page.evaluate((selector) => [...document.body.querySelectorAll(selector)].filter((el) => el.getBoundingClientRect().width > 0).length, selectors.join(', '));
-		for (let i = 0; i < Math.min(count, 24); i++) {
+		for (let i = 0; i < Math.min(count, template ? 1 : 24); i++) {
 			if (i > 0) await fresh();
 			const found = await page.evaluate(
 				({ selector, i }) => {
@@ -701,7 +713,23 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 				}
 				await page.waitForTimeout(sonner ? 100 : 250);
 			}
-			notifications.push({ sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}) });
+			const copied = template ? await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1)) : undefined;
+			const controls = template
+				? await page.evaluate((selector) => {
+						const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+						const listed = new Set(document.body.querySelectorAll(selector));
+						const counts = new Map<string, number>();
+						const out: { sig: string; nth: number }[] = [];
+						for (const el of document.body.querySelectorAll('*')) {
+							const sig = sigOf(el);
+							const n = counts.get(sig) ?? 0;
+							counts.set(sig, n + 1);
+							if (listed.has(el)) out.push({ sig, nth: n });
+						}
+						return out;
+					}, selectors.join(', '))
+				: [];
+			notifications.push({ sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}), ...(template && copied ? { template: { name: template, copied, controls } } : {}) });
 		}
 	} finally {
 		await context.close().catch(() => {});

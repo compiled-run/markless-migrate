@@ -292,6 +292,24 @@ test('a sonner toaster renders its lists and toasts from one state, each control
 	assert.ok(plan.hosts(region));
 });
 
+test("a toast template's controls all add its toast, each naming what the site's function made of the control clicked", async () => {
+	const { NotifyPlan } = await import('../src/convert/stateful.ts');
+	const { emitChildren } = await import('../src/convert/tsrx.ts');
+	const { parseFragment } = await import('parse5');
+	const doc = parseDocument('<body><main><button data-last-copied="false">a</button><button data-last-copied="false">b</button><button>Other</button></main><section aria-label="Notifications alt+T" aria-live="polite"></section></body>');
+	const [a, b, other] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element, Element];
+	const region = find(body(doc), (el) => el.tagName === 'section')!;
+	const toaster = { position: 'bottom-right', gap: 14, visibleToasts: 3, expand: false, hotkey: ['altKey', 'KeyT'], ol: [['data-sonner-toaster', 'true'], ['style', '--width: 356px;']] as [string, string][] };
+	const sonner = { toaster, dismissible: true, duration: 4000, promise: false, phases: [{ at: 0, type: 'success', attrs: [['data-sonner-toast', ''], ['data-type', 'success']] as [string, string][], inner: '<div data-content=""><div data-title="">Copied hsl(0 0% 100%) to clipboard.</div></div>' }] };
+	const plan = new NotifyPlan();
+	const placed = plan.add([{ sig: 'a', nth: 0, into: { sig: 'r', nth: 0 }, html: '', ms: 4600, sonner: sonner as never, template: { name: 'copyColor', copied: 'hsl(0 0% 100%)', controls: [{ sig: 'a', nth: 0 }, { sig: 'b', nth: 0 }] } }], (sig) => ({ a, b, r: region })[sig as 'a' | 'b' | 'r'], (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	assert.equal(placed, 2);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-title="">Copied \{item\.text\} to clipboard\.<\/div>/, 'the copied value is the toast\'s own text');
+	for (const el of [a, b]) assert.match(plan.bind(el)!.extra![0]!, /^onClick=\{\(event\) => sonnerAdd\(\{"id":"tst0".*\{ \.\.\.\{"view":0,.*\}, text: copyColor\(event\.target as Element\) \}, \(v\) => \(tst0 = v\)\)\}$/);
+	assert.equal(plan.bind(other), undefined);
+});
+
 test('a Base UI disclosure whose content holds disclosures of its own keeps that content in the page, shown while open, its own bound inside', async () => {
 	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-closed=""><button id="base-ui-a" aria-expanded="false" data-base-ui-collapsible-trigger="">components</button><div data-open="" id="base-ui-pa"><div data-closed=""><button id="base-ui-b" aria-expanded="false" data-base-ui-collapsible-trigger="">ui</button></div></div></div></body>');
