@@ -25,12 +25,29 @@ for (const b of document.querySelectorAll('button')) b.addEventListener('click',
 });
 </script></body></html>`;
 
+// The block viewer's code view: hidden until its Code tab is chosen, its copy button writing the shown file's source.
+const COPY_PAGE = `<!doctype html><html><body><div data-view="preview"><div style="display:none"><ul>
+<li><button data-slot="sidebar-menu-button" data-active="true">page.tsx</button></li>
+<li><button data-slot="sidebar-menu-button" data-active="false">nav.tsx</button></li>
+</ul><figure><figcaption>page.tsx<button data-slot="button" type="button"><svg></svg></button></figcaption><pre>page</pre></figure></div></div>
+<script>
+let shown = 'page.tsx';
+const source = { 'page.tsx': 'export default function Page() {}', 'nav.tsx': 'export function Nav() {}' };
+const figure = document.querySelector('figure');
+figure.addEventListener('click', (e) => e.target.closest('figcaption button') && navigator.clipboard.writeText(source[shown]));
+for (const b of document.querySelectorAll('[data-slot="sidebar-menu-button"]')) b.addEventListener('click', () => {
+	for (const o of document.querySelectorAll('[data-slot="sidebar-menu-button"]')) o.dataset.active = String(o === b);
+	shown = b.textContent;
+	figure.innerHTML = '<figcaption>' + shown + '<button data-slot="button" type="button"><svg></svg></button></figcaption><pre>' + shown.split('.')[0] + '</pre>';
+});
+</script></body></html>`;
+
 let browser: Browser;
 let server: Server;
 let origin: string;
 before(async () => {
 	browser = await chromium.launch();
-	server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE));
+	server = createServer((request, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/copy' ? COPY_PAGE : PAGE));
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -72,9 +89,25 @@ test('controls whose changes touch form a group, and each sets every place its g
 		{ up: 2, down: [1, 0], attrs: { 'data-active': 'false' } },
 		{ up: 3, down: [1], html: 'page 1' },
 	]);
+	assert.deepEqual(completeShown([{ ...nav(0), effects: nav(0).effects.map((e) => (e.html ? { ...e, copied: { 'button|button|#0': 'nav source' } } : e)) }, page(0)], first).get('nav0')?.[2], { up: 3, down: [1], html: 'nav 0', copied: { 'button|button|#0': 'nav source' } }, 'a view keeps what its copy controls wrote');
 	assert.deepEqual(done.get('nav0'), [
 		{ up: 2, down: [0, 0], attrs: { 'data-active': 'false' } },
 		{ up: 0, down: [], attrs: { 'data-active': 'true' } },
 		{ up: 3, down: [1], html: 'nav 0' },
 	]);
+});
+
+test('a listed copy control writes what it wrote both in the page\'s hidden code view and in each file a "show" control shows there', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'reveal-show-copy-'));
+	try {
+		const copy = '[data-view] figure > figcaption button[data-slot="button"]';
+		const capture = await captureReveals(browser, origin, '/copy', dir, [VIEWPORTS[0]!], [['[data-view] button[data-slot="sidebar-menu-button"]', 'show'], [copy, 'copy']], { controls: [], tag: 'listed-v2:' });
+		const copied = capture.reveals.find((r) => r.sig === 'button|button|');
+		assert.deepEqual(copied?.added, [{ into: 'clipboard', before: -1, html: 'export default function Page() {}' }], 'the copy button of the code view the page hides');
+		const nav = capture.reveals.find((r) => r.sig?.endsWith('|nav.tsx'));
+		const place = (JSON.parse(nav!.added[0]!.html) as ShownEffect[]).find((e) => e.html !== undefined);
+		assert.deepEqual(place?.copied, { 'button|button|#0': 'export function Nav() {}' });
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });

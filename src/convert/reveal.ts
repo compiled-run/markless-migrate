@@ -37,6 +37,8 @@ export interface ShownEffect {
 	readonly html?: string;
 	readonly view?: string;
 	readonly attrs?: Readonly<Record<string, string | null>>;
+	/** What each listed copy control in the new content wrote, by its signature and which one it is within the content. */
+	readonly copied?: Readonly<Record<string, string>>;
 }
 
 export interface Reveal {
@@ -99,6 +101,8 @@ interface Candidate {
 	readonly key: string;
 	readonly action: RevealAction;
 	readonly visible: boolean;
+	/** For a `show` control: the listed copy controls' selectors, used again in what it shows. */
+	readonly copies?: readonly string[];
 }
 
 async function candidates(page: Page, extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[] = CONTROLS): Promise<Candidate[]> {
@@ -120,7 +124,7 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 			counts.set(sig, n + 1);
 			order.set(el, n);
 		}
-		const out: { path: number[]; key: string; action: 'click' | 'hover' | 'contextmenu'; visible: boolean; selector: string; sig: string; nth: number }[] = [];
+		const out: { path: number[]; key: string; action: RevealAction; visible: boolean; selector: string; sig: string; nth: number }[] = [];
 		for (const [selector, action] of controls) {
 			for (const el of document.body.querySelectorAll(selector)) {
 				if (seen.has(el) || el.closest('template')) continue;
@@ -132,12 +136,13 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 				// A second control with an id the page already gave another (shadcn's React Aria date pickers) is keyed by the id the converter gives it.
 				let key = el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`;
 				if (el.id && document.querySelectorAll(`[id="${CSS.escape(el.id)}"]`)[0] !== el) key = `${el.id}-${[...document.querySelectorAll(`[id="${CSS.escape(el.id)}"]`)].indexOf(el) + 1}`;
-				out.push({ path, key, action: action as 'click' | 'hover' | 'contextmenu', visible, selector, sig: sigOf(el), nth: order.get(el) ?? 0 });
+				out.push({ path, key, action: action as RevealAction, visible, selector, sig: sigOf(el), nth: order.get(el) ?? 0 });
 			}
 		}
 		return out;
 	}, [...controls, ...extra] as unknown as [string, string][]);
-	return found.map(({ selector, ...c }) => ({ ...c, ...(listed.has(selector) ? { extra: true } : {}) }));
+	const copies = extra.filter(([, action]) => action === 'copy').map(([selector]) => selector);
+	return found.map(({ selector, ...c }) => ({ ...c, ...(listed.has(selector) ? { extra: true } : {}), ...(c.action === 'show' && copies.length ? { copies } : {}) }));
 }
 
 async function bodyHash(page: Page): Promise<string> {
@@ -195,6 +200,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			const outer = live.filter((e) => !live.some((o) => o !== e && o.contains(e)));
 			const within = (e: Element) => outer.some((o) => o !== e && o.contains(e));
 			const changed = [...new Set([...outer, ...[...attrs.keys()].filter((e) => e.isConnected && !within(e))])].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+			(w as unknown as { __mmShowPlaces: (Element | null)[] }).__mmShowPlaces = changed.map((e) => (outer.includes(e) ? e : null));
 			return changed.map((e) => {
 				let up = 0;
 				let at: Element = control;
@@ -208,8 +214,10 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 				return { up, down, ...(outer.includes(e) ? { html: e.innerHTML } : { attrs: Object.fromEntries(names.map((n) => [n, e.getAttribute(n)])) }) };
 			});
 		});
+		const copied = candidate.copies ? await copiedIn(page, candidate.copies) : [];
+		const withCopies: ShownEffect[] = effects.map((e, i) => (copied[i] ? { ...e, copied: copied[i] } : e));
 		// The control already shown changes nothing, and is still recorded: the port completes it from the page (shown.ts).
-		return [{ into: 'show', before: -1, html: JSON.stringify(effects) }];
+		return [{ into: 'show', before: -1, html: JSON.stringify(withCopies) }];
 	}
 	if (candidate.action === 'copy') {
 		await page.evaluate(() => {
@@ -221,7 +229,8 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			};
 			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write, write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 		});
-		await el.click({ timeout: 2000 }).catch(() => {});
+		// A copy control in a view the page hides (a block viewer's Code) writes the same when clicked there.
+		await el.click({ timeout: 2000 }).catch(() => el.evaluate((e) => (e as HTMLElement).click()).catch(() => {}));
 		await quiet(page, 300);
 		const written = await page.evaluate(() => (window as unknown as { __mmClipboard?: string[] }).__mmClipboard ?? []);
 		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]! }] : [];
@@ -290,6 +299,39 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			return { into: a.parent === document.body ? ('body' as const) : pathOf(a.parent), before: at, html: a.node.outerHTML };
 		});
 	});
+}
+
+/** What the listed copy controls in each content a `show` control changed write now, keyed as parts/reveal.ts finds them within a view. */
+async function copiedIn(page: Page, selectors: readonly string[]): Promise<(Record<string, string> | null)[]> {
+	return page.evaluate(async (selectors) => {
+		const written: string[] = [];
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (text: string) => (written.push(text), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
+		const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+		const out: (Record<string, string> | null)[] = [];
+		for (const place of (window as unknown as { __mmShowPlaces: (Element | null)[] }).__mmShowPlaces) {
+			if (!place) {
+				out.push(null);
+				continue;
+			}
+			const counts = new Map<string, number>();
+			const controls: [Element, string][] = [];
+			for (const el of place.querySelectorAll('*')) {
+				const sig = sigOf(el);
+				const nth = counts.get(sig) ?? 0;
+				counts.set(sig, nth + 1);
+				if (selectors.some((s) => el.matches(s))) controls.push([el, `${sig}#${nth}`]);
+			}
+			const copied: Record<string, string> = {};
+			for (const [el, key] of controls) {
+				written.length = 0;
+				(el as HTMLElement).click();
+				await new Promise((done) => setTimeout(done, 50));
+				if (written.length) copied[key] = written[written.length - 1]!;
+			}
+			out.push(Object.keys(copied).length ? copied : null);
+		}
+		return out;
+	}, selectors);
 }
 
 /** Waits until the page has not scrolled for three frames (a smooth scroll has finished). */
@@ -396,7 +438,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		try {
 			const found = await candidates(open.page, extra, pass.controls);
 			// A listed `show` control may sit in a view another control shows (a block viewer's Code): it is used where it is.
-			const usable = (c: Candidate) => c.visible || c.action === 'show';
+			const usable = (c: Candidate) => c.visible || c.action === 'show' || c.action === 'copy';
 			hidden = found.some((c) => !usable(c) && !done.has(c.key));
 			for (const candidate of found) {
 				if (!usable(candidate) || done.has(candidate.key)) continue;
