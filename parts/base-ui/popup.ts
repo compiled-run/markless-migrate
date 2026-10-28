@@ -216,7 +216,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
-		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
+		const opts: BaseOptions = { side: positioner.getAttribute('data-mm-side') ?? popup.getAttribute('data-side') ?? 'bottom', align: positioner.getAttribute('data-mm-align') ?? popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
 		// A Positioner given another anchor than its trigger (an element ref): the portal names that element.
 		const named = portal.dataset.mmAnchor ? document.getElementById(portal.dataset.mmAnchor) : null;
 		p.stop = place(options.anchor ?? named ?? trigger, positioner, popup, opts);

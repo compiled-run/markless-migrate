@@ -10,7 +10,7 @@ import { registryModule } from '../src/convert/parts.ts';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
 // Placement is not under test: a popup goes to the page's corner, a submenu (placed on a side) beside its trigger.
-const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
+const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { window.asked = o.placement; if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
 
@@ -62,6 +62,14 @@ const menu = (items: readonly string[], disabled: readonly string[] = []) => `<m
 const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
 const select = `<main style="height:3000px;padding:200px"><button type="button" id="before">Before</button><button type="button" id="base" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Select a fruit</span></button><input id="base-ui-x-hidden-input" tabindex="-1" aria-hidden="true" value="" style="position:fixed;width:1px;height:1px;clip-path:inset(50%)"><button type="button" id="after">After</button></main>
 	<div data-base-ui-portal hidden data-mm-layer="base"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="none" data-align="center" role="presentation" style="position:fixed" data-closed><div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox" style="position:relative">${FRUITS.map((f) => `<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`;
+
+test('a Base UI menu opens on the side and alignment its source asked for, not the side a flip at capture left on it', async () => {
+	const page = await open(menu(FRUITS).replace('<div data-side="bottom" data-align="start" role="presentation"', '<div data-side="top" data-align="end" data-mm-side="bottom" data-mm-align="start" role="presentation"'), ['base-ui/menu']);
+	await page.click('#dd');
+	await settled(page);
+	assert.equal(await page.evaluate(() => (window as unknown as { asked: string }).asked), 'bottom-start');
+	await page.close();
+});
 
 test('Base UI menu and select triggers carry data-pressed while their popup is open, as pressableTriggerOpenStateMapping maps it', async () => {
 	for (const [markup, port, popup] of [
