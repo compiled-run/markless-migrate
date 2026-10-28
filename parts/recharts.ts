@@ -26,6 +26,7 @@ interface Facts {
 	/** The drawing's axes, every tick they could show, and its layout, where it is cartesian (recharts-layout). */
 	readonly a?: readonly unknown[];
 	readonly l?: string;
+	readonly pl?: readonly unknown[];
 }
 
 const WRAPPER = '[data-mm-chart]';
@@ -174,6 +175,69 @@ export function mount(el: Element): void {
 	wire(el);
 	watch(el);
 	track(el);
+	const card = el.closest('[data-mm-morph]');
+	if (card?.querySelector('[data-mm-variant]') && card.querySelector('[data-slot="select-trigger"]')) share(card);
+	followLanguage(el);
+	begin(el);
+}
+
+// An RTL preview's language (its data-lang, which the site's RTL part sets; English where it is left to right) picks
+// the chart's drawing for that language, as the example draws it again (convert's mmlang).
+const followed = new WeakSet<Element>();
+function followLanguage(wrapper: HTMLElement): void {
+	const preview = wrapper.hasAttribute('data-mm-lang') ? wrapper.closest('[data-slot="preview"]') : null;
+	if (!preview || followed.has(wrapper)) return;
+	followed.add(wrapper);
+	const language = () => preview.getAttribute('data-lang') ?? (preview.getAttribute('dir') === 'ltr' ? 'en' : undefined);
+	let shownLanguage = language();
+	const send = () => {
+		const now = language();
+		if (!now || now === shownLanguage) return;
+		shownLanguage = now;
+		wrapper.dispatchEvent(new CustomEvent('mmlang', { detail: now }));
+	};
+	new MutationObserver(send).observe(preview, { attributes: true, attributeFilter: ['data-lang', 'dir'] });
+}
+
+// The choice the old page's card made for itself on a page narrower than `w` (dashboard-01's useIsMobile: the last 7
+// days): made through the card's select, as a visitor would, before the chart has moved; recharts drew it from the start.
+const starting = new WeakSet<Element>();
+const begun = new WeakSet<Element>();
+function begin(wrapper: HTMLElement): void {
+	if (begun.has(wrapper)) return;
+	begun.add(wrapper);
+	let start: { w: number; l: string };
+	try {
+		start = JSON.parse(wrapper.getAttribute('data-mm-start') ?? '') as { w: number; l: string };
+	} catch {
+		return;
+	}
+	const card = wrapper.closest('[data-mm-morph]');
+	const trigger = card?.querySelector('[data-slot="select-trigger"]');
+	if (!card || !trigger || innerWidth >= start.w) return;
+	share(card);
+	if (watched.has(wrapper)) starting.add(wrapper);
+	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: start.l }));
+}
+
+/**
+ * A card whose select and buttons set one range (dashboard-01's timeRange): the select's choice also presses the button
+ * of the same text, which Markless keeps the range in (the toggle group's state, the select's shown value).
+ */
+const shared = new WeakSet<Element>();
+function share(card: Element): void {
+	if (shared.has(card)) return;
+	shared.add(card);
+	card.addEventListener('mmchoose', (event) => {
+		const text = (event as CustomEvent<string>).detail;
+		const press = [...card.querySelectorAll<HTMLElement>('[data-mm-variant]')].find((el) => el.textContent?.trim() === text);
+		if (press && press.getAttribute('aria-checked') !== 'true' && press.getAttribute('data-state') !== 'on') press.click();
+	});
+}
+
+// The old card chose on load wherever the chart was, scrolled to or not.
+export function idle(): void {
+	for (const el of document.querySelectorAll<HTMLElement>(`${WRAPPER}[data-mm-start]`)) begin(el);
 }
 
 // The drawing laid out for the chart's own size and the visitor's time zone (recharts-layout), where either differs
@@ -202,7 +266,7 @@ const behind = (year: number) => [0, 6].some((month) => new Date(Date.UTC(year, 
 
 function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wrapper)): void {
 	const f = svg && factsOf(svg);
-	if (!svg || (!f?.a && !f?.l)) return;
+	if (!svg || !f || (!f.a && !f.l && !f.pl)) return;
 	const box = wrapper.getBoundingClientRect();
 	const W = Math.round(box.width);
 	const H = Math.round(box.height);
@@ -282,6 +346,8 @@ function watch(wrapper: HTMLElement): void {
 		if (now) shown.set(wrapper, now);
 		if (!now || !from) return;
 		fit(wrapper, now);
+		// The card's own start (begin) is no switch: the chart's entry animation plays for it.
+		if (starting.has(wrapper)) return void starting.delete(wrapper);
 		wrapper.setAttribute('data-mm-moved', '');
 		if (!now.querySelector('[data-mm-geo]') || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		const lag = factsOf(now)?.z ?? 0;

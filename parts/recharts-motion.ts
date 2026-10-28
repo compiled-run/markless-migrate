@@ -80,13 +80,19 @@ function marksOf(surface: Element, finals: WeakMap<Element, string>): Mark[] {
 	const out: Mark[] = [];
 	for (const el of surface.querySelectorAll<SVGPathElement>('path[data-mm-geo]')) {
 		const geo = geoOf(el);
-		if (!geo) continue;
+		if (!geo || !['line', 'area', 'curve', 'bar'].includes(geo.k)) continue;
 		if (!finals.has(el)) finals.set(el, el.getAttribute('d') ?? '');
 		const final = finals.get(el)!;
-		out.push({ el, geo, final, to: shapeOf(el, geo, final) });
+		// A bar's own box, read with its path: the frames write it over (as recharts' Rectangle does).
+		const known = shapes.get(el);
+		const to = known?.d === final ? known.shape : shapeOf(el, geo, final);
+		shapes.set(el, { d: final, shape: to });
+		out.push({ el, geo, final, to });
 	}
 	return out;
 }
+
+const shapes = new WeakMap<Element, { d: string; shape: Shape | undefined }>();
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && !Number.isNaN(v);
 // recharts' DataUtils.interpolate
@@ -148,7 +154,7 @@ const round = (n: number): number => {
 	const r = Math.round(n * 1e4) / 1e4;
 	return Object.is(r, -0) ? 0 : r;
 };
-const rt = (strings: TemplateStringsArray, ...values: number[]) => strings.reduce((out, s, i) => out + (i ? round(values[i - 1]!) : '') + s);
+export const rt = (strings: TemplateStringsArray, ...values: number[]) => strings.reduce((out, s, i) => out + (i ? round(values[i - 1]!) : '') + s);
 
 export function rectPath(x: number, y: number, width: number, height: number, radius: number | readonly number[] | undefined): string {
 	const w = round(width);
@@ -213,6 +219,9 @@ function draw(mark: Mark, shape: Shape | undefined): void {
 	const radius = mark.geo.r ?? (mark.el.hasAttribute('radius') ? Number(mark.el.getAttribute('radius')) : undefined);
 	const d = !shape || shape === mark.to ? mark.final : shape.rect ? rectPath(shape.rect.x, shape.rect.y, shape.rect.width, shape.rect.height, radius) : curvePath(mark.geo, shape.points ?? [], shape.base);
 	if (mark.el.getAttribute('d') !== d) mark.el.setAttribute('d', d);
+	// recharts' Rectangle also writes its box, rounded, each frame.
+	const box = shape?.rect ?? mark.to?.rect;
+	if (box) for (const k of ['x', 'y', 'width', 'height'] as const) if (mark.el.hasAttribute(k)) mark.el.setAttribute(k, String(round(box[k])));
 }
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;

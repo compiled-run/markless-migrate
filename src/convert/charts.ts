@@ -99,6 +99,8 @@ export interface ChartModel {
 	/** recharts' layoutType, where the chart is cartesian: which axis holds the categories. */
 	readonly layout?: 'horizontal' | 'vertical';
 	readonly stack?: string;
+	/** A polar chart's innerRadius, outerRadius, cx and cy as given (numbers, or percents of the plot). */
+	readonly polar?: readonly [number | string, number | string, number | string, number | string];
 }
 
 /** A control in the chart's card that switches what the chart shows (a time range, a metric). */
@@ -111,6 +113,8 @@ export interface ChartDriver {
 	readonly variant: number;
 	/** The control marks the active one with data-active, which nothing else on the page drives. */
 	readonly active?: boolean;
+	/** An RTL preview's language selector: the language (data-lang, `en` left to right) this choice shows. */
+	readonly lang?: string;
 }
 
 /** The chart as the old page drew it at another width. */
@@ -138,6 +142,8 @@ export interface ChartFacts {
 	readonly widths: readonly ChartWidth[];
 	/** Frames from a control's use to the one the old page's update animation began at (`animationLag`). */
 	readonly lag?: number;
+	/** The choice the card starts in on pages narrower than `below` px (findStart); `{}` where it starts alike. */
+	readonly start?: { readonly below?: number; readonly label?: string };
 }
 
 declare global {
@@ -244,6 +250,19 @@ export function markGeometry(svg: Element): Element[] {
 		el.setAttribute('data-mm-geo', JSON.stringify(geo));
 		marked.push(el);
 	}
+	// A pie's sector: its radii and angles, and the pie's own radii and centre as given (numbers or percents of the
+	// plot), which the part lays it out again from at another size.
+	for (const el of svg.querySelectorAll('path.recharts-sector')) {
+		if (!el.closest('.recharts-pie')) continue;
+		const own = up(el, (p) => 'outerRadius' in p && 'startAngle' in p && 'endAngle' in p);
+		// The Pie's own props (its data, before recharts gave each sector its computed radii).
+		const pie = up(el, (p) => Array.isArray(p.data) && 'dataKey' in p && !('payload' in p));
+		if (!own || !pie || own.cornerRadius) continue;
+		const raw = (v: unknown, or: number | string) => (typeof v === 'number' || typeof v === 'string' ? v : or);
+		const geo = { k: 'sector', r: [Number(own.innerRadius ?? 0), Number(own.outerRadius)], a: [Number(own.startAngle), Number(own.endAngle)], p: [raw(pie.innerRadius, 0), raw(pie.outerRadius, '80%'), raw(pie.cx, '50%'), raw(pie.cy, '50%')] };
+		el.setAttribute('data-mm-geo', JSON.stringify(geo));
+		marked.push(el);
+	}
 	// A LabelList: where it puts each label against its series' bar or point, and which series (its layer's id).
 	for (const g of svg.querySelectorAll('g.recharts-label-list')) {
 		const list = up(g, (p) => 'position' in p || 'offset' in p || 'content' in p || 'formatter' in p || 'valueAccessor' in p);
@@ -329,10 +348,13 @@ export function chartModel(svg: Element): ChartModel {
 		return f ? { v: values as string[], f, lo: navigator.language } : {};
 	}
 	const store = up(svg, (q) => !!(q.value as { store?: { getState?: unknown } } | undefined)?.store?.getState || !!(q.store as { getState?: unknown } | undefined)?.getState);
-	type State = { rootProps?: Record<string, unknown>; layout?: { layoutType?: string }; graphicalItems?: { cartesianItems?: Record<string, unknown>[] } };
+	type State = { rootProps?: Record<string, unknown>; layout?: { layoutType?: string }; graphicalItems?: { cartesianItems?: Record<string, unknown>[] }; polarOptions?: Record<string, unknown> | null };
 	const state = ((store?.value as { store?: { getState(): State } } | undefined)?.store ?? (store?.store as { getState(): State } | undefined))?.getState();
 	const layoutType = state?.layout?.layoutType;
+	const po = state?.polarOptions;
+	const rawOf = (v: unknown, or: number | string) => (typeof v === 'number' || typeof v === 'string' ? v : or);
 	const chart = {
+		...(po ? { polar: [rawOf(po.innerRadius, 0), rawOf(po.outerRadius, '80%'), rawOf(po.cx, '50%'), rawOf(po.cy, '50%')] as [number | string, number | string, number | string, number | string] } : {}),
 		...(layoutType === 'horizontal' || layoutType === 'vertical' ? { layout: layoutType as 'horizontal' | 'vertical' } : {}),
 		...(typeof state?.rootProps?.stackOffset === 'string' && state.rootProps.stackOffset !== 'none' ? { stack: state.rootProps.stackOffset } : {}),
 	};
@@ -651,7 +673,10 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 					const r = el.getBoundingClientRect();
 					return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== 'hidden';
 				};
-				const drivers = card ? [...card.querySelectorAll(controls)].filter((el) => visible(el) && !root.contains(el)).map((el) => ({ sig: sigOf(el), nth: nthOf(el), select: el.getAttribute('data-slot') === 'select-trigger', active: el.hasAttribute('data-active') })) : [];
+				const drivers = card ? [...card.querySelectorAll(controls)].filter((el) => visible(el) && !root.contains(el)).map((el) => ({ sig: sigOf(el), nth: nthOf(el), select: el.getAttribute('data-slot') === 'select-trigger', active: el.hasAttribute('data-active'), lang: false })) : [];
+				// An RTL preview's language selector (component-preview-tabs.tsx) draws the example again in its language.
+				const language = root.closest('[data-slot="component-preview"]')?.querySelector('[data-name="language-selector"]');
+				if (!drivers.length && language && visible(language)) drivers.push({ sig: sigOf(language), nth: nthOf(language), select: true, active: false, lang: true });
 				return { sig: sigOf(root), nth: nthOf(root), w, h, view, drivers };
 			}, CONTROLS);
 			const svgNow = () =>
@@ -710,7 +735,9 @@ async function captureAt(browser: Browser, origin: string, route: string, viewpo
 					await control.click({ timeout: 3000 }).catch(() => {});
 					await page.waitForTimeout(400);
 					await page.locator('[role="option"]').filter({ hasText: label }).first().click({ timeout: 3000 }).catch(() => {});
-					await record({ sig: d.sig, nth: d.nth, kind: 'choose', label });
+					// The language the preview shows now: its data-lang, or English where it is left to right.
+					const lang = d.lang ? await wrapper.evaluate((root) => { const preview = root.closest('[data-slot="preview"]'); return preview?.getAttribute('data-lang') ?? (preview?.getAttribute('dir') === 'ltr' ? 'en' : undefined); }) : undefined;
+					await record({ sig: d.sig, nth: d.nth, kind: 'choose', label, ...(lang ? { lang } : {}) });
 				}
 			}
 			if (found.drivers.length) await load();
@@ -730,11 +757,15 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
  * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
  */
 export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`charts7:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`charts8:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
 	// A capture from before the update animation (a chart with controls and no lag) or the layout model was read is taken again.
-	const stale = (c: ChartFacts) => (c.drivers.length && c.lag === undefined) || [c.variants, ...c.widths.map((w) => w.variants)].flat().some((v) => v.svg && !v.model);
+	const stale = (c: ChartFacts) => (c.drivers.length && c.lag === undefined) || [c.variants, ...c.widths.map((w) => w.variants)].flat().some((v) => v.svg && (!v.model || (/recharts-(pie|radar|radial-bar|polar)/.test(v.svg) && !v.model.polar) || (v.svg.includes('recharts-pie-sector') && !v.svg.includes('&quot;k&quot;:&quot;sector&quot;') && !v.svg.includes('"k":"sector"'))));
 	const known = cached?.route === route && !cached.charts.some(stale) ? cached.charts : undefined;
+	if (known && known.some((c) => c.start === undefined)) {
+		for (const chart of known) if (chart.start === undefined) await findStart(browser, origin, route, chart);
+		await writeFile(file, JSON.stringify({ route, charts: known }));
+	}
 	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
 	const missing = known && !known.length ? [] : CHART_WIDTHS.filter((w) => !have.has(w));
 	if (known && !missing.length) return { route, charts: known };
@@ -747,10 +778,53 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 		}
 	}
 	if (charts.some((c) => c.drivers.length && c.lag === undefined)) await measureLags(browser, origin, route, charts);
+	for (const chart of charts) if (chart.start === undefined) await findStart(browser, origin, route, chart);
 	const capture = { route, charts };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+/**
+ * Where a chart's card starts in another of its control's states below some page width (dashboard-01's useIsMobile
+ * sets the last 7 days under 768 px): the narrow captures' resting drawing is a control's choice, the wide ones' is
+ * not. The page width it changes at is found by loading the old page between them, the drawing told by its number of
+ * categories. `start` is `{}` where nothing changes.
+ */
+async function findStart(browser: Browser, origin: string, route: string, chart: ChartFacts): Promise<void> {
+	const entries: ChartWidth[] = [{ viewport: VIEWPORTS[0]!.width, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
+	const restChoice = (entry: ChartWidth) => entry.drivers.find((d) => d.variant === 0 && d.kind === 'choose');
+	const narrow = entries.filter((e) => restChoice(e)).sort((a, b) => a.viewport - b.viewport);
+	const wide = entries.filter((e) => !restChoice(e)).sort((a, b) => a.viewport - b.viewport);
+	const set = (start: ChartFacts['start']) => ((chart as { start?: ChartFacts['start'] }).start = start);
+	if (!narrow.length || !wide.length || narrow.at(-1)!.viewport > wide[0]!.viewport) return void set({});
+	const label = restChoice(narrow[0]!)!.label!;
+	const count = (entry: ChartWidth) => entry.variants[0]?.model?.axes.find((a) => a && !a.num)?.c.length;
+	const narrowCount = count(narrow.at(-1)!);
+	if (narrowCount === undefined || narrowCount === count(wide[0]!)) return void set({});
+	let lo = narrow.at(-1)!.viewport;
+	let hi = wide[0]!.viewport;
+	while (hi - lo > 1) {
+		const mid = Math.floor((lo + hi) / 2);
+		const { context, page } = await openPage(browser, defaultEnv(origin), { name: `w${mid}`, width: mid, height: 900, isMobile: false });
+		try {
+			await loadPage(page, new URL(route, origin).href);
+			await page.waitForTimeout(1500);
+			const n = await page.evaluate(
+				({ index, fn }) => {
+					const svg = document.querySelectorAll('.recharts-wrapper')[index]?.querySelector('svg.recharts-surface');
+					const model = svg && (new Function(`return ${fn}`)() as (s: Element) => ChartModel)(svg);
+					return model?.axes.find((a) => a && !a.num)?.c.length;
+				},
+				{ index: chart.index, fn: chartModel.toString() },
+			);
+			if (n === narrowCount) lo = mid;
+			else hi = mid;
+		} finally {
+			await context.close().catch(() => {});
+		}
+	}
+	set({ below: hi, label });
 }
 
 /**
@@ -1093,6 +1167,8 @@ export class ChartPlan {
 			if (attr(wrapper, 'style')) fluid(wrapper, attr(wrapper, 'style')!.replace(/width:\s*[\d.]+px/, 'width: 100%').replace(/height:\s*[\d.]+px/, 'height: 100%'));
 			for (const name of ['width', 'height']) wrapper.attrs = wrapper.attrs.filter((a) => a.name !== name);
 			const extra = ['data-mm-chart="1"', `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`, 'onVisible={() => mount("data-mm-chart")}'];
+			// The choice the old page's card makes for itself on narrow pages, which the part makes on load as it did.
+			if (many && chart.start?.below && chart.start.label) extra.push(`data-mm-start={${lit(JSON.stringify({ w: chart.start.below, l: chart.start.label }))}}`);
 			if (!linked) {
 				linked = true;
 				const link = { nodeName: 'link', tagName: 'link', attrs: [{ name: 'rel', value: 'stylesheet' }, { name: 'href', value: MOTION_FILE }], namespaceURI: wrapper.namespaceURI, childNodes: [], parentNode: parent } as unknown as Tree;
@@ -1178,11 +1254,28 @@ export class ChartPlan {
 			...(variant.model?.axes.some((a) => a) ? { a: variant.model.axes } : {}),
 			...(variant.model?.bars ? { b: variant.model.bars } : {}),
 			...(variant.model?.layout ? { l: variant.model.layout } : {}),
+			...(variant.model?.polar ? { pl: variant.model.polar } : {}),
 		};
 	}
 
 	/** The card's controls set which SVG the chart shows: a press by the control, a choice by the option's text. */
 	private drive(chart: ChartFacts, wrapper: Tree, name: string, v: string, locate: (sig: string, nth: number) => Tree | undefined, declare: string[]): void {
+		// The RTL preview's language selector: the preview's language (data-lang, set by the site's RTL part) picks the
+		// drawing, through an `mmlang` event the chart part sends when it changes.
+		const langs: Record<string, number> = {};
+		for (const d of chart.drivers) if (d.lang) langs[d.lang] = d.variant;
+		if (Object.keys(langs).length) {
+			const own = this.bindings.get(wrapper);
+			const table = `${name}l`;
+			this.bindings.set(wrapper, { ...own, declare: [...(own?.declare ?? []), `const ${table}: Record<string, number> = ${JSON.stringify(langs)};`], extra: [...(own?.extra ?? []), 'data-mm-lang=""', `onMmlang={(event) => { const k = ${table}[(event as CustomEvent<string>).detail]; if (k !== undefined && ${v} !== k) { ${v} = k; ${name} = -1; } }}`] });
+			// The pointer or focus coming to the preview (its language selector) fetches the update animation.
+			let preview: Tree | undefined = wrapper;
+			while (preview && !(isElement(preview) && attr(preview, 'data-slot') === 'component-preview')) preview = preview.parentNode as Tree | undefined;
+			const at = preview && isElement(preview) ? preview : wrapper;
+			const was = this.bindings.get(at);
+			this.bindings.set(at, { ...was, extra: [...(was?.extra ?? []), 'data-mm-morph=""'] });
+			return;
+		}
 		const controls = chart.drivers.map((d) => ({ d, el: locate(d.sig, d.nth) })).filter((x): x is { d: ChartDriver; el: Tree } => x.el !== undefined);
 		const chosen: Record<string, number> = {};
 		for (const d of [chart.drivers, ...chart.widths.map((w) => w.drivers)].flat()) {

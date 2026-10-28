@@ -2084,3 +2084,131 @@ test('recharts: behind UTC, ticks a formatter wrote with toLocaleDateString read
 	assert.deepEqual(await read(region), ['Sun', 'Mon', 'Tue', 'Wed']);
 	await region.close();
 });
+
+test('recharts: an RTL preview\'s language, as the site part sets it on the preview, picks the chart\'s drawing for that language', async () => {
+	const svg = (style: string) => `<svg class="recharts-surface" width="200" height="100" style="${style}" data-mm-facts='{"w":200,"h":100,"v":[0,0,200,100],"m":"x","g":[],"p":[]}'></svg>`;
+	const page = await open(`<div data-slot="component-preview"><div data-slot="preview" dir="rtl" data-lang="ar"><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1" data-mm-lang="">${svg('display:block')}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div></div>`, ['recharts']);
+	await page.evaluate(() => {
+		(window as unknown as { langs: string[] }).langs = [];
+		document.querySelector('.recharts-wrapper')!.addEventListener('mmlang', (e) => (window as unknown as { langs: string[] }).langs.push((e as CustomEvent<string>).detail));
+		(window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart');
+	});
+	await page.evaluate(() => {
+		const preview = document.querySelector('[data-slot="preview"]')!;
+		preview.setAttribute('dir', 'ltr');
+		preview.removeAttribute('data-lang');
+	});
+	await page.waitForTimeout(50);
+	await page.evaluate(() => {
+		const preview = document.querySelector('[data-slot="preview"]')!;
+		preview.setAttribute('dir', 'rtl');
+		preview.setAttribute('data-lang', 'he');
+	});
+	await page.waitForTimeout(50);
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { langs: string[] }).langs), ['en', 'he'], 'English where the preview reads left to right, else its data-lang');
+	await page.close();
+});
+
+test('recharts: on a page narrower than where the old card started otherwise, the card makes its choice through its select, and the chart does not move for it', async () => {
+	const svg = (style: string, b: string) => `<svg class="recharts-surface" width="200" height="100" style="${style}" data-mm-b="${b}" data-mm-facts='{"w":200,"h":100,"v":[0,0,200,100],"m":"x","g":[],"p":[],"z":0}'><path class="recharts-curve recharts-line-curve" d="M0,50L200,50" data-mm-geo='{"k":"line","t":"linear","l":"horizontal","a":[0,1500,"ease"]}'></path></svg>`;
+	// What the card's handler does on the choice: Markless shows the chosen drawing.
+	const handler = `<script>window.seen = []; document.addEventListener('mmchoose', (e) => { window.seen.push(e.detail); const [a, b] = document.querySelectorAll('svg.recharts-surface'); a.setAttribute('style', 'display: none;'); b.setAttribute('style', 'display:block'); }, true);</script>`;
+	const body = (w: number) => `${handler}<div data-mm-morph><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1" data-mm-start='{"w":${w},"l":"Last 7 days"}'>${svg('display:block', '0')}${svg('display: none;', '0')}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	for (const [w, expected] of [[1100, ['Last 7 days']], [768, []]] as const) {
+		const page = await open(body(w), ['recharts']);
+		await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+		await page.waitForTimeout(150);
+		const seen = await page.evaluate(() => ({ seen: (window as unknown as { seen: string[] }).seen, moved: document.querySelector('.recharts-wrapper')!.hasAttribute('data-mm-moved') }));
+		assert.deepEqual(seen.seen, expected, `the page is 1000 px wide; the card starts otherwise below ${w} px`);
+		assert.equal(seen.moved, false, 'its entry animation plays for the chosen drawing');
+		await page.close();
+	}
+});
+
+test('recharts: a pie at another size is drawn as recharts draws it there: its centre, its percent radius and its fixed inner radius, its centre text', async () => {
+	// Captured at 300 x 300, plot [5, 5, 290, 290]: outer radius 80% of 145, inner 60; an active sector 10 px past it.
+	const geo = (ir: number, or: number, a0: number, a1: number) => JSON.stringify({ k: 'sector', r: [ir, or], a: [a0, a1], p: [60, '80%', '50%', '50%'] });
+	const facts = JSON.stringify({ w: 300, h: 300, v: [5, 5, 290, 290], m: 'i', g: [[0, 0, 0], [1, 1, 1]], p: [[null, null], [null, null]], pl: [0, '80%', '50%', '50%'] });
+	const svg = `<svg class="recharts-surface" width="300" height="300" viewBox="0 0 300 300" style="width:100%;height:100%" data-mm-facts='${facts}'><defs><clipPath id="c"><rect x="5" y="5" width="290" height="290"></rect></clipPath></defs><g class="recharts-layer recharts-pie"><g class="recharts-layer recharts-pie-sector"><path class="recharts-sector" cx="150" cy="150" d="M0,0" data-mm-geo='${geo(60, 126, 0, 90)}'></path></g><g class="recharts-layer recharts-pie-sector"><path class="recharts-sector" cx="150" cy="150" d="M0,0" data-mm-geo='${geo(60, 116, 90, 360)}'></path></g></g><text x="150" y="150"><tspan x="150" y="150">42</tspan><tspan x="150" y="174">Visitors</tspan></text></svg>`;
+	const page = await open(`<div style="width:280px;height:280px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '280', undefined, { timeout: 5000 }).catch(() => {});
+	const seen = await page.evaluate(() => ({
+		sectors: [...document.querySelectorAll('path.recharts-sector')].map((p) => [p.getAttribute('cx'), p.getAttribute('cy'), p.getAttribute('d')]),
+		text: [...document.querySelectorAll('text, tspan')].map((t) => `${t.getAttribute('x')},${t.getAttribute('y')}`),
+	}));
+	// At 280 x 280 the plot is 270 square: centre 140, outer radius 0.8 * 135 = 108; the active sector 10 px past it.
+	const nums = (d: string) => (d.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+	const [active, rest] = seen.sectors;
+	assert.deepEqual(active!.slice(0, 2), ['140', '140']);
+	assert.deepEqual(nums(active![2]!).slice(0, 4), [140 + 118, 140, 118, 118], 'the active sector starts at angle 0 on its 118 px arc');
+	assert.ok(nums(rest![2]!).includes(108) && nums(rest![2]!).includes(60), 'the rest at 108 px, the inner radius kept at 60');
+	assert.deepEqual(seen.text, ['140,140', '140,140', '140,164'], 'the centre text moves with the centre');
+	await page.close();
+});
+
+test('recharts: a radar at another size scales what is inside its outer radius and keeps its axis labels as far past it', async () => {
+	// Captured at 300 x 300, plot [5, 5, 290, 290]: centre 150, outer radius 80% of 145 = 116.
+	const facts = JSON.stringify({ w: 300, h: 300, v: [5, 5, 290, 290], m: 'a', c: [150, 150], g: [[0, 360, 0]], sp: [0, 116], p: [[null, null]], q: [90], pl: [0, '80%', '50%', '50%'] });
+	const svg = `<svg class="recharts-surface" width="300" height="300" viewBox="0 0 300 300" style="width:100%;height:100%" data-mm-facts='${facts}'><g class="recharts-polar-grid"><circle class="recharts-polar-grid-concentric-circle" cx="150" cy="150" r="116"></circle></g><g class="recharts-layer recharts-radar"><g class="recharts-layer recharts-radar-polygon"><path class="recharts-polygon" d="M150,92L208,150L150,150Z"></path></g></g><g class="recharts-layer recharts-polar-angle-axis"><g class="recharts-layer recharts-polar-angle-axis-ticks"><g class="recharts-layer recharts-polar-angle-axis-tick"><text class="recharts-text recharts-polar-angle-axis-tick-value" x="150" y="26"><tspan x="150" dy="0em">Jan</tspan></text></g></g></g></svg>`;
+	const page = await open(`<div style="width:280px;height:280px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '280', undefined, { timeout: 5000 }).catch(() => {});
+	const seen = await page.evaluate(() => ({
+		grid: ['cx', 'cy', 'r'].map((a) => document.querySelector('circle')!.getAttribute(a)),
+		polygon: document.querySelector('path.recharts-polygon')!.getAttribute('d'),
+		label: [document.querySelector('text')!.getAttribute('x'), document.querySelector('text')!.getAttribute('y'), document.querySelector('tspan')!.getAttribute('x')],
+		facts: JSON.parse(document.querySelector('svg')!.getAttribute('data-mm-facts')!) as { c: number[]; sp: number[] },
+	}));
+	// At 280: centre 140, outer radius 108; the polygon's 58 px is half the radius, 54 px; the label 8 px past it.
+	assert.deepEqual(seen.grid, ['140', '140', '108']);
+	assert.equal(seen.polygon, 'M140,86L194,140L140,140Z');
+	assert.deepEqual(seen.label, ['140', '24', '140']);
+	assert.deepEqual(seen.facts.c, [140, 140]);
+	assert.deepEqual(seen.facts.sp, [0, 108]);
+	await page.close();
+});
+
+test('capture: a chart\'s axes are read off React\'s current tree, not the stale fiber a DOM node may still point at', async () => {
+	const page = await browser.newPage();
+	await page.setContent('<svg class="recharts-surface"><g class="recharts-cartesian-axis"></g></svg>');
+	const axes = await page.evaluate(`(() => {
+		const chartModel = ${chartModel.toString()};
+		const props = (n) => ({ ticks: Array.from({ length: n }, (_, i) => ({ coordinate: i, value: i })), orientation: 'bottom', tickFormatter: undefined, axisType: 'xAxis', x: 0, y: 0, width: 10, height: 10, viewBox: {} });
+		// React's two trees: the root points at the current one; the axis' DOM node kept the fiber of the first render.
+		const stale = { memoizedProps: props(91) };
+		const fresh = { memoizedProps: props(8), alternate: stale };
+		stale.alternate = fresh;
+		const rootFresh = { child: fresh };
+		const fiberRoot = { current: rootFresh };
+		rootFresh.stateNode = fiberRoot;
+		// A stale fiber's return can point into the current tree: only the walk from the root tells them apart.
+		stale.return = rootFresh;
+		fresh.return = rootFresh;
+		document.querySelector('g')['__reactFiber$x'] = stale;
+		return chartModel(document.querySelector('svg')).axes.map((a) => a && a.c.length);
+	})()`);
+	assert.deepEqual(axes, [8]);
+	await page.close();
+});
+
+test('recharts: a card that started otherwise on the old page chooses once, on load, even where its chart is not scrolled to', async () => {
+	const page = await open(`<script>window.chosen = []; document.addEventListener('mmchoose', (e) => window.chosen.push(e.detail), true);</script><div style="height:3000px"></div><div data-mm-morph><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper" data-mm-chart="1" data-mm-start='{"w":5000,"l":"Last 7 days"}'><svg class="recharts-surface"></svg></div></div>`, ['recharts']);
+	await page.waitForFunction(() => (window as unknown as { chosen: string[] }).chosen.length > 0, undefined, { timeout: 5000 }).catch(() => {});
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { chosen: string[] }).chosen), ['Last 7 days'], 'chosen when the page is idle, the chart off screen');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForTimeout(100);
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { chosen: string[] }).chosen), ['Last 7 days'], 'not again when it scrolls into view');
+	await page.close();
+});
+
+test('recharts: a card\'s select choice presses the button of the same text, which holds the card\'s one range', async () => {
+	const page = await open(`<div data-mm-morph><button data-mm-variant="1" aria-checked="true" onclick="window.pressed.push('A')">Last 3 months</button><button data-mm-variant="2" aria-checked="false" onclick="window.pressed.push('B')">Last 30 days</button><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper" data-mm-chart="1"><svg class="recharts-surface"></svg></div></div><script>window.pressed = [];</script>`, ['recharts']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => {
+		const trigger = document.querySelector('[data-slot="select-trigger"]')!;
+		for (const text of ['Last 30 days', 'Last 3 months', 'Last 7 days']) trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: text }));
+	});
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { pressed: string[] }).pressed), ['B'], 'the button already pressed, or none of that text, is left');
+	await page.close();
+});
