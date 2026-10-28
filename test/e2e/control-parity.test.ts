@@ -36,6 +36,19 @@ const CASES: Record<string, { old: string; new: string }> = {
 		old: page(menuBody, menuScript(), '[role=menu] { transition: opacity 400ms linear, display 400ms allow-discrete; opacity: 1 } @starting-style { [role=menu] { opacity: 0 } }'),
 		new: page(menuBody, menuScript()),
 	},
+	shifted: { old: page(`<div style="height: 100px"></div><button>Alpha</button><br><button>Beta</button><br><button>Gamma</button>`), new: page(`<div style="height: 124px"></div><button>Alpha</button><br><button>Beta</button><br><button>Gamma</button>`) },
+	sticky: {
+		old: page(`<div style="height: 1600px"></div><button id="far">Far</button><div style="height: 1600px"></div>`, `addEventListener('scroll', () => document.querySelector('header').dataset.scrolled = String(scrollY > 40));`),
+		new: page(`<div style="height: 1600px"></div><button id="far">Far</button><div style="height: 1600px"></div>`),
+	},
+	filters: {
+		old: page(`<input aria-label="Filter"><div role="listbox" aria-label="Fruit" id="list"><div role="option">Apple</div><div role="option">Banana</div></div>`, `const list = document.getElementById('list'); const all = [...list.children]; document.querySelector('input').addEventListener('input', (e) => list.replaceChildren(...all.filter((o) => o.textContent.toLowerCase().includes(e.target.value.toLowerCase()))));`),
+		new: page(`<input aria-label="Filter"><div role="listbox" aria-label="Fruit" id="list"><div role="option">Apple</div><div role="option">Banana</div></div>`, `document.querySelector('input').addEventListener('input', (e) => { for (const o of document.querySelectorAll('[role=option]')) o.hidden = !o.textContent.toLowerCase().includes(e.target.value.toLowerCase()); });`),
+	},
+	copies: {
+		old: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><button>Copy</button><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
+		new: page(`<pre>one</pre><button>Copy</button><pre style="height: 300px">extra</pre><pre>two</pre><button>Copy</button><pre>three</pre><button>Copy</button>`),
+	},
 	stars: { old: page(`${menuBody}<button>Star 127k</button>`, menuScript()), new: page(`${menuBody}<button>Star 126k</button>`, menuScript()) },
 	noisy: { old: '', new: page(`${menuBody}<button id="n">Count</button>`, menuScript()) },
 };
@@ -142,4 +155,23 @@ test('a control whose size changes from load to load on the original is not comp
 
 test('a live count in a control\'s name (stars) that moved between the two deploys: the same control, nothing red', async () => {
 	assert.deepEqual(checks(await check('stars', { ...FAST, maxUses: 0, maxKeys: 0 })), []);
+});
+
+test('a block 24 px taller above three controls: one box finding where the shift starts, not one per control after it', async () => {
+	const found = checks(await check('shifted', { ...FAST, maxUses: 0, maxKeys: 0 })).filter((f) => f.startsWith('control box'));
+	for (const width of ['1280', '1440']) assert.ok(found.filter((f) => f.includes(`@${width}`)).length <= 1, found.join('\n'));
+});
+
+test('a header the original restyles on scroll: bringing a control into view is no change of the control\'s', async () => {
+	assert.deepEqual(checks(await check('sticky', { ...FAST, maxUses: 3, maxKeys: 6 })), []);
+});
+
+test('a list filtered in the page by removing rows on one side and hiding them on the other: the same answer', async () => {
+	assert.deepEqual(checks(await check('filters', { ...FAST, maxUses: 2, maxKeys: 0, maxInputs: 3 })).filter((f) => f.startsWith('field input')), []);
+});
+
+test('one of many namesake buttons missing on the port: one finding, not one for every namesake after it', async () => {
+	const found = checks(await check('copies', { ...FAST, widths: [1280], maxUses: 0, maxKeys: 0 }));
+	assert.equal(found.filter((f) => f.startsWith('controls at each width')).length, 1, found.join('\n'));
+	assert.ok(found.filter((f) => f.startsWith('control box') || f.startsWith('container box')).length <= 1, found.join('\n'));
 });

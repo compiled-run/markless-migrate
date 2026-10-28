@@ -21,8 +21,11 @@ export interface ParityControl {
 	readonly hint: string;
 	readonly options?: readonly string[];
 	readonly box: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
-	readonly parent: { readonly w: number; readonly h: number };
-	readonly frame: { readonly w: number; readonly h: number };
+	readonly parent?: { readonly w: number; readonly h: number };
+	/** The example frame (preview, figure, section, dialog) it sits in; none for the page's main or body. */
+	readonly frame?: { readonly w: number; readonly h: number };
+	readonly frameId: number;
+	readonly pageY: number;
 }
 
 interface GridPoint {
@@ -96,6 +99,7 @@ export interface ControlParityResult {
 }
 
 type Sides = { readonly old: SideEnv; readonly new: SideEnv };
+const SCROLL_SETTLE_MS = 500;
 type Name = 'old' | 'new';
 
 const HINTS = {
@@ -156,12 +160,46 @@ async function open(browser: Browser, env: SideEnv, viewport: Viewport, route: s
 		await loadPage(page, new URL(route, env.origin).href);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 		await page.waitForTimeout(Math.min(settleMs, 300));
+		await settleScroll(page);
 		await page.evaluate(installParity);
 	} catch (error) {
 		await context.close().catch(() => {});
 		throw error;
 	}
 	return { page, errors, ...(cdp ? { cdp: await context.newCDPSession(page) } : {}), close: () => context.close() };
+}
+
+/** A page scrolls some of its parts after load (a sidebar to its active link): it is read once every scroll position holds. */
+async function settleScroll(page: Page): Promise<void> {
+	const read = () => page.evaluate(() => [scrollY, ...[...document.querySelectorAll('*')].filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY)).map((e) => e.scrollTop)].join(',')).catch(() => '');
+	let last = await read();
+	for (let waited = 0; waited < 3000; waited += 250) {
+		await page.waitForTimeout(250);
+		const now = await read();
+		if (now === last) return;
+		last = now;
+	}
+}
+
+/** Pairs each original control with the port's: namesakes (a page's many Copy buttons) by place, so one missing does not shift every later pair. */
+export function pairControls(olds: readonly ParityControl[], news: readonly ParityControl[]): Map<string, ParityControl> {
+	const pool = new Map<string, ParityControl[]>();
+	for (const n of news) {
+		const k = countless(`${n.role}|${n.name}`);
+		(pool.get(k) ?? pool.set(k, []).get(k)!).push(n);
+	}
+	const pairs = new Map<string, ParityControl>();
+	let drift = 0;
+	for (const c of [...olds].sort((a, b) => a.pageY - b.pageY)) {
+		const left = pool.get(countless(`${c.role}|${c.name}`)) ?? [];
+		if (!left.length) continue;
+		const best = left.reduce((a, b) => (Math.abs(b.pageY - c.pageY - drift) < Math.abs(a.pageY - c.pageY - drift) ? b : a));
+		if (left.length > 1 && Math.abs(best.pageY - c.pageY - drift) > 400) continue;
+		left.splice(left.indexOf(best), 1);
+		drift = best.pageY - c.pageY;
+		pairs.set(c.key, best);
+	}
+	return pairs;
 }
 
 const viewportAt = (base: Viewport, width: number): Viewport => (width < 600 ? { name: `${width}`, width, height: 844, isMobile: true } : { name: `${width}`, width, height: base.height, isMobile: false });
@@ -305,22 +343,28 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		const steady = new Map(b.list.map((c) => [c.key, c]));
 		const stable = a.list.filter((c) => steady.has(c.key));
 		if (width === widths[0]) controls = stable.filter((c) => !c.leaves && !c.disabled);
-		const port = new Map(n.list.map((c) => [countless(c.key), c]));
+		const port = pairControls(stable, n.list);
 		let boxes = 0, missing = 0;
 		const containers = new Set<string>();
-		for (const c of stable) {
+		// A control moved only by what moved above it in its frame is no finding of its own: only where the shift changes.
+		const shiftIn = new Map<number, number>();
+		for (const c of [...stable].sort((a, b) => a.frameId - b.frameId || a.box.y - b.box.y)) {
 			if (c.layout && width !== widths[0]) continue;
-			const p = port.get(countless(c.key));
+			const p = port.get(c.key);
 			if (!p) {
 				if (!c.layout && missing++ < 10) fail('rendered', 'controls at each width', `${c.key} shown at ${width} px wide`, 'not on the port at this width', HINTS.presence, width);
 				continue;
 			}
 			const again = steady.get(c.key)!;
 			const still = (x: { w: number; h: number }, y: { w: number; h: number }) => Math.abs(x.w - y.w) <= 1 && Math.abs(x.h - y.h) <= 1;
-			const d = [p.box.w - c.box.w, p.box.h - c.box.h, p.box.x - c.box.x, p.box.y - c.box.y].map(Math.abs);
+			const dy = p.box.y - c.box.y;
+			const before = shiftIn.get(c.frameId) ?? 0;
+			shiftIn.set(c.frameId, dy);
+			const d = [p.box.w - c.box.w, p.box.h - c.box.h, p.box.x - c.box.x, dy - before].map(Math.abs);
 			if (still(c.box, again.box) && Math.abs(c.box.x - again.box.x) <= 1 && Math.abs(c.box.y - again.box.y) <= 1 && Math.max(...d) > tolerance && boxes++ < 20) fail('css', 'control box', `${c.key}: ${c.box.w}x${c.box.h} at (${c.box.x}, ${c.box.y}) in its frame`, `${p.box.w}x${p.box.h} at (${p.box.x}, ${p.box.y})`, HINTS.box, width);
 			for (const [what, x, y, z] of [['its parent', c.parent, p.parent, again.parent], ['its example frame', c.frame, p.frame, again.frame]] as const) {
-				const k = `${what}|${x.w}x${x.h}`;
+				if (!x || !y || !z) continue;
+				const k = `${what}|${x.w}x${x.h}|${y.w}x${y.h}`;
 				if (containers.has(k) || !still(x, z) || (Math.abs(x.w - y.w) <= tolerance && Math.abs(x.h - y.h) <= tolerance)) continue;
 				containers.add(k);
 				if (boxes++ < 20) fail('css', 'container box', `${what} of ${c.key}: ${x.w}x${x.h}`, `${y.w}x${y.h}`, HINTS.box, width);
@@ -340,7 +384,9 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		const env = how.film ? motionEnv(sides[side], false) : sides[side];
 		const o = await open(how.browser ?? browser, env, at(width), route, settleMs, Boolean(how.film));
 		try {
-			const armed = await parity<{ hits: string[] } | null>(o.page, 'arm', control.key);
+			if (!(await parity<boolean>(o.page, 'mark', control.key))) return { missing: 'not on the page' };
+			await o.page.waitForTimeout(SCROLL_SETTLE_MS);
+			const armed = await parity<{ hits: string[] } | null>(o.page, 'arm');
 			if (!armed) return { missing: 'not on the page' };
 			const before = o.errors.length;
 			let motion: Motion | undefined;

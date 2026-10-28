@@ -62,7 +62,12 @@ export function installParity(): void {
 		if (!a.matches(SEL)) return `${a.getAttribute('role') ?? a.localName}${a.getAttribute('aria-label') ? ` "${a.getAttribute('aria-label')!.slice(0, 40)}"` : ''}`;
 		return keyOf(a, shownControls());
 	};
-	const shownPopups = () => [...document.querySelectorAll(POPUP)].filter((p) => p.checkVisibility());
+	// A pop-up floats over the page; a list laid out in it (a cmdk command list) is the page itself.
+	const floating = (p: Element) => {
+		for (let at: Element | null = p; at && at !== document.body; at = at.parentElement) if (/fixed|absolute/.test(getComputedStyle(at).position) || at.hasAttribute('popover')) return true;
+		return false;
+	};
+	const shownPopups = () => [...document.querySelectorAll(POPUP)].filter((p) => p.checkVisibility() && floating(p));
 	interface Armed {
 		readonly el: Element;
 		readonly observer: MutationObserver;
@@ -115,9 +120,11 @@ export function installParity(): void {
 	(globalThis as unknown as { __markless_migrate_parity__: unknown }).__markless_migrate_parity__ = {
 		controls() {
 			const all = shownControls();
+			const frames = new Map<Element, number>();
 			return all.map((el) => {
 				const r = el.getBoundingClientRect();
 				const frame = el.closest('[data-slot=preview], figure, section, [role=dialog], main') ?? document.body;
+				if (!frames.has(frame)) frames.set(frame, frames.size);
 				const f = frame.getBoundingClientRect();
 				const pr = el.parentElement?.getBoundingClientRect() ?? r;
 				const href = el instanceof HTMLAnchorElement ? el.getAttribute('href') : null;
@@ -125,7 +132,8 @@ export function installParity(): void {
 				if (href !== null) {
 					try {
 						const u = new URL(href, location.href);
-						leaves = u.origin !== location.origin || u.pathname !== location.pathname || (u.hash !== '' && u.search === location.search);
+						// A link to the page itself navigates to it again: what each app re-renders for that is no control's effect.
+						leaves = u.origin !== location.origin || u.pathname !== location.pathname || (u.hash !== '' && u.search === location.search) || (u.search === location.search && u.hash === '');
 					} catch {
 						leaves = true;
 					}
@@ -145,8 +153,11 @@ export function installParity(): void {
 					hint: [el.getAttribute('placeholder'), el.getAttribute('name'), el.id, el.getAttribute('inputmode'), el.getAttribute('aria-label')].filter(Boolean).join(' '),
 					options: el instanceof HTMLSelectElement ? [...el.options].map((o) => o.value) : undefined,
 					box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) },
-					parent: { w: Math.round(pr.width), h: Math.round(pr.height) },
-					frame: { w: Math.round(f.width), h: Math.round(f.height) },
+					pageY: Math.round(r.y + scrollY),
+					parent: !el.parentElement || el.parentElement.matches('main, body') ? undefined : { w: Math.round(pr.width), h: Math.round(pr.height) },
+					// The page's own height is the screenshots' business, not a control's container.
+					frame: frame.matches('main') || frame === document.body ? undefined : { w: Math.round(f.width), h: Math.round(f.height) },
+					frameId: frames.get(frame)!,
 				};
 			});
 		},
@@ -182,13 +193,19 @@ export function installParity(): void {
 			}
 			return out;
 		},
-		arm(key: string) {
+		/** Marks the control and brings it into view; the scroll alone can restyle the page (a sticky header), so it settles before `arm`. */
+		mark(key: string) {
 			const all = shownControls();
 			const el = all.find((e) => keyOf(e, all) === key);
-			if (!el) return null;
+			if (!el) return false;
 			for (const o of document.querySelectorAll(`[${MARK}]`)) o.removeAttribute(MARK);
 			el.setAttribute(MARK, '');
 			el.scrollIntoView({ block: 'center', inline: 'center' });
+			return true;
+		},
+		arm() {
+			const el = document.querySelector(`[${MARK}]`);
+			if (!el) return null;
 			const r = el.getBoundingClientRect();
 			const hits = [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]].map(([fx, fy]) => reachAt(r.x + r.width * fx!, r.y + r.height * fy!, el));
 			armed = startWatch(el);
@@ -225,7 +242,9 @@ export function installParity(): void {
 				if (st.el !== document.body && (st.el === el || st.el.contains(el))) continue;
 				if ([...st.openBefore].some((p) => p.contains(el))) continue;
 				if (el.closest(`[${MARK}-prefix]`)) continue;
-				if (!el.checkVisibility() && !el.parentElement?.checkVisibility()) continue;
+				// What the use hid (items a filter leaves out) changed the page too, though it is hidden now.
+				const hid = changedAttrs.has(el) && [...st.was.get(el)!.keys()].some((n) => /^(hidden|style|class|aria-hidden|data-state|data-hidden)$/.test(n));
+				if (!el.checkVisibility() && !el.parentElement?.checkVisibility() && !hid) continue;
 				affected.add(regionOf(el));
 			}
 			const shown = shownPopups().find((p) => !st.openBefore.has(p));
