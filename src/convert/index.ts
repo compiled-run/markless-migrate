@@ -342,7 +342,16 @@ function placement(kept: readonly Element[]): string {
 // React Aria's Popover and Tooltip: the side is the content's own data-placement; the alignment along it is where the
 // trigger's anchor point sat (--trigger-anchor-point: at the start, the middle or the end of --trigger-width); the
 // offsets are the source's where it renders the part with this element's data-slot.
-function racPlacement(el: Element, resolver: PartResolver): string {
+export function racPlacement(el: Element, resolver: PartResolver): string {
+	// What this instance was given (convert's instance props): taken off the element, written on its layer.
+	const given = (name: string) => {
+		const value = attr(el, name);
+		el.attrs = el.attrs.filter((a) => a.name !== name);
+		return value;
+	};
+	const ownPlacement = given('data-mm-placement');
+	const ownOffset = given('data-mm-offset');
+	const ownCross = given('data-mm-cross-offset');
 	const style = attr(el, 'style') ?? '';
 	const side = attr(el, 'data-placement') ?? 'bottom';
 	const [x = 0, y = 0] = (/--trigger-anchor-point:\s*(-?[\d.]+)px\s+(-?[\d.]+)px/.exec(style) ?? []).slice(1).map(Number);
@@ -357,8 +366,10 @@ function racPlacement(el: Element, resolver: PartResolver): string {
 		}
 		return undefined;
 	};
-	const offset = read('offset');
-	const cross = read('crossOffset');
+	const number = (v: string | undefined) => (v !== undefined && /^-?\d+(\.\d+)?$/.test(v) ? v : undefined);
+	const offset = number(ownOffset) ?? read('offset');
+	const cross = number(ownCross) ?? read('crossOffset');
+	if (ownPlacement && /^(top|bottom|left|right|start|end)( (top|bottom|left|right|start|end|center))?$/.test(ownPlacement)) return ` data-mm-placement="${ownPlacement}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 	return ` data-mm-placement="${side}${along}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 }
 
