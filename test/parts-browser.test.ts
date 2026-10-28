@@ -404,7 +404,7 @@ async function commandState(page: Page) {
 	});
 }
 
-test('cmdk: command-score filters and sorts the items left after the disabled ones, groups by their best item; nothing left shows the empty state', async () => {
+test('cmdk: command-score filters and sorts the items left after the disabled ones; nothing left shows the empty state', async () => {
 	const page = await open(COMMAND, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('se');
@@ -1806,5 +1806,20 @@ test('recharts: a control switching the chart moves each mark from its old shape
 		assert.deepEqual(painted[j], [drawArea(mix(areaA, areaB)), drawLine(mix(lineA, lineB)), `M ${round(box[0]!)},${round(box[1]!)} h ${round(box[2]!)} v ${round(box[3]!)} h ${round(-box[2]!)} Z`], `frame ${j} at ${Math.round(time(j - 1) - begin)} ms`);
 	}
 	assert.ok(time(painted.length - 1) - begin > 1550, 'the samples reach the end of the animation');
+});
+
+test('cmdk: a search keeps the groups where they are, sorts the items it kept, then puts back the ones it brings back where React mounts them, and selects the first', async () => {
+	const page = await open(COMMAND, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('cal');
+	assert.deepEqual((await commandState(page)).order, 'calc,cal');
+	for (let k = 0; k < 2; k++) await page.keyboard.press('Backspace');
+	// cmdk 1.1.1 sorts the mounted items synchronously; Search Emoji mounts after, before the next item React renders after it.
+	const back = await commandState(page);
+	assert.deepEqual([back.order, back.selected], ['emo,calc,cal', 'emo']);
+	await page.keyboard.press('Backspace');
+	// Its group lookup never matches (it queries a group by its id among their values): the groups never move.
+	const cleared = await commandState(page);
+	assert.deepEqual([cleared.order, cleared.selected, cleared.separator], ['emo,calc,cal,pro,bil,set', 'emo', false]);
 	await page.close();
 });
