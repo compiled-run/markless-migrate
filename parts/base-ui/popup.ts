@@ -189,7 +189,7 @@ function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement |
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
 // pressable: data-pressed on the trigger while open (pressableTriggerOpenStateMapping); lockScroll: modal; tabOut: Tab leaves.
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly anchorOf?: (popup: HTMLElement) => Element | null | undefined; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean }): Popup | undefined {
 	// A context menu's trigger area has no id: its layer key, and the point it opens at.
 	const key = options.key || trigger.id;
 	if (!key || isOpen(key)) return undefined;
@@ -216,10 +216,10 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
-		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
+		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? positioner.getAttribute('data-align') ?? 'center', sideOffset: Number(popup.dataset.mmSideOffset ?? portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(popup.dataset.mmAlignOffset ?? portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
 		// A Positioner given another anchor than its trigger (an element ref): the portal names that element.
 		const named = portal.dataset.mmAnchor ? document.getElementById(portal.dataset.mmAnchor) : null;
-		p.stop = place(options.anchor ?? named ?? trigger, positioner, popup, opts);
+		p.stop = place(options.anchor ?? options.anchorOf?.(popup) ?? named ?? trigger, positioner, popup, opts);
 	}
 	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
 	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
@@ -274,7 +274,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	return p;
 }
 
-export function closePopup(p: Popup, returnFocus = true, keep = false): void {
+export function closePopup(p: Popup, returnFocus = true, keep = false, focus: FocusOptions = {}): void {
 	const at = open.indexOf(p);
 	if (at < 0) return;
 	open.splice(at, 1);
@@ -291,7 +291,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (!at || at === document.body || p.portal.contains(at)) p.trigger.focus({ preventScroll: true });
 	};
 	if (returnFocus && keep) {
-		p.trigger.focus({ preventScroll: true });
+		p.trigger.focus({ preventScroll: true, ...focus });
 		// The outside press's own mousedown then blurs to the body: focus comes back after it.
 		if (pressedOutside === p) setTimeout(refocus);
 	}

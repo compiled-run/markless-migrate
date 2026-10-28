@@ -426,13 +426,29 @@ test('cmdk: aria-activedescendant names an item a key or the pointer selected; a
 	await page.close();
 });
 
+test('cmdk: as each mounted command scrolls its selected item into view, the page ends where the last one below the fold put it; one in a hidden layer moves nothing', async () => {
+	const page = await open(`<div style="height:3000px">top</div>${COMMAND}<div style="height:2000px"></div><div data-mm-layer="k" hidden>${COMMAND.replaceAll('id="', 'id="h')}</div>`, ['cmdk']);
+	const got = await page.evaluate(() => {
+		const item = document.getElementById('cal')!.getBoundingClientRect();
+		return { scrollY: Math.round(scrollY), bottom: Math.round(item.bottom), inner: innerHeight };
+	});
+	assert.ok(got.scrollY > 2000, `the page scrolled to the command (${got.scrollY})`);
+	assert.equal(got.bottom, got.inner, 'block: nearest brings the selected item to the bottom edge');
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('bil');
 	await page.keyboard.press('ArrowDown');
+	// Focus leaves as an outside press starts closing the layer: what it shows stays while it animates out, as React's does.
 	await page.locator('#trigger').focus();
-	assert.equal(await page.locator('[cmdk-input]').inputValue(), '');
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), 'bil');
+	assert.equal((await commandState(page)).selected, 'bil');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => (document.querySelector('[cmdk-input]') as HTMLInputElement).value === '');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
 	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
 	await page.close();
 });
@@ -666,6 +682,24 @@ test('shadcn-ui site: a long code block\'s Expand opens it and reads Collapse, a
 	await page.locator('button[aria-hidden]').click();
 	assert.equal(await look(), 'open true Collapse true', 'the fade opens it (it is not there while open)');
 	assert.equal(await nodes(), before, 'no node is added or removed');
+	await page.close();
+});
+
+test('shadcn-ui site: a package manager list a page brings in place shows the kept choice before it is painted', async () => {
+	const page = await open('<main id="main"></main>', ['site'], 'body');
+	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
+	const seen = await page.evaluate(
+		() =>
+			new Promise<string>((done) => {
+				const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
+				// The page an in-place navigation swaps in, its tab state its own (the converter's mousedown handler).
+				document.getElementById('main')!.innerHTML = `<div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div>`;
+				const list = document.querySelector('[role="tablist"]')!;
+				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
+			}),
+	);
+	assert.equal(seen, 'npm', 'chosen before the next frame');
 	await page.close();
 });
 
@@ -1199,6 +1233,18 @@ test('a Base UI select icon carries data-popup-open while its select is open, as
 	await page.keyboard.press('Escape');
 	assert.match(await selectState(page), /^false/);
 	assert.equal(await icon(), false);
+	await page.close();
+});
+
+test('a Base UI select opened by a press shows no focus ring on its option, nor on its trigger once an option is chosen', async () => {
+	const page = await open(baseSelect, ['base-ui/select'], 'body');
+	await page.locator('[data-slot="select-trigger"]').click();
+	assert.match(await selectState(page), /^true/);
+	const ring = () => page.evaluate(() => `${document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName}:${document.activeElement?.matches(':focus-visible')}`);
+	assert.equal(await ring(), 'option:false', 'Base UI focuses the option after a mouse focused the trigger');
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	assert.match(await selectState(page), /^false/);
+	assert.equal(await ring(), 'combobox:false');
 	await page.close();
 });
 

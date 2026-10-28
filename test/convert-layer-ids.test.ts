@@ -55,3 +55,12 @@ test("a trigger's aria-controls names the layer it opens, even when an earlier l
 	assert.equal(page.get('radix-_r_3_'), each[1]!.get('radix-_r_3_'), 'the second trigger controls the second sheet');
 	assert.equal(page.get('radix-_r_0_'), each[0]!.get('radix-_r_0_'));
 });
+
+test("a React Aria submenu, keyed by its trigger item's id, and the menu holding that item name the item alike", () => {
+	const menu = layer('react-aria-_r_1_', '<div id="react-aria-_r_1_" role="menu"><div role="menuitem" id="react-aria-_r_2_">Team</div><div role="menuitem" id="react-aria-_r_3_" aria-haspopup="menu">Invite users</div></div>');
+	const sub = layer('react-aria-_r_3_', '<div role="menu" id="react-aria-_r_4_" aria-labelledby="react-aria-_r_3_"><div role="menuitem" id="react-aria-_r_5_">Email</div></div>', false);
+	const { each, page } = layerNames([menu, sub]);
+	const key = page.get('react-aria-_r_3_');
+	assert.equal(each[0]!.get('react-aria-_r_3_'), key, "the menu's item is named as the submenu's key");
+	assert.equal(each[1]!.get('react-aria-_r_3_'), key, "the submenu's label is that item");
+});

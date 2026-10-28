@@ -204,7 +204,10 @@ function select(root: HTMLElement, item: HTMLElement | undefined, by: 'key' | 'p
 	item.setAttribute('aria-selected', 'true');
 	item.setAttribute('data-selected', 'true');
 	// scrollSelectedIntoView, which a pointer's selection skips.
-	if (by === 'pointer') return;
+	if (by !== 'pointer') scrollSelectedIntoView(root, item);
+}
+
+function scrollSelectedIntoView(root: HTMLElement, item: HTMLElement): void {
 	if (commandOf(root).order.get(containerOf(item))?.find((k) => !k.hidden) === item) item.closest(GROUP)?.querySelector('[cmdk-group-heading]')?.scrollIntoView({ block: 'nearest' });
 	item.scrollIntoView({ block: 'nearest' });
 }
@@ -297,6 +300,15 @@ function choose(item: HTMLElement): void {
 	else if (href) void navigate(href);
 }
 
+// Command's mount layout effect (scrollSelectedIntoView), for each command the page shows, in document order.
+export function idle(): void {
+	for (const root of document.querySelectorAll<HTMLElement>('[cmdk-root]')) {
+		if (!root.checkVisibility()) continue;
+		const item = selected(root) ?? items(root)[0];
+		if (item) scrollSelectedIntoView(root, item);
+	}
+}
+
 export function input(target: Element): boolean {
 	if (!(target instanceof HTMLInputElement) || !target.hasAttribute('cmdk-input')) return false;
 	const root = rootOf(target);
@@ -356,12 +368,30 @@ export function click(target: Element): boolean {
 	return true;
 }
 
-// A Command inside a layer is unmounted when its layer closes (focus leaves it): it opens again with no search, its first
-// item selected and nothing active.
+// A Command inside a layer is unmounted when its layer closes: once focus has left it and the layer is hidden (its exit
+// animation shows it as it was), it opens again with no search, its first item selected and nothing active.
+const awaiting = new WeakSet<Element>();
 export function focusout(target: Element, event: FocusEvent): boolean {
 	const root = rootOf(target);
-	const layer = root?.closest('[data-mm-layer]');
+	const layer = root?.closest<HTMLElement>('[data-mm-layer]');
 	if (!root || !layer || (event.relatedTarget instanceof Node && layer.contains(event.relatedTarget))) return false;
+	if (awaiting.has(root)) return false;
+	if (layer.hidden) {
+		reset(root);
+		return false;
+	}
+	awaiting.add(root);
+	const watch = new MutationObserver(() => {
+		if (!layer.hidden) return;
+		watch.disconnect();
+		awaiting.delete(root);
+		reset(root);
+	});
+	watch.observe(layer, { attributes: true, attributeFilter: ['hidden'] });
+	return false;
+}
+
+function reset(root: HTMLElement): void {
 	const field = root.querySelector<HTMLInputElement>('[cmdk-input]');
 	if (field) field.value = '';
 	const c = commandOf(root);
@@ -377,5 +407,4 @@ export function focusout(target: Element, event: FocusEvent): boolean {
 	setDescendant(root, undefined);
 	const scroller = root.querySelector<HTMLElement>('[cmdk-list]');
 	if (scroller) scroller.scrollTop = 0;
-	return false;
 }

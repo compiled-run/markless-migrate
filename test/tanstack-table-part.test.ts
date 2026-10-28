@@ -85,6 +85,9 @@ test('a column toggles its visibility, and pages move within bounds', () => {
 	assert.equal(ttView(s, second).q.canPrev, true);
 	// Sorting goes back to the first page, as the sorted row model resets the page index on the old page.
 	assert.deepEqual(ttAct(s, second, EMAIL).pagination, { pageIndex: 0, pageSize: 2 });
+	// A last-page button goes to the last page from any page; a first-page one to the first.
+	assert.equal(order(s, ttAct(s, second, { k: 'page', to: 'last' })), '4');
+	assert.equal(order(s, ttAct(s, ttAct(s, second, { k: 'page', to: 'last' }), { k: 'page', to: 'first' })), '0,1');
 });
 
 test("each row of the view carries the values its row shows, as fields a row's markup reads plainly", () => {
@@ -93,6 +96,18 @@ test("each row of the view carries the values its row shows, as fields a row's m
 	const rows = ttView(s, ttAct(s, INITIAL, EMAIL), cells).rows;
 	assert.deepEqual(rows[0], { c0: 'success', c1: '$242.00', id: '1', sel: false });
 	assert.equal(ttView(s, INITIAL).rows[0]!.c0, undefined, 'a view without values (a menu reading only its columns) has none');
+});
+
+test("a value a row's own control keeps (its select's choice) follows that row through a sort, and leaves the others", () => {
+	const s = spec();
+	const cells = { '0': ['success', 'Assign'], '1': ['success', 'Assign'], '2': ['processing', 'Eddie'], '3': ['success', 'Assign'], '4': ['failed', 'Assign'] };
+	const chosen = ttAct(s, INITIAL, { k: 'cell', r: '1', c: 1, v: 'Jamik' });
+	assert.equal(ttView(s, chosen, cells).rows.find((r) => r.id === '1')!.c1, 'Jamik');
+	assert.deepEqual(ttView(s, ttAct(s, chosen, EMAIL), cells).rows.map((r) => `${r.id}:${r.c1}`).sort(), ['0:Assign', '1:Jamik', '2:Eddie', '3:Assign', '4:Assign']);
+	// Paged away and back, the row mounts again: its select shows what it showed at first.
+	const paged = ttAct(s, { ...INITIAL, pagination: { pageIndex: 0, pageSize: 2 } }, { k: 'cell', r: '1', c: 1, v: 'Jamik' });
+	const back = ttAct(s, ttAct(s, paged, { k: 'page', d: 1 }), { k: 'page', d: -1 });
+	assert.equal(ttView(s, back, cells).rows.find((r) => r.id === '1')!.c1, 'Assign');
 });
 
 test("select-all does what the old page's control did: React Aria's clears every row, the Radix demo's only the page's", () => {

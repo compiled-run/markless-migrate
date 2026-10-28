@@ -373,6 +373,16 @@ const sharedTabs: Part = {
 	},
 };
 
+// A page shown in place renders its lists from the atom it shares with the page before: the kept choice is there before the
+// first paint, so a list the router brings in is switched before the next frame (an observer's callback runs first).
+new MutationObserver((records) => {
+	if (localStorage.getItem(CONFIG_KEY) === null) return;
+	const added = records.some((r) => [...r.addedNodes].some((n) => n instanceof Element && (n.matches('[role="tablist"]') || n.querySelector('[role="tablist"]'))));
+	if (!added) return;
+	const config = readConfig();
+	for (const key of Object.keys(SHARED)) if (config[key]) chooseEverywhere(key, config[key]!);
+}).observe(document.documentElement, { childList: true, subtree: true });
+
 // components/chart-iframe.tsx: a chart's frame is opacity-0 until its onLoad, then opacity-100 (the capture holds either).
 const frameLoaded = (frame: HTMLIFrameElement): boolean | undefined => {
 	const doc = frame.contentDocument;
