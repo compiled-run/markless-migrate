@@ -33,7 +33,7 @@ let server: Server;
 let origin: string;
 before(async () => {
 	browser = await chromium.launch();
-	server = createServer((_request, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE));
+	server = createServer((request, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url?.includes('/base/') ? PAGE.replace('utils.ts', 'base-utils.ts') : PAGE));
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -68,6 +68,20 @@ test('a capture cached under the reveal:2 key, which could hold another page\'s 
 		const shown = own.reveals.flatMap((r) => r.added.map((a) => a.html)).join('');
 		assert.doesNotMatch(shown, /ANOTHER PAGE/);
 		assert.match(shown, /header\.tsx/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("a control two libraries' pages share keeps each page's own content, as the page's path names its library", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'reveal-library-'));
+	try {
+		const shownOn = async (route: string) => (await captureRouteReveals(browser, origin, route, dir)).reveals.filter((r) => r.key === 't-lib').flatMap((r) => r.added.map((a) => a.html)).join('');
+		for (const route of ['/docs/components/radix/tree', '/docs/components/base/tree', '/docs/components/radix/tree']) {
+			const shown = await shownOn(route);
+			if (route.includes('/base/')) assert.match(shown, /base-utils\.ts/);
+			else assert.doesNotMatch(shown, /base-utils\.ts/);
+		}
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
