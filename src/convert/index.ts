@@ -428,12 +428,21 @@ function selectIndicators(top: Element): void {
  * Base UI Combobox mounts an item's indicator only while it is selected: every other item of a captured list gets a
  * hidden copy of a selected one's, so choosing one only switches `hidden`.
  */
-function comboboxIndicators(top: Element): void {
+const comboboxIndicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
+/** A selected Base UI Combobox item's indicator from any captured list: shadcn's ComboboxItem renders the same one in every list. */
+export function comboboxIndicatorIn(tops: readonly Element[]): Element | undefined {
+	for (const top of tops) for (const list of [top, ...walkAll(top)]) if (attr(list, 'data-slot') === 'combobox-list') for (const o of walkAll(list)) if (attr(o, 'role') === 'option' && comboboxIndicatorOf(o)) return comboboxIndicatorOf(o);
+	return undefined;
+}
+let comboboxIndicatorFallback: Element | undefined;
+
+export function comboboxIndicators(top: Element, fallback: Element | undefined = comboboxIndicatorFallback): void {
 	for (const list of [top, ...walkAll(top)]) {
 		if (attr(list, 'data-slot') !== 'combobox-list') continue;
 		const items = walkAll(list).filter((o) => attr(o, 'role') === 'option');
-		const indicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
-		const template = items.map(indicatorOf).find((i) => i !== undefined);
+		const indicatorOf = comboboxIndicatorOf;
+		// A list no item was selected in when captured takes the indicator another list of the site showed.
+		const template = items.map(indicatorOf).find((i) => i !== undefined) ?? fallback;
 		if (!template) continue;
 		for (const o of items) {
 			const own = indicatorOf(o);
@@ -870,6 +879,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	renameIds([...walk(root)], names.page);
+	comboboxIndicatorFallback = comboboxIndicatorIn(pendingLayers.flatMap((l) => l.kept)) ?? comboboxIndicatorFallback;
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
 		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);

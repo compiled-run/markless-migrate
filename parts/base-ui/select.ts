@@ -147,6 +147,8 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	if (!alignOver(trigger, p) && p.positioner) {
 		for (const prop of ['top', 'bottom', 'left', 'height', 'max-height', 'margin-top', 'margin-bottom']) p.positioner.style.removeProperty(prop);
 		(p.positioner.firstElementChild as HTMLElement | null)?.style.removeProperty('height');
+		// openPopup placed it off the listbox's own data-align (none: center) and keeps it there until stopped.
+		p.stop?.();
 		p.stop = place(trigger, p.positioner, p.popup, { side: 'bottom', align: 'start', sideOffset: 0, alignOffset: 0, positionMethod: 'fixed' });
 	}
 	// useListNavigation: the selected item, else from ArrowUp the last enabled one, else the first.
