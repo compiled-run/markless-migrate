@@ -108,7 +108,8 @@ export function click(target: Element): boolean {
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 		// useClick toggles: a press on the trigger of an open dialog (only reachable when it is not modal) closes it.
 		if (p) close(p);
-		else open(trigger);
+		// A plain button whose layer is no Base UI portal (a Radix dialog's) is another port's.
+		else if (!open(trigger) && !trigger.matches(TRIGGER)) return false;
 		return true;
 	}
 	const closer = target.closest(CLOSE);

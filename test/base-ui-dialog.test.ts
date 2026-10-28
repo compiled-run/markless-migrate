@@ -197,3 +197,14 @@ test('a Base UI dialog the page shows open at load closes from its Close part, E
 		await page.close();
 	}
 });
+
+test("a plain button a page opens a Radix dialog from is left to the Radix port when the Base UI one has no portal for it (the radix Command page's Open Menu)", async () => {
+	const page = await open(
+		`<main><button data-slot="button" type="button" data-mm-key="p:1.2">Open Menu</button></main><div data-mm-layer="p:1.2" hidden data-slot="dialog-overlay" data-state="closed"></div><div data-mm-layer="p:1.2" hidden role="dialog" data-slot="dialog-content" data-state="closed"><button>Inside</button></div>`,
+		['base-ui/dialog', 'radix/dialog'],
+	);
+	await page.getByText('Open Menu').click();
+	await page.waitForTimeout(100);
+	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+	await page.close();
+});
