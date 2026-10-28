@@ -5,7 +5,7 @@ import { createServer } from 'node:net';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { prepareDevApp, SITE_DIR } from './app.ts';
+import { DEV_CONFIG, prepareDevApp, SITE_DIR } from './app.ts';
 import { diffRuns, formatDiffs, parseProbeLines, type RouteProbe } from './findings.ts';
 import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, writePortMap, type PortMap } from './routes.ts';
 
@@ -105,7 +105,7 @@ class AppServer {
 			if (built.code) throw new Error(`the build of the dev app failed: ${join(this.dev, '.migrate', 'dev', 'build.log')}`);
 			this.log(`built in ${seconds(since)}`);
 		}
-		const args = this.build ? [join(this.dev, '.output', 'server', 'index.mjs')] : [vp, 'dev', '--port', String(this.port), '--strictPort'];
+		const args = this.build ? [join(this.dev, '.output', 'server', 'index.mjs')] : [vp, 'dev', '--config', DEV_CONFIG, '--port', String(this.port), '--strictPort'];
 		// Its own process group, so stopping it stops the Vite process vp starts too.
 		this.child = spawn(process.execPath, args, { cwd: this.dev, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 		const logged: string[] = [];
