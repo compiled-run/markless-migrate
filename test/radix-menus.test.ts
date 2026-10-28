@@ -192,6 +192,19 @@ test('Radix DropdownMenu.Sub with the mouse: resting on the sub-trigger opens it
 	await page.close();
 });
 
+test('Radix DropdownMenu.Sub: an opening submenu is painted over its menu, as its portal mounts it last, though convert rendered it first', async () => {
+	const [menuLayer, subLayer] = withSub.replaceAll('data-radix-popper-content-wrapper>', 'data-radix-popper-content-wrapper style="z-index:50">').split(/(?=<div data-mm-layer="sub")/);
+	const page = await open(subLayer!.replace('data-side="right"', 'data-side="right" style="margin-left:-120px"') + menuLayer, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await page.getByText('Invite users', { exact: true }).focus();
+	await press(page, 'ArrowRight');
+	assert.equal(await subOpen(page), true);
+	const on = (await page.getByText('Email', { exact: true }).boundingBox())!;
+	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role=menu]')?.id, [on.x + 5, on.y + 5]), 'sub-content');
+	await page.close();
+});
+
 test('Radix DropdownMenu.Sub: another item of the parent taking focus closes the submenu', async () => {
 	const page = await open(withSub, ['radix/dropdown-menu']);
 	await page.getByText('Open').click();
