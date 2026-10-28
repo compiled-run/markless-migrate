@@ -169,6 +169,9 @@ export interface MonthModel {
 	readonly monthLabel: string;
 	readonly yearLabel: string;
 	readonly yearText: string;
+	/** The dropdowns' values, which React sets as each select's value whatever its options' selected attributes say. */
+	readonly monthValue: string;
+	readonly yearValue: string;
 	readonly weeks: readonly WeekModel[];
 }
 export interface DayPickerModel {
@@ -368,8 +371,13 @@ export function dayPickerLabel(config: DayPickerConfig, view: DayPickerView, pat
 
 /** The view after `text` was typed into a date picker's field: the day `new Date(text)` reads selected and shown, if any. */
 export function dayPickerTyped(config: DayPickerConfig, read: DayPickerView, text: string, key: string): DayPickerView {
+	return dayPickerRead(config, read, text, key, new Date(text));
+}
+
+/** The view after `text` was typed into a date picker's field and read as `date` (none, or an invalid one, keeps the day). */
+export function dayPickerRead(config: DayPickerConfig, read: DayPickerView, text: string, key: string, date: Date | null): DayPickerView {
 	const view = latest(key, read);
-	const at = new Date(text).getTime();
+	const at = date ? date.getTime() : Number.NaN;
 	const typed = { ...view, x: text, u: true };
 	return write(key, view, Number.isNaN(at) ? typed : dayPickerSet(config, typed, { s: [{ at }], m: 'selected' }));
 }
@@ -764,6 +772,8 @@ export function dayPickerModel(config: DayPickerConfig, view: DayPickerView): Da
 				monthLabel: monthLabel(cm.month),
 				yearLabel: yearOptions.length ? format(lib, cm.month, 'yyyy') : '',
 				yearText: format(lib, cm.month, 'yyyy'),
+				monthValue: String(lib.month(cm.month)),
+				yearValue: String(lib.year(cm.month)),
 				// DayPicker's keys: a week by its number, a day by its date and month (another month's cells are new ones).
 				weeks: cm.weeks.map((w) => ({
 					key: `w${w.number}`,

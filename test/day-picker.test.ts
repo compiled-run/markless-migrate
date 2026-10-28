@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { dayOfDate, dayPickerField, dayPickerModel, dayPickerNext, dayPickerSet, dayPickerTyped, dayPickerView, dayPickerWake, type DayPickerConfig, type DayPickerView, type LocaleTable } from '../parts/day-picker.ts';
-import { fieldOf, pruneLocale, whenOf, type LayerOpener } from '../src/convert/day-picker.ts';
+import { chronoReads, fieldOf, pruneLocale, whenOf, type LayerOpener } from '../src/convert/day-picker.ts';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -234,12 +237,34 @@ test("a date picker's field is learned from the capture: new Date's reading of e
 		{ text: 'in 3 days', shown: 'in 3 days', predicted: null, selected: '2026-02-03', caption: 'February 2026' },
 	].map((t) => ({ ...t, predicted: t.predicted && ([...t.predicted] as [number, number, number]) }));
 	const opener: LayerOpener = { sig: 'button||', nth: 0, k: 0, before: '', picks: [{ days: [[2025, 5, 5]], html: '', open: false, value: 'June 05, 2025' }], field: { sig: 'input||', nth: 0, value: 'June 01, 2025', opens: true, typed } };
-	assert.deepEqual(fieldOf(opener, base), { pattern: 'MMMM dd, yyyy' });
+	assert.deepEqual(fieldOf(opener, base), { pattern: 'MMMM dd, yyyy', parser: 'date', echoes: [] });
 	const ignored = { ...opener, field: { ...opener.field!, typed: typed.map((t, i) => (i === 1 ? { ...t, selected: '2025-05-28' } : t)) } };
 	assert.match(fieldOf(ignored, base) as string, /2025-05-28, not 2025-05-27/);
 	// A natural-language field read "tomorrow", which Date does not.
-	const chrono = { ...opener, field: { ...opener.field!, typed: typed.map((t) => (t.text === 'tomorrow' ? { ...t, selected: '2026-10-28' } : t)) } };
+	const chrono = { ...opener, field: { ...opener.field!, typed: typed.map((t) => (t.text === 'tomorrow' ? { ...t, selected: '2026-10-28' } : t.text === 'in 3 days' ? { ...t, selected: '2026-10-30' } : t)) } };
 	assert.match(fieldOf(chrono, base) as string, /typing "tomorrow" selected 2026-10-28, not 2026-02-03/);
+	// The old app's chrono-node reads it so: the field is read with chrono, and a sentence naming the day follows it.
+	const reads = chrono.field.typed.map((t) => (t.text === 'tomorrow' ? ([2026, 9, 28] as [number, number, number]) : t.text === 'in 3 days' ? ([2026, 9, 30] as [number, number, number]) : t.predicted));
+	const echoed = { ...chrono, field: { ...chrono.field, leaves: [{ sig: 'span||', nth: 0 }, { sig: 'label||', nth: 0 }], typed: chrono.field.typed.map((t) => ({ ...t, echo: [t.selected ? `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][Number(t.selected.slice(5, 7)) - 1]} ${t.selected.slice(8)}, ${t.selected.slice(0, 4)}` : '', 'Schedule Date'] })) } };
+	assert.deepEqual(fieldOf(echoed, base, () => reads), { pattern: 'MMMM dd, yyyy', parser: 'chrono', echoes: [0] });
+});
+
+test("chrono-node's reading of a typed text is the old app's own, keystroke by keystroke, on the capture's clock and time zone", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'chrono-app-'));
+	try {
+		await writeFile(join(app, 'package.json'), '{"name":"old"}');
+		const lib = join(app, 'node_modules', 'chrono-node');
+		await mkdir(lib, { recursive: true });
+		await writeFile(join(lib, 'package.json'), '{"name":"chrono-node","version":"2.8.4","main":"index.js"}');
+		// A stand-in that reads "tomorrow" and its prefix "tom" (as the day after `ref`), and nothing else.
+		await writeFile(join(lib, 'index.js'), 'exports.parseDate = (text, ref) => (text === "tom" || text === "tomorrow" ? new Date(ref.getTime() + 86400000 + (text === "tom" ? 86400000 : 0)) : null);');
+		const at = Date.UTC(2026, 0, 15, 23, 30);
+		assert.deepEqual(chronoReads(app, ['tomorrow', 'tomx', 'nope'], at, 'UTC'), [[2026, 0, 16], [2026, 0, 17], null]);
+		assert.deepEqual(chronoReads(app, ['tomorrow'], at, 'Asia/Tokyo'), [[2026, 0, 17]]);
+		assert.equal(chronoReads(tmpdir(), ['tomorrow'], at), undefined);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
 });
 
 test("a calendar the page rendered keeps its prerendered today on the cells it showed, as React's hydration leaves attributes; cells a month change mounts show the visitor's", () => {

@@ -4,8 +4,9 @@ import { navigate } from '@markless/router';
 // cmdk 1.1: typing in [cmdk-input] scores every [cmdk-item] by its value and keywords (command-score unless the site
 // passes its own filter); an item scoring 0 leaves the list (hidden here), a group with none left is hidden, separators
 // leave while there is a search, and [cmdk-empty] (rendered hidden by the converter) shows when nothing is left. The items
-// left are sorted by score and moved after the rest of their group, and the groups by their best item, as cmdk appends
-// them; here the move is CSS order on a column. The first item left is selected (aria-selected, data-selected). Arrows,
+// still mounted are sorted by score and moved after the rest of their group, as cmdk appends them, before the items the
+// search brings back mount where React puts them; here the move is CSS order on a column. Groups keep their place. The
+// first item then shown is selected (aria-selected, data-selected). Arrows,
 // Home, End and Alt with an arrow move the selection; moving the pointer over an item selects it; Enter or a click
 // chooses it, and what choosing does is the old page's: the address in the item's data-mm-href (where it went on that
 // page, or for an item the page renders itself, its own), or what it copied. The input and list
@@ -262,27 +263,20 @@ function apply(root: HTMLElement, text: string): void {
 		if (group.querySelector(`${ITEM}:not([hidden])`)) group.removeAttribute('hidden');
 		else group.setAttribute('hidden', '');
 	}
-	for (const container of c.order.keys()) place(c, container, (el) => !isItem(el) || mounted.has(el), (el) => !isItem(el) || !el.hidden);
 	if (text) {
-		// Command's sort: the enabled items left, by score (a stable sort of the order they are in), appended to their group's
-		// items; then the groups left, by their best item.
+		// Command's sort runs as the search changes, before React mounts what the search brings back: the enabled items
+		// still mounted, by score (a stable sort of the order they are in), each appended to its group's items. Its groups
+		// stay where they are: it looks a group up by its id among their values, which never matches.
 		const sorted = shownOrder(root)
-			.filter(enabled)
+			.filter((i) => mounted.has(i) && !i.hidden && enabled(i))
 			.sort((a, b) => scores.get(b)! - scores.get(a)!);
 		for (const item of sorted) {
 			const order = c.order.get(containerOf(item))!;
 			order.splice(order.indexOf(item), 1);
 			order.push(item);
 		}
-		const groups = [...list.querySelectorAll<HTMLElement>(GROUP)].filter((g) => !g.hidden);
-		const best = (g: HTMLElement) => Math.max(0, ...[...g.querySelectorAll<HTMLElement>(ITEM)].map((i) => (i.hidden ? 0 : scores.get(i)!)));
-		for (const group of groups.sort((a, b) => best(b) - best(a))) {
-			const order = c.order.get(containerOf(group));
-			if (!order) continue;
-			order.splice(order.indexOf(group), 1);
-			order.push(group);
-		}
 	}
+	for (const container of c.order.keys()) place(c, container, (el) => !isItem(el) || mounted.has(el), (el) => !isItem(el) || !el.hidden);
 	c.search = text;
 	paintOrder(c);
 	const empty = root.querySelector<HTMLElement>('[cmdk-empty]');

@@ -44,9 +44,19 @@ function close(key: string): void {
 	for (const el of [d.overlay, d.content]) el?.setAttribute('data-state', 'closed');
 }
 
+// Dialogs the page showed open at load, opened again where they are.
+const adopted = new Map<string, Open>();
+
 function open(trigger: HTMLElement): boolean {
 	const key = layerKey(trigger);
 	if (opened.has(key)) return true;
+	const shown = adopted.get(key);
+	if (shown) {
+		opened.set(key, shown);
+		setTrigger(trigger, true);
+		for (const el of [shown.overlay, shown.content]) el?.setAttribute('data-state', 'open');
+		return true;
+	}
 	const nodes = layersFor(key);
 	if (!nodes.length) return false;
 	const content = nodes.find((n) => n.id === key) ?? nodes.find((n) => n.querySelector(`[id="${CSS.escape(key)}"]`))?.querySelector<HTMLElement>(`[id="${CSS.escape(key)}"]`) ?? nodes.find((n) => /dialog|sheet|drawer/.test(n.getAttribute('role') ?? '') || /content/.test(n.dataset.slot ?? ''));
@@ -95,4 +105,34 @@ export function closeContaining(el: Element): boolean {
 		return true;
 	}
 	return false;
+}
+
+/**
+ * A dialog the page shows open at load (its state opened it on mount, sidebar-13's settings) is taken as open: the
+ * marks Radix's effects left in the captured page are cleared, then the engine mounts it as Radix would have.
+ */
+function adoptShown(): void {
+	for (const trigger of document.querySelectorAll<HTMLElement>('[aria-haspopup="dialog"][aria-expanded="true"][aria-controls]')) {
+		const key = trigger.getAttribute('aria-controls')!;
+		const content = document.getElementById(key);
+		if (!content || content.getAttribute('data-state') !== 'open' || content.closest('[hidden]') || opened.has(key)) continue;
+		const overlay = [...(content.parentElement?.children ?? [])].find((n): n is HTMLElement => n instanceof HTMLElement && /overlay/.test(n.dataset.slot ?? '') && n.getAttribute('data-state') === 'open');
+		for (const el of document.querySelectorAll('[data-aria-hidden]')) {
+			el.removeAttribute('aria-hidden');
+			el.removeAttribute('data-aria-hidden');
+		}
+		document.body.style.removeProperty('pointer-events');
+		document.body.removeAttribute('data-scroll-locked');
+		const alert = content.getAttribute('role') === 'alertdialog';
+		installed.add(key);
+		installDialog([trigger], overlay, content, alert ? (content.querySelector<HTMLElement>('[data-slot$="dialog-cancel"]') ?? undefined) : undefined, alert);
+		content.addEventListener('radixdismiss', () => close(key));
+		const d = { trigger, nodes: overlay ? [overlay, content] : [content], content, overlay };
+		adopted.set(key, d);
+		opened.set(key, d);
+	}
+}
+
+export function idle(): void {
+	adoptShown();
 }

@@ -48,6 +48,10 @@ on:
         description: A release tag to attach the build archive to (check.yml's build input takes its URL)
         required: false
         default: ''
+      preset:
+        description: The Nitro preset the build uses (vercel packs .vercel/output, which a port's ci-serve.sh serves and its deploy uploads as checked)
+        required: false
+        default: ''
   # A change to the workflow converts and builds a few ui.shadcn.com pages the same way, on two runners.
   pull_request:
     paths:
@@ -303,13 +307,15 @@ jobs:
           status=0
           (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
           # Node's default heap on a 16 GB runner is 4 GB; the rest of the runner is the build's to use.
-          NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          NITRO_PRESET="${{ inputs.preset }}" NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/build.txt"
           peak=$(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}')
           echo "build: exit $status, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') wall, peak RSS of one process $((peak / 1024)) MB, runner memory in use at most $(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) MB" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: Pack the build
-        run: tar -czf "$RUNNER_TEMP/${{ env.SITE }}-markless-output.tar.gz" -C "$APP" .output
+        run: |
+          # A Vercel build is its Build Output directory; any other preset, .output.
+          if [ -d "$APP/.vercel/output" ]; then tar -czf "$RUNNER_TEMP/${{ env.SITE }}-markless-output.tar.gz" -C "$APP" .vercel/output; else tar -czf "$RUNNER_TEMP/${{ env.SITE }}-markless-output.tar.gz" -C "$APP" .output; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
