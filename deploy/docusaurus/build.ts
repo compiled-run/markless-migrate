@@ -1,7 +1,6 @@
 // Writes Vercel Build Output (v3) for the Docusaurus demo: `node deploy/docusaurus/build.ts old|new|front`.
 import { spawnSync } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DOCUSAURUS } from './urls.ts';
 
@@ -49,8 +48,10 @@ async function old(): Promise<void> {
 // then by Markless.
 async function next(): Promise<void> {
 	run(process.execPath, ['tooling/import.mjs'], app, { DOCUSAURUS_WEBSITE: website });
-	// The caching plan (.migrate/caching.json, from plan or cache plan) goes into the app before every build.
-	if (existsSync(join(app, '.migrate/caching.json'))) run(process.execPath, [join(root, '../../src/cli.ts'), 'cache', 'apply'], app);
+	// The caching plan (caching.json here, from cache plan) goes into the app before every build.
+	await mkdir(join(app, '.migrate'), { recursive: true });
+	await cp(join(root, 'caching.json'), join(app, '.migrate/caching.json'));
+	run(process.execPath, [join(root, '../../src/cli.ts'), 'cache', 'apply'], app);
 	run('npm', ['run', 'build'], app, { NITRO_PRESET: 'vercel' });
 	// The old host's own rule for the site's static HTML files, `/x` serves `x.html` (or `x/index.html`), one route per file: a
 	// catch-all `/$1.html` rewrite runs before Nitro's ISR routes and sends every page past them to the uncached function.
