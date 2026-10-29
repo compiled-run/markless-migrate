@@ -12,19 +12,29 @@ import { join, relative } from 'node:path';
 
 /** Ids React (`_r_1f_`, `_R_3mbr6lb_`, `:r1:`, `«r1»`) and React Aria (`react-aria-12`) generate, which differ by load. */
 const GENERATED = /_[rR]_[0-9a-zA-Z]+_|:[rR][0-9a-zA-Z]*:|«[rR][0-9a-zA-Z]*»|react-aria\d*-\d+(?![\w-])|\bmm-[0-9a-f]{8}(?=-)/g;
+// The converter numbers layer components in the order it meets them: one layer more or less elsewhere renumbers the rest.
+const LAYERS = /\blayer-\d+(?=\.tsrx)|\bLayer\d+\b/g;
 const HASHED = /_converted\/layers\/[0-9a-f]{16}\.html/g;
 
 /** The text with each distinct generated id replaced by its order of first occurrence. */
 export function canonicalIds(text: string): string {
 	const seen = new Map<string, number>();
-	return text.replace(HASHED, '_converted/layers/HASH.html').replace(GENERATED, (id) => {
-		if (!seen.has(id)) seen.set(id, seen.size);
-		return `ID${seen.get(id)}`;
-	});
+	const layers = new Map<string, number>();
+	return text
+		.replace(HASHED, '_converted/layers/HASH.html')
+		.replace(GENERATED, (id) => {
+			if (!seen.has(id)) seen.set(id, seen.size);
+			return `ID${seen.get(id)}`;
+		})
+		.replace(LAYERS, (name) => {
+			const n = name.replace(/\D/g, '');
+			if (!layers.has(n)) layers.set(n, layers.size);
+			return `LAYER${layers.get(n)}`;
+		});
 }
 
 /** The text with every generated id the same: what remains when two files differ only in which ids they share. */
-export const withoutIds = (text: string): string => text.replace(HASHED, '_converted/layers/HASH.html').replace(GENERATED, 'ID');
+export const withoutIds = (text: string): string => text.replace(HASHED, '_converted/layers/HASH.html').replace(GENERATED, 'ID').replace(LAYERS, 'LAYER');
 
 // A recorded cache file is a list of observations, each from its own page load: each is canonicalized on its own.
 function canonicalFile(path: string, text: string, erase: boolean): string {
