@@ -4,7 +4,7 @@ import type { RouteState } from '../status.ts';
 
 const run = promisify(execFile);
 
-async function git(dir: string, args: string[]): Promise<string | undefined> {
+export async function git(dir: string, args: string[]): Promise<string | undefined> {
 	try {
 		return (await run('git', ['-C', dir, ...args], { maxBuffer: 16 * 1024 * 1024 })).stdout;
 	} catch {

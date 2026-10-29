@@ -1,15 +1,80 @@
 name: probe dead controls
-# Dispatched only (never on push or pull_request), so the Vercel bypass secret is never handed to a fork's run.
+# Dispatched only. Each runner serves both sides itself, as check.yml does: the old site built from its source (cached
+# between runs) and the port from a build archive, so a scan sends no request to a deployment.
 on:
   workflow_dispatch:
     inputs:
-      new:
-        description: The port's origin to probe against the original
-        default: https://mm-shadcn-ui-new.vercel.app
+      build:
+        description: URL of the port's build (a .tar.gz of its .vercel/output or its node-server .output)
+        required: true
+        default: https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz
+      targets:
+        description: The routes file to probe
+        required: true
+        default: deploy/shadcn-ui/check-targets.json
+      costs:
+        description: The run whose per-route times pack the shards (default the last successful run; none deals routes in turn)
+        required: false
+        default: ''
 permissions:
   contents: read
+  actions: read
+env:
+  SITE: shadcn-ui
 jobs:
+  # The old site is built once here and cached, so the shards restore it instead of each building it. The run whose times
+  # pack the shards is chosen here too: shards started hours apart must all pack the same way.
+  old:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      costs: ${{ steps.costs.outputs.run }}
+    steps:
+      - id: costs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.costs }}
+        run: |
+          run="$RUN"
+          [ -n "$run" ] || run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow probe-dead-controls.yml --status success -L 1 --json databaseId --jq '.[0].databaseId // empty')
+          # Results past their retention leave nothing to pack by: routes are then dealt in turn.
+          if [ -n "$run" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | select(.name | startswith("dead-controls-"))] | length')" = 0 ]; then run=""; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: oven-sh/setup-bun@v2
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          lookup-only: true
+      - name: Build the old site
+        if: steps.old-build.outputs.cache-hit != 'true'
+        run: |
+          built="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
+          ORIGIN=http://localhost:4000 "deploy/$SITE/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
+          echo "$built" > "deploy/$SITE/old/.ci-built"
+      - if: steps.old-build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+
   probe:
+    needs: old
     runs-on: ubuntu-latest
     timeout-minutes: 340
     strategy:
@@ -25,15 +90,40 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           browsers: ${{ matrix.engine }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          fail-on-cache-miss: true
+      - name: Serve both sides
+        env:
+          BUILD: ${{ inputs.build }}
+        run: |
+          bash "deploy/$SITE/ci-serve.sh" old
+          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+      # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
+      - name: The last run's per-route times
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ needs.old.outputs.costs }}
+        run: |
+          run="$RUN"
+          mkdir -p "$RUNNER_TEMP/costs"
+          # A shard that could not fetch them would pack differently from the rest: it fails instead of losing or repeating routes.
+          if [ -n "$run" ]; then gh run download "$run" -R "$GITHUB_REPOSITORY" -p "dead-controls-${{ matrix.engine }}-*" -D "$RUNNER_TEMP/costs"; fi
+          echo "$(find "$RUNNER_TEMP/costs" -name '*.jsonl' | wc -l) result files from run ${run:-none}"
       - name: Probe
         env:
-          NEW: ${{ inputs.new }}
-          BYPASS: ${{ secrets.SHADCN_BYPASS }}
+          OLD: http://localhost:4000
+          NEW: http://127.0.0.1:3000
+          TARGETS: ${{ inputs.targets }}
         run: |
           mkdir -p out/strips
           if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
           for w in 0 1 2 3; do
-            ENGINE=${{ matrix.engine }} WORKERS=4 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs deploy/shadcn-ui/check-targets.json out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
+            COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} WORKERS=4 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
           done
           wait
           for f in out/log-*.txt; do tail -n 5 "$f"; done
@@ -42,4 +132,4 @@ jobs:
         with:
           name: dead-controls-${{ matrix.engine }}-${{ matrix.shard }}
           path: out
-          retention-days: 7
+          retention-days: 30

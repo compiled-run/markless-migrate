@@ -1614,7 +1614,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (handledForms.size) templatePorts.plan('form');
 	const notifyPlan = new NotifyPlan();
 	let notifyCount = 0;
-	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	// A form-library form's toast on a passing submit is a notification too, shown by its form's region.
+	for (const [route, p] of prepared) notifyCount += notifyPlan.add([...(notified.get(route) ?? []), ...(formLibsRead.get(route) ?? []).flatMap((f) => (f.toast ? [f.toast] : []))], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
 	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
 	if (notifyPlan.sonner) templatePorts.add('sonner');
 	// The shared body children holding a live region a page shows its notifications in: that page renders them.
@@ -1760,6 +1761,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// A table's rows and hideable cells are emitted by its plan, with every plan's bindings, as their page is.
 	tables.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)), dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
 	tables.emitHtml = emitHtml;
+	// A form's list rows are emitted by its plan once, as their row template, with every plan's bindings.
+	formLibs.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)) });
 	// What a page gives an element beyond its markup (what a control shows on use, a trigger's layer key, measured
 	// props) is part of its identity: two pages' alike code blocks whose View Code shows different sources are not one.
 	const insertedInto = new Map<Element, string>();

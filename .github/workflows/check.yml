@@ -38,6 +38,10 @@ on:
         description: Seconds one route may take (a page's journey budget grows with its controls)
         required: false
         default: '3600'
+      reuse:
+        description: Reuse each route's last result while it ships the same HTML and code ('false' checks every route)
+        required: false
+        default: 'true'
       max_parallel:
         description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI)
         required: false
@@ -144,12 +148,21 @@ jobs:
             ${{ env.APP }}/.migrate/slow-network
           key: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-${{ github.run_id }}
           restore-keys: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-
+      # Results of earlier runs, by what each route ships: its served HTML and the code hash of every module it can run.
+      - name: Restore results from earlier runs
+        if: inputs.reuse != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.APP }}/.migrate/reuse
+          key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-reuse-${{ env.SITE }}-
       - name: Check
         env:
           SHARD: ${{ matrix.shard }}
           FLAGS: ${{ inputs.flags }}
           CONCURRENCY: ${{ inputs.concurrency || '1' }}
           TIMEOUT: ${{ inputs.timeout || '3600' }}
+          REUSE: ${{ inputs.reuse != 'false' && format('--reuse .migrate/reuse --closures {0}/new/.vercel/output/.markless/static/interaction-closures.json', runner.temp) || '' }}
         run: |
           set -uo pipefail
           cd "$APP"
@@ -157,7 +170,7 @@ jobs:
           status=0
           # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
           # shellcheck disable=SC2086
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --concurrency "$CONCURRENCY" --timeout "$TIMEOUT" --control-webkit $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --concurrency "$CONCURRENCY" --timeout "$TIMEOUT" --control-webkit $REUSE $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
@@ -176,6 +189,7 @@ jobs:
           path: |
             ${{ env.APP }}/.migrate/report.json
             ${{ env.APP }}/.migrate/check-progress
+            ${{ env.APP }}/.migrate/reuse
             ${{ runner.temp }}/check.txt
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log
@@ -206,6 +220,16 @@ jobs:
           node scripts/check-shards.ts merge shards merged shards/check-shards
           reported=$(find shards -name report.json | wc -l)
           { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+      # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.
+      - name: Join kept results
+        if: inputs.reuse != 'false'
+        run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep results for later runs
+        if: inputs.reuse != 'false'
+        uses: actions/cache/save@v4
+        with:
+          path: reuse
+          key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         with:
           name: check-merged
