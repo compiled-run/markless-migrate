@@ -43,7 +43,7 @@ function canonicalFile(path: string, text: string, erase: boolean): string {
 	}
 }
 
-const SKIP = new Set(['node_modules', 'captures', 'prerender', 'report.json']);
+const SKIP = new Set(['node_modules', 'captures', 'prerender', 'report.json', 'sources.json']);
 function files(root: string, dir = root, out: string[] = []): string[] {
 	for (const name of readdirSync(dir)) {
 		if (SKIP.has(name) || name === 'dev') continue;
@@ -58,7 +58,8 @@ function files(root: string, dir = root, out: string[] = []): string[] {
 function grouped(root: string, erase: boolean): Map<string, Set<string>> {
 	const out = new Map<string, Set<string>>();
 	for (const path of files(root)) {
-		const name = withoutIds(path).replace(/[0-9a-f]{16}\.html$/, 'HASH.html').replace(/\/layer-\d+\.tsrx$/, '/layer-N.tsrx');
+		// A route's recordings may sit under the key of its old page (record-key.ts): the same file either way.
+		const name = withoutIds(path).replace(/^(\.migrate\/convert\/[^/]+)\/[0-9a-f]{16}\//, '$1/').replace(/[0-9a-f]{16}\.html$/, 'HASH.html').replace(/\/layer-\d+\.tsrx$/, '/layer-N.tsrx');
 		const set = out.get(name) ?? new Set<string>();
 		set.add(canonicalFile(path, readFileSync(join(root, path), 'utf8'), erase));
 		out.set(name, set);
