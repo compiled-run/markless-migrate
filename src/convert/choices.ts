@@ -53,7 +53,8 @@ const MAX_OPTIONS = 800;
 const stateOf = (page: Page) =>
 	page.evaluate(() => {
 		const root = document.documentElement.cloneNode(true) as HTMLElement;
-		for (const el of root.querySelectorAll('script, style, link, noscript, [data-live-announcer]')) el.remove();
+		// React Aria's live region and an emptied Base UI portal stay behind a closed layer, and show nothing.
+		for (const el of root.querySelectorAll('script, style, link, noscript, [data-live-announcer], [data-base-ui-portal]:empty')) el.remove();
 		// A scroll lock lifted leaves an empty style attribute behind, which shows nothing.
 		for (const el of [root, ...root.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
 		const values = [...document.querySelectorAll('input, textarea, select')].map((el) => (el instanceof HTMLInputElement ? `${el.value}|${el.checked}` : (el as HTMLTextAreaElement | HTMLSelectElement).value));
