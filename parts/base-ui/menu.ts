@@ -73,7 +73,7 @@ const first = (list: readonly HTMLElement[], skip = (_: HTMLElement) => false) =
 const last = (list: readonly HTMLElement[], skip = (_: HTMLElement) => false) => list.findLast((i) => visible(i) && !skip(i));
 
 function openMenu(trigger: HTMLElement, focus: 'first' | 'last' | 'popup'): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="menu"]', tabOut: true, onDismiss: (x) => close(x) });
+	const p = openPopup(trigger, { popupSelector: '[role="menu"]', tabOut: true, fallbackAxisSide: 'none', onDismiss: (x) => close(x) });
 	if (!p) return false;
 	typing.set(p, newTyping());
 	highlight(p, undefined);

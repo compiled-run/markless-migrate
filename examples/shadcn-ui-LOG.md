@@ -2747,14 +2747,21 @@ area, dashboard): every frame within 0.04 px of the original.
 | area: default, axes, gradient, interactive, stacked, stacked-expand, step | same |
 | bar: interactive, active, horizontal, label, label-custom, mixed, multiple, negative, stacked | same |
 | line: default, dots, dots-custom, interactive, label, multiple, step | same |
-| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month) |
+| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month); fixed by the fourth change below |
 | docs `chart` page, its 7 charts | same |
 | pie-interactive | same (300 px at all four widths) |
 | dashboard-01 | same at 1000 and 1512 px; below 768 px the old page switches to the last 7 days on load (`useIsMobile`), the port keeps 3 months |
 
+Weekdays (fourth change): convert also reads each axis' tick values and, where every label is one of the usual
+`toLocaleDateString` formats of its value in the capture's locale (a weekday, a month and day, a month), that format.
+Where the visitor's own formatting of the values differs from the capture's, the part draws the axis with them
+(`getTicks` again); dates with a month in a chart region stay the clock part's to write. Ticks on
+chart-tooltip-default, -label-formatter and -icons, area-interactive, line-interactive and bar-default agree with
+the old page in UTC, Asia/Tokyo and America/Los_Angeles.
+
 Not yet: pie, radar and radial charts are laid out only at the sizes captured (they are 250 or 300 px squares, so
 this shows only in containers narrower than that: pie-interactive and pie-legend at 342 px show the 300 px drawing
-where the old page draws 292 px); weekday-only date ticks behind UTC; the dashboards' phone default range.
+where the old page draws 292 px); the dashboards' phone default range.
 
 
 ## Open work

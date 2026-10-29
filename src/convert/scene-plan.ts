@@ -1,7 +1,7 @@
 import { parseFragment } from 'parse5';
 import { attr, childrenOf, isElement, walk as walkElements, type Element, type Node } from './dom.ts';
 import { emitChildren, lit, type Binding } from './tsrx.ts';
-import { layoutOwned, type Frame, type Scene, type SceneNode } from './scenes.ts';
+import { layoutOwned, TYPED, type Frame, type Scene, type SceneNode } from './scenes.ts';
 
 type El = Extract<SceneNode, { tag: string }>;
 type Value = string | number | null;
@@ -23,6 +23,8 @@ export interface SceneData {
 	readonly changes: Readonly<Record<number, readonly (readonly [number, Value])[]>>;
 	/** Per settled state's frame, every entry's value there. */
 	readonly full: Readonly<Record<number, readonly (readonly [number, Value])[]>>;
+	/** The text a listed field was given at capture, which the part replaces with what the visitor typed. */
+	readonly typed?: string;
 }
 
 interface Timeline {
@@ -100,11 +102,12 @@ function renameTo(trees: readonly SceneNode[], target: SceneNode): SceneNode[] {
 	return trees.map(rename);
 }
 
-const runsOf = (n: El): string[] => n.kids.filter((k) => !isEl(k)).map((k) => (k as { text: string }).text);
+// A textarea's text is React's defaultValue, following its value (`.value`): not a run of its own.
+const runsOf = (n: El): string[] => (n.tag === 'textarea' ? [] : n.kids.filter((k) => !isEl(k)).map((k) => (k as { text: string }).text));
 // A subtree's make-up without its values: elements by id, and whether each text run has text.
 function structure(n: SceneNode): string {
 	if (!isEl(n)) return n.text ? 'T' : '';
-	return `${n.id}(${n.kids.map(structure).join(',')})`;
+	return `${n.id}(${n.tag === 'textarea' ? '' : n.kids.map(structure).join(',')})`;
 }
 // Whether `a` can be shown as `b` with some of `b`'s elements hidden and some of its text emptied.
 function within(a: SceneNode, b: SceneNode): boolean {
@@ -151,6 +154,7 @@ const escapeAttr = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;
 export class ScenePlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private readonly names = new Map<Element, string>();
+	private readonly arms = new Map<Element, string[]>();
 	private n = 0;
 	readonly refused: string[] = [];
 	private readonly bound: (el: Element) => boolean;
@@ -162,6 +166,11 @@ export class ScenePlan {
 
 	bind(el: Element): Binding | undefined {
 		return this.bindings.get(el);
+	}
+
+	/** The markup of the arms a demo's uses mount, as HTML: the ports what they show needs (a MessageScroller) are its page's too. */
+	markupOf(region: Element): readonly string[] {
+		return this.arms.get(region) ?? [];
 	}
 
 	/** The state a demo's element declares: part of its identity, so no shared component holds it for two pages. */
@@ -274,7 +283,7 @@ export class ScenePlan {
 					const n = nodeAt(id, f);
 					return isEl(n) ? (n.attrs.find(([k]) => k === a)?.[1] ?? null) : undefined;
 				});
-				if (new Set(at.filter((v) => v !== undefined)).size <= 1) continue;
+				if (new Set(at.filter((v) => v !== undefined)).size <= 1 && !at.some((v) => v?.includes(TYPED))) continue;
 				const i = entry(id, 'a', a);
 				frames.forEach((f, j) => at[j] !== undefined && (values[f]![i] = at[j]!));
 			}
@@ -283,7 +292,8 @@ export class ScenePlan {
 					const n = nodeAt(id, f);
 					return isEl(n) ? (runsOf(n)[r] ?? '') : undefined;
 				});
-				if (new Set(at.filter((v) => v !== undefined)).size <= 1) continue;
+				// What the visitor typed is written by the part even where it never changes.
+				if (new Set(at.filter((v) => v !== undefined)).size <= 1 && !at.some((v) => v?.includes(TYPED))) continue;
 				const i = entry(id, 't', r);
 				const longest = at.reduce<string>((a, v) => (v !== undefined && v.length > a.length ? v : a), '');
 				entries[i]![3] = longest;
@@ -307,12 +317,14 @@ export class ScenePlan {
 			const attrs = own.attrs.filter(([k]) => !k.startsWith('.')).map(([k, v]) => ` ${k}="${escapeAttr(v)}"`).join('');
 			const opened = own.attrs.find(([k]) => k === SCROLL)?.[1];
 			if (opened) openings.set(rep.id, opened);
-			const runs = runsOf(own);
+			// A run its first frame leaves empty still needs its text node for the part to write later frames into.
+			const runs = runsOf(rep).map((t, i) => runsOf(own)[i] || t);
 			let r = 0;
 			const kids = rep.kids.map((k) => (isEl(k) ? html(k, frames) : escapeHtml(runs[r++] ?? ''))).join('');
 			return `<${rep.tag}${attrs} data-mm-sid="${rep.id}"${nodeAt(rep.id, frames[0]!) ? '' : ' hidden'}>${kids}</${rep.tag}>`;
 		};
 		const openings = new Map<number, string>();
+		const shown: string[] = [];
 		const emitScene = (markup: string) =>
 			emitChildren(parseFragment(markup) as unknown as Element, {
 				bind: (el) => {
@@ -324,20 +336,47 @@ export class ScenePlan {
 				},
 			});
 		// The arms node `id` is shown by over `frames` (those it is in): frame 0's own shape, then each largest shape.
+		// Node `id` as every one of `frames` shows some of it: each element any of them holds, in the agreed order, and each
+		// text run with the longest text any gives it. One arm of it shows all those frames, hiding and writing the rest, so a
+		// node that grows by turns (a transcript a reply streams into) is never mounted again between them.
+		const unionOf = (id: number, frames: readonly number[]): SceneNode => {
+			const nodes = frames.map((f) => nodeAt(id, f)).filter((n): n is SceneNode => n !== undefined);
+			if (!isEl(nodes[0])) return nodes.reduce((a, n) => (!isEl(n) && n.text.length > (a as { text: string }).text.length ? n : a), nodes[0]!);
+			const els = nodes as El[];
+			const template = els.reduce((a, n) => (n.kids.length > a.kids.length ? n : a), els[0]!);
+			const kids: SceneNode[] = [...template.kids];
+			const have = new Set(kids.filter(isEl).map((k) => k.id));
+			const agreed = order.get(id) ?? [];
+			for (const [i, kid] of agreed.entries()) {
+				if (have.has(kid)) continue;
+				const first = els.map((n) => n.kids.find((k) => isEl(k) && k.id === kid)).find(Boolean)!;
+				const before = agreed.slice(0, i).reverse().find((k) => have.has(k));
+				const at = before === undefined ? 0 : kids.findIndex((k) => isEl(k) && k.id === before) + 1;
+				kids.splice(at, 0, first);
+				have.add(kid);
+			}
+			let r = 0;
+			const longest = (run: number) => els.reduce((a, n) => {
+				const t = runsOf(n)[run] ?? '';
+				return t.length > a.length ? t : a;
+			}, '');
+			return { ...template, kids: kids.map((k) => (isEl(k) ? unionOf(k.id, frames) : { ...k, text: longest(r++) })) };
+		};
 		const arms = (id: number, frames: readonly number[]): string => {
 			const groups: { rep: SceneNode; frames: number[] }[] = [];
-			if (frames.includes(0)) groups.push({ rep: nodeAt(id, 0)!, frames: [] });
-			const shapes = new Map<string, SceneNode>();
-			for (const f of frames) shapes.set(structure(nodeAt(id, f)!), nodeAt(id, f)!);
-			const all = [...shapes.values()];
-			for (const s of all) if (!all.some((o) => o !== s && within(s, o) && !within(o, s)) && !groups.some((g) => structure(g.rep) === structure(s))) groups.push({ rep: s, frames: [] });
-			for (const f of frames) {
-				const node = nodeAt(id, f)!;
-				(groups.find((g) => structure(g.rep) === structure(node)) ?? groups.find((g) => within(node, g.rep))!).frames.push(f);
-			}
+			// The frames showing it as the page loaded it keep the page's own shape; every other frame shares one arm.
+			const initial = frames.includes(0) ? structure(nodeAt(id, 0)!) : undefined;
+			const own = frames.filter((f) => initial !== undefined && structure(nodeAt(id, f)!) === initial);
+			const rest = frames.filter((f) => !own.includes(f));
+			if (own.length) groups.push({ rep: nodeAt(id, 0)!, frames: own });
+			if (rest.length) groups.push({ rep: unionOf(id, rest), frames: rest });
 			return groups
 				.filter((g) => g.frames.length)
-				.map((g) => `@if (${condition(g.frames, name)}) { <>${emitScene(html(g.rep, g.frames))}</> }`)
+				.map((g) => {
+					const markup = html(g.rep, g.frames);
+					shown.push(markup);
+					return `@if (${condition(g.frames, name)}) { <>${emitScene(markup)}</> }`;
+				})
 				.join('');
 		};
 		const present = (id: number, frames: readonly number[]) => frames.filter((f) => nodeAt(id, f));
@@ -417,14 +456,17 @@ export class ScenePlan {
 					return v !== undefined && values[from]![i] !== v ? [[i, v] as const] : [];
 				});
 			}
-		const data: SceneData = { listed, rest: t.rest, edges: t.edges.map((e) => [e.from, e.control, e.start, e.end, e.times, e.to] as const), entries, changes, full };
+		const fields = t.edges.some((e) => /\|(fill|clear|enter)$/.test(e.control));
+		const data: SceneData = { listed, rest: t.rest, edges: t.edges.map((e) => [e.from, e.control, e.start, e.end, e.times, e.to] as const), entries, changes, full, ...(fields ? { typed: TYPED } : {}) };
 		const own = bindings.get(region);
+		const set = `(frame) => { ${name} = frame; }`;
 		bindings.set(region, {
 			...own,
 			declare: [...(own?.declare ?? []), `let ${name} = state(0);`],
-			extra: [...(own?.extra ?? []), `data-mm-scene={${lit(JSON.stringify(data))}}`, `onClick={(event) => playScene(event, (frame) => { ${name} = frame; })}`],
+			extra: [...(own?.extra ?? []), `data-mm-scene={${lit(JSON.stringify(data))}}`, `onClick={(event) => playScene(event, ${set})}`, ...(fields ? [`onInput={(event) => playScene(event, ${set})}`, `onKeyDown={(event) => playScene(event, ${set})}`] : [])],
 		});
 		this.names.set(region, name);
+		this.arms.set(region, shown);
 		this.n++;
 		return undefined;
 	}
