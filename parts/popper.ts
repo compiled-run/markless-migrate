@@ -110,8 +110,9 @@ export function place(anchor: Anchor, wrapper: HTMLElement, options: PlaceOption
 /** The placement a layer asks for: the captured content's own side and alignment, and the source's offsets. */
 export function optionsOf(layer: HTMLElement, content: Element | null): PlaceOptions {
 	return {
-		side: content?.getAttribute('data-side') ?? 'bottom',
-		align: content?.getAttribute('data-align') ?? 'center',
+		// What the source asked for (convert reads it off the instance); data-side is where it went, after any flip.
+		side: content?.getAttribute('data-mm-side') ?? content?.getAttribute('data-side') ?? 'bottom',
+		align: content?.getAttribute('data-mm-align') ?? content?.getAttribute('data-align') ?? 'center',
 		sideOffset: Number(layer.dataset.mmSideOffset ?? '0'),
 		alignOffset: Number(layer.dataset.mmAlignOffset ?? '0'),
 	};

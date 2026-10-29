@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, watch, type FSWatcher } from 'node:fs';
 import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { prepareDevApp, SITE_DIR } from './app.ts';
@@ -11,8 +11,6 @@ import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, write
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = join(REPO, 'src', 'cli.ts');
-/** Where the dead-controls probe lives until it lands on main: `dev` reads it from this branch when the checkout has none. */
-export const PROBE_REF = 'origin/probe/dead-controls';
 const PROBE_PATH = 'scripts/probe/dead-controls.mjs';
 /** Converter files whose change can change the server (route handlers, prerendered outputs): those rewrite it. */
 const SERVER_SOURCES = /^(endpoints|prerender\/|fumadocs\/)/;
@@ -154,18 +152,9 @@ async function brokenPages(origin: string, routes: readonly string[]): Promise<M
 	return broken;
 }
 
-/** The dead-controls probe: the option's file, this checkout's, or the copy on PROBE_REF. */
+/** The dead-controls probe: the option's file, or this checkout's. */
 async function probeScript(given: string | undefined): Promise<string> {
-	if (given) return resolve(given);
-	const own = join(REPO, PROBE_PATH);
-	if (existsSync(own)) return own;
-	const shown = await run('git', ['show', `${PROBE_REF}:${PROBE_PATH}`], { cwd: REPO });
-	if (shown.code) throw new Error(`no dead-controls probe: ${PROBE_PATH} is not in this checkout and ${PROBE_REF} has none (git fetch origin, or pass --probe <file>)`);
-	// Under the repository's node_modules, so its imports (playwright, pngjs, pixelmatch) resolve.
-	const file = join(REPO, 'node_modules', '.cache', 'markless-migrate', 'dead-controls.mjs');
-	await mkdir(dirname(file), { recursive: true });
-	await writeFile(file, shown.output);
-	return file;
+	return given ? resolve(given) : join(REPO, PROBE_PATH);
 }
 
 export async function dev(options: DevOptions): Promise<number> {

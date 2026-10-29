@@ -7,6 +7,8 @@ export interface InstanceProp {
 	readonly attr?: string;
 	/** `form-value`: the string a form submits for the value, as Base UI serializes it (stringifyAsValue). */
 	readonly as?: 'form-value';
+	/** Written when the instance was given none: the library's default. */
+	readonly fallback?: string;
 }
 
 /** The props a port needs on the elements of one kind it handles, each read from that element's own instance. */
@@ -25,9 +27,14 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/combobox', selector: 'input[role="combobox"][aria-haspopup="listbox"]:not([cmdk-input])', props: [{ name: 'autoHighlight' }], hints: ['aria-haspopup="listbox"'] },
 	{ port: 'base-ui/combobox', selector: '[role="listbox"][data-base-ui-focusable] [role="option"]', props: [{ name: 'value', attr: 'data-mm-value', as: 'form-value' }], hints: ['data-base-ui-focusable', 'role="option"'] },
 	{ port: 'base-ui/menu', selector: '[role="menu"][data-base-ui-focusable] :is([role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"])', props: [{ name: 'closeOnClick' }], hints: ['data-base-ui-focusable', 'role="menu"'] },
+	{ port: 'react-aria/overlay', selector: '[data-rac][data-trigger]', props: [{ name: 'placement' }, { name: 'offset' }, { name: 'crossOffset' }], hints: ['data-rac', 'data-trigger='] },
 	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
 	// Its Positioner's offsets as this instance gave them (an input with an icon addon moves its list by alignOffset).
 	{ port: 'base-ui/combobox', selector: '[data-slot="combobox-content"]', props: [{ name: 'alignOffset' }, { name: 'sideOffset' }], hints: ['data-slot="combobox-content"'], version: 2 },
+	{ port: 'react-aria/overlay', selector: '[role="tooltip"][data-rac][data-placement]', props: [{ name: 'placement' }, { name: 'offset' }, { name: 'crossOffset' }], hints: ['data-rac', 'role="tooltip"'] },
+	// The side and alignment a popup asked for: its data-side and data-align are where it went, after a flip away from an edge.
+	{ port: 'base-ui/popup', selector: '[data-base-ui-portal] > [role="presentation"][data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-base-ui-portal', 'data-side'] },
+	{ port: 'popper', selector: '[data-radix-popper-content-wrapper] > [data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-radix-popper-content-wrapper'] },
 ];
 
 /** Each spec as a mark of its own, so a spec that reads more takes again only the captures holding its hints. */
@@ -91,8 +98,8 @@ export function markInstanceProps({ specs, added }: { readonly specs: readonly I
 						break;
 					}
 			for (const p of spec.props) {
-				if (!found.has(p.name)) continue;
 				const value = found.get(p.name);
+				if (value === undefined && p.fallback !== undefined) el.setAttribute(p.attr ?? kebab(p.name), p.fallback);
 				if (value === undefined || (p.as !== 'form-value' && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')) continue;
 				el.setAttribute(p.attr ?? kebab(p.name), p.as === 'form-value' ? formValue(value, toString) : String(value));
 			}

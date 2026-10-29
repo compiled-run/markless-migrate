@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { animationLag, ChartPlan, spare, spareCounts, template } from '../src/convert/charts.ts';
+import { animationLag, ChartPlan, exactSegments, gridOf, spare, spareCounts, template } from '../src/convert/charts.ts';
 import { attr, body, find, parseDocument, textContent, walk } from '../src/convert/dom.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 
@@ -117,4 +117,27 @@ test('each drawing carries hidden copies of its first tick and grid line, up to 
 	assert.equal(textContent(kids[11]!), 'Apr 1', 'a copy of the first');
 	const grid = find(narrow, (el) => (attr(el, 'class') ?? '').includes('recharts-cartesian-grid-horizontal'))!;
 	assert.equal([...walk(grid)].filter((el) => el.tagName === 'line').length, 8);
+});
+
+test('a category chart\'s tooltip ranges are recharts\': halfway between tick coordinates as it computes them, the ends at the plot\'s edges', () => {
+	const c = [12, 12 + 185.2, 12 + 185.2 * 2, 12 + 185.2 * 3];
+	const axis = { t: 'xAxis' as const, o: 'bottom' as const, box: [12, 504, 556, 30] as const, vb: [0, 0, 580, 534] as const, gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, c, l: ['a', 'b', 'c', 'd'] };
+	// The sweep's boundaries are a quarter pixel off; its states are kept.
+	const segments: [number, number, number][] = [[11.75, 104.75, 0], [104.75, 290, 1], [290, 475.75, 2], [475.75, 568.25, 3]];
+	const variant = { mode: 'x' as const, segments, states: [], points: {}, elements: 0, model: { axes: [axis], layout: 'horizontal' as const } };
+	const exact = exactSegments(variant, [12, 12, 556, 492])!;
+	assert.deepEqual(exact.map((s) => s[2]), [0, 1, 2, 3]);
+	assert.equal(exact[0]![0], 12);
+	assert.equal(exact[2]![1], (c[2]! + c[3]!) / 2, 'the float recharts compares the pointer with, which is not 475');
+	assert.notEqual(exact[2]![1], 475);
+	assert.equal(exact[3]![1], 568);
+	const reversed = exactSegments({ ...variant, segments: segments.map(([a, b, k]) => [a, b, 3 - k] as [number, number, number]), model: { axes: [{ ...axis, c: [...c].reverse() }], layout: 'horizontal' as const } }, [12, 12, 556, 492])!;
+	assert.deepEqual(reversed.map((s) => [s[0], s[2]]), [[12, 3], [(c[1]! + c[0]!) / 2, 2], [(c[2]! + c[1]!) / 2, 1], [(c[3]! + c[2]!) / 2, 0]], 'a reversed axis: recharts searches its ticks left to right');
+});
+
+test('a horizontal grid\'s possible lines are read off the tallest drawing as fractions up the plot, where no number axis is drawn', () => {
+	const svg = parseDocument('<body><svg><g class="recharts-cartesian-grid-horizontal"><line y1="170"></line><line y1="127.5"></line><line y1="85"></line><line y1="42.5"></line><line y1="0"></line></g></svg></body>');
+	const tree = find(body(svg), (el) => el.tagName === 'svg')!;
+	assert.deepEqual(gridOf(tree, [10, 0, 380, 170], { axes: [] }), [0, 0.25, 0.5, 0.75, 1]);
+	assert.equal(gridOf(tree, [10, 0, 380, 170], { axes: [{ t: 'yAxis', o: 'left', box: [0, 0, 0, 0], vb: [0, 0, 0, 0], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, num: true, c: [], l: [] }] }), undefined, 'a drawn number axis has its own ticks');
 });
