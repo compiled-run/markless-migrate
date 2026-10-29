@@ -128,6 +128,8 @@ async function openTrigger(page: Page, path: readonly number[]): Promise<boolean
  * Opens the control again for the next option: on the same document when the choice left it as the fresh load had it (a
  * client router's move taken back first), else on a fresh load. Choosing on a page put back records what a fresh one would.
  */
+const backFails = new WeakSet<Page>();
+
 async function reopenOn(page: Page, origin: string, route: string, path: readonly number[], before: string, listbox: boolean): Promise<boolean> {
 	const fresh = loaded.get(page);
 	const putBack = async () => {
@@ -138,12 +140,15 @@ async function reopenOn(page: Page, origin: string, route: string, path: readonl
 		return page.url() === before && (await stateOf(page).catch(() => undefined)) === fresh!.state;
 	};
 	const same = fresh && (await page.evaluate((doc) => (window as unknown as { __mmDoc?: string }).__mmDoc === doc, fresh.doc).catch(() => false));
-	if (fresh && same) {
-		if (page.url() !== before) {
+	const moved = page.url() !== before;
+	// A router whose page differs after Back (Next.js re-renders it) is not taken back again on this page.
+	if (fresh && same && !(moved && backFails.has(page))) {
+		if (moved) {
 			await page.evaluate(() => history.back()).catch(() => {});
 			await page.waitForURL(before, { timeout: 3000 }).catch(() => {});
 		}
 		if (await putBack()) return openTrigger(page, path);
+		if (moved) backFails.add(page);
 		// A select keeps the value chosen: choosing the one it loaded with puts it back.
 		if (listbox && fresh.selected !== undefined && (await openTrigger(page, path))) {
 			await page.locator(OPTION).filter({ hasText: fresh.selected }).first().click({ timeout: 2000 }).catch(() => {});
