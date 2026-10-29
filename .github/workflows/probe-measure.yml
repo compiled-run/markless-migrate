@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out before
-          git archive "$(git rev-parse "origin/$BEFORE" 2>/dev/null || git rev-parse "$BEFORE")" scripts/probe | tar -x -C before
+          git archive "$(git rev-parse "origin/$BEFORE" 2>/dev/null || git rev-parse "$BEFORE")" scripts/probe src | tar -x -C before
           # shellcheck disable=SC2086
           node -e 'console.log(JSON.stringify({ routes: process.argv.slice(1) }))' $ROUTES > out/routes.json
           # Each page served once before either ref runs, so neither pays the servers' first render.
