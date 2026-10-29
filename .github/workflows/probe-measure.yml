@@ -20,6 +20,10 @@ on:
         description: Routes one runner probes as the scan workflow runs them (4 at a time), timed for both refs; empty skips it
         required: false
         default: /docs/components/base/alert /docs/components/radix/button /docs/components/radix/dialog /charts/area /blocks /docs/installation /colors /docs/components/radix/select
+      machine_concurrency:
+        description: Routes at once for the runner's worth, after
+        required: false
+        default: '4'
       build:
         description: URL of the port's build (a .tar.gz of its .vercel/output or its node-server .output)
         required: true
@@ -123,6 +127,7 @@ jobs:
           OLD: http://localhost:4000
           NEW: http://127.0.0.1:3000
           ENGINE: ${{ matrix.engine }}
+          MACHINE_CONCURRENCY: ${{ inputs.machine_concurrency || '4' }}
           MACHINE: ${{ inputs.machine || '/docs/components/base/alert /docs/components/radix/button /docs/components/radix/dialog /charts/area /blocks /docs/installation /colors /docs/components/radix/select' }}
         run: |
           set -euo pipefail
@@ -135,7 +140,7 @@ jobs:
           wait
           echo "$(( $(date +%s) - t0 ))" > "out/machine-before-$ENGINE.seconds"
           t0=$(date +%s)
-          CONCURRENCY=4 node scripts/probe/dead-controls.mjs out/machine.json "out/machine-after-$ENGINE.jsonl" > out/machine-after.log 2>&1
+          CONCURRENCY="$MACHINE_CONCURRENCY" node scripts/probe/dead-controls.mjs out/machine.json "out/machine-after-$ENGINE.jsonl" > out/machine-after.log 2>&1
           echo "$(( $(date +%s) - t0 ))" > "out/machine-after-$ENGINE.seconds"
       - name: Compare
         env:
