@@ -91,7 +91,8 @@ jobs:
         env:
           BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz' }}
         run: |
-          bash "deploy/$SITE/ci-serve.sh" old
+          # Three copies of the old server: one answering every cold load at once was what the probe waited on.
+          OLD_WORKERS=3 bash "deploy/$SITE/ci-serve.sh" old
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       - name: Probe each ref
         env:
