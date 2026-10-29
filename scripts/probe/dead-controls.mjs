@@ -358,7 +358,7 @@ async function openSlot(side, width, route) {
 const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
 
 // Both sides' pages for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names, the
-// last repeating) start loading once this use's original is in.
+// last repeating) start loading too.
 const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? 2));
 async function fresh(width = WIDTH, upcoming = [width]) {
 	for (const side of ['old', 'new']) closeSlot(current[side]);
@@ -378,14 +378,21 @@ async function fresh(width = WIDTH, upcoming = [width]) {
 		errors[side] = slot.errors;
 	}
 	nextWidths = upcoming;
+	await prepareNext();
 }
 let nextWidths = [WIDTH];
-function prepareNext() {
+// The next uses' pages are opened here, before this use's page is brought to the front: a page opened while a use runs
+// can take the focus from it (WebKit then refuses the use's clipboard write). Their loading goes on in the background.
+async function prepareNext() {
 	if (!currentRoute) return;
+	const opened = [];
 	for (let k = prepared.length; k < PRELOAD; k++) {
 		const width = nextWidths[k] ?? nextWidths.at(-1);
-		prepared.push({ width, route: currentRoute, old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) });
+		const pair = { width, route: currentRoute, old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) };
+		prepared.push(pair);
+		opened.push(pair.old, pair.new);
 	}
+	await Promise.all(opened.map((slot) => slot.catch(() => {})));
 }
 const layoutDone = new Set();
 const keyDone = new Set();
@@ -410,7 +417,6 @@ async function load(side, route) {
 		await arrive(p, nets[side]);
 	}
 	loads.ms += Date.now() - t0;
-	if (side === 'old') prepareNext();
 }
 
 // A loaded page is in use once its network rests, what its scripts do after load settles and its inner scrollers hold.
