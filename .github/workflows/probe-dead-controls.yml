@@ -1,6 +1,8 @@
 name: probe dead controls
 # Dispatched only. Each runner serves both sides itself, as check.yml does: the old site built from its source (cached
 # between runs) and the port from a build archive, so a scan sends no request to a deployment.
+# Planned (the default): every route gets its load-and-render pass, a plan then gives each distinct control (by what it is
+# on both sides) to one or two routes, the trials run there, and the join reports each finding on every route of its group.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +15,15 @@ on:
         required: true
         default: deploy/shadcn-ui/check-targets.json
       costs:
-        description: The run whose per-route times pack the shards (default the last successful run; none deals routes in turn)
+        description: The unplanned run whose per-route times pack the shards (default the last successful run; none deals routes in turn)
+        required: false
+        default: ''
+      plan:
+        description: Try each distinct control on one or two routes ('false' tries every route's own controls, as before)
+        required: false
+        default: 'true'
+      seed:
+        description: Which routes of each group are tried (empty is the run's date, so coverage rotates day to day)
         required: false
         default: ''
       reuse:
@@ -77,13 +87,93 @@ jobs:
             !deploy/${{ env.SITE }}/old/**/.next/cache
           key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
 
-  probe:
+  # Every route's load-and-render pass, writing its controls for the plan.
+  load:
     needs: old
+    if: inputs.plan != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        engine: [chromium, webkit]
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.engine }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          fail-on-cache-miss: true
+      - name: Serve both sides
+        env:
+          BUILD: ${{ inputs.build }}
+        run: |
+          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
+          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+      - name: Load and render every route
+        env:
+          OLD: http://localhost:4000
+          NEW: http://127.0.0.1:3000
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          mkdir -p out
+          CONCURRENCY=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 2) PHASE=load ENGINE=${{ matrix.engine }} node scripts/probe/dead-controls.mjs "$TARGETS" out/load-${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 5 > out/log-load.txt 2>&1 || { tail -n 20 out/log-load.txt; exit 1; }
+          tail -n 3 out/log-load.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dead-controls-load-${{ matrix.engine }}-${{ matrix.shard }}
+          path: out
+          retention-days: 30
+
+  plan:
+    needs: load
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dead-controls-load-${{ matrix.engine }}-*
+          path: load
+      - name: Plan
+        env:
+          SEED: ${{ inputs.seed }}
+        run: |
+          if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
+          mkdir -p plan
+          node scripts/probe/plan.ts build load plan/plan-${{ matrix.engine }}.json ${SEED:+"$SEED"} | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dead-controls-plan-${{ matrix.engine }}
+          path: plan
+          retention-days: 30
+
+  probe:
+    needs: [old, plan]
+    if: always() && needs.old.result == 'success' && (inputs.plan == 'false' || needs.plan.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 8
       matrix:
         engine: [chromium, webkit]
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -109,8 +199,14 @@ jobs:
           # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
           OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
-      # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
+      # A planned run packs its shards by the trials the plan gives each route; an unplanned one by what each cost the last run.
+      - uses: actions/download-artifact@v4
+        if: inputs.plan != 'false'
+        with:
+          name: dead-controls-plan-${{ matrix.engine }}
+          path: plan
       - name: The last run's per-route times
+        if: inputs.plan == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN: ${{ needs.old.outputs.costs }}
@@ -134,6 +230,7 @@ jobs:
           NEW: http://127.0.0.1:3000
           TARGETS: ${{ inputs.targets }}
           REUSE_ON: ${{ inputs.reuse != 'false' }}
+          PLAN_FILE: ${{ inputs.plan != 'false' && format('plan/plan-{0}.json', matrix.engine) || '' }}
         run: |
           mkdir -p out/strips
           if [ "$REUSE_ON" = true ]; then
@@ -144,7 +241,8 @@ jobs:
           # One process per runner from one longest-first queue. Chromium probes two routes at a time, each with its own browser:
           # a 4-vCPU runner is busy at two. WebKit probes one: at two it reported 10 to 50 differences the same routes alone do not.
           if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8 CONCURRENCY=1; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24 CONCURRENCY=2; fi
-          COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
+          if [ -n "$PLAN_FILE" ]; then export PLAN="$PLAN_FILE"; else export COSTS="$RUNNER_TEMP/costs"; fi
+          ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
           tail -n 5 out/log.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -185,3 +283,37 @@ jobs:
         with:
           path: ${{ runner.temp }}/reuse
           key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
+
+  # One row per route: its load-pass findings and every finding its groups' trials made, wherever they ran.
+  join:
+    needs: probe
+    if: always() && inputs.plan != 'false' && needs.probe.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dead-controls-*${{ matrix.engine }}-*
+          path: run
+      - uses: actions/download-artifact@v4
+        with:
+          name: dead-controls-plan-${{ matrix.engine }}
+          path: plan
+      - name: Join
+        run: |
+          mkdir -p joined
+          node scripts/probe/plan.ts join plan/plan-${{ matrix.engine }}.json run joined/${{ matrix.engine }}.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dead-controls-joined-${{ matrix.engine }}
+          path: joined
+          retention-days: 30

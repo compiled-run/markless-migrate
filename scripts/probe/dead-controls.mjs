@@ -38,7 +38,13 @@ const routes = (Array.isArray(all) ? all : Array.isArray(all.routes) ? all.route
 const shard = Number(shardArg ?? 0), count = Number(countArg ?? 1);
 const workers = Number(process.env.WORKERS ?? 1), worker = Number(process.env.WORKER ?? 0);
 const jsonl = (dir) => readdirSync(dir, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).flatMap((f) => readFileSync(join(dir, String(f)), 'utf8').split('\n'));
-const costs = process.env.COSTS ? costsFrom(jsonl(process.env.COSTS), process.env.ENGINE ?? 'chromium') : undefined;
+// PHASE=load runs only each route's load-and-render pass and writes its controls for plan.ts; PLAN=<plan.json> then uses
+// each control only on the route the plan gives it, in place of this process's own once-per-worker sets below.
+const PHASE = process.env.PHASE ?? '';
+const PLAN = process.env.PLAN ? JSON.parse(readFileSync(process.env.PLAN, 'utf8')) : undefined;
+// A planned run's routes cost what the plan gives them, each trial a fresh load of both sides.
+const planned = PLAN ? new Map(Object.entries(PLAN.routes).map(([r, p]) => [r, 1 + p.use.length + p.keyed.length * KEYS_PER_CONTROL + p.typed.length * 6])) : undefined;
+const costs = planned ?? (process.env.COSTS ? costsFrom(jsonl(process.env.COSTS), process.env.ENGINE ?? 'chromium') : undefined);
 const mine = costs?.size ? packByCost(routes, costs, count * workers)[shard * workers + worker] ?? [] : routes.filter((_, i) => i % count === shard).filter((_, i) => i % workers === worker);
 
 // In the page: the visible controls, keyed by role, name and their index among namesakes.
@@ -52,9 +58,20 @@ function listControls() {
 		return (n || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? [...(el.labels ?? [])].map((l) => l.textContent).join(' ') : el.textContent) || el.getAttribute('placeholder') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
 	};
 	const LAYOUT = 'header, nav, aside, footer, [role=banner], [role=navigation], [role=complementary], [role=contentinfo]';
+	// What the control is, for the site-wide plan (plan.ts): element, slot, classes, data and ARIA attributes, slot ancestry, own and controlled subtrees.
+	const shape = (root) => { let x = 0; const w = document.createTreeWalker(root, 1); for (let n = w.currentNode, i = 0; n && i < 4000; n = w.nextNode(), i++) for (const ch of `${n.localName}.${n.getAttribute('data-slot') ?? ''}.${n.getAttribute('class') ?? ''}/`) x = (x * 31 + ch.charCodeAt(0)) | 0; return (x >>> 0).toString(36); };
+	const sigOf = (el) => {
+		const attrs = (prefix, skip) => [...el.attributes].filter((a) => a.name.startsWith(prefix) && !skip.test(a.name)).map((a) => `${a.name}=${a.value}`).sort().join('|');
+		const chain = [];
+		for (let at = el.parentElement; at; at = at.parentElement) if (at.hasAttribute('data-slot')) chain.unshift(at.getAttribute('data-slot'));
+		const target = el.getAttribute('aria-controls') ? document.getElementById(el.getAttribute('aria-controls')) : null;
+		const href = el.localName === 'a' ? (el.getAttribute('href') ?? '') : '';
+		return { tag: el.localName, type: el.getAttribute('type') ?? '', slot: el.getAttribute('data-slot') ?? '', cls: [...el.classList].sort().join(' '), data: attrs('data-', /^data-dc-/), aria: attrs('aria-', /^aria-(controls|labelledby|describedby|owns|activedescendant|details|errormessage|flowto)$/), chain: chain.join('>'), href: href.startsWith('#') ? href : href ? 'url' : '', own: shape(el), target: target ? `${target.localName}.${target.getAttribute('role') ?? ''}.${target.getAttribute('data-slot') ?? ''}:${shape(target)}` : '' };
+	};
 	const seen = new Map();
 	const out = [];
 	const frames = new Map();
+	const frameShapes = new Map();
 	for (const el of document.querySelectorAll(SEL)) {
 		if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || el.closest('[hidden], [inert], [aria-hidden=true]')) continue;
 		if (el.matches(':disabled, [aria-disabled=true]')) continue;
@@ -77,7 +94,7 @@ function listControls() {
 		const slot = el.closest('[data-slot]')?.getAttribute('data-slot') ?? '';
 		const pr = el.parentElement?.getBoundingClientRect() ?? r;
 		const hint = [el.getAttribute('placeholder'), el.getAttribute('name'), el.id, el.getAttribute('inputmode'), el.getAttribute('aria-label')].filter(Boolean).join(' ');
-		out.push({ popup: el.hasAttribute('aria-haspopup') || el.hasAttribute('aria-expanded'), hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: frame.matches('main') || frame === document.body ? undefined : { w: Math.round(f.width), h: Math.round(f.height) }, frameId: frames.get(frame), key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, pageY: Math.round(r.y + scrollY), template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')) });
+		out.push({ popup: el.hasAttribute('aria-haspopup') || el.hasAttribute('aria-expanded'), hint, parent: { w: Math.round(pr.width), h: Math.round(pr.height) }, frameBox: frame.matches('main') || frame === document.body ? undefined : { w: Math.round(f.width), h: Math.round(f.height) }, frameId: frames.get(frame), key: `${role} "${name}"${nth ? ` #${nth + 1}` : ''}`, role, name, nth, layout: Boolean(el.closest(LAYOUT)), leaves, box: { x: Math.round(r.x - f.x), y: Math.round(r.y - f.y), w: Math.round(r.width), h: Math.round(r.height) }, pageY: Math.round(r.y + scrollY), template: `${role}|${slot}`, type: el.type ?? '', options: el.localName === 'select' ? [...el.options].map((o) => o.value) : undefined, inDialog: Boolean(el.closest('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')), sig: { ...sigOf(el), frame: frameShapes.get(frame) ?? frameShapes.set(frame, shape(frame)).get(frame) } });
 	}
 	return out;
 }
@@ -863,8 +880,12 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
 		let controls = [];
-		for (const [i, width] of STATIC_WIDTHS.entries()) {
-			await fresh(width, [...STATIC_WIDTHS.slice(i + 1), WIDTH]);
+		let listed;
+		const trials = PLAN?.routes[route];
+		if (PLAN) controls = trials?.use ?? [];
+		const widths = PLAN ? [] : STATIC_WIDTHS;
+		for (const [i, width] of widths.entries()) {
+			await fresh(width, [...widths.slice(i + 1), ...(PHASE === 'load' ? [] : [WIDTH])]);
 			await load('old', route);
 			await resetScrollers(pages.old);
 			const olds = await pages.old.evaluate(listControls);
@@ -896,6 +917,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 				drift = best.pageY - c.pageY;
 				portByKey.set(c.key, best);
 			}
+			if (width === WIDTH) listed = controls.map((c) => ({ ...c, port: portByKey.has(c.key) ? { key: portByKey.get(c.key).key, sig: portByKey.get(c.key).sig } : undefined }));
 			let boxes = 0, missing = 0;
 			const containers = new Set();
 			// A control moved only by what moved above it in its frame is no finding of its own: only where the shift changes.
@@ -921,21 +943,27 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 				}
 			}
 		}
+		if (PHASE === 'load' || (PLAN && !trials?.use?.length && !trials?.keyed?.length && !trials?.typed?.length)) {
+			appendFileSync(out, JSON.stringify({ route, engine: ENGINE, phase: PLAN ? 'plan' : 'load', tried, ms: Date.now() - started, motionMs, findings, controls: listed ?? [] }) + '\n');
+			console.log(PLAN ? `${route}: nothing planned here` : `${route}: listed ${listed?.length ?? 0} controls in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
+			continue;
+		}
 		const popups = [];
 		await fresh();
 		ambient.old = await measureAmbient('old', route);
 		ambient.new = await measureAmbient('new', route);
 		if (process.env.DEBUG) console.log('ambient', [...ambient.old], [...ambient.new]);
 		const perName = new Map();
-		const queue = controls
+		const queue = (PLAN ? controls : controls
 			.filter((c) => !(c.layout && layoutDone.has(c.key)))
-			.filter((c) => { const n = (perName.get(`${c.role}|${c.name}`) ?? 0) + 1; perName.set(`${c.role}|${c.name}`, n); return n <= 2; })
+			.filter((c) => { const n = (perName.get(`${c.role}|${c.name}`) ?? 0) + 1; perName.set(`${c.role}|${c.name}`, n); return n <= 2; }))
 			.map((c) => ({ prefix: [], control: c }));
 		for (const c of controls) if (c.layout) layoutDone.add(c.key);
 		const done = new Set();
 		const deadIds = new Map();
 		const nestedInputs = [];
-		while (queue.length && tried < MAX_ACTIONS) {
+		// A planned control is used even past the cap: the plan already spread its group's use to the route with most room.
+		while (queue.length && (tried < MAX_ACTIONS || (PLAN && queue[0].prefix.length === 0))) {
 			const { prefix, control } = queue.shift();
 			const id = [...prefix.map((s) => s.key), control.key].join(' > ');
 			if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
@@ -945,7 +973,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			const blockedBy = [...deadIds.keys()].find((d) => id.startsWith(`${d} > `));
 			if (blockedBy) { deadIds.get(blockedBy).behind++; continue; }
 			tried++;
-			const film = ENGINE === 'chromium' && !motionTemplates.has(control.template);
+			const film = ENGINE === 'chromium' && (prefix.length === 0 && PLAN ? Boolean(control.film) : !motionTemplates.has(control.template));
 			const failed = (e) => ({ failed: e.message.split('\n')[0] });
 			const useOld = (withFilm) => use('old', route, prefix, control, withFilm).catch(failed);
 			// A filmed use is never kept: its frames are its finding.
@@ -992,7 +1020,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			if (old.close && port.close) motionFinding(findings, base, old.close.motion, port.close.motion, 'close-', `${tried}-close`);
 			// What the use revealed (a dialog's select, a menu's items, a panel an intro uncovers) is used too, up to two levels down.
 			if (prefix.length < 2 && old.opened) {
-				const before = new Set(controls.map((c) => c.key));
+				const before = new Set(PLAN ? (trials?.keys ?? []) : controls.map((c) => c.key));
 				const names = new Map();
 				let added = 0;
 				for (const c of old.opened) {
@@ -1007,14 +1035,14 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 		// Inputs: realistic values typed into each text, date, number or search field (and those a use revealed), then Enter and a blur.
 		let inputTrials = 0;
 		const inputTemplates = new Map();
-		for (const { prefix, control } of [...controls.filter((c) => !c.layout && isInput(c)).map((c) => ({ prefix: [], control: c })), ...nestedInputs]) {
+		for (const { prefix, control } of [...(PLAN ? (trials?.typed ?? []) : controls.filter((c) => !c.layout && isInput(c))).map((c) => ({ prefix: [], control: c })), ...nestedInputs]) {
 			const kind = inputKind(control);
 			const seenKind = `${control.template}|${kind}`;
 			const n = (inputTemplates.get(seenKind) ?? 0) + 1;
 			inputTemplates.set(seenKind, n);
-			if (n > (kind === 'date' ? 3 : 1)) continue;
+			if (!(PLAN && prefix.length === 0) && n > (kind === 'date' ? 3 : 1)) continue;
 			for (const value of INPUT_VALUES[kind]) {
-				if (inputTrials >= INPUT_MAX) break;
+				if (inputTrials >= INPUT_MAX && !(PLAN && prefix.length === 0)) break;
 				const id = `${[...prefix.map((s) => s.key), control.key].join(' > ')} <- "${value}"`;
 				if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
 				inputTrials++;
@@ -1033,13 +1061,13 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 		const keyTemplates = new Set();
 		let keyTrials = 0;
 		const rank = (c) => (c.layout ? 2 : c.role === 'link' ? 1 : 0);
-		for (const control of [...controls].sort((a, b) => rank(a) - rank(b))) {
-			if (keyTrials >= KEY_MAX) break;
-			if ((control.layout && keyDone.has(control.key)) || keyTemplates.has(control.template)) continue;
+		for (const control of PLAN ? (trials?.keyed ?? []) : [...controls].sort((a, b) => rank(a) - rank(b))) {
+			if (keyTrials >= KEY_MAX && !PLAN) break;
+			if (!PLAN && ((control.layout && keyDone.has(control.key)) || keyTemplates.has(control.template))) continue;
 			keyTemplates.add(control.template);
 			if (control.layout) keyDone.add(control.key);
 			for (const keys of keySet(control).slice(0, KEYS_PER_CONTROL)) {
-				if (keyTrials >= KEY_MAX) break;
+				if (keyTrials >= KEY_MAX && !PLAN) break;
 				const id = `${control.key} + ${keys.join(' ')}`;
 				if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
 				keyTrials++;
