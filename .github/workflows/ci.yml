@@ -86,6 +86,7 @@ jobs:
           - { suite: quick, files: convert-compiles dev-builds markless-site proxy waste responsiveness nav-parity }
           - { suite: pages, files: motion page-load radix-dialog-port embeds }
           - { suite: networks, files: slow-network late-fonts, browsers: chromium firefox webkit }
+          - { suite: shadcn, files: shadcn-typeset, browsers: chromium webkit }
           - { suite: parity, files: control-parity, browsers: chromium webkit }
           - { suite: next-app, shard: 1/6 }
           - { suite: next-app, shard: 2/6 }
