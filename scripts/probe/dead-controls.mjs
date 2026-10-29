@@ -359,7 +359,9 @@ const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {})
 
 // Both sides' pages for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names, the
 // last repeating) start loading too.
-const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? 2));
+// Not in WebKit: with other pages loading beside the one in use, the port missed answers it gives alone (measured: 4 to 7
+// dead controls on 2 routes that a probe without them never reports).
+const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? (ENGINE === 'webkit' ? 0 : 2)));
 async function fresh(width = WIDTH, upcoming = [width]) {
 	for (const side of ['old', 'new']) closeSlot(current[side]);
 	let pair = prepared.shift();
@@ -383,6 +385,11 @@ async function fresh(width = WIDTH, upcoming = [width]) {
 let nextWidths = [WIDTH];
 // The next uses' pages are opened here, before this use's page is brought to the front: a page opened while a use runs
 // can take the focus from it (WebKit then refuses the use's clipboard write). Their loading goes on in the background.
+// A film's frame gaps are its finding: no page loads beside it to take the CPU from its frames.
+async function preloadsDone() {
+	await Promise.all(prepared.flatMap((pair) => [pair.old, pair.new]).map((slot) => slot.then((s) => s.loading).catch(() => {})));
+}
+
 async function prepareNext() {
 	if (!currentRoute) return;
 	const opened = [];
@@ -534,6 +541,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	try {
 		if (film) {
 			const t0 = Date.now();
+			await preloadsDone();
 			film_ = await filmed(side, () => act(p, control));
 			motionMs += Date.now() - t0;
 		} else await act(p, control);
