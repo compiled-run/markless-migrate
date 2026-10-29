@@ -129,7 +129,8 @@ jobs:
           env PROFILE=1 $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
           # The same routes again, side by side on one browser: the machine's time for both, against the sum of each alone.
           t0=$(date +%s)
-          CONCURRENCY=2 node scripts/probe/dead-controls.mjs out/routes.json "out/together-$ENGINE.jsonl" | tee "out/together-$ENGINE.log"
+          # shellcheck disable=SC2086
+          env CONCURRENCY=2 $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/together-$ENGINE.jsonl" | tee "out/together-$ENGINE.log"
           echo "$(( $(date +%s) - t0 ))" > "out/together-$ENGINE.seconds"
       - name: A runner's worth, as the scan runs it
         if: inputs.machine != '' || github.event_name == 'push'
