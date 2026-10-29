@@ -2,7 +2,7 @@ import type { Part } from '../parts/index.ts';
 import { markSwitched, switchedFor, watchSystemTheme } from '../parts/next-themes.ts';
 import { THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
-import { clipboardFor } from '../parts/reveal.ts';
+import { clipboardFor, copiedLabelFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
 import { show } from '../parts/base-ui/dialog.ts';
@@ -20,7 +20,7 @@ const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isC
 const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10', points: '5 12 10 17 20 7' };
 const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5', points: '20 6 9 17 4 12' };
 type Saved = { cls: string | null; shape: (string | null)[] };
-const copied = new WeakMap<Element, { timer: number; saved: Saved }>();
+const copied = new WeakMap<Element, { timer: number; saved: Saved; label: string | null }>();
 
 // The check is drawn by the icon's first path, or its first polyline (lucide's Terminal has no path); the rest are hidden meanwhile.
 const shapeOf = (svg: SVGElement) => svg.querySelector('path') ?? svg.querySelector('polyline');
@@ -53,7 +53,8 @@ function legacyCopy(value: string): boolean {
 	area.style.position = 'fixed';
 	area.style.opacity = '0';
 	area.style.pointerEvents = 'none';
-	// Outside <body>, the page Markless renders: the textarea is gone again within this call.
+	// Outside <body>, the page Markless renders: the textarea is gone again within this call, and focus goes back.
+	const had = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	document.documentElement.appendChild(area);
 	area.focus();
 	area.select();
@@ -63,6 +64,7 @@ function legacyCopy(value: string): boolean {
 		ok = document.execCommand('copy');
 	} catch {}
 	document.documentElement.removeChild(area);
+	had?.focus({ preventScroll: true });
 	return ok;
 }
 
@@ -97,7 +99,7 @@ function valueFor(button: Element): string {
 }
 
 // registry/bases/*/ui/code-block.tsx's CodeBlockCopyButton: aria-label "Copied" and data-copied while it shows the check.
-function showCopied(button: HTMLElement): void {
+function showCopied(button: HTMLElement, label?: string): void {
 	const svg = button.querySelector('svg');
 	if (!svg) return;
 	const was = copied.get(button);
@@ -107,16 +109,18 @@ function showCopied(button: HTMLElement): void {
 	const codeBlock = button.dataset.slot === 'code-block-copy-button';
 	const marks = button.hasAttribute('data-copied') || codeBlock;
 	if (marks) button.setAttribute('data-copied', 'true');
-	if (codeBlock) button.setAttribute('aria-label', 'Copied');
+	// A control whose label follows the copy (CodeBlockCopyButton, a message's Copy action): the one the old page showed.
+	const own = was?.label ?? button.getAttribute('aria-label');
+	const shown = label ?? (codeBlock ? 'Copied' : undefined);
+	if (shown !== undefined) button.setAttribute('aria-label', shown);
 	const timer = window.setTimeout(() => {
 		setIcon(svg, saved, false);
-		if (codeBlock) {
-			button.removeAttribute('data-copied');
-			button.setAttribute('aria-label', 'Copy');
-		} else if (marks) button.setAttribute('data-copied', 'false');
+		if (codeBlock) button.removeAttribute('data-copied');
+		else if (marks) button.setAttribute('data-copied', 'false');
+		if (shown !== undefined && own !== null) button.setAttribute('aria-label', own);
 		copied.delete(button);
 	}, 2000);
-	copied.set(button, { timer, saved });
+	copied.set(button, { timer, saved, label: own });
 }
 
 const modeSwitcher: Part = {
@@ -174,7 +178,7 @@ const copyPage: Part = {
 		const button = target.closest<HTMLElement>('button');
 		const text = button ? clipboardFor(button) : undefined;
 		if (!button || text === undefined) return false;
-		void copy(text).then((ok) => ok && showCopied(button));
+		void copy(text).then((ok) => ok && showCopied(button, copiedLabelFor(button)));
 		return true;
 	},
 };

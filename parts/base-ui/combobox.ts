@@ -128,7 +128,7 @@ function press(input: HTMLElement, on: boolean): void {
 }
 
 function openBox(button: HTMLElement): void {
-	const p = openPopup(button, { popupSelector: '[data-slot="combobox-content"]', onDismiss: (x) => close(x) });
+	const p = openPopup(button, { popupSelector: '[data-slot="combobox-content"]', fallbackAxisSide: 'none', onDismiss: (x) => close(x) });
 	if (!p) return;
 	button.setAttribute('aria-controls', p.popup.id);
 	button.setAttribute('data-popup-side', p.popup.getAttribute('data-side') ?? 'bottom');
@@ -191,7 +191,7 @@ function open(input: HTMLInputElement, typed = false): Popup | undefined {
 	const existing = popupFor(input);
 	if (existing) return existing;
 	// shadcn hands a combobox with chips its chips as the anchor (data-chips on the content); else Base UI's is the input.
-	const p = openPopup(input, { popupSelector: '[data-slot="combobox-content"], [role="listbox"]', outsidePress: false, onDismiss: (x) => close(x), anchorOf: (popup) => (popup.getAttribute('data-chips') === 'true' ? input.closest('[data-slot="combobox-chips"]') : undefined) });
+	const p = openPopup(input, { popupSelector: '[data-slot="combobox-content"], [role="listbox"]', outsidePress: false, fallbackAxisSide: 'none', onDismiss: (x) => close(x), anchorOf: (popup) => (popup.getAttribute('data-chips') === 'true' ? input.closest('[data-slot="combobox-chips"]') : undefined) });
 	if (!p) return undefined;
 	const list = p.popup.querySelector<HTMLElement>('[role="listbox"]') ?? p.popup;
 	if (list.id) input.setAttribute('aria-controls', list.id);
