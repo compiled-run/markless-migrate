@@ -1,12 +1,18 @@
 import { markless } from '@markless/core/vite';
 import { router } from '@markless/router/vite';
 import { defineConfig } from 'vite-plus';
-
-// The three pages are the same for every visitor, so the CDN keeps each one after its first render until the next deploy.
-// (Nitro's `prerender: true` renders every Markless page as a 404 at build time in 0.5.0.)
-const pages = ['/', '/docs', '/docs/installation'];
+import { migrateCache } from './migrate-cache.ts';
+import aliases from './lib/route-aliases.json' with { type: 'json' };
 
 export default defineConfig({
-	nitro: { routeRules: Object.fromEntries(pages.map((path) => [path, { isr: true }])) },
-	plugins: [markless(), router()],
+	nitro: {
+		// Served compressed, as the old site's CDN serves its files.
+		compressPublicAssets: { gzip: true, brotli: true },
+		routeRules: {
+			...Object.fromEntries(Object.entries(aliases).map(([path, file]) => [path, { proxy: { to: file } }])),
+			// Nitro answers /api/** itself with a plain-text 404; the old site's not-found page is served there instead.
+			'/api/**': { proxy: { to: '/__not-found/api/**' } },
+		},
+	},
+	plugins: [migrateCache(), markless(), router()],
 });

@@ -44,8 +44,30 @@ async function old(): Promise<void> {
 	);
 }
 
+// The new app is built from the old site's sources by its importer (pages, head data, and the files it copies),
+// then by Markless.
 async function next(): Promise<void> {
+	run(process.execPath, ['tooling/import.mjs'], app, { DOCUSAURUS_WEBSITE: website });
+	// The caching plan (caching.json here, from cache plan) goes into the app before every build.
+	await mkdir(join(app, '.migrate'), { recursive: true });
+	await cp(join(root, 'caching.json'), join(app, '.migrate/caching.json'));
+	run(process.execPath, [join(root, '../../src/cli.ts'), 'cache', 'apply'], app);
 	run('npm', ['run', 'build'], app, { NITRO_PRESET: 'vercel' });
+	// The old host's own rule for the site's static HTML files, `/x` serves `x.html` (or `x/index.html`), one route per file: a
+	// catch-all `/$1.html` rewrite runs before Nitro's ISR routes and sends every page past them to the uncached function.
+	const configFile = join(app, '.vercel/output/config.json');
+	const config = JSON.parse(await readFile(configFile, 'utf8')) as { routes: Record<string, unknown>[] };
+	const filesystem = config.routes.findIndex((route) => route.handle === 'filesystem');
+	const staticDir = join(app, '.vercel/output/static');
+	const escape = (path: string) => path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const pages: Record<string, unknown>[] = [];
+	for await (const file of htmlFiles(staticDir)) {
+		const path = file.slice(staticDir.length).split('\\').join('/');
+		const at = path.endsWith('/index.html') ? path.slice(0, -'/index.html'.length) : path.slice(0, -'.html'.length);
+		if (at) pages.push({ src: `^${escape(at)}/?$`, dest: path });
+	}
+	config.routes.splice(filesystem + 1, 0, ...pages);
+	await writeFile(configFile, JSON.stringify(config, null, 2));
 }
 
 async function front(): Promise<void> {

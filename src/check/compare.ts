@@ -18,6 +18,7 @@ import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture
 import { DIMENSIONS } from './types.ts';
 import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
+import { samePath } from './svg-path.ts';
 import { residueFailures } from './residue.ts';
 
 const LIMIT = 20;
@@ -171,7 +172,7 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 		const actual = next.elements[j]!;
 		// A margin that differs while the element sits in the same box is written another way, not laid out another way (a flex gap or a parent's padding giving the same place): where it sits is compared by its box and the screenshot.
 		const sameBox = Boolean(expected.box && actual.box) && ['x', 'y', 'width', 'height'].every((k) => Math.abs(expected.box![k as 'x'] - actual.box![k as 'x']) <= 1);
-		const props = Object.keys(expected.style).filter((prop) => !skip.has(prop) && !RENDERED_ELSEWHERE.has(prop) && expected.style[prop] !== actual.style[prop] && !(sameBox && /^margin(-|$)/.test(prop)));
+		const props = Object.keys(expected.style).filter((prop) => !skip.has(prop) && !RENDERED_ELSEWHERE.has(prop) && expected.style[prop] !== actual.style[prop] && !(sameBox && /^margin(-|$)/.test(prop)) && !(prop === 'd' && samePath(expected.style[prop]!, actual.style[prop] ?? '')));
 		if (!props.length) continue;
 		if (failures.length >= LIMIT) {
 			extra++;
