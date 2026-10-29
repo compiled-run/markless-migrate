@@ -108,6 +108,31 @@ document.getElementById('open').addEventListener('click', () => {
 });
 </script></body></html>`;
 
+// A Base UI Select: its hidden input follows the trigger, and the option chosen stays chosen.
+const SELECT = `<!doctype html><html><body><button id="open" role="combobox" aria-expanded="false"><span data-slot="select-value">English</span></button><input aria-hidden="true" value="en"><script>
+const trigger = document.getElementById('open');
+trigger.addEventListener('click', () => {
+	const portal = document.createElement('div');
+	portal.setAttribute('data-base-ui-portal', '');
+	const list = document.createElement('div');
+	list.setAttribute('role', 'listbox');
+	for (const [value, label] of [['en', 'English'], ['ar', 'Arabic'], ['he', 'Hebrew']]) {
+		const option = document.createElement('div');
+		option.setAttribute('role', 'option');
+		option.setAttribute('aria-selected', String(trigger.nextElementSibling.value === value));
+		option.textContent = label;
+		option.addEventListener('click', () => {
+			trigger.nextElementSibling.value = value;
+			trigger.firstElementChild.textContent = label;
+			portal.remove();
+		});
+		list.append(option);
+	}
+	portal.append(list);
+	document.body.append(portal);
+});
+</script></body></html>`;
+
 let browser: Browser;
 const loads = new Map<string, number>();
 let server: Server;
@@ -117,7 +142,7 @@ before(async () => {
 	server = createServer((request, res) => {
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 1500);
 		loads.set(request.url!, (loads.get(request.url!) ?? 0) + 1);
-		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : PAGE);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : request.url === '/select' ? SELECT : PAGE);
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -202,6 +227,18 @@ test("captureChoices takes back a client router's move and chooses the next opti
 		loads.delete('/client');
 		assert.deepEqual(await captureChoices(browser, origin, '/client', reveal, dir), { a: { href: '/docs/a' }, b: { href: '/docs/b' }, c: { href: '/docs/c' } });
 		assert.equal(loads.get('/client'), 1);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('captureChoices puts a select back by choosing the value it loaded with, and chooses the next option on the same page', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-select-'));
+	try {
+		const reveal: Reveal = { key: 'select', path: [0], sig: 'button||English', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div data-base-ui-portal=""><div role="listbox"><div role="option">English</div></div></div>' }] };
+		loads.delete('/select');
+		assert.deepEqual(await captureChoices(browser, origin, '/select', reveal, dir), { English: { value: 'en', shown: 'English' }, Arabic: { value: 'ar', shown: 'Arabic' }, Hebrew: { value: 'he', shown: 'Hebrew' } });
+		assert.equal(loads.get('/select'), 1);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
