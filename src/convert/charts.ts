@@ -1091,9 +1091,8 @@ export const WIDTH_CSS = Array.from({ length: BUCKETS }, (_, b) => {
 	return `@container ${query} { [data-mm-b]:not([data-mm-b~="${b}"]) { display: none !important; } }`;
 }).join('\n');
 
-/** The stylesheet every chart page links: the entry animation and the widths. */
+/** The CSS every chart page appends to its own stylesheet: the entry animation and the widths. */
 export const CHART_CSS = `${MOTION_CSS}${WIDTH_CSS}\n`;
-export const MOTION_FILE = `/_converted/styles/recharts-${createHash('sha256').update(CHART_CSS).digest('hex').slice(0, 12)}.css`;
 
 const labelOf = (d: ChartDriver) => d.label ?? d.sig.split('|')[2] ?? '';
 
@@ -1115,7 +1114,6 @@ export class ChartPlan {
 
 	add(root: Tree, charts: readonly ChartFacts[], locate: (sig: string, nth: number) => Tree | undefined, emit: (html: string) => string): number {
 		let placed = 0;
-		let linked = false;
 		// The chart's place among the page's charts finds it where its signature's count is thrown off by markup the page lost or gained.
 		const scope = (root.parentNode as Tree | null) ?? root;
 		const wrappers = [...walk(scope)].filter((e) => classes(e).includes('recharts-wrapper'));
@@ -1208,13 +1206,6 @@ export class ChartPlan {
 			const extra = ['data-mm-chart="1"', `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`, 'onVisible={() => mount("data-mm-chart")}'];
 			// The choice the old page's card makes for itself on narrow pages, which the part makes on load as it did.
 			if (many && chart.start?.below && chart.start.label) extra.push(`data-mm-start={${lit(JSON.stringify({ w: chart.start.below, l: chart.start.label }))}}`);
-			if (!linked) {
-				linked = true;
-				const link = { nodeName: 'link', tagName: 'link', attrs: [{ name: 'rel', value: 'stylesheet' }, { name: 'href', value: MOTION_FILE }], namespaceURI: wrapper.namespaceURI, childNodes: [], parentNode: parent } as unknown as Tree;
-				const holder = isElement(parent) && /container-type/.test(attr(parent, 'style') ?? '') ? (parent.parentNode as Tree) : parent;
-				const before = holder === parent ? wrapper : parent;
-				holder.childNodes.splice(holder.childNodes.indexOf(before as never), 0, link as never);
-			}
 			this.bindings.set(wrapper, { declare, extra });
 			if (tip && tooltips.length) this.bindings.set(tip, { declare, children: tooltips.join('') });
 			if (many) this.drive(chart, wrapper, name, v, locate, declare);
