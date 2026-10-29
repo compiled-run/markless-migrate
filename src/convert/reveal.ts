@@ -8,6 +8,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { commandEmptyMark, keepCommandEmpty, markedOf } from './capture.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { markTextValues } from './rac-text.ts';
+import { settle, trackSettling } from './settle.ts';
 import { instancePropMarks, instanceSpecs, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 
@@ -299,9 +300,9 @@ async function settleScroll(page: Page): Promise<void> {
 		.catch(() => {});
 }
 
-/** Waits for what a gesture started: a short pause, then the requests it made and the animations it ran. */
+/** Waits for what a gesture started: until the page settles (at most `ms`), then the requests it made and the animations it ran. */
 async function quiet(page: Page, ms: number): Promise<void> {
-	await page.waitForTimeout(ms);
+	await settle(page, ms);
 	await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
 	await finishAnimations(page).catch(() => {});
 }
@@ -343,6 +344,7 @@ export const openDialogAtLoad = (html: string): boolean => [...html.matchAll(/<[
 
 async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport, dismiss = false) {
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+	await trackSettling(context);
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, 300);
 	for (let i = 0; dismiss && i < 3 && (await page.evaluate(() => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].some((d) => d.checkVisibility()))); i++) {
