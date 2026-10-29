@@ -1,6 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { attr, walk, type Element } from './dom.ts';
+import { PORTS } from './parts.ts';
 
 /**
  * A site's own client component, ported to Markless by hand (`lib/site/<file>.tsrx`), that stands in for the element of
@@ -13,6 +14,13 @@ export interface SiteComponent {
 	readonly component: string;
 	/** `page`: it stands in for an element of the page itself (no layer, no `fill`), rendering what it shows itself. */
 	readonly in?: 'page';
+	/**
+	 * A page component whose controls open what the old page portaled to the end of the body (menus, a drawer): the
+	 * converter leaves those layers out, and the file's `Layers` export renders them there, with the page's layers.
+	 */
+	readonly layers?: boolean;
+	/** Library ports its own markup uses that the old page's markup did not show (a palette opened only by a key). */
+	readonly ports?: readonly string[];
 }
 
 export async function readSiteComponents(app: string): Promise<readonly SiteComponent[]> {
@@ -22,8 +30,21 @@ export async function readSiteComponents(app: string): Promise<readonly SiteComp
 	for (const c of listed) {
 		parseSelector(c.selector);
 		if (!/^[a-z0-9-]+\.tsrx$/.test(c.component)) throw new Error(`lib/site/components.json: "${c.component}" is not a .tsrx file in lib/site`);
+		for (const port of c.ports ?? []) if (!PORTS.some((p) => p.module === port)) throw new Error(`lib/site/components.json: ${c.component} names "${port}", which is not a library port`);
+		if (c.layers && c.in !== 'page') throw new Error(`lib/site/components.json: ${c.component} renders its own layers ("layers") but is not "in": "page"`);
 	}
 	return listed;
+}
+
+/** The library parts the site's own code imports (`lib/site`, `from '../parts/<module>.ts'`): the app needs their files whether or not a page's markup uses them. */
+export async function siteImportedParts(app: string): Promise<string[]> {
+	const dir = join(app, 'lib', 'site');
+	const names = await readdir(dir).catch(() => [] as string[]);
+	const modules = new Set<string>();
+	for (const name of names.filter((n) => /\.(ts|tsrx)$/.test(n))) {
+		for (const m of (await readFile(join(dir, name), 'utf8')).matchAll(/from\s+'\.\.\/parts\/([\w/-]+)\.ts'/g)) modules.add(m[1]!);
+	}
+	return [...modules].sort();
 }
 
 /** The component's import name: its file name in PascalCase (`command-menu.tsrx` is CommandMenu). */
@@ -34,7 +55,10 @@ export const componentName = (c: SiteComponent): string =>
 		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 		.join('');
 
-export const componentImport = (c: SiteComponent, fromDir: string): string => `import ${componentName(c)} from '${fromDir}/lib/site/${c.component}';`;
+/** The name a page component's `Layers` export is imported as (`TypesetLayers` for `typeset.tsrx`). */
+export const layersName = (c: SiteComponent): string => `${componentName(c)}Layers`;
+
+export const componentImport = (c: SiteComponent, fromDir: string): string => `import ${componentName(c)}${c.layers ? `, { Layers as ${layersName(c)} }` : ''} from '${fromDir}/lib/site/${c.component}';`;
 
 interface Compound {
 	readonly tag?: string;
@@ -96,8 +120,17 @@ export function pageComponentOf(el: Element, components: readonly SiteComponent[
 	return components.find((c) => c.in === 'page' && matches(el, parseSelector(c.selector)));
 }
 
+/** The page site component `el` is the element of, or is inside: what a control there opens is that component's. */
+export function inPageComponent(el: Element, components: readonly SiteComponent[]): SiteComponent | undefined {
+	for (let at: Element | undefined = el; at && 'tagName' in at; at = at.parentNode as Element | undefined) {
+		const own = pageComponentOf(at, components);
+		if (own) return own;
+	}
+	return undefined;
+}
+
 /** A generated module with an import, after its first line, of each page site component its markup renders. */
 export function withSiteImports(source: string, components: readonly SiteComponent[], fromDir: string): string {
-	const used = components.filter((c) => c.in === 'page' && new RegExp(`<${componentName(c)}\\b`).test(source));
+	const used = components.filter((c) => c.in === 'page' && new RegExp(`<(${componentName(c)}|${layersName(c)})\\b`).test(source));
 	return used.length ? source.replace('\n', `\n${used.map((c) => componentImport(c, fromDir)).join('\n')}\n`) : source;
 }
