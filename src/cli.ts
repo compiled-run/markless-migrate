@@ -128,7 +128,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -213,7 +213,10 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           text, invalid input) typed into each field then Enter and a blur must leave the same value,
           aria-invalid, regions, address and the pop-up it drives; an error thrown only by the port after
           any of these is red. A difference stands only when a second run of each side repeats it.
-          --no-control-parity leaves it out.
+          --no-control-parity leaves it out. --busy-cpu adds the busy-CPU lane on one page per template
+          group: a few of its controls and keys used while every CPU of the machine is kept busy, in
+          Chromium, Firefox and WebKit; a control the port answers on an idle machine but not on a busy
+          one, where the original still does, is red.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -475,6 +478,7 @@ const TIMING_FLAGS = {
 	'no-probes': { type: 'boolean' },
 	'no-control-parity': { type: 'boolean' },
 	'control-webkit': { type: 'boolean' },
+	'busy-cpu': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -1040,6 +1044,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				...(values['no-probes'] ? {} : { probes: {} }),
 				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
+				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),
