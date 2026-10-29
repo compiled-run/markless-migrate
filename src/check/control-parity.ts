@@ -5,6 +5,7 @@ import { openPage, type SideEnv } from './browser.ts';
 import { installParity } from './control-parity-page.ts';
 import { loadPage } from './infrastructure.ts';
 import { motionEnv } from './motion.ts';
+import { markUse, settle, trackRequests, trackTimers, type Requests } from './settle.ts';
 import type { Failure, Shot, Viewport } from './types.ts';
 
 /** One visible control of a page, as the page lists it (control-parity-page.ts). */
@@ -146,6 +147,7 @@ const parity = <T>(page: Page, fn: string, arg?: unknown): Promise<T> =>
 
 interface Open {
 	readonly page: Page;
+	readonly requests: Requests;
 	readonly errors: string[];
 	readonly cdp?: CDPSession;
 	readonly close: () => Promise<void>;
@@ -153,29 +155,32 @@ interface Open {
 
 async function open(browser: Browser, env: SideEnv, viewport: Viewport, route: string, settleMs: number, cdp = false): Promise<Open> {
 	const { context, page } = await openPage(browser, env, viewport, { sameOriginOnly: true });
+	await context.addInitScript(trackTimers);
+	const requests = trackRequests(page);
 	const errors: string[] = [];
 	page.on('pageerror', (e) => errors.push(String(e.message ?? e).split('\n')[0]!.slice(0, 160)));
 	page.on('dialog', (d) => void d.dismiss().catch(() => {}));
 	try {
 		await loadPage(page, new URL(route, env.origin).href);
 		// A slow live answer (a directory's health JSON) can still change the layout: wait for the network to rest.
-		await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-		await page.waitForTimeout(Math.min(settleMs, 300));
+		await requests.quiet(200, 15_000);
+		await markUse(page, Math.min(settleMs, 300));
+		await settle(page, requests, Math.min(settleMs, 300));
 		await settleScroll(page);
 		await page.evaluate(installParity);
 	} catch (error) {
 		await context.close().catch(() => {});
 		throw error;
 	}
-	return { page, errors, ...(cdp ? { cdp: await context.newCDPSession(page) } : {}), close: () => context.close() };
+	return { page, requests, errors, ...(cdp ? { cdp: await context.newCDPSession(page) } : {}), close: () => context.close() };
 }
 
 /** A page scrolls some of its parts after load (a sidebar to its active link): it is read once every scroll position holds. */
 async function settleScroll(page: Page): Promise<void> {
 	const read = () => page.evaluate(() => [scrollY, ...[...document.querySelectorAll('*')].filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY)).map((e) => e.scrollTop)].join(',')).catch(() => '');
 	let last = await read();
-	for (let waited = 0; waited < 3000; waited += 250) {
-		await page.waitForTimeout(250);
+	for (let waited = 0; waited < 3000; waited += 120) {
+		await page.waitForTimeout(120);
 		const now = await read();
 		if (now === last) return;
 		last = now;
@@ -393,15 +398,17 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		const env = how.film ? motionEnv(sides[side], false) : sides[side];
 		const o = await open(how.browser ?? browser, env, at(width), route, settleMs, Boolean(how.film));
 		try {
+			await markUse(o.page, SCROLL_SETTLE_MS);
 			if (!(await parity<boolean>(o.page, 'mark', control.key))) return { missing: 'not on the page' };
-			await o.page.waitForTimeout(SCROLL_SETTLE_MS);
+			await settle(o.page, o.requests, SCROLL_SETTLE_MS);
 			const armed = await parity<{ hits: string[] } | null>(o.page, 'arm');
 			if (!armed) return { missing: 'not on the page' };
 			const before = o.errors.length;
 			let motion: Motion | undefined;
+			await markUse(o.page, settleMs);
 			if (how.film && o.cdp) motion = (await filmed(o.cdp, () => act(o.page))).motion;
 			else await act(o.page);
-			await o.page.waitForTimeout(settleMs);
+			await settle(o.page, o.requests, settleMs);
 			// Where a pop-up opens is read where it settles, not mid-slide; its motion is compared on its own.
 			await parity(o.page, 'settle').catch(() => {});
 			const read = await parity<Use>(o.page, 'read').catch(() => undefined);
@@ -412,18 +419,21 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 				field = await parity<Use['field']>(o.page, 'field');
 				// What a pop-up the field drives shows for the value: ArrowDown in the field, else the button beside it.
 				await o.page.locator('[data-markless-migrate-parity]').first().focus({ timeout: 2000 }).catch(() => {});
+				await markUse(o.page, 500);
 				await o.page.keyboard.press('ArrowDown').catch(() => {});
-				await o.page.waitForTimeout(500);
+				await settle(o.page, o.requests, 500);
 				shown = await parity<string>(o.page, 'popupSummary').catch(() => '');
 				if (!shown && (await parity<boolean>(o.page, 'markBeside').catch(() => false))) {
+					await markUse(o.page, 600);
 					await o.page.locator('[data-markless-migrate-parity-beside]').first().click({ timeout: 2000 }).catch(() => {});
-					await o.page.waitForTimeout(600);
+					await settle(o.page, o.requests, 600);
 					shown = await parity<string>(o.page, 'popupSummary').catch(() => '');
 				}
 			}
 			if (how.film && o.cdp && r.popupRole) {
+				await markUse(o.page, settleMs);
 				const shot = await filmed(o.cdp, () => o.page.keyboard.press('Escape'));
-				await o.page.waitForTimeout(settleMs);
+				await settle(o.page, o.requests, settleMs);
 				close = { motion: shot.motion, still: await parity<boolean>(o.page, 'stillOpen').catch(() => false) };
 			}
 			return { ...r, hits: armed.hits, errors: o.errors.slice(before), ...(motion ? { motion } : {}), ...(field ? { field } : {}), ...(shown !== undefined ? { shown } : {}), ...(close ? { close } : {}) };
@@ -554,8 +564,9 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 			const press = async (page: Page) => {
 				await page.locator('[data-markless-migrate-parity]').first().focus({ timeout: 3000 });
 				for (const k of keys) {
+					await markUse(page, 150);
 					await page.keyboard.press(k);
-					await page.waitForTimeout(150);
+					await settle(page, undefined, 150);
 				}
 			};
 			let repeat: Promise<{ old: Use; port: Use }> | undefined;
@@ -607,7 +618,8 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 					await page.keyboard.type(value, { delay: 15 });
 				}
 				await page.keyboard.press('Enter');
-				await page.waitForTimeout(200);
+				await settle(page, undefined, 200);
+				await markUse(page, settleMs);
 				await parity(page, 'blur').catch(() => {});
 			};
 			let repeat: Promise<{ old: Use; port: Use }> | undefined;

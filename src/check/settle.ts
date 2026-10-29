@@ -142,24 +142,32 @@ export async function markUse(page: Page, capMs = 1000): Promise<boolean> {
 
 const QUIET_MS = 100;
 
+/** How long a settle took, and what held it to its cap: the page (DOM changes, animations, timers), a request, or no mark (a page the use left). */
+export interface Settled {
+	readonly ms: number;
+	readonly capped: false | 'page' | 'requests' | 'unmarked';
+}
+
 /**
  * Waits until the page has settled after the use `markUse` marked: no DOM change or scroll for 100 ms, nothing the use
  * started still animating, no short timer it set pending, no request in flight, then two frames. Never longer than
  * `capMs`; a page with no mark (one the use navigated away from) waits out the cap, as the fixed wait did.
  */
-export async function settle(page: Page, requests: Requests | undefined, capMs: number): Promise<void> {
+export async function settle(page: Page, requests: Requests | undefined, capMs: number): Promise<Settled> {
 	const t0 = Date.now();
 	const left = () => capMs - (Date.now() - t0);
+	const done = (capped: Settled['capped']): Settled => ({ ms: Date.now() - t0, capped });
 	for (;;) {
-		if (left() <= 0) return;
+		if (left() <= 0) return done('page');
 		const quiet = await page.evaluate(quietInPage, { quietMs: QUIET_MS, timeoutMs: left() }).catch(() => undefined);
 		if (quiet === undefined) {
 			if (left() > 0) await page.waitForTimeout(left()).catch(() => {});
-			return;
+			return done('unmarked');
 		}
-		if (!quiet) return;
+		if (!quiet) return done('page');
 		if (!requests || requests.inflight() === 0) break;
-		if (!(await requests.quiet(QUIET_MS, left()))) return;
+		if (!(await requests.quiet(QUIET_MS, left()))) return done('requests');
 	}
 	await page.evaluate(framesInPage).catch(() => {});
+	return done(false);
 }
