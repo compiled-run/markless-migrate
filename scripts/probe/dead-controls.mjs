@@ -297,7 +297,7 @@ const nets = {};
 const cdp = {};
 const errors = { old: [], new: [] };
 const current = { old: undefined, new: undefined };
-let prepared;
+let prepared = [];
 let currentRoute = '';
 const originOf = (side) => (side === 'old' ? OLD : NEW);
 
@@ -357,12 +357,18 @@ async function openSlot(side, width, route) {
 
 const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
 
-// Both sides' pages for a use at this width; the pages of the use after it start loading once this use's are in.
-async function fresh(width = WIDTH, nextWidth = width) {
+// Both sides' pages for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names, the
+// last repeating) start loading once this use's original is in.
+const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? 2));
+async function fresh(width = WIDTH, upcoming = [width]) {
 	for (const side of ['old', 'new']) closeSlot(current[side]);
-	const take = (side) => (prepared?.width === width && prepared.route === currentRoute ? prepared[side] : (closeSlot(prepared?.[side]), openSlot(side, width, currentRoute)));
-	const next = { old: take('old'), new: take('new') };
-	prepared = undefined;
+	let pair = prepared.shift();
+	if (pair && (pair.width !== width || pair.route !== currentRoute)) {
+		for (const p of [pair, ...prepared]) for (const side of ['old', 'new']) closeSlot(p[side]);
+		prepared = [];
+		pair = undefined;
+	}
+	const next = pair ?? { old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) };
 	for (const side of ['old', 'new']) {
 		current[side] = next[side];
 		const slot = await timed('fresh.slot', () => next[side]);
@@ -371,12 +377,15 @@ async function fresh(width = WIDTH, nextWidth = width) {
 		cdp[side] = slot.cdp;
 		errors[side] = slot.errors;
 	}
-	nextWidthAfter = nextWidth;
+	nextWidths = upcoming;
 }
-let nextWidthAfter = WIDTH;
+let nextWidths = [WIDTH];
 function prepareNext() {
-	if (prepared || !currentRoute) return;
-	prepared = { width: nextWidthAfter, route: currentRoute, old: openSlot('old', nextWidthAfter, currentRoute), new: openSlot('new', nextWidthAfter, currentRoute) };
+	if (!currentRoute) return;
+	for (let k = prepared.length; k < PRELOAD; k++) {
+		const width = nextWidths[k] ?? nextWidths.at(-1);
+		prepared.push({ width, route: currentRoute, old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) });
+	}
 }
 const layoutDone = new Set();
 const keyDone = new Set();
@@ -759,7 +768,7 @@ for (const route of mine) {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
 		let controls = [];
 		for (const [i, width] of STATIC_WIDTHS.entries()) {
-			await fresh(width, STATIC_WIDTHS[i + 1] ?? WIDTH);
+			await fresh(width, [...STATIC_WIDTHS.slice(i + 1), WIDTH]);
 			await load('old', route);
 			await resetScrollers(pages.old);
 			const olds = await pages.old.evaluate(listControls);
@@ -945,8 +954,9 @@ for (const route of mine) {
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
-	for (const slot of [current.old, current.new, prepared?.old, prepared?.new]) closeSlot(slot);
-	current.old = current.new = prepared = undefined;
+	for (const slot of [current.old, current.new, ...prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
+	current.old = current.new = undefined;
+	prepared = [];
 	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
