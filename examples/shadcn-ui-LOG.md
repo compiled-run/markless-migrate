@@ -2759,17 +2759,42 @@ Where the visitor's own formatting of the values differs from the capture's, the
 chart-tooltip-default, -label-formatter and -icons, area-interactive, line-interactive and bar-default agree with
 the old page in UTC, Asia/Tokyo and America/Los_Angeles.
 
-Not yet: pie, radar and radial charts are laid out only at the sizes captured (they are 250 or 300 px squares, so
-this shows only in containers narrower than that: pie-interactive and pie-legend at 342 px show the 300 px drawing
-where the old page draws 292 px); the dashboards' phone default range.
+Fresh-build sweep (after the third and fourth changes, 30 routes, 33 charts, 4 widths x 2 zones): 284 of 288 runs the
+same; the 4 others were dashboard-01 below 768 px, fixed by the fifth change.
+
+Fifth change:
+
+- Capture read a DOM node's React fiber, which after a control's switch can be the stale one of React's two trees
+  (its return pointers lead into the current tree): a switched drawing got the previous state's axes and marks
+  (dashboard-01 at 342 px: 91 tick candidates for the 7 days drawn). The current tree is now walked from the root.
+- RTL previews (`chart-rtl` on the radix, base and aria `chart` pages): the capture chooses each language in the
+  preview's language selector and keeps each drawing (axis reversed, month labels, legend, tooltips). The part follows
+  the preview's `data-lang` and `dir`, which the site's RTL part sets, and shows that language's drawing; the bars move
+  between them as recharts moves them. Same as the old page in Arabic, English and Hebrew at 1280, 700 and 400 px on
+  all three pages, element by element, and the tooltips at two places in each language.
+- dashboard-01 on phones: `useIsMobile` sets the last 7 days below 768 px. Convert finds that width by loading the old
+  page between its narrow and wide captures (the drawing told by its number of categories: exactly 768), and the part
+  makes the choice through the card's select once the page is idle. The card's select and its toggle group hold one
+  range on the old page; in the port a choice in the select left the select's text and the toggle group as they were
+  (also when used by hand). The select's choice now presses the toggle of the same text, which Markless keeps the
+  range in. Same as the old page at 400, 500, 700, 767 and 768 px. The port draws the three months for about one frame
+  before the switch, where the old page draws no chart until it has chosen.
+- Pie, radar and radial charts at any size: a polar drawing is laid out from the chart's polar options (convert reads
+  them off recharts' store) and a pie's own (its sectors drawn again with `getSectorPath` from their radii and angles).
+  A place inside the outer radius scales with it, one past it (an angle axis' labels) keeps its distance past it, text
+  at the centre moves with the centre; radii given in pixels (every radial chart) only move. Same as the old page at
+  280, 300 and 320 px (radar default, grid circle, dots; radial simple, text, stacked, label) and 320 to 350 px (pie
+  interactive, legend, donut, simple, donut text), with the tooltips.
+- A bar's `x`, `y`, `width` and `height` follow the update animation each frame, as recharts' Rectangle writes them.
+
+Not yet: `/examples/dashboard` has no chart below its desktop layout, so it has no phone range to start in.
 
 
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
   the interactive charts' pages are 3-5x the original's HTML; any other width is laid out again from the nearest.
-  One SVG laid out from the captured data would do. Polar charts at sizes not captured, weekday-only ticks behind UTC,
-  and the dashboards' range on phones (see "Charts: how they move, fit and date").
+  One SVG laid out from the captured data would do (see "Charts: how they move, fit and date").
 - `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.

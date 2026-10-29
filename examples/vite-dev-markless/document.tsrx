@@ -2,6 +2,7 @@ import { Html } from '@markless/router';
 import type { Children } from '@markless/core';
 import bannerBackground from './assets/vite/footer-background.jpg';
 import docsHeads from './lib/docs-heads.json' with { type: 'json' };
+import pageScriptImports from './lib/page-script-imports.json' with { type: 'json' };
 import { EARLY_SEARCH_SCRIPT } from './page-scripts/search-shell.ts';
 
 interface Head {
@@ -20,6 +21,8 @@ const DOCS_FONTS = ['/assets/APK-Protocol-Medium.C7Mq9oGh.woff2', '/assets/APK-P
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const path = url?.pathname ?? '/';
 	const docs = heads[path] ?? heads[path.replace(/\/$/, '')] ?? (path === '/' ? undefined : heads['/404']);
+	// The page's load-time scripts and their static imports, fetched together.
+	const pageScripts = [...new Set(['/page-scripts/page.js', ...pageScriptImports.page, ...(docs ? [] : ['/page-scripts/home.js', ...pageScriptImports.home])])];
 	const marketing = !docs || path.replace(/\/$/, '') === '/live';
 
 	<Html lang="en-US" dir="ltr" data-theme={marketing ? 'dark' : undefined}>
@@ -74,9 +77,8 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 			<script id="check-dark-mode">{'(function(){let e=localStorage.getItem("vitepress-theme-appearance")||"auto",t=window.matchMedia("(prefers-color-scheme: dark)").matches;if(!e||e==="auto"?t:e==="dark")document.documentElement.classList.add("dark")})();'}</script>
 			<script id="check-mac-os">{'document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));'}</script>
 			<script id="search-on-click">{EARLY_SEARCH_SCRIPT}</script>
-			<link rel="modulepreload" href="/page-scripts/page.js" />
-			@if (!docs) {
-				<link rel="modulepreload" href="/page-scripts/home.js" />;
+			@for (const file of pageScripts; key file) {
+				<link rel="modulepreload" href={file} />;
 			}
 			@if (docs) {
 				@if (docs.markdown) {

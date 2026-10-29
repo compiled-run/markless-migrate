@@ -2,7 +2,7 @@
 // plot box, the band and point scales, the bars' sizes, the ticks getTicks keeps (measured as recharts measures them)
 // and the tooltip's places, from what convert wrote on the drawing (its facts: every possible tick, the layout, the bar
 // settings) and what the old page drew.
-import { curvePath, rectPath, shapeOf, through, type Geo } from './recharts-motion.ts';
+import { curvePath, rectPath, rt, shapeOf, through, type Geo } from './recharts-motion.ts';
 
 /** A cartesian axis as recharts' CartesianAxis was given it (convert's AxisModel). */
 export interface Axis {
@@ -302,6 +302,10 @@ export interface Facts {
 	readonly pa?: readonly (number | null)[];
 	/** Where the horizontal grid could draw lines: fractions of the plot's height from its bottom. */
 	readonly gy?: readonly number[];
+	/** A polar chart's innerRadius, outerRadius, cx and cy as given. */
+	readonly pl?: readonly (number | string)[];
+	readonly c?: readonly [number, number];
+	readonly q?: readonly number[];
 	readonly [key: string]: unknown;
 }
 
@@ -824,7 +828,7 @@ function factsIn(facts: Facts, map: Mapper, axes: readonly (Axis | null)[]): Fac
 const originals = new WeakMap<SVGSVGElement, Facts>();
 const refs = new WeakMap<Element, Attrs>();
 const ours = new WeakMap<Element, Attrs>();
-const observed = new WeakMap<SVGSVGElement, { map?: Mapper; local?: (axis: Axis) => readonly string[] | undefined; observer?: MutationObserver }>();
+const observed = new WeakMap<SVGSVGElement, { place?: Place; observer?: MutationObserver }>();
 
 const refOf = (el: Element): Attrs => {
 	let ref = refs.get(el);
@@ -853,11 +857,14 @@ const geoOfEl = (el: Element): Geo | null => {
 	}
 };
 
+/** Where an element goes in the other frame (null: it keeps its attributes; undefined: it cannot be laid out). */
+type Place = (el: Element, ref: Attrs) => Attrs | null | undefined;
+
 /** Every element's attributes in the frame, or undefined when one is drawn from more than the layout (a label). */
-function plan(root: Element, map: Mapper): [Element, Attrs][] | undefined {
+function plan(root: Element, place: Place): [Element, Attrs][] | undefined {
 	const out: [Element, Attrs][] = [];
 	for (const el of [root, ...root.querySelectorAll('*')]) {
-		const attrs = placed(el, refOf(el), map, geoOfEl(el));
+		const attrs = place(el, refOf(el));
 		if (attrs === undefined) return undefined;
 		if (attrs) out.push([el, attrs]);
 	}
@@ -921,6 +928,40 @@ function growFrom(svg: SVGSVGElement, map?: Mapper): void {
 	}
 }
 
+// What a tooltip's state puts into the drawing, or sets on it, is the old page's: it is laid out the same way.
+function observe(svg: SVGSVGElement, place: Place): void {
+	const state = observed.get(svg);
+	if (state) {
+		state.place = place;
+		// What this layout itself moved is no state's.
+		state.observer?.takeRecords();
+		return;
+	}
+	const observer = new MutationObserver((records) => {
+		const now = observed.get(svg)?.place;
+		if (!now) return;
+		// Every attribute the page set is read before any is written: one state sets several on an element.
+		const changed = new Set<Element>();
+		for (const r of records) {
+			if (r.type !== 'attributes') continue;
+			const el = r.target as Element;
+			// A line's, an area's or a bar's path is the update animation's to draw (recharts-motion), from the shapes laid out here.
+			if (['line', 'area', 'curve', 'bar'].includes(geoOfEl(el)?.k ?? '')) continue;
+			const value = el.getAttribute(r.attributeName!);
+			if (value === null || value === ours.get(el)?.[r.attributeName!]) continue;
+			refOf(el)[r.attributeName!] = value;
+			changed.add(el);
+		}
+		for (const r of records) if (r.type === 'childList') for (const node of r.addedNodes) if (node instanceof Element) for (const [el, attrs] of plan(node, now) ?? []) write(el, attrs);
+		for (const el of changed) {
+			const attrs = now(el, refOf(el));
+			if (attrs) write(el, attrs);
+		}
+	});
+	observer.observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: GEOMETRY });
+	observed.set(svg, { place, observer });
+}
+
 /**
  * Lays the drawing out at W x H as recharts would for a container that size, from what the old page drew at its own
  * size: the plot box keeps its margins, the scales and bar sizes are recomputed, and the axes keep the ticks getTicks
@@ -951,9 +992,22 @@ export function fit(svg: SVGSVGElement, W: number, H: number, local?: (axis: Axi
 		drawAxes(svg, facts.a ?? [], local, claim);
 		svg.setAttribute('data-mm-facts', JSON.stringify(facts));
 		const state = observed.get(svg);
-		if (state) state.map = undefined;
+		if (state) state.place = undefined;
 		state?.observer?.takeRecords();
 		return facts;
+	}
+	if (facts.pl) {
+		const raw = facts.pl;
+		const [vx, vy, vw, vh] = facts.v;
+		const to: [number, number, number, number] = [vx, vy, vw + W - facts.w, vh + H - facts.h];
+		const place: Place = (el, ref) => placedPolar(el, ref, raw, facts!.v, to, W, H);
+		const writes = plan(svg, place);
+		if (!writes) return undefined;
+		for (const [el, attrs] of writes) write(el, attrs);
+		const next = polarFacts(facts, raw, to, W, H);
+		svg.setAttribute('data-mm-facts', JSON.stringify(next));
+		observe(svg, place);
+		return next;
 	}
 	const series = svg.querySelector('g.recharts-bar');
 	const curve = svg.querySelector('path.recharts-line-curve[data-mm-geo], path.recharts-area-curve[data-mm-geo]');
@@ -961,7 +1015,8 @@ export function fit(svg: SVGSVGElement, W: number, H: number, local?: (axis: Axi
 	const frames = framesOf(facts, W, H, count ? { n: count, band: !!series } : undefined);
 	if (!frames) return undefined;
 	const map = new Mapper(frames.plan, frames.from, frames.to);
-	const writes = plan(svg, map);
+	const place: Place = (el, ref) => placed(el, ref, map, geoOfEl(el));
+	const writes = plan(svg, place);
 	if (!writes) return undefined;
 	for (const [el, attrs] of writes) write(el, attrs);
 	growFrom(svg, map);
@@ -970,37 +1025,138 @@ export function fit(svg: SVGSVGElement, W: number, H: number, local?: (axis: Axi
 	drawAxes(svg, axes, local && ((axis) => local(facts.a![axes.indexOf(axis)]!)), claim);
 	const next = factsIn(facts, map, axes);
 	svg.setAttribute('data-mm-facts', JSON.stringify(next));
-	const state = observed.get(svg);
-	if (state) {
-		state.map = map;
-		state.local = local;
-		// What this layout itself moved is no state's.
-		state.observer?.takeRecords();
-	} else {
-		// What a tooltip's state puts into the drawing, or sets on it, is the old page's: it is laid out the same way.
-		const observer = new MutationObserver((records) => {
-			const now = observed.get(svg)?.map;
-			if (!now) return;
-			// Every attribute the page set is read before any is written: one state sets several on an element.
-			const changed = new Set<Element>();
-			for (const r of records) {
-				if (r.type !== 'attributes') continue;
-				const el = r.target as Element;
-				// A mark's path is the update animation's to draw (recharts-motion), from the shapes laid out here.
-				if (el.hasAttribute('data-mm-geo')) continue;
-				const value = el.getAttribute(r.attributeName!);
-				if (value === null || value === ours.get(el)?.[r.attributeName!]) continue;
-				refOf(el)[r.attributeName!] = value;
-				changed.add(el);
-			}
-			for (const r of records) if (r.type === 'childList') for (const node of r.addedNodes) if (node instanceof Element) for (const [el, attrs] of plan(node, now) ?? []) write(el, attrs);
-			for (const el of changed) {
-				const attrs = placed(el, refOf(el), now, geoOfEl(el));
-				if (attrs) write(el, attrs);
-			}
-		});
-		observer.observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: GEOMETRY });
-		observed.set(svg, { map, local, observer });
-	}
+	observe(svg, place);
 	return next;
+}
+
+// recharts' polarToCartesian and Sector's getSectorPath (no corner radius), as written.
+const RADIAN = Math.PI / 180;
+const polar = (cx: number, cy: number, r: number, angle: number) => ({ x: cx + Math.cos(-RADIAN * angle) * r, y: cy + Math.sin(-RADIAN * angle) * r });
+export function sectorPath(cx: number, cy: number, inner: number, outer: number, start: number, end: number): string {
+	const sign = Math.sign(end - start);
+	const angle = sign * Math.min(Math.abs(end - start), 359.999);
+	const tempEnd = start + angle;
+	const os = polar(cx, cy, outer, start);
+	const oe = polar(cx, cy, outer, tempEnd);
+	let path = rt`M ${os.x},${os.y}
+    A ${outer},${outer},0,
+    ${+(Math.abs(angle) > 180)},${+(start > tempEnd)},
+    ${oe.x},${oe.y}
+  `;
+	if (inner > 0) {
+		const is = polar(cx, cy, inner, start);
+		const ie = polar(cx, cy, inner, tempEnd);
+		path += rt`L ${ie.x},${ie.y}
+            A ${inner},${inner},0,
+            ${+(Math.abs(angle) > 180)},${+(start <= tempEnd)},
+            ${is.x},${is.y} Z`;
+	} else path += rt`L ${cx},${cy} Z`;
+	return path;
+}
+
+type SectorGeo = { k: 'sector'; r: [number, number]; a: [number, number]; p: [number | string, number | string, number | string, number | string] };
+
+/** Places in a polar chart from one plot box to another: distances from the centre and points. */
+function polarMap(raw: readonly (number | string)[], from: readonly [number, number, number, number], to: readonly [number, number, number, number]) {
+	const was = polarOf(raw, from);
+	const now = polarOf(raw, to);
+	const distance = (d: number) => (was.or === now.or ? d : d >= was.or - 1e-6 ? d - was.or + now.or : (d * now.or) / was.or);
+	const point = (x: number, y: number): [number, number] => {
+		const d = Math.hypot(x - was.cx, y - was.cy);
+		if (d < 1e-9) return [now.cx, now.cy];
+		const k = distance(d) / d;
+		return [now.cx + (x - was.cx) * k, now.cy + (y - was.cy) * k];
+	};
+	return { was, now, distance, point };
+}
+
+/** A polar chart's centre and outer radius in a plot box (recharts' getMaxRadius over its polar options). */
+function polarOf(raw: readonly (number | string)[], v: readonly [number, number, number, number]): { cx: number; cy: number; ir: number; or: number } {
+	const [x, y, w, h] = v;
+	const max = Math.min(w, h) / 2;
+	return { cx: x + percentOf(raw[2]!, w), cy: y + percentOf(raw[3]!, h), ir: percentOf(raw[0]!, max), or: percentOf(raw[1]!, max) };
+}
+
+/**
+ * A polar drawing's elements at another size. Every place is a distance from the centre at an angle: one inside the
+ * outer radius scales with it (a value on the radius axis), one past it keeps its distance past it (an angle axis'
+ * ticks and labels); radii given in pixels keep everything where it was, moved with the centre. A pie's sectors are
+ * drawn again from their radii and angles (getSectorPath).
+ */
+export function placedPolar(el: Element, ref: Attrs, raw: readonly (number | string)[], from: readonly [number, number, number, number], to: readonly [number, number, number, number], W: number, H: number): Attrs | null | undefined {
+	const tag = el.tagName.toLowerCase();
+	const { was, now, distance, point } = polarMap(raw, from, to);
+	if (tag === 'svg' && el.classList.contains('recharts-surface')) return { width: fmt(W), height: fmt(H), viewBox: `0 0 ${W} ${H}` };
+	if (tag === 'rect' && el.parentElement?.tagName.toLowerCase() === 'clippath') return { x: fmt(to[0]), y: fmt(to[1]), width: fmt(to[2]), height: fmt(to[3]) };
+	if ('transform' in ref) return undefined;
+	const out: Attrs = {};
+	if ('cx' in ref && 'cy' in ref) [out.cx, out.cy] = point(n(ref, 'cx'), n(ref, 'cy')).map(fmt) as [string, string];
+	if ('radius' in ref) out.radius = fmt(distance(n(ref, 'radius')));
+	if (tag === 'path' && el.classList.contains('recharts-sector')) {
+		const geo = geoOfEl(el) as unknown as SectorGeo | null;
+		if (geo?.k === 'sector') {
+			const pie = polarOf(geo.p, from);
+			const pieNow = polarOf(geo.p, to);
+			const radius = (r: number) => (Math.abs(r - pie.ir) < 1e-6 ? pieNow.ir : r >= pie.or - 1e-6 ? r - pie.or + pieNow.or : (r * pieNow.or) / pie.or);
+			return { ...out, cx: fmt(pieNow.cx), cy: fmt(pieNow.cy), d: sectorPath(pieNow.cx, pieNow.cy, radius(geo.r[0]), radius(geo.r[1]), geo.a[0], geo.a[1]) };
+		}
+	}
+	if ('d' in ref) {
+		const d = was.or === now.or ? shiftPath(ref.d!, now.cx - was.cx, now.cy - was.cy) : mapPath(ref.d!, point);
+		if (d === undefined) return undefined;
+		out.d = d;
+	}
+	if ('x1' in ref) [out.x1, out.y1] = point(n(ref, 'x1'), n(ref, 'y1')).map(fmt) as [string, string];
+	if ('x2' in ref) [out.x2, out.y2] = point(n(ref, 'x2'), n(ref, 'y2')).map(fmt) as [string, string];
+	if (tag === 'circle' && 'r' in ref && el.classList.contains('recharts-polar-grid-concentric-circle')) out.r = fmt(distance(n(ref, 'r')));
+	// Text the chart puts at its centre (a total and its caption, a Label's content) moves with the centre; an axis'
+	// or a label list's text is a place on the chart.
+	const onChart = !!el.closest('.recharts-polar-angle-axis, .recharts-polar-radius-axis, .recharts-pie-labels, .recharts-label-list') || (tag !== 'text' && tag !== 'tspan');
+	const at = onChart ? point : (x: number, y: number): [number, number] => [x + now.cx - was.cx, y + now.cy - was.cy];
+	if ('x' in ref && 'y' in ref) [out.x, out.y] = at(n(ref, 'x'), n(ref, 'y')).map(fmt) as [string, string];
+	else if ('x' in ref || 'y' in ref) {
+		// A tspan with only its x: its text's place.
+		const text = el.parentElement;
+		const t = text && refOf(text);
+		if (!t || !('x' in t) || !('y' in t)) return undefined;
+		const [x, y] = at(n(t, 'x'), n(t, 'y'));
+		if ('x' in ref) out.x = fmt(n(ref, 'x') + x - n(t, 'x'));
+		if ('y' in ref) out.y = fmt(n(ref, 'y') + y - n(t, 'y'));
+	}
+	if (('width' in ref || 'height' in ref) && tag !== 'text') return undefined;
+	return Object.keys(out).length ? out : hasGeometry(el) && tag !== 'text' ? undefined : null;
+}
+
+// A path moved: every coordinate pair of its commands (an arc's radii and flags kept).
+function shiftPath(d: string, dx: number, dy: number): string | undefined {
+	let out = '';
+	for (const [, cmd, args] of d.matchAll(/([MLAZmlaz])([^MLAZmlaz]*)/g)) {
+		const n = (args!.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? []).map(Number);
+		const up = cmd!.toUpperCase();
+		if (cmd !== up) return undefined;
+		const size = up === 'A' ? 7 : up === 'Z' ? 0 : 2;
+		if (size && n.length % size) return undefined;
+		const vals = n.map((v, i) => (size === 0 ? v : i % size === size - 2 ? round4(v + dx) : i % size === size - 1 ? round4(v + dy) : v));
+		out += up === 'Z' ? 'Z' : `${up} ${vals.join(',')}`;
+	}
+	return out;
+}
+
+// A polar drawing's tooltip at another size: its centre, the radii its hit ranges and axes are at (a radial bar's rings).
+function polarFacts(facts: Facts, raw: readonly (number | string)[], to: readonly [number, number, number, number], W: number, H: number): Facts {
+	const { was, now, distance, point } = polarMap(raw, facts.v, to);
+	const dx = now.cx - was.cx;
+	const dy = now.cy - was.cy;
+	const radial = facts.m === 'r';
+	return {
+		...facts,
+		w: W,
+		h: H,
+		v: to,
+		...(facts.c ? { c: [facts.c[0] + dx, facts.c[1] + dy] as const } : {}),
+		...(radial ? { g: facts.g.map(([a, b, k]) => [distance(a), distance(b), k] as const) } : {}),
+		...(facts.sp && facts.m !== 'x' && facts.m !== 'y' ? { sp: [distance(facts.sp[0]), distance(facts.sp[1])] as const } : {}),
+		...(facts.q && radial ? { q: facts.q.map(distance) } : {}),
+		...(facts.k ? { k: facts.k.map(([k, x, y]) => [k, ...point(x, y)] as const) } : {}),
+	};
 }
