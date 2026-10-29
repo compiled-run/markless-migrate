@@ -16,7 +16,7 @@ import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
+import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, type Scene } from './scenes.ts';
@@ -256,7 +256,7 @@ export interface Prepared {
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
 	readonly lateFontPaths: readonly string[];
 	/** The CSS of the page's own body <style> elements, in order, appended to its last head stylesheet instead of fetched apart. */
-	readonly bodyCss: readonly string[];
+	readonly bodyCss: string[];
 }
 
 // What a library's runtime adds around revealed content for focus handling; its Markless port adds its own.
@@ -1717,10 +1717,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const charts = new ChartPlan();
 	let chartCount = 0;
-	for (const [route, p] of prepared) chartCount += charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	for (const [route, p] of prepared) {
+		const placed = charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+		// The charts' CSS rides the page's own stylesheet, as its body styles do: one request less before first paint.
+		if (placed) p.bodyCss.unshift(CHART_CSS);
+		chartCount += placed;
+	}
 	if (chartCount) {
 		log(`recharts charts on Markless state: ${chartCount} charts`);
-		styles.set(MOTION_FILE, CHART_CSS);
 		templatePorts.plan('recharts');
 	}
 	let racCalendarCount = 0;

@@ -27,7 +27,7 @@ test('a recharts chart: the active point in state(), the tooltip and the SVG\'s 
 	assert.match(out, /\\"m\\":\\"x\\"/, 'how the pointer picks a point');
 	assert.match(out, /onMmchart=\{\(event\) => \(chart0 = \(event as CustomEvent<number>\)\.detail\)\}/);
 	assert.match(out, /onVisible=\{\(\) => mount\("data-mm-chart"\)\}/, 'wired once visible, for a pointer already over it');
-	assert.match(out, /<link rel="stylesheet" href="\/_converted\/styles\/recharts-[0-9a-f]+\.css" \/>/, 'the entry animation\'s shared stylesheet, linked once');
+	assert.doesNotMatch(out, /<link rel="stylesheet"/, 'the charts\' CSS rides the page\'s own stylesheet, not a request of its own');
 	assert.match(out, /<div class="recharts-tooltip-wrapper" style="visibility: hidden">@if \(chart0 >= 0\) \{ <><div><span>\{chart0t\[chart0\]\[0\]\}<\/span><\/div><\/> \}<\/div>/);
 	assert.match(out, /<g class=\{chart0 >= 0 \? \(chart0w0v0c0\[chart0\] \?\? undefined\) : "layer"\}><path d="M0"><\/path>@if \(chart0 >= 0\) \{ <><g class="recharts-active-dot"><circle cx=\{chart0w0v0a0\[chart0\]\[0\]\} cy=\{chart0w0v0a0\[chart0\]\[1\]\}><\/circle><\/g><\/> \}<\/g>/);
 	assert.deepEqual(plan.bind(wrapper)?.declare, ['let chart0 = state(-1);', 'const chart0t = [["March"],["April"]];', 'const chart0w0v0a0 = [["5","6"],["15","7"]];', 'const chart0w0v0c0 = ["layer","layer recharts-active-shape"];']);
