@@ -231,8 +231,17 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   use. The part runs each library's timing, held to what the old page did step by step: react-hook-form and Formisch
   validate on submit, then the changed field on every change after that, and a failed submit focuses the first
   invalid field. TanStack Form shows its submit errors until the field changes. react-hook-form shows a field's first
-  message; the others show every message. Not ported: the email-list demos (rows a visitor adds and removes), and the
-  toast a valid submit shows.
+  message; the others show every message. The email-list demos (react-hook-form's useFieldArray, Formisch's
+  FieldArray) are a keyed @for over a state() of rows built from the first row's markup. Every place the first two rows
+  differ reads the row's index. What an error changed in a row follows that row's errors, rendered always and hidden
+  while it has none, since a keyed row holds no arm. Remove is hidden while a row is alone, and Add is disabled at the
+  rows it stops at. react-hook-form focuses a row it adds; Formisch validates again on a row added or taken out once
+  submitted. A submit that passes shows the old page's toast of the values submitted. Convert records it by letting the
+  library pass whatever the values, and the values' JSON in it is the toast's own text, given by the form part's
+  `mmformsubmit` (the schema's output for react-hook-form and Formisch, the state's values for TanStack Form).
+  TanStack Form forms run on @tanstack/form-core itself (loaded with the schema on the form's first use): a field per
+  control, the list's field with its rows, the site's validators (on submit, blur or change). A field shows its errors
+  once it is touched and invalid, as the demos do. That covers its list demo, which validates on blur, too.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
@@ -2738,14 +2747,21 @@ area, dashboard): every frame within 0.04 px of the original.
 | area: default, axes, gradient, interactive, stacked, stacked-expand, step | same |
 | bar: interactive, active, horizontal, label, label-custom, mixed, multiple, negative, stacked | same |
 | line: default, dots, dots-custom, interactive, label, multiple, step | same |
-| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month) |
+| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month); fixed by the fourth change below |
 | docs `chart` page, its 7 charts | same |
 | pie-interactive | same (300 px at all four widths) |
 | dashboard-01 | same at 1000 and 1512 px; below 768 px the old page switches to the last 7 days on load (`useIsMobile`), the port keeps 3 months |
 
+Weekdays (fourth change): convert also reads each axis' tick values and, where every label is one of the usual
+`toLocaleDateString` formats of its value in the capture's locale (a weekday, a month and day, a month), that format.
+Where the visitor's own formatting of the values differs from the capture's, the part draws the axis with them
+(`getTicks` again); dates with a month in a chart region stay the clock part's to write. Ticks on
+chart-tooltip-default, -label-formatter and -icons, area-interactive, line-interactive and bar-default agree with
+the old page in UTC, Asia/Tokyo and America/Los_Angeles.
+
 Not yet: pie, radar and radial charts are laid out only at the sizes captured (they are 250 or 300 px squares, so
 this shows only in containers narrower than that: pie-interactive and pie-legend at 342 px show the 300 px drawing
-where the old page draws 292 px); weekday-only date ticks behind UTC; the dashboards' phone default range.
+where the old page draws 292 px); the dashboards' phone default range.
 
 
 ## Open work
