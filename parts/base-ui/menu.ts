@@ -58,6 +58,8 @@ const highlightedIn = (p: Popup) => items(p).findIndex((i) => i.hasAttribute('da
 // `keyboard`: useListNavigation scrolls the item into view when the keys, not the pointer, moved to it.
 function highlight(p: Popup, item: HTMLElement | undefined, keyboard = false): void {
 	for (const i of items(p)) i.removeAttribute('data-highlighted');
+	// CompositeList's roving tab stop: the active item has tabindex 0.
+	if (item) for (const i of items(p)) i.tabIndex = i === item ? 0 : -1;
 	if (!item) return;
 	// Focus leaving a submenu's trigger for its submenu unhighlights it.
 	const parent = parentOf.get(p);
