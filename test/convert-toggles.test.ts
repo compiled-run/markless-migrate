@@ -32,6 +32,26 @@ test('radios share one state: choosing one is its index, and a single-choice tog
 	assert.deepEqual(plan.bind(a)?.declare, ['let rg0 = state(0);']);
 });
 
+test('a form\'s Reset puts each checkbox and radio as its defaults say through mmset, which can leave a radio group with none chosen', () => {
+	const doc = parseDocument('<body><div role="group"><button role="radio" aria-checked="true">a</button><button role="radio" aria-checked="false">b</button></div><button role="checkbox" aria-checked="false">c</button></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => attr(el, 'role') === 'radio') as [Element, Element];
+	const c = find(body(doc), (el) => attr(el, 'role') === 'checkbox')!;
+	const state = (role: string, checked: boolean) => ({ attrs: { role, 'aria-checked': String(checked) }, inner: '' });
+	const plan = new CheckablePlan();
+	plan.add(
+		body(doc),
+		[
+			{ kind: 'radio', controls: [{ sig: 'a', nth: 0, role: 'radio', initial: true, on: state('radio', true), off: state('radio', false) }, { sig: 'b', nth: 0, role: 'radio', initial: false, on: state('radio', true), off: state('radio', false) }] },
+			{ kind: 'toggle', controls: [{ sig: 'c', nth: 0, role: 'checkbox', initial: false, on: state('checkbox', true), off: state('checkbox', false) }] },
+		],
+		(sig) => ({ a, b, c })[sig],
+		(h) => h,
+	);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<button role="radio" aria-checked=\{rg0 === 1 \? "true" : "false"\}.*? onMmset=\{\(event\) => \{ if \(\(event as CustomEvent<boolean>\)\.detail\) rg0 = 1; else if \(rg0 === 1\) rg0 = -1; \}\}/);
+	assert.match(out, /onMmset=\{\(event\) => \{ tg1 = \(event as CustomEvent<boolean>\)\.detail; \}\}/);
+});
+
 test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, with the panel\'s id and label bound', async () => {
 	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a" data-activation-direction="none"><p>a</p></div></div></body>');
@@ -323,4 +343,22 @@ test("a Base UI Select whose trigger renders the chosen value as bare text (butt
 	// The select part hands over what the trigger showed after the choice, its icon's text included.
 	const handler = binding.extra!.find((e) => e.startsWith('onMmchoose'))!;
 	assert.match(handler, /"▼"/);
+});
+
+test('a Radix Collapsible with two triggers (a code block\'s Expand and the fade under it) is one state, either trigger toggling it', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-state="closed" data-slot="collapsible"><div aria-controls="radix-_r_5_" aria-expanded="false" data-state="closed" data-slot="collapsible-trigger"><button>Expand</button></div><div id="radix-_r_5_" data-state="closed" data-slot="collapsible-content"><pre>code</pre></div><button type="button" aria-controls="radix-_r_5_" aria-expanded="false" data-state="closed" data-slot="collapsible-trigger">Expand</button></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => undefined), 1, 'one group');
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.equal(out.match(/aria-expanded=\{acc0 === 0 \? "true" : "false"\}/g)?.length, 2, out);
+	assert.match(out, /id="radix-_r_5_" [^>]*data-state=\{acc0 === 0 \? "open" : "closed"\}/);
+	assert.doesNotMatch(out, /acc1|acc0 === 1/, 'both triggers open the one content');
+});
+
+test('content a tab reveals holding a Radix Collapsible of its own is kept in the page, where the Collapsible is bound', async () => {
+	const { holdsRadixDisclosure } = await import('../src/convert/stateful.ts');
+	const roots = (html: string) => [...walk(body(parseDocument(`<body>${html}</body>`)))].slice(0, 1);
+	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="c">Expand</button><div id="c" data-state="closed" data-slot="collapsible-content"></div></div>')), true);
+	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="p">Expand</button><pre id="p" data-state="closed"></pre></div>')), false);
 });

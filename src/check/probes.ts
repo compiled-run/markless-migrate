@@ -7,6 +7,7 @@ import { quiet, type RecordedJourney } from './journeys.ts';
 import { installProbe, probeControls, type ProbeControl } from './probe-page.ts';
 import { matchParts, partSelectors, type PartSelectors } from './probe-parts.ts';
 import type { Dimension, Failure, Viewport } from './types.ts';
+import { clickOnce } from './click.ts';
 
 /**
  * Widget probes: one control of each kind, in each class of widget behaviour, is driven through its class's short sequence on
@@ -193,20 +194,20 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 	const away = async () => (await page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.outside() ?? null).catch(() => null)) ?? { x: 2, y: 2 };
 	switch (op.op) {
 		case 'click':
-			return target.click({ timeout: STEP_TIMEOUT }).catch(() => target.click({ timeout: STEP_TIMEOUT, force: true }));
+			return clickOnce(target, { timeout: STEP_TIMEOUT }).catch(() => clickOnce(target, { timeout: STEP_TIMEOUT, force: true }));
 		case 'right click':
 			return target.click({ button: 'right', timeout: STEP_TIMEOUT });
 		case 'click label': {
 			const label = await aim('label');
 			if (!label) throw new Error('it has no label');
-			return label.click({ timeout: STEP_TIMEOUT });
+			return clickOnce(label, { timeout: STEP_TIMEOUT });
 		}
 		case 'item': {
 			const found = await aim(`item ${op.n}`);
 			if (!found) throw new Error(`nothing open has an item ${op.n + 1}`);
 			if (op.how === 'hover') return found.hover({ timeout: STEP_TIMEOUT });
 			if (DESTRUCTIVE.test((await found.textContent({ timeout: STEP_TIMEOUT }).catch(() => '')) ?? '')) throw new Error('left alone: it ends the session or deletes');
-			return found.click({ timeout: STEP_TIMEOUT });
+			return clickOnce(found, { timeout: STEP_TIMEOUT });
 		}
 		case 'typeahead': {
 			const letter = await page.evaluate((n) => (globalThis as ProbeWindow).__markless_migrate_probe__?.letter(n) ?? '', op.n).catch(() => '');
@@ -232,7 +233,7 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 		case 'close': {
 			const button = await aim('close');
 			if (!button) throw new Error('no open dialog with a close button');
-			return button.click({ timeout: STEP_TIMEOUT });
+			return clickOnce(button, { timeout: STEP_TIMEOUT });
 		}
 		case 'point at toasts': {
 			const toaster = await aim('toaster');
@@ -571,7 +572,7 @@ async function discover(side: Side, origin: string, route: string, controls: rea
 	for (const control of candidates) {
 		if (!(await mark(page, control, true))) continue;
 		const before = await read(page);
-		const clicked = await page.locator(MARK).first().click({ timeout: 1_500 }).then(() => true, () => false);
+		const clicked = await clickOnce(page.locator(MARK).first(), { timeout: 1_500 }).then(() => true, () => false);
 		await settle(side);
 		if (new URL(shownUrl(page)).pathname !== new URL(route, origin).pathname) {
 			await fresh();

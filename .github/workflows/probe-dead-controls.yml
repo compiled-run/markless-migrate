@@ -1,0 +1,45 @@
+name: probe dead controls
+# Dispatched only (never on push or pull_request), so the Vercel bypass secret is never handed to a fork's run.
+on:
+  workflow_dispatch:
+    inputs:
+      new:
+        description: The port's origin to probe against the original
+        default: https://mm-shadcn-ui-new.vercel.app
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        engine: [chromium, webkit]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.engine }}
+      - name: Probe
+        env:
+          NEW: ${{ inputs.new }}
+          BYPASS: ${{ secrets.SHADCN_BYPASS }}
+        run: |
+          mkdir -p out/strips
+          if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
+          for w in 0 1 2 3; do
+            ENGINE=${{ matrix.engine }} WORKERS=4 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs deploy/shadcn-ui/check-targets.json out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
+          done
+          wait
+          for f in out/log-*.txt; do tail -n 5 "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dead-controls-${{ matrix.engine }}-${{ matrix.shard }}
+          path: out
+          retention-days: 7

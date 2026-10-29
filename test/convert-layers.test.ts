@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
@@ -7,7 +8,7 @@ import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { extrasModule, LAYER_FILL, layerTable, pagesWiring, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
-import { componentImport, componentName, pageComponentOf, siteComponentOf, withSiteImports } from '../src/convert/site-components.ts';
+import { componentImport, componentName, inPageComponent, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -190,6 +191,45 @@ test("a page renders its own body children outside its root when they hold somet
 	const site = [{ selector: 'div[data-combobox-root]:has(input[data-id="search"])', component: 'search-box.tsrx', in: 'page' as const }];
 	const owned = pagesWiring(new Map([['/one/', [a!]], ['/two/', [b!]]]), (el) => pageComponentOf(el, site) !== undefined);
 	assert.deepEqual([...owned.keys()], ['/one/']);
+});
+
+test('what a control inside a page site component opens is that component\'s; one with "layers" renders it through its Layers export', () => {
+	const doc = parseDocument('<body><main><div data-slot="designer"><iframe title="typeset preview"></iframe><button id="t" aria-haspopup="menu"><span>Body</span></button></div><button id="u" aria-haspopup="menu">Theme</button></main></body>');
+	const site = [{ selector: 'div[data-slot="designer"]:has(iframe[title="typeset preview"])', component: 'typeset.tsrx', in: 'page' as const, layers: true }];
+	const byId = (id: string) => [...walk(body(doc))].find((el) => el.attrs.some((a) => a.name === 'id' && a.value === id))!;
+	assert.equal(inPageComponent(byId('t'), site)?.component, 'typeset.tsrx');
+	assert.equal(inPageComponent(byId('t').childNodes[0] as never, site)?.component, 'typeset.tsrx');
+	assert.equal(inPageComponent(byId('u'), site), undefined);
+	assert.equal(componentImport(site[0]!, '..'), "import Typeset, { Layers as TypesetLayers } from '../lib/site/typeset.tsrx';");
+	const tail = "// Generated\nexport default function Page() @{\n\t<><div><Typeset /></div><TypesetLayers /></>\n}\n";
+	assert.equal(withSiteImports(tail, site, '..').split('\n')[1], "import Typeset, { Layers as TypesetLayers } from '../lib/site/typeset.tsrx';");
+	assert.equal(withSiteImports(tail, site, '..').split('\n').filter((l) => l.startsWith('import')).length, 1);
+});
+
+test("the parts the site's own code imports are found, so the app gets their files", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'site-parts-'));
+	try {
+		await mkdir(join(app, 'lib', 'site'), { recursive: true });
+		await writeFile(join(app, 'lib', 'site', 'a.tsrx'), "import { roving } from '../parts/radix/roving.ts';\nimport { show } from '../parts/base-ui/dialog.ts';\n");
+		await writeFile(join(app, 'lib', 'site', 'b.ts'), "import { configure } from '../parts/cmdk.ts';\nimport { x } from './a.tsrx';\n");
+		assert.deepEqual(await siteImportedParts(app), ['base-ui/dialog', 'cmdk', 'radix/roving']);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
+});
+
+test('a page site component names the library ports its own markup uses; a name that is no port is refused', async () => {
+	const app = await mkdtemp(join(tmpdir(), 'site-ports-'));
+	try {
+		await mkdir(join(app, 'lib', 'site'), { recursive: true });
+		const listed = (ports: string[]) => writeFile(join(app, 'lib', 'site', 'components.json'), JSON.stringify([{ selector: 'div[data-slot="designer"]', component: 'create.tsrx', in: 'page', layers: true, ports }]));
+		await listed(['cmdk']);
+		assert.deepEqual((await readSiteComponents(app))[0]?.ports, ['cmdk']);
+		await listed(['cmdkk']);
+		await assert.rejects(readSiteComponents(app), /create\.tsrx names "cmdkk", which is not a library port/);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
 });
 
 test('a layer every page portals goes in the Document only when it is plain markup: one with a site component or state stays in each page', () => {

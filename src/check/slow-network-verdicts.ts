@@ -12,6 +12,10 @@ const MIN_OLD_RUNS = 4;
 const PAINT_FRAME_MS = 17;
 /** The instrument's own step: a first frame is read from screenshots this far apart, a click is sent no more often than this, and a largest paint is timed to its frame, so a smaller difference cannot be seen. */
 export const resolution = (metric: RunMetric): number => (metric === 'firstFrame' ? FRAME_EVERY_MS : metric === 'answered' ? CLICK_EVERY_MS : metric === 'lcp' ? PAINT_FRAME_MS : 0);
+/** The least a time may be later before it counts, whatever the noise: two 60 Hz frames, or 5% of the old median. Identical pages drew 20 ms gaps that 4 runs a side called significant. */
+export const MIN_WORSE_MS = 33;
+export const MIN_WORSE_FRACTION = 0.05;
+export const minWorse = (old: number): number => Math.max(MIN_WORSE_MS, old * MIN_WORSE_FRACTION);
 
 /** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
 export function noiseBand(old: readonly number[]): number | undefined {
@@ -38,7 +42,7 @@ export interface NetworkVerdict {
 	readonly old?: number;
 	readonly new?: number;
 	readonly worse: number;
-	/** The larger of the old page's own noise and the instrument's step. */
+	/** The largest of the old page's own noise, the instrument's step, two frames and 5% of the old median. */
 	readonly band: number;
 	readonly p: number;
 	readonly ok: boolean;
@@ -63,8 +67,8 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 		// A cell stopped once settled has too few runs to split the old ones; nothing it could still take would have made it red.
 		const noise = noiseBand(o) ?? (old.settled || next.settled ? 0 : undefined);
 		if (!o.length || !n.length || noise === undefined) continue;
-		const band = Math.max(noise, resolution(metric));
 		const om = median(o);
+		const band = Math.max(noise, resolution(metric), minWorse(om));
 		const nm = median(n);
 		const p = mannWhitneyGreater(o, n);
 		out.push({ metric, old: om, new: nm, worse: nm - om, band, p, ok: !(nm - om > band && p < SIGNIFICANCE) });

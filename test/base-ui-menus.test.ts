@@ -10,7 +10,7 @@ import { registryModule } from '../src/convert/parts.ts';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
 // Placement is not under test: a popup goes to the page's corner, a submenu (placed on a side) beside its trigger.
-const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
+const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { window.asked = o.placement; if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
 
@@ -62,6 +62,27 @@ const menu = (items: readonly string[], disabled: readonly string[] = []) => `<m
 const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
 const select = `<main style="height:3000px;padding:200px"><button type="button" id="before">Before</button><button type="button" id="base" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Select a fruit</span></button><input id="base-ui-x-hidden-input" tabindex="-1" aria-hidden="true" value="" style="position:fixed;width:1px;height:1px;clip-path:inset(50%)"><button type="button" id="after">After</button></main>
 	<div data-base-ui-portal hidden data-mm-layer="base"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="none" data-align="center" role="presentation" style="position:fixed" data-closed><div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox" style="position:relative">${FRUITS.map((f) => `<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`;
+
+test('a Base UI menu opens on the side and alignment its source asked for, not the side a flip at capture left on it', async () => {
+	const page = await open(menu(FRUITS).replace('<div data-side="bottom" data-align="start" role="presentation"', '<div data-side="top" data-align="end" data-mm-side="bottom" data-mm-align="start" role="presentation"'), ['base-ui/menu']);
+	await page.click('#dd');
+	await settled(page);
+	assert.equal(await page.evaluate(() => (window as unknown as { asked: string }).asked), 'bottom-start');
+	await page.close();
+});
+
+test('a Base UI menu trigger names its popup in aria-controls while the popup is mounted, as MenuTrigger does', async () => {
+	const page = await open(menu(FRUITS).replace('role="menu" aria-labelledby="dd"', 'role="menu" id="dd-popup" aria-labelledby="dd"'), ['base-ui/menu']);
+	const controls = () => page.evaluate(() => document.getElementById('dd')!.getAttribute('aria-controls'));
+	assert.equal(await controls(), null);
+	await page.click('#dd');
+	await settled(page);
+	assert.equal(await controls(), 'dd-popup');
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await controls(), null);
+	await page.close();
+});
 
 test('Base UI menu and select triggers carry data-pressed while their popup is open, as pressableTriggerOpenStateMapping maps it', async () => {
 	for (const [markup, port, popup] of [
@@ -563,5 +584,72 @@ test("a Base UI combobox's own alignOffset (convert reads it per instance) moves
 	const placed = await page.evaluate(() => (window as unknown as { placed: { anchor: string; middleware: unknown[] } }).placed);
 	assert.equal(placed.anchor, 'input-group-control');
 	assert.deepEqual(placed.middleware[0], { mainAxis: 6, crossAxis: -28, alignmentAxis: -28 });
+	await page.close();
+});
+
+// A context menu with a plain item, a checkbox and a radio item; `marks` adds convert's per-instance closeOnClick.
+const choiceMenu = (marks: Record<string, string> = {}) => `<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
+	<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px">${[
+		['menuitem', 'Back'],
+		['menuitemcheckbox', 'Show Full URLs'],
+		['menuitemradio', 'Colm Tuite'],
+	]
+		.map(([role, t]) => `<div role="${role}" tabindex="-1"${role === 'menuitem' ? '' : ' aria-checked="false"'}${marks[t!] === undefined ? '' : ` data-mm-close-on-click="${marks[t!]}"`}>${t}</div>`)
+		.join('')}</div></div></div>`;
+
+test("a press on a Base UI context menu's checkbox or radio item leaves the menu open, a plain item closes it, as each item's closeOnClick default says", async () => {
+	const page = await open(choiceMenu(), ['base-ui/context-menu']);
+	const shown = () => page.evaluate(() => !document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden);
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	for (const item of ['Show Full URLs', 'Colm Tuite']) {
+		await page.getByText(item).click();
+		await settled(page);
+		assert.equal(await shown(), true, item);
+	}
+	await page.getByText('Back').click();
+	await settled(page);
+	assert.equal(await shown(), false);
+	await page.close();
+});
+
+test('a Base UI menu item given closeOnClick, as convert writes it per instance, closes or keeps the menu open as told', async () => {
+	const page = await open(choiceMenu({ 'Show Full URLs': 'true', Back: 'false' }), ['base-ui/context-menu']);
+	const shown = () => page.evaluate(() => !document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden);
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	await page.getByText('Back').click();
+	await settled(page);
+	assert.equal(await shown(), true);
+	await page.getByText('Show Full URLs').click();
+	await settled(page);
+	assert.equal(await shown(), false);
+	await page.close();
+});
+
+test('a Base UI dropdown radio item given closeOnClick closes the menu; one without it keeps it open', async () => {
+	const page = await open(menu(['Apple', 'Banana']).replace('<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">Apple', '<div role="menuitemradio" aria-checked="false" tabindex="-1" data-mm-close-on-click="true">Apple').replace('<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">Banana', '<div role="menuitemradio" aria-checked="false" tabindex="-1">Banana'), ['base-ui/menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await page.getByText('Banana').click();
+	await settled(page);
+	assert.match(await state(page), /^true /);
+	await page.getByText('Apple').click();
+	await settled(page);
+	assert.match(await state(page), /^false /);
+	await page.close();
+});
+
+test('an opening Base UI submenu is painted over its menu, as its portal mounts it last, though convert rendered it first', async () => {
+	const [menuPart, subPart] = withSub().split(/(?=<div data-base-ui-portal hidden data-mm-layer="dd-sub-1")/);
+	const page = await open(subPart!.replace('role="presentation" style="position:absolute;', 'role="presentation" style="z-index:50;position:absolute;') + menuPart!.replaceAll('role="presentation" style="position:absolute;', 'role="presentation" style="z-index:50;position:absolute;'), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	await press(page, 'Enter');
+	await press(page, 'ArrowDown');
+	await press(page, 'ArrowRight');
+	assert.match(await subState(page), /sub=true/);
+	// The stub leaves the submenu on its menu: the point over its first item is in both.
+	const email = (await page.getByText('Email').boundingBox())!;
+	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="menu"]')?.getAttribute('aria-labelledby'), [email.x + 5, email.y + 5]), 'sub1');
 	await page.close();
 });

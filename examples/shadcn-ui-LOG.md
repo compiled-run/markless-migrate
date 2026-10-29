@@ -206,6 +206,33 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   selection and select-all, the selected count and the page buttons did nothing on all six tables. After: every step
   of a 22-step journey matches the old page on each of the three routes in the local witness: row order, cell text,
   checked states, `aria-sort`, the count and the page buttons.
+- TanStack tables, continued: `/examples/tasks` and dashboard-01. A column's own `filterFn` or `sortingFn` is the old
+  page's code (its source, read from the instance) when it reads only its arguments and the language's globals. A
+  column header's menu items sort one way whatever the direction was. The toolbar's Reset (shown only while a column is
+  filtered) is an arm that clears every filter, and the filter field shows its column's filter. A faceted filter's
+  popover options toggle their value in the column's filter list, and show their check and their count among the rows
+  the other filters keep. Clear filters shows once a value is chosen. The trigger shows the chosen labels, or their count
+  past two: one template learned from each value chosen alone and two and three chosen, rendered always and hidden by the
+  count, because Markless rebuilds no arm on another module's state. A Rows per page select sets the page size. Pages are
+  recorded at the table's own page size when the rows fill three pages, so a page-size select shows its value. Before:
+  `/examples/tasks`'s table was left static (its status and priority columns have filter functions). After: filter,
+  Reset, header-menu sorting, faceted filters, row selection, page size and the page buttons match the old page step by
+  step in the local witness. dashboard-01 matches as before.
+- Form libraries on Markless state (`src/convert/form-libraries.ts`, `src/convert/form-schemas.ts`,
+  `parts/form-library.ts`). The `/docs/forms` demos for react-hook-form, TanStack Form and Formisch did nothing: no
+  validation, no `aria-invalid` or `data-invalid`, no error messages, no character count, and Reset did nothing.
+  `convert` reads each form's library instance on the old page (its fields in registration order, defaults and
+  options). It uses each control once to learn which field it sets: a text field, a checkbox in a list, a radio, a
+  switch, or a select with each option's value. It then sets each field's errors (one message and two) and each text
+  field's value, and records the markup. Every attribute an error changed binds whether the field has one. What an
+  error added (the FieldError) is an `@if` arm showing the message, or a list item per message where the library shows
+  several. Text that shows a field's length (the character count) binds it. The schema is the old source's own, copied
+  with what it reads into `lib/parts/form-schemas/` (zod or valibot, imported unchanged) and loaded on the form's first
+  use. The part runs each library's timing, held to what the old page did step by step: react-hook-form and Formisch
+  validate on submit, then the changed field on every change after that, and a failed submit focuses the first
+  invalid field. TanStack Form shows its submit errors until the field changes. react-hook-form shows a field's first
+  message; the others show every message. Not ported: the email-list demos (rows a visitor adds and removes), and the
+  toast a valid submit shows.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
@@ -267,6 +294,71 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   Not ported: the spinner beside the input and "Searching..." in the empty state are the old page's `isLoading`, a
   status Markless shows only through `@pending`, which commits after 250 ms where the old page shows it at once; and
   a failed search shows no group instead of the previous results.
+- /typeset's designer is Markless code: `lib/site/typeset.tsrx` ports `app/(app)/(typeset)` (the customizer, the docs
+  panel, the preview with its specimen pills, the main menu and the Get Code drawer) as a page site component
+  (`"in": "page"` in `components.json`, #269). With `"layers": true` its `Layers` export renders what its controls
+  portal (the eight menus, both framework selects, the pill tooltips, the drawer) with the page's layers, and convert
+  leaves out the layers those controls opened on the old page and counts their ports for the page's registry. The
+  params, their URL form (nuqs 2: defaults leave the URL, `history: 'replace'`, the serializer's order), the undo
+  history over URL snapshots, shuffle and the install text are `lib/site/typeset-params.ts`; what the hooks did in the
+  browser (the URL, the history, hover previews debounced 50 ms, the iframe's `typeset-params` and `typeset-command`
+  messages, the shortcuts) is `typeset-runtime.ts`, handed to the page as `typesetcommand` events on its root, so every
+  state write stays in the component. The preview page's side is two site parts: `previewFontVariables` (the preview
+  layout's `PreviewFontVariables` puts the fonts' next/font classes on `<html>`) and `typesetPreview` (params from the
+  URL and from each message as `--preview-*` variables on `<html>`, its own keys forwarded to the designer).
+  Base UI fixes it needed are in the parts (#304): radio menu items keep the menu open, a select inside the drawer is
+  part of it, a popup placed against another anchor (the card, on phones), and next-themes' storage listener.
+  Compared step by step with mm-shadcn-ui-old (probes: font, size and default picks, hover and keyboard previews, the
+  checked item, Docs for Next.js and Vite, package managers, the Prompt text, locks and seeded shuffles, R, Shift+R,
+  Cmd+Z and Shift+Cmd+Z, the menu's disabled Undo/Redo and Reset, specimen pills and Open in New Tab, a shared link,
+  Shift+R and D pressed in the preview, Get Code with its own framework select, copy buttons, phone placement): the
+  same URL, labels, checked items, preview variables, texts and clipboard at every step, the prompt differing only in
+  the site's own origin. `test/e2e/shadcn-typeset.test.ts` drives each control on the component built alone
+  (`fixtures/shadcn-typeset`).
+  Not the original's yet: the specimens other than Docs are 404 inside the preview (no page links them, so plan never
+  listed them, #311); a shared link shows the defaults until the page is idle (the old page painted a skeleton until
+  its client render); the menus' rows are always in the page, hidden, where Base UI mounts a menu only while open.
+- /create's designer is Markless code too: `lib/site/create.tsrx` ports `app/(app)/(create)` (the preview with its
+  pills, the customizer's eleven pickers with their locks, the main menu, Open Preset with its phone drawer, the reset
+  dialog, the Cmd+P palette of the base's items, and Get Code with its three tabs) as a page site component with
+  `"layers": true`. `create-registry.ts` copies the old app's registry data the pickers read (themes, styles, bases,
+  presets, `buildRegistryTheme`); `create-params.ts` is the param model and its URL form (nuqs 2 with `history:
+  'push'`, a `shadcn/preset` code carrying the design system), shuffle, reset, the Get Code commands and theme, and the
+  design the preview applies; `create-runtime.ts` is what the hooks did in the browser (the URL and `popstate`, the
+  undo history over the preset code, hover previews, the iframe's `design-system-params` and the keys it forwards, the
+  shortcuts), handed to the page as `createcommand` events. The preview page's side is the site part
+  `designSystemPreview`, which loads `create-preview.ts` on `/preview/{base}/{name}` alone (DesignSystemProvider: body
+  classes, fonts, the theme's variables, the menu color); the preview's keys reach the designer through the old page's
+  own forward scripts, which the converted page serves in its head. The palette opens only by a key, so no capture
+  shows its markup: `components.json` names the `cmdk` port for the component (`"ports"`), and the page's registry
+  carries it. Convert copies the library parts the site's own code imports (`lib/site`, `../parts/radix/roving.ts`) even when
+  no page's markup uses them. The site header's Get Code (DesignerActions' ProjectForm) opens the same Get Code dialog,
+  through the site part `designerGetCode`. The iframe is rendered once the page runs, not on the server (bug 30). Two quirks of the old page
+  are kept because a user sees them: R draws twice (MainMenu's and RandomButton's `useRandom` both listen; nuqs writes
+  the second draw), and Shift+R resets at once when pressed on the page (use-reset's two listeners undo each other's
+  dialog state across React's synchronous flush) but opens the dialog when the preview forwards it. Parts changes:
+  `show(key)`/`hide(key)` and an `mmclose` event for Base UI dialogs the page opens from its own state, a radio item's
+  `data-mm-close-on-click` (the phone's `closeOnClick`), and a menu item that disables itself (Undo at the start of the
+  history) still closing its menu. The site's theme toggle now reads the theme its document applied, as useTheme's
+  `resolvedTheme` does, not the one another document just stored (the preview toggles itself before forwarding D).
+  Compared step by step with mm-shadcn-ui-old in Chromium and WebKit (probes: every picker's picks and preset codes,
+  hover and arrow-key previews, rows that follow the params, undo and redo from keys and menu, seeded shuffles with
+  locks, Shift+R and the reset dialog, pills and the browser's back, copy preset, Open Preset with invalid and flag
+  input, the palette's filter and choice, Get Code's templates, bases, options, package managers, apply modes and theme,
+  every key pressed in the preview, phone placement and the drawer, shared and legacy links): the same URL, labels,
+  rows, iframe src, preview design, focus and clipboard at every step. `test/e2e/shadcn-create.test.ts` drives each
+  control on the component built alone (`fixtures/shadcn-create`), in both browsers.
+  Not the original's yet: the preview pages are not in the plan (#311, so the port's iframe shows 404 until they are);
+  the preview's icons stay in the captured library when another is picked (#352); the welcome dialog is #295's; the
+  preview applies a shared link's design once idle, where the old one rendered nothing until then. `?preset=random`
+  can draw base color `gray`, which the pinned site's registry lacks: the old page throws and shows no designer; the
+  port's designer works and its preview, which throws applying that design, keeps the one it had.
+- Patterns convert could generate instead of a hand port (found on /typeset, the same on /create): the pages a control
+  loads into a frame (#311); URL state as nuqs keeps it, with its serializer and an undo history over it (#312, with
+  /create's push history, preset encoding and batching); dialogs a page opens from its own state rather than a trigger
+  (#351); an element rendering per a URL param's choice, as IconPlaceholder per icon library (#352);
+  `next/script` `beforeInteractive` inline scripts, which the port keeps inert in `self.__next_s` (#313); what a
+  client effect sets on `<html>` after load (#314); a Base UI radio menu's value as state, as Select's is (#315).
 
 ## Markless framework bugs found
 
@@ -373,6 +465,53 @@ parse (quotes and backticks in arm text).
 21. Seen with bug 7: a keyed `@for` whose row binds an attribute cannot sit in an `@if` arm
     (MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED "a repeated row inside it holds a attribute binding"), here with state
     decided by the component's own `state()`, `@if (open) { @for (const item of items; key item.id) { <p id={item.id}>...` .
+22. Seen porting /typeset (the port's 0.9.0 packs from Markless main): a click handler on a row of a keyed `@for` inside a child
+    component never runs; the same rows in the page component do. Repro `pages/rows-once.tsrx`:
+    `function List() @{ let picked = state('none'); <div><p>{picked}</p>@for (const item of ITEMS; key item) { <button
+    onClick={() => (picked = item)}>{item}</button> }</div> }` rendered by the page: clicking a row leaves `none`. No
+    diagnostic. The typeset port renders each row as a component of its own with literal props (`RadioRow`).
+23. Seen porting /typeset: a row attribute that compares `shared()` state with the row's item renders once and never
+    updates; the same comparison with the component's own `state()` updates. Repro `pages/rows-shared.tsrx`:
+    `@for (const item of ITEMS; key item) { <button data-active={p.value === item ? 'true' : 'false'}>...` with
+    `const p = picked()` (a page-scope `shared()`): after `p.value = 'c'` the first row still says `true`. The build
+    warns MARKLESS_KEYED_REPEAT_ROW_MINT_UNSUPPORTED, which reads as being about rows added later, not existing ones.
+24. Seen porting /typeset: a component used several times inside a component that is itself used several times reads
+    the last instance's prop in its handlers. Repro `pages/nested-props.tsrx`: `function Choice({ value }) @{ <button
+    onClick={() => (p.value = value)}>{value}</button> }`, three `Choice`s in a `Group`, two `Group`s: every button
+    sets `z`. The typeset port's package manager buttons (four in each of the panel's and the drawer's docs) read their
+    own text instead.
+25. Seen porting /create (the port's 0.9.0 packs): bug 24 needs no repeated parent. A component used twice inside a
+    component the page renders once reads the last instance's prop in its computeds and its handlers:
+    `function Pill({ value }) @{ const active = computed(() => p.value === value); <button data-active={active ? 'true' :
+    'false'} onClick={() => (p.value = value)}>{value}</button> }`, two `Pill`s (`a`, `b`) in a `Bar` the page renders:
+    clicking `a` sets `b`, and both say `true`. The same two `Pill`s written in the page component itself work. The
+    /create port writes such rows out in the component that owns them (the preview pills, the Get Code tabs and radios)
+    or instantiates them from `Layers` (the palette's items).
+26. Seen porting /create: a prop the parent passes from a computed updates the child where it is used as it comes and
+    keeps its first value inside an expression. `function Box({ away }) @{ <div id="direct" hidden={away}></div><div
+    id="expr" hidden={away ? true : undefined}></div> }` with `<Box away={away} />` and `const away = computed(() =>
+    !open)`: toggling `open` updates `#direct` and leaves `#expr` hidden. No diagnostic. The /create port's parents
+    compute the attribute's value themselves (`away`, `disabledMark`).
+27. Seen porting /create: a computed named like another component's prop in the same module turns the attribute
+    expressions that read it into static text. `RadioRow` had `const checked = computed(...)` and `aria-checked={checked ?
+    'true' : 'false'}`; the module's `Check` component takes a `checked` prop. The compiled template kept `checked ?
+    'true' : 'false'` as an authored expression (no graph read), so the rows kept their first value while `<Check
+    checked={checked} />` updated. Renaming the computed (`radioChecked`) fixed it. The template-expression binding map is
+    keyed by name across the module, which may also be bug 26's mechanism (`away` is both Box's prop and the parent's
+    computed there). No diagnostic.
+28. Seen porting /create: a `shared()` initializer is copied into every module that uses the shared value, free
+    variables included. `view: START` with `START` declared beside the `shared()` in `create-state.tsrx` threw `START is
+    not defined` at render in the modules that read it. Exporting `START` from the `.tsrx` does not help either: the
+    compiled module does not export plain consts (`MISSING_EXPORT`). The port declares `START` in a `.ts` module and
+    imports it in every module that calls `createState()`.
+29. The bundler (`lazy-facades`, local packs from main) spreads a chunk's strings into one array
+    (`strings.push(...facts.strings)`), which overflows the call stack past about 122,000 strings. The one-module
+    /create page reached 161,600; the port splits it into six modules (compiled data grows faster than a module's
+    size) and renders the palette's items with `@for` instead of one row per item.
+30. Seen porting /create: a keyed `@for` in a component the page renders in two `@switch` arms (as the converter writes
+    a page's query variants) does not take over the rows the server rendered: the client adds its own row beside them.
+    /create's preview iframe came out twice. The port renders no iframe on the server and adds it once the page runs,
+    as the typeset port does; the fixture's page now switches on the query like the converted one.
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 
@@ -2512,10 +2651,109 @@ Leading causes (routes):
 
 </details>
 
+## Charts: how they move, fit and date (decision, 2026-10-27)
+
+The port draws each chart from SVGs captured on the old page. Three things differed from recharts: a card's control
+(Desktop 7,324 / Mobile 7,250, a range select, a toggle group) swapped one drawing for another instead of moving the
+lines, areas and bars to their new shape; a width the capture did not see stretched the nearest drawing; and behind
+UTC the axis showed other ticks than the old page.
+
+Inventory (old site, 74 routes with a chart): 68 `/view` chart pages, the three docs `chart` pages, `/sera`, and the
+two dashboards. Charts whose card controls change them: bar-interactive (docs `chart` pages and `/view`), line-interactive, area-interactive,
+`dashboard-01` and `/examples/dashboard` (toggle group and select), pie-interactive (a month select: recharts
+redraws it at once, no update animation). Every chart has a tooltip; 44 of them change size with the page (most are
+`aspect-video`); the pie, radar and radial charts are 250 px squares at every captured width but pie-interactive and
+pie-legend.
+
+Approaches, measured on `/view/new-york-v4/chart-line-interactive` (1280 px, Chromium, V8 coverage):
+
+| | Downloaded on first use | Executed at load | Executed by a switch |
+| --- | --- | --- | --- |
+| Old page (React, recharts 3.8) | (already loaded) | 666 KB | 207 KB |
+| Run recharts lazily over the capture | about 215 KB gzip (React DOM 71 KB, recharts chunks 144 KB) | 0 | more than the old page's 207 KB the first time (React and recharts start too; not measured) |
+| Markless part with recharts' own animation code | 17.4 KB gzip (57 KB: the part, d3-shape's curves, d3-path) | 0 | 7.3 KB in the part |
+
+Running recharts needs React in the port, which the catalog rules out (`react`, `react-dom`: the old framework
+itself), and the chart's component source. Decision: a Markless part. `parts/recharts-motion.ts` ports recharts 3.8's
+update animation as written: `JavascriptAnimate`'s clock (the frame its timer starts in, `animationBegin`), the
+`configBezier` easing with its Newton step and stopping rule, `animationDuration` (1500 ms for lines and areas, 400
+ms for bars), the point mapping (`prevPoints[floor(i * prev / next)]`, an area's baseline too), and the paths drawn
+with d3-shape 3.2 curves and recharts' `Rectangle` path. Convert reads each mark's curve, layout and animation off
+the props recharts rendered it with (`data-mm-geo`) and the frames the old page waited from the input to the first
+moving frame (`lag`, 4 on the bar and line charts, 3 on area-interactive). The part is fetched when the pointer or
+focus comes to a card with such a control, so nothing of it runs at load; a control used before it arrives shows the
+old shapes, and the frames it took count towards the wait.
+
+Frame-by-frame check (each frame read after it was painted, 1280 px, against the old site served locally):
+
+| Chart | Control | Moving frames old / port | Largest gap in the same frame |
+| --- | --- | --- | --- |
+| line-interactive | Mobile | 90 / 91 | 0.011 px |
+| bar-interactive | Mobile | 24 / 24 | 0.019 px |
+| area-interactive | Last 30 days (select) | 92 / 92 | 0.017 px |
+| dashboard-01 | Last 30 days (toggle) | 91 / 91 | 0.038 px; the first 2 frames hold the old shape when the click comes at once after the pointer (the part was still loading) |
+| docs `chart` (radix) | Mobile | 9 / 24 | 0.034 px at equal progress: the old docs page drops frames under its other charts' work; the frames it paints sit on the port's curve |
+| pie-interactive | February (select) | 1 / 1 (no animation) | 0 px |
+
+Time zones (second change): convert reads each axis' every possible tick off the props recharts' CartesianAxis was
+given (coordinates and the formatter's text, `a` in the drawing's facts) and each chart's layout and bar settings off
+its store. Behind UTC (checked once, on Jan 1 and Jul 1 of the chart's year) `parts/recharts-layout.ts` takes the
+dates as the clock part writes them for the visitor, keeps the ticks recharts' `getTicks` keeps (its `preserveEnd`
+and the other intervals as written, each text measured in a span on the body in the tick's font size and letter
+spacing, as `getStringSize` does) and draws them where `getTickLineCoord` puts them. Clock capture now finds a chart's
+dates as a whole too: on `chart-line-interactive` and `dashboard-01` the axis shows another number of ticks behind
+UTC, so the place-by-place reading found nothing. Old and port agree on every tick's text and place in UTC,
+Asia/Tokyo, America/Los_Angeles, Pacific/Honolulu and America/St_Johns on area-interactive, bar-interactive,
+line-interactive, dashboard-01 and area-default (1280 px), and the tooltips' dates at three points of each.
+
+Any width (third change): the drawing the old page made at the nearest captured width is laid out again for the
+chart's container, as recharts would lay it out there, when the container's whole-pixel size differs (the wrapper
+gets that size, as ResponsiveContainer gives it). The plot box keeps its margins and axis sizes; the band and point
+scales are d3-scale's, recomputed (`at = start + step * i`, so a coordinate is the float recharts has); bars take
+`getBarPositions` (10% category gap, the size truncated to whole pixels, so a bar chart cannot simply be scaled); the
+number axis is affine in the plot box; lines and areas are drawn again through their mapped points with d3-shape;
+dots, the tooltip cursor (`getCursorRectangle`, `getCursorPoints`), an area's animation clip, the bars' growth
+origin, LabelList labels (`getCartesianPosition`, with the size it clamps their text to), custom dots, the axes
+(`getTicks` again) and the horizontal grid (`getTicks` over the number axis' ticks in the body's font, then the
+plot's edges, as CartesianGrid does; convert reads where its lines could go off the tallest drawing) follow. A chart
+with no category axis drawn uses recharts' implicit one, one category per bar or point. The tooltip's hit ranges are
+recharts' `calculateActiveTickIndex` (halfway between neighbouring tick coordinates, added and halved as recharts
+does, so a pointer exactly on a boundary goes where recharts sends it; the captured ranges were a sweep's,
+quarter-pixel steps off, and are now exact at the captured widths too) and its fixed axis is anchored at the
+active category's middle. The pointer is read from `mousemove` and rounded as `getRelativeCoordinate` does (the
+port used pointermove's fractional coordinates: tooltips sat up to 1 px off). What a tooltip's state puts into the
+drawing is laid out the same way as Markless inserts it. Morphs at a new width start from the drawing on screen
+(the same state's drawing for another width is hidden in the same mutation). Executed at load on
+`chart-area-interactive`: 87.5 KB at a captured width, 96.5 KB at 1100 px (the layout part, 9 KB), against the old
+page's 666 KB.
+
+Parity sweep against the old site served locally, 27 chart routes (33 charts) at 400, 700, 1000 and 1512 px (no
+captured width among them), each in UTC and America/Los_Angeles: every element's geometry at rest and with the
+pointer at 30% and 70% of the plot, and the tooltip's text and place. "Same" is every coordinate within 0.002 px
+(d3-shape writes three decimals) and the same tooltip at the same place. Morphs at 700, 1100 and 1512 px (line, bar,
+area, dashboard): every frame within 0.04 px of the original.
+
+| Chart | 8 runs (4 widths x 2 zones) |
+| --- | --- |
+| area: default, axes, gradient, interactive, stacked, stacked-expand, step | same |
+| bar: interactive, active, horizontal, label, label-custom, mixed, multiple, negative, stacked | same |
+| line: default, dots, dots-custom, interactive, label, multiple, step | same |
+| tooltip-default | same in UTC; behind UTC its weekday ticks ("Mon") read a day earlier on the old page, the port keeps the capture's (the clock part reads only dates with a month) |
+| docs `chart` page, its 7 charts | same |
+| pie-interactive | same (300 px at all four widths) |
+| dashboard-01 | same at 1000 and 1512 px; below 768 px the old page switches to the last 7 days on load (`useIsMobile`), the port keeps 3 months |
+
+Not yet: pie, radar and radial charts are laid out only at the sizes captured (they are 250 or 300 px squares, so
+this shows only in containers narrower than that: pie-interactive and pie-legend at 342 px show the 300 px drawing
+where the old page draws 292 px); weekday-only date ticks behind UTC; the dashboards' phone default range.
+
+
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
-  the interactive charts' pages are 3-5x the original's HTML. Next: one SVG laid out from the captured data at any width.
+  the interactive charts' pages are 3-5x the original's HTML; any other width is laid out again from the nearest.
+  One SVG laid out from the captured data would do. Polar charts at sizes not captured, weekday-only ticks behind UTC,
+  and the dashboards' range on phones (see "Charts: how they move, fit and date").
 - `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.

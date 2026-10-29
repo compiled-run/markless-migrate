@@ -58,6 +58,8 @@ const highlightedIn = (p: Popup) => items(p).findIndex((i) => i.hasAttribute('da
 // `keyboard`: useListNavigation scrolls the item into view when the keys, not the pointer, moved to it.
 function highlight(p: Popup, item: HTMLElement | undefined, keyboard = false): void {
 	for (const i of items(p)) i.removeAttribute('data-highlighted');
+	// CompositeList's roving tab stop: the active item has tabindex 0.
+	if (item) for (const i of items(p)) i.tabIndex = i === item ? 0 : -1;
 	if (!item) return;
 	// Focus leaving a submenu's trigger for its submenu unhighlights it.
 	const parent = parentOf.get(p);
@@ -205,7 +207,13 @@ function switchTo(p: Popup, to: HTMLElement | undefined, focus: 'popup'): boolea
 	return openMenu(to, focus);
 }
 
+// The item a press or Enter activated while it was enabled: Base UI's handler read `disabled` as rendered then, so an
+// item whose own onClick disables it (Undo at the start of the history) still closes the menu.
+let activated: HTMLElement | null = null;
+const activate = (item: HTMLElement | null) => (activated = item && enabled(item) && !item.hasAttribute('data-disabled') ? item : null);
+
 export function pointerdown(target: Element, event: PointerEvent): boolean {
+	activate(target.closest<HTMLElement>(ITEM));
 	const trigger = triggerOf(target);
 	if (!trigger || event.button !== 0) return false;
 	// The press's own focus would land on the trigger after the menu took it.
@@ -219,16 +227,23 @@ export function click(target: Element, event?: MouseEvent): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
 	const p = item && popupOf(item);
 	if (!item || !p) return Boolean(triggerOf(target));
-	if (!enabled(item) || item.hasAttribute('data-disabled')) return true;
+	const wasEnabled = activated === item;
+	activated = null;
+	if (!wasEnabled && (!enabled(item) || item.hasAttribute('data-disabled'))) return true;
 	if (item.matches(OPENER)) {
 		// useClick with ignoreMouse (openOnHover): a mouse or pen press leaves opening to the hover rest.
 		const pointer = event instanceof PointerEvent ? event.pointerType : undefined;
 		if (pointer !== 'mouse' && pointer !== 'pen') openSub(p, item, 'pointer');
 		return true;
 	}
-	// Menu.RadioItem and Menu.CheckboxItem default closeOnClick to false.
-	if (!item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]')) closeTree(p, 'item');
+	if (closesOnClick(item)) closeTree(p, 'item');
 	return true;
+}
+
+/** An item's closeOnClick: its instance's (convert writes it, or a page on the items' group), else Menu.Item's true and Menu.CheckboxItem's and Menu.RadioItem's false. */
+export function closesOnClick(item: Element): boolean {
+	const own = item.closest('[data-mm-close-on-click]')?.getAttribute('data-mm-close-on-click') ?? null;
+	return own === null || own === '' ? !item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]') : own !== 'false';
 }
 export function pointerover(target: Element): boolean {
 	const bar = triggerOf(target);
@@ -356,6 +371,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
 		event.preventDefault();
+		activate(list[at]!);
 		list[at]!.click();
 		return true;
 	}

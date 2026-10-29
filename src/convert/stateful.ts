@@ -92,6 +92,13 @@ export class TabsPlan {
 /** A Radix Collapsible's or Accordion's content: its panel by data-slot, with Radix's data-state. */
 export const radixDisclosurePanel = (panel: Element) => /(^|-)(collapsible|accordion)-content$/.test(attr(panel, 'data-slot') ?? '') && attr(panel, 'data-state') !== undefined;
 
+/** Whether markup holds a Radix Collapsible or Accordion of its own: a trigger whose aria-controls names such a panel in it. */
+export function holdsRadixDisclosure(roots: readonly Element[]): boolean {
+	const all = roots.flatMap((r) => [r, ...walk(r)]);
+	const panels = new Set(all.filter(radixDisclosurePanel).map((p) => attr(p, 'id')).filter(Boolean));
+	return all.some((el) => attr(el, 'aria-expanded') !== undefined && panels.has(attr(el, 'aria-controls')));
+}
+
 export class DisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -134,8 +141,8 @@ export class DisclosurePlan {
 						if (attr(n, 'data-state') !== undefined) item = n;
 						break;
 					}
-			// Each item of an accordion that lets several be open is its own group.
-			const key = accordion && !multiple(accordion) ? accordion : trigger;
+			// Each item of an accordion that lets several be open is its own group; a Collapsible's triggers share its content.
+			const key = accordion && !multiple(accordion) ? accordion : accordion ? trigger : panel;
 			const list = groups.get(key) ?? groups.set(key, []).get(key)!;
 			list.push({ trigger, content: panel, ...(item ? { item } : {}), ...(header ? { header } : {}) });
 		}
@@ -143,11 +150,14 @@ export class DisclosurePlan {
 			const n = this.n++;
 			const open = `acc${n}`;
 			const closing = `acc${n}x`;
-			const initial = items.findIndex((i) => attr(i.trigger, 'aria-expanded') === 'true');
+			// Each content is one item, whichever of its triggers is used.
+			const contents = [...new Set(items.map((i) => i.content))];
+			const initial = contents.indexOf(items.find((i) => attr(i.trigger, 'aria-expanded') === 'true')?.content as Element);
 			const collapsible = !items.some((i) => attr(i.trigger, 'aria-expanded') === 'true' && attr(i.trigger, 'aria-disabled') === 'true');
 			const declare = [`let ${open} = state(${initial >= 0 ? initial : -1});`, `let ${closing} = state(-1);`];
-			const ids = `[${items.map((i) => lit(attr(i.content, 'id') ?? '')).join(', ')}]`;
-			items.forEach((i, k) => {
+			const ids = `[${contents.map((c) => lit(attr(c, 'id') ?? '')).join(', ')}]`;
+			items.forEach((i) => {
+				const k = contents.indexOf(i.content);
 				const isOpen = `${open} === ${k}`;
 				const shown = `(${open} === ${k} || ${closing} === ${k})`;
 				const id = attr(i.content, 'id') ?? '';
@@ -290,13 +300,15 @@ export class CheckablePlan {
 								? [`onKeyDown={(event) => { if (event.key === ' ') event.preventDefault(); else if (event.key === 'Enter') { event.preventDefault(); ${role === 'switch' ? `${choose};` : 'submitForm(event);'} } }}`, `onKeyUp={(event) => { if (event.key === ' ') { ${choose}; } }}`]
 								: [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
 				// React Aria's ToggleButtonGroup and Radix's RovingFocusGroup items move focus in toggle.ts's keydown.
+				// A form's Reset (parts/form-library.ts) sets each control as its defaults say, which may leave no radio chosen.
+				const set = `onMmset={(event) => { ${group.kind === 'radio' ? `if ((event as CustomEvent<boolean>).detail) ${name} = ${k}; else if (${name} === ${k}) ${name} = -1;` : `${name} = (event as CustomEvent<boolean>).detail;`} }}`;
 				const radioRoving = el.tagName === 'button' && group.kind === 'radio' && attr(el, 'role') === 'radio' && attr(el, 'data-rac') === undefined && attr(el, 'data-radix-collection-item') === undefined ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
 				// React Aria's Checkbox, Switch and Radio: a label around a visually hidden input that holds focus. A click
 				// on the label reaches the input too, and Space on the input clicks it: the input's click is the one use.
 				// Only the descendants that differ are bound, so the focused input is never rendered again.
 				if (el.tagName === 'label' && attr(el, 'data-rac') !== undefined) {
 					const pick = group.kind === 'radio' ? `${name} = ${k}` : choose;
-					this.bindings.set(el, { declare, omit: names, extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${pick}; } }}`] });
+					this.bindings.set(el, { declare, omit: names, extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${pick}; } }}`, set] });
 					this.diff(el, c.on.inner, c.off.inner, on, declare, emit);
 					const input = [...walk(el)].find((x) => x.tagName === 'input');
 					if (input) this.bindings.set(input, mergeBindings(this.bindings.get(input), { declare, omit: ['checked'], extra: [`checked={${on}}`] })!);
@@ -305,7 +317,7 @@ export class CheckablePlan {
 				this.bindings.set(el, {
 					declare,
 					omit: names,
-					extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving],
+					extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving, set],
 					...(c.on.inner !== c.off.inner ? { children: `@if (${on}) { <>${emit(c.on.inner)}</> } @else { <>${emit(c.off.inner)}</> }` } : {}),
 				});
 				const parent = el.parentNode as Element | null;
