@@ -83,6 +83,21 @@ export function trackTimers(): void {
 		if (id !== undefined) st.pending.delete(id);
 		return clear.call(this, id);
 	} as typeof clearTimeout;
+	// A copy button answers when the clipboard does, which can take longer than the quiet window and shows as nothing else.
+	let calls = 0;
+	const clipboard = (navigator as unknown as { clipboard?: Record<string, unknown> }).clipboard;
+	for (const name of ['writeText', 'write', 'readText', 'read']) {
+		const call = clipboard?.[name];
+		if (typeof call !== 'function') continue;
+		clipboard![name] = function (this: unknown, ...args: unknown[]) {
+			const key = -++calls;
+			if (performance.now() >= st.mark) st.pending.set(key, performance.now());
+			const done = () => st.pending.delete(key);
+			const result = (call as (...a: unknown[]) => Promise<unknown>).apply(this, args);
+			void Promise.resolve(result).then(done, done);
+			return result;
+		};
+	}
 }
 
 /** In the page: the start of a use; what already runs (an endless spinner, a pending timer) is the page's own, not the use's. */
