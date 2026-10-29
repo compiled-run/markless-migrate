@@ -2036,8 +2036,6 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
-	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent?.startsWith('Mar') || [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].some((t) => t.textContent === 'Apr 11'), undefined, { timeout: 5000 }).catch(() => {});
-	await page.waitForTimeout(300);
 	const west = ['Mar 31', ...labels.slice(0, -1)];
 	const widths = await page.evaluate((texts) => {
 		const span = document.createElement('span');
@@ -2047,6 +2045,9 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	}, west);
 	const expected = preserveEnd(coords, widths, 0, 300, 8);
 	assert.notDeepEqual(expected.map((e) => e.i), shown, 'the west dates keep other ticks');
+	// The clock relabels the ticks a day earlier before the part lays them out again: wait for the layout, not the text.
+	const want = expected.map((e) => `${west[e.i]}@${e.at}`).join(',');
+	await page.waitForFunction((w) => [...document.querySelectorAll('.recharts-xAxis-tick-labels > g:not([display="none"]) text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`).join(',') === w, want, { timeout: 5000 }).catch(() => {});
 	const seen = await read(page);
 	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
 	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
