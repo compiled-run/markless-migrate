@@ -40,7 +40,7 @@ function show(trigger: HTMLElement): void {
 	const from = current?.trigger;
 	if (current) hide(true);
 	pressed = false;
-	const p = openPopup(trigger, { popupSelector: ':scope > [role="presentation"] > nav', key: keyOf(trigger), sideOffset: 8, onDismiss: () => dismiss() });
+	const p = openPopup(trigger, { popupSelector: ':scope > [role="presentation"] > nav', key: keyOf(trigger), sideOffset: 8, fallbackAxisSide: 'none', onDismiss: () => dismiss() });
 	if (!p) return;
 	current = p;
 	markTrigger(trigger, true);

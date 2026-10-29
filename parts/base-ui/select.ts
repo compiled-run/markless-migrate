@@ -134,7 +134,7 @@ const typingOf = (trigger: HTMLElement) => typings.get(trigger) ?? typings.set(t
 const iconOf = (trigger: HTMLElement) => [...trigger.children].find((c) => c.getAttribute('aria-hidden') === 'true' && (c.textContent ?? '').includes('▼'));
 
 function openSelect(trigger: HTMLElement, key?: string): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: (q) => dismiss(q) });
+	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, fallbackAxisSide: 'none', onDismiss: (q) => dismiss(q) });
 	if (!p) return false;
 	const icon = iconOf(trigger);
 	if (icon) {
@@ -154,7 +154,7 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 		(p.positioner.firstElementChild as HTMLElement | null)?.style.removeProperty('height');
 		// openPopup placed it off the listbox's own data-align (none: center) and keeps it there until stopped.
 		p.stop?.();
-		p.stop = place(trigger, p.positioner, p.popup, { side: 'bottom', align: 'start', sideOffset: 0, alignOffset: 0, positionMethod: 'fixed' });
+		p.stop = place(trigger, p.positioner, p.popup, { side: 'bottom', align: 'start', sideOffset: 0, alignOffset: 0, positionMethod: 'fixed', fallbackAxisSide: 'none' });
 	}
 	// useListNavigation: the selected item, else from ArrowUp the last enabled one, else the first.
 	const list = options(p);

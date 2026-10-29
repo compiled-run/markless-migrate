@@ -126,6 +126,20 @@ test("a dialog trigger gets its root's disablePointerDismissal, which Drawer.Roo
 	await page.close();
 });
 
+test("a React Aria popover gets the placement and offsets its own instance was given (a data table's menu at bottom end, 4 px off)", async () => {
+	const page = await browser.newPage();
+	await fibers(page, `<div id="page"><div id="menu" data-rac="" data-trigger="MenuTrigger" data-placement="bottom"></div><div id="tip" role="tooltip" data-rac="" data-placement="top"></div><div id="plain" data-rac="" data-trigger="DialogTrigger" data-placement="bottom"></div></div>`, [3, {}, [[5, '#page', [
+		[0, { placement: 'bottom end', offset: 4, crossOffset: 0, className: 'w-44' }, [[11, {}, [[5, '#menu']]]]],
+		[0, { placement: 'top', offset: 6 }, [[5, '#tip']]],
+		[0, {}, [[5, '#plain']]],
+	]]]]);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS.filter((s) => s.port === 'react-aria/overlay'), added: false });
+	assert.deepEqual(await attrs(page, 'data-mm-placement'), { page: null, menu: 'bottom end', tip: 'top', plain: null });
+	assert.deepEqual(await attrs(page, 'data-mm-offset'), { page: null, menu: '4', tip: '6', plain: null });
+	assert.deepEqual(await attrs(page, 'data-mm-cross-offset'), { page: null, menu: '0', tip: null, plain: null });
+	await page.close();
+});
+
 test('a popup records the side and alignment it asked for, not where a flip away from an edge put it', async () => {
 	const page = await browser.newPage();
 	const SIDE = INSTANCE_PROPS.filter((s) => s.port === 'base-ui/popup' || s.port === 'popper');
