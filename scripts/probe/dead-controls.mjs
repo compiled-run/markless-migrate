@@ -12,7 +12,7 @@ import pixelmatch from 'pixelmatch';
 import { execFileSync } from 'node:child_process';
 import { costsFrom, packByCost } from './pack.ts';
 import { agreed, oldKey, readOld, writeOld } from './reuse.ts';
-import { markUse, settle as settleOnce, settleDeferred, trackRequests, trackTimers } from '../../src/check/settle.ts';
+import { markUse, settle as settleOnce, settleCalm, settleDeferred, trackRequests, trackTimers } from '../../src/check/settle.ts';
 
 // Each route's settles: how many, their time, and how many each cause held to the cap.
 async function settle(p, net, capMs) {
@@ -295,7 +295,7 @@ const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Bo
 // Each of the CONCURRENCY workers has its own browser (a browser has one focused page, and a use needs it), pages, pools
 // and counts; they share this process and one queue of routes.
 const workerState = new AsyncLocalStorage();
-const newWorker = () => ({ browser: undefined, pages: {}, nets: {}, cdp: {}, errors: { old: [], new: [] }, current: { old: undefined, new: undefined }, ambient: { old: undefined, new: undefined }, prepared: [], sides: ['old', 'new'], reuse: { hits: 0, recorded: 0, again: 0 }, currentRoute: '', nextWidths: [WIDTH], settles: { n: 0, ms: 0, capped: {} }, loads: { n: 0, ms: 0 }, profile: {}, motionMs: 0 });
+const newWorker = () => ({ browser: undefined, pages: {}, nets: {}, cdp: {}, errors: { old: [], new: [] }, current: { old: undefined, new: undefined }, ambient: { old: undefined, new: undefined }, prepared: [], sides: ['old', 'new'], calm: false, reuse: { hits: 0, recorded: 0, again: 0 }, currentRoute: '', nextWidths: [WIDTH], settles: { n: 0, ms: 0, capped: {} }, loads: { n: 0, ms: 0 }, profile: {}, motionMs: 0 });
 const w = new Proxy({}, { get: (_, k) => workerState.getStore()[k], set: (_, k, v) => ((workerState.getStore()[k] = v), true) });
 const view = (name) => new Proxy({}, { get: (_, k) => w[name][k], set: (_, k, v) => ((w[name][k] = v), true) });
 const pages = view('pages');
@@ -410,11 +410,18 @@ async function oldAgain(o, run) {
 
 // Findings of one use against each recording of the original that `acts`, kept when they hold against all of them; when
 // they came from kept recordings, the original is recorded once more and they are judged again.
+// Last, the original is used once more on a page that has stopped changing: a section it fills in late (later still on a
+// busy machine) is then in place before the use, and a finding that only came from it is dropped.
 async function judged(o, acts, compare, run) {
 	let found = agreed(o.runs.filter(acts).map(compare));
 	if (found.length && !o.live) {
 		const again = await oldAgain(o, run);
 		found = agreed(again.runs.filter(acts).map(compare));
+	}
+	if (found.length) {
+		w.calm = true;
+		const calm = await run().finally(() => (w.calm = false));
+		found = acts(calm) ? agreed([found, compare(calm)]) : [];
 	}
 	return found;
 }
@@ -483,9 +490,11 @@ async function load(side, route) {
 		slot.loading = undefined;
 		const failed = await timed('load.preloaded', () => loading);
 		if (failed) throw failed;
+		if (w.calm) await timed('load.calm', () => settleCalm(p));
 	} else {
 		await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
 		await arrive(p, nets[side]);
+		if (w.calm) await timed('load.calm', () => settleCalm(p));
 	}
 	w.loads.ms += Date.now() - t0;
 }
