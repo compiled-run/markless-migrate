@@ -362,3 +362,20 @@ test('content a tab reveals holding a Radix Collapsible of its own is kept in th
 	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="c">Expand</button><div id="c" data-state="closed" data-slot="collapsible-content"></div></div>')), true);
 	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="p">Expand</button><pre id="p" data-state="closed"></pre></div>')), false);
 });
+
+test("a form's toast on a passing submit is added by its region's mmformsubmit, and the values it shows are the item's own text", async () => {
+	const { NotifyPlan } = await import('../src/convert/stateful.ts');
+	const { emitChildren } = await import('../src/convert/tsrx.ts');
+	const { parseFragment } = await import('parse5');
+	const doc = parseDocument('<body><main><div data-slot="card"><form></form></div></main><section aria-label="Notifications alt+T" aria-live="polite"></section></body>');
+	const card = find(body(doc), (el) => attr(el, 'data-slot') === 'card')!;
+	const region = find(body(doc), (el) => el.tagName === 'section')!;
+	const values = JSON.stringify({ title: '' }, null, 2);
+	const toaster = { position: 'bottom-right', gap: 14, visibleToasts: 3, expand: false, hotkey: ['altKey', 'KeyT'], ol: [['data-sonner-toaster', 'true'], ['style', '--width: 356px;']] as [string, string][] };
+	const plan = new NotifyPlan();
+	plan.add([{ sig: 'card', nth: 0, into: { sig: 'r', nth: 0 }, html: '', ms: 4600, onSubmit: true, texts: { v: values }, sonner: { toaster, dismissible: true, duration: 4000, promise: false, phases: [{ at: 0, attrs: [['data-sonner-toast', '']], inner: `<div data-title="">You submitted the following values:</div><div data-description=""><pre><code>${values}</code></pre></div>` }] } }], (sig) => (sig === 'card' ? card : region), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="card" onMmformsubmit=\{\(event\) => sonnerAdd\(\{"id":"tst0"[^}]*\}, \{"view":0,[^]*?\}, \(v\) => \(tst0 = v\), \{ v: JSON\.stringify\(\(event as CustomEvent\)\.detail, null, 2\) \}\)\}>/);
+	assert.match(out, /<pre><code>\{item\.t\["v"\] \?\? ""\}<\/code><\/pre>/);
+	assert.doesNotMatch(out, /onClick=\{\(\) => sonnerAdd/);
+});
