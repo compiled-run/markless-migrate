@@ -5,7 +5,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
-import { settle, STILL_MS, trackSettling } from '../src/convert/settle.ts';
+import { requestsDone, settle, STILL_MS, trackSettling } from '../src/convert/settle.ts';
 
 const PAGES: Record<string, string> = {
 	'/still': '',
@@ -28,6 +28,7 @@ before(async () => {
 	browser = await chromium.launch();
 	server = createServer((request, res) => {
 		if (request.url === '/slow') return void setTimeout(() => res.writeHead(200).end('fetched'), 250);
+		if (request.url === '/never') return;
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html><html><body><button>go</button><script>document.querySelector('button').onclick = () => { ${PAGES[request.url!] ?? ''} };</script></body></html>`);
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
@@ -86,4 +87,22 @@ test('a page opened without the tracker waits the whole pause', async () => {
 	const { ms, close } = await timed('/still', 700, false);
 	await close();
 	assert.ok(ms >= 690, `${ms} ms`);
+});
+
+test("what a load still fetches is waited for, and no longer than the cap when a request never ends", async () => {
+	const context = await browser.newContext();
+	await trackSettling(context);
+	const page = await context.newPage();
+	await page.goto(origin + '/still');
+	await page.evaluate(() => void fetch('/slow').then((r) => r.text()).then((t) => document.body.append(t)));
+	let start = Date.now();
+	await requestsDone(page, 2000);
+	const ms = Date.now() - start;
+	assert.ok((await page.evaluate(() => document.body.textContent))?.includes('fetched'));
+	assert.ok(ms >= 200 && ms < 1500, `${ms} ms`);
+	await page.evaluate(() => void fetch('/never'));
+	start = Date.now();
+	await requestsDone(page, 600);
+	assert.ok(Date.now() - start >= 590);
+	await context.close();
 });
