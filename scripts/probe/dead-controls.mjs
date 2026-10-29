@@ -361,8 +361,6 @@ async function openSlot(side, width, route) {
 
 const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
 
-// Not in WebKit: with other pages loading beside the one in use, the port missed answers it gives alone (measured: 4 to 7
-// dead controls on 2 routes that a probe without them never reports).
 // With REUSE=<dir> and OLD_BUILD=<the original's build>, what each use does on the original is kept between runs (two
 // recordings, so its own variance is kept) and only the port is used again. A finding stands only when the port differs from
 // every recording; a finding against kept recordings records the original once more first.
@@ -421,6 +419,8 @@ async function judged(o, acts, compare, run) {
 	return found;
 }
 
+// Not in WebKit: with other pages loading beside the one in use, the port missed answers it gives alone (measured: 4 to 7
+// dead controls on 2 routes that a probe without them never reports).
 const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? (ENGINE === 'webkit' ? 0 : 2)));
 // The pages (of `sides`) for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names,
 // the last repeating) start loading too.
