@@ -387,7 +387,8 @@ let nextWidths = [WIDTH];
 // can take the focus from it (WebKit then refuses the use's clipboard write). Their loading goes on in the background.
 // A film's frame gaps are its finding: no page loads beside it to take the CPU from its frames.
 async function preloadsDone() {
-	await Promise.all(prepared.flatMap((pair) => [pair.old, pair.new]).map((slot) => slot.then((s) => s.loading).catch(() => {})));
+	const loading = [current.old, current.new, ...prepared.flatMap((pair) => [pair.old, pair.new])].filter(Boolean);
+	await Promise.all(loading.map((slot) => slot.then((s) => s.loading).catch(() => {})));
 }
 
 async function prepareNext() {
