@@ -108,6 +108,10 @@ jobs:
           if [ "$ENGINE" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
           node before/scripts/probe/dead-controls.mjs out/routes.json "out/before-$ENGINE.jsonl" | tee "out/before-$ENGINE.log"
           PROFILE=1 node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
+          # The same routes again, side by side on one browser: the machine's time for both, against the sum of each alone.
+          t0=$(date +%s)
+          CONCURRENCY=2 node scripts/probe/dead-controls.mjs out/routes.json "out/together-$ENGINE.jsonl" | tee "out/together-$ENGINE.log"
+          echo "$(( $(date +%s) - t0 ))" > "out/together-$ENGINE.seconds"
       - name: Compare
         env:
           ENGINE: ${{ matrix.engine }}
@@ -127,6 +131,12 @@ jobs:
           for route, a in rows[1].items():
               if 'settles' in a: print(f"\n`{route}` after: {a['loads']['n']} loads in {a['loads']['ms']/1000:.0f} s; {a['settles']['n']} settles in {a['settles']['ms']/1000:.0f} s, held to the cap by {a['settles']['capped'] or 'nothing'}; filming {a['motionMs']/1000:.0f} s")
               if 'profile' in a: print('\n' + '; '.join(f"{k} {v['ms']/1000:.0f} s ({v['n']})" for k, v in list(a['profile'].items())[:14]))
+          import os
+          wall = f"out/together-{os.environ['ENGINE']}.seconds"
+          if os.path.exists(wall):
+              together = {r['route']: r for r in map(json.loads, open(wall.replace('.seconds', '.jsonl')))}
+              alone = sum(r['ms'] for r in rows[1].values()) / 1000
+              print(f"\nTwo routes at once on one browser: {open(wall).read().strip()} s for both (alone, one after the other: {alone:.0f} s); findings {sum(len(r['findings']) for r in together.values())} against {sum(len(r['findings']) for r in rows[1].values())} alone")
           print('\n' + ('\n'.join(diffs) if diffs else 'The same findings on both refs.') + '\n')
           PY
       - uses: actions/upload-artifact@v4

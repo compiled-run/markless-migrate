@@ -4,6 +4,7 @@
 // are packed into shards by the times an earlier run wrote in that directory's *.jsonl files instead of dealt in turn.
 import { chromium, webkit } from 'playwright';
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
@@ -12,13 +13,11 @@ import { costsFrom, packByCost } from './pack.ts';
 import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../../src/check/settle.ts';
 
 // Each route's settles: how many, their time, and how many each cause held to the cap.
-let settles = { n: 0, ms: 0, capped: {} };
-let loads = { n: 0, ms: 0 };
 async function settle(p, net, capMs) {
 	const r = await timed(`settle ${capMs}`, () => settleOnce(p, net, capMs));
-	settles.n++;
-	settles.ms += r.ms;
-	if (r.capped) settles.capped[r.capped] = (settles.capped[r.capped] ?? 0) + 1;
+	w.settles.n++;
+	w.settles.ms += r.ms;
+	if (r.capped) w.settles.capped[r.capped] = (w.settles.capped[r.capped] ?? 0) + 1;
 	return r;
 }
 
@@ -292,24 +291,27 @@ const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Bo
 // Every use starts from a fresh context per side: what one use stored (a colour mode, a package manager, an intro dismissed)
 // is not the next one's. The next use's pages are opened and loading, cold, in their own fresh contexts while the current
 // use runs, so a use waits only for what is left of its loads.
-const pages = {};
-const nets = {};
-const cdp = {};
-const errors = { old: [], new: [] };
-const current = { old: undefined, new: undefined };
-let prepared = [];
-let currentRoute = '';
+// Each of the CONCURRENCY workers sharing this browser keeps its own pages, pools and counts.
+const workerState = new AsyncLocalStorage();
+const newWorker = () => ({ pages: {}, nets: {}, cdp: {}, errors: { old: [], new: [] }, current: { old: undefined, new: undefined }, ambient: { old: undefined, new: undefined }, prepared: [], currentRoute: '', nextWidths: [WIDTH], settles: { n: 0, ms: 0, capped: {} }, loads: { n: 0, ms: 0 }, profile: {}, motionMs: 0 });
+const w = new Proxy({}, { get: (_, k) => workerState.getStore()[k], set: (_, k, v) => ((workerState.getStore()[k] = v), true) });
+const view = (name) => new Proxy({}, { get: (_, k) => w[name][k], set: (_, k, v) => ((w[name][k] = v), true) });
+const pages = view('pages');
+const nets = view('nets');
+const cdp = view('cdp');
+const errors = view('errors');
+const current = view('current');
+const ambient = view('ambient');
 const originOf = (side) => (side === 'old' ? OLD : NEW);
 
 // With PROFILE set, each route's row carries the time spent in each page call (by kind), for finding what is left to cut.
-let profile = {};
 const PROFILE = Boolean(process.env.PROFILE);
 const timed = async (k, f) => {
 	const t = performance.now();
 	try {
 		return await f();
 	} finally {
-		const e = (profile[k] ??= { ms: 0, n: 0 });
+		const e = (w.profile[k] ??= { ms: 0, n: 0 });
 		e.ms += performance.now() - t;
 		e.n++;
 	}
@@ -362,13 +364,13 @@ const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {})
 const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? 2));
 async function fresh(width = WIDTH, upcoming = [width]) {
 	for (const side of ['old', 'new']) closeSlot(current[side]);
-	let pair = prepared.shift();
-	if (pair && (pair.width !== width || pair.route !== currentRoute)) {
-		for (const p of [pair, ...prepared]) for (const side of ['old', 'new']) closeSlot(p[side]);
-		prepared = [];
+	let pair = w.prepared.shift();
+	if (pair && (pair.width !== width || pair.route !== w.currentRoute)) {
+		for (const p of [pair, ...w.prepared]) for (const side of ['old', 'new']) closeSlot(p[side]);
+		w.prepared = [];
 		pair = undefined;
 	}
-	const next = pair ?? { old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) };
+	const next = pair ?? { old: openSlot('old', width, w.currentRoute), new: openSlot('new', width, w.currentRoute) };
 	for (const side of ['old', 'new']) {
 		current[side] = next[side];
 		const slot = await timed('fresh.slot', () => next[side]);
@@ -377,26 +379,24 @@ async function fresh(width = WIDTH, upcoming = [width]) {
 		cdp[side] = slot.cdp;
 		errors[side] = slot.errors;
 	}
-	nextWidths = upcoming;
+	w.nextWidths = upcoming;
 }
-let nextWidths = [WIDTH];
 function prepareNext() {
-	if (!currentRoute) return;
-	for (let k = prepared.length; k < PRELOAD; k++) {
-		const width = nextWidths[k] ?? nextWidths.at(-1);
-		prepared.push({ width, route: currentRoute, old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) });
+	if (!w.currentRoute) return;
+	for (let k = w.prepared.length; k < PRELOAD; k++) {
+		const width = w.nextWidths[k] ?? w.nextWidths.at(-1);
+		w.prepared.push({ width, route: w.currentRoute, old: openSlot('old', width, w.currentRoute), new: openSlot('new', width, w.currentRoute) });
 	}
 }
 const layoutDone = new Set();
 const keyDone = new Set();
 const motionTemplates = new Set();
-let motionMs = 0;
 const STRIPS = process.env.STRIPS ?? '';
 
 async function load(side, route) {
 	const p = pages[side];
 	const t0 = Date.now();
-	loads.n++;
+	w.loads.n++;
 	const slot = await current[side];
 	if (slot.route === route && slot.loading && slot.page === p) {
 		const loading = slot.loading;
@@ -407,7 +407,7 @@ async function load(side, route) {
 		await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
 		await arrive(p, nets[side]);
 	}
-	loads.ms += Date.now() - t0;
+	w.loads.ms += Date.now() - t0;
 	if (side === 'old') prepareNext();
 }
 
@@ -527,7 +527,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 		if (film) {
 			const t0 = Date.now();
 			film_ = await filmed(side, () => act(p, control));
-			motionMs += Date.now() - t0;
+			w.motionMs += Date.now() - t0;
 		} else await act(p, control);
 	} catch (e) {
 		return { hit: armed.hit, failed: e.message.split('\n')[0].slice(0, 160) };
@@ -717,7 +717,6 @@ async function armAt(p, control) {
 const DAY = /(?:Today, )?(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, )?(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(?:st|nd|rd|th)?,? \d{4}/g;
 const dayless = (k) => k.replace(DAY, 'a day');
 
-const ambient = { old: undefined, new: undefined };
 async function measureAmbient(side, route) {
 	await load(side, route);
 	const p = pages[side];
@@ -755,14 +754,18 @@ const changed = (r) => Boolean(r && (r.affected?.length || r.url || r.popup || r
 const leftPage = (r, route) => Boolean(r.url && r.url.split('?')[0] !== route.split('?')[0]);
 const transformMoves = (t) => t !== 'none' && !/^matrix\(1, 0, 0, 1, 0, -?[\d.e-]+\)$/.test(t);
 
-for (const route of mine) {
-	currentRoute = route;
+const CONCURRENCY = Math.max(1, Number(process.env.CONCURRENCY ?? 1));
+// Longest first from one queue, so a worker that drew quick pages takes the next one instead of idling.
+const queue = costs?.size ? [...mine].sort((a, b) => (costs.get(b) ?? 0) - (costs.get(a) ?? 0)) : [...mine];
+await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => workerState.run(newWorker(), async () => {
+for (let route; (route = queue.shift()) !== undefined; ) {
+	w.currentRoute = route;
 	const findings = [];
 	let tried = 0;
-	motionMs = 0;
-	settles = { n: 0, ms: 0, capped: {} };
-	loads = { n: 0, ms: 0 };
-	profile = {};
+	w.motionMs = 0;
+	w.settles = { n: 0, ms: 0, capped: {} };
+	w.loads = { n: 0, ms: 0 };
+	w.profile = {};
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
@@ -954,12 +957,13 @@ for (const route of mine) {
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
-	for (const slot of [current.old, current.new, ...prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
+	for (const slot of [current.old, current.new, ...w.prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
 	current.old = current.new = undefined;
-	prepared = [];
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
+	w.prepared = [];
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs: w.motionMs, settles: w.settles, loads: w.loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(w.profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
+})));
 await browser.close();
 
 function motionFinding(findings, base, om, nm, prefix, tag) {

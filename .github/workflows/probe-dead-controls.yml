@@ -122,11 +122,9 @@ jobs:
         run: |
           mkdir -p out/strips
           if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
-          for w in 0 1 2 3; do
-            COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} WORKERS=4 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
-          done
-          wait
-          for f in out/log-*.txt; do tail -n 5 "$f"; done
+          # One process and one browser per runner, four routes at a time from one longest-first queue.
+          COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} CONCURRENCY=4 STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
+          tail -n 5 out/log.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
