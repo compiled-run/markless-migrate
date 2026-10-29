@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 import ts from 'typescript';
 import type { Element } from '../src/convert/dom.ts';
 import { ScenePlan, type SceneData } from '../src/convert/scene-plan.ts';
-import type { Scene, SceneNode } from '../src/convert/scenes.ts';
+import { TYPED, type Scene, type SceneNode } from '../src/convert/scenes.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -16,10 +16,10 @@ const el = (id: number, tag: string, attrs: Record<string, string>, ...kids: Sce
 const text = (id: number, t: string): SceneNode => ({ id, text: t });
 const html = (n: SceneNode): string => ('text' in n ? n.text : `<${n.tag}${n.attrs.map(([k, v]) => ` ${k}="${v}"`).join('')}>${n.kids.map(html).join('')}</${n.tag}>`);
 
-function planned(scene: Scene): { out: string; data: SceneData; plan: ScenePlan } {
+function planned(scene: Scene, listed = 'button'): { out: string; data: SceneData; plan: ScenePlan } {
 	const region = parseFragment(html(scene.states[0]!)).childNodes[0] as unknown as Element;
 	const plan = new ScenePlan();
-	assert.ok(plan.add(scene, region, 'button'), plan.refused.join('\n'));
+	assert.ok(plan.add(scene, region, listed), plan.refused.join('\n'));
 	const out = emitElement(region, { bind: (e) => plan.bind(e) });
 	const data = JSON.parse(JSON.parse(/data-mm-scene=\{("(?:[^"\\]|\\.)*")\}/.exec(out)![1]!) as string) as SceneData;
 	return { out, data, plan };
@@ -185,6 +185,95 @@ test("a streamed use keeps its recorded gaps after the page stalls: frames come 
 	} finally {
 		await browser.close();
 	}
+});
+
+// A prompt input: typing enables Send; Enter puts the text in the thread, empties the field and a reply streams in.
+const prompt = (value: string, sent: string, reply: string, disabled: boolean) => el(1, 'div', { 'data-slot': 'preview' }, el(2, 'p', { class: 'you' }, text(3, sent)), el(4, 'p', { class: 'reply' }, text(5, reply)), el(6, 'textarea', { placeholder: 'Ask', '.value': value }), el(7, 'button', disabled ? { disabled: '' } : {}, text(8, 'Send')));
+const FIELD_CONTROL = 'textarea||Ask#0';
+const PROMPT: Scene = {
+	sig: 'div|preview|',
+	nth: 0,
+	states: [prompt('', '-', '-', true), prompt(TYPED, '-', '-', false), prompt('', TYPED, 'Sure thing.', true)],
+	edges: [
+		{ from: 0, control: `${FIELD_CONTROL}|fill`, to: 1, frames: [{ t: 2, tree: prompt(TYPED, '-', '-', false) }] },
+		{ from: 1, control: `${FIELD_CONTROL}|clear`, to: 0, frames: [{ t: 2, tree: prompt('', '-', '-', true) }] },
+		{
+			from: 1,
+			control: `${FIELD_CONTROL}|enter`,
+			to: 2,
+			frames: [
+				{ t: 2, tree: prompt('', TYPED, '-', true) },
+				{ t: 40, tree: prompt('', TYPED, 'Sure', true) },
+				{ t: 80, tree: prompt('', TYPED, 'Sure thing.', true) },
+			],
+		},
+	],
+	skipped: [],
+};
+
+test("a listed field's uses are played from its input and its Enter, the text the capture typed written by the part", () => {
+	const { out, data } = planned(PROMPT, 'textarea');
+	assert.equal(data.typed, TYPED);
+	assert.match(out, /onInput=\{\(event\) => playScene\(event, /);
+	assert.match(out, /onKeyDown=\{\(event\) => playScene\(event, /);
+	assert.ok(data.entries.some(([k, kind]) => k === 2 && kind === 't'), 'the sent text is an entry, so the visitor\'s own text replaces it');
+	assert.ok(data.entries.some(([k, kind, which]) => k === 6 && kind === 'a' && which === '.value'));
+	assert.deepEqual(data.edges.map((e) => e[1]), [`${FIELD_CONTROL}|fill`, `${FIELD_CONTROL}|clear`, `${FIELD_CONTROL}|enter`]);
+});
+
+test('typing plays the fill use without touching what the visitor typed; Enter shows their text where the capture showed its own, empties the field and streams the reply', async () => {
+	const { data } = planned(PROMPT, 'textarea');
+	const part = ts.transpileModule(await readFile(join(ROOT, 'parts/scene.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/scene.js' ? route.fulfill({ contentType: 'text/javascript', body: part }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		await page.evaluate(async ([data]) => {
+			const { playScene } = (await import('/scene.js' as string)) as typeof import('../parts/scene.ts');
+			document.body.innerHTML = '<div data-slot="preview"><p class="you" data-mm-k="2">-</p><p class="reply" data-mm-k="4">-</p><textarea placeholder="Ask" data-mm-k="6"></textarea><button data-mm-k="7" disabled>Send</button></div>';
+			const region = document.querySelector('[data-slot="preview"]')!;
+			region.setAttribute('data-mm-scene', JSON.stringify(data));
+			for (const type of ['click', 'input', 'keydown']) region.addEventListener(type, (event) => playScene(event, () => {}));
+		}, [data] as const);
+		await page.locator('textarea').pressSequentially('hello there');
+		const typed = await page.evaluate(() => ({ value: document.querySelector('textarea')!.value, disabled: document.querySelector('button')!.disabled }));
+		assert.deepEqual(typed, { value: 'hello there', disabled: false });
+		await page.keyboard.press('Enter');
+		await page.waitForTimeout(200);
+		const sent = await page.evaluate(() => ({ you: document.querySelector('.you')!.textContent, reply: document.querySelector('.reply')!.textContent, value: document.querySelector('textarea')!.value, disabled: document.querySelector('button')!.disabled }));
+		assert.deepEqual(sent, { you: 'hello there', reply: 'Sure thing.', value: '', disabled: true });
+	} finally {
+		await browser.close();
+	}
+});
+
+// A transcript that only exists once a message is sent, holding a typing row, then the reply that replaces it.
+const thread = (rows: SceneNode[] | null) => el(1, 'div', { 'data-slot': 'preview' }, ...(rows ? [el(2, 'div', { 'data-slot': 'message-scroller' }, ...rows)] : []), el(9, 'button', {}, text(10, 'Send')));
+const GROWING: Scene = {
+	sig: 'div|preview|',
+	nth: 0,
+	states: [thread(null), thread([el(6, 'p', {}, text(7, 'Hello there'))])],
+	edges: [
+		{
+			from: 0,
+			control: 'button||Send#0',
+			to: 1,
+			frames: [
+				{ t: 20, tree: thread([el(5, 'p', { 'data-typing': '' }, text(8, '…'))]) },
+				{ t: 500, tree: thread([el(6, 'p', {}, text(7, 'Hel'))]) },
+				{ t: 540, tree: thread([el(6, 'p', {}, text(7, 'Hello there'))]) },
+			],
+		},
+	],
+	skipped: [],
+};
+
+test('a node that shows different children by turns is one arm over all of them, so it is never mounted again between them', () => {
+	const { out, data } = planned(GROWING);
+	assert.equal((out.match(/data-slot="message-scroller"/g) ?? []).length, 1, 'the transcript is rendered once');
+	assert.match(out, /@if \(\(sc0 >= 1 && sc0 <= 3\)\) \{ <><div data-slot="message-scroller"/);
+	assert.deepEqual(data.entries.filter(([, kind]) => kind === 'h').map(([k]) => k).sort(), [5, 6]);
 });
 
 test('a demo whose uses would replace an element another plan puts on Markless state is not played', () => {

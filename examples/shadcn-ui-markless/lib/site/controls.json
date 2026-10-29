@@ -15,5 +15,6 @@
 	{"selector": "[data-slot=\"preview\"] [data-slot=\"collapsible-trigger\"], [data-slot=\"preview\"] [data-slot=\"collapsible\"] > button[slot=\"trigger\"]", "action": "play", "routes": "^/docs/components/[^/]+/bubble$"},
 	{"action": "theme", "name": "Toggle theme", "key": "d", "metaColors": {"light": "#ffffff", "dark": "#0a0a0a"}, "disableTransitionOnChange": true},
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-haspopup]):not([aria-expanded])", "action": "open", "routes": "^/docs/components/[^/]+/command$"},
+	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"]", "action": "play", "routes": "^(/docs/ai-elements/[^/]+/(chat|model-selector|prompt-input|suggestion)|/docs/changelog|/docs/changelog/2026-10-ai-elements)$"},
 	{"selector": "[data-slot=\"code-block\"] button[aria-label=\"Download\"]", "action": "download", "routes": "^/docs/(components/[^/]+/code-block|changelog|changelog/2026-10-ai-elements)$"}
 ]
