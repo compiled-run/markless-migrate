@@ -366,7 +366,10 @@ const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {})
 // With REUSE=<dir> and OLD_BUILD=<the original's build>, what each use does on the original is kept between runs (two
 // recordings, so its own variance is kept) and only the port is used again. A finding stands only when the port differs from
 // every recording; a finding against kept recordings records the original once more first.
+// REUSE_OUT (default REUSE) is where new and updated entries go, so a CI shard uploads only what it recorded.
 const REUSE = process.env.REUSE ?? '';
+const REUSE_OUT = process.env.REUSE_OUT ?? REUSE;
+const readKept = async (key) => (await readOld(REUSE_OUT, key)) ?? (REUSE_OUT === REUSE ? undefined : await readOld(REUSE, key));
 function reuseVersions() {
 	if (!REUSE) return undefined;
 	if (!process.env.OLD_BUILD) return void console.log('REUSE needs OLD_BUILD, the original build it was recorded from: the original is used live');
@@ -387,14 +390,14 @@ const keepable = (r) => JSON.parse(JSON.stringify({ ...r, motion: undefined, clo
 async function oldSide(width, item, run) {
 	if (!versions) return { runs: [await run()], live: true };
 	const key = oldKey(versions, { engine: ENGINE, route: w.currentRoute, width, item });
-	const entry = await readOld(REUSE, key);
+	const entry = await readKept(key);
 	if (entry && entry.runs.length >= 2) {
 		w.reuse.hits++;
 		return { runs: entry.runs, key, item, live: false };
 	}
 	const runs = [...(entry?.runs ?? [])];
 	while (runs.length < 2) runs.push(keepable(await run()));
-	await writeOld(REUSE, key, { route: w.currentRoute, item, runs }, new Date().toISOString());
+	await writeOld(REUSE_OUT, key, { route: w.currentRoute, item, runs }, new Date().toISOString());
 	w.reuse.recorded++;
 	return { runs, key, item, live: true };
 }
@@ -402,7 +405,7 @@ async function oldSide(width, item, run) {
 // One more recording of a kept use, before a finding against it is believed; the entry keeps the last four.
 async function oldAgain(o, run) {
 	const runs = [...o.runs, keepable(await run())].slice(-4);
-	await writeOld(REUSE, o.key, { route: w.currentRoute, item: o.item, runs }, new Date().toISOString());
+	await writeOld(REUSE_OUT, o.key, { route: w.currentRoute, item: o.item, runs }, new Date().toISOString());
 	w.reuse.again++;
 	return { ...o, runs, live: true };
 }

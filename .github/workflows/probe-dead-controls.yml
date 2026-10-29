@@ -16,6 +16,10 @@ on:
         description: The run whose per-route times pack the shards (default the last successful run; none deals routes in turn)
         required: false
         default: ''
+      reuse:
+        description: Use the original's side of each use as earlier runs recorded it ('false' uses the original live throughout)
+        required: false
+        default: 'true'
 permissions:
   contents: read
   actions: read
@@ -116,13 +120,27 @@ jobs:
           # A shard that could not fetch them would pack differently from the rest: it fails instead of losing or repeating routes.
           if [ -n "$run" ]; then gh run download "$run" -R "$GITHUB_REPOSITORY" -p "dead-controls-${{ matrix.engine }}-*" -D "$RUNNER_TEMP/costs"; fi
           echo "$(find "$RUNNER_TEMP/costs" -name '*.jsonl' | wc -l) result files from run ${run:-none}"
+      # What each use does on the original, as earlier runs recorded it: the original is a fixed build (fetch-old.sh's commit).
+      - name: The original's side from earlier runs
+        if: inputs.reuse != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/reuse
+          key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: probe-reuse-${{ env.SITE }}-
       - name: Probe
         env:
           OLD: http://localhost:4000
           NEW: http://127.0.0.1:3000
           TARGETS: ${{ inputs.targets }}
+          REUSE_ON: ${{ inputs.reuse != 'false' }}
         run: |
           mkdir -p out/strips
+          if [ "$REUSE_ON" = true ]; then
+            mkdir -p "$RUNNER_TEMP/reuse"
+            OLD_BUILD="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
+            export REUSE="$RUNNER_TEMP/reuse" REUSE_OUT=out/.migrate/reuse OLD_BUILD
+          fi
           # One process per runner from one longest-first queue. Chromium probes two routes at a time, each with its own browser:
           # a 4-vCPU runner is busy at two. WebKit probes one: at two it reported 10 to 50 differences the same routes alone do not.
           if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8 CONCURRENCY=1; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24 CONCURRENCY=2; fi
@@ -133,4 +151,37 @@ jobs:
         with:
           name: dead-controls-${{ matrix.engine }}-${{ matrix.shard }}
           path: out
+          include-hidden-files: true
           retention-days: 30
+
+  # The shards' new and re-recorded entries joined with the earlier ones (the last recording of each wins, none over 30 days
+  # old) into the next run's cache.
+  keep:
+    needs: probe
+    if: always() && inputs.reuse != 'false' && needs.probe.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/reuse
+          key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: probe-reuse-${{ env.SITE }}-
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dead-controls-*
+          path: shards
+      - run: |
+          mkdir -p shards/earlier/.migrate
+          if [ -d "$RUNNER_TEMP/reuse" ]; then mv "$RUNNER_TEMP/reuse" shards/earlier/.migrate/reuse; fi
+          node scripts/check-shards.ts keep shards "$RUNNER_TEMP/reuse" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/reuse
+          key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
