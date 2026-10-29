@@ -218,6 +218,21 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   `/examples/tasks`'s table was left static (its status and priority columns have filter functions). After: filter,
   Reset, header-menu sorting, faceted filters, row selection, page size and the page buttons match the old page step by
   step in the local witness. dashboard-01 matches as before.
+- Form libraries on Markless state (`src/convert/form-libraries.ts`, `src/convert/form-schemas.ts`,
+  `parts/form-library.ts`). The `/docs/forms` demos for react-hook-form, TanStack Form and Formisch did nothing: no
+  validation, no `aria-invalid` or `data-invalid`, no error messages, no character count, and Reset did nothing.
+  `convert` reads each form's library instance on the old page (its fields in registration order, defaults and
+  options). It uses each control once to learn which field it sets: a text field, a checkbox in a list, a radio, a
+  switch, or a select with each option's value. It then sets each field's errors (one message and two) and each text
+  field's value, and records the markup. Every attribute an error changed binds whether the field has one. What an
+  error added (the FieldError) is an `@if` arm showing the message, or a list item per message where the library shows
+  several. Text that shows a field's length (the character count) binds it. The schema is the old source's own, copied
+  with what it reads into `lib/parts/form-schemas/` (zod or valibot, imported unchanged) and loaded on the form's first
+  use. The part runs each library's timing, held to what the old page did step by step: react-hook-form and Formisch
+  validate on submit, then the changed field on every change after that, and a failed submit focuses the first
+  invalid field. TanStack Form shows its submit errors until the field changes. react-hook-form shows a field's first
+  message; the others show every message. Not ported: the email-list demos (rows a visitor adds and removes), and the
+  toast a valid submit shows.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
