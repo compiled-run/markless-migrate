@@ -29,6 +29,7 @@
 		"@vercel/routing-utils": "^6.6.0",
 		"d3-shape": "3.2.0",
 		"fast-check": "4.10.2",
+		"shadcn": "4.22.1",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
