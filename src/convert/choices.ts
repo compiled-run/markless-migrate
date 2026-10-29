@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page, Request } from 'playwright';
@@ -59,7 +59,7 @@ const stateOf = (page: Page) =>
 		for (const el of [root, ...root.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
 		const values = [...document.querySelectorAll('input, textarea, select')].map((el) => (el instanceof HTMLInputElement ? `${el.value}|${el.checked}` : (el as HTMLTextAreaElement | HTMLSelectElement).value));
 		const stored = (s: Storage) => Object.keys(s).sort().map((k) => `${k}=${s.getItem(k)}`);
-		const text = JSON.stringify([root.outerHTML, document.title, values, stored(localStorage), stored(sessionStorage), document.cookie, scrollX, scrollY, location.href]);
+		const text = JSON.stringify([root.outerHTML, document.title, values, stored(localStorage), stored(sessionStorage), document.cookie, scrollX, scrollY, location.href, (window as unknown as { __mmDrawn?: number }).__mmDrawn ?? 0]);
 		let hash = 0x811c9dc5;
 		for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
 		return hash >>> 0;
@@ -71,11 +71,21 @@ const loaded = new WeakMap<Page, { state: number; doc: string; selected?: string
 async function openOn(page: Page, origin: string, route: string, path: readonly number[]): Promise<boolean> {
 	await loadPage(page, new URL(route, origin).href);
 	await page.waitForTimeout(400);
-	const doc = await page.evaluate(() => {
+	const doc = await page.evaluate((token) => {
 		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[]; __mmDoc?: string };
 		w.__mmCopied = [];
 		w.__mmWent = [];
-		w.__mmDoc = Math.random().toString(36).slice(2);
+		w.__mmDoc = token;
+		// The seeded randomness a choice drew from moves on: the next choice on this page would draw what a fresh load does not.
+		const drawn = w as unknown as { __mmDrawn: number };
+		drawn.__mmDrawn = 0;
+		const counted = <A extends unknown[], R>(own: (...a: A) => R) => function (this: unknown, ...a: A): R {
+			drawn.__mmDrawn++;
+			return own.apply(this, a);
+		};
+		Math.random = counted(Math.random);
+		const proto = Object.getPrototypeOf(crypto) as Crypto;
+		for (const name of ['getRandomValues', 'randomUUID'] as const) if (typeof proto[name] === 'function') Object.defineProperty(proto, name, { value: counted(proto[name] as (...a: unknown[]) => unknown), writable: true, configurable: true });
 		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.__mmCopied!.push(t), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 		// A router sent to the address the page is already at replaces the history entry: the address alone shows no move.
 		for (const name of ['pushState', 'replaceState'] as const) {
@@ -86,7 +96,7 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 			};
 		}
 		return w.__mmDoc;
-	});
+	}, randomUUID());
 	const entry: { state: number; doc: string; selected?: string } = { state: await stateOf(page), doc };
 	loaded.set(page, entry);
 	const opened = await openTrigger(page, path);

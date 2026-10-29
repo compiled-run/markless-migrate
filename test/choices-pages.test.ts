@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
+import { defaultEnv, openPage } from '../src/check/browser.ts';
 import { captureChoices, markChosenHref, optionsShown } from '../src/convert/choices.ts';
 import { body, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { limiter, type Limit } from '../src/convert/limit.ts';
@@ -133,6 +134,26 @@ trigger.addEventListener('click', () => {
 });
 </script></body></html>`;
 
+// A menu whose first item draws from the page's seeded randomness and whose second copies the next draw.
+const DRAW = `<!doctype html><html><body><button id="open" aria-expanded="false">Dice</button><script>
+document.getElementById('open').addEventListener('click', () => {
+	const menu = document.createElement('div');
+	menu.setAttribute('role', 'menu');
+	for (const name of ['Roll', 'Copy roll']) {
+		const item = document.createElement('div');
+		item.setAttribute('role', 'menuitem');
+		item.textContent = name;
+		item.addEventListener('click', () => {
+			const roll = String(Math.random());
+			if (name === 'Copy roll') navigator.clipboard.writeText(roll);
+			menu.remove();
+		});
+		menu.append(item);
+	}
+	document.body.append(menu);
+});
+</script></body></html>`;
+
 let browser: Browser;
 const loads = new Map<string, number>();
 let server: Server;
@@ -142,7 +163,7 @@ before(async () => {
 	server = createServer((request, res) => {
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 1500);
 		loads.set(request.url!, (loads.get(request.url!) ?? 0) + 1);
-		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : request.url === '/select' ? SELECT : PAGE);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : request.url === '/select' ? SELECT : request.url === '/draw' ? DRAW : PAGE);
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -239,6 +260,20 @@ test('captureChoices puts a select back by choosing the value it loaded with, an
 		loads.delete('/select');
 		assert.deepEqual(await captureChoices(browser, origin, '/select', reveal, dir), { English: { value: 'en', shown: 'English' }, Arabic: { value: 'ar', shown: 'Arabic' }, Hebrew: { value: 'he', shown: 'Hebrew' } });
 		assert.equal(loads.get('/select'), 1);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("captureChoices loads the page again after a choice drew from its seeded randomness, so the next choice draws what a fresh load would", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-draw-'));
+	try {
+		const { context, page } = await openPage(browser, defaultEnv(origin), { name: 'desktop', width: 1280, height: 800, isMobile: false });
+		await page.goto(`${origin}/draw`);
+		const first = await page.evaluate(() => String(Math.random()));
+		await context.close();
+		const reveal: Reveal = { key: 'draw', path: [0], sig: 'button||Dice', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div role="menu"><div role="menuitem">Roll</div></div>' }] };
+		assert.deepEqual(await captureChoices(browser, origin, '/draw', reveal, dir), { Roll: {}, 'Copy roll': { copied: first } });
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
