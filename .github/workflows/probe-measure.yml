@@ -16,6 +16,22 @@ on:
         description: Routes to probe, space-separated
         required: true
         default: /docs/components/base/alert /docs/components/radix/button
+      machine:
+        description: Routes one runner probes as the scan workflow runs them, timed for both refs; empty skips it
+        required: false
+        default: /docs/components/base/alert /docs/components/radix/button /docs/components/radix/dialog /charts/area /blocks /docs/installation /colors /docs/components/radix/select
+      machine_concurrency:
+        description: Routes at once for the runner's worth, after
+        required: false
+        default: '2'
+      machine_before_workers:
+        description: Processes the earlier ref's runner's worth runs in (4 as its scan did; 1 is that probe without contention)
+        required: false
+        default: '4'
+      together_concurrency:
+        description: Routes at once when the later ref probes the routes a second time (1 with REUSE in probe_env times a reused run)
+        required: false
+        default: '2'
       probe_env:
         description: Extra environment for the later ref's probe, as NAME=value pairs
         required: false
@@ -91,7 +107,9 @@ jobs:
         env:
           BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz' }}
         run: |
-          bash "deploy/$SITE/ci-serve.sh" old
+          # Chromium's two routes at a time get three copies of the old server (one answering every cold load was what they waited
+          # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
+          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       - name: Probe each ref
         env:
@@ -99,8 +117,9 @@ jobs:
           NEW: http://127.0.0.1:3000
           BEFORE: ${{ inputs.before || 'main' }}
           ROUTES: ${{ inputs.routes || '/docs/components/base/alert /docs/components/radix/button' }}
-          PROBE_ENV: ${{ inputs.probe_env }}
           ENGINE: ${{ matrix.engine }}
+          PROBE_ENV: ${{ inputs.probe_env }}
+          TOGETHER: ${{ inputs.together_concurrency || '2' }}
         run: |
           set -euo pipefail
           mkdir -p out before
@@ -114,6 +133,35 @@ jobs:
           node before/scripts/probe/dead-controls.mjs out/routes.json "out/before-$ENGINE.jsonl" | tee "out/before-$ENGINE.log"
           # shellcheck disable=SC2086
           env PROFILE=1 $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
+          # The same routes again, side by side on one browser: the machine's time for both, against the sum of each alone.
+          t0=$(date +%s)
+          # shellcheck disable=SC2086
+          env CONCURRENCY="$TOGETHER" $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/together-$ENGINE.jsonl" | tee "out/together-$ENGINE.log"
+          echo "$(( $(date +%s) - t0 ))" > "out/together-$ENGINE.seconds"
+      - name: A runner's worth, as the scan runs it
+        if: inputs.machine != '' || github.event_name == 'push'
+        env:
+          OLD: http://localhost:4000
+          NEW: http://127.0.0.1:3000
+          ENGINE: ${{ matrix.engine }}
+          MACHINE_CONCURRENCY: ${{ inputs.machine_concurrency || '2' }}
+          BEFORE_WORKERS: ${{ inputs.machine_before_workers || '4' }}
+          PROBE_ENV: ${{ inputs.probe_env }}
+          MACHINE: ${{ inputs.machine || '/docs/components/base/alert /docs/components/radix/button /docs/components/radix/dialog /charts/area /blocks /docs/installation /colors /docs/components/radix/select' }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          node -e 'console.log(JSON.stringify({ routes: process.argv.slice(1) }))' $MACHINE > out/machine.json
+          if [ "$ENGINE" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
+          # Before: BEFORE_WORKERS processes, each with its own browser (the scan ran 4).
+          t0=$(date +%s)
+          for w in $(seq 0 $((BEFORE_WORKERS - 1))); do WORKERS=$BEFORE_WORKERS WORKER=$w node before/scripts/probe/dead-controls.mjs out/machine.json "out/machine-before-$ENGINE-$w.jsonl" > "out/machine-before-$w.log" 2>&1 & done
+          wait
+          echo "$(( $(date +%s) - t0 ))" > "out/machine-before-$ENGINE.seconds"
+          t0=$(date +%s)
+          # shellcheck disable=SC2086
+          env CONCURRENCY="$MACHINE_CONCURRENCY" $PROBE_ENV node scripts/probe/dead-controls.mjs out/machine.json "out/machine-after-$ENGINE.jsonl" > out/machine-after.log 2>&1
+          echo "$(( $(date +%s) - t0 ))" > "out/machine-after-$ENGINE.seconds"
       - name: Compare
         env:
           ENGINE: ${{ matrix.engine }}
@@ -133,6 +181,22 @@ jobs:
           for route, a in rows[1].items():
               if 'settles' in a: print(f"\n`{route}` after: {a['loads']['n']} loads in {a['loads']['ms']/1000:.0f} s; {a['settles']['n']} settles in {a['settles']['ms']/1000:.0f} s, held to the cap by {a['settles']['capped'] or 'nothing'}; filming {a['motionMs']/1000:.0f} s")
               if 'profile' in a: print('\n' + '; '.join(f"{k} {v['ms']/1000:.0f} s ({v['n']})" for k, v in list(a['profile'].items())[:14]))
+          import os
+          wall = f"out/together-{os.environ['ENGINE']}.seconds"
+          if os.path.exists(wall):
+              together = {r['route']: r for r in map(json.loads, open(wall.replace('.seconds', '.jsonl')))}
+              alone = sum(r['ms'] for r in rows[1].values()) / 1000
+              print(f"\nTwo routes at once on one browser: {open(wall).read().strip()} s for both (alone, one after the other: {alone:.0f} s); findings {sum(len(r['findings']) for r in together.values())} against {sum(len(r['findings']) for r in rows[1].values())} alone")
+          import glob
+          mb = f"out/machine-before-{os.environ['ENGINE']}.seconds"
+          if os.path.exists(mb):
+              before = [json.loads(l) for f in glob.glob(f"out/machine-before-{os.environ['ENGINE']}-*.jsonl") for l in open(f)]
+              after = [json.loads(l) for l in open(f"out/machine-after-{os.environ['ENGINE']}.jsonl")]
+              kb = {(r['route'], key(f)) for r in before for f in r['findings']}
+              ka = {(r['route'], key(f)) for r in after for f in r['findings']}
+              b, a = int(open(mb).read()), int(open(mb.replace('before', 'after')).read())
+              print(f"\nA runner's worth ({len(before)} and {len(after)} routes): {b} s before, {a} s after ({b / max(a, 1):.2f}x); findings {len(kb)} before, {len(ka)} after")
+              diffs += [f"- runner, before only, `{r}`: {k}" for r, k in sorted(kb - ka)] + [f"- runner, after only, `{r}`: {k}" for r, k in sorted(ka - kb)]
           print('\n' + ('\n'.join(diffs) if diffs else 'The same findings on both refs.') + '\n')
           PY
       - uses: actions/upload-artifact@v4
