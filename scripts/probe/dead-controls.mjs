@@ -10,7 +10,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { costsFrom, packByCost } from './pack.ts';
-import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../../src/check/settle.ts';
+import { markUse, settle as settleOnce, settleDeferred, trackRequests, trackTimers } from '../../src/check/settle.ts';
 
 // Each route's settles: how many, their time, and how many each cause held to the cap.
 async function settle(p, net, capMs) {
@@ -434,6 +434,8 @@ async function arrive(p, net, label = 'load') {
 		await markUse(p, 300);
 		await settle(p, net, 300);
 	});
+	// What the page put off at load (the original's header fills in a section a second later) lands before any use, not in it.
+	await timed(`${label}.deferred`, () => settleDeferred(p, net));
 	await timed(`${label}.scroll`, () => settleScroll(p));
 }
 
