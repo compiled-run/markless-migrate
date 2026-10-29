@@ -101,7 +101,8 @@ jobs:
         env:
           BUILD: ${{ inputs.build }}
         run: |
-          bash "deploy/$SITE/ci-serve.sh" old
+          # Three copies of the old server: one answering every cold load at once was what the probe waited on.
+          OLD_WORKERS=3 bash "deploy/$SITE/ci-serve.sh" old
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
       - name: The last run's per-route times
@@ -122,11 +123,9 @@ jobs:
         run: |
           mkdir -p out/strips
           if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
-          for w in 0 1 2 3; do
-            COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} WORKERS=4 WORKER=$w STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}-$w.jsonl ${{ matrix.shard }} 10 > out/log-$w.txt 2>&1 &
-          done
-          wait
-          for f in out/log-*.txt; do tail -n 5 "$f"; done
+          # One process per runner, two routes at a time (each with its own browser) from one longest-first queue: a 4-vCPU runner is busy at two, and at four WebKit missed answers.
+          COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} CONCURRENCY=2 STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
+          tail -n 5 out/log.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
