@@ -1,25 +1,11 @@
 // Dead-control inventory: every visible control of a route used once on the original and on the port, from a fresh load;
 // what it changes outside itself (by region), whether it moves the address, what a click at its centre reaches, and how the
-// popup it opens first shows. Usage: node dead-controls.mjs <routes-file> <out.jsonl> [shard index] [shard count]; with COSTS=<dir>, routes
-// are packed into shards by the times an earlier run wrote in that directory's *.jsonl files instead of dealt in turn.
+// popup it opens first shows. Usage: node dead-controls.mjs <routes-file> <out.jsonl> [shard index] [shard count]
 import { chromium, webkit } from 'playwright';
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { join } from 'node:path';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { costsFrom, packByCost } from './pack.ts';
-import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../../src/check/settle.ts';
-
-// Each route's settles: how many, their time, and how many each cause held to the cap.
-async function settle(p, net, capMs) {
-	const r = await timed(`settle ${capMs}`, () => settleOnce(p, net, capMs));
-	w.settles.n++;
-	w.settles.ms += r.ms;
-	if (r.capped) w.settles.capped[r.capped] = (w.settles.capped[r.capped] ?? 0) + 1;
-	return r;
-}
 
 const OLD = process.env.OLD ?? 'https://mm-shadcn-ui-old.vercel.app';
 const NEW = process.env.NEW ?? 'https://mm-shadcn-ui-new.vercel.app';
@@ -35,9 +21,7 @@ const all = JSON.parse(readFileSync(routesFile, 'utf8'));
 const routes = (Array.isArray(all) ? all : Array.isArray(all.routes) ? all.routes : Object.keys(all.routes ?? all)).filter((r) => typeof r === 'string' && r.startsWith('/'));
 const shard = Number(shardArg ?? 0), count = Number(countArg ?? 1);
 const workers = Number(process.env.WORKERS ?? 1), worker = Number(process.env.WORKER ?? 0);
-const jsonl = (dir) => readdirSync(dir, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).flatMap((f) => readFileSync(join(dir, String(f)), 'utf8').split('\n'));
-const costs = process.env.COSTS ? costsFrom(jsonl(process.env.COSTS), process.env.ENGINE ?? 'chromium') : undefined;
-const mine = costs?.size ? packByCost(routes, costs, count * workers)[shard * workers + worker] ?? [] : routes.filter((_, i) => i % count === shard).filter((_, i) => i % workers === worker);
+const mine = routes.filter((_, i) => i % count === shard).filter((_, i) => i % workers === worker);
 
 // In the page: the visible controls, keyed by role, name and their index among namesakes.
 function listControls() {
@@ -288,151 +272,39 @@ const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch();
 const WIDTH = Number(process.env.WIDTH ?? 1280);
 const STATIC_WIDTHS = (process.env.STATIC_WIDTHS ?? '1280,1440,390').split(',').map(Number);
 const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Boolean).map(Number);
-// Every use starts from a fresh context per side: what one use stored (a colour mode, a package manager, an intro dismissed)
-// is not the next one's. The next use's pages are opened and loading, cold, in their own fresh contexts while the current
-// use runs, so a use waits only for what is left of its loads.
-// Each of the CONCURRENCY workers sharing this browser keeps its own pages, pools and counts.
-const workerState = new AsyncLocalStorage();
-const newWorker = () => ({ pages: {}, nets: {}, cdp: {}, errors: { old: [], new: [] }, current: { old: undefined, new: undefined }, ambient: { old: undefined, new: undefined }, prepared: [], currentRoute: '', nextWidths: [WIDTH], settles: { n: 0, ms: 0, capped: {} }, loads: { n: 0, ms: 0 }, profile: {}, motionMs: 0 });
-const w = new Proxy({}, { get: (_, k) => workerState.getStore()[k], set: (_, k, v) => ((workerState.getStore()[k] = v), true) });
-const view = (name) => new Proxy({}, { get: (_, k) => w[name][k], set: (_, k, v) => ((w[name][k] = v), true) });
-const pages = view('pages');
-const nets = view('nets');
-const cdp = view('cdp');
-const errors = view('errors');
-const current = view('current');
-const ambient = view('ambient');
-const originOf = (side) => (side === 'old' ? OLD : NEW);
-
-// With PROFILE set, each route's row carries the time spent in each page call (by kind), for finding what is left to cut.
-const PROFILE = Boolean(process.env.PROFILE);
-const timed = async (k, f) => {
-	const t = performance.now();
-	try {
-		return await f();
-	} finally {
-		const e = (w.profile[k] ??= { ms: 0, n: 0 });
-		e.ms += performance.now() - t;
-		e.n++;
-	}
-};
-function instrument(p) {
-	const wrap = (obj, name, label) => {
-		const o = obj[name].bind(obj);
-		obj[name] = (...a) => timed(typeof label === 'function' ? label(...a) : label, () => o(...a));
-	};
-	wrap(p, 'goto', 'goto');
-	wrap(p, 'waitForTimeout', (ms) => `sleep ${ms}`);
-	wrap(p, 'evaluate', (fn) => `eval ${fn.name || 'anon'}`);
-	wrap(p.keyboard, 'press', 'key.press');
-	wrap(p.keyboard, 'type', 'key.type');
-	const loc = p.locator.bind(p);
-	p.locator = (...a) => {
-		const l = loc(...a);
-		const f = l.first.bind(l);
-		l.first = () => {
-			const x = f();
-			for (const m of ['click', 'fill', 'focus', 'selectOption']) wrap(x, m, `act.${m}`);
-			return x;
-		};
-		return l;
-	};
-}
-
-async function openSlot(side, width, route) {
+// One context for both sides (different origins keep their own storage); the bypass header only goes to the port's host.
+// Every use starts from a fresh context: what one use stored (a colour mode, a package manager, an intro dismissed) is not the next one's.
+const pages = {};
+const cdp = {};
+const errors = { old: [], new: [] };
+let context;
+async function fresh(width = WIDTH) {
+	await context?.close().catch(() => {});
 	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
-	const context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
-	await context.addInitScript(trackTimers);
-	// The bypass header only goes to the port's host.
-	if (BYPASS && side === 'new') await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
-	const page = await context.newPage();
-	if (PROFILE) instrument(page);
-	const slot = { side, width, route, context, page, net: trackRequests(page), errors: [], cdp: undefined, loading: undefined };
-	page.on('dialog', (d) => d.dismiss().catch(() => {}));
-	page.on('pageerror', (e) => slot.errors.push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
-	if (ENGINE === 'chromium') slot.cdp = await context.newCDPSession(page);
-	// Headless Chromium and WebKit paint every page, in front or not (measured: about 60 frames a second in each), so a
-	// page readied before its turn is the page a use would have loaded then.
-	slot.loading = page.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 }).then(() => arrive(page, slot.net, 'preload')).then(() => undefined, (e) => e);
-	return slot;
-}
-
-const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
-
-// Both sides' pages for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names, the
-// last repeating) start loading once this use's original is in.
-const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? 2));
-async function fresh(width = WIDTH, upcoming = [width]) {
-	for (const side of ['old', 'new']) closeSlot(current[side]);
-	let pair = w.prepared.shift();
-	if (pair && (pair.width !== width || pair.route !== w.currentRoute)) {
-		for (const p of [pair, ...w.prepared]) for (const side of ['old', 'new']) closeSlot(p[side]);
-		w.prepared = [];
-		pair = undefined;
-	}
-	const next = pair ?? { old: openSlot('old', width, w.currentRoute), new: openSlot('new', width, w.currentRoute) };
+	context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
+	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
 	for (const side of ['old', 'new']) {
-		current[side] = next[side];
-		const slot = await timed('fresh.slot', () => next[side]);
-		pages[side] = slot.page;
-		nets[side] = slot.net;
-		cdp[side] = slot.cdp;
-		errors[side] = slot.errors;
-	}
-	w.nextWidths = upcoming;
-}
-function prepareNext() {
-	if (!w.currentRoute) return;
-	for (let k = w.prepared.length; k < PRELOAD; k++) {
-		const width = w.nextWidths[k] ?? w.nextWidths.at(-1);
-		w.prepared.push({ width, route: w.currentRoute, old: openSlot('old', width, w.currentRoute), new: openSlot('new', width, w.currentRoute) });
+		pages[side] = await context.newPage();
+		pages[side].on('dialog', (d) => d.dismiss().catch(() => {}));
+		pages[side].on('pageerror', (e) => errors[side].push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
+		if (ENGINE === 'chromium') cdp[side] = await context.newCDPSession(pages[side]);
 	}
 }
 const layoutDone = new Set();
 const keyDone = new Set();
 const motionTemplates = new Set();
+let motionMs = 0;
 const STRIPS = process.env.STRIPS ?? '';
 
 async function load(side, route) {
 	const p = pages[side];
-	const t0 = Date.now();
-	w.loads.n++;
-	const slot = await current[side];
-	if (slot.route === route && slot.loading && slot.page === p) {
-		const loading = slot.loading;
-		slot.loading = undefined;
-		const failed = await timed('load.preloaded', () => loading);
-		if (failed) throw failed;
-	} else {
-		await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
-		await arrive(p, nets[side]);
-	}
-	w.loads.ms += Date.now() - t0;
-	if (side === 'old') prepareNext();
-}
-
-// A loaded page is in use once its network rests, what its scripts do after load settles and its inner scrollers hold.
-async function arrive(p, net, label = 'load') {
-	await timed(`${label}.ready`, () => ready(p, net));
-	await timed(`${label}.settle`, async () => {
-		await markUse(p, 300);
-		await settle(p, net, 300);
-	});
-	await timed(`${label}.scroll`, () => settleScroll(p));
-}
-
-// Waits for what `step` set going (DOM changes, scrolls, animations, short timers, requests) to settle, at most the fixed wait `capMs`.
-async function quietly(p, side, step, capMs) {
-	await markUse(p, capMs);
-	const result = await step();
-	await settle(p, nets[side], capMs);
-	return result;
-}
-
-// A slow answer (the directory's /r/registries.json) can still change the layout: the network rests, fonts are in and two frames are painted.
-async function ready(p, net) {
-	await net.quiet(200, 15_000);
-	await p.evaluate(() => Promise.race([document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))), new Promise((r) => setTimeout(r, 1000))])).catch(() => {});
+	// A tab in the background gets no animation frames: the side in use is always the one in front.
+	await p.bringToFront();
+	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
+	// A slow live answer (the directory's /r/registries.json) can still change the layout: wait for the network to rest.
+	await p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+	await p.waitForTimeout(300);
+	await settleScroll(p);
 }
 
 // Where a page's own script leaves its inner scrollers (the docs sidebar centred on its link while the page streams) varies
@@ -443,8 +315,8 @@ const resetScrollers = (p) => p.evaluate(() => { for (const e of document.queryS
 async function settleScroll(p) {
 	const read = () => p.evaluate(() => [scrollY, ...[...document.querySelectorAll('*')].filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY)).map((e) => e.scrollTop)].join(',')).catch(() => '');
 	let last = await read();
-	for (let waited = 0; waited < 3000; waited += 120) {
-		await p.waitForTimeout(120);
+	for (let waited = 0; waited < 3000; waited += 250) {
+		await p.waitForTimeout(250);
 		const now = await read();
 		if (now === last) return;
 		last = now;
@@ -507,7 +379,8 @@ async function replay(side, route, prefix) {
 		const armed = await armAt(p, step).catch(() => null);
 		// A step the page remembers having taken (an intro dismissed for good) is not offered again.
 		if (!armed) continue;
-		await quietly(p, side, () => act(p, step).catch(() => {}), SETTLE);
+		await act(p, step).catch(() => {});
+		await p.waitForTimeout(SETTLE);
 		await p.evaluate(read, []).catch(() => null);
 		await p.evaluate(() => { const el = document.querySelector('[data-dc-used]'); el?.setAttribute('data-dc-prefix', ''); el?.removeAttribute('data-dc-used'); });
 	}
@@ -522,17 +395,16 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	let film_;
 	const errorsBefore = errors[side].length;
-	await markUse(p, SETTLE);
 	try {
 		if (film) {
 			const t0 = Date.now();
 			film_ = await filmed(side, () => act(p, control));
-			w.motionMs += Date.now() - t0;
+			motionMs += Date.now() - t0;
 		} else await act(p, control);
 	} catch (e) {
 		return { hit: armed.hit, failed: e.message.split('\n')[0].slice(0, 160) };
 	}
-	await settle(p, nets[side], SETTLE);
+	await p.waitForTimeout(SETTLE);
 	await p.evaluate(settleGeometry).catch(() => {});
 	const r = await p.evaluate(read, ['[data-dc-prefix]']).catch((e) => ({ error: e.message }));
 	// What changes on its own (an animated preview, a ticking demo) is no answer of the control's.
@@ -541,7 +413,8 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	// The close of the pop-up the use opened, filmed too: Escape, then whether it is gone.
 	let close;
 	if (film && r.popup) {
-		const shot = await quietly(p, side, () => filmed(side, () => p.keyboard.press('Escape')), SETTLE);
+		const shot = await filmed(side, () => p.keyboard.press('Escape'));
+		await p.waitForTimeout(SETTLE);
 		const still = await p.evaluate(() => [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].some((x) => !globalThis.__dc.openBefore.has(x) && x.checkVisibility())).catch(() => false);
 		close = { motion: motionOf(shot.frames), still };
 	}
@@ -602,7 +475,6 @@ async function typeInto(side, route, prefix, control, value) {
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	const before = errors[side].length;
 	const loc = p.locator('[data-dc-used]').first();
-	await markUse(p, SETTLE);
 	await loc.click({ timeout: 3000 });
 	if (control.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) await loc.fill(value, { timeout: 3000 });
 	else {
@@ -611,8 +483,9 @@ async function typeInto(side, route, prefix, control, value) {
 		await p.keyboard.type(value, { delay: 15 });
 	}
 	await p.keyboard.press('Enter');
-	await settle(p, nets[side], 200);
-	await quietly(p, side, () => p.evaluate(() => (document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el)?.blur?.()).catch(() => {}), SETTLE);
+	await p.waitForTimeout(200);
+	await p.evaluate(() => (document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el)?.blur?.()).catch(() => {});
+	await p.waitForTimeout(SETTLE);
 	const field = await p.evaluate(() => {
 		const el = document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el;
 		return el ? { value: String(el.value ?? el.textContent ?? '').trim().slice(0, 80), invalid: el.getAttribute('aria-invalid') ?? '', badInput: el.validity ? !el.validity.valid : false, connected: el.isConnected } : { value: '', invalid: '', badInput: false, connected: false };
@@ -622,10 +495,12 @@ async function typeInto(side, route, prefix, control, value) {
 	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
 	// What a pop-up the field drives shows for the value (a date picker's chosen day): ArrowDown in the field, else the button beside it.
 	await loc.focus({ timeout: 2000 }).catch(() => {});
-	await quietly(p, side, () => p.keyboard.press('ArrowDown').catch(() => {}), 500);
+	await p.keyboard.press('ArrowDown').catch(() => {});
+	await p.waitForTimeout(500);
 	let shown = await p.evaluate(popupSummary).catch(() => '');
 	if (!shown && (await p.evaluate(markBeside).catch(() => false))) {
-		await quietly(p, side, () => p.locator('[data-dc-beside]').first().click({ timeout: 2000 }).catch(() => {}), 600);
+		await p.locator('[data-dc-beside]').first().click({ timeout: 2000 }).catch(() => {});
+		await p.waitForTimeout(600);
 		shown = await p.evaluate(popupSummary).catch(() => '');
 	}
 	return { ...r, field, shown, errors: errors[side].slice(before) };
@@ -685,8 +560,11 @@ async function press(side, route, control, keys) {
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	const before = errors[side].length;
 	await p.locator('[data-dc-used]').first().focus({ timeout: 3000 });
-	for (const k of keys) await quietly(p, side, () => p.keyboard.press(k), 150);
-	await settle(p, nets[side], SETTLE);
+	for (const k of keys) {
+		await p.keyboard.press(k);
+		await p.waitForTimeout(150);
+	}
+	await p.waitForTimeout(SETTLE);
 	const r = await p.evaluate(read, []).catch((e) => ({ error: e.message }));
 	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
 	return { ...r, errors: errors[side].slice(before) };
@@ -707,9 +585,9 @@ function keyFindings(findings, base, old, port) {
 
 const SCROLL_SETTLE = Number(process.env.SCROLL_SETTLE ?? 500);
 async function armAt(p, control) {
-	const side = p === pages.old ? 'old' : 'new';
-	const at = await quietly(p, side, () => p.evaluate(arm, { ...control, scrollOnly: true }), SCROLL_SETTLE);
+	const at = await p.evaluate(arm, { ...control, scrollOnly: true });
 	if (!at) return at;
+	await p.waitForTimeout(SCROLL_SETTLE);
 	return p.evaluate(arm, control);
 }
 
@@ -717,6 +595,7 @@ async function armAt(p, control) {
 const DAY = /(?:Today, )?(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, )?(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(?:st|nd|rd|th)?,? \d{4}/g;
 const dayless = (k) => k.replace(DAY, 'a day');
 
+const ambient = { old: undefined, new: undefined };
 async function measureAmbient(side, route) {
 	await load(side, route);
 	const p = pages[side];
@@ -754,24 +633,15 @@ const changed = (r) => Boolean(r && (r.affected?.length || r.url || r.popup || r
 const leftPage = (r, route) => Boolean(r.url && r.url.split('?')[0] !== route.split('?')[0]);
 const transformMoves = (t) => t !== 'none' && !/^matrix\(1, 0, 0, 1, 0, -?[\d.e-]+\)$/.test(t);
 
-const CONCURRENCY = Math.max(1, Number(process.env.CONCURRENCY ?? 1));
-// Longest first from one queue, so a worker that drew quick pages takes the next one instead of idling.
-const queue = costs?.size ? [...mine].sort((a, b) => (costs.get(b) ?? 0) - (costs.get(a) ?? 0)) : [...mine];
-await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => workerState.run(newWorker(), async () => {
-for (let route; (route = queue.shift()) !== undefined; ) {
-	w.currentRoute = route;
+for (const route of mine) {
 	const findings = [];
 	let tried = 0;
-	w.motionMs = 0;
-	w.settles = { n: 0, ms: 0, capped: {} };
-	w.loads = { n: 0, ms: 0 };
-	w.profile = {};
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
 		let controls = [];
-		for (const [i, width] of STATIC_WIDTHS.entries()) {
-			await fresh(width, [...STATIC_WIDTHS.slice(i + 1), WIDTH]);
+		for (const width of STATIC_WIDTHS) {
+			await fresh(width);
 			await load('old', route);
 			await resetScrollers(pages.old);
 			const olds = await pages.old.evaluate(listControls);
@@ -957,13 +827,9 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
-	for (const slot of [current.old, current.new, ...w.prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
-	current.old = current.new = undefined;
-	w.prepared = [];
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs: w.motionMs, settles: w.settles, loads: w.loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(w.profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
-})));
 await browser.close();
 
 function motionFinding(findings, base, om, nm, prefix, tag) {
