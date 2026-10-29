@@ -289,26 +289,55 @@ const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch();
 const WIDTH = Number(process.env.WIDTH ?? 1280);
 const STATIC_WIDTHS = (process.env.STATIC_WIDTHS ?? '1280,1440,390').split(',').map(Number);
 const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Boolean).map(Number);
-// One context for both sides (different origins keep their own storage); the bypass header only goes to the port's host.
-// Every use starts from a fresh context: what one use stored (a colour mode, a package manager, an intro dismissed) is not the next one's.
+// Every use starts from a fresh context per side: what one use stored (a colour mode, a package manager, an intro dismissed)
+// is not the next one's. The next use's pages are opened and loading, cold, in their own fresh contexts while the current
+// use runs, so a use waits only for what is left of its loads.
 const pages = {};
 const nets = {};
 const cdp = {};
 const errors = { old: [], new: [] };
-let context;
-async function fresh(width = WIDTH) {
-	await context?.close().catch(() => {});
+const current = { old: undefined, new: undefined };
+let prepared;
+let currentRoute = '';
+const originOf = (side) => (side === 'old' ? OLD : NEW);
+
+async function openSlot(side, width, route) {
 	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
-	context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
+	const context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
 	await context.addInitScript(trackTimers);
-	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
+	// The bypass header only goes to the port's host.
+	if (BYPASS && side === 'new') await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
+	const page = await context.newPage();
+	const slot = { side, width, route, context, page, net: trackRequests(page), errors: [], cdp: undefined, loading: undefined };
+	page.on('dialog', (d) => d.dismiss().catch(() => {}));
+	page.on('pageerror', (e) => slot.errors.push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
+	if (ENGINE === 'chromium') slot.cdp = await context.newCDPSession(page);
+	slot.loading = page.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 }).then(() => undefined, (e) => e);
+	return slot;
+}
+
+const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
+
+// Both sides' pages for a use at this width; the pages of the use after it start loading once this use's are in.
+async function fresh(width = WIDTH, nextWidth = width) {
+	for (const side of ['old', 'new']) closeSlot(current[side]);
+	const take = (side) => (prepared?.width === width && prepared.route === currentRoute ? prepared[side] : (closeSlot(prepared?.[side]), openSlot(side, width, currentRoute)));
+	const next = { old: take('old'), new: take('new') };
+	prepared = undefined;
 	for (const side of ['old', 'new']) {
-		pages[side] = await context.newPage();
-		nets[side] = trackRequests(pages[side]);
-		pages[side].on('dialog', (d) => d.dismiss().catch(() => {}));
-		pages[side].on('pageerror', (e) => errors[side].push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
-		if (ENGINE === 'chromium') cdp[side] = await context.newCDPSession(pages[side]);
+		current[side] = next[side];
+		const slot = await next[side];
+		pages[side] = slot.page;
+		nets[side] = slot.net;
+		cdp[side] = slot.cdp;
+		errors[side] = slot.errors;
 	}
+	nextWidthAfter = nextWidth;
+}
+let nextWidthAfter = WIDTH;
+function prepareNext() {
+	if (prepared || !currentRoute) return;
+	prepared = { width: nextWidthAfter, route: currentRoute, old: openSlot('old', nextWidthAfter, currentRoute), new: openSlot('new', nextWidthAfter, currentRoute) };
 }
 const layoutDone = new Set();
 const keyDone = new Set();
@@ -322,11 +351,18 @@ async function load(side, route) {
 	await p.bringToFront();
 	const t0 = Date.now();
 	loads.n++;
-	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
+	const slot = await current[side];
+	if (slot.route === route && slot.loading && slot.page === p) {
+		const loading = slot.loading;
+		slot.loading = undefined;
+		const failed = await loading;
+		if (failed) throw failed;
+	} else await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
 	await ready(p, nets[side]);
 	await quietly(p, side, () => {}, 300);
 	await settleScroll(p);
 	loads.ms += Date.now() - t0;
+	if (side === 'old') prepareNext();
 }
 
 // Waits for what `step` set going (DOM changes, scrolls, animations, short timers, requests) to settle, at most the fixed wait `capMs`.
@@ -664,6 +700,7 @@ const leftPage = (r, route) => Boolean(r.url && r.url.split('?')[0] !== route.sp
 const transformMoves = (t) => t !== 'none' && !/^matrix\(1, 0, 0, 1, 0, -?[\d.e-]+\)$/.test(t);
 
 for (const route of mine) {
+	currentRoute = route;
 	const findings = [];
 	let tried = 0;
 	motionMs = 0;
@@ -673,8 +710,8 @@ for (const route of mine) {
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
 		let controls = [];
-		for (const width of STATIC_WIDTHS) {
-			await fresh(width);
+		for (const [i, width] of STATIC_WIDTHS.entries()) {
+			await fresh(width, STATIC_WIDTHS[i + 1] ?? WIDTH);
 			await load('old', route);
 			await resetScrollers(pages.old);
 			const olds = await pages.old.evaluate(listControls);
@@ -860,6 +897,8 @@ for (const route of mine) {
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
+	for (const slot of [current.old, current.new, prepared?.old, prepared?.new]) closeSlot(slot);
+	current.old = current.new = prepared = undefined;
 	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }

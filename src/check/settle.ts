@@ -35,7 +35,7 @@ export function trackRequests(page: RequestEvents): Requests {
 				const t0 = Date.now();
 				const tick = () => {
 					const now = Date.now();
-					if (open.size === 0 && now - Math.max(lastChange, t0) >= windowMs) return done(true);
+					if (open.size === 0 && now - lastChange >= windowMs) return done(true);
 					if (now - t0 >= capMs) return done(false);
 					setTimeout(tick, Math.min(25, windowMs));
 				};
