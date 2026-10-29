@@ -48,13 +48,33 @@ export function markChosenHref(el: Tree, chosen: Readonly<Record<string, Choice>
 
 const MAX_OPTIONS = 800;
 
+// What a page shows and holds, to tell a page put back after a choice from the one a fresh load gave: the document
+// without the scripts, styles and resource hints a framework adds as it loads code, form values, storage, scroll and address.
+const stateOf = (page: Page) =>
+	page.evaluate(() => {
+		const root = document.documentElement.cloneNode(true) as HTMLElement;
+		for (const el of root.querySelectorAll('script, style, link, noscript, [data-live-announcer]')) el.remove();
+		// A scroll lock lifted leaves an empty style attribute behind, which shows nothing.
+		for (const el of [root, ...root.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
+		const values = [...document.querySelectorAll('input, textarea, select')].map((el) => (el instanceof HTMLInputElement ? `${el.value}|${el.checked}` : (el as HTMLTextAreaElement | HTMLSelectElement).value));
+		const stored = (s: Storage) => Object.keys(s).sort().map((k) => `${k}=${s.getItem(k)}`);
+		const text = JSON.stringify([root.outerHTML, document.title, values, stored(localStorage), stored(sessionStorage), document.cookie, scrollX, scrollY, location.href]);
+		let hash = 0x811c9dc5;
+		for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+		return hash >>> 0;
+	});
+
+// The state each page's last fresh load had before its control was opened, and the document that load made.
+const loaded = new WeakMap<Page, { state: number; doc: string }>();
+
 async function openOn(page: Page, origin: string, route: string, path: readonly number[]): Promise<boolean> {
 	await loadPage(page, new URL(route, origin).href);
 	await page.waitForTimeout(400);
-	await page.evaluate(() => {
-		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
+	const doc = await page.evaluate(() => {
+		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[]; __mmDoc?: string };
 		w.__mmCopied = [];
 		w.__mmWent = [];
+		w.__mmDoc = Math.random().toString(36).slice(2);
 		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.__mmCopied!.push(t), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 		// A router sent to the address the page is already at replaces the history entry: the address alone shows no move.
 		for (const name of ['pushState', 'replaceState'] as const) {
@@ -64,7 +84,13 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 				return own.call(this, data, unused, url);
 			};
 		}
+		return w.__mmDoc;
 	});
+	loaded.set(page, { state: await stateOf(page), doc });
+	return openTrigger(page, path);
+}
+
+async function openTrigger(page: Page, path: readonly number[]): Promise<boolean> {
 	const trigger = await page.evaluateHandle((p) => {
 		let el: Element | undefined = document.body;
 		for (const i of p) el = el?.children[i];
@@ -77,6 +103,32 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 	await Promise.all([page.waitForTimeout(400), page.locator(OPTION).first().waitFor({ state: 'attached', timeout: 3000 }).catch(() => {})]);
 	await finishAnimations(page).catch(() => {});
 	return true;
+}
+
+/**
+ * Opens the control again for the next option: on the same document when the choice left it as the fresh load had it (a
+ * client router's move taken back first), else on a fresh load. Choosing on a page put back records what a fresh one would.
+ */
+async function reopenOn(page: Page, origin: string, route: string, path: readonly number[], before: string): Promise<boolean> {
+	const fresh = loaded.get(page);
+	const same = fresh && (await page.evaluate((doc) => (window as unknown as { __mmDoc?: string }).__mmDoc === doc, fresh.doc).catch(() => false));
+	if (fresh && same) {
+		if (page.url() !== before) {
+			await page.evaluate(() => history.back()).catch(() => {});
+			await page.waitForURL(before, { timeout: 3000 }).catch(() => {});
+		}
+		// A closed layer hands focus back to its trigger; a fresh load has nothing focused.
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()).catch(() => {});
+		const deadline = Date.now() + 2000;
+		for (;;) {
+			await finishAnimations(page).catch(() => {});
+			await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))).catch(() => {});
+			if (page.url() === before && (await stateOf(page).catch(() => undefined)) === fresh.state) return openTrigger(page, path);
+			if (Date.now() >= deadline) break;
+			await page.waitForTimeout(100);
+		}
+	}
+	return openOn(page, origin, route, path);
 }
 
 /** The requests a page has open, and when the last one ended. */
@@ -137,7 +189,11 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
-				await page.evaluate(() => ((window as unknown as { __mmWent?: string[] }).__mmWent = []));
+				await page.evaluate(() => {
+					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
+					w.__mmCopied = [];
+					w.__mmWent = [];
+				});
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
 				if (!(await target.click({ timeout: 2000 }).then(() => true, () => false)) && !((await openOn(page, origin, route, reveal.path)) && (await target.click({ timeout: 5000 }).then(() => true, () => false)))) {
 					failure ??= `could not choose ${key}`;
@@ -151,7 +207,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before;
 				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
-				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await openOn(page, origin, route, reveal.path);
+				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];

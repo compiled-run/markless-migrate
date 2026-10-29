@@ -65,14 +65,59 @@ document.getElementById('open').addEventListener('click', () => {
 });
 </script></body></html>`;
 
+// A menu that closes on each choice: one item marks the page (state a fresh load would not have), one copies, one does nothing.
+const MENU = `<!doctype html><html><body><button id="open" aria-expanded="false">Actions</button><script>
+document.getElementById('open').addEventListener('click', () => {
+	const menu = document.createElement('div');
+	menu.setAttribute('role', 'menu');
+	for (const name of ['Copy', 'Mark', 'Plain', 'Copy again']) {
+		const item = document.createElement('div');
+		item.setAttribute('role', 'menuitem');
+		item.textContent = name;
+		item.addEventListener('click', () => {
+			if (name.startsWith('Copy')) navigator.clipboard.writeText(name + ' text');
+			if (name === 'Mark') document.body.dataset.marked = '';
+			menu.remove();
+		});
+		menu.append(item);
+	}
+	document.body.append(menu);
+});
+</script></body></html>`;
+
+// A client router: each option moves to another page in the same document, and going back shows the first page again.
+const CLIENT = `<!doctype html><html><body><button id="open" aria-expanded="false">Search</button><main>Home</main><script>
+const main = document.querySelector('main');
+addEventListener('popstate', () => (main.textContent = location.pathname === '/client' ? 'Home' : location.pathname));
+document.getElementById('open').addEventListener('click', () => {
+	const list = document.createElement('div');
+	list.setAttribute('cmdk-list', '');
+	for (const to of ['a', 'b', 'c']) {
+		const item = document.createElement('div');
+		item.setAttribute('cmdk-item', '');
+		item.setAttribute('data-value', to);
+		item.textContent = to;
+		item.addEventListener('click', () => {
+			list.remove();
+			history.pushState(null, '', '/docs/' + to);
+			main.textContent = '/docs/' + to;
+		});
+		list.append(item);
+	}
+	document.body.append(list);
+});
+</script></body></html>`;
+
 let browser: Browser;
+const loads = new Map<string, number>();
 let server: Server;
 let origin: string;
 before(async () => {
 	browser = await chromium.launch();
 	server = createServer((request, res) => {
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 1500);
-		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : PAGE);
+		loads.set(request.url!, (loads.get(request.url!) ?? 0) + 1);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : PAGE);
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -136,4 +181,28 @@ test("a palette listing other options on another page is chosen again there, and
 	const doc = parseDocument(`<body>${radix.added[0]!.html}<div role="menuitem">Copy</div></body>`);
 	for (const el of walk(body(doc))) markChosenHref(el, { 'Components Button': { href: '/docs/components/radix/button' }, Copy: { href: '/x' } });
 	assert.equal(outer(body(doc)), '<body><div cmdk-list=""><div cmdk-item="" data-value="Components Menubar" id="r1">Menubar</div><div cmdk-item="" data-value="Components Button" id="r2" data-mm-href="/docs/components/radix/button">Button</div></div><div role="menuitem">Copy</div></body>');
+});
+
+test('captureChoices opens a menu again on the same page while a choice left it as loaded, and loads it again once one did not', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-menu-'));
+	try {
+		const reveal: Reveal = { key: 'menu', path: [0], sig: 'button||Actions', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div role="menu"><div role="menuitem">Copy</div></div>' }] };
+		loads.delete('/menu');
+		assert.deepEqual(await captureChoices(browser, origin, '/menu', reveal, dir), { Copy: { copied: 'Copy text' }, Mark: {}, Plain: {}, 'Copy again': { copied: 'Copy again text' } });
+		assert.equal(loads.get('/menu'), 2, 'the first load, and one more after the choice that marked the page');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("captureChoices takes back a client router's move and chooses the next option on the same page", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-client-'));
+	try {
+		const reveal: Reveal = { key: 'client', path: [0], sig: 'button||Search', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div cmdk-list=""><div cmdk-item="" data-value="a">a</div></div>' }] };
+		loads.delete('/client');
+		assert.deepEqual(await captureChoices(browser, origin, '/client', reveal, dir), { a: { href: '/docs/a' }, b: { href: '/docs/b' }, c: { href: '/docs/c' } });
+		assert.equal(loads.get('/client'), 1);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });
