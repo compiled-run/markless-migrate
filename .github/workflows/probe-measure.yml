@@ -107,7 +107,7 @@ jobs:
           for r in $ROUTES; do curl -s -o /dev/null "$OLD$r"; curl -s -o /dev/null "$NEW$r"; done
           if [ "$ENGINE" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
           node before/scripts/probe/dead-controls.mjs out/routes.json "out/before-$ENGINE.jsonl" | tee "out/before-$ENGINE.log"
-          node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
+          PROFILE=1 node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
       - name: Compare
         env:
           ENGINE: ${{ matrix.engine }}
@@ -126,6 +126,7 @@ jobs:
               diffs += [f"- before only, `{route}`: {k}" for k in sorted(kb - ka)] + [f"- after only, `{route}`: {k}" for k in sorted(ka - kb)]
           for route, a in rows[1].items():
               if 'settles' in a: print(f"\n`{route}` after: {a['loads']['n']} loads in {a['loads']['ms']/1000:.0f} s; {a['settles']['n']} settles in {a['settles']['ms']/1000:.0f} s, held to the cap by {a['settles']['capped'] or 'nothing'}; filming {a['motionMs']/1000:.0f} s")
+              if 'profile' in a: print('\n' + '; '.join(f"{k} {v['ms']/1000:.0f} s ({v['n']})" for k, v in list(a['profile'].items())[:14]))
           print('\n' + ('\n'.join(diffs) if diffs else 'The same findings on both refs.') + '\n')
           PY
       - uses: actions/upload-artifact@v4

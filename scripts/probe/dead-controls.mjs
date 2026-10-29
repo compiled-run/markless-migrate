@@ -15,7 +15,7 @@ import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../..
 let settles = { n: 0, ms: 0, capped: {} };
 let loads = { n: 0, ms: 0 };
 async function settle(p, net, capMs) {
-	const r = await settleOnce(p, net, capMs);
+	const r = await timed(`settle ${capMs}`, () => settleOnce(p, net, capMs));
 	settles.n++;
 	settles.ms += r.ms;
 	if (r.capped) settles.capped[r.capped] = (settles.capped[r.capped] ?? 0) + 1;
@@ -301,6 +301,42 @@ let prepared;
 let currentRoute = '';
 const originOf = (side) => (side === 'old' ? OLD : NEW);
 
+// With PROFILE set, each route's row carries the time spent in each page call (by kind), for finding what is left to cut.
+let profile = {};
+const PROFILE = Boolean(process.env.PROFILE);
+const timed = async (k, f) => {
+	const t = performance.now();
+	try {
+		return await f();
+	} finally {
+		const e = (profile[k] ??= { ms: 0, n: 0 });
+		e.ms += performance.now() - t;
+		e.n++;
+	}
+};
+function instrument(p) {
+	const wrap = (obj, name, label) => {
+		const o = obj[name].bind(obj);
+		obj[name] = (...a) => timed(typeof label === 'function' ? label(...a) : label, () => o(...a));
+	};
+	wrap(p, 'goto', 'goto');
+	wrap(p, 'waitForTimeout', (ms) => `sleep ${ms}`);
+	wrap(p, 'evaluate', (fn) => `eval ${fn.name || 'anon'}`);
+	wrap(p.keyboard, 'press', 'key.press');
+	wrap(p.keyboard, 'type', 'key.type');
+	const loc = p.locator.bind(p);
+	p.locator = (...a) => {
+		const l = loc(...a);
+		const f = l.first.bind(l);
+		l.first = () => {
+			const x = f();
+			for (const m of ['click', 'fill', 'focus', 'selectOption']) wrap(x, m, `act.${m}`);
+			return x;
+		};
+		return l;
+	};
+}
+
 async function openSlot(side, width, route) {
 	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
 	const context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
@@ -308,6 +344,7 @@ async function openSlot(side, width, route) {
 	// The bypass header only goes to the port's host.
 	if (BYPASS && side === 'new') await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
 	const page = await context.newPage();
+	if (PROFILE) instrument(page);
 	const slot = { side, width, route, context, page, net: trackRequests(page), errors: [], cdp: undefined, loading: undefined };
 	page.on('dialog', (d) => d.dismiss().catch(() => {}));
 	page.on('pageerror', (e) => slot.errors.push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
@@ -326,7 +363,7 @@ async function fresh(width = WIDTH, nextWidth = width) {
 	prepared = undefined;
 	for (const side of ['old', 'new']) {
 		current[side] = next[side];
-		const slot = await next[side];
+		const slot = await timed('fresh.slot', () => next[side]);
 		pages[side] = slot.page;
 		nets[side] = slot.net;
 		cdp[side] = slot.cdp;
@@ -355,12 +392,12 @@ async function load(side, route) {
 	if (slot.route === route && slot.loading && slot.page === p) {
 		const loading = slot.loading;
 		slot.loading = undefined;
-		const failed = await loading;
+		const failed = await timed('load.preloaded', () => loading);
 		if (failed) throw failed;
 	} else await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
-	await ready(p, nets[side]);
-	await quietly(p, side, () => {}, 300);
-	await settleScroll(p);
+	await timed('load.ready', () => ready(p, nets[side]));
+	await timed('load.settle', () => quietly(p, side, () => {}, 300));
+	await timed('load.scroll', () => settleScroll(p));
 	loads.ms += Date.now() - t0;
 	if (side === 'old') prepareNext();
 }
@@ -706,6 +743,7 @@ for (const route of mine) {
 	motionMs = 0;
 	settles = { n: 0, ms: 0, capped: {} };
 	loads = { n: 0, ms: 0 };
+	profile = {};
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
@@ -899,7 +937,7 @@ for (const route of mine) {
 	}
 	for (const slot of [current.old, current.new, prepared?.old, prepared?.new]) closeSlot(slot);
 	current.old = current.new = prepared = undefined;
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, findings }) + '\n');
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await browser.close();
