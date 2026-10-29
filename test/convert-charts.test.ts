@@ -141,3 +141,30 @@ test('a horizontal grid\'s possible lines are read off the tallest drawing as fr
 	assert.deepEqual(gridOf(tree, [10, 0, 380, 170], { axes: [] }), [0, 0.25, 0.5, 0.75, 1]);
 	assert.equal(gridOf(tree, [10, 0, 380, 170], { axes: [{ t: 'yAxis', o: 'left', box: [0, 0, 0, 0], vb: [0, 0, 0, 0], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, num: true, c: [], l: [] }] }), undefined, 'a drawn number axis has its own ticks');
 });
+
+test('an RTL preview\'s language selector drives the chart through the preview\'s language, and the preview fetches the animation', () => {
+	const doc = parseDocument('<body><div data-slot="component-preview"><button data-slot="select-trigger" data-name="language-selector">Arabic</button><div data-slot="preview" dir="rtl" data-lang="ar"><div class="recharts-wrapper"><svg class="recharts-surface"></svg><div class="recharts-tooltip-wrapper"></div></div></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 0 });
+	const plan = new ChartPlan();
+	const drivers = [{ sig: 's', nth: 0, kind: 'choose' as const, label: 'English', lang: 'en', variant: 1 }, { sig: 's', nth: 0, kind: 'choose' as const, label: 'Arabic (العربية)', lang: 'ar', variant: 0 }, { sig: 's', nth: 0, kind: 'choose' as const, label: 'Hebrew (עברית)', lang: 'he', variant: 2 }];
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants: [one('<svg class="recharts-surface"><g></g></svg>'), one('<svg class="recharts-surface"><g><g></g></g></svg>'), one('<svg class="recharts-surface"><g></g><g></g></svg>')], drivers }], (sig) => (sig === 'w' ? wrapper : find(root, (el) => attr(el, 'data-name') === 'language-selector')), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="component-preview" data-mm-morph="">/);
+	assert.match(out, /data-mm-lang="" onMmlang=\{\(event\) => \{ const k = chart0l\[/);
+	assert.ok(plan.bind(wrapper)?.declare?.includes('const chart0l: Record<string, number> = {"en":1,"ar":0,"he":2};'));
+	assert.ok(!out.includes('onMmchoose'), 'the select itself drives nothing: the site part sets the language');
+});
+
+test('a chart whose card starts in another choice on narrow pages carries that choice and the width', () => {
+	const doc = parseDocument('<body><div data-slot="card"><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper"><svg class="recharts-surface"></svg><div class="recharts-tooltip-wrapper"></div></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 0 });
+	const plan = new ChartPlan();
+	const drivers = [{ sig: 'b', nth: 0, kind: 'choose' as const, label: 'Last 7 days', variant: 1 }];
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants: [one('<svg class="recharts-surface"></svg>'), one('<svg class="recharts-surface"><g></g></svg>')], drivers, start: { below: 768, label: 'Last 7 days' } }], (sig) => (sig === 'w' ? wrapper : find(root, (el) => el.tagName === 'button')), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.ok(out.includes(`data-mm-start={${JSON.stringify(JSON.stringify({ w: 768, l: 'Last 7 days' }))}}`), out.slice(0, 500));
+});
