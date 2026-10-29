@@ -11,6 +11,7 @@ import { markTextValues } from './rac-text.ts';
 import { requestsDone, settle, trackSettling } from './settle.ts';
 import { instancePropMarks, instanceSpecs, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
+import type { Limit } from './limit.ts';
 
 // What the old page's React tree knows of the content a gesture added, written on it before it is read.
 async function markAdded(page: Page): Promise<void> {
@@ -448,25 +449,38 @@ export interface ListedControls {
 }
 
 /** Every pass over one route's controls (ARIA-marked, listed, child-rendered hovers, listed openers, scroll areas), joined. */
-export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls = {}): Promise<RevealCapture> {
+export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls = {}, limit: Limit = (task) => task()): Promise<RevealCapture> {
 	const failed = (error: Error): RevealCapture => ({ route, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
 	// A listed control with routes is the site's on those routes only.
 	const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(route)).map(([selector, action]) => [selector, action] as const);
-	const own = await captureReveals(browser, origin, route, dir, VIEWPORTS, extra).catch(failed);
-	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
-	const listed = extra.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
-	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
-	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download'))), ...listed.reveals] : own.reveals;
-	const child = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
-	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);
-	const opened = opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
-	const scroll = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
-	const keys = new Set(base.map((r) => r.key));
-	// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
-	const wide = await captureReveals(browser, origin, route, dir, [WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys).catch(failed);
-	const dismissed = options.loadDialog ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: CONTROLS, tag: 'dismissed:', dismiss: true }, addedMarks(), keys).catch(failed) : undefined;
-	const dismissedOpens = options.loadDialog && opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'dismissed-open:', dismiss: true }, addedMarks(), keys).catch(failed) : undefined;
+	// Each pass loads the page afresh, so the passes run at once, each in a slot of `limit`; the wide screen's and the
+	// dismissed dialog's passes need the keys the ARIA-marked and listed controls found.
+	const pass = (viewports: readonly Viewport[], extraOf: readonly (readonly [string, RevealAction])[], tagged?: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean }, marks?: readonly Mark[], taken?: ReadonlySet<string>) => limit(() => captureReveals(browser, origin, route, dir, viewports, extraOf, tagged, marks, taken)).catch(failed);
+	const [first, child, opened, scroll] = await Promise.all([
+		(async () => {
+			const [own, listed] = await Promise.all([
+				pass(VIEWPORTS, extra),
+				// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
+				extra.length ? pass(VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }) : undefined,
+			]);
+			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
+			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download'))), ...listed.reveals] : own.reveals;
+			const keys = new Set(base.map((r) => r.key));
+			const [wide, dismissed, dismissedOpens] = await Promise.all([
+				// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
+				pass([WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys),
+				options.loadDialog ? pass(VIEWPORTS, extra, { controls: CONTROLS, tag: 'dismissed:', dismiss: true }, addedMarks(), keys) : undefined,
+				options.loadDialog && opens.length ? pass(VIEWPORTS, [], { controls: opens, tag: 'dismissed-open:', dismiss: true }, addedMarks(), keys) : undefined,
+			]);
+			return { own, listed, base, keys, wide, dismissed, dismissedOpens };
+		})(),
+		pass(VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }),
+		// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
+		opens.length ? pass(VIEWPORTS, [], { controls: opens, tag: 'open:' }) : undefined,
+		pass(VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }),
+	]);
+	const { own, listed, base, keys, wide, dismissed, dismissedOpens } = first;
 	const more = [...child.reveals, ...(dismissed?.reveals ?? []), ...(dismissedOpens?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
 	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
 }
