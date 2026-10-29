@@ -5,6 +5,8 @@ import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
+import { show } from '../parts/base-ui/dialog.ts';
+import { GET_CODE, isCreatePreview } from './create-messages.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -583,4 +585,24 @@ const typesetPreview: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview];
+// app/(view)/preview/[base]/[name]: the page /create shows in its iframe. DesignSystemProvider applies the params (its
+// URL's, then each the designer posts), loaded on that page alone; the beforeInteractive scripts (ActionMenuScript,
+// OpenPresetScript, RandomizeScript, HistoryScript, DarkModeScript), which the converted page serves in its head, forward
+// its keys to the designer.
+const designSystemPreview: Part = {
+	idle() {
+		if (isCreatePreview(location.pathname)) void import('./create-preview.ts').then((m) => m.startPreview());
+	},
+};
+
+// components/designer-actions.tsx: the site header's ProjectForm on /create, the same Get Code dialog as the designer's.
+const designerGetCode: Part = {
+	click(target) {
+		const button = target.closest('header [data-slot="dialog-trigger"]');
+		if (!button || button.textContent?.trim() !== 'Get Code' || !document.querySelector(`[data-mm-layer="${GET_CODE}"]`)) return false;
+		show(GET_CODE);
+		return true;
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode];
