@@ -1,23 +1,15 @@
 import type { Part } from '../parts/index.ts';
-import { markSwitched, resolvedTheme, switchedFor, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { markSwitched, switchedFor, watchSystemTheme } from '../parts/next-themes.ts';
+import { THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
+import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
 
-// components/theme-provider.tsx: <NextThemesProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange enableColorScheme>
-const THEME: ThemeOptions = { attribute: 'class', themes: ['light', 'dark'], storageKey: 'theme', defaultTheme: 'system', enableSystem: true, enableColorScheme: true, disableTransitionOnChange: true };
 watchSystemTheme(THEME);
-// hooks/use-meta-color.ts
-const META_THEME_COLORS = { light: '#ffffff', dark: '#0a0a0a' };
-
-function toggleTheme(): void {
-	const next = resolvedTheme(THEME) === 'dark' ? 'light' : 'dark';
-	setTheme(next, THEME);
-	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? META_THEME_COLORS.dark : META_THEME_COLORS.light);
-}
 
 const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isContentEditable) || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
@@ -204,6 +196,160 @@ const refreshPreview: Part = {
 		return true;
 	},
 };
+
+// components/component-preview-tabs.tsx's RTL preview: a LanguageProvider (Arabic first) around the example, whose
+// language selector sets the preview's dir and data-lang and the example's text from its translations table
+// (examples/<base>/*-rtl.tsx, extracted into rtl-translations.json by scripts/rtl-translations.ts). The example is told
+// by its text: the table whose Arabic strings the preview shows. Each node's first text is kept, so every language is
+// written from it: the table's strings, the direction and data-lang of what was marked Arabic.
+type RtlTable = Record<string, { readonly dir: 'ltr' | 'rtl'; readonly locale?: string; readonly values: Record<string, string>; readonly place?: readonly (readonly [string, string])[] }>;
+const LANGUAGES: Record<string, string> = { English: 'en', 'Arabic (العربية)': 'ar', 'Hebrew (עברית)': 'he' };
+let rtlTables: Promise<Record<string, RtlTable>> | undefined;
+const loadTables = () => (rtlTables ??= import('./rtl-translations.json').then((m) => (m as unknown as { default: Record<string, RtlTable> }).default));
+const firstText = new WeakMap<Node, string>();
+// What was last written on a text: a text that reads otherwise was written since by the page (a count), and is read again.
+const written = new WeakMap<Node, string>();
+const firstAttrs = new WeakMap<Element, Record<string, string | null>>();
+const PLACED = ['data-side', 'data-align', 'data-mm-side', 'data-mm-align', 'data-mm-placement'] as const;
+const RTL_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'dir', 'data-lang', ...PLACED] as const;
+const rtlTableOf = new WeakMap<Element, RtlTable | null>();
+const firstPlaced = new WeakSet<Element>();
+
+function previewParts(preview: Element): Element[] {
+	// What the example opens is in the layers its controls name (a dialog, a menu, a submenu a menu opens), each keyed by
+	// the control's id, aria-controls or capture key.
+	const parts = [preview];
+	const layers = [...document.querySelectorAll('[data-mm-layer]')];
+	for (let i = 0; i < parts.length; i++) {
+		const keys = new Set([...parts[i]!.querySelectorAll('[id], [aria-controls], [data-mm-key]')].flatMap((e) => [e.id, e.getAttribute('aria-controls'), e.getAttribute('data-mm-key')].filter((k): k is string => Boolean(k))));
+		for (const layer of layers) if (!parts.includes(layer) && keys.has(layer.getAttribute('data-mm-layer') ?? '')) parts.push(layer);
+	}
+	return parts;
+}
+
+function textNodes(root: Element): Text[] {
+	const out: Text[] = [];
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	for (let n = walker.nextNode(); n; n = walker.nextNode()) out.push(n as Text);
+	return out;
+}
+
+function chooseTable(tables: Record<string, RtlTable>, parts: readonly Element[]): RtlTable | undefined {
+	const shown = new Set(parts.flatMap((p) => textNodes(p).map((t) => (firstText.get(t) ?? t.data).trim())).filter(Boolean));
+	// The libraries' examples share their strings: a tie goes to the page's own library's (its place props differ).
+	const library = /^\/docs\/components\/(radix|base|aria)\//.exec(location.pathname)?.[1];
+	let best: RtlTable | undefined;
+	let score = 0;
+	for (const [name, table] of Object.entries(tables)) {
+		const values = Object.values(table.ar?.values ?? {});
+		const hits = values.filter((v) => shown.has(v.trim())).length * 2 + (name.startsWith(`${library}/`) ? 1 : 0);
+		if (hits > 1 && hits > score) [best, score] = [table, hits];
+	}
+	return best;
+}
+
+function writeLanguage(preview: Element, table: RtlTable | undefined, language: string): void {
+	const parts = previewParts(preview);
+	const target = table?.[language];
+	const dir = target?.dir ?? (language === 'en' ? 'ltr' : 'rtl');
+	const from = new Map<string, string>(Object.entries(table?.ar?.values ?? {}).map(([key, v]) => [v.trim(), target?.values[key] ?? v]));
+	// A string the example writes beside numbers ("{n} من {m} صف(وف) محدد."): each of the table's strings standing as words, longest first.
+	const words = [...from.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
+	const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const inside = words.length ? new RegExp(`(^|\\s)(${words.map(escape).join('|')})(?=\\s|$)`, 'gu') : undefined;
+	// Numbers the example formats in its locale (useTranslation's formatNumber): Arabic-Indic digits in Arabic only.
+	const digits = (text: string) => (language === 'ar' ? text : text.replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\u066b/g, '.').replace(/\u066c/g, ','));
+	const translate = (text: string) => {
+		const key = text.trim();
+		const whole = from.get(key);
+		if (whole !== undefined) return text.replace(key, whole);
+		return digits(inside ? text.replace(inside, (_, space: string, word: string) => space + (from.get(word) ?? word)) : text);
+	};
+	// Where the example places its popups by direction (side, align, React Aria's placement): the attribute the part that
+	// opens it reads, from its value as captured in Arabic to this language's. React Aria's is captured physical.
+	const physical = (v: string, d: string) => v.replace(/\bstart\b/, d === 'rtl' ? 'right' : 'left').replace(/\bend\b/, d === 'rtl' ? 'left' : 'right');
+	const placed = new Map<string, Map<string, string>>();
+	(table?.ar?.place ?? []).forEach(([prop, was], i) => {
+		const now = target?.place?.[i]?.[1];
+		if (now === undefined) return;
+		// What the source asked for (data-mm-side, data-mm-align) and where it went as captured are both read.
+		const [names, a, b] = prop === 'placement' ? [['data-mm-placement'], physical(was, 'rtl'), physical(now, dir)] : [[`data-${prop}`, `data-mm-${prop}`], was, now];
+		if (a !== b) for (const name of names) (placed.get(name) ?? placed.set(name, new Map()).get(name)!).set(a, b);
+	});
+	for (const part of parts) {
+		for (const node of textNodes(part)) {
+			if (!firstText.has(node) || (written.has(node) && written.get(node) !== node.data)) firstText.set(node, node.data);
+			const next = translate(firstText.get(node)!);
+			if (node.data !== next) node.data = next;
+			written.set(node, next);
+		}
+		for (const el of [part, ...part.querySelectorAll('*')]) {
+			const first = firstAttrs.get(el) ?? Object.fromEntries(RTL_ATTRS.map((a) => [a, el.getAttribute(a)]));
+			firstAttrs.set(el, first);
+			for (const name of ['placeholder', 'aria-label', 'title', 'alt'] as const) if (first[name] !== null) el.setAttribute(name, translate(first[name]!));
+			if (first.dir === 'rtl') el.setAttribute('dir', dir);
+			if (part !== preview)
+				for (const name of PLACED) {
+					const was = first[name];
+					if (was == null || !placed.has(name) && !firstPlaced.has(el)) continue;
+					const to = placed.get(name)?.get(was) ?? was;
+					if (el.getAttribute(name) !== to) el.setAttribute(name, to);
+					firstPlaced.add(el);
+				}
+			if (first['data-lang'] === 'ar') {
+				if (dir === 'rtl') el.setAttribute('data-lang', language);
+				else el.removeAttribute('data-lang');
+			}
+		}
+	}
+}
+
+// The language each preview shows other than its first; what the page renders in its parts later (a layer opened, a
+// count changed) is written in that language too.
+const shownLanguage = new Map<Element, string>();
+let rewriting = false;
+const rewrite = new MutationObserver(() => {
+	if (rewriting) return;
+	rewriting = true;
+	queueMicrotask(() => {
+		rewriting = false;
+		void loadTables().then(() => {
+			for (const [preview, language] of shownLanguage) if (preview.isConnected) writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+			rewrite.takeRecords();
+		});
+	});
+});
+
+const watchedSelectors = new WeakSet<Element>();
+function watchLanguage(selector: Element): void {
+	if (watchedSelectors.has(selector)) return;
+	watchedSelectors.add(selector);
+	const preview = selector.closest('[data-slot="component-preview"]')?.querySelector(':scope > [data-slot="preview"]');
+	const label = selector.querySelector('[data-slot="select-value"]');
+	if (!preview || !label) return;
+	let shown = 'ar';
+	new MutationObserver(() => {
+		const language = LANGUAGES[(label.textContent ?? '').trim()];
+		if (!language || language === shown) return;
+		shown = language;
+		void loadTables().then((tables) => {
+			if (!rtlTableOf.has(preview)) rtlTableOf.set(preview, chooseTable(tables, previewParts(preview)) ?? null);
+			writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+			if (language === 'ar') shownLanguage.delete(preview);
+			else if (!shownLanguage.size) {
+				shownLanguage.set(preview, language);
+				rewrite.observe(document.body, { childList: true, characterData: true, subtree: true });
+			} else shownLanguage.set(preview, language);
+			rewrite.takeRecords();
+		});
+	}).observe(label, { childList: true, characterData: true, subtree: true });
+}
+const rtlWatch = (target: Element): boolean => {
+	const selector = target.closest('[data-slot="component-preview"]')?.querySelector('[data-name="language-selector"]');
+	if (selector) watchLanguage(selector);
+	return false;
+};
+const rtlPreview: Part = { pointerdown: rtlWatch, focusin: rtlWatch, keydown: rtlWatch };
 
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
@@ -401,6 +547,42 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
+// app/(view)/preview/font-variables.tsx: the preview layout's wrapper, whose classes are the preview fonts' next/font
+// variables, puts them on <html> too, where the pages' CSS variables read them.
+const previewFontVariables: Part = {
+	idle() {
+		for (const el of document.body.children) {
+			const names = [...el.classList];
+			if (names.length && names.every((n) => /^[a-z0-9_]+-module__[\w-]+__variable$/.test(n))) document.documentElement.classList.add(...names);
+		}
+	},
+};
+
+// app/(view)/preview/typeset: the specimen /typeset shows in its iframe. TypesetPreviewProvider puts the params (its URL's,
+// then each the parent posts) on <html> as CSS variables; forward-scripts.tsx's scripts, which the converted page serves
+// in its head, hand R, ⇧R, D and the undo keys to the parent.
+const isTypesetPreview = () => document.querySelector('.preview-params > .typeset, .preview-params > div > .typeset') !== null;
+function applyPreview(params: TypesetParams): void {
+	const style = document.documentElement.style;
+	for (const [name, value] of Object.entries(previewValues(params))) {
+		if (value) style.setProperty(name, value);
+		else style.removeProperty(name);
+	}
+}
+const typesetPreview: Part = {
+	idle() {
+		if (!isTypesetPreview()) return;
+		applyPreview(parseParams(location.search));
+		window.addEventListener('message', (event) => {
+			const data = event.data as { type?: unknown; data?: Partial<Record<TypesetKey, string>> } | null;
+			if (data?.type !== TYPESET_PARAMS_MESSAGE || !data.data) return;
+			const search = updateSearch(location.search, data.data);
+			if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
+			applyPreview(parseParams(search));
+		});
+	},
+};
+
 // The /colors swatches, on use-colors.ts's localStorage "colors" config (the copy check stays: timeout 0).
 const COLORS = 'colors';
 const FORMATS = ['className', 'hex', 'rgb', 'hsl', 'oklch', 'var'];
@@ -456,4 +638,4 @@ const colors: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, colors];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, colors];

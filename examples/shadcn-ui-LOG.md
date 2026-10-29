@@ -279,6 +279,34 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   Not ported: the spinner beside the input and "Searching..." in the empty state are the old page's `isLoading`, a
   status Markless shows only through `@pending`, which commits after 250 ms where the old page shows it at once; and
   a failed search shows no group instead of the previous results.
+- /typeset's designer is Markless code: `lib/site/typeset.tsrx` ports `app/(app)/(typeset)` (the customizer, the docs
+  panel, the preview with its specimen pills, the main menu and the Get Code drawer) as a page site component
+  (`"in": "page"` in `components.json`, #269). With `"layers": true` its `Layers` export renders what its controls
+  portal (the eight menus, both framework selects, the pill tooltips, the drawer) with the page's layers, and convert
+  leaves out the layers those controls opened on the old page and counts their ports for the page's registry. The
+  params, their URL form (nuqs 2: defaults leave the URL, `history: 'replace'`, the serializer's order), the undo
+  history over URL snapshots, shuffle and the install text are `lib/site/typeset-params.ts`; what the hooks did in the
+  browser (the URL, the history, hover previews debounced 50 ms, the iframe's `typeset-params` and `typeset-command`
+  messages, the shortcuts) is `typeset-runtime.ts`, handed to the page as `typesetcommand` events on its root, so every
+  state write stays in the component. The preview page's side is two site parts: `previewFontVariables` (the preview
+  layout's `PreviewFontVariables` puts the fonts' next/font classes on `<html>`) and `typesetPreview` (params from the
+  URL and from each message as `--preview-*` variables on `<html>`, its own keys forwarded to the designer).
+  Base UI fixes it needed are in the parts (#304): radio menu items keep the menu open, a select inside the drawer is
+  part of it, a popup placed against another anchor (the card, on phones), and next-themes' storage listener.
+  Compared step by step with mm-shadcn-ui-old (probes: font, size and default picks, hover and keyboard previews, the
+  checked item, Docs for Next.js and Vite, package managers, the Prompt text, locks and seeded shuffles, R, Shift+R,
+  Cmd+Z and Shift+Cmd+Z, the menu's disabled Undo/Redo and Reset, specimen pills and Open in New Tab, a shared link,
+  Shift+R and D pressed in the preview, Get Code with its own framework select, copy buttons, phone placement): the
+  same URL, labels, checked items, preview variables, texts and clipboard at every step, the prompt differing only in
+  the site's own origin. `test/e2e/shadcn-typeset.test.ts` drives each control on the component built alone
+  (`fixtures/shadcn-typeset`).
+  Not the original's yet: the specimens other than Docs are 404 inside the preview (no page links them, so plan never
+  listed them, #311); a shared link shows the defaults until the page is idle (the old page painted a skeleton until
+  its client render); the menus' rows are always in the page, hidden, where Base UI mounts a menu only while open.
+- Patterns convert could generate instead of a hand port (found on /typeset, the same on /create): the pages a control
+  loads into a frame (#311); URL state as nuqs keeps it, with its serializer and an undo history over it (#312);
+  `next/script` `beforeInteractive` inline scripts, which the port keeps inert in `self.__next_s` (#313); what a
+  client effect sets on `<html>` after load (#314); a Base UI radio menu's value as state, as Select's is (#315).
 
 ## Markless framework bugs found
 
@@ -385,6 +413,21 @@ parse (quotes and backticks in arm text).
 21. Seen with bug 7: a keyed `@for` whose row binds an attribute cannot sit in an `@if` arm
     (MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED "a repeated row inside it holds a attribute binding"), here with state
     decided by the component's own `state()`, `@if (open) { @for (const item of items; key item.id) { <p id={item.id}>...` .
+22. Seen porting /typeset (the port's 0.9.0 packs from Markless main): a click handler on a row of a keyed `@for` inside a child
+    component never runs; the same rows in the page component do. Repro `pages/rows-once.tsrx`:
+    `function List() @{ let picked = state('none'); <div><p>{picked}</p>@for (const item of ITEMS; key item) { <button
+    onClick={() => (picked = item)}>{item}</button> }</div> }` rendered by the page: clicking a row leaves `none`. No
+    diagnostic. The typeset port renders each row as a component of its own with literal props (`RadioRow`).
+23. Seen porting /typeset: a row attribute that compares `shared()` state with the row's item renders once and never
+    updates; the same comparison with the component's own `state()` updates. Repro `pages/rows-shared.tsrx`:
+    `@for (const item of ITEMS; key item) { <button data-active={p.value === item ? 'true' : 'false'}>...` with
+    `const p = picked()` (a page-scope `shared()`): after `p.value = 'c'` the first row still says `true`. The build
+    warns MARKLESS_KEYED_REPEAT_ROW_MINT_UNSUPPORTED, which reads as being about rows added later, not existing ones.
+24. Seen porting /typeset: a component used several times inside a component that is itself used several times reads
+    the last instance's prop in its handlers. Repro `pages/nested-props.tsrx`: `function Choice({ value }) @{ <button
+    onClick={() => (p.value = value)}>{value}</button> }`, three `Choice`s in a `Group`, two `Group`s: every button
+    sets `z`. The typeset port's package manager buttons (four in each of the panel's and the drawer's docs) read their
+    own text instead.
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 

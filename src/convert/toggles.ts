@@ -899,8 +899,9 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 				const opened = () => t.getAttribute('data-state') === 'open' || t.hasAttribute('data-popup-open') || (t.hasAttribute('data-rac') && t.getAttribute('aria-expanded') === 'true');
 				const w = window as unknown as { __mmTimes: number[] };
 				w.__mmTimes = [];
-				t.addEventListener('pointerenter', () => w.__mmTimes.length === 0 && w.__mmTimes.push(performance.now()), { once: true });
-				t.addEventListener('pointerleave', () => w.__mmTimes.length === 2 && w.__mmTimes.push(performance.now()));
+				// The event's own time: the page's listeners, which start its timers, run before this one.
+				t.addEventListener('pointerenter', (e) => w.__mmTimes.length === 0 && w.__mmTimes.push(e.timeStamp), { once: true });
+				t.addEventListener('pointerleave', (e) => w.__mmTimes.length === 2 && w.__mmTimes.push(e.timeStamp));
 				const observer = new MutationObserver(() => {
 					const n = w.__mmTimes.length;
 					if (n === 1 && opened()) w.__mmTimes.push(performance.now());
