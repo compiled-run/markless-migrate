@@ -194,3 +194,14 @@ export function clipboardFor(control: Element): Promise<string> | undefined {
 	const copied = document.querySelector<HTMLTemplateElement>(`template[data-mm-clipboard="${CSS.escape(`${sig}#${nth}`)}"]`);
 	return copied ? Promise.resolve(copied.getAttribute('data-mm-text') ?? '') : undefined;
 }
+
+/** The label a copy control took on the old page once it had copied ("Copied"), from the same template; undefined if it kept its own. */
+export function copiedLabelFor(control: Element): string | undefined {
+	const sig = signature(control);
+	let nth = 0;
+	for (const el of document.body.querySelectorAll('*')) {
+		if (el === control) break;
+		if (signature(el) === sig) nth++;
+	}
+	return document.querySelector(`template[data-mm-clipboard="${CSS.escape(`${sig}#${nth}`)}"]`)?.getAttribute('data-mm-label') ?? undefined;
+}
