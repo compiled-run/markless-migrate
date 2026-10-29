@@ -124,6 +124,8 @@ jobs:
               kb, ka = {key(f) for f in b['findings']}, {key(f) for f in a['findings']}
               print(f"| `{route}` | {b['ms']/1000:.0f} s | {a['ms']/1000:.0f} s | {b['ms']/max(a['ms'],1):.2f}x | {b['tried']} / {a['tried']} | {len(kb)} / {len(ka)} | {len(kb-ka)} | {len(ka-kb)} |")
               diffs += [f"- before only, `{route}`: {k}" for k in sorted(kb - ka)] + [f"- after only, `{route}`: {k}" for k in sorted(ka - kb)]
+          for route, a in rows[1].items():
+              if 'settles' in a: print(f"\n`{route}` after: {a['loads']['n']} loads in {a['loads']['ms']/1000:.0f} s; {a['settles']['n']} settles in {a['settles']['ms']/1000:.0f} s, held to the cap by {a['settles']['capped'] or 'nothing'}; filming {a['motionMs']/1000:.0f} s")
           print('\n' + ('\n'.join(diffs) if diffs else 'The same findings on both refs.') + '\n')
           PY
       - uses: actions/upload-artifact@v4
