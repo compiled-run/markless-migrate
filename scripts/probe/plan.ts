@@ -51,7 +51,7 @@ export interface Plan {
 	readonly version: 1;
 	readonly seed: string;
 	/** Per route: the controls it clicks (use), keys (keyed) and types into (typed), every key it lists, and each key's group for each kind of trial. */
-	readonly routes: Record<string, { readonly use: Planned[]; readonly keyed: Planned[]; readonly typed: Planned[]; readonly keys: string[]; readonly group: Record<string, string>; readonly keyGroup: Record<string, string>; readonly typeGroup: Record<string, string> }>;
+	readonly routes: Record<string, { readonly use: Planned[]; readonly keyed: Planned[]; readonly typed: Planned[]; readonly keys: string[]; readonly group: Record<string, string>; readonly keyGroup: Record<string, string>; readonly typeGroup: Record<string, string>; readonly nested: number }>;
 	/** Per kind of trial and group: the route and key it runs on, and every route and key the group stands for. */
 	readonly groups: Record<'use' | 'keyed' | 'typed', Record<string, { readonly by: Member[]; readonly members: Member[] }>>;
 	readonly work: { readonly uses: number; readonly keyTrials: number; readonly inputTrials: number; readonly overBudget: number };
@@ -157,7 +157,8 @@ export function buildPlan(routes: readonly RouteControls[], options: { readonly 
 		keyed: { cap: caps.key, cost: (c) => keyTrials(c, caps.keysPerControl), eligible: () => true },
 		typed: { cap: caps.input, cost: inputTrials, eligible: (c) => !c.layout && isInput(c) },
 	};
-	const plan: Plan['routes'] = Object.fromEntries(routes.map((r) => [r.route, { use: [], keyed: [], typed: [], keys: r.controls.map((c) => c.key), group: {}, keyGroup: {}, typeGroup: {} }]));
+	// What a use reveals is used within the room the unplanned probe's own controls leave under the cap, as it is today.
+	const plan: Plan['routes'] = Object.fromEntries(routes.map((r) => [r.route, { use: [], keyed: [], typed: [], keys: r.controls.map((c) => c.key), group: {}, keyGroup: {}, typeGroup: {}, nested: Math.max(0, caps.use - unplannedTrials(r.controls, caps).use.length) }]));
 	const groups: Plan['groups'] = { use: {}, keyed: {}, typed: {} };
 	const work = { uses: 0, keyTrials: 0, inputTrials: 0, overBudget: 0 };
 	const films = new Set<string>();
@@ -182,7 +183,9 @@ export function buildPlan(routes: readonly RouteControls[], options: { readonly 
 		const room = new Map<string, number>();
 		for (const [id, list] of [...candidates].sort(([a, x], [b, y]) => x.length - y.length || (a < b ? -1 : a > b ? 1 : 0))) {
 			const rank = (m: Member) => hash(`${options.seed}\u0000${kind}\u0000${id}\u0000${m.route}\u0000${m.key}`);
-			let left = [...list].sort((a, b) => (rank(a) < rank(b) ? -1 : 1));
+			// A control that reveals more goes first to routes with room to use what it reveals.
+			const reveals = (m: Member) => { const c = byKey.get(`${m.route}\u0000${m.key}`)!; return kind === 'use' && (c.popup || c.role === 'tab' || Boolean(c.sig?.target)) && plan[m.route]!.nested > 0 ? 0 : 1; };
+			let left = [...list].sort((a, b) => reveals(a) - reveals(b) || (rank(a) < rank(b) ? -1 : 1));
 			const n = cost(byKey.get(`${left[0]!.route}\u0000${left[0]!.key}`)!);
 			const by: Member[] = [];
 			// A group only a few routes have is tried on all of them: it is more often one page family's own example than shared chrome.

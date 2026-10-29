@@ -963,8 +963,11 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 		const deadIds = new Map();
 		const nestedInputs = [];
 		// A planned control is used even past the cap: the plan already spread its group's use to the route with most room.
+		let nestedTried = 0;
 		while (queue.length && (tried < MAX_ACTIONS || (PLAN && queue[0].prefix.length === 0))) {
 			const { prefix, control } = queue.shift();
+			// A planned run uses what a use reveals only within the room the unplanned probe's own controls left on this route.
+			if (PLAN && prefix.length && nestedTried >= (trials?.nested ?? 0)) continue;
 			const id = [...prefix.map((s) => s.key), control.key].join(' > ');
 			if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
 			if (done.has(id)) continue;
@@ -973,6 +976,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			const blockedBy = [...deadIds.keys()].find((d) => id.startsWith(`${d} > `));
 			if (blockedBy) { deadIds.get(blockedBy).behind++; continue; }
 			tried++;
+			if (prefix.length) nestedTried++;
 			const film = ENGINE === 'chromium' && (prefix.length === 0 && PLAN ? Boolean(control.film) : !motionTemplates.has(control.template));
 			const failed = (e) => ({ failed: e.message.split('\n')[0] });
 			const useOld = (withFilm) => use('old', route, prefix, control, withFilm).catch(failed);
