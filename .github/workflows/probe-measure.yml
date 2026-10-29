@@ -32,6 +32,10 @@ on:
         description: Routes at once when the later ref probes the routes a second time (1 with REUSE in probe_env times a reused run)
         required: false
         default: '2'
+      stress:
+        description: Processes that keep a CPU busy while both refs probe (0 for none), to see how each side answers on a busy machine
+        required: false
+        default: '0'
       probe_env:
         description: Extra environment for the later ref's probe, as NAME=value pairs
         required: false
@@ -120,6 +124,7 @@ jobs:
           ENGINE: ${{ matrix.engine }}
           PROBE_ENV: ${{ inputs.probe_env }}
           TOGETHER: ${{ inputs.together_concurrency || '2' }}
+          STRESS: ${{ inputs.stress || '0' }}
         run: |
           set -euo pipefail
           mkdir -p out before
@@ -130,6 +135,7 @@ jobs:
           # shellcheck disable=SC2086
           for r in $ROUTES; do curl -s -o /dev/null "$OLD$r"; curl -s -o /dev/null "$NEW$r"; done
           if [ "$ENGINE" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
+          for _ in $(seq 1 "$STRESS"); do node -e 'for (;;) {}' & done
           node before/scripts/probe/dead-controls.mjs out/routes.json "out/before-$ENGINE.jsonl" | tee "out/before-$ENGINE.log"
           # shellcheck disable=SC2086
           env PROFILE=1 $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
