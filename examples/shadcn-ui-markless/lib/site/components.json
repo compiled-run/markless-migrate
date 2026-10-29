@@ -1,3 +1,6 @@
 [
-	{"selector": "[cmdk-root]:has([cmdk-input][placeholder=\"Search documentation...\"])", "component": "command-menu.tsrx"}
+	{"selector": "[cmdk-root]:has([cmdk-input][placeholder=\"Search documentation...\"])", "component": "command-menu.tsrx"},
+	{"selector": "div[data-slot=\"designer\"]:has(iframe[title=\"typeset preview\"])", "component": "typeset.tsrx", "in": "page", "layers": true},
+	{"selector": "div[data-slot=\"designer\"]:has(iframe[title=\"Preview\"])", "component": "create.tsrx", "in": "page", "layers": true, "ports": ["cmdk"]},
+	{"selector": "div[data-not-typeset]:has(input[placeholder=\"Search\"]):has([data-slot=\"item-group\"])", "component": "directory-list.tsrx", "in": "page"}
 ]
