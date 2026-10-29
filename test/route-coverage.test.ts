@@ -164,6 +164,21 @@ test('check --only coverage measures every planned route, status says routes por
 	assert.equal(configured.status, 0, 'no switched route, so no front door covers a missing route');
 });
 
+test('a shard of the site groups templates over every page of the site, so a page whose representative another shard checks skips visual, responsiveness, motion and page load', async () => {
+	const docs = Array.from({ length: 22 }, (_, i) => `/docs/p${String(i + 1).padStart(2, '0')}`);
+	const site = await serve((path) => (docs.includes(path) ? { status: 200, body: page(`Doc ${path}`) } : undefined));
+	try {
+		const shard = ['/docs/p02', '/docs/p03'];
+		const report = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: shard, browser, journeys: { budgetMs: 5_000 }, templates: { site: docs } });
+		assert.deepEqual(report.templates?.groups.map((g) => [g.pattern, g.representative, g.members.length]), [['/docs/:page', '/docs/p01', 22]]);
+		assert.deepEqual(report.routes.map((r) => [r.route, r.dimensions.visual, r.template?.representative, r.ok]), [['/docs/p02', 'skipped', '/docs/p01', true], ['/docs/p03', 'skipped', '/docs/p01', true]]);
+		const alone = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: shard, browser, journeys: { budgetMs: 5_000 } });
+		assert.equal(alone.templates, undefined, 'two pages alone are under the threshold: each is its own representative');
+	} finally {
+		site.close();
+	}
+});
+
 test('a catch-all front door is refused before coverage was ever measured', async () => {
 	const cwd = await planned();
 	const refused = await switchRoute(cwd, '/*rest');
