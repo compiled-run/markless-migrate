@@ -9,7 +9,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { costsFrom, packByCost } from './pack.ts';
-import { trackRequests } from './ready.ts';
+import { markUse, settle, trackRequests, trackTimers } from '../../src/check/settle.ts';
 
 const OLD = process.env.OLD ?? 'https://mm-shadcn-ui-old.vercel.app';
 const NEW = process.env.NEW ?? 'https://mm-shadcn-ui-new.vercel.app';
@@ -289,6 +289,7 @@ async function fresh(width = WIDTH) {
 	await context?.close().catch(() => {});
 	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
 	context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
+	await context.addInitScript(trackTimers);
 	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
 	for (const side of ['old', 'new']) {
 		pages[side] = await context.newPage();
@@ -310,8 +311,16 @@ async function load(side, route) {
 	await p.bringToFront();
 	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
 	await ready(p, nets[side]);
-	await p.waitForTimeout(300);
+	await quietly(p, side, () => {}, 300);
 	await settleScroll(p);
+}
+
+// Waits for what `step` set going (DOM changes, scrolls, animations, short timers, requests) to settle, at most the fixed wait `capMs`.
+async function quietly(p, side, step, capMs) {
+	await markUse(p, capMs);
+	const result = await step();
+	await settle(p, nets[side], capMs);
+	return result;
 }
 
 // A slow answer (the directory's /r/registries.json) can still change the layout: the network rests, fonts are in and two frames are painted.
@@ -328,8 +337,8 @@ const resetScrollers = (p) => p.evaluate(() => { for (const e of document.queryS
 async function settleScroll(p) {
 	const read = () => p.evaluate(() => [scrollY, ...[...document.querySelectorAll('*')].filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY)).map((e) => e.scrollTop)].join(',')).catch(() => '');
 	let last = await read();
-	for (let waited = 0; waited < 3000; waited += 250) {
-		await p.waitForTimeout(250);
+	for (let waited = 0; waited < 3000; waited += 120) {
+		await p.waitForTimeout(120);
 		const now = await read();
 		if (now === last) return;
 		last = now;
@@ -392,8 +401,7 @@ async function replay(side, route, prefix) {
 		const armed = await armAt(p, step).catch(() => null);
 		// A step the page remembers having taken (an intro dismissed for good) is not offered again.
 		if (!armed) continue;
-		await act(p, step).catch(() => {});
-		await p.waitForTimeout(SETTLE);
+		await quietly(p, side, () => act(p, step).catch(() => {}), SETTLE);
 		await p.evaluate(read, []).catch(() => null);
 		await p.evaluate(() => { const el = document.querySelector('[data-dc-used]'); el?.setAttribute('data-dc-prefix', ''); el?.removeAttribute('data-dc-used'); });
 	}
@@ -408,6 +416,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	let film_;
 	const errorsBefore = errors[side].length;
+	await markUse(p, SETTLE);
 	try {
 		if (film) {
 			const t0 = Date.now();
@@ -417,7 +426,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	} catch (e) {
 		return { hit: armed.hit, failed: e.message.split('\n')[0].slice(0, 160) };
 	}
-	await p.waitForTimeout(SETTLE);
+	await settle(p, nets[side], SETTLE);
 	await p.evaluate(settleGeometry).catch(() => {});
 	const r = await p.evaluate(read, ['[data-dc-prefix]']).catch((e) => ({ error: e.message }));
 	// What changes on its own (an animated preview, a ticking demo) is no answer of the control's.
@@ -426,8 +435,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	// The close of the pop-up the use opened, filmed too: Escape, then whether it is gone.
 	let close;
 	if (film && r.popup) {
-		const shot = await filmed(side, () => p.keyboard.press('Escape'));
-		await p.waitForTimeout(SETTLE);
+		const shot = await quietly(p, side, () => filmed(side, () => p.keyboard.press('Escape')), SETTLE);
 		const still = await p.evaluate(() => [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].some((x) => !globalThis.__dc.openBefore.has(x) && x.checkVisibility())).catch(() => false);
 		close = { motion: motionOf(shot.frames), still };
 	}
@@ -488,6 +496,7 @@ async function typeInto(side, route, prefix, control, value) {
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	const before = errors[side].length;
 	const loc = p.locator('[data-dc-used]').first();
+	await markUse(p, SETTLE);
 	await loc.click({ timeout: 3000 });
 	if (control.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) await loc.fill(value, { timeout: 3000 });
 	else {
@@ -496,9 +505,8 @@ async function typeInto(side, route, prefix, control, value) {
 		await p.keyboard.type(value, { delay: 15 });
 	}
 	await p.keyboard.press('Enter');
-	await p.waitForTimeout(200);
-	await p.evaluate(() => (document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el)?.blur?.()).catch(() => {});
-	await p.waitForTimeout(SETTLE);
+	await settle(p, nets[side], 200);
+	await quietly(p, side, () => p.evaluate(() => (document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el)?.blur?.()).catch(() => {}), SETTLE);
 	const field = await p.evaluate(() => {
 		const el = document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el;
 		return el ? { value: String(el.value ?? el.textContent ?? '').trim().slice(0, 80), invalid: el.getAttribute('aria-invalid') ?? '', badInput: el.validity ? !el.validity.valid : false, connected: el.isConnected } : { value: '', invalid: '', badInput: false, connected: false };
@@ -508,12 +516,10 @@ async function typeInto(side, route, prefix, control, value) {
 	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
 	// What a pop-up the field drives shows for the value (a date picker's chosen day): ArrowDown in the field, else the button beside it.
 	await loc.focus({ timeout: 2000 }).catch(() => {});
-	await p.keyboard.press('ArrowDown').catch(() => {});
-	await p.waitForTimeout(500);
+	await quietly(p, side, () => p.keyboard.press('ArrowDown').catch(() => {}), 500);
 	let shown = await p.evaluate(popupSummary).catch(() => '');
 	if (!shown && (await p.evaluate(markBeside).catch(() => false))) {
-		await p.locator('[data-dc-beside]').first().click({ timeout: 2000 }).catch(() => {});
-		await p.waitForTimeout(600);
+		await quietly(p, side, () => p.locator('[data-dc-beside]').first().click({ timeout: 2000 }).catch(() => {}), 600);
 		shown = await p.evaluate(popupSummary).catch(() => '');
 	}
 	return { ...r, field, shown, errors: errors[side].slice(before) };
@@ -573,11 +579,8 @@ async function press(side, route, control, keys) {
 	if (armed.error) return { missing: armed.error.split('\n')[0] };
 	const before = errors[side].length;
 	await p.locator('[data-dc-used]').first().focus({ timeout: 3000 });
-	for (const k of keys) {
-		await p.keyboard.press(k);
-		await p.waitForTimeout(150);
-	}
-	await p.waitForTimeout(SETTLE);
+	for (const k of keys) await quietly(p, side, () => p.keyboard.press(k), 150);
+	await settle(p, nets[side], SETTLE);
 	const r = await p.evaluate(read, []).catch((e) => ({ error: e.message }));
 	if (r.affected && ambient[side]) r.affected = r.affected.filter((a) => !ambient[side].has(a));
 	return { ...r, errors: errors[side].slice(before) };
@@ -598,9 +601,9 @@ function keyFindings(findings, base, old, port) {
 
 const SCROLL_SETTLE = Number(process.env.SCROLL_SETTLE ?? 500);
 async function armAt(p, control) {
-	const at = await p.evaluate(arm, { ...control, scrollOnly: true });
+	const side = p === pages.old ? 'old' : 'new';
+	const at = await quietly(p, side, () => p.evaluate(arm, { ...control, scrollOnly: true }), SCROLL_SETTLE);
 	if (!at) return at;
-	await p.waitForTimeout(SCROLL_SETTLE);
 	return p.evaluate(arm, control);
 }
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { trackRequests } from '../scripts/probe/ready.ts';
+import { trackRequests } from '../src/check/settle.ts';
 
 test('the network is at rest once no request has been in flight for the window', async () => {
 	const page = new EventEmitter();
