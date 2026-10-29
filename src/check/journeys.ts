@@ -1366,6 +1366,17 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 	}
 }
 
+/** A keyboard pattern step's widget state: a read that is only slow is read again with more patience, so a busy machine never reads as a widget that is gone. */
+async function readWidget(page: Page, step: Step): Promise<string[]> {
+	const read = async (patience: number) => (await stepTarget(page, step)).evaluate(widgetState, undefined, { timeout: patience });
+	try {
+		return await read(QUICK);
+	} catch {
+		if (!(await (await stepTarget(page, step)).count().catch(() => 0))) return ['the widget is gone'];
+		return read(PATIENCE).catch(() => ['the widget is gone']);
+	}
+}
+
 /** A control that did not settle in time is tried once more with more patience, the same on both sides: a busy machine is not a different page. */
 async function patiently(page: Page, step: Step, patience = QUICK): Promise<void> {
 	try {
@@ -1483,7 +1494,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		else if (step?.action === 'race') await settledAddress(page);
 		log.holdAll = false;
 		accepting = false;
-		const widget = step && (step.action === 'key' || step.action === 'outside') ? await (await stepTarget(page, step)).evaluate(widgetState, undefined, { timeout: QUICK }).catch(() => ['the widget is gone']) : undefined;
+		const widget = step && (step.action === 'key' || step.action === 'outside') ? await readWidget(page, step) : undefined;
 		const after = await snapshot(page, hosts);
 		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 		// Lines the page changes on its own while nothing is used (a demo toggling a class on a timer) are no step's doing.
