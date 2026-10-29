@@ -730,13 +730,13 @@ export class NotifyPlan {
 
 	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): number {
 		let placed = 0;
-		const toasters = new Map<Element, { control: Element; toast: SonnerToast }[]>();
+		const toasters = new Map<Element, { control: Element; toast: SonnerToast; note: Notify }[]>();
 		for (const note of notifications) {
 			const control = locate(note.sig, note.nth);
 			const region = locate(note.into.sig, note.into.nth);
 			if (!control || !region || this.bindings.has(control)) continue;
 			if (note.sonner) {
-				(toasters.get(region) ?? toasters.set(region, []).get(region)!).push({ control, toast: note.sonner });
+				(toasters.get(region) ?? toasters.set(region, []).get(region)!).push({ control, toast: note.sonner, note });
 				placed++;
 				continue;
 			}
@@ -759,7 +759,7 @@ export class NotifyPlan {
 	 * A sonner Toaster on Markless state (parts/sonner.ts): its section renders a list per position in use and a toast per
 	 * entry of one state(), each toast showing the markup its control's use showed then, in an arm per toast and phase.
 	 */
-	private sonnerToaster(region: Element, all: readonly { control: Element; toast: SonnerToast }[], emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): void {
+	private sonnerToaster(region: Element, all: readonly { control: Element; toast: SonnerToast; note: Notify }[], emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): void {
 		// Only elements can be hidden while another phase shows: a toast showing bare text is left unported.
 		const toasts = all.filter(({ toast }) => toast.phases.every((p) => !childrenOf(parseFragment(p.inner) as unknown as Element).some((n) => isText(n) && n.value.trim())));
 		if (!toasts.length) return;
@@ -783,16 +783,20 @@ export class NotifyPlan {
 				});
 		for (const n of SONNER_STATE) if (!names.includes(n)) names.push(n);
 		const arms: string[] = [];
-		toasts.forEach(({ control, toast }, k) => {
+		toasts.forEach(({ control, toast, note }, k) => {
 			const spec = { view: k, ...(toast.position ? { position: toast.position } : {}), duration: toast.duration, dismissible: toast.dismissible, promise: toast.promise, style: rest(style(toast.phases[0]!.attrs), ['--index', '--toasts-before', '--z-index', '--offset', '--initial-height']), phases: toast.phases.map((p) => ({ at: p.at, ...(p.type !== undefined ? { type: p.type } : {}), attrs: Object.fromEntries(p.attrs.filter(([n]) => n !== 'style' && !SONNER_STATE.has(n))) })) };
 			toast.phases.forEach((p, i) => {
 				// What each toast shows is all in its row, but for its view hidden: Markless rebuilds a row holding an arm
 				// whenever the rows move (a new toast goes first), and a rebuilt toast loses its transitions.
 				const view = lit(`${k}.${i}`);
-				arms.push(emit(p.inner, (el) => (el.parentNode && !('tagName' in el.parentNode) ? { omit: ['style'], extra: [`style={item.view === ${view} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] } : undefined)));
+				// Text the use gives the toast (a submitted form's values) is the item's own, in place of what the capture showed.
+				const slots = Object.entries(note.texts ?? {});
+				arms.push(slots.reduce((markup, [slot, text]) => markup.replaceAll(`{${lit(text)}}`, `{item.t[${lit(slot)}] ?? ""}`), emit(p.inner, (el) => (el.parentNode && !('tagName' in el.parentNode) ? { omit: ['style'], extra: [`style={item.view === ${view} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] } : undefined))));
 			});
 			this.names.set(control, `${name}:${k}`);
-			this.bindings.set(control, { declare, extra: [`onClick={() => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit})}`] });
+			// A form's toast shows when it is submitted and passes, with the values it passed (the form-library part's mmformsubmit).
+			const add = note.onSubmit ? `onMmformsubmit={(event) => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit}, { v: JSON.stringify((event as CustomEvent).detail, null, 2) })}` : `onClick={() => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit})}`;
+			this.bindings.set(control, mergeBindings(this.bindings.get(control), { declare, extra: [add] })!);
 		});
 		const on = (events: readonly string[], call: string) => events.map((e) => `on${e}={(event) => ${call}}`);
 		const li = names.map((n) => `${n}={item.a[${lit(n)}]}`);

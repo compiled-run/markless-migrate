@@ -15,6 +15,8 @@ export interface SourceForm {
 	readonly why?: string;
 	/** Packages the schema module imports. */
 	readonly packages: readonly string[];
+	/** TanStack Form's validators the schema is given for (onSubmit, onBlur, onChange). */
+	readonly validators?: readonly string[];
 	/** The string literals and JSX text of the file, which its rendered form may show. */
 	readonly strings: readonly string[];
 }
@@ -24,7 +26,7 @@ const PACKAGE = /^(?:@[^/]+\/)?[^./][^/]*/;
 const prop = (obj: N | undefined, name: string): N | undefined => (obj?.type === 'ObjectExpression' ? (obj.properties as N[]).find((p) => p.type === 'Property' && ((p.key.type === 'Identifier' && p.key.name === name) || (p.key.type === 'Literal' && p.key.value === name)))?.value : undefined);
 
 /** The expression a useForm call validates with, by library; why not, when the call uses what the port does not run. */
-function schemaOf(library: FormLibrary, options: N | undefined): { expr?: N; why?: string } {
+function schemaOf(library: FormLibrary, options: N | undefined): { expr?: N; why?: string; validators?: string[] } {
 	if (library === 'react-hook-form') {
 		const resolver = prop(options, 'resolver');
 		if (!resolver) return { why: 'useForm is given no resolver' };
@@ -37,9 +39,10 @@ function schemaOf(library: FormLibrary, options: N | undefined): { expr?: N; why
 	}
 	if (library === 'tanstack-form') {
 		const validators = prop(options, 'validators');
-		const keys = validators?.type === 'ObjectExpression' ? (validators.properties as N[]).map((p) => p.key?.name) : [];
-		if (keys.length !== 1 || keys[0] !== 'onSubmit') return { why: 'its validators are not one onSubmit schema' };
-		return { expr: prop(validators, 'onSubmit') };
+		const keys = validators?.type === 'ObjectExpression' ? (validators.properties as N[]).map((p) => p.key?.name as string) : [];
+		const exprs = keys.map((k) => prop(validators, k));
+		if (!keys.length || keys.some((k) => !/^on(Submit|Blur|Change)$/.test(k)) || exprs.some((e) => !e || e.type !== 'Identifier' || e.name !== exprs[0]!.name)) return { why: 'its validators are not one schema on submit, blur or change' };
+		return { expr: exprs[0], validators: keys };
 	}
 	const validate = prop(options, 'validate');
 	const revalidate = prop(options, 'revalidate');
@@ -116,7 +119,7 @@ export function sourceForms(file: string, text: string): SourceForm[] {
 		if (!found.expr) out.push({ ...base, packages: [], why: found.why ?? 'no schema' });
 		else {
 			const made = schemaModule(mod, found.expr);
-			out.push({ ...base, packages: made.packages, ...(made.module ? { module: made.module } : {}), ...(made.why ? { why: made.why } : {}) });
+			out.push({ ...base, packages: made.packages, ...(found.validators ? { validators: found.validators } : {}), ...(made.module ? { module: made.module } : {}), ...(made.why ? { why: made.why } : {}) });
 		}
 	});
 	return out;

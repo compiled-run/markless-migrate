@@ -115,7 +115,7 @@ test('the form\'s spec and its schema module: the old source\'s schema and what 
 	assert.match(schema, /import \* as z from "zod";\n\nconst MAX = 100\n\nconst formSchema = z\.object\(\{[\s\S]*about: z\.string\(\)\.max\(MAX, "Too long\."\),\n\}\)\n\nexport const schema = formSchema;\n$/);
 	assert.doesNotMatch(schema, /Input|BugReportForm|hookform/);
 	const forms = files.get('form-libraries.ts')!;
-	assert.match(forms, /"fl_[0-9a-f]{10}": \{ \.\.\.\{"library":"react-hook-form","fields":\[\{"name":"title","path":\["title"\]\},\{"name":"about","path":\["about"\]\}\],"defaults":\{"title":"","about":""\}\}, schema: \(\) => import\('\.\/form-schemas\/fs_[0-9a-f]{10}\.ts'\)\.then\(\(m\) => m\.schema\) \}/);
+	assert.match(forms, /"fl_[0-9a-f]{10}": \{ \.\.\.\{"library":"react-hook-form","fields":\[\{"name":"title","path":\["title"\]\},\{"name":"about","path":\["about"\]\}\],"shape":\{"title":"","about":""\},"defaults":\{"title":"","about":""\}\}, schema: \(\) => import\('\.\/form-schemas\/fs_[0-9a-f]{10}\.ts'\)\.then\(\(m\) => m\.schema\) \}/);
 	assert.deepEqual([...plan.packages], [['zod', '^3.25.76']]);
 });
 
@@ -143,4 +143,56 @@ test('a form with a field per row of a list a visitor adds to (emails.0.address)
 	const card = [...walk(root)].find((el) => attr(el, 'data-slot') === 'card');
 	assert.equal(plan.add('/forms', [{ ...form, fields: ['emails.0.address', 'emails.1.address'] }], () => card, (html) => html), 0);
 	assert.match(plan.notes.join('\n'), /list a visitor adds to and removes from/);
+});
+
+// shadcn's array demo: a row per email, its Remove shown while there are others, a FieldError under an invalid row, and
+// Add disabled at five rows.
+const listRow = (i: number, n: number, errors: readonly string[] = []) =>
+	`<div role="group" data-slot="field" data-invalid="${errors.length > 0}"><div data-slot="input-group"><input data-slot="input-group-control" id="email-${i}" name="emails.${i}.address" aria-invalid="${errors.length > 0}" value="">${n > 1 ? `<div data-slot="input-group-addon"><button type="button" data-slot="input-group-button" aria-label="Remove email ${i + 1}">x</button></div>` : ''}</div>${fieldError(errors)}</div>`;
+const listRegion = (n: number, errorsOf: (i: number) => readonly string[] = () => []) => `<div data-slot="card"><div data-slot="card-title">Contact Emails</div><form id="list"><div data-slot="field-group">${Array.from({ length: n }, (_, i) => listRow(i, n, errorsOf(i))).join('')}<button type="button" data-slot="button"${n >= 5 ? ' disabled=""' : ''}>Add Email Address</button></div></form><button type="submit" form="list" data-slot="button">Save</button></div>`;
+
+test('a list\'s rows are one keyed @for from the first row, each place the rows differ reading its index; a row\'s error, its Remove and Add\'s limit follow the rows', async () => {
+	const form: CapturedForm = {
+		sig: 'form||',
+		nth: 0,
+		library: 'formisch',
+		region: { sig: 'card', nth: 0 },
+		options: {},
+		fields: ['emails.0.address', 'emails.1.address'],
+		defaults: { emails: [{ address: '' }, { address: '' }] },
+		controls: [
+			{ sig: 'input', nth: 0, field: 'emails.0.address', kind: 'text' },
+			{ sig: 'input', nth: 1, field: 'emails.1.address', kind: 'text' },
+		],
+		submits: [{ sig: 'submit', nth: 0 }],
+		resets: [],
+		focus: {},
+		list: { path: ['emails'], append: { sig: 'button|button|Add Email Address', nth: 0 }, item: { address: '' }, max: 5, focusAppended: false },
+		snapshots: [
+			{ name: 'initial', html: listRegion(2) },
+			{ name: 'error', field: 'emails.0.address', errors: MESSAGES.slice(0, 1), html: listRegion(2, (i) => (i === 0 ? MESSAGES.slice(0, 1) : [])) },
+			{ name: 'error', field: 'emails.0.address', errors: MESSAGES.slice(0, 2), html: listRegion(2, (i) => (i === 0 ? MESSAGES.slice(0, 2) : [])) },
+			{ name: 'rows', value: '1', html: listRegion(1) },
+			{ name: 'rows', value: '5', html: listRegion(5) },
+		],
+	};
+	const root = body(parseDocument(`<body>${listRegion(2)}</body>`));
+	const els = [...walk(root)];
+	const inputs = els.filter((el) => el.tagName === 'input');
+	const located = (sig: string, nth: number): Element | undefined => (sig === 'card' ? els.find((el) => attr(el, 'data-slot') === 'card') : sig === 'input' ? inputs[nth] : sig === 'button|button|Add Email Address' ? els.find((el) => attr(el, 'data-slot') === 'button' && attr(el, 'type') === 'button') : undefined);
+	const source = sourceForms('form-formisch-array.tsx', SOURCE.replace('react-hook-form', '@formisch/react').replace('{ resolver: zodResolver(formSchema),', '{ schema: formSchema,').replace('Bug Title', 'Contact Emails'));
+	const plan = new FormPlan({ forms: source, version: () => undefined });
+	assert.equal(plan.add('/forms', [form], located, (html) => emitChildren(parseFragment(html) as unknown as Element)), 1, plan.notes.join('\n'));
+	const declarations: string[] = [];
+	const out = emitElement(root, { declarations, bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="field-group">@for \(const r of fl0r; key r\.k\) \{ <div role="group" data-slot="field" data-invalid=\{r\.e0\.length \? "true" : "false"\} data-mm-fl-row=\{r\.i\}>/);
+	assert.match(out, /<input data-slot="input-group-control" id=\{"email-" \+ r\.i\} name=\{"emails\." \+ r\.i \+ "\.address"\} value="" data-mm-fl-field=\{"emails\." \+ r\.i \+ "\.address"\} data-mm-fl-kind="text" aria-invalid=\{r\.e0\.length \? "true" : "false"\} \/>/);
+	assert.match(out, /<div data-slot="input-group-addon" hidden=\{fl0r\.length < 2\}><button type="button" data-slot="input-group-button" aria-label=\{"Remove email " \+ \(r\.i \+ 1\)\} data-mm-fl-remove="emails">x<\/button><\/div>/);
+	assert.match(out, /<div role="alert" data-slot="field-error" class="text-destructive" hidden=\{r\.e0\.length !== 1\}>\{r\.m0\}<\/div><div role="alert" data-slot="field-error" class="text-destructive" hidden=\{r\.e0\.length < 2\}><ul class="list-disc">@for \(const m of r\.e0; key m\) \{ <li>\{m\}<\/li> \}<\/ul><\/div><\/div> \}<button type="button" data-slot="button" data-mm-fl-append="emails" disabled=\{fl0r\.length >= 5\}>Add Email Address<\/button>/);
+	assert.equal((out.match(/name=\{"emails\./g) ?? []).length, 1, 'the second row is the first one\'s copy');
+	assert.deepEqual([...new Set(declarations)], ['let fl0r = state([{"k":0,"i":0,"e0":[],"m0":""},{"k":1,"i":1,"e0":[],"m0":""}] as { k: number; i: number; e0: string[]; m0: string }[]);']);
+	assert.match(plan.files().get('form-libraries.ts')!, /"lists":\[\{"name":"emails","path":\["emails"\],"subs":\[\{"name":"address","path":\["address"\],"item":""\}\],"rows":2\}\],"shape":\{"emails":\[\{"address":""\},\{"address":""\}\]\},"defaults":\{"emails\.0\.address":"","emails\.1\.address":""\}/);
+	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source: `import { state } from '@markless/core';\nexport default function Page() @{\n\t${[...new Set(declarations)].join('\n\t')}\n\t${out.replace(/^<body>|<\/body>$/g, '')}\n}\n`, symbols: [] });
+	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
 });
