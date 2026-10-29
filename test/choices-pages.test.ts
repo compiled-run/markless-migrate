@@ -154,6 +154,33 @@ document.getElementById('open').addEventListener('click', () => {
 });
 </script></body></html>`;
 
+// A router whose page, once taken back, keeps a trace of the visit (Next.js's docs write their sidebar's scroll to session storage).
+const TRACE = `<!doctype html><html><body><button id="open" aria-expanded="false">Search</button><main>Home</main><script>
+const main = document.querySelector('main');
+addEventListener('popstate', () => {
+	fetch('/back-seen');
+	sessionStorage.setItem('visited', location.pathname);
+	main.textContent = location.pathname === '/trace' ? 'Home' : location.pathname;
+});
+document.getElementById('open').addEventListener('click', () => {
+	const list = document.createElement('div');
+	list.setAttribute('cmdk-list', '');
+	for (const to of ['a', 'b', 'c']) {
+		const item = document.createElement('div');
+		item.setAttribute('cmdk-item', '');
+		item.setAttribute('data-value', to);
+		item.textContent = to;
+		item.addEventListener('click', () => {
+			list.remove();
+			history.pushState(null, '', '/docs/' + to);
+			main.textContent = '/docs/' + to;
+		});
+		list.append(item);
+	}
+	document.body.append(list);
+});
+</script></body></html>`;
+
 let browser: Browser;
 const loads = new Map<string, number>();
 let server: Server;
@@ -163,7 +190,7 @@ before(async () => {
 	server = createServer((request, res) => {
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 1500);
 		loads.set(request.url!, (loads.get(request.url!) ?? 0) + 1);
-		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : request.url === '/select' ? SELECT : request.url === '/draw' ? DRAW : PAGE);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : request.url === '/select' ? SELECT : request.url === '/draw' ? DRAW : request.url === '/trace' ? TRACE : PAGE);
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -274,6 +301,20 @@ test("captureChoices loads the page again after a choice drew from its seeded ra
 		await context.close();
 		const reveal: Reveal = { key: 'draw', path: [0], sig: 'button||Dice', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div role="menu"><div role="menuitem">Roll</div></div>' }] };
 		assert.deepEqual(await captureChoices(browser, origin, '/draw', reveal, dir), { Roll: {}, 'Copy roll': { copied: first } });
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("captureChoices stops taking a page back once Back left it different, and loads it again for each next move", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-trace-'));
+	try {
+		const reveal: Reveal = { key: 'trace', path: [0], sig: 'button||Search', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div cmdk-list=""><div cmdk-item="" data-value="a">a</div></div>' }] };
+		loads.delete('/trace');
+		loads.delete('/back-seen');
+		assert.deepEqual(await captureChoices(browser, origin, '/trace', reveal, dir), { a: { href: '/docs/a' }, b: { href: '/docs/b' }, c: { href: '/docs/c' } });
+		assert.equal(loads.get('/back-seen'), 1, 'Back is tried once');
+		assert.equal(loads.get('/trace'), 4, 'the first load and one after each option');
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
