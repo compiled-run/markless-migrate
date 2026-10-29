@@ -1,0 +1,136 @@
+name: probe measure
+# Times the dead-control probe of two git refs on the same runner, routes and served build, one engine per runner, and
+# lists each route's time and the findings only one ref reported. Both sides are served on the runner, never a deployment.
+# A push to a perf/probe-* branch measures it against main with the defaults.
+on:
+  push:
+    branches: ['perf/probe-**']
+    paths: ['scripts/probe/**', '.github/workflows/probe-measure.yml']
+  workflow_dispatch:
+    inputs:
+      before:
+        description: The ref to compare against
+        required: true
+        default: main
+      routes:
+        description: Routes to probe, space-separated
+        required: true
+        default: /docs/components/base/alert /docs/components/radix/button
+      build:
+        description: URL of the port's build (a .tar.gz of its .vercel/output or its node-server .output)
+        required: true
+        default: https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz
+permissions:
+  contents: read
+env:
+  SITE: shadcn-ui
+jobs:
+  old:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: oven-sh/setup-bun@v2
+      - id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          lookup-only: true
+      - if: steps.old-build.outputs.cache-hit != 'true'
+        run: |
+          built="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
+          ORIGIN=http://localhost:4000 "deploy/$SITE/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
+          echo "$built" > "deploy/$SITE/old/.ci-built"
+      - if: steps.old-build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+
+  measure:
+    needs: old
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.engine }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          fail-on-cache-miss: true
+      - name: Serve both sides
+        env:
+          BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz' }}
+        run: |
+          bash "deploy/$SITE/ci-serve.sh" old
+          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+      - name: Probe each ref
+        env:
+          OLD: http://localhost:4000
+          NEW: http://127.0.0.1:3000
+          BEFORE: ${{ inputs.before || 'main' }}
+          ROUTES: ${{ inputs.routes || '/docs/components/base/alert /docs/components/radix/button' }}
+          ENGINE: ${{ matrix.engine }}
+        run: |
+          set -euo pipefail
+          mkdir -p out before
+          git archive "$(git rev-parse "origin/$BEFORE" 2>/dev/null || git rev-parse "$BEFORE")" scripts/probe | tar -x -C before
+          # shellcheck disable=SC2086
+          node -e 'console.log(JSON.stringify({ routes: process.argv.slice(1) }))' $ROUTES > out/routes.json
+          # Each page served once before either ref runs, so neither pays the servers' first render.
+          # shellcheck disable=SC2086
+          for r in $ROUTES; do curl -s -o /dev/null "$OLD$r"; curl -s -o /dev/null "$NEW$r"; done
+          if [ "$ENGINE" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
+          node before/scripts/probe/dead-controls.mjs out/routes.json "out/before-$ENGINE.jsonl" | tee "out/before-$ENGINE.log"
+          node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
+      - name: Compare
+        env:
+          ENGINE: ${{ matrix.engine }}
+        run: |
+          python3 - "out/before-$ENGINE.jsonl" "out/after-$ENGINE.jsonl" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          rows = [{r['route']: r for r in map(json.loads, open(p))} for p in sys.argv[1:3]]
+          key = lambda f: f"{f['kind']} | {f.get('control', '')}"
+          print(f"### {sys.argv[1].split('-')[-1].split('.')[0]}\n\n| Route | Before | After | Speedup | Tried | Findings | Only before | Only after |\n|---|---|---|---|---|---|---|---|")
+          diffs = []
+          for route, b in rows[0].items():
+              a = rows[1].get(route)
+              if not a: continue
+              kb, ka = {key(f) for f in b['findings']}, {key(f) for f in a['findings']}
+              print(f"| `{route}` | {b['ms']/1000:.0f} s | {a['ms']/1000:.0f} s | {b['ms']/max(a['ms'],1):.2f}x | {b['tried']} / {a['tried']} | {len(kb)} / {len(ka)} | {len(kb-ka)} | {len(ka-kb)} |")
+              diffs += [f"- before only, `{route}`: {k}" for k in sorted(kb - ka)] + [f"- after only, `{route}`: {k}" for k in sorted(ka - kb)]
+          for route, a in rows[1].items():
+              if 'settles' in a: print(f"\n`{route}` after: {a['loads']['n']} loads in {a['loads']['ms']/1000:.0f} s; {a['settles']['n']} settles in {a['settles']['ms']/1000:.0f} s, held to the cap by {a['settles']['capped'] or 'nothing'}; filming {a['motionMs']/1000:.0f} s")
+          print('\n' + ('\n'.join(diffs) if diffs else 'The same findings on both refs.') + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-measure-${{ matrix.engine }}
+          path: out
+          retention-days: 30
