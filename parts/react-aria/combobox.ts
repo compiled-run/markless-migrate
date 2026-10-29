@@ -89,6 +89,26 @@ function close(c: Combo): void {
 	closeOverlay(c.overlay, true);
 }
 
+const spanOf = (input: Element, button: Element) => {
+	const a = input.getBoundingClientRect();
+	const b = button.getBoundingClientRect();
+	return Math.max(a.right, b.right) - Math.min(a.left, b.left);
+};
+
+// The input and its button's span (useComboBox), unless the recorded --trigger-width is the group's (a site's triggerRef).
+const anchors = new WeakMap<Element, { readonly anchor: HTMLElement; readonly triggerWidth?: () => number }>();
+function anchorOf(input: HTMLInputElement, button: HTMLElement, key: string): { readonly anchor: HTMLElement; readonly triggerWidth?: () => number } {
+	const known = anchors.get(input);
+	if (known) return known;
+	const content = document.querySelector(`[data-mm-layer="${CSS.escape(key)}"] [data-trigger]`) ?? document.querySelector(`[data-mm-layer="${CSS.escape(key)}"][data-trigger]`);
+	const recorded = Number(/--trigger-width:\s*([\d.]+)px/.exec(content?.getAttribute('style') ?? '')?.[1] ?? NaN);
+	let group: HTMLElement | null = input.parentElement;
+	while (group && !group.contains(button)) group = group.parentElement;
+	const chosen = group && Math.abs(group.getBoundingClientRect().width - recorded) < 1 && Math.abs(spanOf(input, button) - recorded) >= 1 ? { anchor: group } : { anchor: input as HTMLElement, triggerWidth: () => spanOf(input, button) };
+	anchors.set(input, chosen);
+	return chosen;
+}
+
 const rootOf = (input: Element) => input.closest<HTMLElement>('[data-rac]:not(input):not([role="group"])');
 
 function open(input: HTMLInputElement, query: string, strategy: 'first' | 'last' | null): Combo | undefined {
@@ -104,7 +124,7 @@ function open(input: HTMLInputElement, query: string, strategy: 'first' | 'last'
 		dismissable: false,
 		placement: 'bottom left',
 		offset: 8,
-		...(button ? {} : { markTrigger: false, anchor: input.closest<HTMLElement>('[role="group"]') ?? input }),
+		...(button ? anchorOf(input, button, key) : { markTrigger: false, anchor: input.closest<HTMLElement>('[role="group"]') ?? input }),
 		onDismiss: () => close(combo),
 		onReady: (o) => {
 			combo.overlay = o;
@@ -263,6 +283,17 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		if (c) close(c);
 		else open(input, '', 'first');
 		input.focus({ preventScroll: true });
+		return true;
+	}
+	// useMenuTrigger's keys on the button: ArrowDown and ArrowUp toggle it on the first or the last option, focus kept.
+	if (button && isComboButton(button) && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+		const input = inputOf(button);
+		if (!input) return false;
+		event.preventDefault();
+		setModality('keyboard');
+		const c = comboOf(input);
+		if (c) close(c);
+		else open(input, '', event.key === 'ArrowDown' ? 'first' : 'last');
 		return true;
 	}
 	const chip = target.closest<HTMLElement>('[role="grid"][data-rac] > [role="row"][data-key]');
