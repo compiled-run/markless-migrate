@@ -193,6 +193,56 @@ const viewCode: Part = {
 	},
 };
 
+// components/code-collapsible-pre.tsx: Expand toggles isOpened, which the pre carries as data-state (max-h-64 while
+// closed) and the button as aria-expanded and its text; the fade under the code opens it and is not rendered while open.
+function openCode(pre: HTMLElement, on: boolean): void {
+	pre.dataset.state = on ? 'open' : 'closed';
+	for (const el of pre.parentElement?.children ?? []) {
+		if (!(el instanceof HTMLButtonElement)) continue;
+		if (el.getAttribute('aria-controls') === pre.id) {
+			el.setAttribute('aria-expanded', String(on));
+			const text = [...el.childNodes].find((n): n is Text => n instanceof Text && /^(Expand|Collapse)$/.test(n.data.trim()));
+			if (text) text.data = on ? 'Collapse' : 'Expand';
+		} else if (el.getAttribute('aria-hidden') === 'true' && el.tabIndex === -1) el.hidden = on;
+	}
+}
+const codeCollapsible: Part = {
+	click(target) {
+		const button = target.closest<HTMLButtonElement>('button');
+		const parent = button?.parentElement;
+		if (!button || !parent) return false;
+		const controlled = button.getAttribute('aria-controls');
+		const pre = controlled ? document.getElementById(controlled) : button.getAttribute('aria-hidden') === 'true' && button.tabIndex === -1 ? [...parent.children].find((el) => el.tagName === 'PRE') : null;
+		if (!(pre instanceof HTMLPreElement) || pre.parentElement !== parent || !pre.hasAttribute('data-state')) return false;
+		openCode(pre, controlled ? button.getAttribute('aria-expanded') !== 'true' : true);
+		return true;
+	},
+};
+
+// components/code-collapsible-wrapper.tsx: a Radix Collapsible (on Markless state) whose two triggers read
+// {isOpened ? "Collapse" : "Expand"}; the labels follow the root's data-state.
+const labelled = new WeakSet<Element>();
+function syncLabels(root: Element): void {
+	const open = root.getAttribute('data-state') === 'open';
+	const content = root.querySelector(':scope > [data-slot="collapsible-content"]');
+	for (const el of root.querySelectorAll('button, [data-slot="collapsible-trigger"]')) {
+		if (content?.contains(el)) continue;
+		for (const n of el.childNodes) if (n instanceof Text && /^(Expand|Collapse)$/.test(n.data.trim())) n.data = n.data.replace(/Expand|Collapse/, open ? 'Collapse' : 'Expand');
+	}
+}
+const codeCollapsibleWrapper: Part = {
+	click(target) {
+		const root = target.closest('[data-slot="collapsible-trigger"]')?.closest('[data-slot="collapsible"]');
+		if (!root || !root.querySelector(':scope > [data-slot="collapsible-content"] > figure')) return false;
+		if (!labelled.has(root)) {
+			labelled.add(root);
+			new MutationObserver(() => syncLabels(root)).observe(root, { attributes: true, attributeFilter: ['data-state'] });
+		}
+		syncLabels(root);
+		return false;
+	},
+};
+
 // components/block-viewer.tsx's Refresh Preview: setIframeKey mounts the block's frame afresh, which loads its page again.
 const refreshPreview: Part = {
 	click(target) {
@@ -664,4 +714,4 @@ const colors: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode, colors];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode, colors];
