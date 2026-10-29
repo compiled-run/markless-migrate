@@ -175,3 +175,11 @@ export async function settle(page: Page, capMs: number): Promise<void> {
 		if (net) net.settled = Date.now();
 	}
 }
+
+/** Waits until no request is open on the page and none has ended for STILL_MS, at most `capMs`: what a load still fetches. */
+export async function requestsDone(page: Page, capMs: number): Promise<void> {
+	const net = network.get(page);
+	if (!net) return void (await page.waitForLoadState('networkidle', { timeout: capMs }).catch(() => {}));
+	const start = Date.now();
+	while (Date.now() - start < capMs && (net.open.size || Date.now() - net.ended < STILL_MS)) await page.waitForTimeout(POLL_MS);
+}
