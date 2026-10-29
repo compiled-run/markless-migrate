@@ -349,7 +349,9 @@ async function openSlot(side, width, route) {
 	page.on('dialog', (d) => d.dismiss().catch(() => {}));
 	page.on('pageerror', (e) => slot.errors.push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
 	if (ENGINE === 'chromium') slot.cdp = await context.newCDPSession(page);
-	slot.loading = page.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 }).then(() => undefined, (e) => e);
+	// Headless Chromium and WebKit paint every page, in front or not (measured: about 60 frames a second in each), so a
+	// page readied before its turn is the page a use would have loaded then.
+	slot.loading = page.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 }).then(() => arrive(page, slot.net, 'preload')).then(() => undefined, (e) => e);
 	return slot;
 }
 
@@ -384,8 +386,6 @@ const STRIPS = process.env.STRIPS ?? '';
 
 async function load(side, route) {
 	const p = pages[side];
-	// A tab in the background gets no animation frames: the side in use is always the one in front.
-	await p.bringToFront();
 	const t0 = Date.now();
 	loads.n++;
 	const slot = await current[side];
@@ -394,12 +394,22 @@ async function load(side, route) {
 		slot.loading = undefined;
 		const failed = await timed('load.preloaded', () => loading);
 		if (failed) throw failed;
-	} else await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
-	await timed('load.ready', () => ready(p, nets[side]));
-	await timed('load.settle', () => quietly(p, side, () => {}, 300));
-	await timed('load.scroll', () => settleScroll(p));
+	} else {
+		await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
+		await arrive(p, nets[side]);
+	}
 	loads.ms += Date.now() - t0;
 	if (side === 'old') prepareNext();
+}
+
+// A loaded page is in use once its network rests, what its scripts do after load settles and its inner scrollers hold.
+async function arrive(p, net, label = 'load') {
+	await timed(`${label}.ready`, () => ready(p, net));
+	await timed(`${label}.settle`, async () => {
+		await markUse(p, 300);
+		await settle(p, net, 300);
+	});
+	await timed(`${label}.scroll`, () => settleScroll(p));
 }
 
 // Waits for what `step` set going (DOM changes, scrolls, animations, short timers, requests) to settle, at most the fixed wait `capMs`.
