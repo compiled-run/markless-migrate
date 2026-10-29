@@ -149,7 +149,10 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 async function bodyHash(page: Page): Promise<string> {
 	return page.evaluate(() => {
 		let h = 0;
-		const text = document.body.outerHTML;
+		// A scroll lock lifted leaves an empty style attribute behind, which shows nothing.
+		const body = document.body.cloneNode(true) as HTMLElement;
+		for (const el of [body, ...body.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
+		const text = body.outerHTML;
 		for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
 		return String(h);
 	});
@@ -322,7 +325,15 @@ async function selectedSibling(page: Page, path: readonly number[]): Promise<num
 	}, path);
 }
 
-async function undo(page: Page, previous: number[] | undefined, baseline: string): Promise<boolean> {
+// Where each control that says whether it is expanded sits, and what it says.
+const expandedState = () =>
+	[...document.body.querySelectorAll('[aria-expanded]')].map((el) => {
+		const path: number[] = [];
+		for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) path.unshift([...node.parentElement!.children].indexOf(node));
+		return [path.join('.'), el.getAttribute('aria-expanded')!] as const;
+	});
+
+async function undo(page: Page, previous: number[] | undefined, baseline: string, expanded: readonly (readonly [string, string])[] = []): Promise<boolean> {
 	if (previous) {
 		await page
 			.evaluate((path) => {
@@ -336,13 +347,44 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 		await page.mouse.move(1, 1).catch(() => {});
 	}
 	await quiet(page, 250);
+	if ((await bodyHash(page)) === baseline) return true;
+	// A closed layer hands focus back to its trigger, which a fresh load has not focused (React Aria marks it data-focused).
+	const blur = () => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement !== document.body && (document.activeElement.blur(), true)).catch(() => false);
+	if (await blur()) {
+		await quiet(page, 250);
+		if ((await bodyHash(page)) === baseline) return true;
+	}
+	// A disclosure the gesture opened or closed that Escape does not undo (an accordion item; the one a single accordion
+	// closed) is pressed back to how the page loaded it.
+	const pressed = await page
+		.evaluate((was) => {
+			const now = new Map([...document.body.querySelectorAll('[aria-expanded]')].map((el) => {
+				const path: number[] = [];
+				for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) path.unshift([...node.parentElement!.children].indexOf(node));
+				return [path.join('.'), el] as const;
+			}));
+			let n = 0;
+			for (const [path, value] of was) {
+				const el = now.get(path);
+				if (el && el.getAttribute('aria-expanded') !== value && el instanceof HTMLElement && el.getAttribute('aria-haspopup') === null) {
+					el.click();
+					n++;
+				}
+			}
+			return n;
+		}, expanded)
+		.catch(() => 0);
+	if (!pressed) return false;
+	await quiet(page, 250);
+	await blur();
+	await quiet(page, 250);
 	return (await bodyHash(page)) === baseline;
 }
 
 /** Whether a settled document holds a dialog open at load (Radix data-state="open", Base UI data-open). */
 export const openDialogAtLoad = (html: string): boolean => [...html.matchAll(/<[a-z][^>]*\brole="(?:alert)?dialog"[^>]*>/g)].some(([tag]) => /\s(?:data-open(?:="")?|data-state="open")[\s>]/.test(tag));
 
-async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport, dismiss = false) {
+async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport, dismiss = false): Promise<Open> {
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
 	await trackSettling(context);
 	await loadPage(page, new URL(route, origin).href);
@@ -353,17 +395,17 @@ async function fresh(browser: Browser, origin: string, route: string, viewport: 
 		await page.keyboard.press('Escape');
 		await quiet(page, 300);
 	}
-	return { context, page, baseline: await bodyHash(page) };
+	return { context, page, baseline: await bodyHash(page), expanded: await page.evaluate(expandedState) };
 }
 
-type Open = { context: BrowserContext; page: Page; baseline: string };
+type Open = { context: BrowserContext; page: Page; baseline: string; expanded?: readonly (readonly [string, string])[] };
 
 /** Uses one candidate the way captureReveals does, then puts the page back (loading it again when using the control left it changed). */
 async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
 	const previous = await selectedSibling(open.page, candidate.path);
 	const raw = await reveal(open.page, candidate);
 	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
-	if (!(await undo(open.page, previous, open.baseline))) {
+	if (!(await undo(open.page, previous, open.baseline, open.expanded))) {
 		await open.context.close().catch(() => {});
 		open = await again();
 	}
