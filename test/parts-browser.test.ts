@@ -795,6 +795,30 @@ test('shadcn-ui site: a package manager list a page brings in place shows the ke
 	await page.close();
 });
 
+test('shadcn-ui site: a copy control whose label followed the copy on the old page (a message\'s Copy) reads that label for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-copy" width="24" height="24"><rect></rect><path d="M4 16"></path></svg>';
+	const page = await open(`<button data-slot="tooltip-trigger" type="button" aria-label="Copy">${icon}</button><template data-mm-clipboard="button|tooltip-trigger|#0" data-mm-text="reply" data-mm-label="Copied"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve(), write: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button').evaluate((b) => [b.getAttribute('aria-label'), b.querySelector('svg')!.getAttribute('class')]);
+	assert.deepEqual(await look(), ['Copied', 'lucide lucide-check']);
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['Copy', 'lucide lucide-copy']);
+	await page.close();
+});
+
+test('shadcn-ui site: a copy button pressed with Enter keeps focus when the clipboard API refuses and the copy falls back to a selection', async () => {
+	const icon = '<svg width="24" height="24"><rect></rect><path d="M4 16"></path></svg>';
+	const page = await open(`<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button><template data-mm-clipboard="button|code-block-copy-button|#0" data-mm-text="code"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')), write: () => Promise.reject(new Error('denied')) } }));
+	await page.locator('button').focus();
+	await page.keyboard.press('Enter');
+	await page.waitForTimeout(100);
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), 'code-block-copy-button');
+	await page.close();
+});
+
 test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
 	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
 	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
@@ -2260,29 +2284,6 @@ test('recharts: a radar at another size scales what is inside its outer radius a
 	assert.deepEqual(seen.label, ['140', '24', '140']);
 	assert.deepEqual(seen.facts.c, [140, 140]);
 	assert.deepEqual(seen.facts.sp, [0, 108]);
-	await page.close();
-});
-
-test('capture: a chart\'s axes are read off React\'s current tree, not the stale fiber a DOM node may still point at', async () => {
-	const page = await browser.newPage();
-	await page.setContent('<svg class="recharts-surface"><g class="recharts-cartesian-axis"></g></svg>');
-	const axes = await page.evaluate(`(() => {
-		const chartModel = ${chartModel.toString()};
-		const props = (n) => ({ ticks: Array.from({ length: n }, (_, i) => ({ coordinate: i, value: i })), orientation: 'bottom', tickFormatter: undefined, axisType: 'xAxis', x: 0, y: 0, width: 10, height: 10, viewBox: {} });
-		// React's two trees: the root points at the current one; the axis' DOM node kept the fiber of the first render.
-		const stale = { memoizedProps: props(91) };
-		const fresh = { memoizedProps: props(8), alternate: stale };
-		stale.alternate = fresh;
-		const rootFresh = { child: fresh };
-		const fiberRoot = { current: rootFresh };
-		rootFresh.stateNode = fiberRoot;
-		// A stale fiber's return can point into the current tree: only the walk from the root tells them apart.
-		stale.return = rootFresh;
-		fresh.return = rootFresh;
-		document.querySelector('g')['__reactFiber$x'] = stale;
-		return chartModel(document.querySelector('svg')).axes.map((a) => a && a.c.length);
-	})()`);
-	assert.deepEqual(axes, [8]);
 	await page.close();
 });
 

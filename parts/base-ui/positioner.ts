@@ -12,6 +12,8 @@ export interface BaseOptions {
 	readonly alignOffset: number;
 	readonly positionMethod: 'absolute' | 'fixed';
 	readonly collisionPadding?: number;
+	/** collisionAvoidance.fallbackAxisSide: 'none' for a dropdown (Menu, Select, Combobox), 'end' for a popover. */
+	readonly fallbackAxisSide?: 'end' | 'none';
 }
 
 const PHYSICAL: Record<string, string> = { top: 'top', right: 'right', bottom: 'bottom', left: 'left', 'inline-end': 'right', 'inline-start': 'left' };
@@ -30,7 +32,7 @@ export function place(anchor: Element | { getBoundingClientRect(): DOMRect }, po
 	const atPoint = !(anchor instanceof Element);
 	const html = document.documentElement;
 	const shiftMw = atPoint ? shift({ padding, mainAxis: true, crossAxis: true, rootBoundary: { x: 0, y: 0, width: html.clientWidth, height: html.clientHeight } }) : shift({ padding, mainAxis: true, crossAxis: false, limiter: limitShift() });
-	const flipMw = flip({ padding: flipPadding, mainAxis: !atPoint, crossAxis: 'alignment', fallbackAxisSideDirection: atPoint ? 'none' : 'end' });
+	const flipMw = flip({ padding: flipPadding, mainAxis: !atPoint, crossAxis: 'alignment', fallbackAxisSideDirection: atPoint ? 'none' : (options.fallbackAxisSide ?? 'end') });
 	// Tooltip.Arrow and the like: the popup's own absolutely placed, aria-hidden child.
 	const arrowEl = popup ? [...popup.children].find((c): c is HTMLElement => c instanceof HTMLElement && c.getAttribute('aria-hidden') === 'true' && getComputedStyle(c).position === 'absolute') : undefined;
 	const stand = document.createElement('div');

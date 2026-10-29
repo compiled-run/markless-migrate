@@ -8,6 +8,7 @@ interface Data {
 	readonly entries: readonly (readonly [number, 'a' | 't' | 'h', string | number, string?])[];
 	readonly changes: Readonly<Record<number, readonly (readonly [number, Value])[]>>;
 	readonly full: Readonly<Record<number, readonly (readonly [number, Value])[]>>;
+	readonly typed?: string;
 }
 
 interface Player {
@@ -18,11 +19,16 @@ interface Player {
 	timers: number[];
 	/** The use playing: its last frame's state, and the setter of the demo's frame. */
 	playing?: { readonly edge: Data['edges'][number]; readonly set: (frame: number) => void };
+	/** What the visitor typed into the field last used, shown where the capture showed `data.typed`. */
+	typed?: string;
+	/** The field being typed into: its value is the visitor's, never written. */
+	typing?: Element;
 }
 
 const players = new WeakMap<Element, Player>();
 
-const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+const FIELD = 'textarea, input:not([type]), input[type="text"], input[type="search"]';
+const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? (el.matches('textarea, input') ? el.getAttribute('placeholder') : null) ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 
 function controlOf(region: Element, target: Element, listed: string): string | undefined {
 	const control = target.closest(listed);
@@ -64,11 +70,15 @@ function apply(player: Player, i: number, el: Element): void {
 	const [, kind, which, longest] = player.data.entries[i]!;
 	const v = player.values[i];
 	if (v === undefined) return;
-	if (kind === 'h') (el as HTMLElement).hidden = v === 1;
-	else if (kind === 't') setRun(el, which as number, typeof v === 'number' ? (longest ?? '').slice(0, v) : (v ?? ''));
-	else if (which === '.value') (el as HTMLInputElement).value = typeof v === 'string' ? v : '';
-	else if (v === null) el.removeAttribute(which as string);
-	else if (el.getAttribute(which as string) !== String(v)) el.setAttribute(which as string, String(v));
+	const { typed } = player.data;
+	const own = (text: string) => (typed && player.typed !== undefined ? text.replaceAll(typed, player.typed) : text);
+	// An SVG element has no hidden property: the attribute is what hides it.
+	if (kind === 'h') el.toggleAttribute('hidden', v === 1);
+	else if (kind === 't') setRun(el, which as number, own(typeof v === 'number' ? (longest ?? '').slice(0, v) : (v ?? '')));
+	else if (which === '.value') {
+		if (el !== player.typing) (el as HTMLInputElement).value = own(typeof v === 'string' ? v : '');
+	} else if (v === null) el.removeAttribute(which as string);
+	else if (el.getAttribute(which as string) !== String(own(String(v)))) el.setAttribute(which as string, own(String(v)));
 }
 
 function write(player: Player, i: number): void {
@@ -122,11 +132,31 @@ export function playScene(event: Event, set: (frame: number) => void): void {
 	const region = target?.closest('[data-mm-scene]');
 	const player = region ? playerOf(region) : undefined;
 	if (!player || !target) return;
-	const control = controlOf(player.region, target, player.data.listed);
-	if (!control) return;
+	const listed = controlOf(player.region, target, player.data.listed);
+	if (!listed) return;
+	// A listed field: given text (or emptied) it plays its fill (or clear) use with the visitor's text left alone; Enter
+	// without Shift plays its enter use, the visitor's text shown where the capture's was.
+	const field = target.closest(FIELD) as HTMLInputElement | null;
+	let control = listed;
+	if (field) {
+		if (event.type === 'input') control = `${listed}|${field.value === '' ? 'clear' : 'fill'}`;
+		else if (event.type === 'keydown' && (event as KeyboardEvent).key === 'Enter' && !(event as KeyboardEvent).shiftKey && !(event as KeyboardEvent).isComposing) control = `${listed}|enter`;
+		else return;
+	} else if (event.type !== 'click') return;
+	if (!player.data.edges.some(([from, c]) => from === player.state && c === control)) {
+		if (field && event.type === 'keydown') event.preventDefault();
+		return;
+	}
 	settle(player);
 	const edge = player.data.edges.find(([from, c]) => from === player.state && c === control);
 	if (!edge) return;
+	if (field) {
+		if (event.type === 'keydown') {
+			event.preventDefault();
+			player.typed = field.value;
+			player.typing = undefined;
+		} else player.typing = field;
+	}
 	const [, , start, end, times] = edge;
 	player.playing = { edge, set };
 	const began = performance.now();

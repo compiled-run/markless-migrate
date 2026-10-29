@@ -52,6 +52,11 @@ export interface SceneLimits {
 
 const LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
 
+/** What a listed text field is given at capture (filled, then Enter): the scene part shows the visitor's own text where it showed this. */
+export const TYPED = 'qz typed note 7';
+/** A listed text field's uses: filled with TYPED, emptied, and Enter pressed in it. */
+export const FIELD_USES = ['fill', 'clear', 'enter'] as const;
+
 // Runs in the page: installs the recorder on a demo. Every node gets an id the first time it is seen; a frame is taken
 // on the animation frame after anything in the demo changed.
 function install([selector, index]: readonly [string, number]): number {
@@ -109,15 +114,17 @@ async function startRecording(page: Page): Promise<void> {
 		s.clicked = false;
 		s.observer?.disconnect();
 		// A frame's time is when the page changed, after the click itself: the snapshot waits for the next animation frame.
-		document.addEventListener(
-			'click',
-			() => {
-				if (s.clicked) return;
-				s.clicked = true;
-				s.t0 = performance.now();
-			},
-			{ capture: true, once: true },
-		);
+		// A field's use starts as it is given text or a key.
+		for (const type of ['click', 'input', 'keydown'])
+			document.addEventListener(
+				type,
+				() => {
+					if (s.clicked) return;
+					s.clicked = true;
+					s.t0 = performance.now();
+				},
+				{ capture: true, once: true },
+			);
 		s.observer = new MutationObserver(() => {
 			s.last = performance.now();
 			if (s.pending) return;
@@ -198,7 +205,7 @@ const hash = (node: SceneNode) => createHash('sha256').update(shape(node)).diges
 // element with them it is inside the demo.
 function controlsIn([selector, index, listed]: readonly [string, number, string]): string[] {
 	const root = document.querySelectorAll(selector)[index]!;
-	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? (el.matches('textarea, input') ? el.getAttribute('placeholder') : null) ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const counts = new Map<string, number>();
 	const out: string[] = [];
 	for (const el of root.querySelectorAll(listed)) {
@@ -207,17 +214,21 @@ function controlsIn([selector, index, listed]: readonly [string, number, string]
 		counts.set(sig, n + 1);
 		const r = el.getBoundingClientRect();
 		if (r.width < 1 || r.height < 1 || el.matches(':disabled, [aria-disabled="true"], [inert], [inert] *')) continue;
-		out.push(`${sig}#${n}`);
+		if (el.matches('textarea, input:not([type]), input[type="text"], input[type="search"]')) for (const u of ['fill', 'clear', 'enter']) out.push(`${sig}#${n}|${u}`);
+		else out.push(`${sig}#${n}`);
 	}
 	return out;
 }
 
-async function use(page: Page, selector: string, index: number, listed: string, control: string): Promise<boolean> {
+async function use(page: Page, selector: string, index: number, listed: string, used: string): Promise<boolean> {
+	const suffix = used.slice(used.lastIndexOf('|') + 1) as (typeof FIELD_USES)[number];
+	const field = FIELD_USES.includes(suffix) ? suffix : undefined;
+	const control = field ? used.slice(0, -suffix.length - 1) : used;
 	const handle = (
 		await page.evaluateHandle(
 			([selector, index, listed, control]) => {
 				const root = document.querySelectorAll(selector)[index]!;
-				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? (el.matches('textarea, input') ? el.getAttribute('placeholder') : null) ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 				const counts = new Map<string, number>();
 				for (const el of root.querySelectorAll(listed)) {
 					const sig = sigOf(el);
@@ -231,6 +242,13 @@ async function use(page: Page, selector: string, index: number, listed: string, 
 		)
 	).asElement();
 	if (!handle) return false;
+	if (field) {
+		if (field === 'enter') {
+			await handle.focus();
+			await page.keyboard.press('Enter');
+		} else await handle.fill(field === 'fill' ? TYPED : '');
+		return true;
+	}
 	// A click without the pointer passing over anything: hover cards and tooltips are their own parts' business.
 	return handle.evaluate((el) => {
 		(el as HTMLElement).click();
