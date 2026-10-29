@@ -395,6 +395,8 @@ const STRIPS = process.env.STRIPS ?? '';
 
 async function load(side, route) {
 	const p = pages[side];
+	// The page in use is the focused one: WebKit refuses a clipboard write from a page another one took focus from.
+	await p.bringToFront();
 	const t0 = Date.now();
 	loads.n++;
 	const slot = await current[side];
