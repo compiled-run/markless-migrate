@@ -275,3 +275,32 @@ export async function settleDeferred(page: Page, requests: Requests | undefined,
 	if (!quiet) return { ms: Date.now() - t0, capped: 'page' };
 	return settle(page, requests, Math.max(left(), 0) || 1);
 }
+
+/** In the page: true once nothing in the document has changed for `quietMs`; false at `timeoutMs`. */
+export function calmInPage({ quietMs, timeoutMs }: { quietMs: number; timeoutMs: number }): Promise<boolean> {
+	const st = (globalThis as unknown as { __markless_migrate_settle__?: SettleState }).__markless_migrate_settle__;
+	const later = st?.timer ?? setTimeout;
+	const t0 = performance.now();
+	let last = t0;
+	const observer = new MutationObserver(() => (last = performance.now()));
+	observer.observe(document, { subtree: true, attributes: true, childList: true, characterData: true });
+	return new Promise((done) => {
+		const tick = () => {
+			const now = performance.now();
+			if (now - last >= quietMs || now - t0 >= timeoutMs) {
+				observer.disconnect();
+				return done(now - last >= quietMs);
+			}
+			later.call(globalThis, tick, 50);
+		};
+		tick();
+	});
+}
+
+/**
+ * Waits until the page has not changed for a second (at most `capMs`): before the original's side of a finding is used
+ * again, so a section the page fills in late (later still on a busy machine) has landed and is not taken for the answer.
+ */
+export async function settleCalm(page: Page, { quietMs = 1000, capMs = 6000 } = {}): Promise<boolean> {
+	return page.evaluate(calmInPage, { quietMs, timeoutMs: capMs }).catch(() => false);
+}

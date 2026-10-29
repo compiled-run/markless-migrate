@@ -5,7 +5,7 @@ import { openPage, type SideEnv } from './browser.ts';
 import { installParity } from './control-parity-page.ts';
 import { loadPage } from './infrastructure.ts';
 import { motionEnv } from './motion.ts';
-import { markUse, settle, settleDeferred, trackRequests, trackTimers, type Requests } from './settle.ts';
+import { markUse, settle, settleCalm, settleDeferred, trackRequests, trackTimers, type Requests } from './settle.ts';
 import type { Failure, Shot, Viewport } from './types.ts';
 
 /** One visible control of a page, as the page lists it (control-parity-page.ts). */
@@ -400,6 +400,7 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		const env = how.film ? motionEnv(sides[side], false) : sides[side];
 		const o = await open(how.browser ?? browser, env, at(width), route, settleMs, Boolean(how.film));
 		try {
+			if (calm) await settleCalm(o.page);
 			await markUse(o.page, SCROLL_SETTLE_MS);
 			if (!(await parity<boolean>(o.page, 'mark', control.key))) return { missing: 'not on the page' };
 			await settle(o.page, o.requests, SCROLL_SETTLE_MS);
@@ -446,11 +447,14 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		}
 	};
 	const click = (page: Page) => page.locator('[data-markless-migrate-parity]').first().click({ timeout: 3000 });
-	// A difference stands when the original repeats itself and the port, used again, still differs the same way.
+	// A difference stands when the original repeats itself and the port, used again, still differs the same way. The second
+	// use waits for each page to stop changing first, so what a page fills in late is not taken for either side's answer.
+	let calm = false;
 	const confirmed = async <T>(first: { old: Use; port: Use }, again: () => Promise<{ old: Use; port: Use }>, differs: (old: Use, port: Use) => T | undefined): Promise<T | undefined> => {
 		const found = differs(first.old, first.port);
 		if (found === undefined) return undefined;
-		const second = await again();
+		calm = true;
+		const second = await again().finally(() => (calm = false));
 		const oldAgrees = differs(first.old, second.old) === undefined;
 		const still = differs(second.old, second.port);
 		return oldAgrees && still !== undefined ? found : undefined;
