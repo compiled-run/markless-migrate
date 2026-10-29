@@ -45,7 +45,8 @@ import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
-import { changedSince, gitHead, selectChanged } from './check/changed.ts';
+import { changedSince, git, gitHead, selectChanged } from './check/changed.ts';
+import { keepChecked, readClosures, selectReusable, shipVersions, type ReuseSelection } from './check/ship-key.ts';
 import { VERSION } from './version.ts';
 import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
@@ -125,7 +126,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--source <path>] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
-          [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
+          [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
@@ -278,6 +279,13 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           red. check exits 3 when nothing is red but such a route was not checked.
           --changed checks only routes not green last time, and routes whose files in the new app
           (--new-source, else this directory) changed since the commit of their last check.
+          --reuse <dir> keeps each route's result there under a key of what it ships: the HTML NEW
+          serves (pack file names aside), the code hash of every module the route can run (the Markless
+          build's interaction-closures.json, --closures, else .vercel/output/.markless/static/), the
+          bytes of every other file its HTML names, OLD's HTML, and the git trees of this checker and
+          the Markless packages the port names. A route whose key has a kept result, and whose load-time
+          responses fetch the same again, is not checked: its result is reported marked reused. A route
+          with no key (no Markless route script, a module without a hash) is always checked.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
           blocked. --source scans the old app's code for what varies and which handlers write.
@@ -898,6 +906,8 @@ async function main(argv: string[]): Promise<number> {
 					all: { type: 'boolean' },
 					'allow-unchecked': { type: 'boolean' },
 					changed: { type: 'boolean' },
+					reuse: { type: 'string' },
+					closures: { type: 'string' },
 					concurrency: { type: 'string' },
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
@@ -962,6 +972,23 @@ async function main(argv: string[]): Promise<number> {
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
 			const partial = !coverageOnly && Boolean(values.route?.length || values.targets || values.changed || loadOnly || embedsOnly);
+			let reuse: ReuseSelection | undefined;
+			if (values.reuse) {
+				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
+				const migrateDir = fileURLToPath(new URL('..', import.meta.url));
+				const versions = await shipVersions(cwd, (args) => git(migrateDir, args));
+				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
+				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
+				if (!versions) out('--reuse: nothing reused, the checker has uncommitted changes or the port names no Markless packages.\n');
+				else if (!closures) out(`--reuse: nothing reused, no closures at ${closuresFile}.\n`);
+				else {
+					reuse = await selectReusable({ routes: routes ?? [], newOrigin: values.new, oldOrigin: values.old, ...(bypass.headers ? { headers: bypass.headers } : {}), closures, versions, dir: resolve(values.reuse) });
+					routes = reuse.check;
+					const why = new Map<string, number>();
+					for (const reason of reuse.unkeyed.values()) why.set(reason.replace(/^\S+ /, ''), (why.get(reason.replace(/^\S+ /, '')) ?? 0) + 1);
+					out(`--reuse: ${reuse.reused.length} route${reuse.reused.length === 1 ? '' : 's'} ship what they shipped when last checked and reuse that result; ${reuse.check.length} to check${reuse.unkeyed.size ? ` (${reuse.unkeyed.size} with no key: ${[...why].map(([w, n]) => `${n} ${w}`).join('; ')})` : ''}.\n`);
+				}
+			}
 			const navigation = navigationOptions(values, partial ? planned : undefined);
 			const load = loadOptions(values);
 			requireNetworkBrowsers(load, values);
@@ -986,7 +1013,7 @@ async function main(argv: string[]): Promise<number> {
 				source = scanned.facts;
 			}
 			const freeze = values['no-freeze'] ? false : { ...(time !== undefined ? { time } : {}), ...(seed !== undefined ? { seed } : {}), ...(values.timezone ? { timezone: values.timezone } : {}), ...(values.locale ? { locale: values.locale } : {}) };
-			const report = await runCheck({
+			let report = await runCheck({
 				oldOrigin: values.old,
 				newOrigin: values.new,
 				routes: routes ?? [],
@@ -1024,6 +1051,11 @@ async function main(argv: string[]): Promise<number> {
 				artifactsDir: join(cwd, STATE_DIR),
 				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
 			});
+			if (reuse) {
+				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse.keys, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
+				out(`--reuse: kept ${kept} result${kept === 1 ? '' : 's'} for later runs.\n`);
+				report = { ...report, ok: report.ok && reuse.reused.every((r) => r.ok), routes: [...report.routes, ...reuse.reused] };
+			}
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 			const html = join(dirname(path), 'report.html');

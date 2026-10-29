@@ -18,5 +18,6 @@
 	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"]", "action": "play", "routes": "^/docs/ai-elements/[^/]+/(chat|model-selector|prompt-input|suggestion)$"},
 	{"selector": "[data-slot=\"preview\"] button", "action": "play", "text": "^Replay$", "routes": "^/docs/ai-elements/[^/]+/(chain-of-thought|plan|queue|reasoning|sources|stack-trace|subagent|task|terminal|test-results|tool)$"},
 	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"], [data-slot=\"preview\"] button", "action": "play", "text": "^Replay$", "routes": "^/docs/changelog(/2026-10-ai-elements)?$"},
-	{"selector": "[data-slot=\"code-block\"] button[aria-label=\"Download\"]", "action": "download", "routes": "^/docs/(components/[^/]+/code-block|changelog|changelog/2026-10-ai-elements)$"}
+	{"selector": "[data-slot=\"code-block\"] button[aria-label=\"Download\"]", "action": "download", "routes": "^/docs/(components/[^/]+/code-block|changelog|changelog/2026-10-ai-elements)$"},
+	{"selector": "button[data-last-copied]", "action": "notify", "routes": "^/colors$", "template": "copyColor"}
 ]

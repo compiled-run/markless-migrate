@@ -1,0 +1,3 @@
+[
+	{"port": "site", "selector": "button[data-last-copied]", "props": [{"name": "color", "as": "json"}], "hints": ["data-last-copied"]}
+]

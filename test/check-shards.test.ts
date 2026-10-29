@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { combine, split, summary, unreported } from '../scripts/check-shards.ts';
+import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { combine, joinKept, split, summary, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -52,4 +55,27 @@ test('runs that each checked part of a route combine into one result: green only
 	assert.match(by.get('/b')?.infrastructure?.message ?? '', /^page load has no result/);
 	assert.equal(by.get('/a/')?.ok, true);
 	assert.match(summary(routes), /^1 green, 2 red, 1 not checked, of 4/);
+});
+
+test('the merged summary says how many results were reused, and marks each reused route', () => {
+	const text = summary([
+		{ route: '/a', ok: true, failures: [], reused: { checkedAt: '2026-10-28T00:00:00.000Z' } },
+		{ route: '/b', ok: true, failures: [] },
+	]);
+	assert.match(text, /^2 green, of 2; 1 reused, their HTML and code unchanged since their last check/);
+	assert.match(text, /\| `\/a` \| green, reused from 2026-10-28 \|/);
+	assert.match(text, /\| `\/b` \| green \|/);
+});
+
+test('the results the shards kept are joined into one folder, without those checked over 30 days ago', async () => {
+	const from = await mkdtemp(join(tmpdir(), 'kept-'));
+	for (const [shard, name, checkedAt] of [['check-1', 'a.json', '2026-10-27T00:00:00.000Z'], ['check-2', 'b.json', '2026-09-01T00:00:00.000Z'], ['check-2', 'c.json', '2026-10-28T00:00:00.000Z']]) {
+		const dir = join(from, shard!, 'app', '.migrate', 'reuse');
+		await mkdir(dir, { recursive: true });
+		await writeFile(join(dir, name!), JSON.stringify({ checkedAt, result: {} }));
+	}
+	await writeFile(join(from, 'check-1', 'app', '.migrate', 'report.json'), '{}');
+	const to = join(from, 'out');
+	assert.equal(await joinKept(from, to, new Date('2026-10-29T00:00:00.000Z')), 2);
+	assert.deepEqual((await readdir(to)).sort(), ['a.json', 'c.json']);
 });
