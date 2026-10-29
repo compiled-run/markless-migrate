@@ -54,6 +54,8 @@ export function trackRequests(page: RequestEvents): Requests {
 
 interface SettleState {
 	pending: Map<number, number>;
+	/** Every timer and idle callback the page has pending, by when it is due, whenever it was set. */
+	all: Map<number, number>;
 	mark: number;
 	maxDelay: number;
 	last: number;
@@ -72,7 +74,7 @@ export function trackTimers(): void {
 	const w = globalThis as unknown as { __markless_migrate_settle__?: SettleState; setTimeout: typeof setTimeout; clearTimeout: typeof clearTimeout };
 	if (w.__markless_migrate_settle__) return;
 	const set = w.setTimeout, clear = w.clearTimeout;
-	const st: SettleState = { pending: new Map(), mark: Infinity, maxDelay: 0, last: 0, baseline: new Set(), frames: 0, lastFrame: 0, timer: set };
+	const st: SettleState = { pending: new Map(), all: new Map(), mark: Infinity, maxDelay: 0, last: 0, baseline: new Set(), frames: 0, lastFrame: 0, timer: set };
 	w.__markless_migrate_settle__ = st;
 	w.setTimeout = function (this: unknown, handler: TimerHandler, delay?: number, ...args: unknown[]) {
 		const ms = Number(delay) || 0;
@@ -80,15 +82,43 @@ export function trackTimers(): void {
 		const run = typeof handler === 'function' ? handler : () => (0, eval)(String(handler));
 		const id = (set as unknown as (...x: unknown[]) => number).call(this, function (this: unknown, ...a: unknown[]) {
 			st.pending.delete(id);
+			st.all.delete(id);
 			return (run as (...x: unknown[]) => unknown).apply(this, a);
 		}, delay, ...args);
 		if (tracked) st.pending.set(id, performance.now() + ms);
+		st.all.set(id, performance.now() + ms);
 		return id;
 	} as typeof setTimeout;
 	w.clearTimeout = function (this: unknown, id?: number) {
-		if (id !== undefined) st.pending.delete(id);
+		if (id !== undefined) {
+			st.pending.delete(id);
+			st.all.delete(id);
+		}
 		return clear.call(this, id);
 	} as typeof clearTimeout;
+	// Work put off until the browser is idle is due at once (or at its timeout): it counts as a timer due now.
+	const idle = (w as unknown as { requestIdleCallback?: typeof requestIdleCallback }).requestIdleCallback;
+	const cancelIdle = (w as unknown as { cancelIdleCallback?: typeof cancelIdleCallback }).cancelIdleCallback;
+	if (idle && cancelIdle) {
+		const ids = new Map<number, number>();
+		(w as unknown as { requestIdleCallback: typeof requestIdleCallback }).requestIdleCallback = function (this: unknown, callback: IdleRequestCallback, options?: IdleRequestOptions) {
+			const key = -1e9 - ids.size - Math.random();
+			const id = idle.call(this, (deadline) => {
+				st.all.delete(key);
+				ids.delete(id);
+				return callback(deadline);
+			}, options);
+			ids.set(id, key);
+			st.all.set(key, performance.now());
+			return id;
+		};
+		(w as unknown as { cancelIdleCallback: typeof cancelIdleCallback }).cancelIdleCallback = function (this: unknown, id: number) {
+			const key = ids.get(id);
+			if (key !== undefined) st.all.delete(key);
+			ids.delete(id);
+			return cancelIdle.call(this, id);
+		};
+	}
 	// A copy button answers when the clipboard does, which can take longer than the quiet window and shows as nothing else.
 	let calls = 0;
 	const clipboard = (navigator as unknown as { clipboard?: Record<string, unknown> }).clipboard;
@@ -165,6 +195,24 @@ export function quietInPage({ quietMs, quietFrames, timeoutMs }: { quietMs: numb
 	});
 }
 
+/** In the page: true once no timer or idle callback due within `horizonMs` of now is still pending and nothing has changed for `quietMs` since the mark; false at `timeoutMs`. */
+export function deferredInPage({ horizonMs, quietMs, timeoutMs }: { horizonMs: number; quietMs: number; timeoutMs: number }): Promise<boolean | undefined> {
+	const st = (globalThis as unknown as { __markless_migrate_settle__?: SettleState }).__markless_migrate_settle__;
+	if (!st || st.mark === Infinity) return Promise.resolve(undefined);
+	const t0 = performance.now();
+	const horizon = t0 + horizonMs;
+	return new Promise((done) => {
+		const tick = () => {
+			const now = performance.now();
+			const due = [...st.all.values()].some((at) => at <= horizon);
+			if (!due && now - st.last >= quietMs) return done(true);
+			if (now - t0 >= timeoutMs) return done(false);
+			st.timer.call(globalThis, tick, 16);
+		};
+		tick();
+	});
+}
+
 /** In the page: two painted frames (at most 100 ms in a tab given none). */
 export function framesInPage(): Promise<void> {
 	const st = (globalThis as unknown as { __markless_migrate_settle__?: SettleState }).__markless_migrate_settle__;
@@ -210,4 +258,20 @@ export async function settle(page: Page, requests: Requests | undefined, capMs: 
 	}
 	await page.evaluate(framesInPage).catch(() => {});
 	return done(false);
+}
+
+/**
+ * Before a use: what the page put off at load (a section a timer or an idle callback fills in a second later, later still
+ * on a busy machine) has run and settled, so it does not land inside the use and pass for its answer. Waits for each
+ * timer and idle callback due within `horizonMs`, then 100 ms without a change and no request; never longer than `capMs`.
+ * A page that keeps setting timers holds it for the horizon at most.
+ */
+export async function settleDeferred(page: Page, requests: Requests | undefined, { horizonMs = 1500, capMs = 2500 } = {}): Promise<Settled> {
+	const t0 = Date.now();
+	const left = () => capMs - (Date.now() - t0);
+	if (!(await markUse(page, 0))) return { ms: Date.now() - t0, capped: 'unmarked' };
+	const quiet = await page.evaluate(deferredInPage, { horizonMs, quietMs: QUIET_MS, timeoutMs: left() }).catch(() => undefined);
+	if (quiet === undefined) return { ms: Date.now() - t0, capped: 'unmarked' };
+	if (!quiet) return { ms: Date.now() - t0, capped: 'page' };
+	return settle(page, requests, Math.max(left(), 0) || 1);
 }

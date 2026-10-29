@@ -5,7 +5,7 @@ import { openPage, type SideEnv } from './browser.ts';
 import { installParity } from './control-parity-page.ts';
 import { loadPage } from './infrastructure.ts';
 import { motionEnv } from './motion.ts';
-import { markUse, settle, trackRequests, trackTimers, type Requests } from './settle.ts';
+import { markUse, settle, settleDeferred, trackRequests, trackTimers, type Requests } from './settle.ts';
 import type { Failure, Shot, Viewport } from './types.ts';
 
 /** One visible control of a page, as the page lists it (control-parity-page.ts). */
@@ -166,6 +166,8 @@ async function open(browser: Browser, env: SideEnv, viewport: Viewport, route: s
 		await requests.quiet(200, 15_000);
 		await markUse(page, Math.min(settleMs, 300));
 		await settle(page, requests, Math.min(settleMs, 300));
+		// What the page put off at load lands before any use, not in it.
+		await settleDeferred(page, requests);
 		await settleScroll(page);
 		await page.evaluate(installParity);
 	} catch (error) {
