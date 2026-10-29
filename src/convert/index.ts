@@ -25,6 +25,8 @@ import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpeni
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
+import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
+import { formSources } from './form-schemas.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
 import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendarMessages, RacCalendarPlan, type CapturedCalendars } from './rac-calendar.ts';
@@ -41,7 +43,7 @@ import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
-import { componentImport, componentName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
+import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -235,6 +237,8 @@ interface Prepared {
 	readonly appends: Map<Element, string>;
 	/** What controls portal to the end of the body, rendered hidden by the Document. */
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
+	/** The page site components on the page that render their own layers, with the page's layers (their `Layers` export). */
+	readonly siteLayers: readonly SiteComponent[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
 	/** The file each listed download control saved on the old page, by its signature#nth, as JSON ({ name, type, text }). */
@@ -799,6 +803,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	for (const reveal of reveals) {
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
+		// What a control a page site component renders opens is that component's own.
+		if (trigger && inPageComponent(trigger, siteComponents)) continue;
 		const controlled = trigger ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
 		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger) || (controlled && attr(trigger, 'aria-expanded') !== undefined && radixDisclosurePanel(controlled))) ? controlled : undefined;
 		if (trigger && isBaseTab(trigger)) {
@@ -1007,7 +1013,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const swapFonts = fontPreloads(capture.swapFirstScreenFonts ?? [], origin, 0).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
 	tags.splice(0, tags.length, ...swapFontPreloadsLow(tags, capture.swapFontPreloads ?? [], origin, swapFonts));
 	fontPreloadCount += swapFonts.length;
-	const faces = lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin);
+	const idle = (capture.offscreenFontPreloads ?? []).map((u) => {
+		const url = new URL(u, origin);
+		return { href: url.origin === new URL(origin).origin ? url.pathname + url.search : url.href };
+	});
+	const faces = [...lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin), ...idle];
+	if (idle.length) lateFontPages.add(capture.route);
 	if (faces.length) {
 		const config = lateFontsConfig(faces);
 		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
@@ -1015,7 +1026,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, downloads, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, downloads, late, lateFontPaths };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1100,6 +1111,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
+	const formLibsRead = new Map<string, readonly CapturedForm[]>();
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
@@ -1119,6 +1131,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
 		// TanStack tables are read when the usage inventory finds a TanStack table library (or there is none).
 		const usesTables = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"@tanstack\/(react|vue|solid|svelte)-table"/.test(text), () => true);
+		// Form-library forms are read when the usage inventory finds one of the form libraries the port runs.
+		const usesFormLibs = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"(react-hook-form|@tanstack\/react-form|@formisch\/react)"/.test(text), () => false);
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		const captureRoutes = options.only?.length ? routes : [...routes, NOT_FOUND];
 		let capturedCount = 0;
@@ -1164,6 +1178,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			pickers?: CapturedPickers;
 			racCalendars?: CapturedCalendars;
 			tables?: readonly CapturedTable[];
+			formLibs?: readonly CapturedForm[];
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
 			floating?: readonly QwikFloating[];
@@ -1282,6 +1297,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
 					if (captured.tables.length) facts.tables = captured.tables;
 				}
+				// What each form-library form was given and showed with each field's errors and values, where the page has a form.
+				if (usesFormLibs && settled.some((html) => /<form[\s>]/.test(html))) {
+					const captured = await limit(() => captureFormLibraries(browser, options.old, route, at('form-libraries'), log));
+					for (const why of captured.skipped) log(`  form on ${route} not read: ${why}`);
+					if (captured.forms.length) facts.formLibs = captured.forms;
+				}
 			}
 			if (reveal && routes.includes(route)) {
 				const toggles = await limit(() => captureToggles(browser, options.old, route, at('toggles'))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
@@ -1316,6 +1337,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.pickers) pickers.set(route, f.pickers);
 			if (f.racCalendars) racCalendarsRead.set(route, f.racCalendars);
 			if (f.tables) tablesRead.set(route, f.tables);
+			if (f.formLibs) formLibsRead.set(route, f.formLibs);
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
@@ -1636,6 +1658,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`React Aria calendars on Markless state: ${racCalendarCount}`);
 		templatePorts.plan('react-aria/calendar');
 	}
+	// Form-library forms: each field's errors and shown value on Markless state, validated with the old source's schema.
+	const formLibs = new FormPlan(await formSources(options.source, join(state, 'usage.json')));
+	let formLibCount = 0;
+	for (const [route, p] of prepared) formLibCount += formLibs.add(route, formLibsRead.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	for (const line of formLibs.notes) log(`  ${line}`);
+	if (formLibCount) log(`form-library forms on Markless state: ${formLibCount}`);
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
@@ -1684,7 +1712,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		// A site component the site lists for a page element renders it, and what it shows, itself.
 		const standIn = pageComponentOf(el, siteComponents);
-		if (standIn) return { replace: `<${componentName(standIn)} />` };
+		if (standIn) {
+			// It renders the controls the old page had there, so the page's registry carries their parts.
+			for (const x of walk(el)) if (x !== el) bindParts(x, usedPorts);
+			for (const port of standIn.ports ?? []) usedPorts.add(port);
+			return { replace: `<${componentName(standIn)} />` };
+		}
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
 		const keyed = triggerKeys.get(el);
@@ -1703,6 +1736,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(needs(racCalendars.bind(el), 'react-aria/calendar'), binding);
 		binding = mergeBindings(racTables.bind(el), binding);
 		binding = mergeBindings(tables.bind(el), binding);
+		binding = mergeBindings(needs(formLibs.bind(el), 'form-library'), binding);
 		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? needs(formBinding, 'form') : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
@@ -1815,7 +1849,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
-		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
+		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
 		const list = byFile.get(file) ?? [];
@@ -1910,8 +1944,20 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : [])], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
+	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : []), ...(await siteImportedParts(app))], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
+	for (const [file, source] of formLibs.files()) {
+		await mkdir(dirname(join(app, 'lib', 'parts', file)), { recursive: true });
+		await writeFile(join(app, 'lib', 'parts', file), source);
+	}
+	if (formLibs.packages.size) {
+		const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
+		const missing = [...formLibs.packages].filter(([name]) => !manifest.dependencies?.[name]);
+		if (missing.length) {
+			manifest.dependencies = { ...manifest.dependencies, ...Object.fromEntries(missing) };
+			await writeFile(join(app, 'package.json'), `${JSON.stringify(manifest, null, '\t')}\n`);
+		}
+	}
 	const tableSpecs = tables.specsModule();
 	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);
 	if (shell) await writeFile(join(app, 'lib', 'parts', 'docsearch-shell.ts'), `// Generated by markless-migrate convert: DocSearch's dialog as the old site first draws it on a press (captured by plan).\nexport default ${JSON.stringify(shell)};\n`);
