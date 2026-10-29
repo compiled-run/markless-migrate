@@ -32,6 +32,26 @@ test('radios share one state: choosing one is its index, and a single-choice tog
 	assert.deepEqual(plan.bind(a)?.declare, ['let rg0 = state(0);']);
 });
 
+test('a form\'s Reset puts each checkbox and radio as its defaults say through mmset, which can leave a radio group with none chosen', () => {
+	const doc = parseDocument('<body><div role="group"><button role="radio" aria-checked="true">a</button><button role="radio" aria-checked="false">b</button></div><button role="checkbox" aria-checked="false">c</button></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => attr(el, 'role') === 'radio') as [Element, Element];
+	const c = find(body(doc), (el) => attr(el, 'role') === 'checkbox')!;
+	const state = (role: string, checked: boolean) => ({ attrs: { role, 'aria-checked': String(checked) }, inner: '' });
+	const plan = new CheckablePlan();
+	plan.add(
+		body(doc),
+		[
+			{ kind: 'radio', controls: [{ sig: 'a', nth: 0, role: 'radio', initial: true, on: state('radio', true), off: state('radio', false) }, { sig: 'b', nth: 0, role: 'radio', initial: false, on: state('radio', true), off: state('radio', false) }] },
+			{ kind: 'toggle', controls: [{ sig: 'c', nth: 0, role: 'checkbox', initial: false, on: state('checkbox', true), off: state('checkbox', false) }] },
+		],
+		(sig) => ({ a, b, c })[sig],
+		(h) => h,
+	);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<button role="radio" aria-checked=\{rg0 === 1 \? "true" : "false"\}.*? onMmset=\{\(event\) => \{ if \(\(event as CustomEvent<boolean>\)\.detail\) rg0 = 1; else if \(rg0 === 1\) rg0 = -1; \}\}/);
+	assert.match(out, /onMmset=\{\(event\) => \{ tg1 = \(event as CustomEvent<boolean>\)\.detail; \}\}/);
+});
+
 test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, with the panel\'s id and label bound', async () => {
 	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a" data-activation-direction="none"><p>a</p></div></div></body>');

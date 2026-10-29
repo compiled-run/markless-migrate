@@ -6,6 +6,7 @@
 	{"selector": "button:has(> svg.lucide-terminal)", "action": "copy"},
 	{"selector": "[role=\"tabpanel\"] button[data-slot=\"button\"]:has(> svg.lucide-copy)", "action": "copy", "routes": "^/typeset$"},
 	{"selector": "[data-slot=\"code-block-copy-button\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/code-block|ai-elements/[^/]+/message|changelog|changelog/2026-10-ai-elements)$"},
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"tooltip-trigger\"][aria-label=\"Copy\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/message|ai-elements/[^/]+/message)$"},
 	{"selector": "button[data-slot=\"button\"][aria-label=\"Copy\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/(input-group|message)|ai-elements/[^/]+/message|changelog|changelog/2025-10-new-components|changelog/2026-10-ai-elements)$"},
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]", "action": "notify", "routes": "^/docs/components/[^/]+/(sonner|toast)$"},
 	{"selector": "[data-slot=\"preview\"] form[data-slot=\"questionnaire\"] button[type=\"reset\"]", "action": "notify", "routes": "^/docs/components/[^/]+/questionnaire$"},

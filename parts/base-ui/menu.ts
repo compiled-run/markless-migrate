@@ -73,7 +73,7 @@ const first = (list: readonly HTMLElement[], skip = (_: HTMLElement) => false) =
 const last = (list: readonly HTMLElement[], skip = (_: HTMLElement) => false) => list.findLast((i) => visible(i) && !skip(i));
 
 function openMenu(trigger: HTMLElement, focus: 'first' | 'last' | 'popup'): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="menu"]', tabOut: true, onDismiss: (x) => close(x) });
+	const p = openPopup(trigger, { popupSelector: '[role="menu"]', tabOut: true, fallbackAxisSide: 'none', onDismiss: (x) => close(x) });
 	if (!p) return false;
 	typing.set(p, newTyping());
 	highlight(p, undefined);
@@ -207,7 +207,13 @@ function switchTo(p: Popup, to: HTMLElement | undefined, focus: 'popup'): boolea
 	return openMenu(to, focus);
 }
 
+// The item a press or Enter activated while it was enabled: Base UI's handler read `disabled` as rendered then, so an
+// item whose own onClick disables it (Undo at the start of the history) still closes the menu.
+let activated: HTMLElement | null = null;
+const activate = (item: HTMLElement | null) => (activated = item && enabled(item) && !item.hasAttribute('data-disabled') ? item : null);
+
 export function pointerdown(target: Element, event: PointerEvent): boolean {
+	activate(target.closest<HTMLElement>(ITEM));
 	const trigger = triggerOf(target);
 	if (!trigger || event.button !== 0) return false;
 	// The press's own focus would land on the trigger after the menu took it.
@@ -221,7 +227,9 @@ export function click(target: Element, event?: MouseEvent): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
 	const p = item && popupOf(item);
 	if (!item || !p) return Boolean(triggerOf(target));
-	if (!enabled(item) || item.hasAttribute('data-disabled')) return true;
+	const wasEnabled = activated === item;
+	activated = null;
+	if (!wasEnabled && (!enabled(item) || item.hasAttribute('data-disabled'))) return true;
 	if (item.matches(OPENER)) {
 		// useClick with ignoreMouse (openOnHover): a mouse or pen press leaves opening to the hover rest.
 		const pointer = event instanceof PointerEvent ? event.pointerType : undefined;
@@ -232,9 +240,9 @@ export function click(target: Element, event?: MouseEvent): boolean {
 	return true;
 }
 
-/** An item's closeOnClick: its instance's (convert writes it), else Menu.Item's true and Menu.CheckboxItem's and Menu.RadioItem's false. */
+/** An item's closeOnClick: its instance's (convert writes it, or a page on the items' group), else Menu.Item's true and Menu.CheckboxItem's and Menu.RadioItem's false. */
 export function closesOnClick(item: Element): boolean {
-	const own = item.getAttribute('data-mm-close-on-click');
+	const own = item.closest('[data-mm-close-on-click]')?.getAttribute('data-mm-close-on-click') ?? null;
 	return own === null || own === '' ? !item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]') : own !== 'false';
 }
 export function pointerover(target: Element): boolean {
@@ -363,6 +371,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
 		event.preventDefault();
+		activate(list[at]!);
 		list[at]!.click();
 		return true;
 	}

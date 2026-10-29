@@ -5,8 +5,10 @@ export const THEME: ThemeOptions = { attribute: 'class', themes: ['light', 'dark
 // hooks/use-meta-color.ts
 const META_THEME_COLORS = { light: '#ffffff', dark: '#0a0a0a' };
 
+// useTheme's resolvedTheme is the theme this document applied: another document's switch stored a moment before (the
+// preview of /create forwarding D after toggling itself) has not reached it yet.
 export function toggleTheme(): void {
-	const next = resolvedTheme(THEME) === 'dark' ? 'light' : 'dark';
+	const next = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
 	setTheme(next, THEME);
 	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? META_THEME_COLORS.dark : META_THEME_COLORS.light);
 }
