@@ -11,6 +11,7 @@ const PAGES: Record<string, string> = {
 	fetches: `<button onclick="fetch('/slow').then((r) => r.text()).then((t) => out.textContent = t)">Load</button><p id="out">idle</p>`,
 	ambient: `<style>@keyframes spin { to { rotate: 360deg } } i { display: inline-block; animation: spin 1s linear infinite }</style><i>*</i><button>Nothing</button><p id="out">idle</p>`,
 	leaves: `<a href="/ambient">Away</a><p id="out">idle</p>`,
+	framed: `<button onclick="let n = 0; const f = () => (++n < 4 ? requestAnimationFrame(f) : (out.textContent = 'drawn')); requestAnimationFrame(f)">Draw</button><p id="out">idle</p>`,
 	copies: `<button onclick="navigator.clipboard.writeText('x').then(() => out.textContent = 'copied')">Copy</button><p id="out">idle</p>`,
 };
 
@@ -39,8 +40,15 @@ function slowClipboard(): void {
 	Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => later(), write: () => later(), readText: () => later().then(() => ''), read: () => later().then(() => []) }, configurable: true });
 }
 
-async function used(name: string, control: string, cap = 1500): Promise<{ page: Page; ms: number; text: string }> {
+// A renderer starved of CPU paints a frame every 100 ms instead of every 16.
+function starvedFrames(): void {
+	const later = setTimeout;
+	globalThis.requestAnimationFrame = (f: FrameRequestCallback) => later(() => f(performance.now()), 100) as unknown as number;
+}
+
+async function used(name: string, control: string, cap = 1500, starved = false): Promise<{ page: Page; ms: number; text: string }> {
 	const context = await browser.newContext();
+	if (starved) await context.addInitScript(starvedFrames);
 	await context.addInitScript(slowClipboard);
 	await context.addInitScript(trackTimers);
 	const page = await context.newPage();
@@ -79,6 +87,12 @@ test('a use is settled once the clipboard it wrote to has answered', async () =>
 	const { ms, text } = await used('copies', 'Copy');
 	assert.equal(text, 'copied');
 	assert.ok(ms >= 280 && ms < 1200, `settled in ${ms} ms`);
+});
+
+test('on a starved renderer the quiet window is counted in painted frames too, so work drawn a few frames later is waited for', async () => {
+	const { ms, text } = await used('framed', 'Draw', 3000, true);
+	assert.equal(text, 'drawn');
+	assert.ok(ms >= 380 && ms < 3000, `settled in ${ms} ms`);
 });
 
 test('an animation the page ran before the use (an endless spinner) does not hold the settle, and a use that changes nothing settles in a few frames', async () => {
