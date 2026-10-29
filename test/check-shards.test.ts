@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { combine, joinKept, split, summary, unreported } from '../scripts/check-shards.ts';
@@ -78,4 +78,16 @@ test('the results the shards kept are joined into one folder, without those chec
 	const to = join(from, 'out');
 	assert.equal(await joinKept(from, to, new Date('2026-10-29T00:00:00.000Z')), 2);
 	assert.deepEqual((await readdir(to)).sort(), ['a.json', 'c.json']);
+});
+
+test('an entry two folders both keep is joined as the one recorded last, whichever folder is read first', async () => {
+	const from = await mkdtemp(join(tmpdir(), 'kept-'));
+	for (const [shard, checkedAt, value] of [['a', '2026-10-28T00:00:00.000Z', 'newer'], ['b', '2026-10-20T00:00:00.000Z', 'older'], ['c', '2026-10-21T00:00:00.000Z', 'middle']]) {
+		const dir = join(from, shard!, '.migrate', 'reuse');
+		await mkdir(dir, { recursive: true });
+		await writeFile(join(dir, 'k.json'), JSON.stringify({ checkedAt, value }));
+	}
+	const to = join(from, 'out');
+	assert.equal(await joinKept(from, to, new Date('2026-10-29T00:00:00.000Z')), 1);
+	assert.equal(JSON.parse(await readFile(join(to, 'k.json'), 'utf8')).value, 'newer');
 });

@@ -123,17 +123,19 @@ export function summary(routes: readonly ReportRoute[]): string {
 /** Copies every kept result under `from` (in a `.migrate/reuse` folder) into `to`, except those checked over `days` days before `now`. */
 export async function joinKept(from: string, to: string, now: Date, days = 30): Promise<number> {
 	await mkdir(to, { recursive: true });
-	let kept = 0;
+	// An entry several folders keep (a shard recorded it again) is the one recorded last.
+	const newest = new Map<string, { path: string; at: number }>();
 	for (const entry of await readdir(from, { recursive: true, withFileTypes: true })) {
 		const dir = entry.parentPath;
 		if (!entry.isFile() || !entry.name.endsWith('.json') || !/(^|\/)\.migrate\/reuse$/.test(dir)) continue;
 		const path = join(dir, entry.name);
 		const { checkedAt } = JSON.parse(await readFile(path, 'utf8')) as { checkedAt?: string };
-		if (!checkedAt || now.getTime() - Date.parse(checkedAt) > days * 86_400_000) continue;
-		await copyFile(path, join(to, entry.name));
-		kept++;
+		const at = checkedAt ? Date.parse(checkedAt) : NaN;
+		if (!(now.getTime() - at <= days * 86_400_000)) continue;
+		if ((newest.get(entry.name)?.at ?? -Infinity) < at) newest.set(entry.name, { path, at });
 	}
-	return kept;
+	for (const [name, { path }] of newest) await copyFile(path, join(to, name));
+	return newest.size;
 }
 
 async function main(): Promise<void> {

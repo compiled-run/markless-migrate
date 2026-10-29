@@ -9,7 +9,9 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import { execFileSync } from 'node:child_process';
 import { costsFrom, packByCost } from './pack.ts';
+import { agreed, oldKey, readOld, writeOld } from './reuse.ts';
 import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../../src/check/settle.ts';
 
 // Each route's settles: how many, their time, and how many each cause held to the cap.
@@ -293,7 +295,7 @@ const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Bo
 // Each of the CONCURRENCY workers has its own browser (a browser has one focused page, and a use needs it), pages, pools
 // and counts; they share this process and one queue of routes.
 const workerState = new AsyncLocalStorage();
-const newWorker = () => ({ browser: undefined, pages: {}, nets: {}, cdp: {}, errors: { old: [], new: [] }, current: { old: undefined, new: undefined }, ambient: { old: undefined, new: undefined }, prepared: [], currentRoute: '', nextWidths: [WIDTH], settles: { n: 0, ms: 0, capped: {} }, loads: { n: 0, ms: 0 }, profile: {}, motionMs: 0 });
+const newWorker = () => ({ browser: undefined, pages: {}, nets: {}, cdp: {}, errors: { old: [], new: [] }, current: { old: undefined, new: undefined }, ambient: { old: undefined, new: undefined }, prepared: [], sides: ['old', 'new'], reuse: { hits: 0, recorded: 0, again: 0 }, currentRoute: '', nextWidths: [WIDTH], settles: { n: 0, ms: 0, capped: {} }, loads: { n: 0, ms: 0 }, profile: {}, motionMs: 0 });
 const w = new Proxy({}, { get: (_, k) => workerState.getStore()[k], set: (_, k, v) => ((workerState.getStore()[k] = v), true) });
 const view = (name) => new Proxy({}, { get: (_, k) => w[name][k], set: (_, k, v) => ((w[name][k] = v), true) });
 const pages = view('pages');
@@ -359,21 +361,82 @@ async function openSlot(side, width, route) {
 
 const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
 
-// Both sides' pages for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names, the
-// last repeating) start loading too.
+// With REUSE=<dir> and OLD_BUILD=<the original's build>, what each use does on the original is kept between runs (two
+// recordings, so its own variance is kept) and only the port is used again. A finding stands only when the port differs from
+// every recording; a finding against kept recordings records the original once more first.
+// REUSE_OUT (default REUSE) is where new and updated entries go, so a CI shard uploads only what it recorded.
+const REUSE = process.env.REUSE ?? '';
+const REUSE_OUT = process.env.REUSE_OUT ?? REUSE;
+const readKept = async (key) => (await readOld(REUSE_OUT, key)) ?? (REUSE_OUT === REUSE ? undefined : await readOld(REUSE, key));
+function reuseVersions() {
+	if (!REUSE) return undefined;
+	if (!process.env.OLD_BUILD) return void console.log('REUSE needs OLD_BUILD, the original build it was recorded from: the original is used live');
+	const git = (...args) => execFileSync('git', args, { cwd: new URL('../..', import.meta.url), encoding: 'utf8' }).trim();
+	try {
+		if (git('status', '--porcelain', '--', 'scripts/probe', 'src/check/settle.ts')) return void console.log('REUSE: the probe has uncommitted changes, so the original is used live');
+		return { probe: git('rev-parse', 'HEAD:scripts/probe'), settle: git('rev-parse', 'HEAD:src/check/settle.ts'), old: process.env.OLD_BUILD, origin: OLD, waits: `${SETTLE} ${process.env.SCROLL_SETTLE ?? 500}` };
+	} catch (e) {
+		return void console.log(`REUSE: no probe version (${e.message.split('\n')[0]}), so the original is used live`);
+	}
+}
+const versions = reuseVersions();
+// What a recording keeps: the result without its film (films are never kept), and the controls a use revealed without
+// their boxes.
+const keepable = (r) => JSON.parse(JSON.stringify({ ...r, motion: undefined, close: undefined, opened: r.opened?.map(({ box, parent, frameBox, pageY, ...c }) => c) }));
+
+// The original's runs of one use: kept ones when the entry holds two, else recorded now (twice).
+async function oldSide(width, item, run) {
+	if (!versions) return { runs: [await run()], live: true };
+	const key = oldKey(versions, { engine: ENGINE, route: w.currentRoute, width, item });
+	const entry = await readKept(key);
+	if (entry && entry.runs.length >= 2) {
+		w.reuse.hits++;
+		return { runs: entry.runs, key, item, live: false };
+	}
+	const runs = [...(entry?.runs ?? [])];
+	while (runs.length < 2) runs.push(keepable(await run()));
+	await writeOld(REUSE_OUT, key, { route: w.currentRoute, item, runs }, new Date().toISOString());
+	w.reuse.recorded++;
+	return { runs, key, item, live: true };
+}
+
+// One more recording of a kept use, before a finding against it is believed; the entry keeps the last four.
+async function oldAgain(o, run) {
+	const runs = [...o.runs, keepable(await run())].slice(-4);
+	await writeOld(REUSE_OUT, o.key, { route: w.currentRoute, item: o.item, runs }, new Date().toISOString());
+	w.reuse.again++;
+	return { ...o, runs, live: true };
+}
+
+// Findings of one use against each recording of the original that `acts`, kept when they hold against all of them; when
+// they came from kept recordings, the original is recorded once more and they are judged again.
+async function judged(o, acts, compare, run) {
+	let found = agreed(o.runs.filter(acts).map(compare));
+	if (found.length && !o.live) {
+		const again = await oldAgain(o, run);
+		found = agreed(again.runs.filter(acts).map(compare));
+	}
+	return found;
+}
+
 // Not in WebKit: with other pages loading beside the one in use, the port missed answers it gives alone (measured: 4 to 7
 // dead controls on 2 routes that a probe without them never reports).
 const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? (ENGINE === 'webkit' ? 0 : 2)));
-async function fresh(width = WIDTH, upcoming = [width]) {
+// The pages (of `sides`) for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names,
+// the last repeating) start loading too.
+async function fresh(width = WIDTH, upcoming = [width], sides = ['old', 'new']) {
 	for (const side of ['old', 'new']) closeSlot(current[side]);
+	current.old = current.new = undefined;
 	let pair = w.prepared.shift();
-	if (pair && (pair.width !== width || pair.route !== w.currentRoute)) {
+	if (pair && (pair.width !== width || pair.route !== w.currentRoute || sides.some((side) => !pair[side]))) {
 		for (const p of [pair, ...w.prepared]) for (const side of ['old', 'new']) closeSlot(p[side]);
 		w.prepared = [];
 		pair = undefined;
 	}
-	const next = pair ?? { old: openSlot('old', width, w.currentRoute), new: openSlot('new', width, w.currentRoute) };
-	for (const side of ['old', 'new']) {
+	for (const side of ['old', 'new']) if (pair && !sides.includes(side)) closeSlot(pair[side]);
+	const next = pair ?? Object.fromEntries(sides.map((side) => [side, openSlot(side, width, w.currentRoute)]));
+	w.sides = sides;
+	for (const side of sides) {
 		current[side] = next[side];
 		const slot = await timed('fresh.slot', () => next[side]);
 		pages[side] = slot.page;
@@ -384,22 +447,22 @@ async function fresh(width = WIDTH, upcoming = [width]) {
 	w.nextWidths = upcoming;
 	await prepareNext();
 }
-// The next uses' pages are opened here, before this use's page is brought to the front: a page opened while a use runs
-// can take the focus from it (WebKit then refuses the use's clipboard write). Their loading goes on in the background.
 // A film's frame gaps are its finding: no page loads beside it to take the CPU from its frames.
 async function preloadsDone() {
 	const loading = [current.old, current.new, ...w.prepared.flatMap((pair) => [pair.old, pair.new])].filter(Boolean);
 	await Promise.all(loading.map((slot) => slot.then((s) => s.loading).catch(() => {})));
 }
 
+// The next uses' pages are opened here, before this use's page is brought to the front: a page opened while a use runs
+// can take the focus from it (WebKit then refuses the use's clipboard write). Their loading goes on in the background.
 async function prepareNext() {
 	if (!w.currentRoute) return;
 	const opened = [];
 	for (let k = w.prepared.length; k < PRELOAD; k++) {
 		const width = w.nextWidths[k] ?? w.nextWidths.at(-1);
-		const pair = { width, route: w.currentRoute, old: openSlot('old', width, w.currentRoute), new: openSlot('new', width, w.currentRoute) };
+		const pair = { width, route: w.currentRoute, ...Object.fromEntries(w.sides.map((side) => [side, openSlot(side, width, w.currentRoute)])) };
 		w.prepared.push(pair);
-		opened.push(pair.old, pair.new);
+		opened.push(...w.sides.map((side) => pair[side]));
 	}
 	await Promise.all(opened.map((slot) => slot.catch(() => {})));
 }
@@ -784,6 +847,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 	w.settles = { n: 0, ms: 0, capped: {} };
 	w.loads = { n: 0, ms: 0 };
 	w.profile = {};
+	w.reuse = { hits: 0, recorded: 0, again: 0 };
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
@@ -871,41 +935,50 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			if (blockedBy) { deadIds.get(blockedBy).behind++; continue; }
 			tried++;
 			const film = ENGINE === 'chromium' && !motionTemplates.has(control.template);
-			const old = await use('old', route, prefix, control, film).catch((e) => ({ failed: e.message.split('\n')[0] }));
-			if (old.failed || leftPage(old, route) || !changed(old)) continue;
+			const failed = (e) => ({ failed: e.message.split('\n')[0] });
+			const useOld = (withFilm) => use('old', route, prefix, control, withFilm).catch(failed);
+			// A filmed use is never kept: its frames are its finding.
+			const o = film ? { runs: [await useOld(true)], live: true } : await oldSide(WIDTH, `click ${id}`, () => useOld(false));
+			const acts = (r) => !(r.failed || leftPage(r, route) || !changed(r));
+			const old = o.runs.find(acts);
+			if (!old) continue;
 			if (film) motionTemplates.add(control.template);
-			const port = await use('new', route, prefix, control, film).catch((e) => ({ failed: e.message.split('\n')[0] }));
+			if (!o.live) await fresh(WIDTH, [WIDTH], ['new']);
+			const port = await use('new', route, prefix, control, film).catch(failed);
 			if (process.env.DEBUG) console.log('  ', id, '\n     old', JSON.stringify({ ...old, opened: old.opened?.length, motion: old.motion && { ...old.motion, imgs: old.motion.imgs.length } }), '\n     new', JSON.stringify({ ...port, opened: port.opened?.length, motion: port.motion && { ...port.motion, imgs: port.motion.imgs.length } }));
 			const base = { route, control: id };
-			if (port.missing || port.failed) findings.push({ ...base, kind: 'unusable', expected: describe(old), actual: port.missing ?? port.failed });
-			else if (!changed(port)) {
-				const f = { ...base, kind: 'dead', expected: describe(old), actual: 'nothing changed on the port', behind: 0 };
-				findings.push(f);
-				deadIds.set(id, f);
-			} else {
-				if (old.url && !port.url) findings.push({ ...base, kind: 'address', expected: `address becomes ${old.url}`, actual: 'the address stays' });
-				const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
-				if (old.affected?.length && lost.length === old.affected.length && !old.popup) findings.push({ ...base, kind: 'region', expected: `changes ${old.affected.join(', ')}`, actual: `changes ${port.affected?.join(', ') || (port.url ? `only the address (${port.url})` : 'only a pop-up')}` });
-				if (old.popup) popups.push({ prefix, control, id });
-				if (old.popup && port.popup) {
-					const o = old.popup, n = port.popup;
-					const animOld = o.opacity < 0.95 || transformMoves(o.transform), animNew = n.opacity < 0.95 || transformMoves(n.transform);
-					if (animOld !== animNew || Math.abs(o.opacity - n.opacity) > 0.3 || n.firstMs - o.firstMs > 80) findings.push({ ...base, kind: 'popup-first-frame', expected: `first visible ${o.firstMs} ms after the input at opacity ${o.opacity}, ${o.transform}; animations ${o.anims.join(',') || 'none'}`, actual: `first visible ${n.firstMs} ms at opacity ${n.opacity}, ${n.transform}; animations ${n.anims.join(',') || 'none'}` });
-					anchorFinding(findings, base, o.anchor, n.anchor, WIDTH);
-				}
-			}
-			motionFinding(findings, base, old.motion, port.motion, '', `${tried}`);
-			if (old.close && port.close) {
-				motionFinding(findings, base, old.close.motion, port.close.motion, 'close-', `${tried}-close`);
-				if (!old.close.still && port.close.still) findings.push({ ...base, kind: 'close', expected: 'Escape closes the pop-up it opened', actual: 'the pop-up stays open on the port' });
-			}
 			const POINTS = ['centre', 'left quarter', 'right quarter', 'top quarter', 'bottom quarter'];
-			if (old.hits && port.hits && !port.missing) {
-				const off = old.hits.map((h, i) => (h !== port.hits[i] ? `${POINTS[i]}: ${h} -> ${port.hits[i]}` : '')).filter(Boolean);
-				if (off.length) findings.push({ ...base, kind: 'hit-target', expected: `a click reaches ${[...new Set(old.hits)].join(' / ')}`, actual: off.join('; ') });
-			}
-			const newErrors = (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
-			if (newErrors.length) findings.push({ ...base, kind: 'error', expected: old.errors?.length ? `throws ${old.errors.join('; ')}` : 'throws nothing', actual: `throws ${newErrors.slice(0, 3).join('; ')}` });
+			const compare = (old) => {
+				const found = [];
+				if (port.missing || port.failed) found.push({ ...base, kind: 'unusable', expected: describe(old), actual: port.missing ?? port.failed });
+				else if (!changed(port)) found.push({ ...base, kind: 'dead', expected: describe(old), actual: 'nothing changed on the port', behind: 0 });
+				else {
+					if (old.url && !port.url) found.push({ ...base, kind: 'address', expected: `address becomes ${old.url}`, actual: 'the address stays' });
+					const lost = (old.affected ?? []).filter((a) => !(port.affected ?? []).includes(a));
+					if (old.affected?.length && lost.length === old.affected.length && !old.popup) found.push({ ...base, kind: 'region', expected: `changes ${old.affected.join(', ')}`, actual: `changes ${port.affected?.join(', ') || (port.url ? `only the address (${port.url})` : 'only a pop-up')}` });
+					if (old.popup && port.popup) {
+						const o = old.popup, n = port.popup;
+						const animOld = o.opacity < 0.95 || transformMoves(o.transform), animNew = n.opacity < 0.95 || transformMoves(n.transform);
+						if (animOld !== animNew || Math.abs(o.opacity - n.opacity) > 0.3 || n.firstMs - o.firstMs > 80) found.push({ ...base, kind: 'popup-first-frame', expected: `first visible ${o.firstMs} ms after the input at opacity ${o.opacity}, ${o.transform}; animations ${o.anims.join(',') || 'none'}`, actual: `first visible ${n.firstMs} ms at opacity ${n.opacity}, ${n.transform}; animations ${n.anims.join(',') || 'none'}` });
+						anchorFinding(found, base, o.anchor, n.anchor, WIDTH);
+					}
+				}
+				if (old.close && port.close && !old.close.still && port.close.still) found.push({ ...base, kind: 'close', expected: 'Escape closes the pop-up it opened', actual: 'the pop-up stays open on the port' });
+				if (old.hits && port.hits && !port.missing) {
+					const off = old.hits.map((h, i) => (h !== port.hits[i] ? `${POINTS[i]}: ${h} -> ${port.hits[i]}` : '')).filter(Boolean);
+					if (off.length) found.push({ ...base, kind: 'hit-target', expected: `a click reaches ${[...new Set(old.hits)].join(' / ')}`, actual: off.join('; ') });
+				}
+				const newErrors = (port.errors ?? []).filter((e) => !(old.errors ?? []).includes(e));
+				if (newErrors.length) found.push({ ...base, kind: 'error', expected: old.errors?.length ? `throws ${old.errors.join('; ')}` : 'throws nothing', actual: `throws ${newErrors.slice(0, 3).join('; ')}` });
+				return found;
+			};
+			const found = await judged(o, acts, compare, () => useOld(false));
+			findings.push(...found);
+			const dead = found.find((f) => f.kind === 'dead');
+			if (dead) deadIds.set(id, dead);
+			if (old.popup && !port.missing && !port.failed && changed(port)) popups.push({ prefix, control, id });
+			motionFinding(findings, base, old.motion, port.motion, '', `${tried}`);
+			if (old.close && port.close) motionFinding(findings, base, old.close.motion, port.close.motion, 'close-', `${tried}-close`);
 			// What the use revealed (a dialog's select, a menu's items, a panel an intro uncovers) is used too, up to two levels down.
 			if (prefix.length < 2 && old.opened) {
 				const before = new Set(controls.map((c) => c.key));
@@ -934,11 +1007,15 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 				const id = `${[...prefix.map((s) => s.key), control.key].join(' > ')} <- "${value}"`;
 				if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
 				inputTrials++;
-				const old = await typeInto('old', route, prefix, control, value).catch((e) => ({ failed: e.message.split('\n')[0] }));
-				if (old.failed || old.missing) continue;
+				const typeOld = () => typeInto('old', route, prefix, control, value).catch((e) => ({ failed: e.message.split('\n')[0] }));
+				const o = await oldSide(WIDTH, `input ${id}`, typeOld);
+				const acts = (r) => !(r.failed || r.missing);
+				const old = o.runs.find(acts);
+				if (!old) continue;
+				if (!o.live) await fresh(WIDTH, [WIDTH], ['new']);
 				const port = await typeInto('new', route, prefix, control, value).catch((e) => ({ failed: e.message.split('\n')[0] }));
 				if (process.env.DEBUG) console.log('  ', id, '\n     old', JSON.stringify(old), '\n     new', JSON.stringify(port));
-				inputFindings(findings, { route, control: id }, old, port);
+				findings.push(...(await judged(o, acts, (old) => { const found = []; inputFindings(found, { route, control: id }, old, port); return found; }, typeOld)));
 			}
 		}
 		// Keyboard: a standard key set, one key and short sequences, from one control of each kind focused on a fresh load.
@@ -955,21 +1032,32 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 				const id = `${control.key} + ${keys.join(' ')}`;
 				if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) continue;
 				keyTrials++;
-				const old = await press('old', route, control, keys).catch((e) => ({ failed: e.message.split('\n')[0] }));
-				if (old.failed || old.missing || leftPage(old, route)) continue;
+				const pressOld = () => press('old', route, control, keys).catch((e) => ({ failed: e.message.split('\n')[0] }));
+				const o = await oldSide(WIDTH, `keys ${id}`, pressOld);
+				const acts = (r) => !(r.failed || r.missing || leftPage(r, route));
+				const old = o.runs.find(acts);
+				if (!old) continue;
+				if (!o.live) await fresh(WIDTH, [WIDTH], ['new']);
 				const port = await press('new', route, control, keys).catch((e) => ({ failed: e.message.split('\n')[0] }));
 				if (process.env.DEBUG) console.log('  ', id, '\n     old', JSON.stringify(old), '\n     new', JSON.stringify(port));
-				keyFindings(findings, { route, control: id }, old, port);
+				findings.push(...(await judged(o, acts, (old) => { const found = []; keyFindings(found, { route, control: id }, old, port); return found; }, pressOld)));
 			}
 		}
 		// Where each pop-up opens, at the other widths a layout changes at.
 		for (const width of ANCHOR_WIDTHS) {
 			for (const { prefix, control, id } of popups.slice(0, 20)) {
-				const old = await use('old', route, prefix, control, false, width).catch(() => ({}));
-				if (!old.popup?.anchor) continue;
+				const useOld = () => use('old', route, prefix, control, false, width).catch(() => ({}));
+				const o = await oldSide(width, `anchor ${id}`, useOld);
+				const acts = (r) => Boolean(r.popup?.anchor);
+				if (!o.runs.some(acts)) continue;
+				if (!o.live) await fresh(width, [width], ['new']);
 				const port = await use('new', route, prefix, control, false, width).catch(() => ({}));
-				if (port.popup?.anchor) anchorFinding(findings, { route, control: id }, old.popup.anchor, port.popup.anchor, width);
-				else if (port.missing || port.failed || !port.popup) findings.push({ route, control: id, kind: 'popup-missing-at-width', width, expected: `opens a pop-up at ${width} px wide`, actual: port.missing ?? port.failed ?? 'no pop-up on the port' });
+				findings.push(...(await judged(o, acts, (old) => {
+					const found = [];
+					if (port.popup?.anchor) anchorFinding(found, { route, control: id }, old.popup.anchor, port.popup.anchor, width);
+					else if (port.missing || port.failed || !port.popup) found.push({ route, control: id, kind: 'popup-missing-at-width', width, expected: `opens a pop-up at ${width} px wide`, actual: port.missing ?? port.failed ?? 'no pop-up on the port' });
+					return found;
+				}, useOld)));
 			}
 		}
 	} catch (e) {
@@ -978,7 +1066,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 	for (const slot of [current.old, current.new, ...w.prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
 	current.old = current.new = undefined;
 	w.prepared = [];
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs: w.motionMs, settles: w.settles, loads: w.loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(w.profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs: w.motionMs, settles: w.settles, loads: w.loads, ...(versions ? { reuse: w.reuse } : {}), ...(PROFILE ? { profile: Object.fromEntries(Object.entries(w.profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await w.browser.close();
