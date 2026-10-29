@@ -101,8 +101,9 @@ jobs:
         env:
           BUILD: ${{ inputs.build }}
         run: |
-          # Three copies of the old server: one answering every cold load at once was what the probe waited on.
-          OLD_WORKERS=3 bash "deploy/$SITE/ci-serve.sh" old
+          # Chromium's two routes at a time get three copies of the old server (one answering every cold load was what they waited
+          # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
+          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
       - name: The last run's per-route times
