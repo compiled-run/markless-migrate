@@ -6,6 +6,7 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { settle, trackSettling } from './settle.ts';
 import { attr, body, parseDocument, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import type { Reveal } from './reveal.ts';
 import { lit, type Binding } from './tsrx.ts';
@@ -70,7 +71,7 @@ const loaded = new WeakMap<Page, { state: number; doc: string; selected?: string
 
 async function openOn(page: Page, origin: string, route: string, path: readonly number[]): Promise<boolean> {
 	await loadPage(page, new URL(route, origin).href);
-	await page.waitForTimeout(400);
+	await settle(page, 400);
 	const doc = await page.evaluate((token) => {
 		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[]; __mmDoc?: string };
 		w.__mmCopied = [];
@@ -116,7 +117,9 @@ async function openTrigger(page: Page, path: readonly number[]): Promise<boolean
 	if (!el) return false;
 	await el.click({ timeout: 2000 }).catch(() => {});
 	// A loaded page slow to answer its trigger shows its options later than 400 ms: they are waited for, a while.
-	await Promise.all([page.waitForTimeout(400), page.locator(OPTION).first().waitFor({ state: 'attached', timeout: 3000 }).catch(() => {})]);
+	const clicked = Date.now();
+	await page.locator(OPTION).first().waitFor({ state: 'attached', timeout: 3000 }).catch(() => {});
+	await settle(page, 400 - (Date.now() - clicked));
 	await finishAnimations(page).catch(() => {});
 	return true;
 }
@@ -130,14 +133,9 @@ async function reopenOn(page: Page, origin: string, route: string, path: readonl
 	const putBack = async () => {
 		// A closed layer hands focus back to its trigger; a fresh load has nothing focused.
 		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()).catch(() => {});
-		const deadline = Date.now() + 500;
-		for (;;) {
-			await finishAnimations(page).catch(() => {});
-			await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))).catch(() => {});
-			if (page.url() === before && (await stateOf(page).catch(() => undefined)) === fresh!.state) return true;
-			if (Date.now() >= deadline) return false;
-			await page.waitForTimeout(100);
-		}
+		await settle(page, 500);
+		await finishAnimations(page).catch(() => {});
+		return page.url() === before && (await stateOf(page).catch(() => undefined)) === fresh!.state;
 	};
 	const same = fresh && (await page.evaluate((doc) => (window as unknown as { __mmDoc?: string }).__mmDoc === doc, fresh.doc).catch(() => false));
 	if (fresh && same) {
@@ -149,7 +147,7 @@ async function reopenOn(page: Page, origin: string, route: string, path: readonl
 		// A select keeps the value chosen: choosing the one it loaded with puts it back.
 		if (listbox && fresh.selected !== undefined && (await openTrigger(page, path))) {
 			await page.locator(OPTION).filter({ hasText: fresh.selected }).first().click({ timeout: 2000 }).catch(() => {});
-			await page.waitForTimeout(500);
+			await settle(page, 500);
 			if (await putBack()) return openTrigger(page, path);
 		}
 	}
@@ -171,7 +169,7 @@ function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } 
 // What choosing an option started is read after 500 ms, or, while it is still fetching what it goes to (a client router
 // loads the next page before it changes the address), once that has answered: at most 5 s.
 async function afterChoosing(page: Page, before: string, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<void> {
-	await page.waitForTimeout(500);
+	await settle(page, 500);
 	const deadline = Date.now() + 4500;
 	const busy = () => [...requests.open].some((r) => !earlier.has(r)) || Date.now() - requests.ended < 150;
 	while (page.url() === before && busy() && Date.now() < deadline) await page.waitForTimeout(50);
@@ -241,6 +239,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	};
 	const session = async <T>(use: (page: Page) => Promise<T>): Promise<T> => {
 		const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+		await trackSettling(context);
 		try {
 			return await use(page);
 		} finally {
