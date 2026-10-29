@@ -229,7 +229,7 @@ function selfReferences(attrs: Record<string, string>, origin: string): Record<s
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);
 
-interface Prepared {
+export interface Prepared {
 	/** The same-origin resources the page loads, for the byte-for-byte copy. */
 	readonly resources: readonly string[];
 	readonly htmlAttrs: Record<string, string>;
@@ -255,6 +255,8 @@ interface Prepared {
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
 	readonly lateFontPaths: readonly string[];
+	/** The CSS of the page's own body <style> elements, in order, appended to its last head stylesheet instead of fetched apart. */
+	readonly bodyCss: readonly string[];
 }
 
 // What a library's runtime adds around revealed content for focus handling; its Markless port adds its own.
@@ -936,6 +938,62 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	return appends;
 }
 
+/**
+ * Takes the body's own `<style>` elements out, outside templates, and returns their CSS: each would otherwise be one more
+ * render-blocking request, and they apply after every head stylesheet, as the end of the last one does.
+ */
+export function foldBodyStyles(parent: Element): string[] {
+	const out: string[] = [];
+	const visit = (el: Element) => {
+		const list = childrenOf(el);
+		for (let i = list.length - 1; i >= 0; i--) {
+			const node = list[i]!;
+			if (!isElement(node) || node.tagName === 'template') continue;
+			if (node.tagName !== 'style') {
+				visit(node);
+				continue;
+			}
+			const css = childrenOf(node)
+				.map((n) => ('value' in n ? (n as { value: string }).value : ''))
+				.join('');
+			// An @import is valid only at the top of a sheet.
+			if (/@import\b/i.test(css)) continue;
+			const media = attr(node, 'media');
+			out.unshift(media && media !== 'all' ? `@media ${media}{${css}}` : css);
+			list.splice(i, 1);
+		}
+	};
+	visit(parent);
+	return out;
+}
+
+/** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. */
+export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>): Promise<number> {
+	const sheets = new Map<string, Promise<string>>();
+	const read = (href: string) => sheets.get(href) ?? sheets.set(href, readFile(join(publicDir, href), 'utf8')).get(href)!;
+	let count = 0;
+	for (const page of pages) {
+		if (!page.bodyCss.length) continue;
+		const at = page.head.findLastIndex((t) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? '') && t.attrs.integrity === undefined && /^\/(?!\/)[^?#]*\.css$/.test(t.attrs.href ?? ''));
+		const extra = page.bodyCss.join('\n');
+		if (at === -1) {
+			// No sheet of its own to extend: the CSS goes in a file linked at the end of the head.
+			const path = `/_converted/styles/${hash(extra)}.css`;
+			await mkdir(dirname(join(publicDir, path)), { recursive: true });
+			await writeFile(join(publicDir, path), extra);
+			page.head.push({ tag: 'link', attrs: { rel: 'stylesheet', href: path } });
+			continue;
+		}
+		const tag = page.head[at]!;
+		const css = `${await read(tag.attrs.href!)}\n${extra}`;
+		const href = tag.attrs.href!.replace(/(\.used-[0-9a-f]{12})?\.css$/, `.used-${hash(css)}.css`);
+		await writeFile(join(publicDir, href), css);
+		page.head[at] = { ...tag, attrs: { ...tag.attrs, href } };
+		count++;
+	}
+	return count;
+}
+
 /** Pulls each inline `<style>` out of `parent` into a stylesheet file, linked from where it stood. */
 function extractStyles(parent: Element, styles: Map<string, string>): void {
 	const list = childrenOf(parent);
@@ -998,6 +1056,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const plan = planImages(doc, paired, optimizer, dropped);
 	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
+	const bodyCss = foldBodyStyles(body(doc));
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
 	for (const node of childrenOf(head(doc))) {
@@ -1039,7 +1098,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, copyLabels, downloads, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, copyLabels, downloads, late, lateFontPaths, bodyCss };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -2025,6 +2084,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
+	const folded = await appendBodyCss(publicDir, prepared.values());
+	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const endpoints: EndpointPort[] = [];
