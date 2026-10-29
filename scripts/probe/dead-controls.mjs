@@ -9,7 +9,18 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { costsFrom, packByCost } from './pack.ts';
-import { markUse, settle, trackRequests, trackTimers } from '../../src/check/settle.ts';
+import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../../src/check/settle.ts';
+
+// Each route's settles: how many, their time, and how many each cause held to the cap.
+let settles = { n: 0, ms: 0, capped: {} };
+let loads = { n: 0, ms: 0 };
+async function settle(p, net, capMs) {
+	const r = await settleOnce(p, net, capMs);
+	settles.n++;
+	settles.ms += r.ms;
+	if (r.capped) settles.capped[r.capped] = (settles.capped[r.capped] ?? 0) + 1;
+	return r;
+}
 
 const OLD = process.env.OLD ?? 'https://mm-shadcn-ui-old.vercel.app';
 const NEW = process.env.NEW ?? 'https://mm-shadcn-ui-new.vercel.app';
@@ -309,10 +320,13 @@ async function load(side, route) {
 	const p = pages[side];
 	// A tab in the background gets no animation frames: the side in use is always the one in front.
 	await p.bringToFront();
+	const t0 = Date.now();
+	loads.n++;
 	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
 	await ready(p, nets[side]);
 	await quietly(p, side, () => {}, 300);
 	await settleScroll(p);
+	loads.ms += Date.now() - t0;
 }
 
 // Waits for what `step` set going (DOM changes, scrolls, animations, short timers, requests) to settle, at most the fixed wait `capMs`.
@@ -653,6 +667,8 @@ for (const route of mine) {
 	const findings = [];
 	let tried = 0;
 	motionMs = 0;
+	settles = { n: 0, ms: 0, capped: {} };
+	loads = { n: 0, ms: 0 };
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
@@ -844,7 +860,7 @@ for (const route of mine) {
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, findings }) + '\n');
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await browser.close();
