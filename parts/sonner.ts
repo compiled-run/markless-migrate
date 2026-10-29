@@ -27,12 +27,15 @@ export interface SonnerToast {
 	/** The style the toast is given after sonner's own properties. */
 	readonly style: string;
 	readonly phases: readonly { readonly at: number; readonly type?: string; readonly attrs: Readonly<Record<string, string>> }[];
+	/** The text a toast template shows where its capture showed what was copied. */
+	readonly text?: string;
 }
 
 export interface SonnerItemView {
 	readonly id: number;
 	/** The arm of what it shows: `<toast>.<phase>`. */
 	readonly view: string;
+	readonly text: string;
 	readonly a: Readonly<Record<string, string | undefined>>;
 	/** Text its use gave it (a submitted form's values), by the slot its markup shows it in. */
 	readonly t: Readonly<Record<string, string>>;
@@ -138,6 +141,7 @@ function itemView(t: Toaster, item: Item, index: number, y: string, x: string): 
 	return {
 		id: item.id,
 		view: `${item.toast.view}.${item.phase}`,
+		text: item.toast.text ?? '',
 		t: item.texts,
 		a: {
 			...item.toast.phases[item.phase]!.attrs,

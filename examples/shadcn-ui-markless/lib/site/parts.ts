@@ -659,4 +659,59 @@ const designerGetCode: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode];
+// The /colors swatches, on use-colors.ts's localStorage "colors" config (the copy check stays: timeout 0).
+const COLORS = 'colors';
+const FORMATS = ['className', 'hex', 'rgb', 'hsl', 'oklch', 'var'];
+type ColorsConfig = { format: string; lastCopied: string };
+function readColors(): ColorsConfig {
+	try {
+		return { format: 'hsl', lastCopied: '', ...(JSON.parse(localStorage.getItem(COLORS) ?? '{}') as Partial<ColorsConfig>) };
+	} catch {
+		return { format: 'hsl', lastCopied: '' };
+	}
+}
+function colorOf(el: Element): Record<string, string> {
+	try {
+		return JSON.parse(el.getAttribute('data-mm-color') ?? '{}') as Record<string, string>;
+	} catch {
+		return {};
+	}
+}
+function writeColors(config: ColorsConfig): void {
+	localStorage.setItem(COLORS, JSON.stringify(config));
+	for (const trigger of document.querySelectorAll('[data-slot="select-trigger"]')) {
+		const shown = trigger.textContent?.startsWith('Format:') ? trigger.querySelector('.font-mono') : null;
+		const text = shown && [...shown.childNodes].find((n): n is Text => n.nodeType === Node.TEXT_NODE);
+		if (text) text.data = config.format;
+	}
+	for (const swatch of document.querySelectorAll('button[data-mm-color]')) swatch.setAttribute('data-last-copied', String(colorOf(swatch)[config.format] === config.lastCopied));
+}
+const checked = new WeakSet<Element>();
+export function copyColor(target: Element): string {
+	const swatch = target.closest('button[data-mm-color]');
+	if (!swatch) return '';
+	const config = readColors();
+	const value = colorOf(swatch)[config.format] ?? '';
+	void copy(value).then((ok) => {
+		const svg = swatch.querySelector('svg');
+		if (!ok || !svg || checked.has(svg)) return;
+		checked.add(svg);
+		setIcon(svg, savedOf(svg), true);
+		svg.setAttribute('class', 'lucide lucide-check group-hover:opacity-100 group-data-[last-copied=true]:opacity-100');
+	});
+	writeColors({ ...config, lastCopied: value });
+	return value;
+}
+document.addEventListener('mmchoose', (event) => {
+	if (!(event.target as Element).closest?.('[data-slot="select-trigger"]')?.textContent?.includes('Format:')) return;
+	const text = String((event as CustomEvent<string>).detail ?? '');
+	const format = [...FORMATS].sort((a, b) => b.length - a.length).find((f) => text.startsWith(f));
+	if (format) writeColors({ ...readColors(), format });
+});
+const colors: Part = {
+	idle() {
+		if (document.querySelector('button[data-mm-color]')) writeColors(readColors());
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode, colors];

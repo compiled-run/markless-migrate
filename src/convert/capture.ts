@@ -8,7 +8,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { MEASURE_WIDTHS, readImages, readImageWidths, type ImageFacts } from './images.ts';
 import { fontPreloadsInFirstScreen, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
-import { INSTANCE_PROPS, instancePropMarks, legacyInstanceProps, markInstanceProps } from './instance-props.ts';
+import { instancePropMarks, instanceSpecs, legacyInstanceProps, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
@@ -123,7 +123,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await finishAnimations(page);
 			await keepCommandEmpty(page);
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
-			await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: false }).catch(() => {});
+			await page.evaluate(markInstanceProps, { specs: instanceSpecs(), added: false }).catch(() => {});
 			settled[viewport.name] = await page.evaluate(() => `<!DOCTYPE html>${document.documentElement.outerHTML}`);
 			images[viewport.name] = await page.evaluate(readImages);
 			if (viewport === viewports[0]) {
