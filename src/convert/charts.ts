@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseFragment } from 'parse5';
-import type { Browser, Locator, Page } from 'playwright';
+import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
@@ -150,15 +150,17 @@ declare global {
 	interface Window {
 		__mmc?: {
 			mark(root: Element): number;
+			move(x: number, y: number): void;
 			read(root: Element): { visible: boolean; tooltip: string; x: number | null; y: number | null; added: { path: number[]; before: number; html: string }[]; changed: { path: number[]; attr: string; value: string | null }[] };
 		};
 	}
 }
 
 // Runs in the old page: marks the chart's SVG at rest, then reads what a point being active changed in it.
-function installProbe(): void {
+export function installProbe(): void {
 	const rest = new WeakMap<Element, { path: number[]; attrs: Map<string, string> }>();
 	const svgOf = (root: Element) => root.querySelector('svg.recharts-surface')!;
+	const pointer: { el: Element | null } = { el: null };
 	window.__mmc = {
 		mark(root) {
 			const svg = svgOf(root);
@@ -174,6 +176,32 @@ function installProbe(): void {
 			};
 			visit(svg, []);
 			return n;
+		},
+		move(px, py) {
+			// The events a pointer moving to (x, y) gets from the browser, dispatched in the page: out of and into the elements under it, then the move.
+			// The browser holds a pointer's position in single precision: 640.99999 arrives as 641.
+			const x = Math.fround(px);
+			const y = Math.fround(py);
+			const target = document.elementFromPoint(x, y) ?? document.documentElement;
+			const prev = pointer.el?.isConnected ? pointer.el : null;
+			const fire = (el: Element | Document, type: string, related: Element | null, bubbles = true) => el.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, { bubbles, cancelable: bubbles, composed: true, clientX: x, clientY: y, view: window, relatedTarget: related, ...(type.startsWith('pointer') ? { pointerId: 1, pointerType: 'mouse', isPrimary: true } : {}) }));
+			const left: Element[] = [];
+			for (let n = prev; n && !n.contains(target); n = n.parentElement) left.push(n);
+			// A pointer arriving from outside the page enters the document too.
+			const entered: (Element | Document)[] = prev ? [] : [document];
+			const chain: Element[] = [];
+			for (let n: Element | null = target; n && !(prev && n.contains(prev)); n = n.parentElement) chain.unshift(n);
+			entered.push(...chain);
+			if (target !== prev)
+				for (const kind of ['pointer', 'mouse']) {
+					if (prev) fire(prev, `${kind}out`, target);
+					for (const n of left) fire(n, `${kind}leave`, target, false);
+					fire(target, `${kind}over`, prev);
+					for (const n of entered) fire(n, `${kind}enter`, prev, false);
+				}
+			fire(target, 'pointermove', null);
+			fire(target, 'mousemove', null);
+			pointer.el = target;
 		},
 		read(root) {
 			const svg = svgOf(root);
@@ -440,13 +468,17 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 		}
 		return { mode: 'c' as const };
 	});
+	const moveTo = (x: number, y: number) => page.evaluate(([x, y]) => window.__mmc!.move(x, y), [x, y] as const);
 	const states = new States();
 	const samples: Sample[] = [];
 	let last = '';
 	const at = async (px: number, py: number): Promise<number> => {
-		await page.mouse.move(box.x + px, box.y + py);
-		await page.waitForTimeout(16);
-		let seen = await wrapper.evaluate((root) => window.__mmc!.read(root));
+		let seen = await wrapper.evaluate(async (root, [x, y]) => {
+			window.__mmc!.move(x, y);
+			await new Promise((done) => setTimeout(done, 0));
+			await new Promise((done) => requestAnimationFrame(done));
+			return window.__mmc!.read(root);
+		}, [box.x + px, box.y + py] as const);
 		// recharts adds a point's active dots a frame after its tooltip: a reading not seen before is read again until it holds.
 		for (let i = 0; i < 6 && seen.visible && !states.knows(seen) && JSON.stringify([seen.tooltip, seen.added, seen.changed]) !== last; i++) {
 			last = JSON.stringify([seen.tooltip, seen.added, seen.changed]);
@@ -514,7 +546,7 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 				if (state >= 0 && samples.filter((s) => s.state === state).length >= 2) break;
 			}
 			if (state >= 0) segments.push([i, i, state]);
-			await page.mouse.move(box.x - 5, box.y - 5);
+			await moveTo(box.x - 5, box.y - 5);
 		}
 	} else if (kind.mode === 'r') {
 		mode = 'r';
@@ -565,7 +597,7 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 			if (hits.length) span = [hits[0]![0], hits.at(-1)![1]];
 		}
 	}
-	await page.mouse.move(box.x - 5, box.y - 5);
+	await moveTo(box.x - 5, box.y - 5);
 	await page.waitForTimeout(50);
 	// Whether the tooltip follows the pointer on each axis: a second pointer position in the same state moves it.
 	let followX = false;
@@ -579,14 +611,14 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 		if (last.y !== s.y) followY = true;
 		if (samples.indexOf(s) > 40) break;
 	}
-	await page.mouse.move(box.x - 5, box.y - 5);
+	await moveTo(box.x - 5, box.y - 5);
 	await page.waitForTimeout(50);
 	const placed = states.list.map((_, k) => samples.find((s) => s.state === k));
 	// The arrow keys, once the chart has focus (recharts' accessibilityLayer).
 	let keys: [number, number, number][] | undefined;
 	if ((await surface.getAttribute('tabindex')) === '0') {
 		keys = [];
-		await page.mouse.move(1, 1);
+		await moveTo(1, 1);
 		for (let i = 0; i < 20 && (await wrapper.evaluate((root) => window.__mmc!.read(root).visible)); i++) await page.waitForTimeout(50);
 		await surface.evaluate((svg) => (svg as SVGElement).focus());
 		await page.waitForTimeout(60);
@@ -769,13 +801,20 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
 	const missing = known && !known.length ? [] : CHART_WIDTHS.filter((w) => !have.has(w));
 	if (known && !missing.length) return { route, charts: known };
-	const charts = known ?? (await captureAt(browser, origin, route, VIEWPORTS[0]!));
-	for (const width of missing) {
-		const other = await captureAt(browser, origin, route, { name: `w${width}`, width, height: 900, isMobile: false });
-		for (const chart of charts) {
-			const same = other.find((o) => o.index === chart.index);
-			if (same) (chart.widths as ChartWidth[]).push({ viewport: width, width: same.width, height: same.height, view: same.view, variants: same.variants, drivers: same.drivers });
+	// The sweeps step a frame at a time: a browser of their own draws frames as fast as it can rather than at 60 Hz.
+	const sweeping = await chromium.launch({ args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
+	let charts: ChartFacts[];
+	try {
+		charts = known ?? (await captureAt(sweeping, origin, route, VIEWPORTS[0]!));
+		for (const width of missing) {
+			const other = await captureAt(sweeping, origin, route, { name: `w${width}`, width, height: 900, isMobile: false });
+			for (const chart of charts) {
+				const same = other.find((o) => o.index === chart.index);
+				if (same) (chart.widths as ChartWidth[]).push({ viewport: width, width: same.width, height: same.height, view: same.view, variants: same.variants, drivers: same.drivers });
+			}
 		}
+	} finally {
+		await sweeping.close();
 	}
 	if (charts.some((c) => c.drivers.length && c.lag === undefined)) await measureLags(browser, origin, route, charts);
 	for (const chart of charts) if (chart.start === undefined) await findStart(browser, origin, route, chart);

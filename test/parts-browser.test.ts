@@ -713,6 +713,24 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('shadcn-ui site: a long code block\'s Expand opens it and reads Collapse, and its fade under the code opens it too', async () => {
+	const page = await open(
+		`<figure><pre id="_R_1_" data-state="closed" class="data-[state=closed]:max-h-64"><code>line</code></pre><button data-slot="button" type="button" aria-expanded="false" aria-controls="_R_1_">Expand</button><button type="button" tabindex="-1" aria-hidden="true">Expand</button></figure>`,
+		['site'],
+	);
+	const look = () => page.evaluate(() => { const pre = document.querySelector('pre')!; const [button, fade] = document.querySelectorAll('button'); return [pre.dataset.state, button!.getAttribute('aria-expanded'), button!.textContent, fade!.hidden].join(' '); });
+	const nodes = () => page.evaluate(() => document.querySelectorAll('*').length);
+	const before = await nodes();
+	await page.getByRole('button', { name: 'Expand' }).click();
+	assert.equal(await look(), 'open true Collapse true');
+	await page.getByRole('button', { name: 'Collapse' }).click();
+	assert.equal(await look(), 'closed false Expand false');
+	await page.locator('button[aria-hidden]').click();
+	assert.equal(await look(), 'open true Collapse true', 'the fade opens it (it is not there while open)');
+	assert.equal(await nodes(), before, 'no node is added or removed');
+	await page.close();
+});
+
 test('shadcn-ui site: an RTL preview\'s language selector writes the example\'s text, direction and data-lang in that language', async () => {
 	const badge = (t: string) => `<span data-slot="badge">${t}</span>`;
 	const page = await open(
@@ -792,6 +810,24 @@ test('shadcn-ui site: a package manager list a page brings in place shows the ke
 			}),
 	);
 	assert.equal(seen, 'npm', 'chosen before the next frame');
+	await page.close();
+});
+
+test('shadcn-ui site: a long code block in a Collapsible reads Collapse on both its triggers while open, Expand once closed', async () => {
+	// The Collapsible's state is the converter's (DisclosurePlan): here a click handler flips the root's data-state.
+	const page = await open(
+		`<div data-state="closed" data-slot="collapsible"><div data-slot="collapsible-trigger" aria-expanded="false"><button data-slot="button" type="button">Expand</button></div><div data-slot="collapsible-content" data-state="closed"><figure><pre>code</pre></figure></div><button data-slot="collapsible-trigger" type="button" aria-expanded="false">Expand</button></div>
+		<script>document.addEventListener('click', (e) => { if (!e.target.closest('[data-slot="collapsible-trigger"]')) return; const r = document.querySelector('[data-slot="collapsible"]'); setTimeout(() => r.setAttribute('data-state', r.getAttribute('data-state') === 'open' ? 'closed' : 'open')); });</script>`,
+		['site'],
+		'body',
+	);
+	const labels = () => page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.textContent).join(','));
+	await page.getByRole('button', { name: 'Expand' }).first().click();
+	await page.waitForTimeout(50);
+	assert.equal(await labels(), 'Collapse,Collapse');
+	await page.getByRole('button', { name: 'Collapse' }).last().click();
+	await page.waitForTimeout(50);
+	assert.equal(await labels(), 'Expand,Expand');
 	await page.close();
 });
 
