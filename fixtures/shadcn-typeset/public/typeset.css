@@ -1,0 +1,4 @@
+/*
+ * shadcn/typeset
+ */
+.typeset { line-height: var(--typeset-leading); }
