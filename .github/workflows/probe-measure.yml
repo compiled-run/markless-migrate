@@ -28,6 +28,10 @@ on:
         description: Processes the earlier ref's runner's worth runs in (4 as its scan did; 1 is that probe without contention)
         required: false
         default: '4'
+      together_concurrency:
+        description: Routes at once when the later ref probes the routes a second time (1 with REUSE in probe_env times a reused run)
+        required: false
+        default: '2'
       probe_env:
         description: Extra environment for the later ref's probe, as NAME=value pairs
         required: false
@@ -114,6 +118,7 @@ jobs:
           ROUTES: ${{ inputs.routes || '/docs/components/base/alert /docs/components/radix/button' }}
           ENGINE: ${{ matrix.engine }}
           PROBE_ENV: ${{ inputs.probe_env }}
+          TOGETHER: ${{ inputs.together_concurrency || '2' }}
         run: |
           set -euo pipefail
           mkdir -p out before
@@ -130,7 +135,7 @@ jobs:
           # The same routes again, side by side on one browser: the machine's time for both, against the sum of each alone.
           t0=$(date +%s)
           # shellcheck disable=SC2086
-          env CONCURRENCY=2 $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/together-$ENGINE.jsonl" | tee "out/together-$ENGINE.log"
+          env CONCURRENCY="$TOGETHER" $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/together-$ENGINE.jsonl" | tee "out/together-$ENGINE.log"
           echo "$(( $(date +%s) - t0 ))" > "out/together-$ENGINE.seconds"
       - name: A runner's worth, as the scan runs it
         if: inputs.machine != '' || github.event_name == 'push'
