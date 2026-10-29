@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
-import { markUse, settle, trackRequests, trackTimers } from '../src/check/settle.ts';
+import { markUse, settle, settleDeferred, trackRequests, trackTimers } from '../src/check/settle.ts';
 
 const PAGES: Record<string, string> = {
 	debounced: `<button onclick="setTimeout(() => out.textContent = 'searched', 300)">Search</button><p id="out">idle</p>`,
@@ -12,6 +12,9 @@ const PAGES: Record<string, string> = {
 	ambient: `<style>@keyframes spin { to { rotate: 360deg } } i { display: inline-block; animation: spin 1s linear infinite }</style><i>*</i><button>Nothing</button><p id="out">idle</p>`,
 	leaves: `<a href="/ambient">Away</a><p id="out">idle</p>`,
 	framed: `<button onclick="let n = 0; const f = () => (++n < 4 ? requestAnimationFrame(f) : (out.textContent = 'drawn')); requestAnimationFrame(f)">Draw</button><p id="out">idle</p>`,
+	deferred: `<header id="out">idle</header><script>setTimeout(() => (document.getElementById('out').textContent = 'designer'), 800)</script>`,
+	idled: `<header id="out">idle</header><script>requestIdleCallback(() => setTimeout(() => (document.getElementById('out').textContent = 'designer'), 300))</script>`,
+	ticking: `<header id="out">0</header><script>const tick = () => { document.getElementById('out').textContent = String(Number(document.getElementById('out').textContent) + 1); setTimeout(tick, 200); }; setTimeout(tick, 200)</script>`,
 	copies: `<button onclick="navigator.clipboard.writeText('x').then(() => out.textContent = 'copied')">Copy</button><p id="out">idle</p>`,
 };
 
@@ -64,6 +67,31 @@ async function used(name: string, control: string, cap = 1500, starved = false):
 	await context.close();
 	return { page, ms, text: text ?? '' };
 }
+
+async function arrived(name: string): Promise<{ ms: number; text: string }> {
+	const context = await browser.newContext();
+	await context.addInitScript(trackTimers);
+	const page = await context.newPage();
+	const net = trackRequests(page);
+	await page.goto(`${origin}/${name}`);
+	await net.quiet(100, 5000);
+	const t0 = Date.now();
+	await settleDeferred(page, net);
+	const ms = Date.now() - t0;
+	const text = (await page.locator('#out').textContent()) ?? '';
+	await context.close();
+	return { ms, text };
+}
+
+test('before a use, what the page put off at load (a section filled in by a timer, or once the browser is idle) is waited for', async () => {
+	assert.equal((await arrived('deferred')).text, 'designer');
+	assert.equal((await arrived('idled')).text, 'designer');
+});
+
+test('a page that keeps setting timers (a ticker) holds the wait for deferred work no longer than its horizon', async () => {
+	const { ms } = await arrived('ticking');
+	assert.ok(ms < 2600, `waited ${ms} ms`);
+});
 
 test('a use is settled once the timer it set has run, not before', async () => {
 	const { ms, text } = await used('debounced', 'Search');
