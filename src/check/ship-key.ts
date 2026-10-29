@@ -50,12 +50,16 @@ export function shipKey(route: string, html: string, closures: Closures | undefi
 	if (entry.fallback) return { why: `${file} has no bounded closures (fallback: ${entry.fallback})` };
 	const unhashed = [...entry.modules].find(([, hash]) => !hash);
 	if (unhashed) return { why: `${unhashed[0]} has no code hash in the build's closures` };
+	const modules = [...entry.modules].sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, code]) => `module ${id} ${code}\n`);
+	return { key: reuseKey(versions, [`route ${route}\n`, ...modules, shippedHtml(html)]) };
+}
+
+/** The one key scheme of every reuse entry (check's routes, the probe's old side): the versions it depends on, then its parts. */
+export function reuseKey(versions: Readonly<Record<string, string>>, parts: readonly string[]): string {
 	const hash = createHash('sha256');
 	for (const [name, value] of Object.entries(versions).sort(([a], [b]) => (a < b ? -1 : 1))) hash.update(`version ${name} ${value}\n`);
-	hash.update(`route ${route}\n`);
-	for (const [id, code] of [...entry.modules].sort(([a], [b]) => (a < b ? -1 : 1))) hash.update(`module ${id} ${code}\n`);
-	hash.update(shippedHtml(html));
-	return { key: hash.digest('base64url') };
+	for (const part of parts) hash.update(part);
+	return hash.digest('base64url');
 }
 
 export type Reused = RouteResult & { readonly reused: { readonly key: string; readonly checkedAt: string }; readonly loads?: Record<string, string> };
