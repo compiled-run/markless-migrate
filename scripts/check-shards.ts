@@ -3,8 +3,9 @@
 // report.json and a markdown summary (counts, leading causes, every route); `representatives <targets.json> <old origin>
 // <out.json>` writes the pages check's template grouping measures page load on, one per group of the whole site;
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
-// routes without page load, page load on the representatives) into one result per route.
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+// routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
+// results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago.
+import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 interface Targets {
@@ -22,6 +23,7 @@ interface ReportRoute {
 	readonly infrastructure?: { readonly message?: string; readonly cause?: string };
 	readonly notPorted?: unknown;
 	readonly failures?: readonly { readonly dimension: string; readonly check: string; readonly accepted?: unknown }[];
+	readonly reused?: { readonly checkedAt: string };
 }
 
 export function split(targets: Targets, n: number): Targets[] {
@@ -96,11 +98,12 @@ export function summary(routes: readonly ReportRoute[]): string {
 		for (const f of open) mine.set(cause(f), (mine.get(cause(f)) ?? 0) + 1);
 		for (const k of mine.keys()) causes.set(k, (causes.get(k) ?? 0) + 1);
 		const leading = s === 'red' ? [...mine].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (${v})`).join('; ') : (r.infrastructure?.message ?? '');
-		rows.push(`| \`${r.route}\`${r.role ? ` as ${r.role}` : ''} | ${s} | ${leading.replace(/\|/g, '/')} |`);
+		rows.push(`| \`${r.route}\`${r.role ? ` as ${r.role}` : ''} | ${s}${r.reused ? `, reused from ${r.reused.checkedAt.slice(0, 10)}` : ''} | ${leading.replace(/\|/g, '/')} |`);
 	}
 	const order = ['green', 'red', 'not ported', 'blocked', 'not checked'];
+	const reused = routes.filter((r) => r.reused).length;
 	return [
-		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}`,
+		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check` : ''}`,
 		'',
 		'| Routes | Cause |',
 		'|---:|---|',
@@ -115,6 +118,22 @@ export function summary(routes: readonly ReportRoute[]): string {
 		'</details>',
 		'',
 	].join('\n');
+}
+
+/** Copies every kept result under `from` (in a `.migrate/reuse` folder) into `to`, except those checked over `days` days before `now`. */
+export async function joinKept(from: string, to: string, now: Date, days = 30): Promise<number> {
+	await mkdir(to, { recursive: true });
+	let kept = 0;
+	for (const entry of await readdir(from, { recursive: true, withFileTypes: true })) {
+		const dir = entry.parentPath;
+		if (!entry.isFile() || !entry.name.endsWith('.json') || !/(^|\/)\.migrate\/reuse$/.test(dir)) continue;
+		const path = join(dir, entry.name);
+		const { checkedAt } = JSON.parse(await readFile(path, 'utf8')) as { checkedAt?: string };
+		if (!checkedAt || now.getTime() - Date.parse(checkedAt) > days * 86_400_000) continue;
+		await copyFile(path, join(to, entry.name));
+		kept++;
+	}
+	return kept;
 }
 
 async function main(): Promise<void> {
@@ -159,6 +178,10 @@ async function main(): Promise<void> {
 		await write(a, combine(parts));
 		return;
 	}
+	if (command === 'keep' && a && b) {
+		console.log(`${await joinKept(a, b, new Date())} kept results`);
+		return;
+	}
 	if (command === 'representatives' && a && b && c) {
 		const { groupTemplates } = await import('../src/check/templates.ts');
 		const { defaultEnv } = await import('../src/check/browser.ts');
@@ -169,7 +192,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...]');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir>');
 	process.exit(2);
 }
 
