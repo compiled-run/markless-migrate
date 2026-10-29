@@ -15,7 +15,7 @@ import { markUse, settle as settleOnce, trackRequests, trackTimers } from '../..
 let settles = { n: 0, ms: 0, capped: {} };
 let loads = { n: 0, ms: 0 };
 async function settle(p, net, capMs) {
-	const r = await settleOnce(p, net, capMs);
+	const r = await timed(`settle ${capMs}`, () => settleOnce(p, net, capMs));
 	settles.n++;
 	settles.ms += r.ms;
 	if (r.capped) settles.capped[r.capped] = (settles.capped[r.capped] ?? 0) + 1;
@@ -289,26 +289,118 @@ const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch();
 const WIDTH = Number(process.env.WIDTH ?? 1280);
 const STATIC_WIDTHS = (process.env.STATIC_WIDTHS ?? '1280,1440,390').split(',').map(Number);
 const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Boolean).map(Number);
-// One context for both sides (different origins keep their own storage); the bypass header only goes to the port's host.
-// Every use starts from a fresh context: what one use stored (a colour mode, a package manager, an intro dismissed) is not the next one's.
+// Every use starts from a fresh context per side: what one use stored (a colour mode, a package manager, an intro dismissed)
+// is not the next one's. The next use's pages are opened and loading, cold, in their own fresh contexts while the current
+// use runs, so a use waits only for what is left of its loads.
 const pages = {};
 const nets = {};
 const cdp = {};
 const errors = { old: [], new: [] };
-let context;
-async function fresh(width = WIDTH) {
-	await context?.close().catch(() => {});
-	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
-	context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
-	await context.addInitScript(trackTimers);
-	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
-	for (const side of ['old', 'new']) {
-		pages[side] = await context.newPage();
-		nets[side] = trackRequests(pages[side]);
-		pages[side].on('dialog', (d) => d.dismiss().catch(() => {}));
-		pages[side].on('pageerror', (e) => errors[side].push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
-		if (ENGINE === 'chromium') cdp[side] = await context.newCDPSession(pages[side]);
+const current = { old: undefined, new: undefined };
+let prepared = [];
+let currentRoute = '';
+const originOf = (side) => (side === 'old' ? OLD : NEW);
+
+// With PROFILE set, each route's row carries the time spent in each page call (by kind), for finding what is left to cut.
+let profile = {};
+const PROFILE = Boolean(process.env.PROFILE);
+const timed = async (k, f) => {
+	const t = performance.now();
+	try {
+		return await f();
+	} finally {
+		const e = (profile[k] ??= { ms: 0, n: 0 });
+		e.ms += performance.now() - t;
+		e.n++;
 	}
+};
+function instrument(p) {
+	const wrap = (obj, name, label) => {
+		const o = obj[name].bind(obj);
+		obj[name] = (...a) => timed(typeof label === 'function' ? label(...a) : label, () => o(...a));
+	};
+	wrap(p, 'goto', 'goto');
+	wrap(p, 'waitForTimeout', (ms) => `sleep ${ms}`);
+	wrap(p, 'evaluate', (fn) => `eval ${fn.name || 'anon'}`);
+	wrap(p.keyboard, 'press', 'key.press');
+	wrap(p.keyboard, 'type', 'key.type');
+	const loc = p.locator.bind(p);
+	p.locator = (...a) => {
+		const l = loc(...a);
+		const f = l.first.bind(l);
+		l.first = () => {
+			const x = f();
+			for (const m of ['click', 'fill', 'focus', 'selectOption']) wrap(x, m, `act.${m}`);
+			return x;
+		};
+		return l;
+	};
+}
+
+async function openSlot(side, width, route) {
+	// Without the clipboard grant a copy falls back to a hidden textarea each site places differently.
+	const context = await browser.newContext({ viewport: { width, height: 900 }, ...(ENGINE === 'chromium' ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
+	await context.addInitScript(trackTimers);
+	// The bypass header only goes to the port's host.
+	if (BYPASS && side === 'new') await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
+	const page = await context.newPage();
+	if (PROFILE) instrument(page);
+	const slot = { side, width, route, context, page, net: trackRequests(page), errors: [], cdp: undefined, loading: undefined };
+	page.on('dialog', (d) => d.dismiss().catch(() => {}));
+	page.on('pageerror', (e) => slot.errors.push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
+	if (ENGINE === 'chromium') slot.cdp = await context.newCDPSession(page);
+	// Headless Chromium and WebKit paint every page, in front or not (measured: about 60 frames a second in each), so a
+	// page readied before its turn is the page a use would have loaded then.
+	slot.loading = page.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 }).then(() => arrive(page, slot.net, 'preload')).then(() => undefined, (e) => e);
+	return slot;
+}
+
+const closeSlot = (slot) => slot?.then((s) => s.context.close()).catch(() => {});
+
+// Both sides' pages for a use at this width; the pages of the PRELOAD uses after it (at the widths `upcoming` names, the
+// last repeating) start loading too.
+// Not in WebKit: with other pages loading beside the one in use, the port missed answers it gives alone (measured: 4 to 7
+// dead controls on 2 routes that a probe without them never reports).
+const PRELOAD = Math.max(0, Number(process.env.PRELOAD ?? (ENGINE === 'webkit' ? 0 : 2)));
+async function fresh(width = WIDTH, upcoming = [width]) {
+	for (const side of ['old', 'new']) closeSlot(current[side]);
+	let pair = prepared.shift();
+	if (pair && (pair.width !== width || pair.route !== currentRoute)) {
+		for (const p of [pair, ...prepared]) for (const side of ['old', 'new']) closeSlot(p[side]);
+		prepared = [];
+		pair = undefined;
+	}
+	const next = pair ?? { old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) };
+	for (const side of ['old', 'new']) {
+		current[side] = next[side];
+		const slot = await timed('fresh.slot', () => next[side]);
+		pages[side] = slot.page;
+		nets[side] = slot.net;
+		cdp[side] = slot.cdp;
+		errors[side] = slot.errors;
+	}
+	nextWidths = upcoming;
+	await prepareNext();
+}
+let nextWidths = [WIDTH];
+// The next uses' pages are opened here, before this use's page is brought to the front: a page opened while a use runs
+// can take the focus from it (WebKit then refuses the use's clipboard write). Their loading goes on in the background.
+// A film's frame gaps are its finding: no page loads beside it to take the CPU from its frames.
+async function preloadsDone() {
+	const loading = [current.old, current.new, ...prepared.flatMap((pair) => [pair.old, pair.new])].filter(Boolean);
+	await Promise.all(loading.map((slot) => slot.then((s) => s.loading).catch(() => {})));
+}
+
+async function prepareNext() {
+	if (!currentRoute) return;
+	const opened = [];
+	for (let k = prepared.length; k < PRELOAD; k++) {
+		const width = nextWidths[k] ?? nextWidths.at(-1);
+		const pair = { width, route: currentRoute, old: openSlot('old', width, currentRoute), new: openSlot('new', width, currentRoute) };
+		prepared.push(pair);
+		opened.push(pair.old, pair.new);
+	}
+	await Promise.all(opened.map((slot) => slot.catch(() => {})));
 }
 const layoutDone = new Set();
 const keyDone = new Set();
@@ -318,15 +410,31 @@ const STRIPS = process.env.STRIPS ?? '';
 
 async function load(side, route) {
 	const p = pages[side];
-	// A tab in the background gets no animation frames: the side in use is always the one in front.
+	// The page in use is the focused one: WebKit refuses a clipboard write from a page another one took focus from.
 	await p.bringToFront();
 	const t0 = Date.now();
 	loads.n++;
-	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
-	await ready(p, nets[side]);
-	await quietly(p, side, () => {}, 300);
-	await settleScroll(p);
+	const slot = await current[side];
+	if (slot.route === route && slot.loading && slot.page === p) {
+		const loading = slot.loading;
+		slot.loading = undefined;
+		const failed = await timed('load.preloaded', () => loading);
+		if (failed) throw failed;
+	} else {
+		await p.goto(originOf(side) + route, { waitUntil: 'load', timeout: 45_000 });
+		await arrive(p, nets[side]);
+	}
 	loads.ms += Date.now() - t0;
+}
+
+// A loaded page is in use once its network rests, what its scripts do after load settles and its inner scrollers hold.
+async function arrive(p, net, label = 'load') {
+	await timed(`${label}.ready`, () => ready(p, net));
+	await timed(`${label}.settle`, async () => {
+		await markUse(p, 300);
+		await settle(p, net, 300);
+	});
+	await timed(`${label}.scroll`, () => settleScroll(p));
 }
 
 // Waits for what `step` set going (DOM changes, scrolls, animations, short timers, requests) to settle, at most the fixed wait `capMs`.
@@ -434,6 +542,7 @@ async function use(side, route, prefix, control, film, width = WIDTH) {
 	try {
 		if (film) {
 			const t0 = Date.now();
+			await preloadsDone();
 			film_ = await filmed(side, () => act(p, control));
 			motionMs += Date.now() - t0;
 		} else await act(p, control);
@@ -664,17 +773,19 @@ const leftPage = (r, route) => Boolean(r.url && r.url.split('?')[0] !== route.sp
 const transformMoves = (t) => t !== 'none' && !/^matrix\(1, 0, 0, 1, 0, -?[\d.e-]+\)$/.test(t);
 
 for (const route of mine) {
+	currentRoute = route;
 	const findings = [];
 	let tried = 0;
 	motionMs = 0;
 	settles = { n: 0, ms: 0, capped: {} };
 	loads = { n: 0, ms: 0 };
+	profile = {};
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
 		let controls = [];
-		for (const width of STATIC_WIDTHS) {
-			await fresh(width);
+		for (const [i, width] of STATIC_WIDTHS.entries()) {
+			await fresh(width, [...STATIC_WIDTHS.slice(i + 1), WIDTH]);
 			await load('old', route);
 			await resetScrollers(pages.old);
 			const olds = await pages.old.evaluate(listControls);
@@ -860,7 +971,10 @@ for (const route of mine) {
 	} catch (e) {
 		findings.push({ route, kind: 'route-error', control: '', expected: '', actual: e.message.split('\n')[0] });
 	}
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, findings }) + '\n');
+	for (const slot of [current.old, current.new, ...prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
+	current.old = current.new = undefined;
+	prepared = [];
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs, settles, loads, ...(PROFILE ? { profile: Object.fromEntries(Object.entries(profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await browser.close();

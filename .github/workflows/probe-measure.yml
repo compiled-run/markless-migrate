@@ -16,6 +16,10 @@ on:
         description: Routes to probe, space-separated
         required: true
         default: /docs/components/base/alert /docs/components/radix/button
+      probe_env:
+        description: Extra environment for the later ref's probe, as NAME=value pairs
+        required: false
+        default: ''
       build:
         description: URL of the port's build (a .tar.gz of its .vercel/output or its node-server .output)
         required: true
@@ -95,11 +99,12 @@ jobs:
           NEW: http://127.0.0.1:3000
           BEFORE: ${{ inputs.before || 'main' }}
           ROUTES: ${{ inputs.routes || '/docs/components/base/alert /docs/components/radix/button' }}
+          PROBE_ENV: ${{ inputs.probe_env }}
           ENGINE: ${{ matrix.engine }}
         run: |
           set -euo pipefail
           mkdir -p out before
-          git archive "$(git rev-parse "origin/$BEFORE" 2>/dev/null || git rev-parse "$BEFORE")" scripts/probe | tar -x -C before
+          git archive "$(git rev-parse -q --verify "origin/$BEFORE^{commit}" || git rev-parse --verify "$BEFORE^{commit}")" scripts/probe src | tar -x -C before
           # shellcheck disable=SC2086
           node -e 'console.log(JSON.stringify({ routes: process.argv.slice(1) }))' $ROUTES > out/routes.json
           # Each page served once before either ref runs, so neither pays the servers' first render.
@@ -107,7 +112,8 @@ jobs:
           for r in $ROUTES; do curl -s -o /dev/null "$OLD$r"; curl -s -o /dev/null "$NEW$r"; done
           if [ "$ENGINE" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24; fi
           node before/scripts/probe/dead-controls.mjs out/routes.json "out/before-$ENGINE.jsonl" | tee "out/before-$ENGINE.log"
-          node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
+          # shellcheck disable=SC2086
+          env PROFILE=1 $PROBE_ENV node scripts/probe/dead-controls.mjs out/routes.json "out/after-$ENGINE.jsonl" | tee "out/after-$ENGINE.log"
       - name: Compare
         env:
           ENGINE: ${{ matrix.engine }}
@@ -126,6 +132,7 @@ jobs:
               diffs += [f"- before only, `{route}`: {k}" for k in sorted(kb - ka)] + [f"- after only, `{route}`: {k}" for k in sorted(ka - kb)]
           for route, a in rows[1].items():
               if 'settles' in a: print(f"\n`{route}` after: {a['loads']['n']} loads in {a['loads']['ms']/1000:.0f} s; {a['settles']['n']} settles in {a['settles']['ms']/1000:.0f} s, held to the cap by {a['settles']['capped'] or 'nothing'}; filming {a['motionMs']/1000:.0f} s")
+              if 'profile' in a: print('\n' + '; '.join(f"{k} {v['ms']/1000:.0f} s ({v['n']})" for k, v in list(a['profile'].items())[:14]))
           print('\n' + ('\n'.join(diffs) if diffs else 'The same findings on both refs.') + '\n')
           PY
       - uses: actions/upload-artifact@v4
