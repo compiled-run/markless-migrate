@@ -13,7 +13,7 @@ GET handler writes.
 
 | What | URL |
 | --- | --- |
-| Front door (all checked routes switched to the new app) | https://mm-next-dashboard.vercel.app, index and demo login at `/_migrate/`, report at `/_migrate/report.html` |
+| Front door (all checked routes switched to the new app) | https://mm-next-dashboard.vercel.app, index and demo login at `/_migrate/`, report at `/_migrate/report.html` (taken down 2026-10-30, with the old app it proxied to) |
 | Old app (Next.js, source unchanged) | https://mm-next-dashboard-old.vercel.app (taken down 2026-10-30; serve it locally with `deploy/next-dashboard/local.sh old`) |
 | New app (Markless) | https://mm-next-dashboard-new.vercel.app |
 

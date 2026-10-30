@@ -13,7 +13,7 @@ and signed in), with 2 accepted kinds of difference (14 accepted failures, liste
 
 | What | URL |
 | --- | --- |
-| Front door (all checked routes switched to the new app) | https://mm-remix-notes.vercel.app, index and demo login at `/_migrate/`, report at `/_migrate/report.html` |
+| Front door (all checked routes switched to the new app) | https://mm-remix-notes.vercel.app, index and demo login at `/_migrate/`, report at `/_migrate/report.html` (taken down 2026-10-30, with the old app it proxied to) |
 | Old app (Remix, source unchanged) | https://mm-remix-notes-old.vercel.app (taken down 2026-10-30; serve it locally with `deploy/remix-notes/local.sh old`) |
 | New app (Markless) | https://mm-remix-notes-new.vercel.app |
 
