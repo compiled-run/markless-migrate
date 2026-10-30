@@ -106,6 +106,7 @@ if (!only.length) {
 	await writeHeads(pages, tags.head, tags.body, staticPages);
 	await writeClientData(site, pages);
 	await runPostBuild(site, pages);
+	await writeFile(join(app, 'lib/live-routes.json'), `${JSON.stringify([...pages].filter(([, page]) => toHtml(page.body).includes('data-mm-live')).map(([path]) => path).sort(), null, '\t')}\n`);
 	await writeFile(join(app, 'lib/routes.json'), `${JSON.stringify([...pages.keys(), ...staticPages.map((page) => page.path)].filter((p) => p !== '/404').sort(), null, '\t')}\n`);
 	const aliases = Object.fromEntries(staticPages.map((page) => [encodeURI(page.file), encodeURI(page.path)]));
 	await writeFile(join(app, 'lib/route-aliases.json'), `${JSON.stringify(aliases, null, '\t')}\n`);

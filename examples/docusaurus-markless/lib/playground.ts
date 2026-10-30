@@ -6,6 +6,10 @@ export type LiveHint = { code: string; compiled: string; noInline: boolean; lang
 const RUNTIME = '/lazy/playground-runtime.js';
 let runtime: Promise<typeof import('./playground-runtime.ts')> | undefined;
 
+export function preloadPlaygrounds(): void {
+	runtime ??= import(/* @vite-ignore */ RUNTIME) as Promise<typeof import('./playground-runtime.ts')>;
+}
+
 export function initPlaygrounds(): void {
 	const found: [HTMLElement, LiveHint][] = [];
 	for (const el of document.querySelectorAll<HTMLElement>('[data-mm-live]')) {
