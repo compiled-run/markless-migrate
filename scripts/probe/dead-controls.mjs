@@ -1,15 +1,11 @@
 // Dead-control inventory: every visible control of a route used once on the original and on the port, from a fresh load;
 // what it changes outside itself (by region), whether it moves the address, what a click at its centre reaches, and how the
-// popup it opens first shows. Usage: node dead-controls.mjs <routes-file> <out.jsonl> [shard index] [shard count]; with COSTS=<dir>, routes
-// are packed into shards by the times an earlier run wrote in that directory's *.jsonl files instead of dealt in turn.
+// popup it opens first shows. Usage: node dead-controls.mjs <routes-file> <out.jsonl> [shard index] [shard count]
 import { chromium, webkit } from 'playwright';
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { costsFrom, packByCost } from './pack.ts';
-import { trackRequests } from './ready.ts';
 
 const OLD = process.env.OLD ?? 'https://mm-shadcn-ui-old.vercel.app';
 const NEW = process.env.NEW ?? 'https://mm-shadcn-ui-new.vercel.app';
@@ -25,9 +21,7 @@ const all = JSON.parse(readFileSync(routesFile, 'utf8'));
 const routes = (Array.isArray(all) ? all : Array.isArray(all.routes) ? all.routes : Object.keys(all.routes ?? all)).filter((r) => typeof r === 'string' && r.startsWith('/'));
 const shard = Number(shardArg ?? 0), count = Number(countArg ?? 1);
 const workers = Number(process.env.WORKERS ?? 1), worker = Number(process.env.WORKER ?? 0);
-const jsonl = (dir) => readdirSync(dir, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).flatMap((f) => readFileSync(join(dir, String(f)), 'utf8').split('\n'));
-const costs = process.env.COSTS ? costsFrom(jsonl(process.env.COSTS), process.env.ENGINE ?? 'chromium') : undefined;
-const mine = costs?.size ? packByCost(routes, costs, count * workers)[shard * workers + worker] ?? [] : routes.filter((_, i) => i % count === shard).filter((_, i) => i % workers === worker);
+const mine = routes.filter((_, i) => i % count === shard).filter((_, i) => i % workers === worker);
 
 // In the page: the visible controls, keyed by role, name and their index among namesakes.
 function listControls() {
@@ -281,7 +275,6 @@ const ANCHOR_WIDTHS = (process.env.ANCHOR_WIDTHS ?? '1440').split(',').filter(Bo
 // One context for both sides (different origins keep their own storage); the bypass header only goes to the port's host.
 // Every use starts from a fresh context: what one use stored (a colour mode, a package manager, an intro dismissed) is not the next one's.
 const pages = {};
-const nets = {};
 const cdp = {};
 const errors = { old: [], new: [] };
 let context;
@@ -292,7 +285,6 @@ async function fresh(width = WIDTH) {
 	if (BYPASS) await context.route(`${NEW}/**`, (r) => r.continue({ headers: { ...r.request().headers(), 'x-vercel-protection-bypass': BYPASS } }));
 	for (const side of ['old', 'new']) {
 		pages[side] = await context.newPage();
-		nets[side] = trackRequests(pages[side]);
 		pages[side].on('dialog', (d) => d.dismiss().catch(() => {}));
 		pages[side].on('pageerror', (e) => errors[side].push(String(e.message ?? e).split('\n')[0].slice(0, 160)));
 		if (ENGINE === 'chromium') cdp[side] = await context.newCDPSession(pages[side]);
@@ -309,15 +301,10 @@ async function load(side, route) {
 	// A tab in the background gets no animation frames: the side in use is always the one in front.
 	await p.bringToFront();
 	await p.goto((side === 'old' ? OLD : NEW) + route, { waitUntil: 'load', timeout: 45_000 });
-	await ready(p, nets[side]);
+	// A slow live answer (the directory's /r/registries.json) can still change the layout: wait for the network to rest.
+	await p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
 	await p.waitForTimeout(300);
 	await settleScroll(p);
-}
-
-// A slow answer (the directory's /r/registries.json) can still change the layout: the network rests, fonts are in and two frames are painted.
-async function ready(p, net) {
-	await net.quiet(200, 15_000);
-	await p.evaluate(() => Promise.race([document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))), new Promise((r) => setTimeout(r, 1000))])).catch(() => {});
 }
 
 // Where a page's own script leaves its inner scrollers (the docs sidebar centred on its link while the page streams) varies
@@ -649,7 +636,6 @@ const transformMoves = (t) => t !== 'none' && !/^matrix\(1, 0, 0, 1, 0, -?[\d.e-
 for (const route of mine) {
 	const findings = [];
 	let tried = 0;
-	motionMs = 0;
 	const started = Date.now();
 	try {
 		// What each width shows: every control of the page's own content on the original, its size and place in its example frame, on the port.
