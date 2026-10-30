@@ -10,8 +10,10 @@ import type { Failure, Viewport } from './types.ts';
 
 /** Runs `work` while `threads` threads (two per CPU by default) keep the machine busy. */
 export async function busyCpu<T>(work: () => Promise<T>, threads = 2 * availableParallelism()): Promise<T> {
-	const workers = Array.from({ length: threads }, () => new Worker('for (;;) {}', { eval: true }));
+	const workers = Array.from({ length: threads }, () => new Worker("require('node:worker_threads').parentPort.postMessage(0); for (;;) {}", { eval: true }));
 	try {
+		// A thread takes tens of milliseconds to start: work begun before every one spins would run on an idle machine.
+		await Promise.all(workers.map((w) => new Promise((spinning, failed) => w.once('message', spinning).once('error', failed))));
 		return await work();
 	} finally {
 		await Promise.all(workers.map((w) => w.terminate()));
