@@ -1,5 +1,5 @@
 // Serves the old site's build (fetch-old.sh) as its Vercel deployment's config.json routes it (build.ts old): `/` is index.html,
-// then a file at the path, then `/x` or `/x/` as x.html, else 404.html; gzipped as deploy/shadcn-ui/serve-vercel-output.mjs serves the port.
+// then a file at the path or a folder's index.html (Vercel's filesystem step), then `/x` or `/x/` as x.html, else 404.html; gzipped as deploy/shadcn-ui/serve-vercel-output.mjs serves the port.
 // node deploy/docusaurus/serve-old.mjs [port]
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -29,7 +29,7 @@ createServer((req, res) => {
 			return at.startsWith(root) && existsSync(at) && statSync(at).isFile() ? at : undefined;
 		};
 		const clean = /^\/(.+?)\/?$/.exec(path);
-		const found = path === '/' ? file('index.html') : (file(path) ?? (clean ? file(`${clean[1]}.html`) : undefined));
+		const found = path === '/' ? file('index.html') : (file(path) ?? file(join(path, 'index.html')) ?? (clean ? file(`${clean[1]}.html`) : undefined));
 		if (found) return send(req, res, 200, found);
 		send(req, res, 404, join(root, '404.html'));
 	} catch (error) {
