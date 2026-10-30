@@ -616,7 +616,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/select/check-reused"
           closures=$(find "$RUNNER_TEMP/new" -path '*/.markless/static/interaction-closures.json' | head -n 1)
           t=$(date +%s)
-          result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select")
+          result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select" ${ROUTES:+"$GITHUB_WORKSPACE/$ROUTES"})
           echo "$result"
           to=$(node -p 'JSON.parse(process.argv[1]).check' "$result")
           other=$(node -p 'JSON.parse(process.argv[1]).other' "$result")
