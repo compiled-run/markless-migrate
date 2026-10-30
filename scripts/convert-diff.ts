@@ -11,7 +11,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /** Ids React (`_r_1f_`, `_R_3mbr6lb_`, `:r1:`, `«r1»`) and React Aria (`react-aria-12`) generate, which differ by load. */
-const GENERATED = /_[rR]_[0-9a-zA-Z]+_|:[rR][0-9a-zA-Z]*:|«[rR][0-9a-zA-Z]*»|react-aria\d*-\d+(?![\w-])|\bmm-[0-9a-f]{8}(?=-)/g;
+// A whole id value is one id: the converter renames a Radix id to an mm- one where loads made two collide, and not otherwise.
+const GENERATED = /(?<![\w-])(?:radix-)?_[rR]_[0-9a-zA-Z]+_|:[rR][0-9a-zA-Z]*:|«[rR][0-9a-zA-Z]*»|react-aria\d*-\d+(?![\w-])|\bmm-[0-9a-f]{8}-\d+(?![\w-])|_[rR]_[0-9a-zA-Z]+_/g;
 // The converter numbers layer components in the order it meets them: one layer more or less elsewhere renumbers the rest.
 const LAYERS = /\blayer-\d+(?=\.tsrx)|\bLayer\d+\b/g;
 const HASHED = /_converted\/layers\/[0-9a-f]{16}\.html/g;
