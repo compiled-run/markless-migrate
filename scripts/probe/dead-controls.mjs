@@ -944,7 +944,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			}
 		}
 		if (PHASE === 'load' || (PLAN && !trials?.use?.length && !trials?.keyed?.length && !trials?.typed?.length)) {
-			appendFileSync(out, JSON.stringify({ route, engine: ENGINE, phase: PLAN ? 'plan' : 'load', tried, ms: Date.now() - started, motionMs, findings, controls: listed ?? [] }) + '\n');
+			appendFileSync(out, JSON.stringify({ route, engine: ENGINE, phase: PLAN ? 'plan' : 'load', tried, ms: Date.now() - started, motionMs: w.motionMs, findings, controls: listed ?? [] }) + '\n');
 			console.log(PLAN ? `${route}: nothing planned here` : `${route}: listed ${listed?.length ?? 0} controls in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 			continue;
 		}
