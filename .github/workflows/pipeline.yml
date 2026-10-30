@@ -1,0 +1,701 @@
+name: Pipeline
+
+# convert -> build -> check -> deploy of a port as one run, every stage keyed by content (scripts/pipeline.ts) so unchanged
+# work is read back from the run that did it:
+#   prepare   plan (kept under a key of the pinned old site and the planning code), each page's recording key, the emit keys
+#   capture   only the pages the recordings store has no recording of under their current key, sharded
+#   emit      the converted app from the run with the same emit key; when only copied parts/ files differ, that app with
+#             them copied again; otherwise convert from the store plus the new captures (the store is kept for the next run)
+#   build     the build from the run with the same build key (converted app, Markless commit, preset); else built here
+#   check     check.yml on only the routes whose shipped HTML and code changed (check --reuse keys, check-select below)
+#   deploy    deploy/cloudflare.sh: the build output check, a preview version, its live check, then the promote
+# Each job leaves a receipt (time, cache hit, counts); the report job puts them in one table with each stage's wall time.
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: The deploy/<site> folder whose ci-serve.sh serves the old site
+        required: true
+        default: shadcn-ui
+      app:
+        description: The port's folder, with a scripts/convert.sh that honours ONLY, PLAN_ONLY and CAPTURE_ONLY
+        required: true
+        default: examples/shadcn-ui-markless
+      markless:
+        description: The compiled-run/markless ref the build packs @markless/* from
+        required: false
+        default: main
+      routes:
+        description: A file in the repository of routes to convert, one a line (default every page plan finds)
+        required: false
+        default: ''
+      targets:
+        description: The `check --all --write-targets` file of the whole site
+        required: true
+        default: deploy/shadcn-ui/check-targets.json
+      capture-shards:
+        description: Runners the pages without a kept recording are split across
+        required: false
+        default: '24'
+      check-shards:
+        description: Runners the routes whose shipped code changed are split across
+        required: false
+        default: '24'
+      check-flags:
+        description: Extra check flags
+        required: false
+        default: ''
+      preset:
+        description: The Nitro preset the build uses (vercel is what ci-serve.sh serves today; cloudflare-module for a Cloudflare deploy)
+        required: false
+        default: vercel
+      app-url:
+        description: The public origin the pages name as their own (VITE_APP_URL)
+        required: false
+        default: ''
+      build-url:
+        description: A build made elsewhere (a .tar.gz URL, e.g. one the Mac built when a runner has too little memory), used instead of building
+        required: false
+        default: ''
+      fresh:
+        description: Read nothing back from earlier runs (a fresh run's timing)
+        type: boolean
+        default: false
+      deploy:
+        description: none, preview (upload and check a preview version), or promote (then deploy it)
+        required: false
+        default: none
+      worker:
+        description: The Cloudflare Worker a deploy uploads to
+        required: false
+        default: ''
+  # A change to the pipeline runs it on a few ui.shadcn.com pages, two runners a stage.
+  pull_request:
+    paths:
+      - .github/workflows/pipeline.yml
+      - scripts/pipeline.ts
+      - scripts/pipeline-artifact.sh
+      - scripts/check-select.ts
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SITE: ${{ inputs.site || 'shadcn-ui' }}
+  APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
+  ROUTES: ${{ github.event_name == 'pull_request' && 'deploy/shadcn-ui/convert-routes-subset.txt' || inputs.routes }}
+  TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
+  FRESH: ${{ inputs.fresh || false }}
+  PRESET: ${{ inputs.preset || 'vercel' }}
+  APP_URL: ${{ inputs.app-url }}
+  BUILD_URL: ${{ inputs.build-url }}
+  GH_TOKEN: ${{ github.token }}
+
+concurrency:
+  group: pipeline-${{ inputs.site || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      capture: ${{ steps.records.outputs.matrix }}
+      emit-key: ${{ steps.emit.outputs.key }}
+      emit-base: ${{ steps.emit.outputs.base }}
+      emit-run: ${{ steps.emit.outputs.run }}
+      store-run: ${{ steps.store.outputs.run }}
+      store-name: ${{ steps.store.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - name: Start the clock
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Find the plan
+        id: plan
+        run: |
+          set -euo pipefail
+          key=$(node scripts/pipeline.ts key plan "$SITE" "$APP" routes="$ROUTES")
+          run=""
+          [ "$FRESH" = true ] || run=$(bash scripts/pipeline-artifact.sh find "pl-$SITE-plan-$key")
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.plan.outputs.run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-plan-${{ steps.plan.outputs.key }}
+          run-id: ${{ steps.plan.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ env.APP }}/.migrate
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Keep the old site's build
+        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+      - name: Plan
+        if: steps.plan.outputs.run == ''
+        run: |
+          set -euo pipefail
+          t=$(date +%s)
+          PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan=made seconds=$(( $(date +%s) - t ))
+      - if: steps.plan.outputs.run != ''
+        run: node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan="kept (run ${{ steps.plan.outputs.run }})"
+      - if: steps.plan.outputs.run == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-plan-${{ steps.plan.outputs.key }}
+          path: ${{ env.APP }}/.migrate/*.json
+          retention-days: 90
+      - name: Find the recordings
+        id: store
+        run: |
+          run=""
+          # A store of some routes only is kept apart: its prune drops every other route's recordings.
+          name="pl-$SITE-recordings$([ -z "$ROUTES" ] || echo "-$(sha256sum "$ROUTES" | cut -c1-12)")"
+          [ "$FRESH" = true ] || run=$(bash scripts/pipeline-artifact.sh find "$name")
+          { echo "run=$run"; echo "name=$name"; } >> "$GITHUB_OUTPUT"
+      - if: steps.store.outputs.run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.store.outputs.name }}
+          run-id: ${{ steps.store.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/store-archive
+      - name: Key each page's recordings
+        id: records
+        env:
+          SHARDS: ${{ inputs.capture-shards || '2' }}
+        run: |
+          set -euo pipefail
+          inventory="$APP/.migrate/inventory.json"
+          if [ -n "$ROUTES" ]; then
+            node -e 'const fs=require("fs");const [inv,file]=process.argv.slice(1);const keep=new Set(fs.readFileSync(file,"utf8").split("\n").map(s=>s.trim()).filter(Boolean));const i=JSON.parse(fs.readFileSync(inv,"utf8"));i.routes=i.routes.filter(r=>keep.has(r.route));if(i.allRoutes)i.allRoutes=i.allRoutes.filter(r=>keep.has(r.route));fs.writeFileSync(inv+".only",JSON.stringify(i))' "$inventory" "$ROUTES"
+            inventory="$inventory.only"
+          fi
+          out="$RUNNER_TEMP/inputs"
+          mkdir -p "$out/state" "$out/all"
+          node scripts/convert-shards.ts split "$inventory" 1 "$out/all" > /dev/null
+          store="$RUNNER_TEMP/store"
+          mkdir -p "$store"
+          if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
+          t=$(date +%s)
+          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out")
+          echo "$result"
+          echo "matrix=$(node -p 'JSON.stringify(JSON.parse(process.argv[1]).matrix)' "$result")" >> "$GITHUB_OUTPUT"
+          echo "keys=$(node -p 'JSON.parse(process.argv[1]).keys' "$result")" >> "$GITHUB_OUTPUT"
+          cp "$APP"/.migrate/*.json "$out/state/"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "capture" $(node -p 'const r=JSON.parse(process.argv[1]);`pages=${r.pages} kept=${r.hits} to-record=${r.misses} shards=${r.matrix.length}${r.keyed?"":" keyed=no(recordings-not-keyed-on-this-commit)"}`' "$result") keying-seconds=$(( $(date +%s) - t ))
+      - name: Key the emit
+        id: emit
+        env:
+          PAGE_ORDER_FROM: https://mm-shadcn-ui-old.vercel.app
+        run: |
+          set -euo pipefail
+          git ls-files "$APP" > "$RUNNER_TEMP/app-files.txt"
+          values=(routes="$ROUTES" records="${{ steps.records.outputs.keys }}" plan="${{ steps.plan.outputs.key }}" state="$(cat "$APP"/.migrate/*.json | sha256sum | cut -c1-32)" page-order-from="$PAGE_ORDER_FROM")
+          key=$(node scripts/pipeline.ts key emit "$SITE" "$APP" "$RUNNER_TEMP/app-files.txt" "${values[@]}")
+          base=$(node scripts/pipeline.ts key emit-base "$SITE" "$APP" "$RUNNER_TEMP/app-files.txt" "${values[@]}")
+          run=""
+          [ "$FRESH" = true ] || run=$(bash scripts/pipeline-artifact.sh find "pl-$SITE-converted-$base")
+          { echo "key=$key"; echo "base=$base"; echo "run=$run"; } >> "$GITHUB_OUTPUT"
+          echo "$key" > "$RUNNER_TEMP/inputs/emit-key.txt"
+          if [ -n "$run" ]; then
+            node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" emit="converted app kept (run $run), so nothing is recorded"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pl-inputs
+          path: ${{ runner.temp }}/inputs
+          retention-days: 7
+      - if: always()
+        run: node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" seconds=$(( $(date +%s) - STARTED ))
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-receipts-prepare
+          path: ${{ runner.temp }}/receipts
+          if-no-files-found: ignore
+
+  capture:
+    needs: prepare
+    if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        shard: ${{ fromJSON(needs.prepare.outputs.capture) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: pl-inputs
+          path: ${{ runner.temp }}/inputs
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Capture
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          t=$(date +%s)
+          mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
+          env CAPTURE_ONLY=1 CONCURRENCY=3 ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
+          tail -n 15 "$RUNNER_TEMP/capture.txt"
+          rm -f "$APP/.migrate/convert/sources.json" "$APP/.migrate/convert/report.json"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") seconds=$(( $(date +%s) - t ))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pl-captures-${{ matrix.shard }}
+          path: ${{ env.APP }}/.migrate/convert
+          retention-days: 7
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-receipts-capture-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/receipts
+            ${{ runner.temp }}/capture.txt
+          if-no-files-found: ignore
+
+  emit:
+    needs: [prepare, capture]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start the clock
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pl-inputs
+          path: ${{ runner.temp }}/inputs
+      # The converted app of an earlier run with the same emit key, or one whose only difference is in copied parts/ files.
+      - if: needs.prepare.outputs.emit-run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
+          run-id: ${{ needs.prepare.outputs.emit-run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/converted
+      - if: needs.prepare.outputs.emit-run != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Take the kept converted app
+        if: needs.prepare.outputs.emit-run != ''
+        run: |
+          set -euo pipefail
+          tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
+          if [ "$(cat "$RUNNER_TEMP/converted/emit-key.txt")" = "${{ needs.prepare.outputs.emit-key }}" ]; then
+            how="kept (run ${{ needs.prepare.outputs.emit-run }})"
+          else
+            changed=$(node scripts/pipeline.ts refresh-parts "$APP" "$RUNNER_TEMP/converted/copied-parts.txt")
+            how="kept (run ${{ needs.prepare.outputs.emit-run }}), $changed copied parts files copied again"
+          fi
+          cp "$RUNNER_TEMP/converted/copied-parts.txt" "$RUNNER_TEMP/copied-parts.txt"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted="$how"
+      - if: needs.prepare.outputs.emit-run == ''
+        uses: ./.github/actions/setup
+      - if: needs.prepare.outputs.emit-run == ''
+        uses: oven-sh/setup-bun@v2
+      - if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.store-run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.store-name }}
+          run-id: ${{ needs.prepare.outputs.store-run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/store-archive
+      - if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-captures-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/captured
+      - name: Restore the old site's build
+        if: needs.prepare.outputs.emit-run == ''
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+      - name: Serve the old site
+        if: needs.prepare.outputs.emit-run == ''
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Convert
+        if: needs.prepare.outputs.emit-run == ''
+        run: |
+          set -euo pipefail
+          store="$APP/.migrate/convert"
+          mkdir -p "$store"
+          if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ] && [ "$FRESH" != true ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
+          if [ -d "$RUNNER_TEMP/captured" ]; then cp -R "$RUNNER_TEMP/captured/." "$store/"; fi
+          cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
+          only=""
+          [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/all/shard-1.txt"
+          t=$(date +%s)
+          /usr/bin/time -v env ONLY="$only" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
+          tail -n 30 "$RUNNER_TEMP/convert.txt"
+          node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted=made seconds=$(( $(date +%s) - t )) peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024 ))
+      - name: Keep the recordings for the next run
+        if: needs.prepare.outputs.emit-run == ''
+        run: |
+          set -euo pipefail
+          pruned=$(node scripts/pipeline.ts prune "$APP/.migrate/convert" "$RUNNER_TEMP/inputs/record-keys.json")
+          mkdir -p "$RUNNER_TEMP/store-out"
+          tar --zstd -cf "$RUNNER_TEMP/store-out/store.tar.zst" --exclude=./report.json -C "$APP/.migrate/convert" .
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit store="$(du -m "$RUNNER_TEMP/store-out/store.tar.zst" | cut -f1) MB, $(node -p 'const p=JSON.parse(process.argv[1]);`${p.kept} kept, ${p.dropped} dropped`' "$pruned")"
+      - if: needs.prepare.outputs.emit-run == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.store-name }}
+          path: ${{ runner.temp }}/store-out/store.tar.zst
+          compression-level: 0
+          retention-days: 30
+      - name: Pack the converted app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/out"
+          tar -czf "$RUNNER_TEMP/out/app.tar.gz" --exclude=node_modules --exclude=.migrate/convert -C "$APP" .
+          echo "${{ needs.prepare.outputs.emit-key }}" > "$RUNNER_TEMP/out/emit-key.txt"
+          cp "$RUNNER_TEMP/copied-parts.txt" "$RUNNER_TEMP/out/copied-parts.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
+          path: ${{ runner.temp }}/out
+          retention-days: 90
+      - if: always()
+        run: echo "{\"stage\":\"emit\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/emit.jsonl"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-receipts-emit
+          path: |
+            ${{ runner.temp }}/receipts
+            ${{ runner.temp }}/convert.txt
+          if-no-files-found: ignore
+
+  build:
+    needs: [prepare, emit]
+    if: ${{ !cancelled() && needs.emit.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      run: ${{ steps.key.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start the clock
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: compiled-run/markless
+          ref: ${{ inputs.markless || 'main' }}
+          path: markless
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
+          path: ${{ runner.temp }}/converted
+      - name: Key the build
+        id: key
+        run: |
+          set -euo pipefail
+          tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
+          sha=$(git -C markless rev-parse HEAD)
+          echo "MARKLESS_SHA=$sha" >> "$GITHUB_ENV"
+          key=$(node scripts/pipeline.ts key build "$SITE" "$APP" markless="$sha" preset="$PRESET" app-url="$APP_URL" node="$(node -v)")
+          run=""
+          if [ -n "$BUILD_URL" ]; then run=url; elif [ "$FRESH" != true ]; then run=$(bash scripts/pipeline-artifact.sh find "pl-$SITE-build-$key"); fi
+          { echo "key=$key"; echo "run=$run"; } >> "$GITHUB_OUTPUT"
+          if [ -n "$run" ]; then node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="kept ($([ "$run" = url ] && echo "$BUILD_URL" || echo "run $run"))" markless="${sha:0:9}"; fi
+      - name: Find Markless packed at this commit
+        id: packed
+        if: steps.key.outputs.run == ''
+        run: echo "run=$( [ "$FRESH" = true ] || bash scripts/pipeline-artifact.sh find "pl-markless-$MARKLESS_SHA")" >> "$GITHUB_OUTPUT"
+      - if: steps.key.outputs.run == '' && steps.packed.outputs.run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: pl-markless-${{ env.MARKLESS_SHA }}
+          run-id: ${{ steps.packed.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ env.APP }}/.markless-local
+      - if: steps.key.outputs.run == ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - if: steps.key.outputs.run == ''
+        run: pnpm install --frozen-lockfile
+      - name: Find the compile store
+        id: compile
+        if: steps.key.outputs.run == ''
+        run: echo "run=$( [ "$FRESH" = true ] || bash scripts/pipeline-artifact.sh find "pl-$SITE-compile-store")" >> "$GITHUB_OUTPUT"
+      - if: steps.key.outputs.run == '' && steps.compile.outputs.run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-compile-store
+          run-id: ${{ steps.compile.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/compile-store
+      - name: Link Markless
+        if: steps.key.outputs.run == ''
+        run: |
+          set -euo pipefail
+          t=$(date +%s)
+          if [ -n "${{ steps.packed.outputs.run }}" ]; then
+            node "$APP/scripts/link-markless.mjs" "$APP" "$APP/.markless-local" > "$RUNNER_TEMP/link.txt" 2>&1
+            (cd "$APP" && rm -rf node_modules/@markless && npm install --no-audit --no-fund) >> "$RUNNER_TEMP/link.txt" 2>&1 || { tail -n 60 "$RUNNER_TEMP/link.txt"; exit 1; }
+            how=kept
+          else
+            MARKLESS="$GITHUB_WORKSPACE/markless" bash "$APP/scripts/link-markless.sh" > "$RUNNER_TEMP/link.txt" 2>&1 || { tail -n 60 "$RUNNER_TEMP/link.txt"; exit 1; }
+            how=packed
+          fi
+          if [ -f "$RUNNER_TEMP/compile-store/store.tar" ]; then mkdir -p "$APP/node_modules/.vite" && tar -xf "$RUNNER_TEMP/compile-store/store.tar" -C "$APP/node_modules/.vite"; fi
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build markless="$how ${MARKLESS_SHA:0:9}" link-seconds=$(( $(date +%s) - t )) compile-store="$([ -f "$RUNNER_TEMP/compile-store/store.tar" ] && echo "run ${{ steps.compile.outputs.run }}" || echo none)"
+          echo "PACKED=$how" >> "$GITHUB_ENV"
+      - if: steps.key.outputs.run == '' && env.PACKED == 'packed'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-markless-${{ env.MARKLESS_SHA }}
+          path: ${{ env.APP }}/.markless-local/*.tgz
+          retention-days: 30
+      - name: Build
+        if: steps.key.outputs.run == ''
+        run: |
+          set -uo pipefail
+          cd "$APP"
+          node "$GITHUB_WORKSPACE/src/cli.ts" cache apply --prerender
+          (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
+          t=$(date +%s)
+          status=0
+          NITRO_PRESET="$PRESET" VITE_APP_URL="$APP_URL" NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          tail -n 30 "$RUNNER_TEMP/build.txt"
+          node "$GITHUB_WORKSPACE/scripts/pipeline.ts" receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="made, exit $status" seconds=$(( $(date +%s) - t )) runner-peak-mb=$(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) process-peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') / 1024 ))
+          if [ "$status" -ne 0 ] && grep -qiE 'heap out of memory|Killed|signal 9|ENOMEM' "$RUNNER_TEMP/build.txt"; then
+            echo "::error::The build ran out of memory on this 16 GB runner. Build it on the Mac (scripts/pipeline-mac-build.sh ${{ github.run_id }}) and run again with build-url set."
+          fi
+          exit "$status"
+      - name: Pack the build
+        if: steps.key.outputs.run == ''
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/out"
+          if [ -d "$APP/.vercel/output" ]; then tar -czf "$RUNNER_TEMP/out/output.tar.gz" -C "$APP" .vercel/output; else tar -czf "$RUNNER_TEMP/out/output.tar.gz" -C "$APP" .output; fi
+          if [ -d "$APP/node_modules/.vite/markless-compile" ]; then tar -cf "$RUNNER_TEMP/compile-store.tar" -C "$APP/node_modules/.vite" markless-compile; fi
+      - if: steps.key.outputs.run == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-build-${{ steps.key.outputs.key }}
+          path: ${{ runner.temp }}/out/output.tar.gz
+          compression-level: 0
+          retention-days: 30
+      - if: steps.key.outputs.run == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-compile-store
+          path: ${{ runner.temp }}/compile-store.tar
+          if-no-files-found: ignore
+          retention-days: 30
+      - if: always()
+        run: echo "{\"stage\":\"build\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/build.jsonl"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-receipts-build
+          path: |
+            ${{ runner.temp }}/receipts
+            ${{ runner.temp }}/build.txt
+          if-no-files-found: ignore
+
+  # Which routes ship what they shipped when last checked (check --reuse's key: NEW's HTML and the code each can run, the
+  # files it names, OLD's HTML, the checker's version): those reuse their result, and only the rest go to check's shards.
+  check-select:
+    needs: [build]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      shards: ${{ steps.select.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start the clock
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: oven-sh/setup-bun@v2
+      - name: Fetch the build
+        run: bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ needs.build.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
+      - name: Restore the old site's build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+      - run: bash "deploy/$SITE/ci-serve.sh" old
+      - run: bash "deploy/$SITE/ci-serve.sh" new "file://$RUNNER_TEMP/build/output.tar.gz"
+      - name: Restore results from earlier runs
+        if: env.FRESH != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.APP }}/.migrate/reuse
+          key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-reuse-${{ env.SITE }}-
+      - name: Select
+        id: select
+        env:
+          SHARDS: ${{ inputs.check-shards || '2' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/select/check-reused"
+          closures=$(find "$RUNNER_TEMP/new" -path '*/.markless/static/interaction-closures.json' | head -n 1)
+          t=$(date +%s)
+          result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select")
+          echo "$result"
+          to=$(node -p 'JSON.parse(process.argv[1]).check' "$result")
+          other=$(node -p 'JSON.parse(process.argv[1]).other' "$result")
+          shards=$(( to < SHARDS ? to : SHARDS ))
+          # Endpoints and redirects have no reuse key: they are checked every run, on one shard when no page is.
+          if [ "$shards" -eq 0 ] && [ "$other" -gt 0 ]; then shards=1; fi
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/check-select.jsonl" "check select" $(node -p 'const r=JSON.parse(process.argv[1]);`routes=${r.routes} reused=${r.reused} to-check=${r.check} endpoints-and-redirects=${r.other} unkeyed=${r.unkeyed}`' "$result") shards=$shards seconds=$(( $(date +%s) - t ))
+          { echo "#### Reused check results"; echo; node scripts/check-shards.ts merge "$RUNNER_TEMP/select/check-reused" "$RUNNER_TEMP/reused-merged" > /dev/null; head -n 1 "$RUNNER_TEMP/reused-merged/summary.md"; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pl-check-select
+          path: ${{ runner.temp }}/select
+      # Named like a check shard's artifact so check.yml's merge joins the reused results and keeps their entries for later runs.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check-reused
+          path: |
+            ${{ runner.temp }}/select/check-reused/report.json
+            ${{ env.APP }}/.migrate/reuse
+          if-no-files-found: warn
+      - if: always()
+        run: echo "{\"stage\":\"check select\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-receipts-check-select
+          path: ${{ runner.temp }}/receipts
+          if-no-files-found: ignore
+
+  check:
+    needs: [build, check-select]
+    if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
+    uses: ./.github/workflows/check.yml
+    with:
+      site: ${{ inputs.site || 'shadcn-ui' }}
+      app: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
+      targets: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
+      shards: ${{ needs.check-select.outputs.shards }}
+      flags: ${{ inputs.check-flags }}
+      build-artifact: pl-${{ inputs.site || 'shadcn-ui' }}-build-${{ needs.build.outputs.key }}
+      build-url: ${{ inputs.build-url }}
+      only-artifact: pl-check-select
+      reuse: ${{ inputs.fresh && 'false' || 'true' }}
+
+  deploy:
+    needs: [build, check]
+    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER: ${{ inputs.worker }}
+          MODE: ${{ inputs.deploy }}
+        run: |
+          set -euo pipefail
+          t=$(date +%s)
+          receipt() { node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/deploy.jsonl" deploy "$@"; }
+          if [ ! -f deploy/cloudflare.sh ]; then receipt deploy="not available: deploy/cloudflare.sh is not on this commit"; exit 0; fi
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$WORKER" ]; then receipt deploy="not available: no CLOUDFLARE_API_TOKEN secret or no worker input"; exit 0; fi
+          bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ needs.build.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
+          tar -xzf "$RUNNER_TEMP/build/output.tar.gz" -C "$APP"
+          PREVIEW=$([ "$MODE" = promote ] && echo '' || echo 1) bash deploy/cloudflare.sh port "$APP" "$WORKER" / /docs /blocks 2>&1 | tee "$RUNNER_TEMP/deploy.txt"
+          receipt deploy="$MODE" uploaded="$(grep -oE 'Uploaded [0-9]+ new or modified static assets?' "$RUNNER_TEMP/deploy.txt" | head -n 1 || true)" seconds=$(( $(date +%s) - t ))
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-receipts-deploy
+          path: ${{ runner.temp }}/receipts
+          if-no-files-found: ignore
+
+  report:
+    needs: [prepare, capture, emit, build, check-select, check, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pl-receipts-*
+          path: receipts
+      - name: Report
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq '.jobs[]' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const jobs=s.trim()?s.trim().split("\n").map(l=>JSON.parse(l)):[];process.stdout.write(JSON.stringify({jobs:jobs.filter(j=>j.name!=="report")}))})' > jobs.json
+          { echo "### $SITE pipeline"; echo; node scripts/pipeline.ts report receipts jobs.json; } | tee -a "$GITHUB_STEP_SUMMARY"
