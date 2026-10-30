@@ -299,7 +299,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
-      VERIFY: ${{ inputs.verify-emit || false }}
+      # A pull request's run proves a kept converted app (and its parts copied again) equal to a convert of the same inputs.
+      VERIFY: ${{ inputs.verify-emit || github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
