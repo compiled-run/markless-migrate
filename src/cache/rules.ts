@@ -80,7 +80,11 @@ export function cloudflareRules(routes: readonly RouteCaching[], options: Pick<R
 	return { routeRules };
 }
 
-/** The file a Cloudflare build serves a prerendered path from: `/guide` from guide.html, `/guide/` from guide/index.html. */
+/**
+ * The file a Cloudflare build serves a prerendered path from: `/guide` from guide.html, `/guide/` from guide/index.html,
+ * and `/page.html` from page.html (Cloudflare answers that URL with a redirect to `/page`, served from the same file).
+ */
 export function cloudflareAssetFile(path: string): string {
-	return path.endsWith('/') ? `${path.slice(1)}index.html` : `${path.slice(1)}.html`;
+	const decoded = decodeURIComponent(path);
+	return decoded.endsWith('/') ? `${decoded.slice(1)}index.html` : decoded.endsWith('.html') ? decoded.slice(1) : `${decoded.slice(1)}.html`;
 }

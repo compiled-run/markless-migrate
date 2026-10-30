@@ -59,6 +59,8 @@ async function cloudflare(): Promise<void> {
 	await prepare();
 	await rm(join(app, '.output'), { recursive: true, force: true });
 	run('npm', ['run', 'build'], app, { NITRO_PRESET: 'cloudflare-module' });
+	// The old site's Netlify _redirects, copied with its files, was never applied on Vercel; Cloudflare rejects its absolute targets.
+	await rm(join(app, '.output/public/_redirects'), { force: true });
 }
 
 // The old site as plain files for Cloudflare Workers static assets: the same build `old` writes for Vercel.

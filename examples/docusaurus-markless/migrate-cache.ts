@@ -5709,6 +5709,2869 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 	}
 };
 
+// Cloudflare has no ISR: these pages and their fragment URLs are built into files it serves without running the Worker.
+export const cloudflareRouteRules: Record<string, Record<string, unknown>> = {
+	"/": {
+		"prerender": true
+	},
+	"/_markless/fragment/": {
+		"prerender": true
+	},
+	"/__docusaurus/debug": {
+		"prerender": true
+	},
+	"/_markless/fragment/__docusaurus/debug": {
+		"prerender": true
+	},
+	"/__docusaurus/debug/content": {
+		"prerender": true
+	},
+	"/_markless/fragment/__docusaurus/debug/content": {
+		"prerender": true
+	},
+	"/__docusaurus/debug/globalData": {
+		"prerender": true
+	},
+	"/_markless/fragment/__docusaurus/debug/globalData": {
+		"prerender": true
+	},
+	"/__docusaurus/debug/metadata": {
+		"prerender": true
+	},
+	"/_markless/fragment/__docusaurus/debug/metadata": {
+		"prerender": true
+	},
+	"/__docusaurus/debug/registry": {
+		"prerender": true
+	},
+	"/_markless/fragment/__docusaurus/debug/registry": {
+		"prerender": true
+	},
+	"/__docusaurus/debug/routes": {
+		"prerender": true
+	},
+	"/_markless/fragment/__docusaurus/debug/routes": {
+		"prerender": true
+	},
+	"/blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog": {
+		"prerender": true
+	},
+	"/blog/2017/12/14/introducing-docusaurus": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2017/12/14/introducing-docusaurus": {
+		"prerender": true
+	},
+	"/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus": {
+		"prerender": true
+	},
+	"/blog/2018/09/11/Towards-Docusaurus-2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2018/09/11/Towards-Docusaurus-2": {
+		"prerender": true
+	},
+	"/blog/2018/12/14/Happy-First-Birthday-Slash": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2018/12/14/Happy-First-Birthday-Slash": {
+		"prerender": true
+	},
+	"/blog/2019/12/30/docusaurus-2019-recap": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2019/12/30/docusaurus-2019-recap": {
+		"prerender": true
+	},
+	"/blog/2020/01/07/tribute-to-endi": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2020/01/07/tribute-to-endi": {
+		"prerender": true
+	},
+	"/blog/2021/01/19/docusaurus-2020-recap": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2021/01/19/docusaurus-2020-recap": {
+		"prerender": true
+	},
+	"/blog/2021/03/09/releasing-docusaurus-i18n": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2021/03/09/releasing-docusaurus-i18n": {
+		"prerender": true
+	},
+	"/blog/2021/05/12/announcing-docusaurus-two-beta": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2021/05/12/announcing-docusaurus-two-beta": {
+		"prerender": true
+	},
+	"/blog/2021/11/21/algolia-docsearch-migration": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2021/11/21/algolia-docsearch-migration": {
+		"prerender": true
+	},
+	"/blog/2022/01/24/docusaurus-2021-recap": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2022/01/24/docusaurus-2021-recap": {
+		"prerender": true
+	},
+	"/blog/2022/08/01/announcing-docusaurus-2.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2022/08/01/announcing-docusaurus-2.0": {
+		"prerender": true
+	},
+	"/blog/2022/09/01/docusaurus-2.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/2022/09/01/docusaurus-2.1": {
+		"prerender": true
+	},
+	"/blog/archive": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/archive": {
+		"prerender": true
+	},
+	"/blog/authors": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors": {
+		"prerender": true
+	},
+	"/blog/authors/j-marcey": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/j-marcey": {
+		"prerender": true
+	},
+	"/blog/authors/josh-cena": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/josh-cena": {
+		"prerender": true
+	},
+	"/blog/authors/lex-111": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/lex-111": {
+		"prerender": true
+	},
+	"/blog/authors/slorber": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/slorber": {
+		"prerender": true
+	},
+	"/blog/authors/slorber/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/slorber/page/2": {
+		"prerender": true
+	},
+	"/blog/authors/slorber/page/3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/slorber/page/3": {
+		"prerender": true
+	},
+	"/blog/authors/slorber/page/4": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/slorber/page/4": {
+		"prerender": true
+	},
+	"/blog/authors/slorber/page/5": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/slorber/page/5": {
+		"prerender": true
+	},
+	"/blog/authors/yangshun": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/yangshun": {
+		"prerender": true
+	},
+	"/blog/authors/zpao": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/authors/zpao": {
+		"prerender": true
+	},
+	"/blog/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/page/2": {
+		"prerender": true
+	},
+	"/blog/page/3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/page/3": {
+		"prerender": true
+	},
+	"/blog/page/4": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/page/4": {
+		"prerender": true
+	},
+	"/blog/page/5": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/page/5": {
+		"prerender": true
+	},
+	"/blog/page/6": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/page/6": {
+		"prerender": true
+	},
+	"/blog/preparing-your-site-for-docusaurus-v3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/preparing-your-site-for-docusaurus-v3": {
+		"prerender": true
+	},
+	"/blog/releases/2.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/2.2": {
+		"prerender": true
+	},
+	"/blog/releases/2.3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/2.3": {
+		"prerender": true
+	},
+	"/blog/releases/2.4": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/2.4": {
+		"prerender": true
+	},
+	"/blog/releases/3.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.0": {
+		"prerender": true
+	},
+	"/blog/releases/3.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.1": {
+		"prerender": true
+	},
+	"/blog/releases/3.10": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.10": {
+		"prerender": true
+	},
+	"/blog/releases/3.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.2": {
+		"prerender": true
+	},
+	"/blog/releases/3.3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.3": {
+		"prerender": true
+	},
+	"/blog/releases/3.4": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.4": {
+		"prerender": true
+	},
+	"/blog/releases/3.5": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.5": {
+		"prerender": true
+	},
+	"/blog/releases/3.6": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.6": {
+		"prerender": true
+	},
+	"/blog/releases/3.7": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.7": {
+		"prerender": true
+	},
+	"/blog/releases/3.8": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.8": {
+		"prerender": true
+	},
+	"/blog/releases/3.9": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/releases/3.9": {
+		"prerender": true
+	},
+	"/blog/tags": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags": {
+		"prerender": true
+	},
+	"/blog/tags/adoption": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/adoption": {
+		"prerender": true
+	},
+	"/blog/tags/beta": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/beta": {
+		"prerender": true
+	},
+	"/blog/tags/birth": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/birth": {
+		"prerender": true
+	},
+	"/blog/tags/blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/blog": {
+		"prerender": true
+	},
+	"/blog/tags/documentation": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/documentation": {
+		"prerender": true
+	},
+	"/blog/tags/docusaurus": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/docusaurus": {
+		"prerender": true
+	},
+	"/blog/tags/endi": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/endi": {
+		"prerender": true
+	},
+	"/blog/tags/i-18-n": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/i-18-n": {
+		"prerender": true
+	},
+	"/blog/tags/maintenance": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/maintenance": {
+		"prerender": true
+	},
+	"/blog/tags/new": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/new": {
+		"prerender": true
+	},
+	"/blog/tags/profilo": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/profilo": {
+		"prerender": true
+	},
+	"/blog/tags/recap": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/recap": {
+		"prerender": true
+	},
+	"/blog/tags/release": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/release": {
+		"prerender": true
+	},
+	"/blog/tags/release/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/release/page/2": {
+		"prerender": true
+	},
+	"/blog/tags/release/page/3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/release/page/3": {
+		"prerender": true
+	},
+	"/blog/tags/release/page/4": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/release/page/4": {
+		"prerender": true
+	},
+	"/blog/tags/search": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/search": {
+		"prerender": true
+	},
+	"/blog/tags/tribute": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/tags/tribute": {
+		"prerender": true
+	},
+	"/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing": {
+		"prerender": true
+	},
+	"/changelog": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog": {
+		"prerender": true
+	},
+	"/changelog/2.0.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.19": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.19": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.20": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.20": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.21": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.21": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.22": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.22": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.23": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.23": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.24": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.24": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.25": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.25": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.26": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.26": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.27": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.27": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.28": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.28": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.29": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.29": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.30": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.30": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.31": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.31": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.32": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.32": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.33": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.33": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.34": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.34": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.35": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.35": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.36": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.36": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.37": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.37": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.38": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.38": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.39": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.39": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.40": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.40": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.41": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.41": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.43": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.43": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.44": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.44": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.48": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.48": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.49": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.49": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.50": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.50": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.51": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.51": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.53": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.53": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.54": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.54": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.55": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.55": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.56": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.56": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.57": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.57": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.58": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.58": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.59": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.59": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.60": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.60": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.61": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.61": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.62": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.62": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.63": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.63": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.64": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.64": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.65": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.65": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.66": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.66": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.67": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.67": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.68": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.68": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.69": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.69": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.70": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.70": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.71": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.71": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.72": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.72": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.73": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.73": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.74": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.74": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-alpha.75": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.75": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.0": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.1": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.10": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.10": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.11": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.11": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.12": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.12": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.13": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.13": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.14": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.14": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.15": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.15": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.16": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.16": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.17": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.17": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.18": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.18": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.19": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.19": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.2": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.20": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.20": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.21": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.21": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.22": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.22": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.3": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.3": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.4": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.4": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.5": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.5": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.6": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.6": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.7": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.7": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.8": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.8": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-beta.9": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.9": {
+		"prerender": true
+	},
+	"/changelog/2.0.0-rc.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.0-rc.1": {
+		"prerender": true
+	},
+	"/changelog/2.0.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.0.1": {
+		"prerender": true
+	},
+	"/changelog/2.1.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.1.0": {
+		"prerender": true
+	},
+	"/changelog/2.2.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.2.0": {
+		"prerender": true
+	},
+	"/changelog/2.3.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.3.0": {
+		"prerender": true
+	},
+	"/changelog/2.3.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.3.1": {
+		"prerender": true
+	},
+	"/changelog/2.4.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.4.0": {
+		"prerender": true
+	},
+	"/changelog/2.4.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.4.1": {
+		"prerender": true
+	},
+	"/changelog/2.4.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.4.2": {
+		"prerender": true
+	},
+	"/changelog/2.4.3": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/2.4.3": {
+		"prerender": true
+	},
+	"/changelog/3.0.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.0.0": {
+		"prerender": true
+	},
+	"/changelog/3.0.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.0.1": {
+		"prerender": true
+	},
+	"/changelog/3.1.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.1.0": {
+		"prerender": true
+	},
+	"/changelog/3.1.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.1.1": {
+		"prerender": true
+	},
+	"/changelog/3.10.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.10.0": {
+		"prerender": true
+	},
+	"/changelog/3.10.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.10.1": {
+		"prerender": true
+	},
+	"/changelog/3.10.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.10.2": {
+		"prerender": true
+	},
+	"/changelog/3.2.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.2.0": {
+		"prerender": true
+	},
+	"/changelog/3.2.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.2.1": {
+		"prerender": true
+	},
+	"/changelog/3.3.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.3.0": {
+		"prerender": true
+	},
+	"/changelog/3.3.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.3.1": {
+		"prerender": true
+	},
+	"/changelog/3.3.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.3.2": {
+		"prerender": true
+	},
+	"/changelog/3.4.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.4.0": {
+		"prerender": true
+	},
+	"/changelog/3.5.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.5.0": {
+		"prerender": true
+	},
+	"/changelog/3.5.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.5.1": {
+		"prerender": true
+	},
+	"/changelog/3.5.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.5.2": {
+		"prerender": true
+	},
+	"/changelog/3.6.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.6.0": {
+		"prerender": true
+	},
+	"/changelog/3.6.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.6.1": {
+		"prerender": true
+	},
+	"/changelog/3.6.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.6.2": {
+		"prerender": true
+	},
+	"/changelog/3.6.3": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.6.3": {
+		"prerender": true
+	},
+	"/changelog/3.7.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.7.0": {
+		"prerender": true
+	},
+	"/changelog/3.8.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.8.0": {
+		"prerender": true
+	},
+	"/changelog/3.8.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.8.1": {
+		"prerender": true
+	},
+	"/changelog/3.9.0": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.9.0": {
+		"prerender": true
+	},
+	"/changelog/3.9.1": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.9.1": {
+		"prerender": true
+	},
+	"/changelog/3.9.2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/3.9.2": {
+		"prerender": true
+	},
+	"/changelog/authors": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/authors": {
+		"prerender": true
+	},
+	"/changelog/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/page/2": {
+		"prerender": true
+	},
+	"/changelog/page/3": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/page/3": {
+		"prerender": true
+	},
+	"/changelog/page/4": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/page/4": {
+		"prerender": true
+	},
+	"/changelog/page/5": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/page/5": {
+		"prerender": true
+	},
+	"/changelog/page/6": {
+		"prerender": true
+	},
+	"/_markless/fragment/changelog/page/6": {
+		"prerender": true
+	},
+	"/community/canary": {
+		"prerender": true
+	},
+	"/_markless/fragment/community/canary": {
+		"prerender": true
+	},
+	"/community/contributing": {
+		"prerender": true
+	},
+	"/_markless/fragment/community/contributing": {
+		"prerender": true
+	},
+	"/community/release-process": {
+		"prerender": true
+	},
+	"/_markless/fragment/community/release-process": {
+		"prerender": true
+	},
+	"/community/resources": {
+		"prerender": true
+	},
+	"/_markless/fragment/community/resources": {
+		"prerender": true
+	},
+	"/community/support": {
+		"prerender": true
+	},
+	"/_markless/fragment/community/support": {
+		"prerender": true
+	},
+	"/community/team": {
+		"prerender": true
+	},
+	"/_markless/fragment/community/team": {
+		"prerender": true
+	},
+	"/docs": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs": {
+		"prerender": true
+	},
+	"/docs/advanced": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/advanced": {
+		"prerender": true
+	},
+	"/docs/advanced/architecture": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/advanced/architecture": {
+		"prerender": true
+	},
+	"/docs/advanced/client": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/advanced/client": {
+		"prerender": true
+	},
+	"/docs/advanced/plugins": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/advanced/plugins": {
+		"prerender": true
+	},
+	"/docs/advanced/routing": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/advanced/routing": {
+		"prerender": true
+	},
+	"/docs/advanced/ssg": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/advanced/ssg": {
+		"prerender": true
+	},
+	"/docs/api/docusaurus-config": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/docusaurus-config": {
+		"prerender": true
+	},
+	"/docs/api/misc/@docusaurus/eslint-plugin": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin": {
+		"prerender": true
+	},
+	"/docs/api/misc/@docusaurus/eslint-plugin/no-html-links": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/no-html-links": {
+		"prerender": true
+	},
+	"/docs/api/misc/@docusaurus/eslint-plugin/no-untranslated-text": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/no-untranslated-text": {
+		"prerender": true
+	},
+	"/docs/api/misc/@docusaurus/eslint-plugin/prefer-docusaurus-heading": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/prefer-docusaurus-heading": {
+		"prerender": true
+	},
+	"/docs/api/misc/@docusaurus/eslint-plugin/string-literal-i18n-messages": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/string-literal-i18n-messages": {
+		"prerender": true
+	},
+	"/docs/api/misc/@docusaurus/logger": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/logger": {
+		"prerender": true
+	},
+	"/docs/api/misc/create-docusaurus": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/misc/create-docusaurus": {
+		"prerender": true
+	},
+	"/docs/api/plugin-methods": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugin-methods": {
+		"prerender": true
+	},
+	"/docs/api/plugin-methods/extend-infrastructure": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugin-methods/extend-infrastructure": {
+		"prerender": true
+	},
+	"/docs/api/plugin-methods/i18n-lifecycles": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugin-methods/i18n-lifecycles": {
+		"prerender": true
+	},
+	"/docs/api/plugin-methods/lifecycle-apis": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugin-methods/lifecycle-apis": {
+		"prerender": true
+	},
+	"/docs/api/plugin-methods/static-methods": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugin-methods/static-methods": {
+		"prerender": true
+	},
+	"/docs/api/plugins": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-client-redirects": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-client-redirects": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-content-blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-content-blog": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-content-docs": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-content-docs": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-content-pages": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-content-pages": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-css-cascade-layers": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-css-cascade-layers": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-debug": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-debug": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-google-gtag": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-google-gtag": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-google-tag-manager": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-google-tag-manager": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-ideal-image": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-ideal-image": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-pwa": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-pwa": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-rsdoctor": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-rsdoctor": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-sitemap": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-sitemap": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-svgr": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-svgr": {
+		"prerender": true
+	},
+	"/docs/api/plugins/@docusaurus/plugin-vercel-analytics": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-vercel-analytics": {
+		"prerender": true
+	},
+	"/docs/api/themes": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/themes": {
+		"prerender": true
+	},
+	"/docs/api/themes/@docusaurus/theme-classic": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-classic": {
+		"prerender": true
+	},
+	"/docs/api/themes/@docusaurus/theme-live-codeblock": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-live-codeblock": {
+		"prerender": true
+	},
+	"/docs/api/themes/@docusaurus/theme-mermaid": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-mermaid": {
+		"prerender": true
+	},
+	"/docs/api/themes/@docusaurus/theme-search-algolia": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-search-algolia": {
+		"prerender": true
+	},
+	"/docs/api/themes/configuration": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/api/themes/configuration": {
+		"prerender": true
+	},
+	"/docs/blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/blog": {
+		"prerender": true
+	},
+	"/docs/browser-support": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/browser-support": {
+		"prerender": true
+	},
+	"/docs/category/getting-started": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/category/getting-started": {
+		"prerender": true
+	},
+	"/docs/category/guides": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/category/guides": {
+		"prerender": true
+	},
+	"/docs/category/miscellaneous": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/category/miscellaneous": {
+		"prerender": true
+	},
+	"/docs/cli": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/cli": {
+		"prerender": true
+	},
+	"/docs/configuration": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/configuration": {
+		"prerender": true
+	},
+	"/docs/create-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/create-doc": {
+		"prerender": true
+	},
+	"/docs/creating-pages": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/creating-pages": {
+		"prerender": true
+	},
+	"/docs/deployment": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/deployment": {
+		"prerender": true
+	},
+	"/docs/deployment/github-pages": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/deployment/github-pages": {
+		"prerender": true
+	},
+	"/docs/deployment/netlify": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/deployment/netlify": {
+		"prerender": true
+	},
+	"/docs/deployment/vercel": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/deployment/vercel": {
+		"prerender": true
+	},
+	"/docs/docs-introduction": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/docs-introduction": {
+		"prerender": true
+	},
+	"/docs/docs-multi-instance": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/docs-multi-instance": {
+		"prerender": true
+	},
+	"/docs/docusaurus-core": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/docusaurus-core": {
+		"prerender": true
+	},
+	"/docs/guides/whats-next": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/guides/whats-next": {
+		"prerender": true
+	},
+	"/docs/i18n/crowdin": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/i18n/crowdin": {
+		"prerender": true
+	},
+	"/docs/i18n/git": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/i18n/git": {
+		"prerender": true
+	},
+	"/docs/i18n/introduction": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/i18n/introduction": {
+		"prerender": true
+	},
+	"/docs/i18n/tutorial": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/i18n/tutorial": {
+		"prerender": true
+	},
+	"/docs/installation": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/installation": {
+		"prerender": true
+	},
+	"/docs/markdown-features": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features": {
+		"prerender": true
+	},
+	"/docs/markdown-features/admonitions": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/admonitions": {
+		"prerender": true
+	},
+	"/docs/markdown-features/assets": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/assets": {
+		"prerender": true
+	},
+	"/docs/markdown-features/code-blocks": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/code-blocks": {
+		"prerender": true
+	},
+	"/docs/markdown-features/diagrams": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/diagrams": {
+		"prerender": true
+	},
+	"/docs/markdown-features/head-metadata": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/head-metadata": {
+		"prerender": true
+	},
+	"/docs/markdown-features/links": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/links": {
+		"prerender": true
+	},
+	"/docs/markdown-features/math-equations": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/math-equations": {
+		"prerender": true
+	},
+	"/docs/markdown-features/plugins": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/plugins": {
+		"prerender": true
+	},
+	"/docs/markdown-features/react": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/react": {
+		"prerender": true
+	},
+	"/docs/markdown-features/tabs": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/tabs": {
+		"prerender": true
+	},
+	"/docs/markdown-features/toc": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/markdown-features/toc": {
+		"prerender": true
+	},
+	"/docs/migration": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/migration": {
+		"prerender": true
+	},
+	"/docs/migration/v3": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/migration/v3": {
+		"prerender": true
+	},
+	"/docs/playground": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/playground": {
+		"prerender": true
+	},
+	"/docs/search": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/search": {
+		"prerender": true
+	},
+	"/docs/seo": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/seo": {
+		"prerender": true
+	},
+	"/docs/sidebar": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/sidebar": {
+		"prerender": true
+	},
+	"/docs/sidebar/autogenerated": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/sidebar/autogenerated": {
+		"prerender": true
+	},
+	"/docs/sidebar/items": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/sidebar/items": {
+		"prerender": true
+	},
+	"/docs/sidebar/multiple-sidebars": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/sidebar/multiple-sidebars": {
+		"prerender": true
+	},
+	"/docs/static-assets": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/static-assets": {
+		"prerender": true
+	},
+	"/docs/styling-layout": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/styling-layout": {
+		"prerender": true
+	},
+	"/docs/swizzling": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/swizzling": {
+		"prerender": true
+	},
+	"/docs/typescript-support": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/typescript-support": {
+		"prerender": true
+	},
+	"/docs/using-plugins": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/using-plugins": {
+		"prerender": true
+	},
+	"/docs/versioning": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/versioning": {
+		"prerender": true
+	},
+	"/dogfooding/javadoc": {
+		"prerender": true
+	},
+	"/_markless/fragment/dogfooding/javadoc": {
+		"prerender": true
+	},
+	"/examples/markdownPageExample": {
+		"prerender": true
+	},
+	"/_markless/fragment/examples/markdownPageExample": {
+		"prerender": true
+	},
+	"/examples/noIndex": {
+		"prerender": true
+	},
+	"/_markless/fragment/examples/noIndex": {
+		"prerender": true
+	},
+	"/feature-requests": {
+		"prerender": true
+	},
+	"/_markless/fragment/feature-requests": {
+		"prerender": true
+	},
+	"/pure-html": {
+		"prerender": true
+	},
+	"/_markless/fragment/pure-html": {
+		"prerender": true
+	},
+	"/search": {
+		"prerender": true
+	},
+	"/_markless/fragment/search": {
+		"prerender": true
+	},
+	"/showcase": {
+		"prerender": true
+	},
+	"/_markless/fragment/showcase": {
+		"prerender": true
+	},
+	"/tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests": {
+		"prerender": true
+	},
+	"/tests/blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog": {
+		"prerender": true
+	},
+	"/tests/blog/2020/08/03/demo/second-blog-intro": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2020/08/03/demo/second-blog-intro": {
+		"prerender": true
+	},
+	"/tests/blog/2021/08/21/blog-post-toc-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/08/21/blog-post-toc-tests": {
+		"prerender": true
+	},
+	"/tests/blog/2021/08/22/no-author": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/08/22/no-author": {
+		"prerender": true
+	},
+	"/tests/blog/2021/08/23/multiple-authors": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/08/23/multiple-authors": {
+		"prerender": true
+	},
+	"/tests/blog/2021/09/13/dup-title": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/09/13/dup-title": {
+		"prerender": true
+	},
+	"/tests/blog/2021/10/07/blog-post-mdx-feed-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/10/07/blog-post-mdx-feed-tests": {
+		"prerender": true
+	},
+	"/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests": {
+		"prerender": true
+	},
+	"/tests/blog/2021/11/13/dup-title": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2021/11/13/dup-title": {
+		"prerender": true
+	},
+	"/tests/blog/2022/01/20/image-only-authors": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2022/01/20/image-only-authors": {
+		"prerender": true
+	},
+	"/tests/blog/2022/01/21/dup-footnote": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2022/01/21/dup-footnote": {
+		"prerender": true
+	},
+	"/tests/blog/2022/01/22/dup-footnote": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2022/01/22/dup-footnote": {
+		"prerender": true
+	},
+	"/tests/blog/2022/04/20/dup-footnote": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2022/04/20/dup-footnote": {
+		"prerender": true
+	},
+	"/tests/blog/2023/07/19/a": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2023/07/19/a": {
+		"prerender": true
+	},
+	"/tests/blog/2023/07/19/b": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2023/07/19/b": {
+		"prerender": true
+	},
+	"/tests/blog/2023/08/05": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2023/08/05": {
+		"prerender": true
+	},
+	"/tests/blog/2024/07/03/dual-author": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2024/07/03/dual-author": {
+		"prerender": true
+	},
+	"/tests/blog/2024/07/03/multiple-authors": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2024/07/03/multiple-authors": {
+		"prerender": true
+	},
+	"/tests/blog/2024/07/03/single-author": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/2024/07/03/single-author": {
+		"prerender": true
+	},
+	"/tests/blog/authors": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/authors": {
+		"prerender": true
+	},
+	"/tests/blog/authors/custom/ozaki/permalink": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/authors/custom/ozaki/permalink": {
+		"prerender": true
+	},
+	"/tests/blog/authors/slorber": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/authors/slorber": {
+		"prerender": true
+	},
+	"/tests/blog/authors/slorber/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/authors/slorber/page/2": {
+		"prerender": true
+	},
+	"/tests/blog/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/page/2": {
+		"prerender": true
+	},
+	"/tests/blog/page/3": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/page/3": {
+		"prerender": true
+	},
+	"/tests/blog/page/4": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/page/4": {
+		"prerender": true
+	},
+	"/tests/blog/page/5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/page/5": {
+		"prerender": true
+	},
+	"/tests/blog/page/6": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/page/6": {
+		"prerender": true
+	},
+	"/tests/blog/page/7": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/page/7": {
+		"prerender": true
+	},
+	"/tests/blog/tags": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags": {
+		"prerender": true
+	},
+	"/tests/blog/tags/blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/blog": {
+		"prerender": true
+	},
+	"/tests/blog/tags/blog/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/blog/page/2": {
+		"prerender": true
+	},
+	"/tests/blog/tags/docusaurus": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/docusaurus": {
+		"prerender": true
+	},
+	"/tests/blog/tags/docusaurus/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/docusaurus/page/2": {
+		"prerender": true
+	},
+	"/tests/blog/tags/long": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/long": {
+		"prerender": true
+	},
+	"/tests/blog/tags/long-long": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/long-long": {
+		"prerender": true
+	},
+	"/tests/blog/tags/long-long-long": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/long-long-long": {
+		"prerender": true
+	},
+	"/tests/blog/tags/long-long-long-long": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/long-long-long-long": {
+		"prerender": true
+	},
+	"/tests/blog/tags/long-long-long-long-long": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/long-long-long-long-long": {
+		"prerender": true
+	},
+	"/tests/blog/tags/paginated-tag": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag": {
+		"prerender": true
+	},
+	"/tests/blog/tags/paginated-tag/page/2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag/page/2": {
+		"prerender": true
+	},
+	"/tests/blog/tags/paginated-tag/page/3": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag/page/3": {
+		"prerender": true
+	},
+	"/tests/blog/tags/paginated-tag/page/4": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag/page/4": {
+		"prerender": true
+	},
+	"/tests/blog/tags/unlisted": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/unlisted": {
+		"prerender": true
+	},
+	"/tests/blog/tags/visibility": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/tags/visibility": {
+		"prerender": true
+	},
+	"/tests/blog/unlisted-post": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/unlisted-post": {
+		"prerender": true
+	},
+	"/tests/blog/x/y/z.html": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/blog/x/y/z.html": {
+		"prerender": true
+	},
+	"/tests/docs": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs": {
+		"prerender": true
+	},
+	"/tests/docs/category-links-generated-index-slug": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category-links-generated-index-slug": {
+		"prerender": true
+	},
+	"/tests/docs/category/alpha": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/alpha": {
+		"prerender": true
+	},
+	"/tests/docs/category/another-category-with-index": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/another-category-with-index": {
+		"prerender": true
+	},
+	"/tests/docs/category/beta": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/beta": {
+		"prerender": true
+	},
+	"/tests/docs/category/category-index-name-conflict": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/category-index-name-conflict": {
+		"prerender": true
+	},
+	"/tests/docs/category/category-index-name-conflict-2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/category-index-name-conflict-2": {
+		"prerender": true
+	},
+	"/tests/docs/category/categorylabeltest": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/categorylabeltest": {
+		"prerender": true
+	},
+	"/tests/docs/category/categorylabeltest-1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/categorylabeltest-1": {
+		"prerender": true
+	},
+	"/tests/docs/category/conflicts": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/conflicts": {
+		"prerender": true
+	},
+	"/tests/docs/category/file-name-conflict": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/file-name-conflict": {
+		"prerender": true
+	},
+	"/tests/docs/category/sidebar-display": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/sidebar-display": {
+		"prerender": true
+	},
+	"/tests/docs/category/sidebar-item-description-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/sidebar-item-description-tests": {
+		"prerender": true
+	},
+	"/tests/docs/category/tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/category/tests": {
+		"prerender": true
+	},
+	"/tests/docs/doc-with-another-sidebar": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/doc-with-another-sidebar": {
+		"prerender": true
+	},
+	"/tests/docs/doc-with-complex-description": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/doc-with-complex-description": {
+		"prerender": true
+	},
+	"/tests/docs/doc-with-last-update": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/doc-with-last-update": {
+		"prerender": true
+	},
+	"/tests/docs/doc-without-sidebar": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/doc-without-sidebar": {
+		"prerender": true
+	},
+	"/tests/docs/dummy.html": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/dummy.html": {
+		"prerender": true
+	},
+	"/tests/docs/folder%20with%20space/doc%201": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/folder%20with%20space/doc%201": {
+		"prerender": true
+	},
+	"/tests/docs/folder%20with%20space/doc%202": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/folder%20with%20space/doc%202": {
+		"prerender": true
+	},
+	"/tests/docs/more-test": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/more-test": {
+		"prerender": true
+	},
+	"/tests/docs/standalone": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/standalone": {
+		"prerender": true
+	},
+	"/tests/docs/tags": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags": {
+		"prerender": true
+	},
+	"/tests/docs/tags/a": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/a": {
+		"prerender": true
+	},
+	"/tests/docs/tags/b": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/b": {
+		"prerender": true
+	},
+	"/tests/docs/tags/d": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/d": {
+		"prerender": true
+	},
+	"/tests/docs/tags/listed": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/listed": {
+		"prerender": true
+	},
+	"/tests/docs/tags/permalink-for-tag-c": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/permalink-for-tag-c": {
+		"prerender": true
+	},
+	"/tests/docs/tags/permalink-for-tag-e": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/permalink-for-tag-e": {
+		"prerender": true
+	},
+	"/tests/docs/tags/some-tag": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/some-tag": {
+		"prerender": true
+	},
+	"/tests/docs/tags/unlisted": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/unlisted": {
+		"prerender": true
+	},
+	"/tests/docs/tags/visibility": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tags/visibility": {
+		"prerender": true
+	},
+	"/tests/docs/tests/admonitions": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/admonitions": {
+		"prerender": true
+	},
+	"/tests/docs/tests/ascii/%C3%A6%C3%B8%C3%A5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/ascii/%C3%A6%C3%B8%C3%A5": {
+		"prerender": true
+	},
+	"/tests/docs/tests/ascii/folder/%C3%A6%C3%B8%C3%A5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/ascii/folder/%C3%A6%C3%B8%C3%A5": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Case-Sentitive-Doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Case-Sentitive-Doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/custom-index-convention/intro": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/custom-index-convention/intro": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/custom-index-convention/sample-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/custom-index-convention/sample-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/no-index-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/no-index-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/no-index-doc/sample-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/no-index-doc/sample-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/no-subdoc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/no-subdoc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/regular-category/sample-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/regular-category/sample-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/with-category-name-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-category-name-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/with-category-name-doc/sample-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-category-name-doc/sample-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/with-index-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-index-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/with-index-doc/sample-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-index-doc/sample-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/with-readme-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-readme-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/category-links/with-readme-doc/sample-doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-readme-doc/sample-doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/category-index-name-2/alpha/test": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/alpha/test": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/category-index-name-2/beta/test": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/beta/test": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/category-index-name/alpha/test": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name/alpha/test": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/category-index-name/beta/test": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name/beta/test": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/file-name/file-name-1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/file-name/file-name-1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/file-name/file-name-2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/file-name/file-name-2": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/sidebar-label/doc1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/sidebar-label/doc1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/Conflicts/sidebar-label/doc2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/sidebar-label/doc2": {
+		"prerender": true
+	},
+	"/tests/docs/tests/footnotes": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/footnotes": {
+		"prerender": true
+	},
+	"/tests/docs/tests/images": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/images": {
+		"prerender": true
+	},
+	"/tests/docs/tests/import-bad-package": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/import-bad-package": {
+		"prerender": true
+	},
+	"/tests/docs/tests/links/broken-anchors-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/links/broken-anchors-tests": {
+		"prerender": true
+	},
+	"/tests/docs/tests/links/resolution": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/links/resolution": {
+		"prerender": true
+	},
+	"/tests/docs/tests/links/target-doc-slug": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/links/target-doc-slug": {
+		"prerender": true
+	},
+	"/tests/docs/tests/links/test-markdown-links": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/links/test-markdown-links": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-display/Category%202%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long/doc1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-display/Category%202%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long/doc1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc2%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc2%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-frontmatter": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label": {
+		"prerender": true
+	},
+	"/tests/docs/tests/sidebar-frontmatter/doc-without": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-without": {
+		"prerender": true
+	},
+	"/tests/docs/tests/toc-partials": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/toc-partials": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/force-unlisted": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/force-unlisted": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/only-unlisteds/unlisted1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/only-unlisteds/unlisted1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/only-unlisteds/unlisted2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/only-unlisteds/unlisted2": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/some-unlisteds/unlisted1": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted1": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/some-unlisteds/unlisted2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted2": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/unlisted-except-index": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/unlisted-except-index": {
+		"prerender": true
+	},
+	"/tests/docs/tests/visibility/unlisted-except-index/unlisted2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/unlisted-except-index/unlisted2": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-_-_": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-_-_": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-_-5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-_-5": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-2-2": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-2": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-2-3": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-3": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-2-4": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-4": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-2-5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-5": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-3-_": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-3-_": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-3-5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-3-5": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-4-5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-4-5": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-5-5": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-5-5": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-test-bad": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-test-bad": {
+		"prerender": true
+	},
+	"/tests/docs/toc/toc-test-good": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/docs/toc/toc-test-good": {
+		"prerender": true
+	},
+	"/tests/pages": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages": {
+		"prerender": true
+	},
+	"/tests/pages/analytics": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/analytics": {
+		"prerender": true
+	},
+	"/tests/pages/code-block-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/code-block-tests": {
+		"prerender": true
+	},
+	"/tests/pages/crashTest": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/crashTest": {
+		"prerender": true
+	},
+	"/tests/pages/diagrams": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/diagrams": {
+		"prerender": true
+	},
+	"/tests/pages/embeds": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/embeds": {
+		"prerender": true
+	},
+	"/tests/pages/error-boundary-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/error-boundary-tests": {
+		"prerender": true
+	},
+	"/tests/pages/head-metadata": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/head-metadata": {
+		"prerender": true
+	},
+	"/tests/pages/history-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/history-tests": {
+		"prerender": true
+	},
+	"/tests/pages/hydration-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/hydration-tests": {
+		"prerender": true
+	},
+	"/tests/pages/ideal-image": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/ideal-image": {
+		"prerender": true
+	},
+	"/tests/pages/import-attributes": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/import-attributes": {
+		"prerender": true
+	},
+	"/tests/pages/link-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/link-tests": {
+		"prerender": true
+	},
+	"/tests/pages/linking": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/linking": {
+		"prerender": true
+	},
+	"/tests/pages/linking/nested/page-b": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/linking/nested/page-b": {
+		"prerender": true
+	},
+	"/tests/pages/linking/page-a": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/linking/page-a": {
+		"prerender": true
+	},
+	"/tests/pages/live-playground-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/live-playground-tests": {
+		"prerender": true
+	},
+	"/tests/pages/markdown-tests-md": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/markdown-tests-md": {
+		"prerender": true
+	},
+	"/tests/pages/markdown-tests-mdx": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/markdown-tests-mdx": {
+		"prerender": true
+	},
+	"/tests/pages/my-custom/unlisted/slug": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/my-custom/unlisted/slug": {
+		"prerender": true
+	},
+	"/tests/pages/new-url-assets": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/new-url-assets": {
+		"prerender": true
+	},
+	"/tests/pages/page-toc-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/page-toc-tests": {
+		"prerender": true
+	},
+	"/tests/pages/style-isolation": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/style-isolation": {
+		"prerender": true
+	},
+	"/tests/pages/suspense-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/suspense-tests": {
+		"prerender": true
+	},
+	"/tests/pages/svg": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/svg": {
+		"prerender": true
+	},
+	"/tests/pages/tabs-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/tabs-tests": {
+		"prerender": true
+	},
+	"/tests/pages/z-index-tests": {
+		"prerender": true
+	},
+	"/_markless/fragment/tests/pages/z-index-tests": {
+		"prerender": true
+	},
+	"/versions": {
+		"prerender": true
+	},
+	"/_markless/fragment/versions": {
+		"prerender": true
+	},
+	"/sidebars/default-api.cb1d39bc1d.json": {
+		"headers": {
+			"cache-control": "public, max-age=31536000, immutable"
+		}
+	},
+	"/sidebars/default-docs.69825f086e.json": {
+		"headers": {
+			"cache-control": "public, max-age=31536000, immutable"
+		}
+	},
+	"/sidebars/docs-tests-sidebar.571da0f39b.json": {
+		"headers": {
+			"cache-control": "public, max-age=31536000, immutable"
+		}
+	}
+};
+
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
 interface NitroLike {
@@ -5745,10 +8608,11 @@ export function applyRules(nitro: NitroLike): void {
 	nitro.hooks?.hook('compiled', () => prerenderFallbacks(nitro));
 	const rules = nitro.options.routeRules;
 	const proxied = (path: string) => Boolean(rules[path]?.proxy);
-	for (const [path, rule] of Object.entries(routeRules)) {
+	const own = String(nitro.options.preset ?? '').startsWith('cloudflare') ? cloudflareRouteRules : routeRules;
+	for (const [path, rule] of Object.entries(own)) {
 		if (proxied(path)) continue;
-		const own = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
-		rules[path] = { ...own, ...structuredClone(rule), ...(rule.headers || own.headers ? { headers: { ...(own.headers as object), ...(rule.headers as object) } } : {}) };
+		const kept = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
+		rules[path] = { ...kept, ...structuredClone(rule), ...(rule.headers || kept.headers ? { headers: { ...(kept.headers as object), ...(rule.headers as object) } } : {}) };
 	}
 }
 

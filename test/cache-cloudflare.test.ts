@@ -40,6 +40,8 @@ test('a prerendered path is the file Cloudflare serves at that exact URL', () =>
 	assert.equal(cloudflareAssetFile('/guide/'), 'guide/index.html');
 	assert.equal(cloudflareAssetFile('/_markless/fragment/'), '_markless/fragment/index.html');
 	assert.equal(cloudflareAssetFile('/_markless/fragment/guide'), '_markless/fragment/guide.html');
+	assert.equal(cloudflareAssetFile('/docs/folder%20with%20space/doc%201'), 'docs/folder with space/doc 1.html');
+	assert.equal(cloudflareAssetFile('/docs/dummy.html'), 'docs/dummy.html');
 });
 
 test('the generated plugin applies the Cloudflare rules under a cloudflare preset and the Vercel rules otherwise', async () => {
