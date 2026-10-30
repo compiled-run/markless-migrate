@@ -23,6 +23,7 @@ tar -xzf "$(find "$WORK/converted" -name app.tar.gz | head -n 1)" -C "$APP"
 (cd "$APP" && MARKLESS="$WORK/markless" HEAVY_GB=10 "$HEAVY" bash scripts/link-markless.sh)
 (cd "$APP" && node "$WORK/migrate/src/cli.ts" cache apply --prerender)
 (cd "$APP" && HEAVY_GB=32 NITRO_PRESET="${PRESET:-vercel}" VITE_APP_URL="${APP_URL:-}" NODE_OPTIONS=--max-old-space-size=20000 "$HEAVY" npm run build)
+if [ -n "${APP_URL:-}" ] && grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.vercel/output" "$APP/.output/public" 2>/dev/null; then echo 'FAIL: pages link v0 to a hostless URL' >&2; exit 1; fi
 if [ -d "$APP/.vercel/output" ]; then tar -czf "$WORK/output.tar.gz" -C "$APP" .vercel/output; else tar -czf "$WORK/output.tar.gz" -C "$APP" .output; fi
 asset="$SITE-$RUN-$(git -C "$WORK/markless" rev-parse --short=9 HEAD).tar.gz"
 cp "$WORK/output.tar.gz" "$WORK/$asset"

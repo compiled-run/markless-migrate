@@ -43,7 +43,8 @@ case "${1:-}" in
 			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		elif [ -f "$dest/.output/server/wrangler.json" ]; then
 			# A cloudflare-module build runs in workerd, as Workers runs it, with no account and nothing sent to Cloudflare.
-			(cd "$dest/.output/server" && nohup npx --yes wrangler@4.156.0 dev --config wrangler.json --ip 127.0.0.1 --port 3000 --local --show-interactive-dev-session=false > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+			# Local workerd holds a compressed streamed response until it ends, where the edge flushes it: late @pending arms show late here.
+			(cd "$dest/.output/server" && CI=1 WRANGLER_SEND_METRICS=false nohup npx --yes wrangler@4.156.0 dev --config wrangler.json --ip 127.0.0.1 --port 3000 --local --show-interactive-dev-session=false > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		else
 			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		fi
