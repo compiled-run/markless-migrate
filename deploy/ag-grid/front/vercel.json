@@ -22,15 +22,15 @@
 		},
 		{
 			"source": "/",
-			"destination": "https://mm-ag-grid-old.long-wildflower-ecf7.workers.dev/"
+			"destination": "https://mm-ag-grid-old.vercel.app/"
 		},
 		{
 			"source": "/:path*/",
-			"destination": "https://mm-ag-grid-old.long-wildflower-ecf7.workers.dev/:path*/"
+			"destination": "https://mm-ag-grid-old.vercel.app/:path*/"
 		},
 		{
 			"source": "/:path*",
-			"destination": "https://mm-ag-grid-old.long-wildflower-ecf7.workers.dev/:path*"
+			"destination": "https://mm-ag-grid-old.vercel.app/:path*"
 		}
 	]
 }
