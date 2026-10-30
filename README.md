@@ -842,14 +842,13 @@ not serve.
 
 ## Demo
 
-A real migration you can open: the Vite fixture deployed as the old app, its Markless port as the new
-one, and the report between them.
+A real migration you can open: vite.dev's homepage and docs, with switched routes from the Markless port
+and the rest from the original, at https://markless-migrate-demo.vercel.app (`deploy/vite-dev/deploy.sh front`).
+Its index is `/_migrate/`, the report `/_migrate/report.html`.
 
-- Front door: https://markless-migrate-demo.vercel.app, switched routes from the new app and the rest from the old
-  one (`markless-migrate config --vercel`); the demo's index is `/_migrate/`, the report `/_migrate/report.html`
-- Old app: https://migrate-demo-old.vercel.app, new app: https://migrate-demo-new.vercel.app, CMS: https://migrate-demo-cms.vercel.app
-
-`examples/` holds both apps and the CMS; `deploy/deploy.sh cms|old|new|front` builds and deploys each.
+The Vite fixture in `examples/` (`vite-site-old`, its port `vite-site-markless` at https://migrate-demo-new.vercel.app,
+and the CMS both read at https://migrate-demo-cms.vercel.app) is no longer hosted as a pair: run the old app with
+`npm start` in `examples/vite-site-old`. `deploy/deploy.sh cms|old|new|front` still builds and deploys each.
 `examples/MIGRATION-LOG.md` records every agent attempt and every problem found on the way.
 
 ## Development

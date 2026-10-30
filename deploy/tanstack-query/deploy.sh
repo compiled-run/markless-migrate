@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build and deploy one kitchen-sink demo project to Vercel production: deploy/tanstack-query/deploy.sh old|new|front
+# Not hosted since 2026-10-30: the mm-tanstack-query-old and mm-tanstack-query projects were deleted. Run `old` then `front` to bring them back; checks serve the old app locally (serve-old.ts).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCOPE=jack-shelton

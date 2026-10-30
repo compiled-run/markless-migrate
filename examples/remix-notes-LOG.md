@@ -14,7 +14,7 @@ and signed in), with 2 accepted kinds of difference (14 accepted failures, liste
 | What | URL |
 | --- | --- |
 | Front door (all checked routes switched to the new app) | https://mm-remix-notes.vercel.app, index and demo login at `/_migrate/`, report at `/_migrate/report.html` |
-| Old app (Remix, source unchanged) | https://mm-remix-notes-old.vercel.app |
+| Old app (Remix, source unchanged) | https://mm-remix-notes-old.vercel.app (taken down 2026-10-30; serve it locally with `deploy/remix-notes/local.sh old`) |
 | New app (Markless) | https://mm-remix-notes-new.vercel.app |
 
 Demo login: `rachel@remix.run` / `racheliscool` (the stack's seed user), or sign up with any email and a password of

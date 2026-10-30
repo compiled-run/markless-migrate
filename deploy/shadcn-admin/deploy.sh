@@ -3,6 +3,7 @@
 # old:   the old app's own Vite build (fetch-old.sh) as a static site with its SPA fallback, as mm-shadcn-admin-old.
 # new:   examples/shadcn-admin-markless with the Vercel preset, as mm-shadcn-admin-new.
 # front: the vercel.json `markless-migrate config --vercel` writes plus the check report at /_migrate/, as mm-shadcn-admin.
+# Not hosted since 2026-10-30: the mm-shadcn-admin-old and mm-shadcn-admin projects were deleted. Run `old` then `front` to bring them back; checks serve the old app locally (serve-old.ts).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."

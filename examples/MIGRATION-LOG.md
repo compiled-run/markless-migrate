@@ -9,7 +9,7 @@ the tool or the stack had on the way.
 | What | URL | Built from |
 | --- | --- | --- |
 | Front door | https://markless-migrate-demo.vercel.app (index at `/_migrate/`, report at `/_migrate/report.html`) | `deploy/front`: the `vercel.json` that `markless-migrate config --vercel` writes |
-| Old app | https://migrate-demo-old.vercel.app | `examples/vite-site-old`, its `serve.ts` as one Vercel function |
+| Old app | https://migrate-demo-old.vercel.app (taken down 2026-10-30; serve it locally with `npm start` in examples/vite-site-old) | `examples/vite-site-old`, its `serve.ts` as one Vercel function |
 | New app | https://migrate-demo-new.vercel.app | `examples/vite-site-markless`, `NITRO_PRESET=vercel` |
 | CMS | https://migrate-demo-cms.vercel.app | `examples/cms/server.ts` as one Vercel function |
 

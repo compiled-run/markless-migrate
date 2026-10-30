@@ -14,7 +14,7 @@ GET handler writes.
 | What | URL |
 | --- | --- |
 | Front door (all checked routes switched to the new app) | https://mm-next-dashboard.vercel.app, index and demo login at `/_migrate/`, report at `/_migrate/report.html` |
-| Old app (Next.js, source unchanged) | https://mm-next-dashboard-old.vercel.app |
+| Old app (Next.js, source unchanged) | https://mm-next-dashboard-old.vercel.app (taken down 2026-10-30; serve it locally with `deploy/next-dashboard/local.sh old`) |
 | New app (Markless) | https://mm-next-dashboard-new.vercel.app |
 
 Demo login: `user@nextmail.com` / `123456` (the course's seed user). The two apps share the Auth.js session format

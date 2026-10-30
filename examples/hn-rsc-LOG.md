@@ -22,7 +22,7 @@ merged, one left to another worker's PR that does the same (#147).
 
 | What | URL |
 | --- | --- |
-| Old app (Next.js, source unchanged, built on Vercel) | https://mm-hn-rsc-old.vercel.app |
+| Old app (Next.js, source unchanged, built on Vercel) | https://mm-hn-rsc-old.vercel.app (taken down 2026-10-30; build the pinned clone its deploy script makes and run `next start`) |
 | New app (Markless) | https://mm-hn-rsc-new.vercel.app |
 
 `deploy/hn-rsc/deploy.sh old|new` builds and deploys each; `new` builds in a copy (`deploy/hn-rsc/.build-new`) so a

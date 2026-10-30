@@ -3,6 +3,7 @@
 # old:   a copy of old-app (source unchanged) plus a seeded in-function Postgres, built on Vercel, as mm-next-dashboard-old.
 # new:   examples/next-dashboard-markless with the Vercel preset and the same in-function Postgres, as mm-next-dashboard-new.
 # front: the vercel.json `markless-migrate config --vercel` writes plus the report and demo index at /_migrate/, as mm-next-dashboard.
+# Not hosted since 2026-10-30: the mm-next-dashboard-old and mm-next-dashboard projects were deleted. Run `old` then `front` to bring them back; checks serve the old app locally (local.sh old).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."

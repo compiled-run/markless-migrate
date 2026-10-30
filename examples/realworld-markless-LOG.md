@@ -121,9 +121,9 @@ both apps send the editor to `/`. Kept in `deploy/realworld/accepted.json` (a co
 | What | URL |
 | --- | --- |
 | Front door (index with the demo logins, and the report, at `/_migrate/`) | https://mm-realworld.vercel.app |
-| Old app (Angular build) | https://mm-realworld-old.vercel.app |
+| Old app (Angular build) | https://mm-realworld-old.vercel.app (taken down 2026-10-30; serve it locally with `node deploy/realworld/serve-old.ts`) |
 | New app (Markless, Nitro on Vercel) | https://mm-realworld-new.vercel.app |
-| Backend (the upstream Nitro API as a Vercel function) | https://mm-realworld-api.vercel.app |
+| Backend (the upstream Nitro API as a Vercel function) | https://mm-realworld-api.vercel.app (taken down 2026-10-30; run the upstream app in mm-upstreams/nitro-prisma-zod-realworld-example-app) |
 
 `deploy/realworld/deploy.sh api|old|new|front` builds and deploys each. The backend copies the seeded SQLite file
 to `/tmp` when a function instance starts, so writes last as long as that instance does and a cold start resets
