@@ -146,16 +146,16 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 	return found.map(({ selector, ...c }) => ({ ...c, ...(listed.has(selector) ? { extra: true } : {}) }));
 }
 
-async function bodyHash(page: Page): Promise<string> {
-	return page.evaluate(() => {
+async function bodyHash(page: Page, normal = false): Promise<string> {
+	return page.evaluate((normal) => {
 		let h = 0;
 		// A scroll lock lifted leaves an empty style attribute behind, which shows nothing.
 		const body = document.body.cloneNode(true) as HTMLElement;
-		for (const el of [body, ...body.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
+		if (normal) for (const el of [body, ...body.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
 		const text = body.outerHTML;
 		for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
 		return String(h);
-	});
+	}, normal);
 }
 
 /** Uses one control and records the subtrees its use added to the page. */
@@ -333,7 +333,20 @@ const expandedState = () =>
 		return [path.join('.'), el.getAttribute('aria-expanded')!] as const;
 	});
 
-async function undo(page: Page, previous: number[] | undefined, baseline: string, expanded: readonly (readonly [string, string])[] = []): Promise<boolean> {
+/**
+ * Puts the page back after a use: `same` when it is as loaded once the use is undone, `restored` when it took more (focus
+ * dropped, an empty style attribute, an accordion item pressed back) and the page is then left as a fresh load would be, at
+ * the scroll the load had; false when it differs still.
+ */
+async function undo(page: Page, previous: number[] | undefined, open: Open): Promise<'same' | 'restored' | false> {
+	const restored = await undoMore(page, previous, open);
+	if (restored !== 'restored') return restored;
+	await page.evaluate(([x, y]) => window.scrollTo(x, y), open.scroll ?? [0, 0]).catch(() => {});
+	await quiet(page, 250);
+	return 'restored';
+}
+
+async function undoMore(page: Page, previous: number[] | undefined, open: Open): Promise<'same' | 'restored' | false> {
 	if (previous) {
 		await page
 			.evaluate((path) => {
@@ -347,12 +360,15 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 		await page.mouse.move(1, 1).catch(() => {});
 	}
 	await quiet(page, 250);
-	if ((await bodyHash(page)) === baseline) return true;
+	if ((await bodyHash(page)) === open.baseline) return 'same';
+	if (!open.normal) return false;
+	const back = async () => (await bodyHash(page, true).catch(() => undefined)) === open.normal;
+	if (await back()) return 'restored';
 	// A closed layer hands focus back to its trigger, which a fresh load has not focused (React Aria marks it data-focused).
 	const blur = () => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement !== document.body && (document.activeElement.blur(), true)).catch(() => false);
 	if (await blur()) {
 		await quiet(page, 250);
-		if ((await bodyHash(page)) === baseline) return true;
+		if (await back()) return 'restored';
 	}
 	// A disclosure the gesture opened or closed that Escape does not undo (an accordion item; the one a single accordion
 	// closed) is pressed back to how the page loaded it.
@@ -372,13 +388,13 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 				}
 			}
 			return n;
-		}, expanded)
+		}, open.expanded ?? [])
 		.catch(() => 0);
 	if (!pressed) return false;
 	await quiet(page, 250);
 	await blur();
 	await quiet(page, 250);
-	return (await bodyHash(page)) === baseline;
+	return (await back()) ? 'restored' : false;
 }
 
 /** Whether a settled document holds a dialog open at load (Radix data-state="open", Base UI data-open). */
@@ -395,17 +411,17 @@ async function fresh(browser: Browser, origin: string, route: string, viewport: 
 		await page.keyboard.press('Escape');
 		await quiet(page, 300);
 	}
-	return { context, page, baseline: await bodyHash(page), expanded: await page.evaluate(expandedState) };
+	return { context, page, baseline: await bodyHash(page), normal: await bodyHash(page, true), expanded: await page.evaluate(expandedState), scroll: await page.evaluate(() => [scrollX, scrollY] as const) };
 }
 
-type Open = { context: BrowserContext; page: Page; baseline: string; expanded?: readonly (readonly [string, string])[] };
+type Open = { context: BrowserContext; page: Page; baseline: string; normal?: string; expanded?: readonly (readonly [string, string])[]; scroll?: readonly [number, number] };
 
 /** Uses one candidate the way captureReveals does, then puts the page back (loading it again when using the control left it changed). */
 async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
 	const previous = await selectedSibling(open.page, candidate.path);
 	const raw = await reveal(open.page, candidate);
 	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
-	if (!(await undo(open.page, previous, open.baseline, open.expanded))) {
+	if (!(await undo(open.page, previous, open))) {
 		await open.context.close().catch(() => {});
 		open = await again();
 	}
