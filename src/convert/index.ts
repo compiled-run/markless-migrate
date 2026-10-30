@@ -1268,6 +1268,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
 				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens, loadDialog }));
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
+				for (const why of own.skipped.filter((s) => s.startsWith('the route: '))) log(`  controls on ${route} not used: ${why.slice('the route: '.length)}`);
 				await scenesRead;
 				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
 			}
