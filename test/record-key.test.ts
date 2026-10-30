@@ -5,14 +5,24 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { oldPageKey, RecordDirs } from '../src/convert/record-key.ts';
+import { recordKey, recorderVersions, RecordDirs } from '../src/convert/record-key.ts';
 
-test("an old page's key ignores the order its head's tags were streamed in, and nothing else", () => {
+test("a route's key ignores the order its old page's head tags were streamed in, and nothing else", () => {
+	const v = { converter: 'c', probe: 'p' };
 	const page = (head: string, body = '<p>x</p>') => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
-	assert.equal(oldPageKey(200, page('<meta name="a"/><meta name="b"/><title>T</title>')), oldPageKey(200, page('<title>T</title><meta name="b"/><meta name="a"/>')));
-	assert.notEqual(oldPageKey(200, page('<meta name="a"/>')), oldPageKey(200, page('<meta name="c"/>')));
-	assert.notEqual(oldPageKey(200, page('')), oldPageKey(200, page('', '<p>y</p>')));
-	assert.notEqual(oldPageKey(200, page('')), oldPageKey(404, page('')));
+	assert.equal(recordKey(v, '/', 200, page('<meta name="a"/><meta name="b"/><title>T</title>')), recordKey(v, '/', 200, page('<title>T</title><meta name="b"/><meta name="a"/>')));
+	assert.notEqual(recordKey(v, '/', 200, page('<meta name="a"/>')), recordKey(v, '/', 200, page('<meta name="c"/>')));
+	assert.notEqual(recordKey(v, '/', 200, page('')), recordKey(v, '/', 200, page('', '<p>y</p>')));
+	assert.notEqual(recordKey(v, '/', 200, page('')), recordKey(v, '/', 404, page('')));
+	assert.notEqual(recordKey(v, '/', 200, page('')), recordKey(v, '/b', 200, page('')));
+	assert.notEqual(recordKey(v, '/', 200, page('')), recordKey({ ...v, converter: 'd' }, '/', 200, page('')), 'another recorder records again');
+});
+
+test("the recorder's versions are the recording version, the converter's and probe's code, and playwright's version", async () => {
+	const v = await recorderVersions();
+	assert.deepEqual(Object.keys(v).sort(), ['converter', 'playwright', 'probe', 'recording']);
+	assert.match(v.converter!, /^[0-9a-f]{16}$/);
+	assert.match(v.probe!, /^[0-9a-f]{16}$/);
 });
 
 test('a cache from before keys is read where it is for the pages as they are now; once saved, a changed page gets a directory of its own', async () => {

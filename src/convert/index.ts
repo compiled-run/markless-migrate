@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
-import { fetchOldPageKey, RecordDirs } from './record-key.ts';
+import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
@@ -1216,10 +1216,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const reading = limiter(width * 2);
 		// Each route's recordings are kept under a key made from its old page as the server sends it (record-key.ts).
 		const dirs = await RecordDirs.open(join(state, 'convert'));
+		const recorder = await recorderVersions();
 		const sources = new Map<string, Promise<string>>();
 		const atFor = async (route: string, kind: string): Promise<string> => {
 			let source = sources.get(route);
-			if (!source) sources.set(route, (source = fetchOldPageKey(options.old, route)));
+			if (!source) sources.set(route, (source = fetchRecordKey(recorder, options.old, route)));
 			return dirs.dir(route, await source, kind);
 		};
 		const reveal = options.reveal !== false;

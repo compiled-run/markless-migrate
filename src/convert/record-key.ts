@@ -1,29 +1,69 @@
-// Where a route's recordings (captures, reveals, choices, toggles...) are kept: under a key made from the old page as its
-// server sends it, so a page that changed is recorded again and one that did not is read back, whatever ran in between.
+// Where a route's recordings (captures, reveals, choices, toggles...) are kept: under a key of the old page as its server
+// sends it and of the code that records, in check's reuse key scheme, so only a changed page or recorder records again.
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, relative, resolve } from 'node:path';
+import { reuseKey } from '../check/ship-key.ts';
 
-/** Bump when what every recording observes changes; each capture's own version and marks cover narrower changes. */
-export const RECORDING_VERSION = 1;
+/** Bump when what every recording observes changes in code the recorder versions do not cover (the convert's orchestration). */
+export const RECORDING_VERSION = 2;
 
 // Next.js streams the head: the same page can come with its meta tags in another order.
 const HEAD = /<head\b[^>]*>([\s\S]*?)<\/head>/i;
 const TAGS = /<(?:meta|link|title|script|style)\b[\s\S]*?(?:<\/(?:title|script|style)>|\/?>)/gi;
 
-/** The key of an old page: its server HTML, the head's tags in any order, and the recording version. */
-export function oldPageKey(status: number, html: string): string {
+/** The old page as the key reads it: its status and server HTML, the head's tags in any order. */
+export function oldPageSource(status: number, html: string): string {
 	const head = HEAD.exec(html);
 	const normal = head ? html.replace(head[1]!, [...head[1]!.matchAll(TAGS)].map((m) => m[0]).sort().join('')) : html;
-	return createHash('sha256').update(`${RECORDING_VERSION}\n${status}\n${normal}`).digest('hex').slice(0, 16);
+	return `${status}\n${normal}`;
 }
 
-/** The old page's key, from one plain request for it (no browser): what its recordings are kept under. */
-export async function fetchOldPageKey(origin: string, route: string, headers: Readonly<Record<string, string>> = {}): Promise<string> {
+/** The key of a route's recordings: the recorder's versions, the route and its old page. */
+export function recordKey(versions: Readonly<Record<string, string>>, route: string, status: number, html: string): string {
+	return reuseKey(versions, [`record ${route}\n`, oldPageSource(status, html)]);
+}
+
+const IMPORTS = /(?:import|export)\s[^'"]*?from\s+'(\.[^']+)'|import\('(\.[^']+)'\)/g;
+const SRC = resolve(import.meta.dirname, '..');
+
+/**
+ * The code that records, by content: `converter` is every convert module that drives a browser (index.ts, which only
+ * orchestrates, aside) and what it imports within the converter and parts/; `probe` is each module it imports from
+ * elsewhere in src/ (check's browser, capture and settle helpers); `playwright` the driver's version.
+ */
+export async function recorderVersions(): Promise<Record<string, string>> {
+	const dir = import.meta.dirname;
+	const entries: string[] = [];
+	for (const name of (await readdir(dir)).sort()) if (name.endsWith('.ts') && name !== 'index.ts' && /from 'playwright'/.test(await readFile(join(dir, name), 'utf8'))) entries.push(join(dir, name));
+	const converter = new Set<string>();
+	const probe = new Set<string>();
+	const visit = async (file: string): Promise<void> => {
+		if (converter.has(file)) return;
+		converter.add(file);
+		for (const m of (await readFile(file, 'utf8')).matchAll(IMPORTS)) {
+			const to = resolve(dirname(file), m[1] ?? m[2]!);
+			if (!existsSync(to)) continue;
+			if (to.startsWith(dir) || !to.startsWith(SRC)) await visit(to);
+			else probe.add(to);
+		}
+	};
+	for (const entry of entries) await visit(entry);
+	const digest = async (files: Set<string>) => {
+		const hash = createHash('sha256');
+		for (const file of [...files].sort()) hash.update(`${relative(SRC, file)}\n`).update(await readFile(file));
+		return hash.digest('hex').slice(0, 16);
+	};
+	return { recording: String(RECORDING_VERSION), converter: await digest(converter), probe: await digest(probe), playwright: String(createRequire(import.meta.url)('playwright/package.json').version) };
+}
+
+/** The key of a route's recordings, from one plain request for its old page (no browser). */
+export async function fetchRecordKey(versions: Readonly<Record<string, string>>, origin: string, route: string, headers: Readonly<Record<string, string>> = {}): Promise<string> {
 	try {
 		const response = await fetch(new URL(route, origin), { headers: { ...headers }, redirect: 'manual' });
-		return oldPageKey(response.status, await response.text());
+		return recordKey(versions, route, response.status, await response.text());
 	} catch (error) {
 		// Unknown: recorded again, never read back.
 		return `unreachable-${createHash('sha256').update(String(error) + Date.now()).digest('hex').slice(0, 8)}`;
