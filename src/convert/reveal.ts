@@ -357,17 +357,26 @@ async function fresh(browser: Browser, origin: string, route: string, viewport: 
 
 type Open = { context: BrowserContext; page: Page; baseline: string };
 
-/** Uses one candidate the way captureReveals does, then puts the page back (loading it again when using the control left it changed). */
-async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
-	const previous = await selectedSibling(open.page, candidate.path);
-	const raw = await reveal(open.page, candidate);
-	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
-	if (!(await undo(open.page, previous, open.baseline))) {
-		await open.context.close().catch(() => {});
-		open = await again();
+/** Uses one candidate the way captureReveals does, then puts the page back; `clean` is false when it could not, and the page must be loaded again. */
+async function useCandidate(open: Open, candidate: Candidate): Promise<{ added: Revealed[] | string; clean: boolean }> {
+	try {
+		const previous = await selectedSibling(open.page, candidate.path);
+		const raw = await reveal(open.page, candidate);
+		const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
+		return { added, clean: await undo(open.page, previous, open.baseline) };
+	} catch (error) {
+		return { added: `could not use it: ${(error as Error).message.split('\n')[0]}`, clean: false };
 	}
-	return { added, open };
 }
+
+/** A new load of the route, tried once more when it fails: a pass keeps what it took so far only if it can go on. */
+async function reload(open: Open, load: () => Promise<Open>): Promise<Open> {
+	await open.context.close().catch(() => {});
+	return load().catch(() => load());
+}
+
+/** The candidate found on a page loaded since `of` was found there: by its own key, else by what it is and its place among its likes. */
+const foundAgain = (found: readonly Candidate[], of: Candidate): Candidate | undefined => (of.key.startsWith('p:') ? undefined : found.find((c) => c.key === of.key && c.action === of.action)) ?? found.find((c) => c.sig === of.sig && c.nth === of.nth && c.action === of.action);
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
 export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
@@ -392,14 +401,25 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		// A control another viewport could not show is the only reason to load the page again at this one.
 		if (!hidden) break;
 		hidden = false;
-		let open = await fresh(browser, origin, route, viewport, pass.dismiss);
+		const load = () => fresh(browser, origin, route, viewport, pass.dismiss);
+		let open = await load();
 		try {
 			const found = await candidates(open.page, extra, pass.controls);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
-			for (const candidate of found) {
-				if (!candidate.visible || done.has(candidate.key)) continue;
-				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport, pass.dismiss));
-				open = used.open;
+			// A page loaded again can lay itself out differently, so each control is found again on it rather than reached by its old path.
+			let current = found;
+			for (const first of found) {
+				if (!first.visible || done.has(first.key)) continue;
+				const candidate = current === found ? first : foundAgain(current, first);
+				if (!candidate?.visible) {
+					skipped.push(`${first.key} (${viewport.name}): not found on the page loaded again`);
+					continue;
+				}
+				const used = await useCandidate(open, candidate);
+				if (!used.clean) {
+					open = await reload(open, load);
+					current = await candidates(open.page, extra, pass.controls);
+				}
 				const added = used.added;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
 				else {
@@ -422,14 +442,18 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 async function retake(browser: Browser, origin: string, route: string, stale: readonly Reveal[], extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[], viewports: readonly Viewport[], dismiss = false): Promise<Map<Reveal, Reveal>> {
 	const out = new Map<Reveal, Reveal>();
 	for (const viewport of viewports.filter((v) => stale.some((r) => r.viewport === v.name))) {
-		let open = await fresh(browser, origin, route, viewport, dismiss);
+		const load = () => fresh(browser, origin, route, viewport, dismiss);
+		let open = await load();
 		try {
-			const found = await candidates(open.page, extra, controls);
+			let found = await candidates(open.page, extra, controls);
 			for (const old of stale.filter((r) => r.viewport === viewport.name)) {
 				const candidate = found.find((c) => c.key === old.key && c.action === old.action) ?? found.find((c) => c.sig === old.sig && c.nth === old.nth && c.action === old.action);
 				if (!candidate?.visible) continue;
-				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport, dismiss));
-				open = used.open;
+				const used = await useCandidate(open, candidate);
+				if (!used.clean) {
+					open = await reload(open, load);
+					found = await candidates(open.page, extra, controls);
+				}
 				if (typeof used.added !== 'string' && used.added.length) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added });
 			}
 		} finally {
