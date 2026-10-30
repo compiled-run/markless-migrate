@@ -37,7 +37,7 @@ const SRC = resolve(import.meta.dirname, '..');
 export async function recorderVersions(): Promise<Record<string, string>> {
 	const dir = import.meta.dirname;
 	const entries: string[] = [];
-	for (const name of (await readdir(dir)).sort()) if (name.endsWith('.ts') && name !== 'index.ts' && /from 'playwright'/.test(await readFile(join(dir, name), 'utf8'))) entries.push(join(dir, name));
+	for (const name of (await readdir(dir)).sort()) if (name.endsWith('.ts') && name !== 'index.ts' && /^import\b[^;]*from 'playwright'/m.test(await readFile(join(dir, name), 'utf8'))) entries.push(join(dir, name));
 	const converter = new Set<string>();
 	const probe = new Set<string>();
 	const visit = async (file: string): Promise<void> => {
