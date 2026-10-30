@@ -57,6 +57,10 @@ on:
         description: A build made elsewhere (a .tar.gz URL, e.g. one the Mac built when a runner has too little memory), used instead of building
         required: false
         default: ''
+      build-on:
+        description: runner (this workflow builds), or mac (it stops after emit; scripts/pipeline-mac-build.sh <run> builds and runs it again)
+        required: false
+        default: runner
       fresh:
         description: Read nothing back from earlier runs (a fresh run's timing)
         type: boolean
@@ -458,6 +462,9 @@ jobs:
           path: ${{ runner.temp }}/converted
       - name: Key the build
         id: key
+        env:
+          BUILD_ON: ${{ inputs.build-on || 'runner' }}
+          MARKLESS_REF: ${{ inputs.markless || 'main' }}
         run: |
           set -euo pipefail
           tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
@@ -466,8 +473,13 @@ jobs:
           key=$(node scripts/pipeline.ts key build "$SITE" "$APP" markless="$sha" preset="$PRESET" app-url="$APP_URL" node="$(node -v)")
           run=""
           if [ -n "$BUILD_URL" ]; then run=url; elif [ "$FRESH" != true ]; then run=$(bash scripts/pipeline-artifact.sh find "pl-$SITE-build-$key"); fi
+          if [ -z "$run" ] && [ "$BUILD_ON" = mac ]; then
+            run=mac
+            echo "::notice::Build on the Mac: scripts/pipeline-mac-build.sh $GITHUB_RUN_ID $MARKLESS_REF (with PRESET=$PRESET APP_URL=$APP_URL)"
+            node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="left to the Mac (scripts/pipeline-mac-build.sh $GITHUB_RUN_ID)"
+          fi
           { echo "key=$key"; echo "run=$run"; } >> "$GITHUB_OUTPUT"
-          if [ -n "$run" ]; then node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="kept ($([ "$run" = url ] && echo "$BUILD_URL" || echo "run $run"))" markless="${sha:0:9}"; fi
+          if [ -n "$run" ] && [ "$run" != mac ]; then node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="kept ($([ "$run" = url ] && echo "$BUILD_URL" || echo "run $run"))" markless="${sha:0:9}"; fi
       - name: Find Markless packed at this commit
         id: packed
         if: steps.key.outputs.run == ''
@@ -572,7 +584,7 @@ jobs:
   # files it names, OLD's HTML, the checker's version): those reuse their result, and only the rest go to check's shards.
   check-select:
     needs: [build]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.run != 'mac' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -667,7 +679,7 @@ jobs:
 
   deploy:
     needs: [build, check]
-    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
+    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
