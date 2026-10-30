@@ -320,7 +320,7 @@ function collapseStyle(el: HTMLElement, collapsed: boolean): void {
 }
 // useCollapseAnimation: each toggle cancels the frame the previous one scheduled, and the transition's end applies
 // the state the element has then, whichever toggle started it.
-type Collapsing = { collapsed: boolean; frame?: number; done?: () => void; running?: boolean };
+type Collapsing = { collapsed: boolean; frame?: number; done?: () => void; running?: boolean; from?: number; start?: number; duration?: number };
 const collapsibles = new WeakMap<HTMLElement, Collapsing>();
 function animateCollapsible(el: HTMLElement, collapsed: boolean, done?: () => void): void {
 	let state = collapsibles.get(el);
@@ -344,7 +344,10 @@ function animateCollapsible(el: HTMLElement, collapsed: boolean, done?: () => vo
 	el.style.willChange = 'height';
 	const transition = () => {
 		const height = el.scrollHeight;
-		el.style.transition = `height ${heightDuration(height)}ms ease-in-out`;
+		current.duration = heightDuration(height);
+		current.from = collapsed ? height : 0;
+		current.start = performance.now();
+		el.style.transition = `height ${current.duration}ms ease-in-out`;
 		el.style.height = `${height}px`;
 		current.running = true;
 	};
@@ -363,18 +366,36 @@ function animateCollapsible(el: HTMLElement, collapsed: boolean, done?: () => vo
 	});
 }
 
-// A sidebar taken out of the page and put back mid-transition (a navigation) never finishes it: it runs again.
+// A sidebar taken out of the page and put back mid-transition (a navigation) never finishes it: it carries on from
+// where it was for the time it had left, and one that has run its time ends where it was going.
+const easeInOut = (t: number) => {
+	let x = t;
+	for (let i = 0; i < 8; i++) {
+		const error = 3 * 0.42 * x * (1 - x) ** 2 + 3 * 0.58 * x ** 2 * (1 - x) + x ** 3 - t;
+		const slope = 3 * 0.42 * (1 - x) ** 2 + 6 * 0.16 * x * (1 - x) + 3 * 0.42 * x ** 2;
+		if (Math.abs(error) < 1e-4) break;
+		x -= error / slope;
+	}
+	return 3 * x ** 2 * (1 - x) + x ** 3;
+};
 function resumeCollapsibles(root: Element): void {
 	for (const el of root.querySelectorAll<HTMLElement>('ul.menu__list')) {
 		const state = collapsibles.get(el);
 		if (!state?.running) continue;
-		const to = state.collapsed ? '0px' : `${el.scrollHeight}px`;
-		const transition = el.style.transition;
+		const elapsed = performance.now() - (state.start ?? 0);
+		const duration = state.duration ?? 0;
+		if (elapsed >= duration) {
+			state.running = false;
+			collapseStyle(el, state.collapsed);
+			continue;
+		}
+		const to = state.collapsed ? 0 : el.scrollHeight;
+		const from = state.from ?? 0;
 		el.style.transition = 'none';
-		el.style.height = state.collapsed ? `${el.scrollHeight}px` : '0px';
+		el.style.height = `${from + (to - from) * easeInOut(elapsed / duration)}px`;
 		void el.offsetHeight;
-		el.style.transition = transition;
-		requestAnimationFrame(() => (el.style.height = to));
+		el.style.transition = `height ${Math.round(duration - elapsed)}ms ease-out`;
+		el.style.height = `${to}px`;
 	}
 }
 
@@ -503,6 +524,9 @@ function levelOf(li: Element): number {
 // The doc sidebar stays mounted while the reader moves between the pages it lists: the next page gets the same
 // sidebar element back (its open categories, scroll offset and running transitions), with the active link moved.
 const sidebarMemory: { key?: string; aside?: Element; hidden: boolean } = { hidden: false };
+// The router morphs a kept element into the next page's server markup but never matches elements whose ids differ,
+// so this id makes it put the next page's sidebar in place of this one, which restoreSidebar swaps back.
+const KEPT_SIDEBAR_ID = 'mm-kept-docs-sidebar';
 const desktopSidebarKey = () => hint(document.querySelector('aside.theme-doc-sidebar-container'), 'sidebar');
 function restoreSidebar(): void {
 	const aside = document.querySelector('aside.theme-doc-sidebar-container') ?? undefined;
@@ -511,6 +535,7 @@ function restoreSidebar(): void {
 	if (!aside || key !== sidebarMemory.key || !kept || kept === aside || isMobile() || !kept.querySelector('nav[aria-label="Docs sidebar"]')) {
 		sidebarMemory.key = key;
 		sidebarMemory.aside = aside;
+		if (aside) aside.id = KEPT_SIDEBAR_ID;
 		if (kept !== aside) sidebarMemory.hidden = false;
 		return;
 	}
@@ -621,15 +646,17 @@ function setCategory(item: Element, collapse: boolean, animate = true): void {
 	if (animate) animateCollapsible(list, collapse);
 	else collapseStyle(list, collapse);
 }
-function toggleCategory(item: Element, loaded = false): void {
-	if (!loaded && !sidebarOf(item) && !item.querySelector(':scope > ul.menu__list')) return void loadSidebar(desktopSidebarKey()).then(() => toggleCategory(item, true));
-	const collapse = !item.classList.contains('menu__list-item--collapsed');
+// updateCollapsed: opening a category closes its open siblings (autoCollapseCategories); a link to another category's
+// page opens it that way even when it is open already.
+function toggleCategory(item: Element, loaded = false, open = false): void {
+	if (!loaded && !sidebarOf(item) && !item.querySelector(':scope > ul.menu__list')) return void loadSidebar(desktopSidebarKey()).then(() => toggleCategory(item, true, open));
+	const collapse = !open && !item.classList.contains('menu__list-item--collapsed');
 	if (!collapse && autoCollapse) {
 		for (const sibling of item.parentElement?.children ?? []) {
 			if (sibling !== item && sibling.matches('li.theme-doc-sidebar-item-category:not(.menu__list-item--collapsed)') && sibling.querySelector(':scope > .menu__list-item-collapsible > button.menu__caret, :scope > .menu__list-item-collapsible > a[role=button]')) setCategory(sibling, true);
 		}
 	}
-	setCategory(item, collapse);
+	if (collapse || item.classList.contains('menu__list-item--collapsed')) setCategory(item, collapse);
 }
 const autoCollapse = true;
 
@@ -1247,7 +1274,7 @@ function siteClick(event: Event): void {
 			if (!hasHref || samePath(categoryLink.getAttribute('href') ?? undefined, currentPath())) {
 				event.preventDefault();
 				toggleCategory(item);
-			} else if (item.classList.contains('menu__list-item--collapsed')) toggleCategory(item);
+			} else toggleCategory(item, false, true);
 		}
 		if (drawer && hasHref) toggleDrawer(false);
 		return;
