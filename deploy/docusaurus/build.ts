@@ -46,12 +46,28 @@ async function old(): Promise<void> {
 
 // The new app is built from the old site's sources by its importer (pages, head data, and the files it copies),
 // then by Markless.
-async function next(): Promise<void> {
+async function prepare(): Promise<void> {
 	run(process.execPath, ['tooling/import.mjs'], app, { DOCUSAURUS_WEBSITE: website });
 	// The caching plan (caching.json here, from cache plan) goes into the app before every build.
 	await mkdir(join(app, '.migrate'), { recursive: true });
 	await cp(join(root, 'caching.json'), join(app, '.migrate/caching.json'));
 	run(process.execPath, [join(root, '../../src/cli.ts'), 'cache', 'apply'], app);
+}
+
+// The port as a Cloudflare Worker: .output, each cached page and fragment a file Cloudflare serves at its URL.
+async function cloudflare(): Promise<void> {
+	await prepare();
+	await rm(join(app, '.output'), { recursive: true, force: true });
+	run('npm', ['run', 'build'], app, { NITRO_PRESET: 'cloudflare-module' });
+}
+
+// The old site as plain files for Cloudflare Workers static assets: the same build `old` writes for Vercel.
+async function cloudflareOld(): Promise<void> {
+	await old();
+}
+
+async function next(): Promise<void> {
+	await prepare();
 	run('npm', ['run', 'build'], app, { NITRO_PRESET: 'vercel' });
 	// The old host's own rule for the site's static HTML files, `/x` serves `x.html` (or `x/index.html`), one route per file: a
 	// catch-all `/$1.html` rewrite runs before Nitro's ISR routes and sends every page past them to the uncached function.
@@ -85,7 +101,7 @@ async function front(): Promise<void> {
 	run('vercel', ['build', '--prod', '--yes'], dir);
 }
 
-const targets: Record<string, () => Promise<void>> = { old, new: next, front };
+const targets: Record<string, () => Promise<void>> = { old, new: next, front, 'cf-new': cloudflare, 'cf-old': cloudflareOld };
 const name = process.argv[2] ?? '';
 if (!targets[name]) throw new Error(`usage: node deploy/docusaurus/build.ts ${Object.keys(targets).join('|')}`);
 await targets[name]();

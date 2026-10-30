@@ -57,3 +57,30 @@ export function cacheRules(routes: readonly RouteCaching[], options: RulesOption
 	for (const asset of options.hashedAssets ?? []) routeRules[asset] = { headers: { 'cache-control': IMMUTABLE } };
 	return { routeRules };
 }
+
+/**
+ * Each route's caching for Cloudflare Workers, which has no ISR: a page cached on Vercel, with no query keys, is built
+ * into a file, page and fragment URL alike, and Cloudflare serves it without running the Worker until the next deploy.
+ * Every other route renders in the Worker.
+ */
+export function cloudflareRules(routes: readonly RouteCaching[], options: Pick<RulesOptions, 'fragmentPath' | 'hashedAssets'> = {}): CacheRules {
+	const routeRules: Record<string, NitroRule> = {};
+	for (const r of routes) {
+		if (r.status !== 200 || /[:*]/.test(r.route)) continue;
+		const path = r.route.split(/[?#]/)[0]!;
+		const fragment = options.fragmentPath && r.html ? `${options.fragmentPath}${path}` : undefined;
+		const keys = r.allowQuery ?? [];
+		const rule: NitroRule =
+			r.class === 'no-cache' ? { headers: { 'cache-control': r.sensitive ? NEVER_STORED : NEVER_SHARED } } : r.html && !keys.length ? { prerender: true } : {};
+		if (!Object.keys(rule).length) continue;
+		routeRules[path] = rule;
+		if (fragment) routeRules[fragment] = structuredClone(rule);
+	}
+	for (const asset of options.hashedAssets ?? []) routeRules[asset] = { headers: { 'cache-control': IMMUTABLE } };
+	return { routeRules };
+}
+
+/** The file a Cloudflare build serves a prerendered path from: `/guide` from guide.html, `/guide/` from guide/index.html. */
+export function cloudflareAssetFile(path: string): string {
+	return path.endsWith('/') ? `${path.slice(1)}index.html` : `${path.slice(1)}.html`;
+}

@@ -14,3 +14,4 @@ fixtures/*/.vite/
 **/_migrate/shots/
 **/_migrate/report.*
 .dbg/
+.wrangler/

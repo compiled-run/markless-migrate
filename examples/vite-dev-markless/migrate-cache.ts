@@ -690,6 +690,352 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 	}
 };
 
+// Cloudflare has no ISR: these pages and their fragment URLs are built into files it serves without running the Worker.
+export const cloudflareRouteRules: Record<string, Record<string, unknown>> = {
+	"/": {
+		"prerender": true
+	},
+	"/_markless/fragment/": {
+		"prerender": true
+	},
+	"/acknowledgements": {
+		"prerender": true
+	},
+	"/_markless/fragment/acknowledgements": {
+		"prerender": true
+	},
+	"/blog": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog": {
+		"prerender": true
+	},
+	"/blog/announcing-vite2": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite2": {
+		"prerender": true
+	},
+	"/blog/announcing-vite3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite3": {
+		"prerender": true
+	},
+	"/blog/announcing-vite4": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite4": {
+		"prerender": true
+	},
+	"/blog/announcing-vite4-3": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite4-3": {
+		"prerender": true
+	},
+	"/blog/announcing-vite5": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite5": {
+		"prerender": true
+	},
+	"/blog/announcing-vite5-1": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite5-1": {
+		"prerender": true
+	},
+	"/blog/announcing-vite6": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite6": {
+		"prerender": true
+	},
+	"/blog/announcing-vite7": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite7": {
+		"prerender": true
+	},
+	"/blog/announcing-vite8": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite8": {
+		"prerender": true
+	},
+	"/blog/announcing-vite8-1": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite8-1": {
+		"prerender": true
+	},
+	"/blog/announcing-vite8-beta": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/announcing-vite8-beta": {
+		"prerender": true
+	},
+	"/blog/cloudflare-supports-vite": {
+		"prerender": true
+	},
+	"/_markless/fragment/blog/cloudflare-supports-vite": {
+		"prerender": true
+	},
+	"/changes/": {
+		"prerender": true
+	},
+	"/_markless/fragment/changes/": {
+		"prerender": true
+	},
+	"/changes/hotupdate-hook": {
+		"prerender": true
+	},
+	"/_markless/fragment/changes/hotupdate-hook": {
+		"prerender": true
+	},
+	"/changes/per-environment-apis": {
+		"prerender": true
+	},
+	"/_markless/fragment/changes/per-environment-apis": {
+		"prerender": true
+	},
+	"/changes/shared-plugins-during-build": {
+		"prerender": true
+	},
+	"/_markless/fragment/changes/shared-plugins-during-build": {
+		"prerender": true
+	},
+	"/changes/ssr-using-modulerunner": {
+		"prerender": true
+	},
+	"/_markless/fragment/changes/ssr-using-modulerunner": {
+		"prerender": true
+	},
+	"/changes/this-environment-in-hooks": {
+		"prerender": true
+	},
+	"/_markless/fragment/changes/this-environment-in-hooks": {
+		"prerender": true
+	},
+	"/config/": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/": {
+		"prerender": true
+	},
+	"/config/build-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/build-options": {
+		"prerender": true
+	},
+	"/config/dep-optimization-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/dep-optimization-options": {
+		"prerender": true
+	},
+	"/config/preview-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/preview-options": {
+		"prerender": true
+	},
+	"/config/server-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/server-options": {
+		"prerender": true
+	},
+	"/config/shared-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/shared-options": {
+		"prerender": true
+	},
+	"/config/ssr-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/ssr-options": {
+		"prerender": true
+	},
+	"/config/worker-options": {
+		"prerender": true
+	},
+	"/_markless/fragment/config/worker-options": {
+		"prerender": true
+	},
+	"/guide/": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/": {
+		"prerender": true
+	},
+	"/guide/api-environment": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-environment": {
+		"prerender": true
+	},
+	"/guide/api-environment-frameworks": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-environment-frameworks": {
+		"prerender": true
+	},
+	"/guide/api-environment-instances": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-environment-instances": {
+		"prerender": true
+	},
+	"/guide/api-environment-plugins": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-environment-plugins": {
+		"prerender": true
+	},
+	"/guide/api-environment-runtimes": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-environment-runtimes": {
+		"prerender": true
+	},
+	"/guide/api-hmr": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-hmr": {
+		"prerender": true
+	},
+	"/guide/api-javascript": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-javascript": {
+		"prerender": true
+	},
+	"/guide/api-plugin": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/api-plugin": {
+		"prerender": true
+	},
+	"/guide/assets": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/assets": {
+		"prerender": true
+	},
+	"/guide/backend-integration": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/backend-integration": {
+		"prerender": true
+	},
+	"/guide/build": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/build": {
+		"prerender": true
+	},
+	"/guide/cli": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/cli": {
+		"prerender": true
+	},
+	"/guide/dep-pre-bundling": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/dep-pre-bundling": {
+		"prerender": true
+	},
+	"/guide/env-and-mode": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/env-and-mode": {
+		"prerender": true
+	},
+	"/guide/features": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/features": {
+		"prerender": true
+	},
+	"/guide/migration": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/migration": {
+		"prerender": true
+	},
+	"/guide/performance": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/performance": {
+		"prerender": true
+	},
+	"/guide/philosophy": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/philosophy": {
+		"prerender": true
+	},
+	"/guide/ssr": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/ssr": {
+		"prerender": true
+	},
+	"/guide/static-deploy": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/static-deploy": {
+		"prerender": true
+	},
+	"/guide/troubleshooting": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/troubleshooting": {
+		"prerender": true
+	},
+	"/guide/using-plugins": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/using-plugins": {
+		"prerender": true
+	},
+	"/guide/why": {
+		"prerender": true
+	},
+	"/_markless/fragment/guide/why": {
+		"prerender": true
+	},
+	"/live": {
+		"prerender": true
+	},
+	"/_markless/fragment/live": {
+		"prerender": true
+	},
+	"/plugins/": {
+		"prerender": true
+	},
+	"/_markless/fragment/plugins/": {
+		"prerender": true
+	},
+	"/releases": {
+		"prerender": true
+	},
+	"/_markless/fragment/releases": {
+		"prerender": true
+	},
+	"/team": {
+		"prerender": true
+	},
+	"/_markless/fragment/team": {
+		"prerender": true
+	}
+};
+
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
 interface NitroLike {
@@ -726,10 +1072,11 @@ export function applyRules(nitro: NitroLike): void {
 	nitro.hooks?.hook('compiled', () => prerenderFallbacks(nitro));
 	const rules = nitro.options.routeRules;
 	const proxied = (path: string) => Boolean(rules[path]?.proxy);
-	for (const [path, rule] of Object.entries(routeRules)) {
+	const own = String(nitro.options.preset ?? '').startsWith('cloudflare') ? cloudflareRouteRules : routeRules;
+	for (const [path, rule] of Object.entries(own)) {
 		if (proxied(path)) continue;
-		const own = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
-		rules[path] = { ...own, ...structuredClone(rule), ...(rule.headers || own.headers ? { headers: { ...(own.headers as object), ...(rule.headers as object) } } : {}) };
+		const kept = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
+		rules[path] = { ...kept, ...structuredClone(rule), ...(rule.headers || kept.headers ? { headers: { ...(kept.headers as object), ...(rule.headers as object) } } : {}) };
 	}
 }
 
