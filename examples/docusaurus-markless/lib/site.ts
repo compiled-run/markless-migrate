@@ -717,13 +717,23 @@ function closeDropdownsOutside(target: EventTarget | null): void {
 }
 
 // SkipToContent, as Docusaurus wrote it: tabindex on, focus, tabindex off again.
-function skipToContent(event: Event): void {
-	event.preventDefault();
-	const target = (document.querySelector('main:first-of-type') ?? document.getElementById('__docusaurus_skipToContent_fallback')) as HTMLElement | null;
+function programmaticFocus(target: HTMLElement | null | undefined): void {
 	if (!target) return;
 	target.setAttribute('tabindex', '-1');
 	target.focus();
 	target.removeAttribute('tabindex');
+}
+function skipToContent(event: Event): void {
+	event.preventDefault();
+	programmaticFocus((document.querySelector('main:first-of-type') ?? document.getElementById('__docusaurus_skipToContent_fallback')) as HTMLElement | null);
+}
+// useSkipToContent: after a PUSH navigation to an address without a hash, focus moves to the region holding the skip link.
+let historyAction: 'push' | 'replace' | 'pop' | undefined;
+function focusAfterNavigation(): void {
+	const action = historyAction;
+	historyAction = undefined;
+	if (action !== 'push' || location.hash) return;
+	programmaticFocus(document.querySelector<HTMLElement>(`a.${cls('SkipToContent', 'skipToContent')}`)?.parentElement);
 }
 
 const WRAP_BUTTON = () =>
@@ -1375,6 +1385,7 @@ function pageInit(navigation?: Event): void {
 		document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.toggle(cls('Navbar/Layout', 'navbarHidden'), Boolean(anchored));
 		navigationScroll = true;
 		requestAnimationFrame(() => requestAnimationFrame(() => (navigationScroll = false)));
+		focusAfterNavigation();
 	}
 	updateTocHighlight();
 	watchAvatars(document);
@@ -1437,6 +1448,7 @@ function startSite(): void {
 		if (closest(event, 'article.yt-lite')) warmYoutube();
 	});
 	window.addEventListener('hashchange', keepLocation);
+	window.addEventListener('popstate', () => (historyAction = 'pop'));
 	// The router records the fetched page's URL, which has no #hash; a link to /docs/cli#docusaurus-serve-sitedir keeps
 	// its hash in the address bar, as Docusaurus's history.push does.
 	let followed: URL | undefined;
@@ -1453,7 +1465,10 @@ function startSite(): void {
 				const next = new URL(url, location.href);
 				if (!next.hash && next.pathname === followed.pathname && next.search === followed.search) args[2] = `${next.pathname}${next.search}${followed.hash}`;
 			}
-			if ((state as { __marklessFragment?: unknown } | null)?.__marklessFragment) followed = undefined;
+			if ((state as { __marklessFragment?: unknown } | null)?.__marklessFragment) {
+				followed = undefined;
+				historyAction = method === 'pushState' ? 'push' : 'replace';
+			}
 			original(...args);
 			keepLocation();
 		};
