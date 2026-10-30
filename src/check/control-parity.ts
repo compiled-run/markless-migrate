@@ -88,6 +88,10 @@ export interface ControlParityOptions {
 	readonly settleMs?: number;
 	/** How long the uses, keys and typed values may take on one route before the rest are left out. */
 	readonly budgetMs?: number;
+	/** Runs around each use, from the input to its settling (the busy-CPU lane keeps the machine busy there). */
+	readonly during?: <T>(work: () => Promise<T>) => Promise<T>;
+	/** Only the uses, keys and typed values: the original's controls are listed at the first width and nothing is compared across widths. */
+	readonly usesOnly?: boolean;
 }
 
 export interface ControlParityResult {
@@ -353,6 +357,10 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 		};
 		const a = await read('old');
 		await a.page.close();
+		if (options.usesOnly) {
+			controls = a.list.filter((c) => !c.leaves && !c.disabled);
+			break;
+		}
 		const b = await read('old');
 		await b.page.close();
 		const n = await read('new');
@@ -408,10 +416,12 @@ export async function checkControlParity(browser: Browser, sides: Sides, route: 
 			if (!armed) return { missing: 'not on the page' };
 			const before = o.errors.length;
 			let motion: Motion | undefined;
-			await markUse(o.page, settleMs);
-			if (how.film && o.cdp) motion = (await filmed(o.cdp, () => act(o.page))).motion;
-			else await act(o.page);
-			await settle(o.page, o.requests, settleMs);
+			await (options.during ?? ((work) => work()))(async () => {
+				await markUse(o.page, settleMs);
+				if (how.film && o.cdp) motion = (await filmed(o.cdp, () => act(o.page))).motion;
+				else await act(o.page);
+				await settle(o.page, o.requests, settleMs);
+			});
 			// Where a pop-up opens is read where it settles, not mid-slide; its motion is compared on its own.
 			await parity(o.page, 'settle').catch(() => {});
 			const read = await parity<Use>(o.page, 'read').catch(() => undefined);

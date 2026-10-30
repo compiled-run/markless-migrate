@@ -6,7 +6,8 @@ import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { chromium, webkit, type Browser } from 'playwright';
+import { chromium, firefox, webkit, type Browser } from 'playwright';
+import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
 import { applyAccepted, type Accept } from './accepted.ts';
 import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
 import type { AutomaticRule } from './automatic.ts';
@@ -121,6 +122,8 @@ export interface CheckOptions {
 	readonly probes?: Omit<ProbeOptions, 'shared'>;
 	/** Control parity (control-parity.ts) with the widget probes: controls at each width and their boxes, hit points, pop-up places (in WebKit too with `webkit`), pop-up motion, keys and field input. */
 	readonly controls?: Omit<ControlParityOptions, 'webkit'> & { readonly webkit?: boolean };
+	/** The busy-CPU lane on each template group's representative: its controls used while the machine's CPUs are kept busy, in Chromium, Firefox and WebKit. */
+	readonly busyCpu?: BusyCpuOptions;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -171,6 +174,7 @@ interface Run {
 	readonly embeds?: EmbedCheckOptions;
 	readonly probes?: ProbeOptions;
 	readonly controls?: ControlParityOptions;
+	readonly busyCpu?: BusyCpuOptions & { readonly browsers: { readonly chromium: Browser; readonly firefox: Browser; readonly webkit: Browser } };
 }
 
 /** The hosts the old app's API clients name in absolute URLs. */
@@ -296,7 +300,9 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
 	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed;
-	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
+	const busy = run.busyCpu ? await profiled(route, 'busy CPU', () => checkBusyCpu(run.busyCpu!.browsers, { old: run.old, new: run.new }, route, viewports[0]!, run.busyCpu)) : undefined;
+	const lane = busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored;
+	const moved = run.motion && lane.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : lane;
 	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
 	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
@@ -811,7 +817,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const webkitBrowser = options.controls?.webkit ? await webkit.launch().catch((error: Error) => {
 		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
 	}) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const laneBrowsers = options.busyCpu ? await Promise.all([firefox.launch(), webkitBrowser ?? webkit.launch()]).catch((error: Error) => {
+		throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
+	}) : undefined;
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -984,6 +993,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	} finally {
 		if (!options.browser) await browser.close();
 		await webkitBrowser?.close();
+		await laneBrowsers?.[0].close();
+		if (!webkitBrowser) await laneBrowsers?.[1].close();
 	}
 }
 
