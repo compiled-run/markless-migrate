@@ -15,8 +15,8 @@ interface Psi { label: string; url: string; bytes: number; requests: number; fcp
 
 const SITES: Record<string, { old: string; new: string; name: string }> = {
 	htmx: { name: 'htmx.org', old: 'https://htmx.org', new: 'https://mm-htmx-org-new.vercel.app' },
-	vite: { name: 'vite.dev', old: 'https://vite-dev-old.vercel.app', new: 'https://vite-dev-markless.vercel.app' },
-	docusaurus: { name: 'docusaurus.io', old: 'https://mm-docusaurus-old.vercel.app', new: 'https://mm-docusaurus-embeds.vercel.app' },
+	vite: { name: 'vite.dev', old: 'https://mm-vite-dev-old.long-wildflower-ecf7.workers.dev', new: 'https://vite-dev-markless.vercel.app' },
+	docusaurus: { name: 'docusaurus.io', old: 'https://mm-docusaurus-old.long-wildflower-ecf7.workers.dev', new: 'https://mm-docusaurus-embeds.vercel.app' },
 };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);

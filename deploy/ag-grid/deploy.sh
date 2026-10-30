@@ -9,7 +9,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."
 APP="$ROOT/examples/ag-grid-markless"
 SCOPE=jack-shelton
-OLD_URL=https://mm-ag-grid-old.vercel.app
+OLD_URL=https://mm-ag-grid-old.long-wildflower-ecf7.workers.dev
 NEW_URL=https://mm-ag-grid-new.vercel.app
 link() { [ -f "$1/.vercel/project.json" ] || (cd "$1" && vercel link --yes --project "$2" --scope "$SCOPE" >/dev/null && rm -f .env.local); }
 

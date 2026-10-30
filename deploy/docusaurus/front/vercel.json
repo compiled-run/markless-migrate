@@ -14,15 +14,15 @@
 		},
 		{
 			"source": "/",
-			"destination": "https://mm-docusaurus-old.vercel.app/"
+			"destination": "https://mm-docusaurus-old.long-wildflower-ecf7.workers.dev/"
 		},
 		{
 			"source": "/:path*/",
-			"destination": "https://mm-docusaurus-old.vercel.app/:path*/"
+			"destination": "https://mm-docusaurus-old.long-wildflower-ecf7.workers.dev/:path*/"
 		},
 		{
 			"source": "/:path*",
-			"destination": "https://mm-docusaurus-old.vercel.app/:path*"
+			"destination": "https://mm-docusaurus-old.long-wildflower-ecf7.workers.dev/:path*"
 		}
 	]
 }

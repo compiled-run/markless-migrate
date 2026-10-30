@@ -8,7 +8,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."
 APP="$ROOT/examples/shadcn-admin-markless"
 SCOPE=jack-shelton
-OLD_URL=https://mm-shadcn-admin-old.vercel.app
+OLD_URL=https://mm-shadcn-admin-old.long-wildflower-ecf7.workers.dev
 NEW_URL=https://mm-shadcn-admin-new.vercel.app
 # The caching plan (.migrate/caching.json, from plan) goes into the app before every build.
 cache_apply() { [ ! -f .migrate/caching.json ] || node "$ROOT/src/cli.ts" cache apply; }

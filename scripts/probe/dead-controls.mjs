@@ -23,7 +23,7 @@ async function settle(p, net, capMs) {
 	return r;
 }
 
-const OLD = process.env.OLD ?? 'https://mm-shadcn-ui-old.vercel.app';
+const OLD = process.env.OLD ?? 'https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev';
 const NEW = process.env.NEW ?? 'https://mm-shadcn-ui-new.vercel.app';
 const BYPASS = process.env.BYPASS ?? '';
 const MAX_ACTIONS = Number(process.env.MAX_ACTIONS ?? 60);

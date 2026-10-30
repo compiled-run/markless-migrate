@@ -14,15 +14,15 @@
 		},
 		{
 			"source": "/",
-			"destination": "https://mm-shadcn-admin-old.vercel.app/"
+			"destination": "https://mm-shadcn-admin-old.long-wildflower-ecf7.workers.dev/"
 		},
 		{
 			"source": "/:path*/",
-			"destination": "https://mm-shadcn-admin-old.vercel.app/:path*/"
+			"destination": "https://mm-shadcn-admin-old.long-wildflower-ecf7.workers.dev/:path*/"
 		},
 		{
 			"source": "/:path*",
-			"destination": "https://mm-shadcn-admin-old.vercel.app/:path*"
+			"destination": "https://mm-shadcn-admin-old.long-wildflower-ecf7.workers.dev/:path*"
 		}
 	]
 }

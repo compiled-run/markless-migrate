@@ -53,7 +53,7 @@ figcaption { font-weight: 600; margin-bottom: 4px; }
 <body>
 <header>
 <h1>Migration to Markless</h1>
-<p>Old app <code>https://mm-ag-grid-old.vercel.app</code>, new app <code>https://mm-ag-grid-new.vercel.app</code>. Switched routes are served by the new app, every other route by the old one.</p>
+<p>Old app <code>https://mm-ag-grid-old.long-wildflower-ecf7.workers.dev</code>, new app <code>https://mm-ag-grid-new.vercel.app</code>. Switched routes are served by the new app, every other route by the old one.</p>
 
 <section class="migration"><h2>Every planned route</h2><p><strong>Migration not done:</strong> 2 red, 3 green but not switched.</p><table><thead><tr><th>State</th><th>Route</th><th>Served by</th><th>Interactions exercised</th><th>Red</th></tr></thead><tbody><tr><td><span class="badge fail">red</span></td><td><code>/</code></td><td>old app</td><td>5 of 5</td><td>assets</td></tr><tr><td><span class="badge pass">green</span></td><td><code>/manifest.json</code></td><td>switched to the new app</td><td></td><td></td></tr><tr><td><span class="badge pass">green</span></td><td><code>/markless-migrate-no-such-page</code></td><td>old app</td><td></td><td></td></tr><tr><td><span class="badge pass">green</span></td><td><code>/src/extension</code></td><td>old app</td><td></td><td></td></tr><tr><td><span class="badge fail">red</span></td><td><code>/src/extension/</code></td><td>old app</td><td>3 of 3</td><td>rendered, visual, seo, css, a11y, i18n, behaviour</td></tr><tr><td><span class="badge pass">green</span></td><td><code>/src/extension/devtools/devtools.html</code></td><td>old app</td><td></td><td></td></tr></tbody></table></section>
 </header>

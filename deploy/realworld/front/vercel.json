@@ -70,15 +70,15 @@
 		},
 		{
 			"source": "/",
-			"destination": "https://mm-realworld-old.vercel.app/"
+			"destination": "https://mm-realworld-old.long-wildflower-ecf7.workers.dev/"
 		},
 		{
 			"source": "/:path*/",
-			"destination": "https://mm-realworld-old.vercel.app/:path*/"
+			"destination": "https://mm-realworld-old.long-wildflower-ecf7.workers.dev/:path*/"
 		},
 		{
 			"source": "/:path*",
-			"destination": "https://mm-realworld-old.vercel.app/:path*"
+			"destination": "https://mm-realworld-old.long-wildflower-ecf7.workers.dev/:path*"
 		}
 	]
 }
