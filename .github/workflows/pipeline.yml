@@ -61,6 +61,10 @@ on:
         description: Read nothing back from earlier runs (a fresh run's timing)
         type: boolean
         default: false
+      verify-emit:
+        description: Convert again even when a converted app is kept, and fail unless the two match (scripts/convert-diff.ts)
+        type: boolean
+        default: false
       deploy:
         description: none, preview (upload and check a preview version), or promote (then deploy it)
         required: false
@@ -294,6 +298,8 @@ jobs:
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    env:
+      VERIFY: ${{ inputs.verify-emit || false }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -329,11 +335,15 @@ jobs:
           fi
           cp "$RUNNER_TEMP/converted/copied-parts.txt" "$RUNNER_TEMP/copied-parts.txt"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted="$how"
-      - if: needs.prepare.outputs.emit-run == ''
+          if [ "$VERIFY" = true ]; then
+            cp -R "$APP" "$RUNNER_TEMP/kept-app"
+            git clean -fdxq -- "$APP" && git checkout -- "$APP"
+          fi
+      - if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         uses: ./.github/actions/setup
-      - if: needs.prepare.outputs.emit-run == ''
+      - if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         uses: oven-sh/setup-bun@v2
-      - if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.store-run != ''
+      - if: (needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true') && needs.prepare.outputs.store-run != ''
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.prepare.outputs.store-name }}
@@ -347,7 +357,7 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/captured
       - name: Restore the old site's build
-        if: needs.prepare.outputs.emit-run == ''
+        if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -355,10 +365,10 @@ jobs:
             !deploy/${{ env.SITE }}/old/**/.next/cache
           key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the old site
-        if: needs.prepare.outputs.emit-run == ''
+        if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Convert
-        if: needs.prepare.outputs.emit-run == ''
+        if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         run: |
           set -euo pipefail
           store="$APP/.migrate/convert"
@@ -372,6 +382,12 @@ jobs:
           /usr/bin/time -v env ONLY="$only" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
           tail -n 30 "$RUNNER_TEMP/convert.txt"
           node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
+          if [ -d "$RUNNER_TEMP/kept-app" ]; then
+            if node scripts/convert-diff.ts "$APP" "$RUNNER_TEMP/kept-app" > "$RUNNER_TEMP/verify.txt" 2>&1; then verdict=same; else verdict="DIFFERENT: $(grep -c . "$RUNNER_TEMP/verify.txt") lines in verify.txt"; fi
+            tail -n 40 "$RUNNER_TEMP/verify.txt"
+            node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit verify="$verdict"
+            [ "$verdict" = same ] || { echo "::error::The kept converted app differs from a convert of the same inputs"; exit 1; }
+          fi
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted=made seconds=$(( $(date +%s) - t )) peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024 ))
       - name: Keep the recordings for the next run
         if: needs.prepare.outputs.emit-run == ''
@@ -409,6 +425,7 @@ jobs:
           path: |
             ${{ runner.temp }}/receipts
             ${{ runner.temp }}/convert.txt
+            ${{ runner.temp }}/verify.txt
           if-no-files-found: ignore
 
   build:
