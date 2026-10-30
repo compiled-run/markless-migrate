@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { recordKey, recorderVersions, RecordDirs } from '../src/convert/record-key.ts';
+import { recordKey, recorderFiles, recorderVersions, RecordDirs } from '../src/convert/record-key.ts';
 
 test("a route's key ignores the order its old page's head tags were streamed in, and nothing else", () => {
 	const v = { converter: 'c', probe: 'p' };
@@ -19,6 +19,11 @@ test("a route's key ignores the order its old page's head tags were streamed in,
 });
 
 test("the recorder's versions are the recording version, the converter's and probe's code, and playwright's version", async () => {
+	const files = await recorderFiles();
+	const names = (list: readonly string[]) => list.map((f) => f.replace(/^.*\/src\//, ''));
+	assert.ok(names(files.converter).includes('convert/reveal.ts') && names(files.converter).includes('convert/choices.ts'));
+	assert.ok(!names(files.converter).includes('convert/index.ts') && !names(files.converter).includes('convert/record-key.ts'), 'the orchestration and the keying are not the recorder');
+	assert.ok(names(files.probe).includes('check/capture.ts'));
 	const v = await recorderVersions();
 	assert.deepEqual(Object.keys(v).sort(), ['converter', 'playwright', 'probe', 'recording']);
 	assert.match(v.converter!, /^[0-9a-f]{16}$/);

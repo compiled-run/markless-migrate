@@ -30,14 +30,11 @@ const IMPORTS = /(?:import|export)\s[^'"]*?from\s+'(\.[^']+)'|import\('(\.[^']+)
 const SRC = resolve(import.meta.dirname, '..');
 
 /**
- * The code that records, by content: `converter` is every convert module that drives a browser (index.ts, which only
- * orchestrates, aside) and what it imports within the converter and parts/; `probe` is each module it imports from
- * elsewhere in src/ (check's browser, capture and settle helpers); `playwright` the driver's version.
+ * The code that records: `converter` is every convert module that imports playwright (index.ts, which only orchestrates,
+ * aside) and what it imports within the converter and parts/; `probe` is each module it imports from elsewhere in src/.
  */
-export async function recorderVersions(): Promise<Record<string, string>> {
+export async function recorderFiles(): Promise<{ readonly converter: readonly string[]; readonly probe: readonly string[] }> {
 	const dir = import.meta.dirname;
-	const entries: string[] = [];
-	for (const name of (await readdir(dir)).sort()) if (name.endsWith('.ts') && name !== 'index.ts' && /^import\b[^;]*from 'playwright'/m.test(await readFile(join(dir, name), 'utf8'))) entries.push(join(dir, name));
 	const converter = new Set<string>();
 	const probe = new Set<string>();
 	const visit = async (file: string): Promise<void> => {
@@ -50,13 +47,19 @@ export async function recorderVersions(): Promise<Record<string, string>> {
 			else probe.add(to);
 		}
 	};
-	for (const entry of entries) await visit(entry);
-	const digest = async (files: Set<string>) => {
+	for (const name of (await readdir(dir)).sort()) if (name.endsWith('.ts') && name !== 'index.ts' && /^import\b[^;]*from 'playwright'/m.test(await readFile(join(dir, name), 'utf8'))) await visit(join(dir, name));
+	return { converter: [...converter].sort(), probe: [...probe].sort() };
+}
+
+/** The recorder's versions: the recording version, the content of the code that records, and playwright's version. */
+export async function recorderVersions(): Promise<Record<string, string>> {
+	const files = await recorderFiles();
+	const digest = async (list: readonly string[]) => {
 		const hash = createHash('sha256');
-		for (const file of [...files].sort()) hash.update(`${relative(SRC, file)}\n`).update(await readFile(file));
+		for (const file of list) hash.update(`${relative(SRC, file)}\n`).update(await readFile(file));
 		return hash.digest('hex').slice(0, 16);
 	};
-	return { recording: String(RECORDING_VERSION), converter: await digest(converter), probe: await digest(probe), playwright: String(createRequire(import.meta.url)('playwright/package.json').version) };
+	return { recording: String(RECORDING_VERSION), converter: await digest(files.converter), probe: await digest(files.probe), playwright: String(createRequire(import.meta.url)('playwright/package.json').version) };
 }
 
 /** The key of a route's recordings, from one plain request for its old page (no browser). */
