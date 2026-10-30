@@ -5,9 +5,10 @@ import prismThemes from './prism-themes.json';
 import docsVersions from './docs-versions.json';
 import sidebarIndex from './sidebars.json';
 import routeAliases from './route-aliases.json';
+import liveRouteList from './live-routes.json';
 import { initShowcase } from './showcase.ts';
 import { drawerMarkup } from './drawer-markup.js';
-import { initPlaygrounds } from './playground.ts';
+import { initPlaygrounds, preloadPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
 import { hint, moveHints, readHints } from './page-hints.ts';
 import { startProgress } from './progress.ts';
@@ -1391,6 +1392,14 @@ function pageInit(navigation?: Event): void {
 	});
 }
 
+// The old router loads a page's code before showing it; a page with live code blocks here shows each preview's
+// "Loading..." until the playground runtime arrives, so a link to one starts loading it as the pointer or focus reaches it.
+const liveRoutes = new Set<string>(liveRouteList);
+function preloadLivePage(event: Event): void {
+	const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+	if (link instanceof HTMLAnchorElement && link.origin === location.origin && liveRoutes.has(link.pathname.replace(/(.)\/$/, '$1'))) preloadPlaygrounds();
+}
+
 // The old site's static HTML files are not pages of its app, so a link to one loads the document.
 const plainPages = new Set(Object.entries(routeAliases).flat());
 function loadPlainPage(event: MouseEvent): void {
@@ -1423,6 +1432,7 @@ function startSite(): void {
 	window.addEventListener('click', loadPlainPage, true);
 	document.addEventListener('pointerover', (event) => (pointerTarget = event.target), { passive: true });
 	for (const type of ['mouseover', 'focusin', 'touchstart']) document.addEventListener(type, preloadSearch, { passive: true });
+	for (const type of ['mouseover', 'focusin', 'touchstart']) document.addEventListener(type, preloadLivePage, { passive: true });
 	window.addEventListener('resize', applyWindowSize);
 	window.addEventListener('scroll', checkLazyImages, { passive: true });
 	window.addEventListener('resize', checkLazyImages, { passive: true });
