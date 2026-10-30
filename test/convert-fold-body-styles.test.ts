@@ -3,8 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { body, outer, parseDocument } from '../src/convert/dom.ts';
-import { appendBodyCss, foldBodyStyles, type Prepared } from '../src/convert/index.ts';
+import { body, head, outer, parseDocument, type Element } from '../src/convert/dom.ts';
+import { appendBodyCss, foldBodyStyles, foldLateStyles, type Prepared } from '../src/convert/index.ts';
 
 test("a page's own body <style> elements leave the markup in order, a template's and an @import's stay", () => {
 	const doc = parseDocument(
@@ -48,4 +48,12 @@ test("the folded CSS is appended to the page's last same-origin stylesheet as a 
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
+});
+
+test("the <style> elements the old page's scripts added to its head after load fold ahead of its body styles; one with an @import stays linked", () => {
+	const doc = parseDocument('<html><head><style>[data-vaul-drawer]{touch-action:none}</style><style media="(min-width:640px)">[data-sonner-toaster]{width:356px}</style><style>@import "/x.css";.i{}</style></head><body></body></html>');
+	const late = [...head(doc).childNodes].filter((n) => (n as { tagName?: string }).tagName === 'style') as unknown as Element[];
+	const { css, kept } = foldLateStyles(late);
+	assert.deepEqual(css, ['[data-vaul-drawer]{touch-action:none}', '@media (min-width:640px){[data-sonner-toaster]{width:356px}}']);
+	assert.deepEqual(kept.map((el) => outer(el)), ['<style>@import "/x.css";.i{}</style>']);
 });
