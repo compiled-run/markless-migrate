@@ -8,7 +8,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."
 APP="$ROOT/examples/hn-rsc-markless"
 SCOPE=jack-shelton
-OLD_URL=https://mm-hn-rsc-old.vercel.app
+OLD_URL=https://mm-hn-rsc-old.long-wildflower-ecf7.workers.dev
 NEW_URL=https://mm-hn-rsc-new.vercel.app
 COMMIT=e5cdd85
 link() { [ -f "$1/.vercel/project.json" ] || (cd "$1" && vercel link --yes --project "$2" --scope "$SCOPE" >/dev/null && rm -f .env.local); }
