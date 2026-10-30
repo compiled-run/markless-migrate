@@ -938,6 +938,16 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	return appends;
 }
 
+/** A `<style>` element's CSS, its `media` as an `@media` block; undefined with an `@import`, which is valid only at the top of a sheet. */
+function foldable(node: Element): string | undefined {
+	const css = childrenOf(node)
+		.map((n) => ('value' in n ? (n as { value: string }).value : ''))
+		.join('');
+	if (/@import\b/i.test(css)) return undefined;
+	const media = attr(node, 'media');
+	return media && media !== 'all' ? `@media ${media}{${css}}` : css;
+}
+
 /**
  * Takes the body's own `<style>` elements out, outside templates, and returns their CSS: each would otherwise be one more
  * render-blocking request, and they apply after every head stylesheet, as the end of the last one does.
@@ -953,18 +963,26 @@ export function foldBodyStyles(parent: Element): string[] {
 				visit(node);
 				continue;
 			}
-			const css = childrenOf(node)
-				.map((n) => ('value' in n ? (n as { value: string }).value : ''))
-				.join('');
-			// An @import is valid only at the top of a sheet.
-			if (/@import\b/i.test(css)) continue;
-			const media = attr(node, 'media');
-			out.unshift(media && media !== 'all' ? `@media ${media}{${css}}` : css);
+			const css = foldable(node);
+			if (css === undefined) continue;
+			out.unshift(css);
 			list.splice(i, 1);
 		}
 	};
 	visit(parent);
 	return out;
+}
+
+/** The CSS of the `<style>` elements the old page's scripts added to its head after load (lateHead), and those that must stay linked. */
+export function foldLateStyles(late: readonly Element[]): { css: string[]; kept: Element[] } {
+	const css: string[] = [];
+	const kept: Element[] = [];
+	for (const el of late) {
+		const text = foldable(el);
+		if (text === undefined) kept.push(el);
+		else css.push(text);
+	}
+	return { css, kept };
 }
 
 /** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. */
@@ -1043,7 +1061,9 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const headAt = capture.server.search(/<head[\s>]/i);
 	const served = parseDocument(headAt > 0 ? capture.server.slice(0, headAt) : capture.server);
 	cleanDocument(served, ctx, new Map());
-	const late = lateHead(doc, parseDocument(capture.server), dropped).map((el) => {
+	// Added to the head after its stylesheets and before the body's styles: folded ahead of those, not linked at the body's end.
+	const lateStyles = foldLateStyles(lateHead(doc, parseDocument(capture.server), dropped));
+	const late = lateStyles.kept.map((el) => {
 		const holder = { nodeName: 'div', tagName: 'div', attrs: [], childNodes: [el] } as unknown as Element;
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
@@ -1056,7 +1076,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const plan = planImages(doc, paired, optimizer, dropped);
 	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
-	const bodyCss = foldBodyStyles(body(doc));
+	const bodyCss = [...lateStyles.css, ...foldBodyStyles(body(doc))];
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
 	for (const node of childrenOf(head(doc))) {
