@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Serves one side of the ui.shadcn.com check on a CI runner, never a Vercel deployment:
 #   ci-serve.sh old          builds the old site (fetch-old.sh) and serves it on http://localhost:4000
-#   ci-serve.sh new <url>    serves a built port (a .tar.gz of the app's .output, node-server preset) on http://127.0.0.1:3000
+#   ci-serve.sh new <url>    serves a built port (a .tar.gz of .vercel/output, or of .output: node-server, or cloudflare-module in workerd) on http://127.0.0.1:3000
 # Both start in the background and return once the site answers.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +41,9 @@ case "${1:-}" in
 		fi
 		if [ -n "$vercel" ]; then
 			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		elif [ -f "$dest/.output/server/wrangler.json" ]; then
+			# A cloudflare-module build runs in workerd, as Workers runs it, with no account and nothing sent to Cloudflare.
+			(cd "$dest/.output/server" && nohup npx --yes wrangler@4.156.0 dev --config wrangler.json --ip 127.0.0.1 --port 3000 --local --show-interactive-dev-session=false > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		else
 			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		fi

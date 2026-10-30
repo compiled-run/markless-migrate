@@ -202,11 +202,14 @@ jobs:
           FLAGS: ${{ inputs.flags }}
           CONCURRENCY: ${{ inputs.concurrency || '1' }}
           TIMEOUT: ${{ inputs.timeout || '3600' }}
-          REUSE: ${{ inputs.reuse != 'false' && format('--reuse .migrate/reuse --closures {0}/new/.vercel/output/.markless/static/interaction-closures.json', runner.temp) || '' }}
+          REUSE: ${{ inputs.reuse != 'false' && '--reuse .migrate/reuse' || '' }}
         run: |
           set -uo pipefail
           cd "$APP"
           mkdir -p .migrate/cache/old .migrate/slow-network
+          # Wherever the preset put it: .vercel/output/.markless/static/, or under .output/ for node-server and cloudflare-module.
+          closures=$(find "$RUNNER_TEMP/new" -path '*/.markless/static/interaction-closures.json' | head -n 1)
+          [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
           status=0
           # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
