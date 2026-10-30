@@ -9,6 +9,7 @@ test('generated ids are numbered by first occurrence, so a consistent renaming c
 	assert.equal(canonicalIds('<b id="radix-_r_6_" aria-controls="_R_3mb_"></b><i for="radix-_r_6_">'), canonicalIds('<b id="radix-_r_gm_" aria-controls="_R_9x_"></b><i for="radix-_r_gm_">'));
 	assert.notEqual(canonicalIds('<b id=":r1:"></b><i for=":r1:">'), canonicalIds('<b id=":r1:"></b><i for=":r2:">'));
 	assert.equal(canonicalIds('react-aria2693073801-_r_l_ react-aria-12 «r3»'), 'react-aria2693073801-ID0 ID1 ID2');
+	assert.equal(canonicalIds('<b aria-controls="radix-_r_gr_"></b><i id="radix-_r_gr_">'), canonicalIds('<b aria-controls="mm-2cd2f0e1-7"></b><i id="mm-2cd2f0e1-7">'), 'a Radix id the converter renamed after a collision is the same id');
 	assert.equal(canonicalIds("import Layer141 from './layers/layer-141.tsrx'; <Layer6 />"), canonicalIds("import Layer144 from './layers/layer-144.tsrx'; <Layer6 />"), 'layer components renumbered alike');
 });
 
