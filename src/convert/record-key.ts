@@ -94,10 +94,12 @@ export class RecordDirs {
 	}
 
 	async dir(route: string, key: string, kind: string): Promise<string> {
-		this.used.set(route, key);
 		const dir = join(this.root, kind, key);
 		if (existsSync(dir)) return dir;
-		if (this.flat ? this.flat[route] === key : await this.hasFlat(kind)) return join(this.root, kind);
+		if (this.flat ? this.flat[route] === key : await this.hasFlat(kind)) {
+			this.used.set(route, key);
+			return join(this.root, kind);
+		}
 		await mkdir(dir, { recursive: true });
 		return dir;
 	}
@@ -114,8 +116,7 @@ export class RecordDirs {
 
 	/** Records the routes whose recordings are directly in `<kind>/`, with the key of the page they were made from. */
 	async save(): Promise<void> {
-		const flat = { ...this.flat };
-		if (!this.flat) for (const [route, key] of this.used) flat[route] = key;
+		const flat = { ...this.flat, ...Object.fromEntries(this.used) };
 		await mkdir(this.root, { recursive: true });
 		await writeFile(join(this.root, SOURCES), JSON.stringify({ flat }, null, 1));
 	}

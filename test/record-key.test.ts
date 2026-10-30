@@ -41,6 +41,12 @@ test('a cache from before keys is read where it is for the pages as they are now
 		assert.equal(await second.dir('/b', 'k3', 'reveals'), join(root, 'reveals', 'k3'), 'a route the old cache never had starts keyed');
 		await second.save();
 		assert.deepEqual(JSON.parse(await readFile(join(root, 'sources.json'), 'utf8')), { flat: { '/a': 'k1' } });
+		const fresh = await mkdtemp(join(tmpdir(), 'record-dirs-'));
+		const none = await RecordDirs.open(fresh);
+		assert.equal(await none.dir('/a', 'k1', 'reveals'), join(fresh, 'reveals', 'k1'));
+		await none.save();
+		assert.deepEqual(JSON.parse(await readFile(join(fresh, 'sources.json'), 'utf8')), { flat: {} }, 'a cache made with keys names no route as flat');
+		await rm(fresh, { recursive: true, force: true });
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
