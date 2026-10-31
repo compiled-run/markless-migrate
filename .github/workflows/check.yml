@@ -16,8 +16,8 @@ on:
         required: true
         default: examples/shadcn-ui-markless
       build:
-        description: URL of the port's build (a .tar.gz of its .output, node-server preset)
-        required: true
+        description: URL of the port's build (a .tar.gz of its .output or .vercel/output); empty is the site's newest <site>-deployed-build-* or <site>-build-* release
+        required: false
       targets:
         description: A `check --all --write-targets` file in the repository
         required: true
@@ -81,7 +81,6 @@ permissions:
 env:
   SITE: ${{ inputs.site || 'shadcn-ui' }}
   APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
-  BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-subset-build-6f528da/shadcn-ui-markless-output.tar.gz' }}
   TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
   SHARDS: ${{ inputs.shards || '13' }}
   OLD: http://localhost:4000
@@ -97,7 +96,24 @@ jobs:
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
+      build: ${{ steps.build.outputs.build }}
     steps:
+      # A build named by its release key, never a fixed archive, so the default cannot fall behind what was deployed.
+      - id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIVEN: ${{ inputs.build }}
+          ARTIFACT: ${{ inputs.build-artifact }}
+        run: |
+          build="$GIVEN"
+          if [ -z "$build" ] && [ -z "$ARTIFACT" ]; then
+            tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt --jq "[.[] | select(.tagName | startswith(\"$SITE-deployed-build-\") or startswith(\"$SITE-build-\"))] | sort_by(.createdAt) | last | .tagName // empty")
+            [ -n "$tag" ] || { echo "::error::no $SITE-deployed-build-* or $SITE-build-* release: pass build"; exit 1; }
+            build=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json assets --jq '[.assets[] | select(.name | endswith(".tar.gz"))][0].url // empty')
+            [ -n "$build" ] || { echo "::error::release $tag has no .tar.gz build"; exit 1; }
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Build: ${build:-artifact $ARTIFACT}" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -171,6 +187,7 @@ jobs:
       - name: Serve the port
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ needs.plan.outputs.build }}
         run: |
           set -euo pipefail
           if [ -n "${{ inputs.build-artifact }}" ]; then
@@ -258,6 +275,8 @@ jobs:
           pattern: check-*
           path: shards
       - name: Merge
+        env:
+          BUILD: ${{ needs.plan.outputs.build || format('artifact {0}', inputs.build-artifact) }}
         run: |
           set -euo pipefail
           # A shard that wrote no report has each of its routes listed as not checked.
