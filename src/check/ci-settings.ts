@@ -5,7 +5,7 @@ export type ProbeEngine = 'chromium' | 'webkit';
 
 /** The dead-controls probe's budgets per engine in probe-dead-controls.yml. */
 export const PROBE_ENGINES: Readonly<Record<ProbeEngine, Readonly<Record<string, string>>>> = {
-	chromium: { MAX_ACTIONS: '30', KEY_MAX: '24', INPUT_MAX: '24', CONCURRENCY: '2' },
+	chromium: { MAX_ACTIONS: '30', KEY_MAX: '24', INPUT_MAX: '24', CONCURRENCY: '1' },
 	webkit: { MAX_ACTIONS: '15', KEY_MAX: '8', INPUT_MAX: '8', CONCURRENCY: '1' },
 };
 
