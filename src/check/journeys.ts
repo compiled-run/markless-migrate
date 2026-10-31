@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { sessionDatabases, updateCount } from './live-data.ts';
 import { linkUrl, pageRouting, routeLinks, routePath, shownUrl } from './hash-routes.ts';
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
@@ -68,6 +69,8 @@ export interface StepResult {
 	readonly unreachable?: Unreachability;
 	/** Dialogs the step opened (`confirm: Delete this note?`); a step that ends the session or deletes accepts them, any other dismisses them. */
 	readonly dialogs?: readonly string[];
+	/** Files the step downloaded, by the name the page gave and their size: `route.ts (63 bytes)`. */
+	readonly downloads?: readonly string[];
 	/** The step ended on a page the front door serves from the old app, on the old app's own origin: what that page keeps in the browser is the old app's, on another origin, so it is not compared. */
 	readonly door?: boolean;
 	/** What the step changed on <html> and <body> (attributes, class names: shown, not compared), in the page colours, colour scheme, scroll lock and pointer-events, and in stored values: `page background: rgb(255, 255, 255) → rgb(24, 25, 32)`, `localStorage theme: "light" → "dark"`. */
@@ -102,6 +105,8 @@ export interface Reaction {
 	readonly shift?: { readonly score: number; readonly x: number; readonly y: number };
 	/** What a visitor saw between the step and its result, frame by frame: see Views. */
 	readonly views?: Views;
+	/** Shapes a script moved frame by frame (a chart's path as recharts tweens it): `path in group "Series" d|24|400`, the element and attributes, then the frames it changed in and over how many ms. */
+	readonly tweened?: readonly string[];
 }
 
 /**
@@ -113,6 +118,9 @@ export interface Views {
 	readonly swaps: number;
 	readonly interimMs: number;
 	readonly interim: readonly string[];
+	/** From the first change to the result, and the longest wait between two changes on the way, in ms. */
+	readonly spanMs?: number;
+	readonly longestGapMs?: number;
 }
 
 export interface Journey {
@@ -738,7 +746,7 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
@@ -765,7 +773,12 @@ function watchReaction(): void {
 	views.push({ at: timing.started, text: painted() });
 	let dirty = false;
 	let frame = 0;
+	// Shapes a script moves a frame at a time (no CSS animation to read): which frames each one changed in.
+	const GEOMETRY = new Set(['d', 'points', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'width', 'height', 'transform']);
+	const tweens = new Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>();
+	let frames = 0;
 	const sampleFrame = () => {
+		frames++;
 		if (dirty && views.length < 120) {
 			dirty = false;
 			const text = painted();
@@ -782,6 +795,13 @@ function watchReaction(): void {
 			if (r.type !== 'attributes') touched.add(r.target);
 			if (r.type === 'childList') for (const n of r.addedNodes) touched.add(n);
 			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
+			if (r.target instanceof SVGElement && GEOMETRY.has(r.attributeName) && tweens.size < 200) {
+				const now = performance.now();
+				const t = tweens.get(r.target) ?? tweens.set(r.target, { attrs: new Set(), frames: new Set(), first: now, last: now }).get(r.target)!;
+				t.attrs.add(r.attributeName);
+				t.frames.add(frames);
+				t.last = now;
+			}
 			let attrs = changed.get(r.target);
 			if (!attrs) changed.set(r.target, (attrs = new Map()));
 			if (!attrs.has(r.attributeName)) attrs.set(r.attributeName, r.oldValue);
@@ -812,15 +832,15 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, inserted, touched, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, inserted, touched, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[] } } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
+function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[]; spanMs: number; longestGapMs: number }; tweened: string[] } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
-	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [] };
+	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [], tweened: [] };
 	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
 		watch.shift.score += entry.value;
 		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
@@ -930,7 +950,12 @@ function readReaction(): { changes: string[]; affected: string[]; scrolled: bool
 		const line = own.length ? own.slice(0, 8).join(' ') + (own.length > 8 ? ' …' : '') : '(part of the page gone)';
 		if (interim.length < 5 && !interim.includes(line)) interim.push(line);
 	}
-	return { transitions, changes: [...out].sort(), affected: [...affected].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) }, ...(views.length ? { views: { swaps: views.length - 1, interimMs: Math.round(interimMs), interim } } : {}) };
+	const tweened = [...watch.tweens].filter(([el]) => el.isConnected).map(([el, t]) => {
+		const at = anchorOf(el);
+		const kin = [...(el.parentElement?.children ?? [])].filter((c) => c.localName === el.localName);
+		return `${el.localName}${kin.length > 1 ? ` #${kin.indexOf(el) + 1}` : ''} in ${at ? describe(at) : regionOf(el)} ${[...t.attrs].sort().join(' ')}|${t.frames.size}|${Math.round(t.last - t.first)}`;
+	}).sort();
+	return { tweened, transitions, changes: [...out].sort(), affected: [...affected].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) }, ...(views.length ? { views: { swaps: views.length - 1, interimMs: Math.round(interimMs), interim, spanMs: views.length > 1 ? Math.round(views[views.length - 1]!.at - views[1]!.at) : 0, longestGapMs: Math.round(Math.max(0, ...views.slice(2).map((v, i) => v.at - views[i + 1]!.at))) } } : {}) };
 }
 
 type TimerWindow = { __markless_migrate_timer_mark__?: () => number; __markless_migrate_timers_after__?: (mark: number) => number; __markless_migrate_hold_timers__?: (on: boolean) => void };
@@ -1414,6 +1439,8 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		dialogs.push(`${dialog.type()}: ${dialog.message()}`);
 		(accepting ? dialog.accept() : dialog.dismiss()).catch(() => {});
 	});
+	let downloads: Promise<string>[] = [];
+	page.on('download', (download) => downloads.push(download.path().then((path) => (path ? stat(path).then((s) => `${download.suggestedFilename()} (${s.size} bytes)`) : download.suggestedFilename()), () => download.suggestedFilename())));
 	let requests: Request[] = [];
 	let errors: string[] = [];
 	const pending = new Set<Request>();
@@ -1471,6 +1498,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		let failed: string | undefined;
 		let unreachable: Unreachability | undefined;
 		dialogs = [];
+		downloads = [];
 		accepting = destructive;
 		log.holdAll = destructive && !env.sendWrites;
 		// What a surface shows where it is pointed at (a chart's tooltip) is inside its own box, so that box is not left out for a hover.
@@ -1495,6 +1523,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		log.holdAll = false;
 		accepting = false;
 		const widget = step && (step.action === 'key' || step.action === 'outside') ? await readWidget(page, step) : undefined;
+		const saved = (await Promise.all(downloads)).sort();
 		const after = await snapshot(page, hosts);
 		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 		// Lines the page changes on its own while nothing is used (a demo toggling a class on a timer) are no step's doing.
@@ -1511,7 +1540,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		if (frameBefore && !documentLoaded && !stayed) {
 			// A router that swapped the page in place: what morphed on the way is compared, the rest is the new page's own.
 			const read = await page.evaluate(readReaction).catch(() => undefined);
-			if (read) reaction = { regions: [], changes: [], ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}) };
+			if (read) reaction = { regions: [], changes: [], ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}), ...(read.tweened.length ? { tweened: read.tweened } : {}) };
 		}
 		if (frameBefore && stayed) {
 			const read = await page.evaluate(readReaction).catch(() => undefined);
@@ -1520,7 +1549,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
 			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
 			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), affected: read.affected.filter((a) => !ambient.affected.includes(a)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}) };
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), affected: read.affected.filter((a) => !ambient.affected.includes(a)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}), ...(read.tweened.length ? { tweened: read.tweened } : {}) };
 		}
 		const done: StepResult = {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
@@ -1543,6 +1572,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			...(failed ? { failed } : {}),
 			...(unreachable ? { unreachable } : {}),
 			...(dialogs.length ? { dialogs: [...dialogs] } : {}),
+			...(saved.length ? { downloads: saved } : {}),
 			...(onOld(page.url()) ? { door: true } : {}),
 			...(state.length ? { state } : {}),
 			...(reaction ? { reaction } : {}),
@@ -2302,8 +2332,18 @@ export function deadControl(olds: readonly StepResult[], next: StepResult): stri
 	return common.length ? common : [...first!];
 }
 
+/** The regions every old run changed outside the used control that the new page did not change at all (counting namesakes as one): what a control failed to reach. */
+export function lostRegions(olds: readonly StepResult[], next: StepResult): string[] | undefined {
+	const mine = next.reaction?.affected;
+	if (!mine || !olds.length || olds.some((o) => !o.reaction?.affected?.length)) return undefined;
+	const bare = (r: string) => r.replace(/ #\d+/g, '');
+	const [first, ...rest] = olds.map((o) => o.reaction!.affected!.map(bare));
+	const lost = [...new Set(first!.filter((r) => rest.every((o) => o.includes(r)) && !mine.map(bare).includes(r)))];
+	return lost.length ? lost : undefined;
+}
+
 /** Failures that are a slower answer alone, or a view in between alone, with the journey and step to time again one side at a time before they stand. */
-export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number; readonly views?: true }>();
+export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number; readonly views?: true; readonly cadence?: true }>();
 
 const SHIFT_PX = 4;
 const SHIFT_SCORE = 0.02;
@@ -2340,6 +2380,35 @@ export function interimViews(olds: readonly StepResult[], next: StepResult): str
 }
 
 const viewsLine = (v: Views) => (v.swaps <= 1 ? 'goes straight to the result' : `shows ${v.swaps - 1} view${v.swaps > 2 ? 's' : ''} in between for ${v.interimMs} ms (${v.interim.map((t) => `"${t}"`).join(', ')}) before the result`);
+
+const TWEEN_FRAMES = 4;
+/** What a step can differ in while leaving the page where the old one left it. */
+const ON_THE_WAY = new Set(['reaction', 'answer time', 'in between', 'cadence', 'tween', 'shift', 'morph']);
+const tweenOf = (line: string) => {
+	const [what, frames, ms] = line.split('|');
+	return { what: what!, frames: Number(frames), ms: Number(ms) };
+};
+
+/** A shape every old run moved over several frames (a chart's path tweened to its new data) that the new page jumps to, or never moves. */
+export function lostTweens(olds: readonly StepResult[], next: StepResult): string[] {
+	const runs = olds.map((o) => new Map((o.reaction?.tweened ?? []).map(tweenOf).map((t) => [t.what, t])));
+	const mine = new Map((next.reaction?.tweened ?? []).map(tweenOf).map((t) => [t.what, t]));
+	return [...(runs[0] ?? new Map())].filter(([what]) => runs.every((r) => (r.get(what)?.frames ?? 0) >= TWEEN_FRAMES) && (mine.get(what)?.frames ?? 0) <= 1).map(([what, t]) => `${what} over ${t.frames} frames (${t.ms} ms)`);
+}
+
+const STREAMED = 6;
+
+/** Text every old run showed arriving in many small changes (a streamed reply) that the new page shows in a few large ones, or all at once. */
+export function choppier(olds: readonly StepResult[], next: StepResult): string | undefined {
+	const mine = next.reaction?.views;
+	const theirs = olds.map((o) => o.reaction?.views);
+	if (!mine || theirs.some((v) => !v || v.swaps < STREAMED || (v.spanMs ?? 0) < 300)) return undefined;
+	const fewest = Math.min(...theirs.map((v) => v!.swaps));
+	const longest = Math.max(...theirs.map((v) => v!.longestGapMs ?? 0));
+	if (mine.swaps * 2 > fewest || (mine.swaps > 1 && (mine.longestGapMs ?? 0) < Math.max(150, longest * 2))) return undefined;
+	const line = (v: Views) => (v.swaps <= 1 ? 'all at once' : `in ${v.swaps} changes over ${v.spanMs} ms, at most ${v.longestGapMs} ms apart`);
+	return `old: ${line(theirs[0]!)}; new: ${line(mine)}`;
+}
 
 /** The new page takes meaningfully longer than every old run to show its first change after a step. */
 export function slowerAnswer(olds: readonly StepResult[], next: StepResult): string | undefined {
@@ -2379,13 +2448,16 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	if (parts.includes('state')) out.push(`changed: ${result.state?.join(' | ') || '(nothing)'}`);
 	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
+	if (parts.includes('downloads')) out.push(`downloads: ${result.downloads?.join(', ') || '(nothing)'}`);
 	if (parts.includes('reaction') && missing) out.push(answered(result, missing, old));
 	const shifted = result.reaction?.shift;
 	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
 	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
 	if (parts.includes('in between') && result.reaction?.views) out.push(`on screen until the result: ${viewsLine(result.reaction.views)}`);
+	if (parts.includes('cadence') && result.reaction?.views) out.push(`what it shows arrives ${result.reaction.views.swaps <= 1 ? 'all at once' : `in ${result.reaction.views.swaps} changes over ${result.reaction.views.spanMs} ms, at most ${result.reaction.views.longestGapMs} ms apart`}`);
 	if (parts.includes('stale')) out.push(`against a fresh load of where it ended: ${result.stale?.length ? `shows ${listed(result.stale)}` : 'the same page'}`);
 	if (parts.includes('morph')) out.push(`moves while the page changes: ${result.reaction?.transitions?.slice(0, 8).join(' | ') || '(nothing)'}`);
+	if (parts.includes('tween')) out.push(`moves frame by frame: ${result.reaction?.tweened?.map(tweenOf).filter((t) => t.frames >= TWEEN_FRAMES).map((t) => `${t.what} over ${t.frames} frames (${t.ms} ms)`).slice(0, 6).join(' | ') || '(nothing: it jumps to its end)'}`);
 	return out.join('; ');
 }
 
@@ -2499,6 +2571,10 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 		const actual = next[j]!;
 		const acts = journey.cycle ?? [];
 		const last = journey.steps.length - 1;
+		// Once a step differs, later steps are compared only for a control the original answers and the port does not: an earlier, smaller difference does not hide it.
+		let diverged = false;
+		// After one step that answered differently on the way, later steps report only what they leave different.
+		let answered = false;
 		for (let k = 0; k < journey.steps.length + acts.length; k++) {
 			const step = journey.steps[Math.min(k, last)]!;
 			const act = k > last ? acts[k - last - 1] : undefined;
@@ -2526,8 +2602,24 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const hint = act ? HINTS.cycle : journey.pattern ? HINTS.keyboardPattern : step.action === 'press' ? HINTS.keyboard : HINTS.behaviour;
 			const where = (side: string, f: string) => (act ? `${side} ${f}; step by step: ${trail(side === 'old' ? runs[0]! : actual, last, k)}` : f);
 			if (!n || n.failed) {
-				failures.push({ route, dimension, check, expected: where('old', format(a!, ['url', 'added', 'state'])), actual: where('new', n?.failed ?? 'the journey stopped before this step'), hint });
+				if (!diverged) failures.push({ route, dimension, check, expected: where('old', format(a!, ['url', 'added', 'state'])), actual: where('new', n?.failed ?? 'the journey stopped before this step'), hint });
 				break;
+			}
+			if (diverged) {
+				const moved = n.navigated || n.reloaded || oldSteps.some((x) => x.navigated || x.reloaded);
+				// A key pressed where focus already is, or a click outside what is open, follows from the earlier difference: only a step that takes its own control stands alone.
+				const own = step.action === 'click' || step.action === 'press' || step.action === 'fill' || step.action === 'type' || step.action === 'select' || (step.action === 'key' && Boolean(step.focus));
+				const lost = act || moved || !own ? undefined : (deadControl(oldSteps as StepResult[], n) ?? lostRegions(oldSteps as StepResult[], n));
+				// A step that starts on its own control and leaves focus on the page itself, where every old run keeps it on something, lost focus on its own.
+				if (!act && !moved && own && n.focus === 'body' && oldSteps.every((o) => o.focus !== 'body')) {
+					failures.push({ route, dimension, check, expected: `focus on ${a!.focus}, where an earlier step of this journey already differed`, actual: 'focus on the page (body): the port drops focus', hint });
+					break;
+				}
+				if (lost) {
+					failures.push({ route, dimension, check, expected: `${describeTarget(step.target)} changes ${lost.join(', ')} on the original, where an earlier step of this journey already differed; ${format(a!, ['added', 'removed'])}`, actual: `the port does not change ${lost.join(', ')}${n.reaction?.affected?.length ? ` (it changes ${n.reaction.affected.join(', ')})` : ''}; ${format(n, ['added', 'removed'])}`, hint });
+					break;
+				}
+				continue;
 			}
 			const parts: string[] = [];
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
@@ -2537,7 +2629,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			// One side read the next page's data in the browser, the other fetched that page from its server: the reads are that route's own check.
 			const paged = navigated && (n.paged || oldSteps.some((x) => x!.paged));
 			const shown = (r: StepResult): StepResult => (paged ? { ...r, requests: r.requests.filter((line) => !readLine(line)) } : r);
-			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs', 'widget'] as const);
+			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs', 'downloads'] as const) : (['requests', 'storage', 'dialogs', 'downloads'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs', 'downloads', 'widget'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
 				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].filter((line) => !(paged && readLine(line))).sort() : field === 'state' ? effects(r.state, owner) : field === 'added' || field === 'removed' ? untick(r)[field] : (r[field] ?? []));
@@ -2557,17 +2649,26 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const slower = navigated || reloaded ? undefined : slowerAnswer(oldSteps as StepResult[], n);
 			if (slower) parts.push('answer time');
 			if (navigated && !n.loaded && morphs(oldSteps as StepResult[], n).length) parts.push('morph');
+			if (!navigated && !reloaded && lostTweens(oldSteps as StepResult[], n).length) parts.push('tween');
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
+			if (!navigated && !reloaded && choppier(oldSteps as StepResult[], n)) parts.push('cadence');
 			if (n.stale?.length && !n.door && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
-			if (parts.length) {
+			const onTheWay = parts.every((p) => ON_THE_WAY.has(p));
+			if (parts.length && !(answered && onTheWay)) {
 				const dead = act || navigated || reloaded ? undefined : deadControl(oldSteps as StepResult[], n);
 				const lead = (side: 'old' | 'new') => (!dead ? '' : side === 'old' ? `${describeTarget(step.target)} changes ${dead.join(', ')} on the original; ` : 'nothing changed on the port; ');
 				const failure: Failure = { route, dimension, check, expected: lead('old') + where('old', format(shown(a!), parts, missing, true)), actual: lead('new') + where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
 				// A placeholder shown only while an answer is late follows the server's speed that time, as an answer time does.
 				if (parts.length === 1 && parts[0] === 'in between') timedOnly.set(failure, { journey: j, step: k, views: true });
+				// A busy machine paints fewer frames on whichever side it slows: a stream's cadence stands only when it holds every time.
+				if (parts.length === 1 && parts[0] === 'cadence') timedOnly.set(failure, { journey: j, step: k, cadence: true });
 				failures.push(failure);
-				break;
+				// A step that ends with the same page and focus but answered differently on the way (a widget's state attributes, its
+				// timing or motion) leaves the next step on the same ground: it is compared too, so a later step's bug is not hidden.
+				if (dead) break;
+				if (onTheWay) answered = true;
+				else diverged = true;
 			}
 		}
 	});

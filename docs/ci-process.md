@@ -26,7 +26,7 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 | --- | --- | --- | --- |
 | Typecheck, unit tests (4 shards) | yes | yes | only if the merge queue did not test this commit |
 | e2e quick, pages, networks (Chromium, Firefox, WebKit), shadcn, parity | yes, unless only `examples/`, `deploy/`, `docs/` or Markdown changed | yes | only if the merge queue did not test this commit |
-| e2e next-app (6 shards), vite-site (4 shards) | no | yes | only if the merge queue did not test this commit |
+| e2e next-app (6 shards), vite-site (4 shards), corpus (4 shards) | no | yes | only if the merge queue did not test this commit |
 
 - A pull request's CI holds at most 10 runners (Typecheck, four unit shards, five e2e jobs) for about 15 minutes.
 - The merge queue (ruleset "main protection", on since 2026-10-31) squashes, requires every check green, gives a group 240 minutes, builds up to 2 groups at once, merges up to 10 pull requests per group and waits 1 minute to fill one. Merge with `gh pr merge <n> --squash`, which adds the pull request to the queue.
@@ -41,6 +41,15 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 ## Slow-network verdicts
 
 `test/e2e/slow-network.test.ts` ("a resource only Firefox requests ...") compares a page against an identical copy in 9 cells (3 browsers, 3 gated times), 4 runs a side. It went red 7 times between 2026-10-21 and 2026-10-28 (CI runs 40592884982, 40576060649, 40447488442, 40603280988, 40636265801, and the runs of main b37f5234, #365 and #367), each a 10 to 20 ms gap: with 4 runs a side the one-sided Mann-Whitney test's two smallest p values, 0.014 and 0.029, are both under 0.05, so one slow run made an identical page significant. `check` now also needs the median to be later by at least max(33 ms, 5% of the old median, the noise band, the instrument's step); `test/slow-network-verdicts.test.ts` deals the measured runs of two such pages into every 4-against-4 split (140) and finds none red, and every split red with 100 ms added to the new side. The test came off the quarantine list after 10 of 10 green runs of it on a Mac at load average 7 to 11 (2026-10-28) and a green pull request run on CI. It went red once more on #455 (CI run 41136076115: Firefox Regular 3G first frame 0.15 s later at p = 0.029). The cause was the rule, not the timing: each cell had its own 0.05, so a route's 9 cells went red together about 1 time in 5 on identical pages. Since then a route's cells share one significance (Holm's step-down per gated time, `routeVerdicts` in `src/check/slow-network-verdicts.ts`). Whether identical pages stay green is a rate, so it is asserted where it is exact: a seeded simulation in `test/slow-network-verdicts.test.ts` runs the product's verdict code over 1,000 routes of 9 cells and finds 2.9% red on identical pages and 99.8% red with the first frame 0.3 s later in one cell (22.1% red on identical pages under the old rule). The live test now checks the wiring only: Firefox alone fetches the resource, and its cell is red (missed about 0.04% of runs even if 1 run in 20 stalls a second).
+
+## Bug corpus
+
+Every bug the owner found by hand in the ui.shadcn.com port is in `deploy/shadcn-ui/corpus/bugs.json`, with its route, the gesture that shows it and the finding check must report for it. Two gates keep check reporting them:
+
+- `test/e2e/corpus.test.ts` puts each bug back into a micro-site page built like the original's widget (`test/corpus/site.ts`) and runs the check CLI on it, as one page of a site larger than 20 pages, so the page is not its template's representative. It runs in the merge queue and on `main` (the mutation job). A case is caught only by a finding of its own class that names its control; a control the run never used names nothing. Cases listed as pending in the test are not caught yet and say which work takes them.
+- `.github/workflows/corpus.yml` checks the real routes on the kept port builds that still have the bugs (release assets, never redeployed), against the original built from source, on every push to `main` that changes the checker. `scripts/corpus.ts verify` fails the run when a bug's route was checked and no finding names it, or when the route could not be checked.
+
+A new hand-found bug goes into both: its route and build in `bugs.json`, and a case in `site.ts` that is red on the checker before the fix that catches it.
 
 ## Caches
 

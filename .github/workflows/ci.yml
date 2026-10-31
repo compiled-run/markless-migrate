@@ -136,9 +136,16 @@ jobs:
           - { suite: vite-site, shard: 2/4 }
           - { suite: vite-site, shard: 3/4 }
           - { suite: vite-site, shard: 4/4 }
+          # The owner's hand-found shadcn bugs, each put back into a micro-site page: check must report every one.
+          - { suite: corpus, shard: 1/4, browsers: chromium webkit }
+          - { suite: corpus, shard: 2/4, browsers: chromium webkit }
+          - { suite: corpus, shard: 3/4, browsers: chromium webkit }
+          - { suite: corpus, shard: 4/4, browsers: chromium webkit }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browsers || 'chromium' }}
       - run: node --test --test-concurrency=1 "test/e2e/$SUITE.test.ts"
         env:
           SUITE: ${{ matrix.suite }}
