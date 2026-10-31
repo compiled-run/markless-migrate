@@ -122,14 +122,18 @@ export async function landing(browser: Browser, env: SideEnv, route: string, vie
 	}
 }
 
+// A page taller than this many views is read with what its first ones loaded (an endless feed).
+const MAX_VIEWS = 150;
+
 export async function settle(page: Page): Promise<void> {
 	await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-	await quietAfter(page, () =>
-		page.evaluate(async () => {
-			scrollTo(0, document.documentElement.scrollHeight);
-			await new Promise(requestAnimationFrame);
-		}),
-	);
+	// A script lazy loader (an IntersectionObserver per card) loads only what passes through the view: the page is scrolled
+	// through a view at a time, not jumped to its end, so every run has loaded the same content before it is read.
+	const views = await page.evaluate((max) => Math.min(max, Math.ceil(document.documentElement.scrollHeight / Math.max(1, innerHeight))), MAX_VIEWS).catch(() => 1);
+	for (let k = 1; k <= views; k++) await quietAfter(page, () => page.evaluate(async (k) => {
+		scrollTo(0, k * innerHeight);
+		await new Promise(requestAnimationFrame);
+	}, k));
 	await page.evaluate(async () => {
 		for (const img of document.images) {
 			if (img.complete || img.loading !== 'lazy' || !img.getClientRects().length) continue;
@@ -147,7 +151,7 @@ export async function settle(page: Page): Promise<void> {
 						img.addEventListener('error', done, { once: true });
 					})
 			).then(() => img.decode().catch(() => {}));
-		await Promise.all([...document.images].map((img) => Promise.race([ready(img), new Promise((done) => setTimeout(done, 5000))])));
+		await Promise.all([...document.images].map((img) => Promise.race([ready(img), new Promise((done) => setTimeout(done, 15_000))])));
 	});
 }
 
