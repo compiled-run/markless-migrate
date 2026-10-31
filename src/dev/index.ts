@@ -1,13 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, watch, type FSWatcher } from 'node:fs';
+import { createWriteStream, existsSync, watch, type FSWatcher } from 'node:fs';
 import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { join, relative, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { prepareDevApp, SITE_DIR } from './app.ts';
+import { convertInputArgs, prepareDevApp, SITE_DIR } from './app.ts';
 import { diffRuns, formatDiffs, parseProbeLines, type RouteProbe } from './findings.ts';
 import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, writePortMap, type PortMap } from './routes.ts';
+import { PROBE_ENGINES, shardCheckArgs, type ProbeEngine } from '../check/ci-settings.ts';
+import { CONVERT_INPUTS, type ConvertInputs } from '../convert/inputs.ts';
+import { formatVerdicts, routeVerdict, type CheckedRoute, type RouteVerdict } from './verdict.ts';
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = join(REPO, 'src', 'cli.ts');
@@ -38,6 +42,10 @@ export interface DevOptions {
 	readonly probe?: string;
 	readonly noProbes?: boolean;
 	readonly concurrency?: number;
+	/** The full check of the routes on a production build of them: check as each CI shard runs it, and the dead-controls probe in Chromium and WebKit with CI's budgets, then one PASS or FAIL. */
+	readonly verdict?: boolean;
+	/** Every page of the site (a `check --write-targets` file), so template groups are made as in the full check; default deploy/<site>/check-targets.json. */
+	readonly siteTargets?: string;
 	readonly log?: (line: string) => void;
 }
 
@@ -46,12 +54,17 @@ const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)} 
 function run(command: string, args: readonly string[], options: { cwd: string; env?: NodeJS.ProcessEnv; logFile?: string }): Promise<{ code: number; output: string }> {
 	return new Promise((done) => {
 		const child = spawn(command, args, { cwd: options.cwd, env: { ...process.env, ...options.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+		const file = options.logFile ? createWriteStream(options.logFile) : undefined;
 		let output = '';
-		child.stdout.on('data', (d: Buffer) => (output += d));
-		child.stderr.on('data', (d: Buffer) => (output += d));
-		child.on('close', async (code) => {
-			if (options.logFile) await writeFile(options.logFile, output).catch(() => {});
-			done({ code: code ?? 1, output });
+		const take = (d: Buffer) => {
+			output += d;
+			file?.write(d);
+		};
+		child.stdout.on('data', take);
+		child.stderr.on('data', take);
+		child.on('close', (code) => {
+			if (file) file.end(() => done({ code: code ?? 1, output }));
+			else done({ code: code ?? 1, output });
 		});
 	});
 }
@@ -97,7 +110,7 @@ class AppServer {
 	async start(first: string): Promise<void> {
 		const since = Date.now();
 		const vp = join(this.dev, 'node_modules', '.bin', 'vp');
-		const env = { ...process.env, MARKLESS_MIGRATE_DEV: '1', PORT: String(this.port) };
+		const env = { ...process.env, MARKLESS_MIGRATE_DEV: '1', PORT: String(this.port), VITE_APP_URL: process.env.VITE_APP_URL ?? this.origin };
 		if (this.build) {
 			const built = await run(vp, ['build'], { cwd: this.dev, env, logFile: join(this.dev, '.migrate', 'dev', 'build.log') });
 			if (built.code) throw new Error(`the build of the dev app failed: ${join(this.dev, '.migrate', 'dev', 'build.log')}`);
@@ -152,6 +165,13 @@ async function brokenPages(origin: string, routes: readonly string[]): Promise<M
 	return broken;
 }
 
+/** A plan made in another checkout (a CI runner's) names the source there: the same path under this checkout's deploy/. */
+function sourceHere(path: string): string {
+	if (existsSync(path)) return path;
+	const at = path.lastIndexOf('/deploy/');
+	return at < 0 ? path : join(REPO, path.slice(at + 1));
+}
+
 /** The dead-controls probe: the option's file, or this checkout's. */
 async function probeScript(given: string | undefined): Promise<string> {
 	return given ? resolve(given) : join(REPO, PROBE_PATH);
@@ -166,7 +186,8 @@ export async function dev(options: DevOptions): Promise<number> {
 	const inventory = await inventoryPages(app);
 	const old = options.old ?? inventory.origin;
 	if (!old) throw new Error('dev needs --old <origin> (the inventory names none)');
-	const source = options.source ?? inventory.source;
+	const source = options.source ?? (inventory.source ? sourceHere(inventory.source) : undefined);
+	if (source && !existsSync(source)) throw new Error(`the plan's source ${source} is not on this machine: pass --source <the old app's source>`);
 	let map: PortMap = await readPortMap(join(app, '.migrate', 'convert', 'report.json'), JSON.parse(await readFile(portsFile, 'utf8').catch(() => '{}')) as PortMap);
 	map = await readPortMap(join(devApp, '.migrate', 'convert', 'report.json'), map);
 	if (options.part && !Object.keys(map).length) throw new Error(`no record of which pages load each part yet: convert the app once without --only (its report lists each page's parts), then run dev --part again`);
@@ -176,6 +197,12 @@ export async function dev(options: DevOptions): Promise<number> {
 	log(`${routes.length} route${routes.length === 1 ? '' : 's'}: ${routes.slice(0, 8).join(', ')}${routes.length > 8 ? ', ...' : ''}`);
 	if (!(await answers(old + routes[0], 10_000))) throw new Error(`the original does not answer ${old}${routes[0]}: start it (deploy/<app>/serve-old.sh) or pass --old <reference URL>`);
 
+	const site = basename(app).replace(/-markless$/, '');
+	const siteTargets = options.siteTargets ? resolve(options.siteTargets) : join(REPO, 'deploy', site, 'check-targets.json');
+	if (options.verdict && !existsSync(siteTargets)) throw new Error(`--verdict makes template groups over every page of the site, as the full check does: pass --site-targets <check --all --write-targets file> (no ${siteTargets})`);
+	const fetchOld = join(REPO, 'deploy', site, 'fetch-old.sh');
+	const oldBuild = existsSync(fetchOld) ? createHash('sha256').update(await readFile(fetchOld)).digest('hex') : undefined;
+
 	await prepareDevApp(app, devApp);
 	await mkdir(work, { recursive: true });
 	const routesFile = join(work, 'routes.txt');
@@ -183,9 +210,15 @@ export async function dev(options: DevOptions): Promise<number> {
 	if (lastRoutes !== routes.join('\n')) await rm(join(devApp, 'pages'), { recursive: true, force: true });
 	await writeFile(routesFile, routes.join('\n'));
 
+	const inputs = await readFile(join(app, '.migrate', 'convert', CONVERT_INPUTS), 'utf8').then((t) => JSON.parse(t) as ConvertInputs, () => undefined);
+	if (options.verdict && !inputs) log(`no ${join('.migrate', 'convert', CONVERT_INPUTS)} from a whole convert of the app: the routes are converted without its --page-order-from, which a whole convert may have had`);
+	const inputArgs = convertInputArgs(inputs);
+	const argsFile = join(work, 'convert-inputs.json');
+	// The server a reused convert keeps was written with the last run's inputs: other inputs write it again.
+	let sameInputs = (await readFile(argsFile, 'utf8').catch(() => '')) === JSON.stringify(inputArgs);
 	const convertRoutes = async (reuse: boolean) => {
 		const since = Date.now();
-		const args = [CLI, 'convert', '--old', old, '--only', routesFile, '--fallthrough', options.fallthrough ?? old, ...(source ? ['--source', source] : []), ...(reuse ? ['--reuse'] : [])];
+		const args = [CLI, 'convert', '--old', old, '--only', routesFile, '--fallthrough', options.fallthrough ?? old, ...(source ? ['--source', source] : []), ...inputArgs, ...(reuse && sameInputs ? ['--reuse'] : [])];
 		const done = await run(process.execPath, args, { cwd: devApp, logFile: join(work, 'convert.log') });
 		if (done.code) {
 			log(`convert failed after ${seconds(since)}: ${join(work, 'convert.log')}\n${done.output.split('\n').slice(-12).join('\n')}`);
@@ -193,12 +226,14 @@ export async function dev(options: DevOptions): Promise<number> {
 		}
 		map = await readPortMap(join(devApp, '.migrate', 'convert', 'report.json'), map);
 		await writePortMap(portsFile, map);
+		await writeFile(argsFile, JSON.stringify(inputArgs));
+		sameInputs = true;
 		log(`converted in ${seconds(since)} (${join(work, 'convert.log')})`);
 		return true;
 	};
 	if (!(await convertRoutes(true))) return 1;
 
-	const server = new AppServer(devApp, options.port ?? (await freePort()), options.build === true, log);
+	const server = new AppServer(devApp, options.port ?? (await freePort()), options.build === true || options.verdict === true, log);
 	const stop = () => {
 		server.stop();
 		process.exit(130);
@@ -247,9 +282,63 @@ export async function dev(options: DevOptions): Promise<number> {
 			const done = await run(process.execPath, [CLI, 'check', '--old', old, '--new', server.origin, ...which.flatMap((r) => ['--route', r]), '--only', 'probes', '--no-cache'], { cwd: devApp, logFile: join(work, 'check.log') });
 			log(`check --only probes in ${seconds(since)}:\n${done.output.trim().split('\n').slice(-8).join('\n')}`);
 		};
-		await probeRoutes(routes);
-		await checkRoutes(routes);
-		if (!options.watch) return before?.some((r) => r.findings.length) ? 1 : 0;
+		const verdictProbe = probe ?? (await probeScript(options.probe));
+		const checkOn = async (which: readonly string[]): Promise<CheckedRoute[] | undefined> => {
+			const since = Date.now();
+			const report = join(devApp, '.migrate', 'report.json');
+			await rm(report, { force: true });
+			const args = [CLI, 'check', '--old', old, '--new', server.origin, ...which.flatMap((r) => ['--route', r]), '--site-targets', siteTargets, ...shardCheckArgs()];
+			const done = await run(process.execPath, args, { cwd: devApp, env: { MARKLESS_MIGRATE_PROFILE: '1' }, logFile: join(work, 'verdict-check.log') });
+			log(`check in ${seconds(since)} (exit ${done.code}, ${join(work, 'verdict-check.log')})`);
+			const parsed = await readFile(report, 'utf8').then((t) => JSON.parse(t) as { routes?: CheckedRoute[] }, () => undefined);
+			return parsed?.routes ?? [];
+		};
+		const probeOn = async (engine: ProbeEngine, which: readonly string[]): Promise<RouteProbe[]> => {
+			const since = Date.now();
+			const routesJson = join(work, `verdict-routes-${engine}.json`);
+			const out = join(work, `verdict-${engine}.jsonl`);
+			await writeFile(routesJson, JSON.stringify(which));
+			await rm(out, { force: true });
+			const strips = join(work, 'strips', engine);
+			await mkdir(strips, { recursive: true });
+			const env = { OLD: old, NEW: server.origin, ENGINE: engine, STRIPS: strips, ...PROBE_ENGINES[engine], ...(oldBuild ? { REUSE: join(app, '.migrate', 'probe-reuse'), OLD_BUILD: oldBuild } : {}) };
+			const done = await run(process.execPath, [verdictProbe, routesJson, out], { cwd: REPO, env, logFile: join(work, `verdict-${engine}.log`) });
+			log(`${engine} probe in ${seconds(since)} (exit ${done.code}, ${join(work, `verdict-${engine}.log`)})`);
+			return parseProbeLines(await readFile(out, 'utf8').catch(() => ''));
+		};
+		const ENGINES = Object.keys(PROBE_ENGINES) as ProbeEngine[];
+		const verdictOn = async (which: readonly string[]): Promise<RouteVerdict[]> => {
+			const since = Date.now();
+			let checked = await checkOn(which);
+			const probes: Partial<Record<ProbeEngine, RouteProbe[]>> = {};
+			for (const engine of ENGINES) probes[engine] = await probeOn(engine, which);
+			let verdicts = which.map((r) => routeVerdict(r, checked, probes));
+			// A result that is not the port's (an infrastructure failure, a probe that stopped) is taken once more, never reported as a third outcome.
+			const again = verdicts.filter((v) => v.rerun.check).map((v) => v.route);
+			if (again.length) {
+				log(`check again on ${again.join(', ')}: not checked the first time`);
+				const second = await checkOn(again);
+				checked = [...(checked ?? []).filter((c) => !again.includes(c.route)), ...(second ?? [])];
+			}
+			for (const engine of ENGINES) {
+				const stopped = verdicts.filter((v) => v.rerun.engines.includes(engine)).map((v) => v.route);
+				if (!stopped.length) continue;
+				log(`${engine} probe again on ${stopped.join(', ')}: it stopped the first time`);
+				probes[engine] = [...(probes[engine] ?? []).filter((p) => !stopped.includes(p.route)), ...(await probeOn(engine, stopped))];
+			}
+			verdicts = which.map((r) => routeVerdict(r, checked, probes));
+			await writeFile(join(work, 'verdict.json'), JSON.stringify({ verdicts, probes }, null, '\t'));
+			log(`\n${formatVerdicts(verdicts).trimEnd()}\n(${seconds(since)} for check and probes; ${join(work, 'verdict.json')})`);
+			return verdicts;
+		};
+		if (options.verdict) {
+			const verdicts = await verdictOn(routes);
+			if (!options.watch) return verdicts.every((v) => v.pass) ? 0 : 1;
+		} else {
+			await probeRoutes(routes);
+			await checkRoutes(routes);
+			if (!options.watch) return before?.some((r) => r.findings.length) ? 1 : 0;
+		}
 
 		// Watch: a part is copied into the dev app and its routes probed again; a converter change converts again first.
 		log(`\nwatching parts/, src/convert/ and ${relative(process.cwd(), join(app, SITE_DIR)) || SITE_DIR}/ (Ctrl+C stops)`);
@@ -268,12 +357,15 @@ export async function dev(options: DevOptions): Promise<number> {
 					pending.routes.clear();
 					if (reconvert && !(await convertRoutes(reuse))) continue;
 					// Vite answers the next load with the changed modules; a production build is built again.
-					if (options.build) {
+					if (options.build || options.verdict) {
 						server.stop();
 						await server.start(routes[0]!);
 					}
-					await probeRoutes(which);
-					await checkRoutes(which);
+					if (options.verdict) await verdictOn(which);
+					else {
+						await probeRoutes(which);
+						await checkRoutes(which);
+					}
 				}
 			} finally {
 				running = false;

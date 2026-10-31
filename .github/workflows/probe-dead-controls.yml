@@ -143,7 +143,7 @@ jobs:
           fi
           # One process per runner from one longest-first queue. Chromium probes two routes at a time, each with its own browser:
           # a 4-vCPU runner is busy at two. WebKit probes one: at two it reported 10 to 50 differences the same routes alone do not.
-          if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8 CONCURRENCY=1; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24 CONCURRENCY=2; fi
+          eval "$(node scripts/ci-flags.ts probe ${{ matrix.engine }})"
           COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
           tail -n 5 out/log.txt
       - uses: actions/upload-artifact@v4

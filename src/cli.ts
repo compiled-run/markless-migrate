@@ -122,6 +122,13 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --routes takes a glob (* within a path segment, ** across), --part every route whose page loads that port
           (base-ui/combobox, or a module it needs), from the full convert's report; --concurrency probes that many
           routes at once (each probe holds one browser context). --check also runs check --only probes on them.
+  fix     (--route <path>... | --routes <glob> | --part <module>) [dev's options] [--site-targets <file>]
+          dev --verdict: the fixer's loop, and the answer the full check would give for these routes. It converts them,
+          builds them for production, runs check as each CI shard does (every dimension, the three engines, template
+          groups over --site-targets, default deploy/<site>/check-targets.json) and the dead-controls probe in Chromium
+          and WebKit with CI's budgets, then prints PASS or FAIL per route and one verdict line (exit 0 or 1). A route
+          not checked for an infrastructure failure, or a probe that stopped, is taken once more and is a FAIL if it
+          still is: there is no third outcome. With --watch it answers again on every save.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -1081,8 +1088,9 @@ async function main(argv: string[]): Promise<number> {
 			if (!red) err(`markless-migrate: nothing is red, but ${report.routes.filter((r) => r.infrastructure).length} route check(s) could not be done for an infrastructure failure; check them again.\n`);
 			return red ? 1 : 3;
 		}
+		case 'fix':
 		case 'dev': {
-			const { values } = parseArgs({ args: rest, options: { app: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, part: { type: 'string' }, old: { type: 'string' }, source: { type: 'string' }, fallthrough: { type: 'string' }, control: { type: 'string' }, widths: { type: 'string' }, full: { type: 'boolean' }, watch: { type: 'boolean' }, build: { type: 'boolean' }, check: { type: 'boolean' }, concurrency: { type: 'string' }, port: { type: 'string' }, probe: { type: 'string' }, 'no-probes': { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { verdict: { type: 'boolean' }, 'site-targets': { type: 'string' }, app: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, part: { type: 'string' }, old: { type: 'string' }, source: { type: 'string' }, fallthrough: { type: 'string' }, control: { type: 'string' }, widths: { type: 'string' }, full: { type: 'boolean' }, watch: { type: 'boolean' }, build: { type: 'boolean' }, check: { type: 'boolean' }, concurrency: { type: 'string' }, port: { type: 'string' }, probe: { type: 'string' }, 'no-probes': { type: 'boolean' } } });
 			const { dev } = await import('./dev/index.ts');
 			try {
 				return await dev({
@@ -1103,6 +1111,8 @@ async function main(argv: string[]): Promise<number> {
 					build: values.build === true,
 					check: values.check === true,
 					noProbes: values['no-probes'] === true,
+					verdict: command === 'fix' || values.verdict === true,
+					...(values['site-targets'] ? { siteTargets: values['site-targets'] } : {}),
 				});
 			} catch (error) {
 				fail((error as Error).message);

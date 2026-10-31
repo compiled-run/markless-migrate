@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { prepareDevApp } from '../src/dev/app.ts';
+import { convertInputArgs, prepareDevApp } from '../src/dev/app.ts';
 import { diffRuns, formatDiffs, type Finding, type RouteProbe } from '../src/dev/findings.ts';
 import { portsLoading, routeGlob, routesUsing, selectRoutes } from '../src/dev/routes.ts';
 
@@ -73,10 +73,17 @@ test("the dev app links the app's packages, plan state and capture folders, copi
 		await assert.rejects(lstat(join(dev, 'node_modules', '.vite')), 'Vite keeps its own cache in the dev app');
 		await assert.rejects(lstat(join(dev, '.migrate', 'convert', 'report.json')), "the app's full report is not the dev app's");
 		await assert.rejects(lstat(join(dev, '.migrate', 'dev')), 'the dev folder is not linked into itself');
+		for (const cache of ['cache', 'slow-network', 'probe-reuse']) assert.ok(await linked(`.migrate/${cache}`), `the original's side kept in ${cache} is the app's, made before the first check`);
 		await writeFile(join(app, 'lib', 'site', 'parts.ts'), 'changed');
 		await prepareDevApp(app, dev);
 		assert.equal(await readFile(join(dev, 'lib', 'site', 'parts.ts'), 'utf8'), 'changed', 'prepared again, it takes the site code as it is now');
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
+});
+
+test("a route converted alone gets the whole convert's page order, and nothing when the whole convert had none", () => {
+	assert.deepEqual(convertInputArgs({ pageOrderFrom: 'https://old.example' }), ['--page-order-from', 'https://old.example']);
+	assert.deepEqual(convertInputArgs({ pageOrderFrom: null }), []);
+	assert.deepEqual(convertInputArgs(undefined), []);
 });
