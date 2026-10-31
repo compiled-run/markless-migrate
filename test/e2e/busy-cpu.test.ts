@@ -37,12 +37,14 @@ async function serve(html: string): Promise<string> {
 	return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-test('a busy CPU slows a page down: a loop takes longer in it than on an idle machine', async () => {
+test('a busy CPU slows a page down: a loop takes longer in it than on an idle machine', async (t) => {
 	const p = await browsers.chromium!.newPage();
-	const loop = () => p.evaluate(() => { const t = performance.now(); let x = 0; for (let i = 0; i < 4e7; i++) x += i; return performance.now() - t; });
+	// Long enough that a scheduler's time slice is a small part of it.
+	const loop = () => p.evaluate(() => { const t = performance.now(); let x = 0; for (let i = 0; i < 2e8; i++) x += i; return performance.now() - t; });
 	const idle = Math.min(await loop(), await loop());
 	const busy = await busyCpu(() => loop());
 	await p.close();
+	t.diagnostic(`idle ${idle} ms, busy ${busy} ms (${(busy / idle).toFixed(2)}x)`);
 	assert.ok(busy > idle * 1.5, `idle ${idle} ms, busy ${busy} ms`);
 });
 
