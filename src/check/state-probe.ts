@@ -60,8 +60,8 @@ export async function readState(page: Page, previous?: StateReading): Promise<St
 	const state = drained ?? empty;
 	if (previous && drained && !drained.changed) return { ...state, ax: previous.ax, ms: Date.now() - started };
 	const roots = await page.locator('[data-markless-migrate-state]').all().catch(() => []);
-	const snapshots = await Promise.all(roots.map((r) => r.ariaSnapshot({ timeout: 2_000 }).catch(() => '')));
-	const ax = maskClocks(snapshots.join('\n').split('\n').map(anonymous).filter((l) => l.trim()));
+	const snapshots = await Promise.all(roots.map(async (r) => ({ role: (await r.getAttribute('data-markless-migrate-state', { timeout: 2_000 }).catch(() => null)) ?? '', tree: await r.ariaSnapshot({ timeout: 2_000 }).catch(() => '') })));
+	const ax = snapshots.flatMap(({ role, tree }) => maskClocks(tree.split('\n').map(anonymous).filter((l) => l.trim())).map((l) => `${role}: ${l}`));
 	return { ...state, ax, ms: Date.now() - started };
 }
 
@@ -121,6 +121,8 @@ export function describeMotion(list: readonly PageMotion[]): string {
 }
 
 const motionKey = (m: PageMotion) => m.properties.join(',');
+// A size or position keyframe is read from the layout (a menu's max-height is the room left below it, which the scroll position sets): only that it animates is compared.
+const sized = (frame: string) => frame.replace(/\b((?:max-|min-)?(?:height|width|block-size|inline-size)|top|left|right|bottom|inset[\w-]*)=[^,]*/g, '$1=*');
 
 /** Whether two lists of animations of one subject run alike: the same properties, timing within tolerance, the same easing and keyframes. */
 export function sameMotion(a: readonly PageMotion[], b: readonly PageMotion[]): boolean {
@@ -142,7 +144,7 @@ export function sameMotion(a: readonly PageMotion[], b: readonly PageMotion[]): 
 		if (!near(x.duration, y.duration, t.ms, t.ratio) || !near(x.delay, y.delay, t.ms, t.ratio)) return false;
 		if (easing(x.easing) !== easing(y.easing) || x.iterations !== y.iterations || x.direction !== y.direction) return false;
 		// A transition's keyframes run from wherever the property was, which a retargeted transition reads mid-flight: only an animation's are its own.
-		if (x.kind !== 'transition' && (x.keyframes.length !== y.keyframes.length || x.keyframes.some((f, i) => !nearText(f, y.keyframes[i]!, t.value)))) return false;
+		if (x.kind !== 'transition' && (x.keyframes.length !== y.keyframes.length || x.keyframes.some((f, i) => !nearText(sized(f), sized(y.keyframes[i]!), t.value)))) return false;
 	}
 	return true;
 }
@@ -167,7 +169,7 @@ const OWN = /^(?!.* outside the widget$)/;
 const MOVES = /^(opacity|transform|translate|scale|rotate|width|height|max-height|min-height|max-width|top|left|right|bottom|inset.*|margin.*|padding.*|clip-path|visibility|display|overlay|offset.*|grid-template.*|flex.*|filter|backdrop-filter|--.*)$/;
 const moving = (list: readonly PageMotion[], popup = true) => list.filter((m) => m.kind !== 'transition' || (popup && m.properties.some((p) => MOVES.test(p))));
 
-const popupRoles = (r: StateReading | undefined) => (r?.popups ?? []).map((p) => p.role);
+const popupRoles = (r: StateReading | undefined) => r?.open ?? (r?.popups ?? []).map((p) => p.role);
 
 /** The motion field a subject's animation belongs to: the popup a step opened or closed, else the subject itself. */
 function motionField(subject: string, before: StateReading | undefined, after: StateReading): string {
@@ -188,10 +190,18 @@ const groupBy = <T>(list: readonly T[], key: (x: T) => string) => {
 /** One step's differences, old against new; a field that differs between two old runs is noise there and left out. */
 export function compareStep(oldBefore: StateReading | undefined, old: StateReading, newBefore: StateReading | undefined, next: StateReading, again?: StateReading, againBefore?: StateReading): StateDiff[] {
 	const out: StateDiff[] = [];
-	// The accessibility tree: what the step added and removed on each side.
-	const od = axDelta(oldBefore?.ax ?? old.ax, old.ax);
-	const nd = axDelta(newBefore?.ax ?? next.ax, next.ax);
-	const ad = again ? axDelta(againBefore?.ax ?? again.ax, again.ax) : undefined;
+	// The tree of each popup open on both sides: what the step added to and removed from it.
+	const both = (a: StateReading | undefined, b: StateReading | undefined) => new Set(popupRoles(a).filter((r) => popupRoles(b).includes(r)));
+	const after = both(old, next);
+	const beforeBoth = both(oldBefore, newBefore);
+	const delta = (before: StateReading | undefined, at: StateReading) => {
+		const d = axDelta(before?.ax ?? at.ax, at.ax);
+		const role = (l: string) => l.slice(0, l.indexOf(': '));
+		return { added: d.added.filter((l) => after.has(role(l))), removed: d.removed.filter((l) => beforeBoth.has(role(l)) && after.has(role(l))) };
+	};
+	const od = delta(oldBefore, old);
+	const nd = delta(newBefore, next);
+	const ad = again ? delta(againBefore, again) : undefined;
 	const noisy = new Set(ad ? [...without(od.added, ad.added), ...without(ad.added, od.added), ...without(od.removed, ad.removed), ...without(ad.removed, od.removed)] : []);
 	const clean = (l: string[]) => l.filter((x) => !noisy.has(x));
 	const missing = [...without(clean(od.added), nd.added).map((l) => `+ ${l.trim()}`), ...without(clean(od.removed), nd.removed).map((l) => `- ${l.trim()}`)];
@@ -234,6 +244,8 @@ export function compareStep(oldBefore: StateReading | undefined, old: StateReadi
 	for (const k of new Set([...os.keys(), ...ns.keys()])) {
 		const o = os.get(k);
 		const n = ns.get(k);
+		// A style a script writes outside the widget (a carousel track settling after focus moved) moves by its own physics and timing; an SVG shape outside it (a chart the control drives) is compared.
+		if (k.endsWith('|style') && !OWN.test(k.slice(0, -6))) continue;
 		if (!tweenDiffers(o, n)) continue;
 		if (as && tweenDiffers(o, as.get(k))) continue;
 		const [subject, attribute] = k.split('|') as [string, string];

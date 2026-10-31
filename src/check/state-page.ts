@@ -48,6 +48,8 @@ export interface PageScriptMotion {
 export interface PageState {
 	/** The DOM changed since the last drain. */
 	readonly changed?: boolean;
+	/** The roles of the popups open, outermost, in page order. */
+	readonly open?: readonly string[];
 	readonly popups: readonly PagePopupPlace[];
 	readonly motion: readonly PageMotion[];
 	readonly script: readonly PageScriptMotion[];
@@ -92,11 +94,14 @@ export function armState(): void {
 	// A transition reversed part way runs shorter than its rule, by however far it had got: the rule's timing is what the page declares.
 	const rules = new Map<Animation, { duration: number; delay: number }>();
 	const ms = (v: string | undefined) => (v === undefined ? undefined : v.endsWith('ms') ? Number.parseFloat(v) : Number.parseFloat(v) * 1000);
+	// Whose an animation is, read when it starts: an exit's element may be gone from the page by the time the step is read.
+	const owners = new Map<Animation, string>();
 	const add = (a: Animation) => {
 		if (known.has(a)) return;
 		known.add(a);
 		found.push(a);
 		const effect = a.effect as KeyframeEffect | null;
+		owners.set(a, subject(effect?.target));
 		if (typeof CSSTransition === 'undefined' || !(a instanceof CSSTransition) || !effect?.target) return;
 		const cs = getComputedStyle(effect.target, effect.pseudoElement ?? undefined);
 		const list = (v: string) => v.split(',').map((x) => x.trim());
@@ -159,7 +164,7 @@ export function armState(): void {
 		const easing = effect.getTiming().easing ?? 'linear';
 		return {
 			kind: transition ? 'transition' : typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation ? 'animation' : 'web animation',
-			subject: subject(effect.target),
+			subject: owners.get(a) ?? subject(effect.target),
 			properties,
 			duration: Math.round(rules.get(a)?.duration ?? duration),
 			delay: Math.round(rules.get(a)?.delay ?? Number(effect.getTiming().delay ?? 0)),
@@ -212,6 +217,7 @@ export function armState(): void {
 				if (m) motion.push(m);
 			}
 			found = [];
+			owners.clear();
 			const script: PageScriptMotion[] = [];
 			const now = performance.now();
 			for (const [el, byAttr] of writes) {
@@ -233,16 +239,12 @@ export function armState(): void {
 				const t = triggerOf(p);
 				return t && shown(t) && !p.contains(t) ? [place(p, t)] : [];
 			});
-			// The tree is read where the step acts: the widget around the control and each popup outside it, so a page's other content costs nothing.
-			const control = document.querySelector(MARK);
-			const scope = control?.closest('figure, section, article, form, fieldset, [role="group"], [role="region"], [role="tabpanel"], [data-slot="card"], [data-slot$="preview"]');
-			const roots = [scope && scope.querySelectorAll('*').length <= 1500 ? scope : (control?.parentElement?.parentElement ?? control), ...outer].filter((e): e is Element => Boolean(e));
-			const keep = roots.filter((e, i) => !roots.some((o, j) => j !== i && o.contains(e) && o !== e));
-			for (const o of document.querySelectorAll(`[${SCOPE}]`)) if (!keep.includes(o)) o.removeAttribute(SCOPE);
-			for (const e of keep) if (!e.hasAttribute(SCOPE)) e.setAttribute(SCOPE, '');
+			// The tree is read for what is open: whether it opened is the probes' reading, what it holds is this one's.
+			for (const o of document.querySelectorAll(`[${SCOPE}]`)) if (!outer.includes(o)) o.removeAttribute(SCOPE);
+			for (const e of outer) if (e.getAttribute(SCOPE) !== roleOf(e)) e.setAttribute(SCOPE, roleOf(e));
 			const was = changed;
 			changed = false;
-			return { changed: was, popups, motion, script };
+			return { changed: was, open: outer.map(roleOf), popups, motion, script };
 		},
 		quietFor(ms: number) {
 			return performance.now() - lastWrite >= ms;

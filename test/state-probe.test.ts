@@ -38,16 +38,21 @@ for (const [id, c] of Object.entries(CASES)) {
 	});
 }
 
-test('a step compares what it changed: tree lines it added, a popup moved past tolerance, an animation only one side ran; what two old runs disagree on is noise', () => {
-	const at = (over: Partial<StateReading> = {}): StateReading => ({ ax: ['- main:', '  - button "Open"'], popups: [], motion: [], script: [], ms: 1, ...over });
+test('a step compares what it changed: the tree of an open menu, a popup moved past tolerance, an animation only one side ran; what two old runs disagree on is noise', () => {
+	const at = (over: Partial<StateReading> = {}): StateReading => ({ ax: [], open: [], popups: [], motion: [], script: [], ms: 1, ...over });
 	const place = { role: 'menu', name: '', side: 'below', gap: 4, across: 0, align: 'start', width: 200, height: 100, triggerWidth: 200, triggerHeight: 32, covers: 0, hides: false, anchored: true } as const;
-	const fade = { kind: 'animation', subject: 'menu', properties: ['opacity'], duration: 150, delay: 0, easing: 'ease-out', iterations: 1, direction: 'normal', keyframes: ['0 opacity=0', '1 opacity=1'] } as const;
-	const open = at({ ax: ['- main:', '  - button "Open"', '  - menu'], popups: [place], motion: [fade] });
-	assert.deepEqual(compareStates([at(), open], [at({ ax: ['- main:', '  - button "Open" [expanded]'] }), { ...open, ax: ['- main:', '  - button "Open" [expanded]', '  - menu'], popups: [{ ...place, gap: 5, width: 201 }], motion: [{ ...fade, duration: 160, easing: 'cubic-bezier(0, 0, 0.58, 1)' }] }]), [[]]);
-	const diffs = compareStates([at(), open], [at(), { ...open, ax: [...at().ax], popups: [{ ...place, across: 40, align: 'none', width: 150 }], motion: [] }])[0]!;
+	const fade = { kind: 'animation', subject: 'menu', properties: ['opacity'], duration: 150, delay: 0, easing: 'ease-out', iterations: 1, direction: 'normal', keyframes: ['0 max-height=300px, opacity=0', '1 max-height=300px, opacity=1'] } as const;
+	const open = at({ ax: ['menu: - menu', 'menu:   - menuitem "Profile"', 'menu:   - menuitem "Billing"'], open: ['menu'], popups: [place], motion: [fade] });
+	// Within tolerance: a pixel of gap and width, 10 ms of duration, the same easing written another way, a max-height the layout set.
+	const near = { ...open, popups: [{ ...place, gap: 5, width: 201 }], motion: [{ ...fade, duration: 160, easing: 'cubic-bezier(0, 0, 0.58, 1)', keyframes: ['0 max-height=520px, opacity=0', '1 max-height=520px, opacity=1'] }] };
+	assert.deepEqual(compareStates([at(), open], [at(), near]), [[]]);
+	const diffs = compareStates([at(), open], [at(), { ...open, ax: open.ax.slice(0, 2), popups: [{ ...place, across: 40, align: 'none', width: 150 }], motion: [] }])[0]!;
 	assert.deepEqual(diffs.map((d) => d.field), ['accessibility tree', 'pop-up place of menu', 'motion opening menu']);
+	assert.match(diffs[0]!.old, /menuitem "Billing"/);
 	assert.match(diffs[1]!.new, /differs in alignment, offset, width/);
 	assert.equal(diffs[2]!.new, 'no animation');
 	const jitter = { ...open, motion: [{ ...fade, duration: 400 }] };
 	assert.deepEqual(compareStates([at(), open], [at(), jitter], [at(), jitter])[0]!.map((d) => d.field), []);
+	// A menu open on one side only is the probes' difference of state: its tree and motion are not compared.
+	assert.deepEqual(compareStates([at(), open], [at(), at()])[0]!.map((d) => d.field), []);
 });
