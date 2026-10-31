@@ -1,22 +1,30 @@
 // The busy-CPU lane: each use of a control made while every CPU of the machine is kept busy, in Chromium, Firefox and
 // WebKit, on one page per template group. A control the port answers on an idle machine but loses on a busy one (a handler
 // woken late on a slow device) is red here, where the idle checks pass it.
+import { spawn } from 'node:child_process';
 import { availableParallelism } from 'node:os';
-import { Worker } from 'node:worker_threads';
 import type { Browser } from 'playwright';
 import type { SideEnv } from './browser.ts';
 import { checkControlParity, type ControlParityOptions } from './control-parity.ts';
 import type { Failure, Viewport } from './types.ts';
 
-/** Runs `work` while `threads` threads (two per CPU by default) keep the machine busy. */
-export async function busyCpu<T>(work: () => Promise<T>, threads = 2 * availableParallelism()): Promise<T> {
-	const workers = Array.from({ length: threads }, () => new Worker("require('node:worker_threads').parentPort.postMessage(0); for (;;) {}", { eval: true }));
+// Each spinner checks its parent now and then, so one left by a crashed check stops by itself.
+const SPIN = 'process.send(0); const parent = process.ppid; for (;;) { for (let i = 0; i < 5e7; i++); if (process.ppid !== parent) process.exit(); }';
+
+/**
+ * Runs `work` while `count` processes (two per CPU by default) keep the machine busy. Each spinner is a process in its own
+ * session, as Playwright starts each browser: Linux schedules sessions as groups, so threads of this process would share
+ * one group's CPU however many there were, and the browser's group would keep the rest.
+ */
+export async function busyCpu<T>(work: () => Promise<T>, count = 2 * availableParallelism()): Promise<T> {
+	const spinners = Array.from({ length: count }, () => spawn(process.execPath, ['-e', SPIN], { detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }));
 	try {
-		// A thread takes tens of milliseconds to start: work begun before every one spins would run on an idle machine.
-		await Promise.all(workers.map((w) => new Promise((spinning, failed) => w.once('message', spinning).once('error', failed))));
+		// A process takes tens of milliseconds to start: work begun before every one spins would run on an idle machine.
+		await Promise.all(spinners.map((s) => new Promise((spinning, failed) => s.once('message', spinning).once('error', failed))));
+		for (const s of spinners) s.disconnect();
 		return await work();
 	} finally {
-		await Promise.all(workers.map((w) => w.terminate()));
+		await Promise.all(spinners.map((s) => new Promise((gone) => (s.exitCode !== null || s.signalCode !== null ? gone(undefined) : (s.once('exit', gone), s.kill('SIGKILL'))))));
 	}
 }
 

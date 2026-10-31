@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
@@ -45,7 +46,8 @@ test('a busy CPU slows a page down: a loop takes longer in it than on an idle ma
 	const idle = Math.min(await loop(), await loop());
 	const busy = await busyCpu(() => loop());
 	await p.close();
-	t.diagnostic(`idle ${idle} ms, busy ${busy} ms (${(busy / idle).toFixed(2)}x)`);
+	const autogroup = await readFile('/proc/sys/kernel/sched_autogroup_enabled', 'utf8').catch(() => 'n/a');
+	t.diagnostic(`idle ${idle} ms, busy ${busy} ms (${(busy / idle).toFixed(2)}x); sched_autogroup_enabled ${autogroup.trim()}`);
 	assert.ok(busy > idle * 1.5, `idle ${idle} ms, busy ${busy} ms`);
 });
 
