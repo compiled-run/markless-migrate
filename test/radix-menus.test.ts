@@ -336,3 +336,22 @@ test("Radix DropdownMenu: an item convert recorded as changing its trigger's tex
 	assert.equal(await page.locator('#menu').getAttribute('aria-expanded'), 'false', 'the menu closed');
 	await page.close();
 });
+
+test("Radix DropdownMenu: a switcher's chosen item shows its logo variant on the trigger and moves the check mark to itself", async () => {
+	const svg = (n: string, extra = '') => `<svg width="8" height="8" data-logo="${n}"${extra}></svg>`;
+	const switcher = `<main><button type="button" style="position:fixed;left:20px;top:20px" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger"><div>${svg('a', ' data-mm-variant-of="0" data-mm-variant="own"')}${svg('a', ' hidden data-mm-variant-of="0" data-mm-variant="0"')}${svg('b', ' hidden data-mm-variant-of="0" data-mm-variant="1"')}</div><span>A</span></button></main>
+<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1" data-radix-menu-content=""><div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item" data-mm-trigger-text="[[2,&quot;A&quot;]]" data-mm-trigger-svg="[[0,0]]">A<svg width="8" height="8" data-check data-mm-chosen-mark></svg></div><div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item" data-mm-trigger-text="[[2,&quot;B&quot;]]" data-mm-trigger-svg="[[0,1]]">B<svg width="8" height="8" data-check data-mm-chosen-mark hidden></svg></div></div></div>`;
+	const page = await open(switcher, ['radix/dropdown-menu']);
+	const shown = () => page.evaluate(() => [[...document.querySelectorAll('#menu svg:not([hidden])')].map((s) => s.getAttribute('data-logo')).join(''), document.querySelector('#menu span')!.textContent, [...document.querySelectorAll('[role=menuitem]')].filter((i) => !i.querySelector('svg')!.hasAttribute('hidden')).map((i) => i.textContent).join('')]);
+	await page.click('#menu');
+	await settled(page);
+	await page.getByText('B', { exact: true }).click();
+	await settled(page);
+	assert.deepEqual(await shown(), ['b', 'B', 'B']);
+	await page.click('#menu');
+	await settled(page);
+	await page.getByText('A', { exact: true }).click();
+	await settled(page);
+	assert.deepEqual(await shown(), ['a', 'A', 'A']);
+	await page.close();
+});

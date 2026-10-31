@@ -141,6 +141,9 @@ export function click(target: Element): boolean {
 	}
 	const shows = item.getAttribute('data-mm-trigger-text');
 	if (shows !== null) showOnTrigger(menuRoot(layer).trigger, JSON.parse(shows) as [number, string][]);
+	const variants = item.getAttribute('data-mm-trigger-svg');
+	if (variants !== null) showVariants(menuRoot(layer).trigger, JSON.parse(variants) as [number, number][]);
+	if (item.querySelector(':scope > [data-mm-chosen-mark]')) for (const other of layer.content.querySelectorAll(ITEM)) other.querySelector(':scope > [data-mm-chosen-mark]')?.toggleAttribute('hidden', other !== item);
 	closeMenu(layer);
 	return true;
 }
@@ -154,6 +157,11 @@ function showOnTrigger(trigger: HTMLElement, shown: readonly (readonly [number, 
 		const runs = [...(elements[i]?.childNodes ?? [])].filter((n): n is Text => n.nodeType === Node.TEXT_NODE);
 		runs.forEach((t, k) => (t.data = k === 0 ? text : ''));
 	}
+}
+
+// The trigger's markup that is not text and differs by choice (a team's logo): convert put every variant after it, hidden.
+function showVariants(trigger: HTMLElement, picks: readonly (readonly [number, number])[]): void {
+	for (const [of, n] of picks) for (const el of trigger.querySelectorAll(`[data-mm-variant-of="${of}"]`)) el.toggleAttribute('hidden', el.getAttribute('data-mm-variant') !== String(n));
 }
 
 function openSub(trigger: HTMLElement, keyboard: boolean): Layer | undefined {
