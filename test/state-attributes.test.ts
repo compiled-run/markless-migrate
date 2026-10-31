@@ -28,7 +28,7 @@ function serve(body: string): Promise<string> {
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
 }
 
-const check = async (old: string, next: string): Promise<Report> => runCheck({ oldOrigin: await serve(old), newOrigin: await serve(next), routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } });
+const check = async (old: string, next: string): Promise<Report> => runCheck({ oldOrigin: await serve(old), newOrigin: await serve(next), routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 
 test("a step's state attributes (data-state, data-highlighted, data-pressed...) are part of how it answers: a port that leaves them as they were is red", async () => {
 	const report = await check(page(true), page(false));
