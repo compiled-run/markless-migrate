@@ -28,7 +28,7 @@ key=$(cd "$WORK/migrate" && node scripts/pipeline.ts key build "$SITE" "$APP_REL
 (cd "$APP" && HEAVY_GB="${HEAVY_GB:-26}" MARKLESS_COMPILE_WORKERS="${MARKLESS_COMPILE_WORKERS:-1}" NITRO_PRESET="${PRESET:-vercel}" VITE_APP_URL="${APP_URL:-}" NODE_OPTIONS=--max-old-space-size=20000 "$HEAVY" npm run build)
 if [ -n "${APP_URL:-}" ] && grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.vercel/output" "$APP/.output/public" 2>/dev/null; then echo 'FAIL: pages link v0 to a hostless URL' >&2; exit 1; fi
 if [ -d "$APP/.vercel/output" ]; then tar -czf "$WORK/output.tar.gz" -C "$APP" .vercel/output .migrate/caching.json; else tar -czf "$WORK/output.tar.gz" -C "$APP" .output .migrate/caching.json; fi
-TAG="$SITE-build-$key"
+TAG="$SITE-$([ "${PRESET:-vercel}" = cloudflare-module ] && echo cf-)build-$key"
 asset="$SITE-output.tar.gz"
 cp "$WORK/output.tar.gz" "$WORK/$asset"
 gh release view "$TAG" -R "$REPO" > /dev/null 2>&1 || gh release create "$TAG" -R "$REPO" --prerelease --title "$SITE build $key (pipeline run $RUN, built on the Mac)" --notes "Converted app of pipeline run $RUN, Markless $(git -C "$WORK/markless" rev-parse --short=9 HEAD), preset ${PRESET:-vercel}."

@@ -658,7 +658,8 @@ jobs:
           KEY: ${{ steps.key.outputs.key }}
         run: |
           set -euo pipefail
-          tag="$SITE-build-$KEY"
+          # check.yml serves only Node and Vercel builds by default, so a Worker build is named apart.
+          tag="$SITE-$([ "$PRESET" = cloudflare-module ] && echo cf-)build-$KEY"
           cp "$RUNNER_TEMP/out/output.tar.gz" "$RUNNER_TEMP/out/$SITE-output.tar.gz"
           gh release view "$tag" > /dev/null 2>&1 || gh release create "$tag" --prerelease --title "$SITE build ${KEY:0:8} (pipeline run $GITHUB_RUN_ID, $PRESET)" --notes "Pipeline run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID, Markless ${MARKLESS_SHA:0:9}, preset $PRESET."
           gh release upload "$tag" "$RUNNER_TEMP/out/$SITE-output.tar.gz" --clobber
