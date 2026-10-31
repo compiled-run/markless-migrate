@@ -252,7 +252,7 @@
 		},
 		"cypress/e2e/Dialog.cy.ts > electron > Dialog > given a modal dialog > can be open/closed with a pointer": {
 			"class": "part",
-			"why": "some runs leave <body style=\"pointer-events: none\"> after the dialog closes, so the next press on the trigger is refused (parts/radix/dialog-engine.ts, DismissableLayer's body pointer-events); 1 of 6 port runs so far, quarantined in docs/ci-process.md",
+			"why": "some runs leave <body style=\"pointer-events: none\"> after the dialog closes, so the next press on the trigger is refused (parts/radix/dialog-engine.ts, DismissableLayer's body pointer-events); about half the port runs, quarantined in docs/ci-process.md",
 			"racy": "it passes on most runs; the failure is the defect, a pass is not its fix"
 		}
 	}
