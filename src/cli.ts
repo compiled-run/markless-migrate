@@ -59,7 +59,7 @@ import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUs
 import { guardPages, readAllowances, scanBuild, summarizeBuild } from './client/index.ts';
 import { acceptUpgrade, findUi, summarizeUpgrade, upgrade, writeUpgrade } from './upgrade/index.ts';
 import { scanLibraries } from './library/index.ts';
-import { buildLedger, summarizeLedger, writeLedger } from './ledger/index.ts';
+import { buildLedger, DEFAULT_LEDGER_MODE, ledgerExit, summarizeLedger, writeLedger, type LedgerMode } from './ledger/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -107,8 +107,8 @@ const USAGE = `markless-migrate ${VERSION}
           search results come in that deployment's order.
           --reuse (what dev passes) keeps what the app already holds: assets on disk are not fetched, the old
           app's public/ is not copied again, and the server is kept, with only its list of pages written again.
-          With --source, the handler ledger runs after the pages are written (see ledger); --ledger report
-          writes it without failing convert, --ledger off skips it.
+          With --source, the handler ledger runs after the pages are written (see ledger) and is reported;
+          --ledger fail makes an unanswered handler fail convert, --ledger off skips it.
   ledger --source <path> [--json]
           Map every element the old source wires to a handler (onClick, onValueChange, a library Close...) to
           what answers it in the converted app: a Markless handler, one of the site's parts, a recorded choice,
@@ -1160,12 +1160,12 @@ async function main(argv: string[]): Promise<number> {
 			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
 			if (!report.routes.length) return 1;
-			const mode = values.ledger ?? 'fail';
+			const mode = (values.ledger as LedgerMode | undefined) ?? DEFAULT_LEDGER_MODE;
 			if (!values.source || mode === 'off') return 0;
 			// Two threads after convert: each reads the whole port, and convert's own memory is still held.
 			const ledger = await buildLedger({ source: resolve(values.source), app: cwd, workers: 2 });
 			out(`${summarizeLedger(ledger)}Wrote ${await writeLedger(cwd, ledger)}\n`);
-			return ledger.failures.length && mode === 'fail' ? 1 : 0;
+			return ledgerExit(mode, ledger.failures.length);
 		}
 		case 'usage': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, built: { type: 'string' }, source: { type: 'string' }, 'new-source': { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true } } });
