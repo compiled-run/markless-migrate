@@ -22,6 +22,8 @@
 		"/docs/components/base/data-table",
 		"/docs/components/base/date-picker",
 		"/docs/components/radix/date-picker",
-		"/examples/dashboard"
+		"/examples/dashboard",
+		"/docs/components/base/code-block",
+		"/docs"
 	]
 }
