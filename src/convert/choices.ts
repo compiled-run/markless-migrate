@@ -175,19 +175,20 @@ function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } 
 
 // What choosing an option started is read once the page has finished moving: its requests answered, its address unchanged
 // and nothing due for 150 ms (a server redirect moves it a second time, a router commits after its data). At most 10 s;
-// false when it was still moving then.
+// what was still moving then, if anything.
 const MOVED_MS = 150;
-async function afterChoosing(page: Page, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<boolean> {
+async function afterChoosing(page: Page, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<string | undefined> {
 	await settle(page, 500);
 	const deadline = Date.now() + 10_000;
 	let url = page.url();
 	let since = Date.now();
 	for (;;) {
 		if (page.url() !== url) [url, since] = [page.url(), Date.now()];
-		const fetching = [...requests.open].some((r) => !earlier.has(r) && MOVING.has(r.resourceType())) || Date.now() - requests.ended < MOVED_MS;
+		const open = [...requests.open].filter((r) => !earlier.has(r) && MOVING.has(r.resourceType()));
+		const fetching = open.length > 0 || Date.now() - requests.ended < MOVED_MS;
 		const still = !fetching && Date.now() - since >= MOVED_MS;
-		if (still && (await quiet(page))) return true;
-		if (Date.now() >= deadline) return still;
+		if (still && (await quiet(page))) return undefined;
+		if (Date.now() >= deadline) return still ? undefined : open.length ? `fetching ${open.map((r) => new URL(r.url()).pathname).join(', ')}` : `at ${new URL(url).pathname}`;
 		await page.waitForTimeout(50);
 	}
 }
@@ -269,8 +270,15 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 					failure ??= `could not choose ${key}`;
 					return out;
 				}
-				if (!(await afterChoosing(page, requests, earlier))) {
-					failure ??= `${key} was still moving the page after 10 s`;
+				// A page still moving after 10 s is chosen once more on a fresh load.
+				let moving = await afterChoosing(page, requests, earlier);
+				if (moving !== undefined && (await openOn(page, origin, route, reveal.path))) {
+					const again = new Set(requests.open);
+					requests.ended = 0;
+					if (await click(5000)) moving = await afterChoosing(page, requests, again);
+				}
+				if (moving !== undefined) {
+					failure ??= `${key} was still moving the page after 10 s (${moving})`;
 					return out;
 				}
 				const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
