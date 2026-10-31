@@ -1,7 +1,7 @@
 // The pipeline workflow's keys and caches (.github/workflows/pipeline.yml). Every stage keys its work by content, so a
 // stage whose inputs are unchanged is read back from the run that made it instead of done again:
 //   key plan|emit|emit-base|build ...   one stage's key (see stageKey)
-//   record-split <pages.txt> <origin> <store> <n> <out dir>   each page's recording key; shards of the pages the store lacks
+//   record-split <pages.txt> <origin> <store> <n> <out dir> [<captures>]   each page's recording key; shards of the pages the store lacks
 //   prune <store> <record-keys.json>    drops recordings no page's current key names
 //   copied-parts <app>                  the app's lib/parts files that are copies of parts/ (written beside the converted app)
 //   refresh-parts <app> <list>          copies those files from parts/ again (an emit whose only change is in copied parts)
@@ -154,6 +154,21 @@ export async function pruneStore(store: string, keep: ReadonlySet<string>): Prom
 	return { kept, dropped };
 }
 
+/** The route each capture under the store was recorded for, by the key it was recorded under (captures/<key>/*.json). */
+export async function capturedKeys(store: string): Promise<Map<string, string>> {
+	const out = new Map<string, string>();
+	const dir = join(store, 'captures');
+	if (!existsSync(dir)) return out;
+	for (const key of (await readdir(dir)).sort()) {
+		if (!KEY_DIR.test(key)) continue;
+		for (const file of (await readdir(join(dir, key))).filter((f) => f.endsWith('.json')).sort()) {
+			const route = (JSON.parse(await readFile(join(dir, key, file), 'utf8')) as { route?: unknown }).route;
+			if (typeof route === 'string') out.set(route, key);
+		}
+	}
+	return out;
+}
+
 /**
  * Pages packed into at most n shards, none of them empty: longest first onto the least loaded shard, by what each page's
  * capture last cost (one not measured counts as the median; with none measured, dealt in turn).
@@ -230,6 +245,9 @@ export function report(receipts: readonly Receipt[], jobs: readonly Job[]): stri
 	return [`End to end: ${Number.isFinite(first) ? mmss(last - first) : '–'} (first job start to last job end)`, '', '| Stage | Wall | Runner time | Result | Receipts |', '|---|---:|---:|---|---|', ...rows, ''].join('\n');
 }
 
+/** What `plan` runs: the command (src/cli.ts only hands it its arguments) and the usage scan convert.sh runs when plan wrote none. */
+export const PLAN_ENTRIES = ['src/plan/command.ts', 'src/usage/index.ts'];
+
 const STAGE_KEYS = ['plan', 'emit', 'emit-base', 'build'] as const;
 type Stage = (typeof STAGE_KEYS)[number];
 
@@ -242,8 +260,8 @@ export async function stageKey(stage: Stage, o: { readonly site: string; readonl
 	const add = async (files: readonly string[], prefix: string) => parts.push(...(await fileParts(ROOT, files, prefix)));
 	const pinned = [join(ROOT, 'deploy', o.site, 'fetch-old.sh'), join(ROOT, 'deploy', o.site, 'old-fixtures.json'), join(ROOT, o.app, 'scripts', 'convert.sh'), join(ROOT, 'src', 'cli.ts')].filter((f) => existsSync(f));
 	if (stage === 'plan') {
-		await add(pinned, 'pinned');
-		await add(await codeClosure([join(ROOT, 'src/plan/inventory.ts'), join(ROOT, 'src/usage/index.ts')]), 'code');
+		await add(pinned.slice(0, 2), 'pinned');
+		await add(await codeClosure(PLAN_ENTRIES.map((f) => join(ROOT, f))), 'code');
 	} else if (stage === 'emit' || stage === 'emit-base') {
 		await add(pinned, 'pinned');
 		const converter = await codeClosure([join(ROOT, 'src/convert/index.ts'), join(ROOT, 'src/cache/cli.ts')]);
@@ -286,8 +304,8 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === 'record-split') {
-		const [pages, origin, store, n, out] = rest;
-		if (!pages || !origin || !store || !n || !out) throw new Error('usage: pipeline.ts record-split <pages.txt> <origin> <store> <n> <out dir>');
+		const [pages, origin, store, n, out, from] = rest;
+		if (!pages || !origin || !store || !n || !out) throw new Error('usage: pipeline.ts record-split <pages.txt> <origin> <store> <n> <out dir> [<captures of an earlier run>]');
 		const routes = (await readFile(pages, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean);
 		const keys = new Map<string, string>();
 		let keyed = false;
@@ -305,6 +323,9 @@ async function main(): Promise<void> {
 			if ((error as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
 			for (const r of routes) keys.set(r, `unreachable-${createHash('sha256').update(r).digest('hex').slice(0, 8)}`);
 		}
+		// A run's own captures, made by its shards before this run took them over: each route keeps the key it was recorded under.
+		let taken = 0;
+		if (from) for (const [route, key] of await capturedKeys(from)) if (keys.has(route) && keys.get(route) !== key) (keys.set(route, key), taken++);
 		const ordered = new Map(routes.map((r) => [r, keys.get(r)!]));
 		const { hits, misses } = await recordHits(ordered, store);
 		const shards = deal(misses, Number(n), await captureCosts(store));
@@ -312,7 +333,7 @@ async function main(): Promise<void> {
 		for (const [i, shard] of shards.entries()) await writeFile(join(out, 'shards', `shard-${i + 1}.txt`), `${shard.join('\n')}\n`);
 		await writeFile(join(out, 'record-keys.json'), `${JSON.stringify(Object.fromEntries(ordered), null, 1)}\n`);
 		await writeFile(join(out, 'misses.txt'), misses.length ? `${misses.join('\n')}\n` : '');
-		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, keys: digest([...ordered].map(([r, k]) => [r, k] as const)).slice(0, 32) }));
+		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, ...(from ? { recordedKeys: taken } : {}), keys: digest([...ordered].map(([r, k]) => [r, k] as const)).slice(0, 32) }));
 		return;
 	}
 	if (command === 'prune') {

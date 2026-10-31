@@ -65,6 +65,26 @@ on:
         description: runner (this workflow builds), or mac (it stops after emit; scripts/pipeline-mac-build.sh <run> builds and runs it again)
         required: false
         default: runner
+      plan-concurrency:
+        description: Pages plan loads at once in its browser inventory
+        required: false
+        default: '1'
+      converted-from:
+        description: A pipeline run whose emit finished, whose converted app this run builds (no plan, capture or emit)
+        required: false
+        default: ''
+      build-runner:
+        description: The runner label the build runs on (a larger runner's label when the port needs more than 16 GB)
+        required: false
+        default: ubuntu-latest
+      build-heap:
+        description: The build's Node heap in MB (the live heap of a full shadcn build peaks at 6 to 7 GB)
+        required: false
+        default: '13312'
+      captures-from:
+        description: A pipeline run whose capture shards finished, taken as this run's captures under the keys they were recorded with
+        required: false
+        default: ''
       fresh:
         description: Read nothing back from earlier runs (a fresh run's timing)
         type: boolean
@@ -139,8 +159,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/full-site-gate.ts wait
 
+  # A build made elsewhere (build-url) is the converted app already built: the run starts at the check.
   prepare:
     needs: gate
+    if: inputs.build-url == '' && inputs.converted-from == ''
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -197,7 +219,8 @@ jobs:
         run: |
           set -euo pipefail
           t=$(date +%s)
-          PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
+          # plan --concurrency: one page at a time until several at once are shown to inventory shadcn alike (4 timed out a heavy page).
+          PLAN_ONLY=1 PLAN_CONCURRENCY="${{ inputs.plan-concurrency || '1' }}" bash "$APP/scripts/convert.sh"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan=made seconds=$(( $(date +%s) - t ))
       - if: steps.plan.outputs.run != ''
         run: node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan="kept (run ${{ steps.plan.outputs.run }})"
@@ -206,6 +229,7 @@ jobs:
         with:
           name: pl-${{ env.SITE }}-plan-${{ steps.plan.outputs.key }}
           path: ${{ env.APP }}/.migrate/*.json
+          include-hidden-files: true
           retention-days: 90
       - name: Find the recordings
         id: store
@@ -222,6 +246,14 @@ jobs:
           run-id: ${{ steps.store.outputs.run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/store-archive
+      - if: inputs.captures-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-captures-*
+          merge-multiple: true
+          run-id: ${{ inputs.captures-from }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/taken
       - name: Key each page's recordings
         id: records
         env:
@@ -240,7 +272,8 @@ jobs:
           mkdir -p "$store"
           if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
           t=$(date +%s)
-          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out")
+          if [ -d "$RUNNER_TEMP/taken" ]; then cp -R "$RUNNER_TEMP/taken/." "$store/"; fi
+          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out" ${{ inputs.captures-from != '' && '"$RUNNER_TEMP/taken"' || '' }})
           echo "$result"
           echo "matrix=$(node -p 'JSON.stringify(JSON.parse(process.argv[1]).matrix)' "$result")" >> "$GITHUB_OUTPUT"
           echo "keys=$(node -p 'JSON.parse(process.argv[1]).keys' "$result")" >> "$GITHUB_OUTPUT"
@@ -315,7 +348,7 @@ jobs:
           set -euo pipefail
           t=$(date +%s)
           mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
-          env CAPTURE_ONLY=1 CONCURRENCY=3 ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
+          env CAPTURE_ONLY=1 CONCURRENCY=3 RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
           tail -n 15 "$RUNNER_TEMP/capture.txt"
           rm -f "$APP/.migrate/convert/sources.json" "$APP/.migrate/convert/report.json"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") seconds=$(( $(date +%s) - t ))
@@ -397,6 +430,14 @@ jobs:
           pattern: pl-captures-*
           merge-multiple: true
           path: ${{ runner.temp }}/captured
+      - if: (needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true') && inputs.captures-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-captures-*
+          merge-multiple: true
+          run-id: ${{ inputs.captures-from }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/captured
       - name: Restore the old site's build
         if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         uses: actions/cache/restore@v4
@@ -420,7 +461,7 @@ jobs:
           only=""
           [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/all/shard-1.txt"
           t=$(date +%s)
-          /usr/bin/time -v env ONLY="$only" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
+          /usr/bin/time -v env ONLY="$only" RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
           tail -n 30 "$RUNNER_TEMP/convert.txt"
           node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
           if [ -d "$RUNNER_TEMP/kept-app" ]; then
@@ -470,9 +511,9 @@ jobs:
           if-no-files-found: ignore
 
   build:
-    needs: [prepare, emit]
-    if: ${{ !cancelled() && needs.emit.result == 'success' }}
-    runs-on: ubuntu-latest
+    needs: [gate, prepare, emit]
+    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.emit.result == 'success' || inputs.build-url != '' || inputs.converted-from != '') }}
+    runs-on: ${{ inputs.build-runner || 'ubuntu-latest' }}
     timeout-minutes: 120
     outputs:
       key: ${{ steps.key.outputs.key }}
@@ -492,9 +533,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - if: inputs.build-url == '' && inputs.converted-from == ''
+        uses: actions/download-artifact@v4
         with:
           name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
+          path: ${{ runner.temp }}/converted
+      - if: inputs.build-url == '' && inputs.converted-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-${{ env.SITE }}-converted-*
+          merge-multiple: true
+          run-id: ${{ inputs.converted-from }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/converted
       - name: Key the build
         id: key
@@ -503,6 +553,12 @@ jobs:
           MARKLESS_REF: ${{ inputs.markless || 'main' }}
         run: |
           set -euo pipefail
+          if [ -n "$BUILD_URL" ]; then
+            echo "key=url-$(printf %s "$BUILD_URL" | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+            echo "run=url" >> "$GITHUB_OUTPUT"
+            node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="kept ($BUILD_URL)"
+            exit 0
+          fi
           tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
           sha=$(git -C markless rev-parse HEAD)
           echo "MARKLESS_SHA=$sha" >> "$GITHUB_ENV"
@@ -575,7 +631,7 @@ jobs:
           (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
           t=$(date +%s)
           status=0
-          NITRO_PRESET="$PRESET" VITE_APP_URL="$APP_URL" NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          NITRO_PRESET="$PRESET" VITE_APP_URL="$APP_URL" NODE_OPTIONS=--max-old-space-size=${{ inputs.build-heap || '13312' }} /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
           tail -n 30 "$RUNNER_TEMP/build.txt"
           node "$GITHUB_WORKSPACE/scripts/pipeline.ts" receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="made, exit $status" seconds=$(( $(date +%s) - t )) runner-peak-mb=$(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) process-peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') / 1024 ))
           if [ "$status" -ne 0 ] && grep -qiE 'heap out of memory|Killed|signal 9|ENOMEM' "$RUNNER_TEMP/build.txt"; then
@@ -665,7 +721,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/select/check-reused"
-          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/static/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
+          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           t=$(date +%s)
           result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select" ${ROUTES:+"$GITHUB_WORKSPACE/$ROUTES"})
           echo "$result"
@@ -688,6 +744,7 @@ jobs:
           path: |
             ${{ runner.temp }}/select/check-reused/report.json
             ${{ env.APP }}/.migrate/reuse
+          include-hidden-files: true
           if-no-files-found: warn
       - if: always()
         run: echo "{\"stage\":\"check select\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"

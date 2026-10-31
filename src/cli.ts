@@ -10,7 +10,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
+import { PSI_KEY_ENV, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { measureSlowNetwork, missingBrowsersError, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
@@ -35,11 +35,11 @@ import { DEFAULT_FREEZE } from './check/freeze.ts';
 import { VIEWPORTS } from './check/types.ts';
 import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
-import { writeStarterAuth } from './plan/auth.ts';
-import { plan, plannedRoutes, summarizeInventory, writeInventory } from './plan/inventory.ts';
+import { plannedRoutes } from './plan/inventory.ts';
+import { planCommand } from './plan/command.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
-import { applyIfPlanned, CACHE_USAGE, cacheCommand, planAndWrite } from './cache/cli.ts';
+import { applyIfPlanned, CACHE_USAGE, cacheCommand } from './cache/cli.ts';
 import { readCachingPlan } from './cache/plan.ts';
 import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
@@ -52,10 +52,10 @@ import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from
 import { startProxy } from './switch/proxy.ts';
 import { AGENT_ENV, missingUnder, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
-import { decisionLine, LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
+import { decisionLine, LIBRARIES_FILE, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
 import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from './check/cli/conform.ts';
-import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUsage, summarizeUsage, usagePages, writeUsage } from './usage/index.ts';
+import { implementations, readUsage, readUsageMap, routeBrief, scanUsage, summarizeUsage, usagePages, writeUsage } from './usage/index.ts';
 import { guardPages, readAllowances, scanBuild, summarizeBuild } from './client/index.ts';
 import { acceptUpgrade, findUi, summarizeUpgrade, upgrade, writeUpgrade } from './upgrade/index.ts';
 import { scanLibraries } from './library/index.ts';
@@ -63,14 +63,15 @@ import { buildLedger, summarizeLedger, writeLedger } from './ledger/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
-  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching]
+  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching] [--concurrency <n>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json,
           then each route's caching into .migrate/caching.json (see cache plan; --no-caching skips it).
           Every route of the old site is listed with where it was found: the sitemaps (indexes
           followed), robots.txt, feeds, a same-origin link crawl of every page (pagination and
           redirects followed, at most --crawl-limit pages, default 10000), the source's routes with
           --source, and the non-page endpoints. --limit caps only the pages loaded in the browser for
-          their SEO tags and assets (default 100). --auth (as for check) crawls again as each role,
+          their SEO tags and assets (default 100); --concurrency loads that many at once (default 1),
+          each route's findings taken in the order one page would take them. --auth (as for check) crawls again as each role,
           in the browser and by links, so routes only a signed-in visitor reaches are listed too, with
           the roles that reach them. Source routes with dynamic segments take their values from the
           crawl or .migrate/samples.json.
@@ -90,7 +91,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse] [--ledger fail|report|off]
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse] [--ledger fail|report|off] [--record-keys <file>]
           Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
           browser holds it once settled (loaded as check loads it), without the old framework's runtime;
           shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
@@ -107,6 +108,8 @@ const USAGE = `markless-migrate ${VERSION}
           search results come in that deployment's order.
           --reuse (what dev passes) keeps what the app already holds: assets on disk are not fetched, the old
           app's public/ is not copied again, and the server is kept, with only its list of pages written again.
+          --record-keys takes each route's recording key from a JSON file of route to key (the pipeline's
+          prepare made them) instead of requesting the old page again, so every job of one run keys a route alike.
           With --source, the handler ledger runs after the pages are written (see ledger); --ledger report
           writes it without failing convert, --ledger off skips it.
   ledger --source <path> [--json]
@@ -859,37 +862,8 @@ async function main(argv: string[]): Promise<number> {
 		case '-h':
 			out(USAGE);
 			return 0;
-		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' }, 'no-caching': { type: 'boolean' } } });
-			if (!values.old) fail('plan needs --old <origin>');
-			const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
-			if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
-			let bypass: ReturnType<typeof bypassOptions> = {};
-			try {
-				bypass = bypassOptions(values.header, values.cookie);
-			} catch (error) {
-				fail((error as Error).message);
-			}
-			const planAuth = values.auth ? await readAuthFile(values.auth).catch((error: Error) => fail(error.message)) : undefined;
-			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
-			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
-			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
-			if (!values['no-caching']) {
-				const caching = await planAndWrite(cwd, inventory, { headers: bypass.headers ?? {} });
-				out(`${caching.text}Wrote ${caching.path}\n`);
-			}
-			let libraries: Awaited<ReturnType<typeof planLibraries>> | undefined;
-			if (inventory.source) {
-				libraries = await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd);
-				out(`${libraries.text}Wrote ${libraries.path}\n`);
-			}
-			const usage = await planUsage({ inventory, stateDir: join(cwd, STATE_DIR), newSource: cwd, ...(values.built ? { built: resolve(values.built) } : {}), ...(libraries ? { libraries: libraries.file } : {}), ...(bypass.headers ? { headers: bypass.headers } : {}) });
-			out(`${usage.text}Wrote ${usage.paths.usage} and ${usage.paths.obligations}\n`);
-			const authPath = join(cwd, STATE_DIR, 'auth.json');
-			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
-			if (!psiKey()) out(`\n${PSI_NOTICE}\n`);
-			return 0;
-		}
+		case 'plan':
+			return planCommand(rest, cwd, out, fail);
 		case 'check': {
 			const { values } = parseArgs({
 				args: rest,
@@ -1149,11 +1123,12 @@ async function main(argv: string[]): Promise<number> {
 			return ledger.failures.length ? 1 : 0;
 		}
 		case 'convert': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' }, ledger: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' }, ledger: { type: 'string' }, 'record-keys': { type: 'string' } } });
 			if (values.ledger && !['fail', 'report', 'off'].includes(values.ledger)) fail('--ledger is fail, report or off');
 			if (!values.old) fail('convert needs --old <origin>');
+			const recordKeys = values['record-keys'] ? new Map(Object.entries(JSON.parse(await readFile(resolve(values['record-keys']), 'utf8')) as Record<string, string>)) : undefined;
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
-			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), log: (line) => out(`${line}\n`) });
+			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), ...(recordKeys ? { recordKeys } : {}), log: (line) => out(`${line}\n`) });
 			if (values['capture-only']) {
 				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}\n`);
 				return 0;
