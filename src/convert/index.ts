@@ -897,6 +897,9 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				} else if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
 				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
 				// there, shown with the layer (data-mm-shown-with names the trigger's key).
+				// A Radix dialog its root portals into a container in the page (vaul's container prop) is a layer of the page all
+				// the same: it is placed at the end of the body, where a dialog's fixed position shows it alike.
+				else if (trigger && attr(trigger, 'aria-haspopup') === 'dialog' && reveal.added.some((a) => /\brole="dialog"[^>]*\bdata-state=|\bdata-state=[^>]*\brole="dialog"/.test(a.html))) pendingLayers.push({ reveal, added, trigger, kept });
 				else if (trigger && parent && (menu || attr(trigger, 'aria-haspopup') !== undefined || attr(trigger, 'data-slot') === 'scroll-area')) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
@@ -984,6 +987,14 @@ export function foldLateStyles(late: readonly Element[]): { css: string[]; kept:
 		else css.push(text);
 	}
 	return { css, kept };
+}
+
+/** A closed layer's own display (an inline style, a class such as Tailwind 3's `flex`) would beat its hidden attribute. */
+export const HIDDEN_LAYER_CSS = '[data-mm-layer][hidden]{display:none!important}';
+
+/** A page with layers carries HIDDEN_LAYER_CSS in its own stylesheet, as its body styles ride it. */
+export function withHiddenLayers(page: { readonly layers: readonly unknown[]; readonly bodyCss: string[] }): void {
+	if (page.layers.length && !page.bodyCss.includes(HIDDEN_LAYER_CSS)) page.bodyCss.unshift(HIDDEN_LAYER_CSS);
 }
 
 /** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. */
@@ -2165,6 +2176,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
+	for (const p of prepared.values()) withHiddenLayers(p);
 	const folded = await appendBodyCss(publicDir, prepared.values());
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
