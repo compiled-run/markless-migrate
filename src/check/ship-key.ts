@@ -129,7 +129,8 @@ export function referencedFiles(html: string, origin: string): string[] {
 		} catch {
 			continue;
 		}
-		if (url.origin !== new URL(origin).origin || /^\/build\/chunk-[\w-]+\.js$|^\/_markless\/links\//.test(url.pathname)) continue;
+		// /_vercel/ (Web Analytics, Speed Insights) is served by the platform, never by the build: off Vercel it is not there at all.
+		if (url.origin !== new URL(origin).origin || /^\/build\/chunk-[\w-]+\.js$|^\/_markless\/links\/|^\/_vercel\//.test(url.pathname)) continue;
 		out.add(url.href);
 	}
 	return [...out].sort();
