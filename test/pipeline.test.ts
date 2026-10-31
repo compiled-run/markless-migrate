@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { captureCosts, capturedKeys, codeClosure, originalScripts, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
+import { captureCosts, capturedKeys, codeClosure, originalScripts, scriptSources, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
 
 async function tree(files: Record<string, string>): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'pipeline-'));
@@ -167,4 +167,9 @@ test("no port page, static or an ISR fallback, loads a script the original's pag
 		{ page: '.vercel/output/functions/charts/line-isr.prerender-fallback.html', script: '/_next/static/chunks/def.js' },
 		{ page: '.vercel/output/static/_markless/fragment/charts/line/index.html', script: '/_next/static/chunks/abc.js' },
 	]);
+});
+
+test("a page's scripts include those an iframe's srcdoc loads and the original's scripts it preloads, and not its stylesheets", () => {
+	const html = `<head><link rel="modulepreload" href="/_next/a.js"><link rel="preload" as="script" href="/_next/b.js?x"><link rel="stylesheet" href="/_next/c.css"><link rel="preload" as="font" href="/_next/f.woff2"></head><body><script type="module" src="/build/chunk-A.js"></script><iframe srcdoc="&lt;script src=&quot;/_next/d.js&quot;&gt;&lt;/script&gt;"></iframe><template><script src="/_next/e.js"></script></template></body>`;
+	assert.deepEqual(scriptSources(html).sort(), ['/_next/a.js', '/_next/b.js', '/_next/d.js', '/_next/e.js', '/build/chunk-A.js']);
 });
