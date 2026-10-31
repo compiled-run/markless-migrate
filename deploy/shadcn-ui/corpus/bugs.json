@@ -2,7 +2,8 @@
 	"about": "The bugs the owner found by hand in the ui.shadcn.com port, each with the port build that still has it, the route and gesture, and the finding check must report for it. scripts/corpus.ts verify fails when a bug's route was checked and no finding matches. Bugs no kept build reproduces are covered by their case in test/corpus/site.ts (fixture).",
 	"builds": {
 		"RrorpvSy": "https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz",
-		"7a5706a6": "https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-corpus-build-7a5706a6/shadcn-ui-vercel-output-7a5706a6.tar.gz"
+		"7a5706a6": "https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-corpus-build-7a5706a6/shadcn-ui-vercel-output-7a5706a6.tar.gz",
+		"d24ccda5": "https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-build-d24ccda52a8dd9a9207a6330da43310b/shadcn-ui-output.tar.gz"
 	},
 	"bugs": [
 		{
@@ -250,6 +251,15 @@
 			"gesture": "click Search documentation... and the Cover page row: the original opens the palette and the drawer, the port opens neither",
 			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) button \"(Cover page|Search documentation\\.\\.\\.)\"[^|]*\\|",
 			"fixture": "dashboard-dead"
+		},
+		{
+			"id": "original-runtime",
+			"report": "the charts line page loaded the original's 201 Next.js chunks and booted its runtime",
+			"build": "d24ccda5",
+			"route": "/charts/line",
+			"gesture": "load the page: the port's HTML names /_next/static/chunks/*.js, the original's own runtime",
+			"caught": "^weight: runs the original's framework",
+			"fixture": "original-runtime"
 		}
 	]
 }

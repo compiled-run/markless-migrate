@@ -239,6 +239,22 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				})().catch(() => undefined)),
 			);
 		});
+		// A worker's or service worker's script is code the page runs too: recorded as a script, with the runtime its code carries.
+		const workerCode = (url: string, type: 'worker' | 'serviceworker') => {
+			const at = URL.parse(url);
+			if (!at || !/^https?:$/.test(at.protocol)) return;
+			pending.push(
+				readWithin((async () => {
+					const res = await context.request.get(url).catch(() => undefined);
+					const code = res?.ok() ? await res.text().catch(() => '') : '';
+					const runtime = frameworkRuntime(code);
+					if (runtime) runtimes.set(toLocal(url, origin), runtime);
+					return { url: toLocal(url, origin), type, status: res?.status() ?? 0, contentType: mime(res?.headers()['content-type']), bytes: code.length };
+				})().catch(() => undefined)),
+			);
+		};
+		page.on('worker', (worker) => workerCode(worker.url(), 'worker'));
+		context.on('serviceworker', (worker) => workerCode(worker.url(), 'serviceworker'));
 		// A stylesheet that never answered is recorded too (status 0), so a page that rendered without it can be told apart.
 		page.on('requestfailed', (request) => {
 			if (request.resourceType() === 'stylesheet' && !insideEmbed(request, own)) pending.push(Promise.resolve({ url: toLocal(request.url(), origin), type: 'stylesheet', status: 0, contentType: '', bytes: 0 }));
