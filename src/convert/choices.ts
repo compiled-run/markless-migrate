@@ -272,7 +272,11 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
 				const click = async (timeout: number) => {
 					const target = (await optionOf(page, key)).asElement();
-					return !!target && (await target.click({ timeout }).then(() => true, () => false));
+					if (!target) return false;
+					if (await target.click({ timeout }).then(() => true, () => false)) return true;
+					// An option the page cannot be scrolled to (a Radix Select lines its chosen item up with the trigger) is chosen from the keyboard.
+					const focused = await target.evaluate((el) => ((el as HTMLElement).focus(), document.activeElement === el)).catch(() => false);
+					return focused && (await page.keyboard.press('Enter').then(() => true, () => false));
 				};
 				if (!(await click(2000)) && !((await openOn(page, origin, route, reveal.path)) && (await click(5000)))) {
 					failure ??= `could not choose ${key}`;

@@ -73,12 +73,18 @@ window.choose = (value) => {
 };
 </script>`;
 
+// A Radix Select lines its chosen item up with the trigger: an item can sit where the page cannot be scrolled to.
+const OFFSCREEN = palette('<div cmdk-item data-value="US Dollar" tabindex="-1" style="position:fixed;top:-60px">US Dollar</div><div cmdk-item data-value="Euro">Euro</div>') + `<script>
+window.choose = (value) => history.pushState(null, '', '/currency/' + value.split(' ')[0].toLowerCase());
+document.addEventListener('keydown', (e) => e.key === 'Enter' && document.activeElement?.hasAttribute('cmdk-item') && window.choose(document.activeElement.dataset.value));
+</script>`;
+
 // An option that something always lies over: its click can never land.
 const COVERED = palette('<div cmdk-item data-value="Free">Free</div><div cmdk-item data-value="Stuck" style="pointer-events:none">Stuck</div>') + `<script>
 window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase());
 </script>`;
 
-const PAGES: Record<string, string> = { '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
+const PAGES: Record<string, string> = { '/offscreen': OFFSCREEN, '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
 
 let browser: Browser;
 let server: Server;
@@ -134,6 +140,10 @@ test("an option that loads another document is recorded going there, though the 
 
 test("the next option is chosen once a page taken back has finished coming back, so its router's late commit is not read as the choice", async () => {
 	assert.deepEqual(await recorded('/restore', reveal('restore', '<div cmdk-item="" data-value="a">a</div>')), { a: { href: '/docs/a' }, b: { href: '/docs/b' } });
+});
+
+test('an option the page cannot be scrolled to is chosen from the keyboard', async () => {
+	assert.deepEqual(await recorded('/offscreen', reveal('offscreen', '<div cmdk-item="" data-value="Euro">Euro</div>')), { 'US Dollar': { href: '/currency/us' }, Euro: { href: '/currency/euro' } });
 });
 
 test('a control with an option that cannot be chosen is refused, and nothing is written for it', async () => {
