@@ -14,7 +14,8 @@ const STEADY = page(`document.getElementById('save').onclick = () => { document.
 // handler woken late on a busy device looks like.
 const FRAGILE = page(`
 const work = () => { const t = performance.now(); let x = 0; for (let i = 0; i < 4e7; i++) x += i; return performance.now() - t; };
-const idle = Math.min(work(), work(), work());
+// Taken over enough runs that the engine has compiled the loop at its fastest tier (JavaScriptCore keeps tiering up), as every later click runs it.
+const idle = Math.min(...Array.from({ length: 20 }, work));
 document.getElementById('save').onclick = () => { if (work() < idle * 1.5) document.getElementById('out').textContent = 'saved'; };`);
 
 const servers: Server[] = [];
