@@ -1,22 +1,20 @@
 name: Upstream suites
 
 # The libraries' own browser suites (test/upstream/libraries.ts) against the parts: each library's test app converted by
-# markless-migrate and built on Markless main, a test admitted only when it passes on the library itself. Runs when the
-# parts or the converter change, never per route.
+# markless-migrate and built on Markless main, a test admitted only when it passes on the library itself. 5 jobs of up to
+# 25 min, so it runs in the merge queue when a group changes the parts or the converter, nightly on main, by dispatch, and on
+# a pull request only while it carries the label `upstream-suites` (docs/ci-process.md "Runners").
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - parts/**
       - src/convert/**
       - test/upstream/**
       - .github/workflows/upstream-suites.yml
-  push:
-    branches: [main]
-    paths:
-      - parts/**
-      - src/convert/**
-      - test/upstream/**
-      - .github/workflows/upstream-suites.yml
+  merge_group:
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
     inputs:
       markless:
@@ -33,7 +31,33 @@ permissions:
   actions: read
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'upstream-suites') }}
+          BASE: ${{ github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) run="$LABELED" ;;
+            merge_group)
+              files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/compare/$BASE...$HEAD" --jq '.files[].filename')
+              run=$(printf '%s\n' "$files" | grep -qE '^(parts/|src/convert/|test/upstream/|\.github/workflows/upstream-suites\.yml$)' && echo true || echo false) ;;
+            *) run=true ;;
+          esac
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "Upstream suites run: $run ($GITHUB_EVENT_NAME)" >> "$GITHUB_STEP_SUMMARY"
+
   markless:
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     name: Pack Markless
     runs-on: ubuntu-latest
     timeout-minutes: 30

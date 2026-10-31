@@ -53,6 +53,11 @@ on:
   # The pipeline workflow's check stage: its build artifact, and the routes its selection left to check.
   workflow_call:
     inputs:
+      max-parallel:
+        description: Shards run at once, from the calling run's full-site gate (empty uses 10)
+        type: string
+        required: false
+        default: ''
       site: { type: string, required: true }
       app: { type: string, required: true }
       targets: { type: string, required: true }
@@ -95,10 +100,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
-  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first, and
+  # only while this repository holds under 40 of the org's 60 runners; the rest wait here on one runner (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
+    outputs:
+      parallel: ${{ steps.wait.outputs.parallel }}
     if: github.workflow == 'Check'
     runs-on: ubuntu-latest
     timeout-minutes: 345
@@ -121,10 +128,21 @@ jobs:
           SPEC: ${{ inputs.priority == 'deploy' && 'priority:deploy' || env.TARGETS }}
         run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
       - name: Wait for a full-site slot
+        id: wait
         if: steps.size.outputs.full == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.max_parallel || '10' }}
         run: node scripts/full-site-gate.ts wait
+      # The shards this run holds, named so a later run's gate can read them (scripts/full-site-gate.ts RESERVATION).
+      - if: steps.wait.outputs.parallel != ''
+        run: echo "${{ steps.wait.outputs.parallel }}" > "$RUNNER_TEMP/full-site-share"
+      - if: steps.wait.outputs.parallel != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-site-share-${{ steps.wait.outputs.parallel }}
+          path: ${{ runner.temp }}/full-site-share
+          retention-days: 1
 
   plan:
     needs: gate
@@ -185,7 +203,7 @@ jobs:
           retention-days: 3
 
   check:
-    needs: plan
+    needs: [gate, plan]
     # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
@@ -194,7 +212,7 @@ jobs:
     strategy:
       fail-fast: false
       # The org runs 60 jobs at once: a check leaves room for every other repository's CI.
-      max-parallel: ${{ fromJSON(inputs.max_parallel || '10') }}
+      max-parallel: ${{ fromJSON(needs.gate.outputs.parallel || inputs.max-parallel || inputs.max_parallel || '10') }}
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:

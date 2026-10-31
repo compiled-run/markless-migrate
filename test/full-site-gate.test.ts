@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ahead, routeCount, SLOTS, SUBSET } from '../scripts/full-site-gate.ts';
+import { ahead, routeCount, share, SHARE, SLOTS, SUBSET } from '../scripts/full-site-gate.ts';
 
 test('a run is full-site at 50 routes or more, or with no route list at all', () => {
 	const files: Record<string, string> = { 'all.json': JSON.stringify({ routes: Array(534).fill('/'), endpoints: [] }), 'few.json': JSON.stringify({ routes: Array(25).fill('/') }), 'few.txt': '/a\n\n# note\n/b\n' };
@@ -27,4 +27,14 @@ test('admitted runs and older waiting runs are ahead; a newer waiting run and a 
 	assert.equal(ahead(me, runs), 2);
 	assert.equal(ahead({ id: 3, created: '2026-10-31T04:00:00Z', step: 'waiting' }, runs), 1);
 	assert.equal(ahead(me, runs.filter((r) => r.id !== 9)), 1);
+});
+
+test('a full-site run takes what is left of the 40-runner share, up to what it wants, and waits below min(want, 4)', () => {
+	assert.equal(SHARE, 40);
+	assert.equal(share(24, 10, []), 24);
+	assert.equal(share(24, 10, [{ reserved: 10, running: 3 }]), 20);
+	assert.equal(share(10, 20, [{ reserved: 4, running: 12 }]), 8);
+	assert.equal(share(24, 37, []), 0);
+	assert.equal(share(2, 38, []), 2);
+	assert.equal(share(10, 41, []), 0);
 });
