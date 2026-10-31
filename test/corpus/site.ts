@@ -241,7 +241,7 @@ export const CASES: Record<string, Case> = {
 	'currency-select': { bug: "the button group's currency select was anchored wrong and did not select", route: '/docs/components/button-group', old: currency(false), mutant: currency(true), caught: /^(behaviour|a11y): .*(Currency|Euro|British Pound|US Dollar)/ },
 	'rtl-language': { bug: 'RTL toggles changed nothing (badge)', route: '/docs/components/badge', old: rtl(false), mutant: rtl(true), caught: /^(behaviour|a11y): .*(English|Hebrew)/ },
 	'chart-switch-speed': { bug: 'switching between chart types was slower than the original', route: '/charts', old: chartTypes(false), mutant: chartTypes(true), caught: /^(behaviour|a11y|responsiveness): .*(Bar Charts|Line Charts|Area Charts)/ },
-	'chart-morph': { bug: "a chart's paths do not morph between Desktop and Mobile", route: '/charts/bar', old: morph(false), mutant: morph(true), caught: /^motion: .*(Desktop|Mobile)/ },
+	'chart-morph': { bug: "a chart's paths do not morph between Desktop and Mobile", route: '/charts/bar', old: morph(false), mutant: morph(true), caught: /^(behaviour|motion): [^|]*button "(Mobile|Desktop)[^"]*"[^|]*\|.*frame by frame/ },
 	'code-download': { bug: "the code block's download icon did not work", route: '/docs/components/code-block', old: download(false), mutant: download(true), caught: /^(behaviour|a11y): .*Download/ },
 	'code-tabs': { bug: "the code block's tabs did not work", route: '/docs/components/code-block/tabs', old: codeTabs(false), mutant: codeTabs(true), caught: /^(behaviour|a11y): .*chat\.tsx/ },
 	'markdown-replay': { bug: 'the markdown replay was less smooth', route: '/docs/components/code-block/replay', old: replay(false), mutant: replay(true), caught: /^(behaviour|motion): .*Replay/ },

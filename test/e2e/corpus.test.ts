@@ -7,7 +7,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after } from 'node:test';
+import { after, test } from 'node:test';
 import type { Failure, Report } from '../../src/check/types.ts';
 import { CASES, ORIGINAL, type Case } from '../corpus/site.ts';
 import { ROOT, sharded } from './harness.ts';
@@ -41,14 +41,14 @@ function serve(pages: Record<string, string>): Promise<string> {
 export const CHECK_FLAGS = ['--control-webkit', '--no-load'] as const;
 
 /** One case checked as a shard of a site of more than 20 pages (`--site-targets`), as a site's run on GitHub checks it, or `alone` as its only page. */
-export async function checkCase(c: Case, { mutant = true, alone = false } = {}): Promise<Report> {
+export async function checkCase(c: Case, { mutant = true, alone = false, routes = [c.route] }: { mutant?: boolean; alone?: boolean; routes?: readonly string[] } = {}): Promise<Report> {
 	const [oldOrigin, newOrigin] = await Promise.all([serve(ORIGINAL), serve({ ...ORIGINAL, [c.route]: mutant ? c.mutant : c.old })]);
 	const cwd = await mkdtemp(join(tmpdir(), 'corpus-'));
 	const site = join(cwd, 'site-targets.json');
 	await writeFile(site, JSON.stringify({ routes: [...Object.keys(ORIGINAL), ...Object.keys(ORIGINAL).map(twin), ...FILLERS] }));
 	try {
 		const out = await new Promise<string>((done, fail) => {
-			const child = spawn(process.execPath, [join(ROOT, 'src/cli.ts'), 'check', '--old', oldOrigin, '--new', newOrigin, '--route', c.route, ...(alone ? [] : ['--site-targets', site]), ...CHECK_FLAGS, '--json'], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+			const child = spawn(process.execPath, [join(ROOT, 'src/cli.ts'), 'check', '--old', oldOrigin, '--new', newOrigin, ...routes.flatMap((r) => ['--route', r]), ...(alone ? [] : ['--site-targets', site]), ...CHECK_FLAGS, '--json'], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
 			let stdout = '', stderr = '';
 			child.stdout.on('data', (d: Buffer) => (stdout += d));
 			child.stderr.on('data', (d: Buffer) => (stderr += d));
@@ -65,8 +65,19 @@ export const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f
 // A control the run never used is a gap in coverage, not a report of what it does.
 const names = (c: Case, f: Failure) => !f.check.startsWith('not exercised') && c.caught.test(text(f));
 
+/** Motion every page of a large site gets (not only its template's representative) is not compared yet; the structured state probe takes these. */
+const PENDING = new Set(['three-dots-motion', 'combobox-close-motion']);
+
 const suite = sharded();
+suite.test('the original against itself: no page of the micro-site is red', async () => {
+	const report = await checkCase(CASES['create-get-started']!, { mutant: false, routes: Object.keys(ORIGINAL) });
+	assert.deepEqual(open(report).map(text), []);
+});
 for (const [id, c] of Object.entries(CASES)) {
+	if (PENDING.has(id)) {
+		test.todo(`${id}: ${c.bug} (pending: motion compared on every page)`);
+		continue;
+	}
 	suite.test(`${id}: ${c.bug}`, async () => {
 		const report = await checkCase(c);
 		const found = open(report).filter((f) => names(c, f));

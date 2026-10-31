@@ -215,9 +215,9 @@
 		{
 			"id": "date-shift-left",
 			"report": "base ui date picker: Shift+Left jumped the month and broke it",
-			"build": "RrorpvSy",
+			"build": "7a5706a6",
 			"route": "/docs/components/base/date-picker",
-			"gesture": "open Pick a date, Tab to the day grid, Shift+ArrowLeft: the original moves to September and keeps focus in the grid, the port's focus falls to the page",
+			"gesture": "open Pick a date, Tab twice to the day grid, Shift+ArrowLeft: the original moves to September and keeps focus in the grid, the port's focus falls to the page (on RrorpvSy, live 3a8230cc and 7a5706a6 alike)",
 			"caught": "^(behaviour|a11y): [^|]*Shift\\+ArrowLeft",
 			"fixture": "date-shift-left"
 		},
