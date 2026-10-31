@@ -116,8 +116,11 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 				...(report.tooLarge.length ? [`files over 25 MiB, which Workers static assets refuse: ${report.tooLarge.join(', ')}\n`] : []),
 				...(report.workerBytes > CLOUDFLARE_LIMITS.workerBytes ? [`the Worker is ${report.workerBytes} bytes, over the 64 MiB limit\n`] : []),
 				...(report.compressedCopies.length ? [`${report.compressedCopies.length} compressed copies Cloudflare never serves (Nitro's compressPublicAssets), e.g. ${report.compressedCopies.slice(0, 3).join(', ')}\n`] : []),
+				...(report.workerFirst.length ? [`assets.run_worker_first sends ${report.workerFirst.length} uploaded files to the Worker, each request a billed Worker request, e.g. ${report.workerFirst.slice(0, 3).join(', ')}\n`] : []),
 			];
+			const rendered = plan.applied.filter((r) => r.status === 200 && !expected.routeRules[r.route.split(/[?#]/)[0]!]?.prerender).map((r) => r.route);
 			out(`${output}: ${prerendered - report.missing.length} of ${prerendered} cached paths are files${prefix ? `, each page's ${prefix}/ fragment included` : ''}; ${report.files} files to upload; Worker ${(report.workerBytes / 1024 / 1024).toFixed(1)} MiB\n`);
+			out(`The Worker runs for ${rendered.length} of the plan's pages${rendered.length ? ` (${rendered.slice(0, 10).join(', ')}${rendered.length > 10 ? `, and ${rendered.length - 10} more` : ''})` : ''}${prefix && rendered.length ? ' and their fragment URLs' : ''}, and for any URL that is not an uploaded file.\n`);
 			for (const fail of fails) out(`FAIL ${fail}`);
 			return fails.length ? 1 : 0;
 		}

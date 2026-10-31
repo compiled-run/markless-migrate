@@ -71,12 +71,14 @@ test('the Cloudflare build check names each cached path that is not a file, and 
 	await write('public/build/app.js');
 	await write('public/build/app.js.br');
 	await write('public/docs/index.html.gz');
+	await write('server/wrangler.json', JSON.stringify({ assets: { run_worker_first: ['/build/*', '!/build/keep/*'] } }));
 	await write('public/_headers');
 	await write('server/index.mjs', 'export default {}');
 	const rules = cloudflareRules([docs, news], { fragmentPath: '/_markless/fragment' }).routeRules;
 	const report = await checkCloudflareOutput(out, rules);
 	assert.deepEqual(report.missing.sort(), ['/_markless/fragment/news', '/news'], '/news is served from news.html; news/index.html is redirected to /news/');
-	assert.deepEqual(report.compressedCopies, ['docs/index.html.gz']);
+	assert.deepEqual(report.compressedCopies.sort(), ['build/app.js.br', 'docs/index.html.gz']);
+	assert.deepEqual(report.workerFirst.sort(), ['/build/app.js', '/build/app.js.br']);
 	assert.equal(report.files, 6);
 	assert.equal(report.workerBytes, 'export default {}'.length);
 });
@@ -92,6 +94,7 @@ test('the live check passes files served by Cloudflare and names a page the Work
 		else if (url === '/news') response.writeHead(200, { 'content-type': 'text/html' }).end(page);
 		else if (url === '/_markless/fragment/news') response.writeHead(307, { location: '/_markless/fragment/news/' }).end();
 		else if (url === '/build/app.js') response.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'public, max-age=31536000, immutable' }).end('x');
+		else if (url === '/build/static.js') response.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'public, max-age=31536000, immutable', 'cf-cache-status': 'HIT' }).end('x');
 		else response.writeHead(404).end();
 	});
 	await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening));
@@ -101,7 +104,7 @@ test('the live check passes files served by Cloudflare and names a page the Work
 		const findings = await checkCloudflareLive(origin, ['/docs/', '/news'], options);
 		assert.deepEqual(
 			findings.map((f) => `${f.url} ${f.problem.split(':')[0]}`),
-			['/news ran the Worker', '/_markless/fragment/news answered 307 to /_markless/fragment/news/, not 200', '/build/app.js arrived as uncompressed, not its brotli copy'],
+			['/news ran the Worker', '/_markless/fragment/news answered 307 to /_markless/fragment/news/, not 200', '/build/app.js ran the Worker'],
 		);
 	} finally {
 		server.close();

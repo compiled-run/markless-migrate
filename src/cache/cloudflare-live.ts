@@ -17,7 +17,7 @@ const BUILD_URL = /<(?:script|link)\b[^>]*?\b(?:src|href)=["'](\/build\/[^"']+\.
 /**
  * Reads a Cloudflare deployment route by route: each prerendered page and its fragment URL must come from the uploaded
  * files (Cloudflare marks those with cf-cache-status; a Worker response carries none), answer at its own URL without a
- * redirect, and be the document or the fragment it was asked for; a client chunk must arrive as brotli, kept for a year.
+ * redirect, and be the document or the fragment it was asked for; a client chunk must come from the files too, kept for a year.
  */
 export async function checkCloudflareLive(origin: string, routes: readonly string[], options: CloudflareLiveOptions = {}): Promise<CloudflareFinding[]> {
 	const findings: CloudflareFinding[] = [];
@@ -42,11 +42,11 @@ export async function checkCloudflareLive(origin: string, routes: readonly strin
 		}
 	}
 	if (chunk) {
-		const response = await get(chunk, 'br');
+		const response = await get(chunk);
 		await response.arrayBuffer();
 		if (response.status !== 200) findings.push({ url: chunk, problem: `answered ${response.status}` });
 		else {
-			if (response.headers.get('content-encoding') !== 'br') findings.push({ url: chunk, problem: `arrived as ${response.headers.get('content-encoding') ?? 'uncompressed'}, not its brotli copy` });
+			if (!response.headers.has('cf-cache-status')) findings.push({ url: chunk, problem: 'ran the Worker: a client chunk should come from the uploaded files' });
 			if (!/\bimmutable\b/.test(response.headers.get('cache-control') ?? '')) findings.push({ url: chunk, problem: `is kept by browsers only as ${response.headers.get('cache-control')}` });
 		}
 	} else if (routes.length) findings.push({ url: routes[0]!, problem: 'loads no /build/ chunk to check' });
