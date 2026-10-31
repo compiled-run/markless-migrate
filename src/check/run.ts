@@ -33,6 +33,7 @@ import { storageOwner, unreachableCandidate, type StorageOwner } from './automat
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
+import { selfUrlFailures } from './self-urls.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -297,7 +298,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
-	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
+	const selfUrls = await selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, run.new, { seo: Object.values(oldA.pages)[0]?.seo ?? {}, origin: oldOrigin });
+	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew), ...selfUrls], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
 	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed;
