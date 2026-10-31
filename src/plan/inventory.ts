@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { detectChallenge } from '../check/blocked.ts';
 import { captureHttp, mime, toLocal } from '../check/capture.ts';
 import { collectPage } from '../check/collect.ts';
@@ -71,6 +71,8 @@ export interface PlanOptions {
 	readonly auth?: AuthConfig;
 	/** `.migrate/samples.json`: values for the dynamic segments of source routes no crawl reached. */
 	readonly samples?: Samples;
+	/** Pages loaded at once by the browser inventory (default 1). Results are taken in the order one page would take them. */
+	readonly concurrency?: number;
 }
 
 function ownHeaders(options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Record<string, string> {
@@ -221,32 +223,74 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	const done = new Set<string>();
 	try {
 		const context = await bypassContext(browser, origin, options);
-		const page = await context.newPage();
+		const width = Math.max(1, options.concurrency ?? 1);
+		const began = performance.now();
+		const pages = await Promise.all(Array.from({ length: width }, () => context.newPage()));
+		const free = [...pages];
+		const waiting: ((page: Page) => void)[] = [];
+		const take = () => free.pop() ?? new Promise<Page>((r) => waiting.push(r));
+		const give = (page: Page) => (waiting.length ? waiting.shift()!(page) : free.push(page));
+		// What one route's load shows, read ahead of its turn; nothing it finds is noted until the route's turn comes.
+		type Collected = Awaited<ReturnType<typeof collectPage>>;
+		type Inspected = { readonly route: string; readonly http: Awaited<ReturnType<typeof captureHttp>>; readonly away?: string; readonly assets?: InventoryRoute['assets'][number][]; readonly collected?: Collected };
+		const inspect = async (route: string): Promise<Inspected> => {
+			const page = await take();
+			try {
+				const http = await captureHttp(origin, route, own);
+				const assets: InventoryRoute['assets'][number][] = [];
+				const onResponse = (response: import('playwright').Response) => {
+					const type = response.request().resourceType();
+					if (['image', 'font', 'stylesheet', 'script', 'media'].includes(type)) {
+						assets.push({ url: toLocal(response.url(), origin), type, status: response.status(), contentType: mime(response.headers()['content-type']) });
+					}
+				};
+				page.on('response', onResponse);
+				try {
+					const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+					// A route that redirects to another site (/discord -> discord.gg) is the old app's redirect; that site is not the old app.
+					if (new URL(page.url()).origin !== new URL(origin).origin) return { route, http, away: page.url() };
+					const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: (await navigation.text().catch(() => '')).slice(0, 256 * 1024) });
+					if (wall) throw new Error(`plan was stopped by ${wall.vendor} on ${route} (${navigation!.status()}, ${wall.evidence}): plan a staging URL, or pass the bypass with --header, --cookie or --user-agent`);
+					await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+					page.off('response', onResponse);
+					return { route, http, assets, collected: await page.evaluate(collectPage, { origin, full: false }) };
+				} finally {
+					page.off('response', onResponse);
+				}
+			} finally {
+				give(page);
+			}
+		};
+		const ahead = new Map<string, ReturnType<typeof inspect>>();
+		const read = (route: string) => {
+			let got = ahead.get(route);
+			if (!got) {
+				got = inspect(route);
+				got.catch(() => {});
+				ahead.set(route, got);
+			}
+			return got;
+		};
 		while (routes.length < limit) {
 			const route = [...found.keys()].find((r) => !done.has(r));
 			if (route === undefined) break;
 			done.add(route);
-			const http = await captureHttp(origin, route, own);
-			const assets: InventoryRoute['assets'][number][] = [];
-			const onResponse = (response: import('playwright').Response) => {
-				const type = response.request().resourceType();
-				if (['image', 'font', 'stylesheet', 'script', 'media'].includes(type)) {
-					assets.push({ url: toLocal(response.url(), origin), type, status: response.status(), contentType: mime(response.headers()['content-type']) });
-				}
-			};
-			page.on('response', onResponse);
-			const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
-			// A route that redirects to another site (/discord -> discord.gg) is the old app's redirect; that site is not the old app.
-			if (new URL(page.url()).origin !== new URL(origin).origin) {
-				page.off('response', onResponse);
-				routes.push({ route, status: http.chain[0]!.status, redirectsTo: page.url(), foundIn: [], seo: {}, assets: [] });
+			let started = 0;
+			for (const next of found.keys()) {
+				if (started >= width) break;
+				if (done.has(next) || ahead.has(next)) continue;
+				read(next);
+				started++;
+			}
+			const result = await read(route);
+			ahead.delete(route);
+			const { http } = result;
+			if (result.away !== undefined) {
+				routes.push({ route, status: http.chain[0]!.status, redirectsTo: result.away, foundIn: [], seo: {}, assets: [] });
 				continue;
 			}
-			const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: (await navigation.text().catch(() => '')).slice(0, 256 * 1024) });
-			if (wall) throw new Error(`plan was stopped by ${wall.vendor} on ${route} (${navigation!.status()}, ${wall.evidence}): plan a staging URL, or pass the bypass with --header, --cookie or --user-agent`);
-			await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
-			page.off('response', onResponse);
-			const collected = await page.evaluate(collectPage, { origin, full: false });
+			const collected = result.collected!;
+			const assets = result.assets!;
 			const last = http.chain.at(-1)!;
 			for (const link of collected.links) {
 				const target = routeOf(link.split('#')[0]!, origin);
@@ -267,6 +311,8 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 				assets,
 			});
 		}
+		await Promise.allSettled(ahead.values());
+		process.stderr.write(`plan: ${routes.length} routes loaded in the browser in ${Math.round((performance.now() - began) / 1000)} s, ${width} at a time\n`);
 		await context.close();
 	} finally {
 		if (!options.browser) await browser.close();

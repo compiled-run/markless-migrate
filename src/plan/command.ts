@@ -13,10 +13,12 @@ import { plan, summarizeInventory, writeInventory } from './inventory.ts';
 import { readSamples } from './routes.ts';
 
 export async function planCommand(rest: string[], cwd: string, out: (text: string) => void, fail: (message: string) => never): Promise<number> {
-		const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' }, 'no-caching': { type: 'boolean' } } });
+		const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' }, 'no-caching': { type: 'boolean' }, concurrency: { type: 'string' } } });
 		if (!values.old) fail('plan needs --old <origin>');
 		const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
 		if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
+	const concurrency = values.concurrency === undefined ? undefined : Number(values.concurrency);
+	if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 		let bypass: ReturnType<typeof bypassOptions> = {};
 		try {
 			bypass = bypassOptions(values.header, values.cookie);
@@ -24,7 +26,7 @@ export async function planCommand(rest: string[], cwd: string, out: (text: strin
 			fail((error as Error).message);
 		}
 		const planAuth = values.auth ? await readAuthFile(values.auth).catch((error: Error) => fail(error.message)) : undefined;
-		const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
+		const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...(concurrency ? { concurrency } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
 		const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 		out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
 		if (!values['no-caching']) {
