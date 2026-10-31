@@ -46,10 +46,37 @@ on:
         description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI)
         required: false
         default: '10'
+  # The pipeline workflow's check stage: its build artifact, and the routes its selection left to check.
+  workflow_call:
+    inputs:
+      site: { type: string, required: true }
+      app: { type: string, required: true }
+      targets: { type: string, required: true }
+      shards: { type: string, required: true }
+      flags: { type: string, required: false, default: '' }
+      build-artifact:
+        description: An artifact of this repository holding output.tar.gz, served instead of the build URL
+        type: string
+        required: false
+        default: ''
+      build-url:
+        type: string
+        required: false
+        default: ''
+      only-artifact:
+        description: An artifact of this run holding targets.json, the routes to deal into shards (targets stays the whole site's)
+        type: string
+        required: false
+        default: ''
+      reuse:
+        type: string
+        required: false
+        default: 'true'
   # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
   contents: read
+  actions: read
 
 env:
   SITE: ${{ inputs.site || 'shadcn-ui' }}
@@ -61,7 +88,7 @@ env:
   NEW: http://127.0.0.1:3000
 
 concurrency:
-  group: check-${{ inputs.build || github.ref }}-${{ inputs.targets }}-${{ inputs.flags }}
+  group: check-${{ inputs.build-artifact || inputs.build || github.ref }}-${{ inputs.targets }}-${{ inputs.flags }}
   cancel-in-progress: false
 
 jobs:
@@ -83,8 +110,13 @@ jobs:
         run: |
           case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 10, got '$MAX_PARALLEL'"; exit 1 ;; esac
           if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 10 ]; then echo "::error::max_parallel must be from 1 to 10, got $MAX_PARALLEL"; exit 1; fi
+      - if: inputs.only-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.only-artifact }}
+          path: ${{ runner.temp }}/only
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
@@ -137,7 +169,15 @@ jobs:
             !deploy/${{ env.SITE }}/old/**/.next/cache
           key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the port
-        run: bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.build-artifact }}" ]; then
+            bash scripts/pipeline-artifact.sh build "${{ inputs.build-artifact }}" "${{ inputs.build-url }}" "$RUNNER_TEMP/build"
+            BUILD="file://$RUNNER_TEMP/build/output.tar.gz"
+          fi
+          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The old side's captures, journeys and slow-network runs from this shard's earlier runs. Check reuses an entry only while
       # its own code and the old site are unchanged (every response the old page loaded, or the files its HTML names).
       - name: Restore the old side from earlier runs
@@ -162,11 +202,14 @@ jobs:
           FLAGS: ${{ inputs.flags }}
           CONCURRENCY: ${{ inputs.concurrency || '1' }}
           TIMEOUT: ${{ inputs.timeout || '3600' }}
-          REUSE: ${{ inputs.reuse != 'false' && format('--reuse .migrate/reuse --closures {0}/new/.vercel/output/.markless/static/interaction-closures.json', runner.temp) || '' }}
+          REUSE: ${{ inputs.reuse != 'false' && '--reuse .migrate/reuse' || '' }}
         run: |
           set -uo pipefail
           cd "$APP"
           mkdir -p .migrate/cache/old .migrate/slow-network
+          # Wherever the preset put it: .vercel/output/.markless/static/, or under .output/ for node-server and cloudflare-module.
+          closures=$(find "$RUNNER_TEMP/new" -path '*/.markless/static/interaction-closures.json' | head -n 1)
+          [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
           status=0
           # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
