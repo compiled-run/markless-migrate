@@ -63,6 +63,7 @@ export default function Page() @{
 					frame.addEventListener('load', onLoad);
 					return () => frame.removeEventListener('load', onLoad);
 				}}
+				onVisible={() => {}}
 				src="https://www.commspace.co.za" style="position:fixed;right:0;left:0;bottom:0;top:250px;width:100%;height:100%" name="webring"></iframe>
 			{" "}
 		</main>
