@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { residueFailures, runtimeMarkers } from '../src/check/residue.ts';
+import { originalRuntimeFailures, residueFailures, runtimeMarkers } from '../src/check/residue.ts';
 import { runCheck } from '../src/check/run.ts';
 import { VIEWPORTS, type PageCapture } from '../src/check/types.ts';
 
@@ -71,4 +71,17 @@ test('a page that runs the framework itself, a rebuild rather than a port, carri
 	const page = (runtime?: string) => ({ viewport: 'desktop', residue, assets: runtime ? [{ url: '/a.js', type: 'script', status: 200, contentType: 'text/javascript', bytes: 1, fingerprinted: true, runtime }] : [] }) as unknown as PageCapture;
 	assert.deepEqual(residueFailures('/', page('Next.js')).map((f) => f.check), ['old framework runtime marker data-has-hydrated'], "Docusaurus's flag is never Next's own");
 	assert.equal(residueFailures('/', page()).length, 3);
+});
+
+test("a Markless page that loads the original's own scripts and runs its framework is red; the same page without them, and the original against itself, are not", () => {
+	const script = (url: string, runtime?: string) => ({ url, type: 'script', status: 200, contentType: 'text/javascript', bytes: 1000, fingerprinted: true, ...(runtime ? { runtime } : {}) });
+	// The original's /charts/line, and the candidate port's: 201 of the original's Next.js chunks beside the Markless route marker.
+	const nextChunks = Array.from({ length: 201 }, (_, i) => script(`/_next/static/chunks/${i}.js`, i === 0 ? 'Next.js' : i === 1 ? 'React' : undefined));
+	const old = { viewport: 'desktop', assets: nextChunks } as unknown as PageCapture;
+	const port = { viewport: 'desktop', routeFile: 'pages/charts/line.tsrx', assets: [script('/build/chunk-a.js'), ...nextChunks] } as unknown as PageCapture;
+	const [f] = originalRuntimeFailures('/charts/line', old, port);
+	assert.equal(f?.check, "runs the original's framework");
+	assert.match(f!.actual, /^Next\.js, React runs on the port: 201 of the original's own script files load \(\/_next\/static\/chunks\/0\.js, .*\), carrying the Next\.js and React runtime$/);
+	assert.deepEqual(originalRuntimeFailures('/charts/line', old, { ...port, assets: [script('/build/chunk-a.js')] } as PageCapture), []);
+	assert.deepEqual(originalRuntimeFailures('/charts/line', old, { viewport: 'desktop', assets: nextChunks } as unknown as PageCapture), [], 'a page Markless did not render is the original itself, never this red');
 });

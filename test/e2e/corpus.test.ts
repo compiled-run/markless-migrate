@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import type { Failure, Report } from '../../src/check/types.ts';
-import { CASES, ORIGINAL, type Case } from '../corpus/site.ts';
+import { ASSETS, CASES, ORIGINAL, type Case } from '../corpus/site.ts';
 import { ROOT, sharded } from './harness.ts';
 
 const servers: Server[] = [];
@@ -29,6 +29,7 @@ export const twin = (route: string) => route.replace(/\/([^/]*)$/, '/0$1');
 function serve(pages: Record<string, string>): Promise<string> {
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
+		if (ASSETS[path]) return void res.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-store' }).end(ASSETS[path]);
 		const body = path === '/' ? ORIGINAL['/docs']! : path.startsWith('/filler/') ? filler(path.slice(8)) : (pages[path] ?? ORIGINAL[Object.keys(ORIGINAL).find((r) => twin(r) === path) ?? '']);
 		if (body === undefined) return void res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title><h1>Not found</h1>');
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(body);

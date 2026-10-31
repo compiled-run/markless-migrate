@@ -150,3 +150,28 @@ export function residueFailures(route: string, next: PageCapture | undefined): F
 			hint: HINTS.residue,
 		}));
 }
+
+/**
+ * A port page that runs the original's framework: a script of the page carries a UI framework's runtime the original's page
+ * also runs, or is one of the original's own script files. A Markless page that boots the old runtime beside its own is not
+ * a port of that page, whatever it renders; JS weight alone cannot show it, since the original loads the same runtime.
+ */
+export function originalRuntimeFailures(route: string, old: PageCapture | undefined, next: PageCapture | undefined): Failure[] {
+	if (!old || !next?.routeFile) return [];
+	const theirs = new Set(old.assets.flatMap((a) => (a.runtime ? [a.runtime] : [])));
+	const oldScripts = new Set(old.assets.filter((a) => a.type === 'script' && a.url.startsWith('/')).map((a) => a.url));
+	const scripts = next.assets.filter((a) => a.type === 'script' && a.status < 400);
+	const runs = [...new Set(scripts.flatMap((a) => (a.runtime && theirs.has(a.runtime) ? [a.runtime] : [])))];
+	const own = scripts.filter((a) => oldScripts.has(a.url));
+	if (!runs.length && !own.length) return [];
+	const named = (runs.length ? runs : [...theirs]).join(', ') || 'the original\'s';
+	return [{
+		route,
+		dimension: 'weight',
+		check: "runs the original's framework",
+		viewport: next.viewport,
+		expected: `a Markless page with none of the original's runtime (${[...theirs].join(', ') || 'its scripts'})`,
+		actual: `${named} runs on the port: ${own.length} of the original's own script file${own.length === 1 ? '' : 's'} load${own.length === 1 ? 's' : ''} (${own.slice(0, 3).map((a) => a.url).join(', ')}${own.length > 3 ? ', …' : ''})${runs.length ? `, carrying the ${runs.join(' and ')} runtime` : ''}`,
+		hint: HINTS.originalRuntime,
+	}];
+}
