@@ -562,7 +562,10 @@ async function follow(tab: Tab, to: string, origin: string, landing: string, pai
 	await armThemeFrames(page);
 	let shots: SwapShot[] = [];
 	try {
-		await page.locator('a[href]').nth(found).click({ timeout: STEP_MS });
+		// A link the page covers (a dialog open at load over the header) is the journeys' finding on both sides; the navigation is followed through the checker's own link.
+		const covered = await page.locator('a[href]').nth(found).click({ timeout: 3000, trial: true }).then(() => false, (error: Error) => /intercepts pointer events/.test(error.message));
+		const link = covered && !injected ? await page.evaluate((target) => { const a = Object.assign(document.createElement('a'), { href: target, textContent: 'markless-migrate navigation check' }); a.setAttribute('style', 'position:fixed;left:0;top:0;z-index:2147483647;background:#fff;padding:4px'); document.body.append(a); return document.querySelectorAll('a[href]').length - 1; }, target) : found;
+		await page.locator('a[href]').nth(link).click({ timeout: STEP_MS });
 		await page.waitForURL((u) => ends.some((end) => samePage(u.href, end)), { timeout: STEP_MS, waitUntil: 'commit' });
 		await settled(tab);
 	} finally {

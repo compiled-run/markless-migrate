@@ -2332,6 +2332,16 @@ export function deadControl(olds: readonly StepResult[], next: StepResult): stri
 	return common.length ? common : [...first!];
 }
 
+/** The regions every old run changed outside the used control that the new page did not change at all (counting namesakes as one): what a control failed to reach. */
+export function lostRegions(olds: readonly StepResult[], next: StepResult): string[] | undefined {
+	const mine = next.reaction?.affected;
+	if (!mine || !olds.length || olds.some((o) => !o.reaction?.affected?.length)) return undefined;
+	const bare = (r: string) => r.replace(/ #\d+/g, '');
+	const [first, ...rest] = olds.map((o) => o.reaction!.affected!.map(bare));
+	const lost = [...new Set(first!.filter((r) => rest.every((o) => o.includes(r)) && !mine.map(bare).includes(r)))];
+	return lost.length ? lost : undefined;
+}
+
 /** Failures that are a slower answer alone, or a view in between alone, with the journey and step to time again one side at a time before they stand. */
 export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number; readonly views?: true; readonly cadence?: true }>();
 
@@ -2561,6 +2571,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 		const actual = next[j]!;
 		const acts = journey.cycle ?? [];
 		const last = journey.steps.length - 1;
+		// Once a step differs, later steps are compared only for a control the original answers and the port does not: an earlier, smaller difference does not hide it.
+		let diverged = false;
 		for (let k = 0; k < journey.steps.length + acts.length; k++) {
 			const step = journey.steps[Math.min(k, last)]!;
 			const act = k > last ? acts[k - last - 1] : undefined;
@@ -2588,8 +2600,17 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const hint = act ? HINTS.cycle : journey.pattern ? HINTS.keyboardPattern : step.action === 'press' ? HINTS.keyboard : HINTS.behaviour;
 			const where = (side: string, f: string) => (act ? `${side} ${f}; step by step: ${trail(side === 'old' ? runs[0]! : actual, last, k)}` : f);
 			if (!n || n.failed) {
-				failures.push({ route, dimension, check, expected: where('old', format(a!, ['url', 'added', 'state'])), actual: where('new', n?.failed ?? 'the journey stopped before this step'), hint });
+				if (!diverged) failures.push({ route, dimension, check, expected: where('old', format(a!, ['url', 'added', 'state'])), actual: where('new', n?.failed ?? 'the journey stopped before this step'), hint });
 				break;
+			}
+			if (diverged) {
+				const moved = n.navigated || n.reloaded || oldSteps.some((x) => x.navigated || x.reloaded);
+				const lost = act || moved ? undefined : (deadControl(oldSteps as StepResult[], n) ?? lostRegions(oldSteps as StepResult[], n));
+				if (lost) {
+					failures.push({ route, dimension, check, expected: `${describeTarget(step.target)} changes ${lost.join(', ')} on the original, where an earlier step of this journey already differed; ${format(a!, ['added', 'removed'])}`, actual: `the port does not change ${lost.join(', ')}${n.reaction?.affected?.length ? ` (it changes ${n.reaction.affected.join(', ')})` : ''}; ${format(n, ['added', 'removed'])}`, hint });
+					break;
+				}
+				continue;
 			}
 			const parts: string[] = [];
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
@@ -2635,7 +2656,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 				failures.push(failure);
 				// A step that ends with the same page and focus but answered differently on the way (a widget's state attributes, its
 				// timing or motion) leaves the next step on the same ground: it is compared too, so a later step's bug is not hidden.
-				if (dead || parts.some((p) => !ON_THE_WAY.has(p))) break;
+				if (dead) break;
+				if (parts.some((p) => !ON_THE_WAY.has(p))) diverged = true;
 			}
 		}
 	});

@@ -60,8 +60,8 @@ const TREE = `<ul class="tree"><li><button aria-expanded="true" aria-controls="f
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /** A react-day-picker month grid: one roving day, arrows by day and week, PageUp/PageDown and Shift+arrows by month. */
-const calendarScript = (grid: string, input = '', broken: 'shift-left' | 'arrows' | 'parse' | '' = '') => `
-(() => { const g = $('${grid}'); let y = 2026, mo = 9, focusDay = 15;
+const calendarScript = (grid: string, input = '', broken: 'shift-left' | 'arrows' | 'parse' | '' = '', month = 9) => `
+(() => { const g = $('${grid}'); let y = 2026, mo = ${month}, focusDay = 15;
 const label = $('${grid}-label');
 const render = (focus) => { label.textContent = ${JSON.stringify(MONTHS)}[mo] + ' ' + y; const days = new Date(y, mo + 1, 0).getDate(); const first = new Date(y, mo, 1).getDay();
 	let html = '<div role="row">' + '<span></span>'.repeat(first);
@@ -77,9 +77,11 @@ g.addEventListener('click', (e) => { const b = e.target.closest('[data-day]'); i
 ${input ? `const field = $('${input}'); const read = () => { const d = new Date(field.value); if (isNaN(d)) { field.setAttribute('aria-invalid', 'true'); return; } field.removeAttribute('aria-invalid'); y = d.getFullYear(); mo = d.getMonth(); focusDay = ${broken === 'parse' ? '1' : 'd.getDate()'}; field.value = ${JSON.stringify(MONTHS)}[mo] + ' ' + String(focusDay).padStart(2, '0') + ', ' + y; render(false); };
 field.addEventListener('keydown', (e) => { if (e.key === 'Enter') read(); if (e.key === 'ArrowDown') { e.preventDefault(); read(); $('${grid}-pop').hidden = false; render(true); } });
 field.addEventListener('blur', read);` : ''}
+for (const [id, by] of [['${grid}-prev', -1], ['${grid}-next', 1]]) $(id)?.addEventListener('click', () => { mo += by; if (mo < 0) { mo = 11; y--; } if (mo > 11) { mo = 0; y++; } render(false); });
 render(false); })();`;
 
-const calendar = (id: string) => `<div id="${id}-pop" class="cal"><div><span id="${id}-label" aria-live="polite"></span></div><div role="grid" id="${id}" aria-labelledby="${id}-label"></div></div>`;
+// The calendar lives in a popover, as shadcn's date picker puts react-day-picker in a Popover: its trigger opens it on the month's previous-month button.
+const calendar = (id: string) => `<div id="${id}-pop" class="cal pop" role="dialog" aria-label="Choose a date" hidden><div><button id="${id}-prev" aria-label="Go to the Previous Month">‹</button> <span id="${id}-label" aria-live="polite"></span> <button id="${id}-next" aria-label="Go to the Next Month">›</button></div><div role="grid" id="${id}" aria-labelledby="${id}-label"></div></div>`;
 
 export interface Case {
 	/** The owner's words, shortened. */
@@ -123,9 +125,10 @@ const currency = (broken: boolean) =>
 	page('Button Group', `<div style="display: flex; gap: 0"><button id="cur" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-label="Currency"><span id="curv">$</span></button><input aria-label="Amount" placeholder="10.00"></div><div class="pop" role="listbox" id="curl" hidden style="min-width: 140px">${options('co', ['$ US Dollar', '€ Euro', '£ British Pound'])}</div>`,
 		selectScript('cur', 'curl', broken ? '' : `(o) => { $('curv').textContent = o.textContent[0]; }`, broken ? -46 : 0));
 
-const rtl = (labelOnly: boolean) =>
+// `marks`: the select's trigger carries data-popup-open while open, as Base UI's does; a port that leaves it off differs at the opening step already.
+const rtl = (labelOnly: boolean, marks = false) =>
 	page('Badge', `<h2>RTL</h2><button id="lang" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="langl"><span id="langv">Arabic (العربية)</span></button><div class="pop" role="listbox" id="langl" hidden>${options('lo', Object.keys(LANG), 1)}</div><div id="demo" dir="rtl">${LANG['Arabic (العربية)']!.map((w) => `<span class="badge">${w}</span>`).join(' ')}</div>`,
-		selectScript('lang', 'langl', `(o) => { $('langv').textContent = o.textContent;${labelOnly ? '' : ` const words = ${JSON.stringify(LANG)}[o.textContent]; $('demo').dir = o.textContent === 'English' ? 'ltr' : 'rtl'; $('demo').innerHTML = words.map((w) => '<span class="badge">' + w + '</span>').join(' ');`} }`));
+		(marks ? "new MutationObserver(() => { const t = $('lang'); if (t.getAttribute('aria-expanded') === 'true') t.setAttribute('data-popup-open', ''); else t.removeAttribute('data-popup-open'); }).observe($('lang'), { attributes: true, attributeFilter: ['aria-expanded'] });" : '') + selectScript('lang', 'langl', `(o) => { $('langv').textContent = o.textContent;${labelOnly ? '' : ` const words = ${JSON.stringify(LANG)}[o.textContent]; $('demo').dir = o.textContent === 'English' ? 'ltr' : 'rtl'; $('demo').innerHTML = words.map((w) => '<span class="badge">' + w + '</span>').join(' ');`} }`));
 
 // Recharts animates a series' path to its new shape over 400 ms when the shown key changes; the port can jump there.
 const morph = (jump: boolean) =>
@@ -220,8 +223,17 @@ const columns = (closes: boolean) =>
 	page('Data Table', `<button id="cols" aria-haspopup="menu" aria-expanded="false">Columns</button>${menu('cmenu', ['status', 'email', 'amount'].map((c) => `<div role="menuitemcheckbox" aria-checked="true" data-col="${c}">${c}</div>`).join(''))}<table><thead><tr><th data-col="status">Status</th><th data-col="email">Email</th><th data-col="amount">Amount</th></tr></thead><tbody><tr><td data-col="status">success</td><td data-col="email">ken99@example.com</td><td data-col="amount">$316.00</td></tr></tbody></table>`,
 		menuScript('cols', 'cmenu', `(item) => { const on = item.getAttribute('aria-checked') !== 'true'; item.setAttribute('aria-checked', String(on)); for (const c of document.querySelectorAll('td[data-col="' + item.dataset.col + '"], th[data-col="' + item.dataset.col + '"]')) c.hidden = !on; return ${!closes}; }`));
 
-const datePicker = (title: string, broken: 'shift-left' | 'arrows' | 'parse' | '') =>
-	page(title, `<label for="sub">Subscription Date</label> <input id="sub" placeholder="June 01, 2025" value="October 15, 2026">${calendar('cal')}`, calendarScript('cal', 'sub', broken), '.cal { margin-top: 8px } [role=row] { display: flex } [role=row] > * { width: 36px; height: 32px }');
+const datePicker = (title: string, broken: 'shift-left' | 'arrows' | 'parse' | '', note = '') =>
+	page(title, `<button id="pick" aria-haspopup="dialog" aria-expanded="false" aria-controls="cal-pop">Pick a date</button><p><label for="sub">Subscription Date</label> <input id="sub" placeholder="June 01, 2025" value="October 15, 2026"></p>${calendar('cal')}`,
+		`${calendarScript('cal', 'sub', broken)}
+${note ? `$('cal-pop').insertAdjacentHTML('afterbegin', ${JSON.stringify(`<p>${note}</p>`)});` : ''}
+const pop = $('cal-pop'), pick = $('pick');
+const shut = (back) => { pop.hidden = true; pick.setAttribute('aria-expanded', 'false'); if (back) back.focus(); };
+pick.onclick = () => { if (!pop.hidden) return shut(pick); place(pop, pick); pop.hidden = false; pick.setAttribute('aria-expanded', 'true'); $('cal-prev').focus(); };
+$('sub').addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') place(pop, $('sub')); });
+pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut(pick); });
+document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !pop.contains(e.target) && e.target !== pick && e.target !== $('sub')) shut(); });`,
+		'[role=row] { display: flex } [role=row] > * { width: 36px; height: 32px }');
 
 const dashboard = (dead: boolean) =>
 	page('Dashboard', `<button id="search">Search documentation...</button><table><tbody><tr><td><button id="cover">Cover page</button></td><td>Cover page</td><td>In Process</td></tr><tr><td><button id="toc">Table of contents</button></td><td>Table of contents</td><td>Done</td></tr></tbody></table><div role="dialog" aria-label="Search documentation" id="cmd" class="pop" style="position: fixed; left: 30%; top: 20%" hidden><input aria-label="Search" placeholder="Search..."></div><div role="dialog" aria-labelledby="dt" id="drawer" style="position: fixed; right: 0; top: 0; bottom: 0; width: 360px; background: white; border-left: 1px solid #999; padding: 16px" hidden><h2 id="dt"></h2><p>Showing total visitors for the last 6 months.</p><button id="close">Done</button></div>`,
@@ -240,6 +252,7 @@ export const CASES: Record<string, Case> = {
 	'three-dots-motion': { bug: "the breadcrumb and button group three dots menus' animations differed", route: '/docs/components/breadcrumb', old: dropdown('Breadcrumb', 'Toggle menu', ANIMATED), mutant: dropdown('Breadcrumb', 'Toggle menu', SLOW), caught: /^motion: .*Toggle menu/ },
 	'currency-select': { bug: "the button group's currency select was anchored wrong and did not select", route: '/docs/components/button-group', old: currency(false), mutant: currency(true), caught: /^(behaviour|a11y): .*(Currency|Euro|British Pound|US Dollar)/ },
 	'rtl-language': { bug: 'RTL toggles changed nothing (badge)', route: '/docs/components/badge', old: rtl(false), mutant: rtl(true), caught: /^(behaviour|a11y): .*(English|Hebrew)/ },
+	'rtl-language-masked': { bug: 'RTL toggles changed nothing, behind a smaller difference at the opening step (as on the RrorpvSy badge page)', route: '/docs/components/badge/masked', old: rtl(false, true), mutant: rtl(true), caught: /^(behaviour|a11y): [^|]*option "(English|Hebrew \(עברית\))" \(step 2\)/ },
 	'chart-switch-speed': { bug: 'switching between chart types was slower than the original', route: '/charts', old: chartTypes(false), mutant: chartTypes(true), caught: /^(behaviour|a11y|responsiveness): .*(Bar Charts|Line Charts|Area Charts)/ },
 	'chart-morph': { bug: "a chart's paths do not morph between Desktop and Mobile", route: '/charts/bar', old: morph(false), mutant: morph(true), caught: /^(behaviour|motion): [^|]*button "(Mobile|Desktop)[^"]*"[^|]*\|.*frame by frame/ },
 	'code-download': { bug: "the code block's download icon did not work", route: '/docs/components/code-block', old: download(false), mutant: download(true), caught: /^(behaviour|a11y): .*Download/ },
@@ -256,6 +269,7 @@ export const CASES: Record<string, Case> = {
 	'columns-menu': { bug: "the data table's Columns menu closed (or stayed open) unlike the original on a multiselect", route: '/docs/components/data-table', old: columns(false), mutant: columns(true), caught: /^(behaviour|a11y): .*(status|email|amount)/ },
 	'date-shift-left': { bug: "the date picker's Shift+Left jumped the month and broke it", route: '/docs/components/date-picker', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'shift-left'), caught: /^(behaviour|a11y): .*Shift\+ArrowLeft/ },
 	'date-arrows': { bug: "the date picker's keyboard navigation broke", route: '/docs/components/date-picker/keys', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'arrows'), caught: /^(behaviour|a11y): .*(ArrowLeft|ArrowRight|ArrowUp|ArrowDown)/ },
+	'date-arrows-masked': { bug: "the date picker's keyboard navigation broke, behind a calendar that opens showing other text (on RrorpvSy it opens on another month)", route: '/docs/components/date-picker/masked', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'arrows', 'Choose a day'), caught: /^(behaviour|a11y): (grid keys on grid[^|]*\(step [2-9]|press Arrow(Left|Right|Up|Down) on gridcell)/ },
 	'date-typed': { bug: 'typing "May 28, 2025" into the date input became May 1', route: '/docs/components/date-picker/input', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'parse'), caught: /^(behaviour|a11y): .*May 28/ },
 	'dashboard-dead': { bug: "the dashboard's Cover page drawer did not open (dropped recordings)", route: '/examples/dashboard', old: dashboard(false), mutant: dashboard(true), caught: /^(behaviour|a11y): .*(Cover page|Table of contents)/ },
 };
