@@ -218,7 +218,7 @@ jobs:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Keep the old site's build
@@ -228,7 +228,7 @@ jobs:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Serve the port
         env:
           GH_TOKEN: ${{ github.token }}
