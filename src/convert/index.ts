@@ -695,6 +695,8 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			const chosen = values && text !== undefined ? values[text] : undefined;
 			if (chosen?.value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value: chosen.value }];
 			if (chosen?.shown !== undefined && chosen.shown !== text) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-text'), { name: 'data-mm-text', value: chosen.shown }];
+			const shows = values && attr(el, 'role') === 'menuitem' ? values[textContent(el).trim()]?.trigger : undefined;
+			if (shows !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-trigger-html'), { name: 'data-mm-trigger-html', value: shows }];
 			markChosenHref(el, values);
 		}
 		selectIndicators(top);
@@ -1507,7 +1509,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);
 			if (copied.length && !choices[reveal.key]) choices[reveal.key] = Object.fromEntries(copied);
 			// Where an option went is its page's (written on the option), as is what it gave a form.
-			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined);
+			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined || c.trigger !== undefined);
 			if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
