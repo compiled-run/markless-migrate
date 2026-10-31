@@ -10,7 +10,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
+import { PSI_KEY_ENV, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { measureSlowNetwork, missingBrowsersError, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
@@ -35,11 +35,11 @@ import { DEFAULT_FREEZE } from './check/freeze.ts';
 import { VIEWPORTS } from './check/types.ts';
 import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
-import { writeStarterAuth } from './plan/auth.ts';
-import { plan, plannedRoutes, summarizeInventory, writeInventory } from './plan/inventory.ts';
+import { plannedRoutes } from './plan/inventory.ts';
+import { planCommand } from './plan/command.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
-import { applyIfPlanned, CACHE_USAGE, cacheCommand, planAndWrite } from './cache/cli.ts';
+import { applyIfPlanned, CACHE_USAGE, cacheCommand } from './cache/cli.ts';
 import { readCachingPlan } from './cache/plan.ts';
 import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
@@ -52,10 +52,10 @@ import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from
 import { startProxy } from './switch/proxy.ts';
 import { AGENT_ENV, missingUnder, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
-import { decisionLine, LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
+import { decisionLine, LIBRARIES_FILE, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
 import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from './check/cli/conform.ts';
-import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUsage, summarizeUsage, usagePages, writeUsage } from './usage/index.ts';
+import { implementations, readUsage, readUsageMap, routeBrief, scanUsage, summarizeUsage, usagePages, writeUsage } from './usage/index.ts';
 import { guardPages, readAllowances, scanBuild, summarizeBuild } from './client/index.ts';
 import { acceptUpgrade, findUi, summarizeUpgrade, upgrade, writeUpgrade } from './upgrade/index.ts';
 import { scanLibraries } from './library/index.ts';
@@ -859,37 +859,8 @@ async function main(argv: string[]): Promise<number> {
 		case '-h':
 			out(USAGE);
 			return 0;
-		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' }, 'no-caching': { type: 'boolean' } } });
-			if (!values.old) fail('plan needs --old <origin>');
-			const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
-			if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
-			let bypass: ReturnType<typeof bypassOptions> = {};
-			try {
-				bypass = bypassOptions(values.header, values.cookie);
-			} catch (error) {
-				fail((error as Error).message);
-			}
-			const planAuth = values.auth ? await readAuthFile(values.auth).catch((error: Error) => fail(error.message)) : undefined;
-			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
-			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
-			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
-			if (!values['no-caching']) {
-				const caching = await planAndWrite(cwd, inventory, { headers: bypass.headers ?? {} });
-				out(`${caching.text}Wrote ${caching.path}\n`);
-			}
-			let libraries: Awaited<ReturnType<typeof planLibraries>> | undefined;
-			if (inventory.source) {
-				libraries = await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd);
-				out(`${libraries.text}Wrote ${libraries.path}\n`);
-			}
-			const usage = await planUsage({ inventory, stateDir: join(cwd, STATE_DIR), newSource: cwd, ...(values.built ? { built: resolve(values.built) } : {}), ...(libraries ? { libraries: libraries.file } : {}), ...(bypass.headers ? { headers: bypass.headers } : {}) });
-			out(`${usage.text}Wrote ${usage.paths.usage} and ${usage.paths.obligations}\n`);
-			const authPath = join(cwd, STATE_DIR, 'auth.json');
-			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
-			if (!psiKey()) out(`\n${PSI_NOTICE}\n`);
-			return 0;
-		}
+		case 'plan':
+			return planCommand(rest, cwd, out, fail);
 		case 'check': {
 			const { values } = parseArgs({
 				args: rest,
