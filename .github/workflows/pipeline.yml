@@ -687,7 +687,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/select/check-reused"
-          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/static/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
+          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           t=$(date +%s)
           result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select" ${ROUTES:+"$GITHUB_WORKSPACE/$ROUTES"})
           echo "$result"
