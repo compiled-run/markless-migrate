@@ -132,7 +132,7 @@ async function openTrigger(page: Page, path: readonly number[]): Promise<boolean
  */
 const backFails = new WeakSet<Page>();
 
-async function reopenOn(page: Page, origin: string, route: string, path: readonly number[], before: string, listbox: boolean): Promise<boolean> {
+async function reopenOn(page: Page, origin: string, route: string, path: readonly number[], before: string, listbox: boolean, requests: ReturnType<typeof requestsOf>): Promise<boolean> {
 	const fresh = loaded.get(page);
 	const putBack = async () => {
 		// A closed layer hands focus back to its trigger; a fresh load has nothing focused.
@@ -146,8 +146,12 @@ async function reopenOn(page: Page, origin: string, route: string, path: readonl
 	// A router whose page differs after Back (Next.js re-renders it) is not taken back again on this page.
 	if (fresh && same && !(moved && backFails.has(page))) {
 		if (moved) {
+			const earlier = new Set(requests.open);
+			requests.ended = 0;
 			await page.evaluate(() => history.back()).catch(() => {});
 			await page.waitForURL(before, { timeout: 3000 }).catch(() => {});
+			// A router fetches the page it takes back to and commits it later: the page is compared once that is done.
+			await afterChoosing(page, requests, earlier);
 		}
 		if (await putBack()) return openTrigger(page, path);
 		if (moved) backFails.add(page);
@@ -291,7 +295,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before;
 				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
-				if (moved || copied !== undefined || !(await (await optionOf(page, key)).asElement()?.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
+				if (moved || copied !== undefined || !(await (await optionOf(page, key)).asElement()?.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox, requests);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];

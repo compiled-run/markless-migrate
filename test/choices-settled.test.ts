@@ -59,12 +59,26 @@ window.choose = () => {
 };
 </script>`;
 
+// Next.js taking a page back: the router fetches the page again and commits it a while after the address changed.
+const RESTORE = palette('<div cmdk-item data-value="a">a</div><div cmdk-item data-value="b">b</div>', '<main>Home</main>') + `<script>
+const home = location.pathname;
+addEventListener('popstate', async () => {
+	if (location.pathname !== home) return;
+	await fetch('/data/redirect').then((r) => r.text());
+	history.replaceState(null, '', home);
+});
+window.choose = (value) => {
+	document.querySelector('[role=dialog]').remove();
+	history.pushState(null, '', '/docs/' + value);
+};
+</script>`;
+
 // An option that something always lies over: its click can never land.
 const COVERED = palette('<div cmdk-item data-value="Free">Free</div><div cmdk-item data-value="Stuck" style="pointer-events:none">Stuck</div>') + `<script>
 window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase());
 </script>`;
 
-const PAGES: Record<string, string> = { '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
+const PAGES: Record<string, string> = { '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
 
 let browser: Browser;
 let server: Server;
@@ -116,6 +130,10 @@ test("only the options the trigger opened are chosen, never the page's own comma
 
 test("an option that loads another document is recorded going there, though the page it left had requests open", async () => {
 	assert.deepEqual(await recorded('/document', reveal('document', '<div cmdk-item="" data-value="llms.txt">llms.txt</div>')), { 'llms.txt': { href: '/llms.txt' } });
+});
+
+test("the next option is chosen once a page taken back has finished coming back, so its router's late commit is not read as the choice", async () => {
+	assert.deepEqual(await recorded('/restore', reveal('restore', '<div cmdk-item="" data-value="a">a</div>')), { a: { href: '/docs/a' }, b: { href: '/docs/b' } });
 });
 
 test('a control with an option that cannot be chosen is refused, and nothing is written for it', async () => {

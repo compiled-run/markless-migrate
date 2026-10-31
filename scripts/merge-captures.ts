@@ -26,7 +26,18 @@ export async function mergeCaptures(into: string, shards: readonly string[]): Pr
 			}
 		}
 	}
-	const disagreements = [...seen].filter(([, by]) => by.size > 1).map(([file, by]) => ({ file, shards: [...by.values()].map((list) => list.join(',')) }));
+	const disagreements: Disagreement[] = [...seen].filter(([, by]) => by.size > 1).map(([file, by]) => ({ file, shards: [...by.values()].map((list) => list.join(',')) }));
+	// A control's choices over the same options (choices/<page key>/<control>-<options>.shown.json) are every page's.
+	const shown = new Map<string, Map<string, string>>();
+	for (const [rel, by] of seen) {
+		const m = /^choices\/[^/]+\/([^/]+\.shown\.json)$/.exec(rel);
+		if (!m || by.size > 1) continue;
+		const [[hash, [shard]]] = [...by] as [[string, string[]]];
+		const at = shown.get(m[1]!) ?? new Map<string, string>();
+		if (!at.has(hash)) at.set(hash, `${shard} (${rel})`);
+		shown.set(m[1]!, at);
+	}
+	for (const [name, at] of shown) if (at.size > 1) disagreements.push({ file: `choices/*/${name}`, shards: [...at.values()] });
 	return { files: seen.size, disagreements };
 }
 
