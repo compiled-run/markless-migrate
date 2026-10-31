@@ -1,0 +1,13 @@
+{
+  "routes": [
+    "/view/new-york-v4/sidebar-07",
+    "/view/new-york-v4/sidebar-01",
+    "/docs/dark-mode/next",
+    "/docs/forms/next",
+    "/examples/rtl",
+    "/docs/components/radix/drawer"
+  ],
+  "endpoints": [],
+  "redirects": [],
+  "unchecked": []
+}
