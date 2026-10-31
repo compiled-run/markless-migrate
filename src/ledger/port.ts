@@ -330,9 +330,14 @@ const escapeAttr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;
 export function renderRoute(port: ReadonlyMap<string, PortFile>, file: string, route: string, depth = 0): string {
 	const pf = port.get(file);
 	if (!pf || depth > 12) return '';
-	const tokens = tokenize(pf.text);
+	const tokens = tokenOf(pf);
 	const search = route.includes('?') ? route.slice(route.indexOf('?')) : '';
 	const path = route.split('?')[0]!;
+	const values = routeValues(pf, route, path);
+	const valueOf = (expr: string | undefined) => {
+		const key = expr && /^\s*values(?:\[["'](\w+)["']\]|\.(\w+))\s*$/.exec(expr);
+		return key ? values[key[1] ?? key[2]!] : undefined;
+	};
 	let html = '';
 	let index = 0;
 	// Each open control: whether its content is kept.
@@ -382,13 +387,37 @@ export function renderRoute(port: ReadonlyMap<string, PortFile>, file: string, r
 				continue;
 			}
 			const on = handlersOf(tok.attrs);
-			const attrs = tok.attrs.filter(([n, v]) => n !== '...' && !/^on[A-Z]/.test(n) && v !== undefined).map(([n, v]) => (v === '' ? ` ${n}` : ` ${n}="${escapeAttr(v!)}"`));
+			const attrs = tok.attrs.map(([n, v, e]) => [n, v ?? valueOf(e)] as const).filter(([n, v]) => n !== '...' && !/^on[A-Z]/.test(n) && v !== undefined).map(([n, v]) => (v === '' ? ` ${n}` : ` ${n}="${escapeAttr(v!)}"`));
 			html += `<${tok.tag}${attrs.join('')} data-mm-ledger="${file}#${at}"${on.length ? ` data-mm-ledger-on="${on.join(' ')}"` : ''}${tok.self && !VOID.has(tok.tag) ? `></${tok.tag}>` : '>'}`;
 		} else if (tok.t === 'close' && tok.tag && !/^[A-Z]/.test(tok.tag)) {
 			if (kept() && !VOID.has(tok.tag)) html += `</${tok.tag}>`;
 		} else if (tok.t === 'text' && kept()) html += tok.text.replace(/</g, '&lt;');
 	}
 	return html;
+}
+
+const tokens = new WeakMap<PortFile, Token[]>();
+const tokenOf = (pf: PortFile): Token[] => {
+	let t = tokens.get(pf);
+	if (!t) tokens.set(pf, (t = tokenize(pf.text)));
+	return t;
+};
+
+/**
+ * What a component shared by several pages writes per page (`VALUES[path]`, a table of generated ids such as each
+ * trigger's aria-controls), for this route.
+ */
+function routeValues(pf: PortFile, route: string, path: string): Readonly<Record<string, string>> {
+	const name = /\bconst values = (\w+)\[(?:path|route)\]/.exec(pf.text)?.[1];
+	if (!name) return {};
+	const json = new RegExp(`^const ${name}\\b[^=]*= (\\{.*\\});$`, 'm').exec(pf.text)?.[1];
+	if (!json) return {};
+	try {
+		const table = JSON.parse(json) as Record<string, Record<string, string>>;
+		return table[route] ?? table[path] ?? {};
+	} catch {
+		return {};
+	}
 }
 
 /** The page module that serves a route, by the routes each page's header names. */

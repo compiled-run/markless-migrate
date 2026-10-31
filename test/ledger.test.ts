@@ -122,13 +122,14 @@ export default function Page({ url }) @{
 	}</>
 }
 `,
-		'components/converted/box.tsrx': `export default function Box() @{\n\t<><span title="t" onClick={() => go()}>box</span></>\n}\n`,
+		'components/converted/box.tsrx': `const VALUES: Readonly<Record<string, Readonly<Record<string, string>>>> = {"/a":{"v0":"mm-1"},"/b":{"v0":"radix-x"}};\nexport default function Box({ path }) @{\n\tconst values = VALUES[path] ?? {};\n\t<><span title="t" aria-controls={values["v0"]} onClick={() => go()}>box</span></>\n}\n`,
 	});
 	const port = await readPort(app);
 	const plain = renderRoute(port, 'pages/a.tsrx', '/a');
 	assert.match(plain, /<p [^>]*>plain<\/p>/);
 	assert.doesNotMatch(plain, />one</);
-	assert.match(plain, /<span title="t" data-mm-ledger="components\/converted\/box\.tsrx#0" data-mm-ledger-on="click">box<\/span>/);
+	// A component shared by pages writes each page's generated ids from its VALUES table.
+	assert.match(plain, /<span title="t" aria-controls="mm-1" data-mm-ledger="components\/converted\/box\.tsrx#0" data-mm-ledger-on="click">box<\/span>/);
 	assert.match(renderRoute(port, 'pages/a.tsrx', '/a?x=1'), />one</);
 	assert.deepEqual(readPortFile('pages/a.tsrx', port.get('pages/a.tsrx')!.text).routes, ['/a', '/a?x=1']);
 });

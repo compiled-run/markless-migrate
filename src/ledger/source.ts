@@ -292,6 +292,12 @@ const MAX_ANCHORS = 3;
 async function anchorsOf(scan: Scan, file: string, el: N, ancestors: readonly N[]): Promise<{ anchors: Anchor[]; tag?: string }> {
 	const own = await signatureOf(scan, file, el);
 	const out: Anchor[] = identifiable(own) ? [{ ...own, anchor: 'self' }] : [];
+	// Rendered through its parent (`<DialogTrigger asChild><Button>`): the element carries the parent's data-slot.
+	const parent = ancestors.at(-1)?.type === 'JSXElement' ? ancestors.at(-1)! : undefined;
+	if (parent && (parent.openingElement.attributes as N[]).some((a) => attrName(a) === 'asChild')) {
+		const outer = await signatureOf(scan, file, parent);
+		if (outer.slot && identifiable({ ...own, slot: outer.slot })) out.unshift({ ...own, slot: outer.slot, anchor: 'self' });
+	}
 	const take = async (from: N, anchor: Anchor['anchor'], skip?: N, inFile = file) => {
 		let n = 0;
 		for (const below of jsxBelow(from)) {
