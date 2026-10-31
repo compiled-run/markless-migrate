@@ -39,7 +39,7 @@ test('a layer from SERVED_LAYER_BYTES up is its shell in the page and its conten
 	);
 	assert.deepEqual(table.served.map((s) => s.html), [fill]);
 	const path = table.served[0]!.path;
-	assert.match(path, /^\/_converted\/layers\/[0-9a-f]{16}\.html$/);
+	assert.match(path, /^\/_converted\/layers\/[0-9a-f]{16}\/$/);
 	const sources = table.files.map((f) => f.source);
 	assert.ok(sources.some((s) => s.includes(`<link rel="preload" href="${path}" as="fetch" crossorigin="anonymous" fetchpriority="low" /><template data-mm-layer-src="${path}" data-mm-layer-keys="search"><div data-mm-layer="search" hidden><input /><div data-mm-layer-fill="${path}"></div></div></template>`) && !s.includes('xxxx')));
 	assert.ok(sources.some((s) => s.includes(small)));
