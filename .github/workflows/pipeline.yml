@@ -41,6 +41,10 @@ on:
         description: Runners the pages without a kept recording are split across
         required: false
         default: '24'
+      capture-concurrency:
+        description: Pages each capture shard records at once
+        required: false
+        default: '3'
       check-shards:
         description: Runners the routes whose shipped code changed are split across
         required: false
@@ -320,14 +324,20 @@ jobs:
       - name: Capture
         env:
           SHARD: ${{ matrix.shard }}
+          CAPTURE_CONCURRENCY: ${{ inputs.capture-concurrency || '3' }}
         run: |
           set -euo pipefail
           t=$(date +%s)
           mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
-          env CAPTURE_ONLY=1 CONCURRENCY=3 ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
+          # The old site's server runs beside the capture: its CPU, and the whole runner's, are read from /proc around it.
+          server_cpu() { local t=0 v; for p in $(pgrep -f next-server || true); do v=$(sed 's/.*) //' "/proc/$p/stat" 2>/dev/null | awk '{print $12 + $13}'); t=$((t + ${v:-0})); done; echo "$t"; }
+          busy() { awk '/^cpu /{print $2 + $3 + $4 + $7 + $8, $2 + $3 + $4 + $5 + $6 + $7 + $8}' /proc/stat; }
+          s0=$(server_cpu); read -r b0 a0 < <(busy)
+          env CAPTURE_ONLY=1 CONCURRENCY="$CAPTURE_CONCURRENCY" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
           tail -n 15 "$RUNNER_TEMP/capture.txt"
+          s1=$(server_cpu); read -r b1 a1 < <(busy)
           rm -f "$APP/.migrate/convert/sources.json" "$APP/.migrate/convert/report.json"
-          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") seconds=$(( $(date +%s) - t ))
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") concurrency="$CAPTURE_CONCURRENCY" old-server-cpu-s=$(( (s1 - s0) / $(getconf CLK_TCK) )) runner-busy-pct=$(( 100 * (b1 - b0) / (a1 - a0) )) seconds=$(( $(date +%s) - t ))
       - uses: actions/upload-artifact@v4
         with:
           name: pl-captures-${{ matrix.shard }}
