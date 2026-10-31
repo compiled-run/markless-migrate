@@ -62,14 +62,15 @@ import { scanLibraries } from './library/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
-  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching]
+  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching] [--concurrency <n>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json,
           then each route's caching into .migrate/caching.json (see cache plan; --no-caching skips it).
           Every route of the old site is listed with where it was found: the sitemaps (indexes
           followed), robots.txt, feeds, a same-origin link crawl of every page (pagination and
           redirects followed, at most --crawl-limit pages, default 10000), the source's routes with
           --source, and the non-page endpoints. --limit caps only the pages loaded in the browser for
-          their SEO tags and assets (default 100). --auth (as for check) crawls again as each role,
+          their SEO tags and assets (default 100); --concurrency loads that many at once (default 1),
+          each route's findings taken in the order one page would take them. --auth (as for check) crawls again as each role,
           in the browser and by links, so routes only a signed-in visitor reaches are listed too, with
           the roles that reach them. Source routes with dynamic segments take their values from the
           crawl or .migrate/samples.json.

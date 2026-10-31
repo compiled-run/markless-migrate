@@ -197,7 +197,8 @@ jobs:
         run: |
           set -euo pipefail
           t=$(date +%s)
-          PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
+          # Four pages at once on a 4-vCPU runner; plan takes their findings in the order one page would.
+          PLAN_ONLY=1 PLAN_CONCURRENCY=4 bash "$APP/scripts/convert.sh"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan=made seconds=$(( $(date +%s) - t ))
       - if: steps.plan.outputs.run != ''
         run: node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan="kept (run ${{ steps.plan.outputs.run }})"

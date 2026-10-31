@@ -11,7 +11,7 @@ OLD="${OLD:-http://localhost:4000}"
 SOURCE="$ROOT/deploy/shadcn-ui/old/apps/v4"
 PAGE_ORDER_FROM="${PAGE_ORDER_FROM-https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev}"
 cd "$APP"
-[ -f .migrate/inventory.json ] || node "$ROOT/src/cli.ts" plan --old "$OLD" --source "$SOURCE" --limit 5000
+[ -f .migrate/inventory.json ] || node "$ROOT/src/cli.ts" plan --old "$OLD" --source "$SOURCE" --limit 5000 ${PLAN_CONCURRENCY:+--concurrency "$PLAN_CONCURRENCY"}
 [ -f .migrate/usage.json ] || node "$ROOT/src/cli.ts" usage --old "$OLD" --source "$SOURCE"
 [ -z "${PLAN_ONLY:-}" ] || exit 0
 node "$ROOT/src/cli.ts" convert --old "$OLD" --source "$SOURCE" ${ONLY:+--only "$ONLY"} ${FALLTHROUGH:+--fallthrough "$FALLTHROUGH"} ${PAGE_ORDER_FROM:+--page-order-from "$PAGE_ORDER_FROM"} ${CAPTURE_ONLY:+--capture-only} ${CONCURRENCY:+--concurrency "$CONCURRENCY"}
