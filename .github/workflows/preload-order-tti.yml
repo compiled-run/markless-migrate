@@ -1,0 +1,121 @@
+name: preload order TTI
+on:
+  push:
+    branches: [scratch/preload-order-tti]
+  workflow_dispatch:
+env:
+  BEFORE: 93b3265ce34a866e8b124564a6c5204e512c535b
+  AFTER: ca31f0115c60b648b220e2d28b11ea83e9b0bcc7
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [before, after]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: migrate
+      - uses: actions/checkout@v4
+        with:
+          repository: compiled-run/markless
+          ref: ${{ matrix.side == 'before' && env.BEFORE || env.AFTER }}
+          path: markless
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: compiled-run/markless-ecosystem-ci
+          path: ecosystem-ci
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: markless/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: build and pack Markless
+        run: node ecosystem-ci/ecosystem-ci.ts build --markless-dir markless --packs packs
+      - name: point the port at the packs
+        working-directory: migrate/examples/qwikui-markless
+        run: |
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const dir = path.resolve("../../../packs");
+            const { tarballs } = JSON.parse(fs.readFileSync(path.join(dir, "packs.json"), "utf8"));
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.overrides ??= {};
+            for (const [name, file] of Object.entries(tarballs)) {
+              const spec = "file:" + path.join(dir, path.basename(file));
+              for (const f of ["dependencies", "devDependencies"]) if (pkg[f]?.[name]) pkg[f][name] = spec;
+              pkg.overrides[name] = spec;
+            }
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, "\t") + "\n");
+          '
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
+      - name: build the port
+        working-directory: migrate/examples/qwikui-markless
+        run: |
+          mkdir -p public
+          npm run build 2>&1 | tail -40
+          f=.output/public/docs/headless/accordion/index.html
+          test -f $f
+          node -e 'const h=require("fs").readFileSync(process.argv[1],"utf8");const head=h.slice(0,h.indexOf("</head>"));for(const m of head.matchAll(/<(link|script)\b[^>]*>/g))console.log(m[0].slice(0,110))' $f
+          tar -czf ../../../site-${{ matrix.side }}.tgz -C .output public
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-${{ matrix.side }}
+          path: site-${{ matrix.side }}.tgz
+          retention-days: 7
+
+  measure:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        browser: [chromium, firefox, webkit]
+        profile: [regular-3g, slow-4g, fast]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browser }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: site-*
+          merge-multiple: true
+      - name: unpack sites
+        run: |
+          for s in before after; do mkdir -p /tmp/serve/$s && tar -xzf site-$s.tgz -C /tmp/serve/$s; done
+      - name: caddy
+        run: |
+          curl -fsSL https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_linux_amd64.tar.gz | tar -xz -C /tmp caddy
+          cd /tmp/serve
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout test.key -out test.crt -days 3 -subj "/CN=before.test" -addext "subjectAltName=DNS:before.test,DNS:after.test" -addext "extendedKeyUsage=serverAuth" 2>/dev/null
+          {
+            printf '{\n\tadmin off\n\tauto_https disable_redirects\n\tskip_install_trust\n\tstorage file_system /tmp/serve/caddy-data\n\tservers {\n\t\tprotocols h1 h2\n\t}\n}\n'
+            printf '(common) {\n\ttls /tmp/serve/test.crt /tmp/serve/test.key\n\tencode gzip\n\theader /build/* Cache-Control "public, max-age=31536000, immutable"\n\tfile_server\n}\n'
+            for s in before after; do printf 'https://%s.test:8443 {\n\troot * /tmp/serve/%s/public\n\timport common\n}\n' $s $s; done
+          } > Caddyfile
+          nohup /tmp/caddy run --config Caddyfile > caddy.log 2>&1 &
+          sleep 2
+          curl -sk --resolve before.test:8443:127.0.0.1 -o /dev/null -w '%{http_code} %{http_version}\n' https://before.test:8443/docs/headless/accordion/
+          curl -sk --resolve after.test:8443:127.0.0.1 -o /dev/null -w '%{http_code} %{http_version}\n' https://after.test:8443/docs/headless/accordion/
+      - name: install
+        run: |
+          cp scratch/preload-tti/maieul-net.ts scratch/preload-tti/maieul-run.ts src/check/
+      - name: measure
+        run: |
+          node src/check/maieul-run.ts --urls https://before.test:8443/docs/headless/accordion/,https://after.test:8443/docs/headless/accordion/ --profiles ${{ matrix.profile }} --browsers ${{ matrix.browser }} --runs 7 --out out/${{ matrix.browser }}-${{ matrix.profile }}.jsonl
+          node scratch/preload-tti/summarize.mjs out/${{ matrix.browser }}-${{ matrix.profile }}.jsonl > out/${{ matrix.browser }}-${{ matrix.profile }}-cells.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tti-${{ matrix.browser }}-${{ matrix.profile }}
+          path: out
+          retention-days: 14
