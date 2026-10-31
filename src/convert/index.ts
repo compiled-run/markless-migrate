@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { CONVERT_INPUTS, type ConvertInputs } from './inputs.ts';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
@@ -2218,6 +2219,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
+	if (!options.only?.length) await writeFile(join(state, 'convert', CONVERT_INPUTS), JSON.stringify({ pageOrderFrom: options.pageOrderFrom ?? null } satisfies ConvertInputs));
 	return report;
 }
 
