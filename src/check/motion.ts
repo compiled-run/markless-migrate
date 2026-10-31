@@ -496,6 +496,10 @@ async function recordJourney(browser: Browser, env: Learned, route: string, view
 			const r = await session.cycle(steps, act);
 			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
 		}
+		// A key press focuses its control first: the focus ring's own transition runs out before the recording, or whether it is
+		// caught depends on how long focusing took on that run.
+		const last = steps.at(-1)!;
+		if (!journey.dismiss && !acted && last.action === 'press') await locate(session.page, last.target).focus({ timeout: 3_000 }).catch(() => {});
 		// What the earlier steps set going (a "Copied" label's reset) ends before the recording starts, on both sides.
 		await timersOut(session.page, ready);
 		await settleAndHoldLoops(session.page);
