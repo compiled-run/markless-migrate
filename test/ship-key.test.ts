@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { keepChecked, readClosures, readReusable, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
+import { keepChecked, readClosures, readReusable, referencedFiles, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
 import type { RouteResult } from '../src/check/types.ts';
 
 const page = (file: string, chunk: string, text = 'Hello') =>
@@ -147,4 +147,9 @@ test('a stylesheet, a script outside the packs, the old page or a response the p
 	} finally {
 		for (const s of servers) s.close();
 	}
+});
+
+test("a file only the hosting platform serves (Vercel's /_vercel/insights) is not a file the route ships, so it never leaves the route without a key", () => {
+	const html = '<html><head><link rel="stylesheet" href="/app.css"><script defer src="/_vercel/insights/script.js"></script><script defer src="/_vercel/speed-insights/script.js"></script><script src="https://cdn.example/x.js"></script></head></html>';
+	assert.deepEqual(referencedFiles(html, 'http://127.0.0.1:3000'), ['http://127.0.0.1:3000/app.css']);
 });
