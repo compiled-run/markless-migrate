@@ -53,6 +53,10 @@ test('a step compares what it changed: the tree of an open menu, a popup moved p
 	assert.equal(diffs[2]!.new, 'no animation');
 	const jitter = { ...open, motion: [{ ...fade, duration: 400 }] };
 	assert.deepEqual(compareStates([at(), open], [at(), jitter], [at(), jitter])[0]!.map((d) => d.field), []);
+	// A max-height transition follows the room left below the menu; a colour transition is hover feedback.
+	const room = { ...fade, kind: 'transition', properties: ['max-height'], keyframes: [] } as const;
+	const hover = { ...fade, kind: 'transition', properties: ['background-color'], keyframes: [] } as const;
+	assert.deepEqual(compareStates([at(), open], [at(), { ...open, motion: [fade, room, hover] }])[0]!.map((d) => d.field), []);
 	// A menu open on one side only is the probes' difference of state: its tree and motion are not compared.
 	assert.deepEqual(compareStates([at(), open], [at(), at()])[0]!.map((d) => d.field), []);
 });

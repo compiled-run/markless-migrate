@@ -166,7 +166,8 @@ export function tweenDiffers(a: PageScriptMotion | undefined, b: PageScriptMotio
 const OWN = /^(?!.* outside the widget$)/;
 
 // A transition on the control is hover, press or focus feedback that starts or not by whether the pointer crossed it between two frames (measured: 13 of 30 routes red on identical pages), as is one of a colour or a shadow anywhere; motion is a popup's transition of where or whether it shows.
-const MOVES = /^(opacity|transform|translate|scale|rotate|width|height|max-height|min-height|max-width|top|left|right|bottom|inset.*|margin.*|padding.*|clip-path|visibility|display|overlay|offset.*|grid-template.*|flex.*|filter|backdrop-filter|--.*)$/;
+// A max- or min- size transition follows the room the layout leaves (a menu's available height), which the scroll position sets.
+const MOVES = /^(opacity|transform|translate|scale|rotate|width|height|top|left|right|bottom|inset.*|margin.*|padding.*|clip-path|visibility|display|overlay|offset.*|grid-template.*|flex.*|filter|backdrop-filter|--.*)$/;
 const moving = (list: readonly PageMotion[], popup = true) => list.filter((m) => m.kind !== 'transition' || (popup && m.properties.some((p) => MOVES.test(p))));
 
 const popupRoles = (r: StateReading | undefined) => r?.open ?? (r?.popups ?? []).map((p) => p.role);
