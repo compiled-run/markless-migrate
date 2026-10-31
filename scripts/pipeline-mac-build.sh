@@ -2,7 +2,7 @@
 # The pipeline's build on this Mac, for a port too big for a 16 GB runner: pipeline-mac-build.sh <pipeline run id> [<markless ref>]
 # takes that run's converted app, builds it through ~/.claude/bin/heavy against Markless at the ref (main by default), puts
 # the output on the pl-builds release, and runs the pipeline again with build-url set. Its plan, recordings and emit are
-# read back by key, so the second run starts at the check. Set SITE, APP_REL, PRESET (vercel) and APP_URL as the first run had them.
+# read back by key, so the second run starts at the check. Set SITE, APP_REL, PRESET (vercel), APP_URL and PRIORITY (deploy) as the first run had them.
 set -euo pipefail
 RUN="${1:?usage: pipeline-mac-build.sh <pipeline run id> [<markless ref>]}"
 REF="${2:-main}"
@@ -31,4 +31,4 @@ gh release view pl-builds -R "$REPO" > /dev/null 2>&1 || gh release create pl-bu
 gh release upload pl-builds "$WORK/$asset" -R "$REPO" --clobber
 URL="https://github.com/$REPO/releases/download/pl-builds/$asset"
 echo "build: $URL"
-gh workflow run pipeline.yml -R "$REPO" --ref "$(gh api "repos/$REPO/actions/runs/$RUN" --jq .head_branch)" -f site="$SITE" -f app="$APP_REL" -f markless="$REF" -f build-url="$URL" -f preset="${PRESET:-vercel}" -f app-url="${APP_URL:-}"
+gh workflow run pipeline.yml -R "$REPO" --ref "$(gh api "repos/$REPO/actions/runs/$RUN" --jq .head_branch)" -f site="$SITE" -f app="$APP_REL" -f markless="$REF" -f build-url="$URL" -f preset="${PRESET:-vercel}" -f app-url="${APP_URL:-}" ${PRIORITY:+-f "priority=$PRIORITY"}
