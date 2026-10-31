@@ -40,15 +40,16 @@ describe('responsiveness: the first use of each control and each link, old vs ne
 		const failure = route.failures.find((f) => f.dimension === 'responsiveness' && f.check === 'first interaction with button "Add" (4x CPU, mobile)');
 		assert.ok(failure, route.failures.map((f) => f.check).join('\n'));
 		assert.match(failure.expected, /^old \d+ ms \(runs [\d ms,]+\)/);
-		assert.match(failure.actual, /^new \d+ ms \(runs \d+ ms, \d+ ms\); likely cause: code fetch: \/big\.js/);
+		// Slower than the old as well as fetching code: confirmed by five runs a side taken in turn.
+		assert.match(failure.actual, /^new \d+ ms \(runs \d+ ms(, \d+ ms){4}\); likely cause: code fetch: \/big\.js.*runs again in turn: old (\d+ ms, ){4}\d+ ms, new/);
 		assert.match(failure.where ?? '', /^old index\.html:14 renders button "Add"; new index\.html:14 renders it$/);
 		const next = timing.controls.find((c) => c.control === 'link "Next page"')!;
 		assert.equal(next.kind, 'navigation');
 		const nav = next.speeds.find((s) => s.speed === 'throttled')!;
 		assert.equal(nav.ok, false);
-		assert.equal(nav.new.length, 2, 'a failing control is measured twice');
+		assert.equal(nav.new.length, 5, 'a slower control is confirmed by five runs a side');
 		assert.ok(nav.new.every((s) => s.result === 'reloaded' && (s.server?.ttfb ?? 0) >= 290), JSON.stringify(nav.new));
-		assert.ok(nav.spread, 'the variance between the two runs is reported');
+		assert.ok(nav.spread, 'the variance between the runs is reported');
 		assert.match(nav.cause ?? '', /a full page load where the old app navigates in the page/);
 		assert.match(nav.cause ?? '', /server time \d+ ms to answer.*outside this timing/);
 		assert.ok(next.speeds.find((s) => s.speed === 'desktop')!.ok, 'navigation is held to the old app at the throttled speed only');
