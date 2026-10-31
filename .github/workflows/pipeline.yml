@@ -514,6 +514,9 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.emit.result == 'success' || inputs.build-url != '' || inputs.converted-from != '') }}
     runs-on: ${{ inputs.build-runner || 'ubuntu-latest' }}
     timeout-minutes: 120
+    permissions:
+      contents: write
+      actions: read
     outputs:
       key: ${{ steps.key.outputs.key }}
       run: ${{ steps.key.outputs.run }}
@@ -646,6 +649,20 @@ jobs:
           mkdir -p "$RUNNER_TEMP/out"
           if [ -d "$APP/.vercel/output" ]; then tar -czf "$RUNNER_TEMP/out/output.tar.gz" -C "$APP" .vercel/output .migrate/caching.json; else tar -czf "$RUNNER_TEMP/out/output.tar.gz" -C "$APP" .output .migrate/caching.json; fi
           if [ -d "$APP/node_modules/.vite/markless-compile" ]; then tar -cf "$RUNNER_TEMP/compile-store.tar" -C "$APP/node_modules/.vite" markless-compile; fi
+      # check.yml's default build is the site's newest <site>-build-* or <site>-deployed-build-* release (#466).
+      - name: Release the build
+        if: steps.key.outputs.run == '' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ steps.key.outputs.key }}
+        run: |
+          set -euo pipefail
+          tag="$SITE-build-$KEY"
+          cp "$RUNNER_TEMP/out/output.tar.gz" "$RUNNER_TEMP/out/$SITE-output.tar.gz"
+          gh release view "$tag" > /dev/null 2>&1 || gh release create "$tag" --prerelease --title "$SITE build ${KEY:0:8} (pipeline run $GITHUB_RUN_ID, $PRESET)" --notes "Pipeline run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID, Markless ${MARKLESS_SHA:0:9}, preset $PRESET."
+          gh release upload "$tag" "$RUNNER_TEMP/out/$SITE-output.tar.gz" --clobber
+          rm "$RUNNER_TEMP/out/$SITE-output.tar.gz"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build release="$tag"
       - if: steps.key.outputs.run == ''
         uses: actions/upload-artifact@v4
         with:
