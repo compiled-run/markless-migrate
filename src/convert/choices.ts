@@ -51,6 +51,9 @@ export function sharedChoices(reveal: Reveal): boolean {
 	return !isListbox(reveal) && optionKeys(reveal).length > OPTIONS_PER_PAGE;
 }
 
+/** The file a control's choices over the options it shows are kept in, whichever page they were chosen on. */
+export const shownFile = (reveal: Reveal): string => `${reveal.key.replace(/[^\w-]/g, '_')}-${optionsShown(reveal)}.shown.json`;
+
 const isListbox = (reveal: Reveal) => reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 
 /** A cmdk item whose choosing went somewhere on the old page names that address, which the cmdk part goes to when it is chosen. */
@@ -281,7 +284,7 @@ const OPTIONS_PER_PAGE = 20;
  */
 export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task()): Promise<Record<string, Choice>> {
 	const listbox = isListbox(reveal);
-	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown`}.json`);
+	const file = join(dir, listbox ? `${reveal.key.replace(/[^\w-]/g, '_')}-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen.json` : shownFile(reveal));
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
 	const viewport = VIEWPORTS.find((v) => v.name === reveal.viewport) ?? VIEWPORTS[0]!;

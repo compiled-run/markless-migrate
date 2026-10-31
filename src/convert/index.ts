@@ -8,7 +8,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
-import { captureChoices, copyBinding, markChosenHref, optionsShown, sharedChoices, type Choice } from './choices.ts';
+import { captureChoices, copyBinding, markChosenHref, optionsShown, sharedChoices, shownFile, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
@@ -1460,6 +1460,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
 		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
 		const deferShared = !!options.captureOnly && !!options.only?.length;
+		// A site-wide palette recorded beside the shards (scripts/shared-choices.ts), under the key of the page it was chosen on.
+		const sharedRoot = join(state, 'convert', 'shared-choices');
+		const sharedDirs = await readdir(sharedRoot).then((names) => names.sort().map((n) => join(sharedRoot, n)), () => [] as string[]);
+		const sharedDir = (reveal: Reveal) => sharedDirs.find((d) => existsSync(join(d, shownFile(reveal))));
 		const choosing = new Map<string, { chosen: Promise<Record<string, Choice>>; dir: string; tries: number }>();
 		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
 		for (const [i, pending] of reads.entries()) {
@@ -1475,7 +1479,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				// options (three at most), kept where the first route's are read; refused on each, the convert fails.
 				const earlier = choosing.get(run);
 				if (!earlier || earlier.tries < 3) {
-					const dir = earlier?.dir ?? (await atFor(route, 'choices'));
+					const dir = earlier?.dir ?? ((sharedChoices(reveal) && sharedDir(reveal)) || (await atFor(route, 'choices')));
 					const choose = () => timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
 					const chosen = earlier ? earlier.chosen.catch(choose) : choose();
 					chosen.catch(() => {});
