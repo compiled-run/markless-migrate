@@ -51,12 +51,20 @@ const DEMO = palette('<div cmdk-item data-value="Components Button">Button</div>
 window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase().replace(/ /g, '-'));
 </script>`;
 
+// Next.js on a route that is no page (a text file): the router's prefetches are still open when the page loads the file.
+const DOCUMENT = palette('<div cmdk-item data-value="llms.txt">llms.txt</div>') + `<script>
+window.choose = () => {
+	for (let i = 0; i < 4; i++) fetch('/data/hang?' + i);
+	setTimeout(() => location.assign('/llms.txt'), 50);
+};
+</script>`;
+
 // An option that something always lies over: its click can never land.
 const COVERED = palette('<div cmdk-item data-value="Free">Free</div><div cmdk-item data-value="Stuck" style="pointer-events:none">Stuck</div>') + `<script>
 window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase());
 </script>`;
 
-const PAGES: Record<string, string> = { '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
+const PAGES: Record<string, string> = { '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
 
 let browser: Browser;
 let server: Server;
@@ -66,6 +74,8 @@ before(async () => {
 	server = createServer((request, res) => {
 		if (request.url === '/data/redirect') return void setTimeout(() => res.writeHead(200).end('{}'), 800);
 		if (request.url!.startsWith('/docs/components/typography')) return void res.writeHead(308, { location: '/docs/typeset' }).end();
+		if (request.url!.startsWith('/data/hang')) return void setTimeout(() => res.writeHead(200).end('{}'), 30_000);
+		if (request.url === '/llms.txt') return void res.writeHead(200, { 'content-type': 'text/plain' }).end('# docs');
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 700);
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGES[request.url!.split('?')[0]!] ?? '<!doctype html><title>other</title>');
 	});
@@ -102,6 +112,10 @@ test("an option is recorded going where the router moves once its render commits
 
 test("only the options the trigger opened are chosen, never the page's own command menu items", async () => {
 	assert.deepEqual(await recorded('/demo', reveal('demo', '<div cmdk-item="" data-value="Components Button">Button</div>')), { 'Components Button': { href: '/docs/components-button' } });
+});
+
+test("an option that loads another document is recorded going there, though the page it left had requests open", async () => {
+	assert.deepEqual(await recorded('/document', reveal('document', '<div cmdk-item="" data-value="llms.txt">llms.txt</div>')), { 'llms.txt': { href: '/llms.txt' } });
 });
 
 test('a control with an option that cannot be chosen is refused, and nothing is written for it', async () => {
