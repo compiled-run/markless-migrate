@@ -29,6 +29,7 @@ export const DOCUMENT = 'document.tsrx';
 const ITEM_ROLES = '[role=option],[role=menuitemradio],[role=menuitemcheckbox],[role=menuitem],[role=radio],[role=tab],[role=checkbox],[role=switch],[role=treeitem]';
 // What a container's handler hears through when it is the element the page draws (a collapsible's trigger button).
 const PRESSABLE = `${ITEM_ROLES},button,[role=button],summary,a[href],input,textarea`;
+const TRIGGERS = '[data-slot$="-trigger"],[aria-expanded],[aria-controls]';
 // Items of a group or a layer a value-change handler hears through; the first few are enough to see who answers them.
 const ITEMS_TRIED = 3;
 
@@ -56,7 +57,8 @@ async function trial(sandbox: Sandbox, t: TrialJob, registry: string | undefined
 	const library = libraryOnly(t);
 	if (library && t.el.layer && registry) return { answer: { by: 'part', where: 'layer' }, event: t.events[0]! };
 	const opened = t.el.layer ? undefined : page.layers.get(target.getAttribute('aria-controls') ?? target.id);
-	const inside = [...target.querySelectorAll(PRESSABLE)].slice(0, library ? 2 : ITEMS_TRIED);
+	// A container's own trigger first (a collapsible's), then what else it holds that can be pressed.
+	const inside = [...new Set([...target.querySelectorAll(TRIGGERS), ...target.querySelectorAll(PRESSABLE)])].slice(0, library ? 2 : ITEMS_TRIED);
 	const tries = library ? [target, ...inside] : [target, ...inside, ...(opened ? [...opened.querySelectorAll(ITEM_ROLES)].slice(0, ITEMS_TRIED) : [])];
 	// A press reaches a part as pointerdown, click or a key, whichever the library listens for (Radix opens on pointerdown).
 	// A tooltip or hover card answers the pointer resting on it, a context menu the right button.

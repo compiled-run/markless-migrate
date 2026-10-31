@@ -12,8 +12,9 @@ export type Answer =
 	/** A part threw outside a browser: whether it answers is not known, so it is reported, never failed. */
 	| { readonly by: 'threw'; readonly where: string; readonly error: string };
 
-// Ports whose answer is what convert recorded the original doing (a choice's outcome, a played scene), not library behaviour.
-const RECORDED = new Set(['choices', 'scene', 'switch', 'toggle', 'form', 'sonner']);
+// Ports whose answer is the app's own logic as convert recorded or modelled it (a choice's outcome, a played scene, the
+// form library's reset, the table's paging), not a UI library's behaviour.
+const RECORDED = new Set(['choices', 'scene', 'switch', 'toggle', 'form', 'sonner', 'form-library', 'form-tanstack', 'form-libraries', 'tanstack-table', 'tanstack-tables', 'day-picker', 'react-aria/calendar']);
 
 type Handler = (target: Element, event: Event) => unknown;
 interface LoadedPart {
@@ -40,6 +41,7 @@ export class Sandbox {
 	window!: Window;
 	private readonly loaded = new Map<string, Promise<LoadedPart[]>>();
 	private observers = 0;
+	private timers = 0;
 	private readonly installed = new Set<string>();
 	/** Ports that could not be loaded outside a browser, with the error: their events count as unanswered. */
 	readonly broken = new Map<string, string>();
@@ -69,6 +71,11 @@ export class Sandbox {
 		for (let o: object | null = w; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) for (const k of Object.getOwnPropertyNames(o)) names.add(k);
 		for (const k of names) if ((this.installed.has(k) || !(k in globalThis)) && k !== 'constructor') set(k, value(k));
 		for (const k of GLOBALS) if (w[k] !== undefined) set(k, value(k));
+		const setTimer = w.setTimeout as (...a: unknown[]) => unknown;
+		set('setTimeout', (...a: unknown[]) => {
+			this.timers++;
+			return setTimer.apply(w, a);
+		});
 		const Base = w.MutationObserver as new (cb: MutationCallback) => MutationObserver;
 		const self = this;
 		set('MutationObserver', class extends Base {
@@ -156,7 +163,8 @@ export class Sandbox {
 			const handler = part[kind] as Handler | undefined;
 			if (typeof handler !== 'function') continue;
 			const before = this.observers;
-			const watch = site ? new (this.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver(() => {}) : undefined;
+			const timers = this.timers;
+			const watch = new (this.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver(() => {});
 			watch?.observe(this.window.document as unknown as Node, { subtree: true, childList: true, attributes: true, characterData: true });
 			let took = false;
 			try {
@@ -167,9 +175,10 @@ export class Sandbox {
 			}
 			const changed = (watch?.takeRecords().length ?? 0) > 0;
 			watch?.disconnect();
-			// A site part that watches what the press changes (a MutationObserver) answers without taking the event.
-			const watched = this.observers > before;
-			if (took || (site && (changed || watched))) return { by: site ? 'site-part' : RECORDED.has(name) ? 'recorded' : 'part', where: name };
+			// A part that acts without taking the event answers it too: a site part watching what the press changes, a
+			// tooltip opening after its delay (a timer), a hover card changing the page.
+			const watched = this.observers > before || this.timers > timers;
+			if (took || changed || watched) return { by: site ? 'site-part' : RECORDED.has(name) ? 'recorded' : 'part', where: name };
 		}
 		return { by: 'none' };
 	}

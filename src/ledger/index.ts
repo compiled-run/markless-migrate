@@ -71,7 +71,9 @@ const CONTEXT_MIN = 3;
 
 /** Whether the element sits among most of the words its source component shows around it (or the file holds too little to tell). */
 function amongContext(el: PortElement, context: readonly string[], port: ReadonlyMap<string, PortFile>): boolean {
-	if (context.length < CONTEXT_MIN || el.parent === undefined) return true;
+	if (context.length < CONTEXT_MIN) return true;
+	// The root of a component shared by pages: what is around it is in each page, so the words cannot be checked here.
+	if (el.parent === undefined) return false;
 	const elements = port.get(el.file)?.elements ?? [];
 	let text = '';
 	for (let at: PortElement | undefined = elements[el.parent], n = 0; at && n < CONTEXT_DEPTH; at = at.parent === undefined ? undefined : elements[at.parent], n++) text += at.text.toLowerCase();
@@ -84,7 +86,9 @@ export function candidates(anchor: Anchor, bySlot: ReadonlyMap<string, readonly 
 	const text = squash(anchor.text);
 	const attrs = Object.entries(anchor.attrs);
 	if (!key) return [];
-	return (bySlot.get(key) ?? []).filter((el) => attrs.every(([n, v]) => el.attrs[n] === v) && (!text || el.text.includes(text)) && amongContext(el, context, port));
+	// A data-slot names a part, not its element: a Button rendered as a link (`<a data-slot="button">`) is another part.
+	const tagged = (el: PortElement) => (!anchor.tag || !anchor.slot || el.tag === anchor.tag) && !(el.tag === 'a' && el.attrs.href && el.attrs.href !== '{}' && !anchor.attrs.href && !/link|trigger|item/.test(anchor.slot ?? ''));
+	return (bySlot.get(key) ?? []).filter((el) => tagged(el) && attrs.every(([n, v]) => el.attrs[n] === v) && (!text || el.text.includes(text)) && amongContext(el, context, port));
 }
 
 const accessibleName = (anchor: Anchor | undefined, el: PortElement) => el.attrs['aria-label'] ?? anchor?.attrs['aria-label'] ?? (anchor?.text || el.attrs.placeholder || el.attrs.title || '');
@@ -211,11 +215,11 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 			// Each element's first route before any element's second, so the cap keeps every element in.
 			const placed = all.flatMap((el) => routesFor(el, port, roots, pages).map((at, n) => ({ el, at, n, weak: !strong.has(el) })));
 			const scored = placed.map((c) => ({ ...c, score: affinity(site.file, c.at.route) })).sort((a, b) => Number(a.weak) - Number(b.weak) || b.score - a.score || a.n - b.n);
-			// Where some route shares words with the source's path, a route sharing none may be another component's: weak there.
-			const named = scored.some((c) => c.score > 0);
+			// The routes sharing the most words with the source's path are its own; on any other it may be another component's: weak there.
+			const best = Math.max(0, ...scored.map((c) => c.score));
 			const files = new Set<string>();
 			for (const { el, at, weak: unplaced, score } of scored) {
-				const weak = unplaced || (named && score === 0);
+				const weak = unplaced || score < best;
 				if (files.has(`${el.file} ${at.route}`) || list.length >= PER_SITE) continue;
 				files.add(`${el.file} ${at.route}`);
 				// What the element finally is decides what onChange hears: typing in an <input>, a choice elsewhere.
