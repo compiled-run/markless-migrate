@@ -179,6 +179,10 @@ export interface LoadVerdict {
 	readonly p: number;
 	/** Median absolute deviation of each side's runs. */
 	readonly spread: { readonly old: number; readonly new: number };
+	/** The p this metric had to be under: Holm's share of `SIGNIFICANCE` for its rank among the route's metrics. */
+	readonly alpha?: number;
+	/** A side whose runs fall in separate clusters, each of two runs or more: no difference smaller than their distance can be told. */
+	readonly bimodal?: { readonly side: 'old' | 'new'; readonly clusters: readonly (readonly number[])[] };
 	readonly ok: boolean;
 }
 
@@ -241,9 +245,54 @@ export function mannWhitneyGreater(lower: readonly number[], higher: readonly nu
 	return row.reduce((n, count, sum) => n + (sum >= observed ? count : 0), 0) / total;
 }
 
-/** Each metric's verdict: red when the new median is worse than the old by more than its floor and the runs say that is not noise. */
+/** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
+export function noiseBand(old: readonly number[]): number | undefined {
+	if (old.length < 4) return undefined;
+	const n = old.length;
+	const small = n >> 1;
+	const gaps: number[] = [];
+	const pick = (start: number, chosen: number[]) => {
+		if (chosen.length === small) {
+			const a = chosen.map((i) => old[i]!);
+			const b = old.filter((_, i) => !chosen.includes(i));
+			gaps.push(Math.abs(median(a) - median(b)));
+			return;
+		}
+		for (let i = start; i < n; i++) pick(i + 1, [...chosen, i]);
+	};
+	pick(0, []);
+	gaps.sort((x, y) => x - y);
+	return gaps[Math.min(gaps.length - 1, Math.floor(0.9 * gaps.length))]!;
+}
+
+/** Paint times are read from frames at 60 Hz: a smaller difference cannot be seen. */
+const PAINT_STEP_MS = 17;
+/** Times the owner gates on any slowdown the runs can show: no allowance beyond the old page's own noise and the instrument's step. */
+const PAINTS: ReadonlySet<LoadMetric> = new Set(['fcp', 'si']);
+
+/**
+ * Runs that fall in two or more groups of two or more, the groups further apart than 5% of the median (or four frames): a page
+ * whose paint comes at one of several moments by chance. Such a side is no baseline for a smaller difference.
+ */
+export function clusters(values: readonly number[]): number[][] | undefined {
+	const sorted = [...values].sort((a, b) => a - b);
+	const apart = Math.max(4 * PAINT_STEP_MS, 0.05 * median(sorted));
+	const groups: number[][] = [];
+	for (const v of sorted) {
+		const last = groups.at(-1);
+		if (last && v - last.at(-1)! <= apart) last.push(v);
+		else groups.push([v]);
+	}
+	return groups.filter((g) => g.length >= 2).length >= 2 ? groups : undefined;
+}
+
+/**
+ * Each metric's verdict: red when the new median is worse than the old by more than its allowance and the runs say that is not
+ * noise. Significance is shared by the route's metrics (Holm's step-down), so identical pages go red at most `SIGNIFICANCE` of
+ * the time however many metrics are compared. A paint time on a side whose runs fall in clusters is red as inconclusive.
+ */
 export function judgeLoad(old: readonly Metrics[], next: readonly Metrics[]): LoadVerdict[] {
-	return LOAD_METRICS.map((metric) => {
+	const verdicts = LOAD_METRICS.map((metric) => {
 		const o = old.map((m) => m[metric]);
 		const n = next.map((m) => m[metric]);
 		const higherIsBetter = metric === 'score';
@@ -251,9 +300,20 @@ export function judgeLoad(old: readonly Metrics[], next: readonly Metrics[]): Lo
 		const nm = median(n);
 		const worse = higherIsBetter ? om - nm : nm - om;
 		const p = higherIsBetter ? mannWhitneyGreater(n, o) : mannWhitneyGreater(o, n);
-		const f = floor(metric, om);
-		return { metric, old: om, new: nm, worse, floor: f, p, spread: { old: spread(o), new: spread(n) }, ok: !(worse > f && p < SIGNIFICANCE) };
+		const paint = PAINTS.has(metric);
+		const f = paint ? Math.max(noiseBand(o) ?? 0, PAINT_STEP_MS) : floor(metric, om);
+		const split = paint ? (clusters(o) ? { side: 'old' as const, clusters: clusters(o)! } : clusters(n) ? { side: 'new' as const, clusters: clusters(n)! } : undefined) : undefined;
+		return { metric, old: om, new: nm, worse, floor: f, p, spread: { old: spread(o), new: spread(n) }, ...(split ? { bimodal: split } : {}), ok: true };
 	});
+	let rejecting = true;
+	const ranked = [...verdicts].sort((a, b) => a.p - b.p);
+	const judged = new Map<LoadMetric, LoadVerdict>();
+	for (const [rank, v] of ranked.entries()) {
+		const alpha = SIGNIFICANCE / (ranked.length - rank);
+		rejecting &&= v.p < alpha;
+		judged.set(v.metric, { ...v, alpha, ok: !v.bimodal && !(v.worse > v.floor && rejecting) });
+	}
+	return verdicts.map((v) => judged.get(v.metric)!);
 }
 
 // Lighthouse result shapes this module reads; the package's own types cover the whole report.
@@ -443,7 +503,7 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 export function undecided(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): boolean {
 	const o = oldRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
 	const n = newRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
-	return o.length > 0 && n.length > 0 && judgeLoad(o, n).some((v) => v.worse > v.floor && v.p >= SIGNIFICANCE);
+	return o.length > 0 && n.length > 0 && judgeLoad(o, n).some((v) => !v.bimodal && v.worse > v.floor && v.p >= (v.alpha ?? SIGNIFICANCE));
 }
 
 /** A route whose load was not measured, with why; never red. */
@@ -518,13 +578,18 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 		.map((v) => {
 			const paint = v.metric === 'lcp' || v.metric === 'fcp' || v.metric === 'si' || v.metric === 'score';
 			const describe = v.metric === 'fcp' ? describeFcp : describeSide;
+			if (v.bimodal) {
+				const span = (g: readonly number[]) => (formatMetric(v.metric, g[0]!) === formatMetric(v.metric, g.at(-1)!) ? formatMetric(v.metric, g[0]!) : `${formatMetric(v.metric, g[0]!)}-${formatMetric(v.metric, g.at(-1)!)}`);
+				const groups = v.bimodal.clusters.map((g) => `${span(g)} (${g.length} run${g.length > 1 ? 's' : ''})`).join(', ');
+				return { route, dimension: 'load' as const, check: check(METRIC_LABEL[v.metric]), viewport: 'mobile', expected: `${METRIC_LABEL[v.metric]} the runs can compare: each side's runs around one time`, actual: `inconclusive: bimodal, the ${v.bimodal.side} page's ${load.runs} runs fall in ${v.bimodal.clusters.length} clusters: ${groups}`, hint: HINTS.loadBimodal };
+			}
 			return {
 				route,
 				dimension: 'load' as const,
 				check: check(METRIC_LABEL[v.metric]),
 				viewport: 'mobile',
 				expected: `${formatMetric(v.metric, v.old)} or better, the old page's median of ${load.runs} (runs ${runList(load.old.runs, v.metric)})${paint ? `; old: ${describe(load.old.detail)}` : ''}`,
-				actual: `${formatMetric(v.metric, v.new)}, the median of ${load.runs} (runs ${runList(load.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)})${paint ? `; new: ${describe(load.new.detail)}` : ''}`,
+				actual: `${formatMetric(v.metric, v.new)}, the median of ${load.runs} (runs ${runList(load.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)}${v.alpha !== undefined && v.alpha < SIGNIFICANCE ? `, under the ${v.alpha.toFixed(4)} its rank among the route's metrics needs` : ''})${paint ? `; new: ${describe(load.new.detail)}` : ''}`,
 				hint: HINTS.load,
 			};
 		});
@@ -553,8 +618,8 @@ export function psiFailures(route: string, psi: PsiResult | undefined): Failure[
 						check: `page load: ${METRIC_LABEL[v.metric]} (${PSI_LABEL(s.strategy)})`,
 						viewport: s.strategy,
 						expected: `${formatMetric(v.metric, v.old)} or better, the old page's median of ${s.old.runs.length} PageSpeed Insights runs (${runList(s.old.runs, v.metric)})`,
-						actual: `${formatMetric(v.metric, v.new)}, the median of ${s.new.runs.length} (${runList(s.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)})`,
-						hint: HINTS.load,
+						actual: v.bimodal ? `inconclusive: bimodal, the ${v.bimodal.side} page's runs fall in ${v.bimodal.clusters.length} clusters: ${v.bimodal.clusters.map((g) => g.map((x) => formatMetric(v.metric, x)).join(' ')).join(' / ')}` : `${formatMetric(v.metric, v.new)}, the median of ${s.new.runs.length} (${runList(s.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)}${v.alpha !== undefined && v.alpha < SIGNIFICANCE ? `, under the ${v.alpha.toFixed(4)} its rank among the route's metrics needs` : ''})`,
+						hint: v.bimodal ? HINTS.loadBimodal : HINTS.load,
 					}))
 			: s.new.median
 				? []
