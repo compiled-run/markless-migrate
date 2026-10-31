@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { choppier, lostTweens, type StepResult } from '../src/check/journeys.ts';
+import { choppier, lostRegions, lostTweens, type StepResult } from '../src/check/journeys.ts';
 
 const step = (reaction: StepResult['reaction']): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...(reaction ? { reaction } : {}) });
 const views = (swaps: number, spanMs: number, longestGapMs: number) => step({ regions: [], changes: [], views: { swaps, interimMs: spanMs, interim: [], spanMs, longestGapMs } });
@@ -26,4 +26,13 @@ test('a shape every old run tweens over frames that the port jumps to, or never 
 	assert.deepEqual(lostTweens(old, tweens('path in main d|20|380')), []);
 	// Moved in one old run only: noise, not the original's motion.
 	assert.deepEqual(lostTweens([tweens('path in main d|24|400'), tweens('path in main d|1|0')], tweens()), []);
+});
+
+const reached = (...affected: string[]) => step({ regions: [], changes: [], affected });
+
+test('regions every old run changed that the port does not change at all are lost; namesake numbers do not count', () => {
+	const old = [reached('listbox in main', 'region #3 in main'), reached('listbox in main', 'region #4 in main')];
+	assert.deepEqual(lostRegions(old, reached('listbox in main')), ['region in main']);
+	assert.deepEqual(lostRegions(old, reached('listbox in main', 'region #7 in main')), undefined);
+	assert.equal(lostRegions(old, step(undefined)), undefined);
 });

@@ -38,7 +38,7 @@
 			"build": "RrorpvSy",
 			"route": "/typeset",
 			"gesture": "open the Next.js combobox and choose Vite: the original swaps the font instructions to @fontsource, the port changes only the label",
-			"caught": "^(behaviour|a11y): [^|]*(click|press \\w+ on) option \"Vite\" \\(step 2\\)",
+			"caught": "^(behaviour|a11y): [^|]*(option \"Vite\" \\(step 2\\)|combobox keys on combobox[^|]*press Enter to choose\\)) \\|.*fontsource",
 			"fixture": "framework-switch"
 		},
 		{
@@ -100,8 +100,8 @@
 			"report": "paths morphing in a chart",
 			"build": "RrorpvSy",
 			"route": "/view/new-york-v4/chart-line-interactive",
-			"gesture": "click Mobile on the interactive chart: the original tweens the line over about 80 frames, the port's path never moves (the view is not a route of the site: check only reaches it inside /charts/*'s frames)",
-			"caught": "^(behaviour|motion): [^|]*button \"(Mobile|Desktop)[^\"]*\"[^|]*\\|[^|]*\\|.*frame by frame",
+			"gesture": "click Mobile on the interactive chart: the original tweens the line to its new shape over about 80 frames; the port redraws it with a 1500 ms stroke-dasharray animation instead (the view is reached only inside /charts/*'s frames; it is in the site's targets since this change)",
+			"caught": "^(behaviour|motion): [^|]*button \"(Mobile|Desktop)[^\"]*\"[^|]*\\|.*(frame by frame|motion of path|animates)",
 			"fixture": "chart-morph"
 		},
 		{
@@ -146,7 +146,7 @@
 			"build": "RrorpvSy",
 			"route": "/docs/components/base/combobox",
 			"gesture": "choose an item and reopen: the original shows a check on it, the port does not",
-			"caught": "^(behaviour|a11y): [^|]*option \"[^\"]+\"[^|]*\\|[^|]*option \"[^\"]+\" \\[selected\\][^|]*img",
+			"caught": "^(behaviour|a11y): [^|]*option \"[^\"]+\"[^|]*\\|.*option \"[^\"]+\" \\[selected\\]: \\| - img",
 			"fixture": "combobox-check"
 		},
 		{

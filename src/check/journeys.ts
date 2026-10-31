@@ -2573,6 +2573,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 		const last = journey.steps.length - 1;
 		// Once a step differs, later steps are compared only for a control the original answers and the port does not: an earlier, smaller difference does not hide it.
 		let diverged = false;
+		// After one step that answered differently on the way, later steps report only what they leave different.
+		let answered = false;
 		for (let k = 0; k < journey.steps.length + acts.length; k++) {
 			const step = journey.steps[Math.min(k, last)]!;
 			const act = k > last ? acts[k - last - 1] : undefined;
@@ -2644,7 +2646,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
 			if (!navigated && !reloaded && choppier(oldSteps as StepResult[], n)) parts.push('cadence');
 			if (n.stale?.length && !n.door && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
-			if (parts.length) {
+			const onTheWay = parts.every((p) => ON_THE_WAY.has(p));
+			if (parts.length && !(answered && onTheWay)) {
 				const dead = act || navigated || reloaded ? undefined : deadControl(oldSteps as StepResult[], n);
 				const lead = (side: 'old' | 'new') => (!dead ? '' : side === 'old' ? `${describeTarget(step.target)} changes ${dead.join(', ')} on the original; ` : 'nothing changed on the port; ');
 				const failure: Failure = { route, dimension, check, expected: lead('old') + where('old', format(shown(a!), parts, missing, true)), actual: lead('new') + where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
@@ -2657,7 +2660,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 				// A step that ends with the same page and focus but answered differently on the way (a widget's state attributes, its
 				// timing or motion) leaves the next step on the same ground: it is compared too, so a later step's bug is not hidden.
 				if (dead) break;
-				if (parts.some((p) => !ON_THE_WAY.has(p))) diverged = true;
+				if (onTheWay) answered = true;
+				else diverged = true;
 			}
 		}
 	});
