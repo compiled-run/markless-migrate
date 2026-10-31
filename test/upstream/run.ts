@@ -22,6 +22,7 @@ const APP = join(WORK, 'app');
 const PNPM = join(WORK, 'pnpm');
 const OLD_PORT = 3100;
 const NEW_PORT = 3200;
+const STORIES_PORT = 9009;
 const timings: Record<string, number> = {};
 
 async function sh(command: string, cwd: string, env: Record<string, string> = {}): Promise<void> {
@@ -94,13 +95,37 @@ function outcomes(report: { readonly suites: readonly JsonSuite[] }): Map<string
 // The checkout's own config, with the origin under test, no web server of its own, no retries and a JSON report.
 async function suite(side: 'old' | 'new', origin: string): Promise<Map<string, Outcome>> {
 	const report = join(WORK, `${side}.json`);
-	const config = join(SRC, 'upstream-run.config.ts');
-	await writeFile(config, `import base from './${lib.config.replace(/\.ts$/, '')}';
+	await rm(report, { force: true });
+	const runner = lib.runner;
+	if (runner.kind === 'playwright') {
+		await writeFile(join(SRC, 'upstream-run.config.ts'), `import base from './${runner.config.replace(/\.ts$/, '')}';
 export default { ...base, webServer: undefined, retries: 0, forbidOnly: false, workers: 1, reporter: [['list'], ['json', { outputFile: ${JSON.stringify(report)} }]], use: { ...base.use, baseURL: ${JSON.stringify(origin)} } };
 `);
-	await rm(report, { force: true });
-	await sh(`npx playwright test -c upstream-run.config.ts --repeat-each ${REPEAT} || true`, SRC, { CI: '' });
-	return outcomes(JSON.parse(await readFile(report, 'utf8')));
+		await sh(`npx playwright test -c upstream-run.config.ts --repeat-each ${REPEAT} || true`, SRC, { CI: '' });
+		return outcomes(JSON.parse(await readFile(report, 'utf8')));
+	}
+	// Cypress has no repeat: the specs run again, and each run's results are added to the test's.
+	const spec = runner.specs.map((name) => `cypress/e2e/${name}.cy.ts`).join(',');
+	await writeFile(join(SRC, 'upstream-run.cypress.mjs'), `import cypress from 'cypress';
+import { writeFileSync } from 'node:fs';
+const tests = [];
+for (let i = 0; i < ${REPEAT}; i++) {
+	const result = await cypress.run({ spec: ${JSON.stringify(spec)}, config: { baseUrl: ${JSON.stringify(origin)}, retries: 0, video: false, screenshotOnRunFailure: false } });
+	if (result.status === 'failed') throw new Error(result.message);
+	for (const run of result.runs) for (const t of run.tests) tests.push({ file: run.spec.relative, title: t.title, state: t.state, error: t.displayError ?? undefined });
+}
+writeFileSync(${JSON.stringify(report)}, JSON.stringify(tests));
+`);
+	await sh('node upstream-run.cypress.mjs', SRC);
+	const out = new Map<string, Outcome>();
+	for (const t of JSON.parse(await readFile(report, 'utf8')) as { file: string; title: string[]; state: string; error?: string }[]) {
+		const title = t.title.join(' > ');
+		const id = `${t.file} > electron > ${title}`;
+		const prior = out.get(id);
+		const error = prior?.error ?? t.error?.split('\n').slice(0, 6).join('\n');
+		out.set(id, { id, title: `${t.file}: ${title} [electron]`, runs: [...(prior?.runs ?? []), t.state], ...(error ? { error } : {}) });
+	}
+	return out;
 }
 
 const MANIFEST = {
@@ -118,7 +143,7 @@ async function convert(old: string): Promise<void> {
 	await mkdir(APP, { recursive: true });
 	await writeFile(join(APP, 'package.json'), `${JSON.stringify(MANIFEST, null, '\t')}\n`);
 	const cli = `node ${join(ROOT, 'src', 'cli.ts')}`;
-	const source = join(SRC, lib.app);
+	const source = join(SRC, lib.source);
 	await sh(`${cli} plan --old ${old} --source ${source}`, APP);
 	await sh(`${cli} usage --old ${old} --source ${source}`, APP);
 	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2`, APP);
@@ -140,25 +165,35 @@ interface Known {
 	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'adapter'; readonly why: string }>>;
 }
 
+// The suite's adapter: the stories proxy in front of either side, else the side itself.
+async function front(servers: ChildProcess[], origin: string): Promise<string> {
+	if (!lib.stories) return origin;
+	servers.push(await serve(`node ${join(import.meta.dirname, 'serve.ts')} stories ${origin} ${STORIES_PORT}`, WORK, STORIES_PORT));
+	return `http://localhost:${STORIES_PORT}`;
+}
+
 async function main(): Promise<void> {
 	await mkdir(WORK, { recursive: true });
 	const servers: ChildProcess[] = [];
 	try {
 		await timed('fetch and build upstream', async () => {
-			if (!(await stat(join(SRC, '.git')).then(() => true, () => false))) await sh(`git clone --quiet --depth 1 --branch ${lib.tag} ${lib.repo} ${SRC}`, WORK);
+			if (!(await stat(join(SRC, '.git')).then(() => true, () => false))) {
+				await sh(`git init --quiet ${SRC} && git -C ${SRC} remote add origin ${lib.repo}`, WORK);
+				await sh(`git fetch --quiet --depth 1 origin ${lib.ref} && git checkout --quiet FETCH_HEAD`, SRC);
+			}
 			await sh(`npm install --no-audit --no-fund --global --prefix ${PNPM} ${lib.pm}`, WORK);
 			await sh('pnpm install --frozen-lockfile', SRC);
 			for (const command of lib.build) await sh(command, SRC);
-			await sh(lib.appBuild, join(SRC, lib.app));
-			await sh(`npx playwright install --with-deps ${lib.browsers.join(' ')}`, SRC);
+			if (lib.runner.kind === 'playwright') await sh(`npx playwright install --with-deps ${lib.runner.browsers.join(' ')}`, SRC);
 		});
 		const oldOrigin = `http://localhost:${OLD_PORT}`;
-		servers.push(await serve(lib.appStart(OLD_PORT), join(SRC, lib.app), OLD_PORT));
-		const old = await timed('suite on the library', () => suite('old', oldOrigin));
+		servers.push(await serve(lib.serve(OLD_PORT), join(SRC, lib.serveIn), OLD_PORT));
+		const old = await timed('suite on the library', async () => suite('old', await front(servers, oldOrigin)));
+		if (lib.stories) servers.pop()!.kill();
 		await timed('convert', () => convert(oldOrigin));
 		await timed('build the port', linkAndBuild);
 		servers.push(await serve(`node ${join(APP, '.output', 'server', 'index.mjs')}`, APP, NEW_PORT));
-		const port = await timed('suite on the port', () => suite('new', `http://localhost:${NEW_PORT}`));
+		const port = await timed('suite on the port', async () => suite('new', await front(servers, `http://localhost:${NEW_PORT}`)));
 		await report(old, port);
 	} finally {
 		for (const server of servers) server.kill();
@@ -177,7 +212,7 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 	const stale = Object.keys(listed).filter((id) => !admitted.some((o) => o.id === id));
 	const result = {
 		library: lib.name,
-		tag: lib.tag,
+		ref: lib.ref,
 		tests: old.size,
 		admitted: admitted.length,
 		refused: refused.map((o) => ({ id: o.id, runs: o.runs, error: o.error })),
@@ -190,7 +225,7 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 	};
 	await writeFile(join(WORK, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
 	const lines = [
-		`## ${lib.name} ${lib.tag}: ${result.passed} of ${result.admitted} admitted tests pass on the port`,
+		`## ${lib.name} ${lib.ref.slice(0, 12)}: ${result.passed} of ${result.admitted} admitted tests pass on the port`,
 		'',
 		`${old.size} tests in the suite; ${result.admitted} pass on the library every one of ${REPEAT} runs and are admitted; ${refused.length} are not.`,
 		`Seconds: ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')}.`,
