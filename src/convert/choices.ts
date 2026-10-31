@@ -168,10 +168,16 @@ async function reopenOn(page: Page, origin: string, route: string, path: readonl
 /** The requests a page has open, and when the last one ended. */
 function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } {
 	const seen = { open: new Set<Request>(), ended: 0 };
+	// A document the page loads ends what the one it left had open, up to when it shows: those get no finished or failed event.
+	let loading = false;
 	page.on('request', (r) => {
-		// A document the page loads ends what the one it left had open: those requests get no finished or failed event.
-		if (r.isNavigationRequest() && r.frame() === page.mainFrame()) seen.open.clear();
+		if (r.isNavigationRequest() && r.frame() === page.mainFrame()) loading = true;
 		seen.open.add(r);
+	});
+	page.on('framenavigated', (frame) => {
+		if (frame !== page.mainFrame() || !loading) return;
+		loading = false;
+		for (const r of seen.open) if (!r.isNavigationRequest()) seen.open.delete(r);
 	});
 	const end = (r: Request) => {
 		if (seen.open.delete(r) && MOVING.has(r.resourceType())) seen.ended = Date.now();

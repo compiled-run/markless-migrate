@@ -56,6 +56,8 @@ const DOCUMENT = palette('<div cmdk-item data-value="llms.txt">llms.txt</div>') 
 window.choose = () => {
 	for (let i = 0; i < 4; i++) fetch('/data/hang?' + i);
 	setTimeout(() => location.assign('/llms.txt'), 50);
+	// Links the closing palette uncovers are prefetched while the next document is still on its way.
+	setInterval(() => fetch('/data/hang?late'), 30);
 };
 </script>`;
 
@@ -95,7 +97,7 @@ before(async () => {
 		if (request.url === '/data/redirect') return void setTimeout(() => res.writeHead(200).end('{}'), 800);
 		if (request.url!.startsWith('/docs/components/typography')) return void res.writeHead(308, { location: '/docs/typeset' }).end();
 		if (request.url!.startsWith('/data/hang')) return void setTimeout(() => res.writeHead(200).end('{}'), 30_000);
-		if (request.url === '/llms.txt') return void res.writeHead(200, { 'content-type': 'text/plain' }).end('# docs');
+		if (request.url === '/llms.txt') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('# docs'), 300);
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 700);
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGES[request.url!.split('?')[0]!] ?? '<!doctype html><title>other</title>');
 	});
