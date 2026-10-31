@@ -292,6 +292,15 @@ export function summarizeLedger(ledger: Ledger): string {
 	return `${lines.join('\n')}\n`;
 }
 
+export type LedgerMode = 'fail' | 'report' | 'off';
+/** What convert does with unanswered handlers unless told: report them, as some of them are still the ledger's own gaps. */
+export const DEFAULT_LEDGER_MODE: LedgerMode = 'report';
+
+/** Convert's exit code from the ledger: 1 only when asked to fail (`--ledger fail`) and a handler is unanswered. */
+export function ledgerExit(mode: LedgerMode | undefined, failures: number): 0 | 1 {
+	return (mode ?? DEFAULT_LEDGER_MODE) === 'fail' && failures > 0 ? 1 : 0;
+}
+
 /** Writes the ledger beside the app's other records (`.migrate/ledger.json`). */
 export async function writeLedger(app: string, ledger: Ledger): Promise<string> {
 	const file = join(app, '.migrate', 'ledger.json');

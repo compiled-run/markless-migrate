@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { buildLedger, type Ledger } from '../src/ledger/index.ts';
+import { buildLedger, DEFAULT_LEDGER_MODE, ledgerExit, type Ledger } from '../src/ledger/index.ts';
 import { handlerSites } from '../src/ledger/source.ts';
 import { readPortFile, renderRoute, readPort } from '../src/ledger/port.ts';
 
@@ -132,4 +132,12 @@ export default function Page({ url }) @{
 	assert.match(plain, /<span title="t" aria-controls="mm-1" data-mm-ledger="components\/converted\/box\.tsrx#0" data-mm-ledger-on="click">box<\/span>/);
 	assert.match(renderRoute(port, 'pages/a.tsrx', '/a?x=1'), />one</);
 	assert.deepEqual(readPortFile('pages/a.tsrx', port.get('pages/a.tsrx')!.text).routes, ['/a', '/a?x=1']);
+});
+
+test('convert only reports the ledger unless it is asked to fail: its false flags are not yet proven rare', () => {
+	assert.equal(DEFAULT_LEDGER_MODE, 'report');
+	assert.equal(ledgerExit(undefined, 3), 0);
+	assert.equal(ledgerExit('report', 3), 0);
+	assert.equal(ledgerExit('fail', 3), 1);
+	assert.equal(ledgerExit('fail', 0), 0);
 });
