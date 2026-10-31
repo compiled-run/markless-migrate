@@ -522,7 +522,22 @@ async function quietly(p, side, step, capMs) {
 // A slow answer (the directory's /r/registries.json) can still change the layout: the network rests, fonts are in and two frames are painted.
 async function ready(p, net) {
 	await net.quiet(200, 15_000);
-	await p.evaluate(() => Promise.race([document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))), new Promise((r) => setTimeout(r, 1000))])).catch(() => {});
+	await p.evaluate(() => Promise.race([document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))), new Promise((r) => setTimeout(r, 10_000))])).catch(() => {});
+}
+
+// What a page shows is read until two reads a few frames apart agree: on a loaded runner a late font or a layout pass can land
+// after every settle's cap, and a box read mid-change differs from run to run. Unstable after STABLE_READS reads: undefined.
+const STABLE_READS = Number(process.env.STABLE_READS ?? 8);
+async function stableRead(p, fn, arg) {
+	let last;
+	for (let i = 0; i < STABLE_READS; i++) {
+		if (i) await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 150))))).catch(() => {});
+		const now = await p.evaluate(fn, arg);
+		const text = JSON.stringify(now);
+		if (i && text === last) return now;
+		last = text;
+	}
+	return undefined;
 }
 
 // Where a page's own script leaves its inner scrollers (the docs sidebar centred on its link while the page streams) varies
@@ -853,6 +868,7 @@ w.browser = await (ENGINE === 'webkit' ? webkit : chromium).launch();
 for (let route; (route = queue.shift()) !== undefined; ) {
 	w.currentRoute = route;
 	const findings = [];
+	const unsettled = [];
 	let tried = 0;
 	w.motionMs = 0;
 	w.settles = { n: 0, ms: 0, capped: {} };
@@ -867,12 +883,19 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			await fresh(width, [...STATIC_WIDTHS.slice(i + 1), WIDTH]);
 			await load('old', route);
 			await resetScrollers(pages.old);
-			const olds = await pages.old.evaluate(listControls);
-			const grid = await pages.old.evaluate(regionGrid, null).catch(() => []);
+			const oldsRead = await stableRead(pages.old, listControls);
+			const grid = (await stableRead(pages.old, regionGrid, null).catch(() => undefined)) ?? [];
 			await load('new', route);
 			await resetScrollers(pages.new);
-			const news = await pages.new.evaluate(listControls).catch(() => []);
+			const newsRead = await stableRead(pages.new, listControls).catch(() => undefined);
 			const portGrid = await pages.new.evaluate(regionGrid, grid.filter((g) => g.key !== 'no control')).catch(() => []);
+			// A side whose layout never held still is not compared at this width: the route is incomplete there, never red by chance.
+			if (!oldsRead || !newsRead) {
+				unsettled.push({ width, side: !oldsRead ? 'old' : 'new', why: `${!oldsRead ? 'the original' : 'the port'}'s layout at ${width} px kept changing over ${STABLE_READS} reads, so its boxes, hit points and controls at that width were not compared` });
+				if (width === WIDTH && oldsRead) controls = oldsRead.filter((c) => !c.leaves);
+				continue;
+			}
+			const olds = oldsRead, news = newsRead;
 			let gridMisses = 0;
 			const portRegions = new Set(portGrid.map((g) => g.region));
 			for (const g of portGrid) {
@@ -1077,7 +1100,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 	for (const slot of [current.old, current.new, ...w.prepared.flatMap((p) => [p.old, p.new])]) closeSlot(slot);
 	current.old = current.new = undefined;
 	w.prepared = [];
-	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs: w.motionMs, settles: w.settles, loads: w.loads, ...(versions ? { reuse: w.reuse } : {}), ...(PROFILE ? { profile: Object.fromEntries(Object.entries(w.profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), findings }) + '\n');
+	appendFileSync(out, JSON.stringify({ route, engine: ENGINE, tried, ms: Date.now() - started, motionMs: w.motionMs, settles: w.settles, loads: w.loads, ...(versions ? { reuse: w.reuse } : {}), ...(PROFILE ? { profile: Object.fromEntries(Object.entries(w.profile).sort((a, b) => b[1].ms - a[1].ms).map(([k, v]) => [k, { ms: Math.round(v.ms), n: v.n }])) } : {}), ...(unsettled.length ? { incomplete: unsettled } : {}), findings }) + '\n');
 	console.log(`${route}: ${tried} used in ${Math.round((Date.now() - started) / 1000)} s, ${findings.length} findings`);
 }
 await w.browser.close();

@@ -15,7 +15,12 @@ export interface RouteProbe {
 	readonly tried: number;
 	readonly ms: number;
 	readonly findings: readonly Finding[];
+	/** Widths whose layout never held still on a side: what the load pass reads there was not compared, neither fixed nor a difference. */
+	readonly incomplete?: readonly { readonly width: number; readonly side: 'old' | 'new'; readonly why: string }[];
 }
+
+// What the load pass reads at a width: not compared at a width that was incomplete.
+const LOAD_PASS = new Set(['box', 'box-container', 'missing-at-width', 'hit-region']);
 
 export function parseProbeLines(text: string): RouteProbe[] {
 	return text
@@ -34,6 +39,7 @@ export interface RouteDiff {
 	readonly added: readonly Finding[];
 	readonly tried: number;
 	readonly ms: number;
+	readonly incomplete?: RouteProbe['incomplete'];
 }
 
 /** Each route's findings against the previous run's on the same route; with none before, nothing counts as fixed or new. */
@@ -42,13 +48,15 @@ export function diffRuns(now: readonly RouteProbe[], before: readonly RouteProbe
 		const was = before?.find((b) => b.route === r.route);
 		const wasKeys = new Set(was?.findings.map(findingKey));
 		const nowKeys = new Set(r.findings.map(findingKey));
+		const unread = (f: Finding) => LOAD_PASS.has(f.kind) && Boolean(r.incomplete?.some((i) => i.width === f.width));
 		return {
 			route: r.route,
 			now: r.findings,
-			fixed: was ? was.findings.filter((f) => !nowKeys.has(findingKey(f))) : [],
+			fixed: was ? was.findings.filter((f) => !nowKeys.has(findingKey(f)) && !unread(f)) : [],
 			added: was ? r.findings.filter((f) => !wasKeys.has(findingKey(f))) : [],
 			tried: r.tried,
 			ms: r.ms,
+			...(r.incomplete?.length ? { incomplete: r.incomplete } : {}),
 		};
 	});
 }
@@ -61,6 +69,7 @@ export function formatDiffs(diffs: readonly RouteDiff[], limit = 25): string {
 	for (const d of diffs) {
 		const change = d.fixed.length || d.added.length ? ` (${d.fixed.length} fixed, ${d.added.length} new)` : '';
 		out.push(`${d.route}: ${d.now.length} differences from the original, ${d.tried} controls used in ${Math.round(d.ms / 1000)} s${change}`);
+		for (const i of d.incomplete ?? []) out.push(`  INCOMPLETE  ${i.why}`);
 		for (const f of d.fixed) out.push(`  fixed  ${line(f)}`);
 		for (const f of d.added) out.push(`  NEW    ${line(f)}`);
 		const added = new Set(d.added.map(findingKey));
