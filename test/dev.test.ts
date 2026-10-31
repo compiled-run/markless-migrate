@@ -49,6 +49,14 @@ test("each run's findings against the last run's on the route: fixed, new, and t
 	assert.match(text, /^ {9}popup-anchor {2}combobox "b" at 1280 px: below its trigger {2}-> {2}y$/m);
 });
 
+test('a width whose layout never held still is incomplete: its load-pass findings from the last run are not counted fixed', () => {
+	const before: RouteProbe[] = [{ route: '/r', tried: 1, ms: 1000, findings: [finding('button "a"', 'box'), finding('button "b"', 'popup-anchor')] }];
+	const now: RouteProbe[] = [{ route: '/r', tried: 1, ms: 1000, findings: [], incomplete: [{ width: 1280, side: 'new', why: "the port's layout at 1280 px kept changing over 8 reads" }] }];
+	const [d] = diffRuns(now, before);
+	assert.deepEqual(d!.fixed.map((f) => f.control), ['button "b"'], 'a box read nowhere is not fixed; a popup the use pass compared is');
+	assert.match(formatDiffs([d!]), /^ {2}INCOMPLETE {2}the port's layout at 1280 px kept changing/m);
+});
+
 test("the dev app links the app's packages, plan state and capture folders, copies its site code, and keeps its own pages, report and tool caches", async () => {
 	const root = await mkdtemp(join(tmpdir(), 'dev-app-'));
 	const app = join(root, 'app');
