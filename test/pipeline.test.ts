@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { capturedKeys, codeClosure, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
+import { capturedKeys, codeClosure, originalScripts, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
 
 async function tree(files: Record<string, string>): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'pipeline-'));
@@ -136,4 +136,19 @@ test("a run's own captures give each route the key it was recorded under, read f
 	const store = await tree({ [`captures/${KEY_A}/x.json`]: JSON.stringify({ route: '/a', status: 200 }), [`captures/${KEY_B}/y.json`]: JSON.stringify({ route: '/b' }), [`reveals/${KEY_C}/z.json`]: JSON.stringify({ route: '/c' }), 'captures/flat.json': JSON.stringify({ route: '/flat' }) });
 	assert.deepEqual([...(await capturedKeys(store))], [['/a', KEY_A], ['/b', KEY_B]]);
 	assert.deepEqual([...(await capturedKeys(join(store, 'none')))], []);
+});
+
+test("no port page, static or an ISR fallback, loads a script the original's pages loaded", async () => {
+	const out = await tree({
+		'.vercel/output/static/docs/index.html': '<head><script type="module" src="/build/chunk-A.js"></script></head>',
+		'.vercel/output/static/_markless/fragment/charts/line/index.html': '<script src="/_next/static/chunks/abc.js" async=""></script>',
+		'.vercel/output/functions/charts/line-isr.prerender-fallback.html': "<script async src='/_next/static/chunks/def.js?v=1'></script>",
+		'.vercel/output/static/_next/static/chunks/abc.js': 'copied, never named by a page',
+		'.output/public/charts/bar.html': '<link rel="stylesheet" href="/_next/static/chunks/x.used-1.css">',
+	});
+	const found = await originalScripts(out, new Set(['/_next/static/chunks/abc.js', '/_next/static/chunks/def.js']));
+	assert.deepEqual(found, [
+		{ page: '.vercel/output/functions/charts/line-isr.prerender-fallback.html', script: '/_next/static/chunks/def.js' },
+		{ page: '.vercel/output/static/_markless/fragment/charts/line/index.html', script: '/_next/static/chunks/abc.js' },
+	]);
 });

@@ -651,6 +651,13 @@ jobs:
             echo "::error::The build ran out of memory on this 16 GB runner. Build it on the Mac (scripts/pipeline-mac-build.sh ${{ github.run_id }}) and run again with build-url set."
           fi
           exit "$status"
+      # A page that loads the original's own scripts runs the old framework beside Markless (static pages and ISR fallbacks alike).
+      - name: No page loads the original's scripts
+        if: steps.key.outputs.run == ''
+        run: |
+          set -euo pipefail
+          out="$APP/.vercel/output"; [ -d "$out" ] || out="$APP/.output"
+          node scripts/pipeline.ts original-scripts "$out" "$APP/.migrate/inventory.json"
       - name: Pack the build
         if: steps.key.outputs.run == ''
         run: |
