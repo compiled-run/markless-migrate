@@ -9,7 +9,8 @@ name: Pipeline
 #   build     the build from the run with the same build key (converted app, Markless commit, preset); else built here
 #   check     check.yml on only the routes whose shipped HTML and code changed (check --reuse keys, check-select below)
 #   deploy    deploy/cloudflare.sh: the build output check, a preview version, its live check, then the promote
-# Each job leaves a receipt (time, cache hit, counts); the report job puts them in one table with each stage's wall time.
+# emit, build and check select run in one job (assemble), and check's merge, deploy and the report in another (finish), so a run
+# waits for a runner five times, not ten. Each stage leaves a receipt (time, cache hit, counts); finish puts them in one table.
 on:
   workflow_dispatch:
     inputs:
@@ -297,11 +298,17 @@ jobs:
             ${{ runner.temp }}/capture.txt
           if-no-files-found: ignore
 
-  emit:
+  # emit, build and check select in one job (each a stage of the report, timed by its own receipt): one runner wait, not three.
+  assemble:
     needs: [prepare, capture]
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 345
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      run: ${{ steps.key.outputs.run }}
+      shards: ${{ steps.select.outputs.shards }}
+      matrix: ${{ steps.deal.outputs.matrix }}
     env:
       # A pull request's run proves a kept converted app (and its parts copied again) equal to a convert of the same inputs.
       VERIFY: ${{ inputs.verify-emit || github.event_name == 'pull_request' }}
@@ -309,8 +316,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Start the clock
-        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Start the emit clock
+        run: echo "EMIT_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           name: pl-inputs
@@ -421,32 +428,18 @@ jobs:
           name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
           path: ${{ runner.temp }}/out
           retention-days: 90
-      - if: always()
-        run: echo "{\"stage\":\"emit\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/emit.jsonl"
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pl-receipts-emit
-          path: |
-            ${{ runner.temp }}/receipts
-            ${{ runner.temp }}/convert.txt
-            ${{ runner.temp }}/verify.txt
-          if-no-files-found: ignore
-
-  build:
-    needs: [prepare, emit]
-    if: ${{ !cancelled() && needs.emit.result == 'success' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    outputs:
-      key: ${{ steps.key.outputs.key }}
-      run: ${{ steps.key.outputs.run }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Start the clock
-        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - if: always() && env.EMIT_STARTED != ''
+        run: echo "{\"stage\":\"emit\",\"stage-seconds\":$(( $(date +%s) - EMIT_STARTED )),\"ended\":$(date +%s),\"result\":\"${{ job.status }}\"}" >> "$RUNNER_TEMP/receipts/emit.jsonl"
+      # The build starts from the packed app alone, as it would on a runner of its own, with the old site's server stopped.
+      - name: Hand the converted app to the build
+        run: |
+          set -euo pipefail
+          pkill -f 'next start --port' || true
+          for pid in $(lsof -t -iTCP:4000 -sTCP:LISTEN 2>/dev/null || true); do kill "$pid" || true; done
+          git clean -fdxq -- "$APP" && git checkout -- "$APP"
+          rm -rf "$RUNNER_TEMP/store-out" "$RUNNER_TEMP/store-archive" "$RUNNER_TEMP/captured" "$RUNNER_TEMP/kept-app"
+      - name: Start the build clock
+        run: echo "BUILD_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           repository: compiled-run/markless
@@ -456,10 +449,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
-        with:
-          name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
-          path: ${{ runner.temp }}/converted
       - name: Key the build
         id: key
         env:
@@ -467,7 +456,7 @@ jobs:
           MARKLESS_REF: ${{ inputs.markless || 'main' }}
         run: |
           set -euo pipefail
-          tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
+          tar -xzf "$RUNNER_TEMP/out/app.tar.gz" -C "$APP"
           sha=$(git -C markless rev-parse HEAD)
           echo "MARKLESS_SHA=$sha" >> "$GITHUB_ENV"
           key=$(node scripts/pipeline.ts key build "$SITE" "$APP" markless="$sha" preset="$PRESET" app-url="$APP_URL" node="$(node -v)")
@@ -569,60 +558,48 @@ jobs:
           path: ${{ runner.temp }}/compile-store.tar
           if-no-files-found: ignore
           retention-days: 30
-      - if: always()
-        run: echo "{\"stage\":\"build\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/build.jsonl"
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pl-receipts-build
-          path: |
-            ${{ runner.temp }}/receipts
-            ${{ runner.temp }}/build.txt
-          if-no-files-found: ignore
-
-  # Which routes ship what they shipped when last checked (check --reuse's key: NEW's HTML and the code each can run, the
-  # files it names, OLD's HTML, the checker's version): those reuse their result, and only the rest go to check's shards.
-  check-select:
-    needs: [build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.run != 'mac' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    outputs:
-      shards: ${{ steps.select.outputs.shards }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Start the clock
-        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
-      - uses: pnpm/action-setup@v4
+      - if: always() && env.BUILD_STARTED != ''
+        run: echo "{\"stage\":\"build\",\"stage-seconds\":$(( $(date +%s) - BUILD_STARTED )),\"ended\":$(date +%s),\"result\":\"${{ job.status }}\"}" >> "$RUNNER_TEMP/receipts/build.jsonl"
+      - name: Start the check select clock
+        if: steps.key.outputs.run != 'mac'
+        run: echo "SELECT_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - if: steps.key.outputs.run != 'mac'
+        uses: pnpm/action-setup@v4
         with:
           version: 12.14.0
-      - uses: actions/setup-node@v4
+      - if: steps.key.outputs.run != 'mac'
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: oven-sh/setup-bun@v2
+      - if: steps.key.outputs.run != 'mac'
+        run: pnpm install --frozen-lockfile
+      - if: steps.key.outputs.run != 'mac'
+        uses: oven-sh/setup-bun@v2
       - name: Fetch the build
-        run: bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ needs.build.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
+        if: steps.key.outputs.run != 'mac'
+        run: bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ steps.key.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
       - name: Restore the old site's build
+        if: steps.key.outputs.run != 'mac'
         uses: actions/cache/restore@v4
         with:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
           key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
-      - run: bash "deploy/$SITE/ci-serve.sh" old
-      - run: bash "deploy/$SITE/ci-serve.sh" new "file://$RUNNER_TEMP/build/output.tar.gz"
+      - if: steps.key.outputs.run != 'mac'
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - if: steps.key.outputs.run != 'mac'
+        run: bash "deploy/$SITE/ci-serve.sh" new "file://$RUNNER_TEMP/build/output.tar.gz"
       - name: Restore results from earlier runs
-        if: env.FRESH != 'true'
+        if: steps.key.outputs.run != 'mac' && env.FRESH != 'true'
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.APP }}/.migrate/reuse
           key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
           restore-keys: check-reuse-${{ env.SITE }}-
       - name: Select
+        if: steps.key.outputs.run != 'mac'
         id: select
         env:
           SHARDS: ${{ inputs.check-shards || '2' }}
@@ -641,53 +618,86 @@ jobs:
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/check-select.jsonl" "check select" $(node -p 'const r=JSON.parse(process.argv[1]);`routes=${r.routes} reused=${r.reused} to-check=${r.check} endpoints-and-redirects=${r.other} unkeyed=${r.unkeyed}`' "$result") shards=$shards seconds=$(( $(date +%s) - t ))
           { echo "#### Reused check results"; echo; node scripts/check-shards.ts merge "$RUNNER_TEMP/select/check-reused" "$RUNNER_TEMP/reused-merged" > /dev/null; head -n 1 "$RUNNER_TEMP/reused-merged/summary.md"; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - if: steps.key.outputs.run != 'mac'
+        uses: actions/upload-artifact@v4
         with:
           name: pl-check-select
           path: ${{ runner.temp }}/select
-      # Named like a check shard's artifact so check.yml's merge joins the reused results and keeps their entries for later runs.
-      - uses: actions/upload-artifact@v4
+      # Named like a check shard's artifact so the merge (.github/actions/check-merge) joins the reused results and keeps their entries for later runs.
+      - if: steps.key.outputs.run != 'mac'
+        uses: actions/upload-artifact@v4
         with:
           name: check-reused
           path: |
             ${{ runner.temp }}/select/check-reused/report.json
             ${{ env.APP }}/.migrate/reuse
           if-no-files-found: warn
-      - if: always()
-        run: echo "{\"stage\":\"check select\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"
+      - name: Deal the routes to check into shards
+        id: deal
+        if: steps.key.outputs.run != 'mac' && steps.select.outputs.shards != '0'
+        env:
+          SHARDS: ${{ steps.select.outputs.shards }}
+        run: echo "matrix=$(node scripts/check-shards.ts split "$RUNNER_TEMP/select/targets.json" "$SHARDS" "$RUNNER_TEMP/check-shards")" >> "$GITHUB_OUTPUT"
+      - if: steps.deal.outputs.matrix != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-shards
+          path: ${{ runner.temp }}/check-shards
+          retention-days: 3
+      - if: always() && env.SELECT_STARTED != ''
+        run: echo "{\"stage\":\"check select\",\"stage-seconds\":$(( $(date +%s) - SELECT_STARTED )),\"ended\":$(date +%s),\"result\":\"${{ job.status }}\"}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pl-receipts-check-select
-          path: ${{ runner.temp }}/receipts
+          name: pl-receipts-assemble
+          path: |
+            ${{ runner.temp }}/receipts
+            ${{ runner.temp }}/convert.txt
+            ${{ runner.temp }}/verify.txt
+            ${{ runner.temp }}/build.txt
           if-no-files-found: ignore
 
   check:
-    needs: [build, check-select]
-    if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
+    needs: [assemble]
+    if: ${{ !cancelled() && needs.assemble.result == 'success' && needs.assemble.outputs.matrix != '' }}
     uses: ./.github/workflows/check.yml
     with:
       site: ${{ inputs.site || 'shadcn-ui' }}
       app: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
       targets: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
-      shards: ${{ needs.check-select.outputs.shards }}
+      shards: ${{ needs.assemble.outputs.shards }}
       flags: ${{ inputs.check-flags }}
-      build-artifact: pl-${{ inputs.site || 'shadcn-ui' }}-build-${{ needs.build.outputs.key }}
+      build-artifact: pl-${{ inputs.site || 'shadcn-ui' }}-build-${{ needs.assemble.outputs.key }}
       build-url: ${{ inputs.build-url }}
-      only-artifact: pl-check-select
+      matrix: ${{ needs.assemble.outputs.matrix }}
       reuse: ${{ inputs.fresh && 'false' || 'true' }}
 
-  deploy:
-    needs: [build, check]
-    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
+  # check's merge, deploy and the report in one job: one runner wait, not three. Deploy is timed by its own receipt.
+  finish:
+    needs: [prepare, capture, assemble, check]
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: needs.check.result == 'success' || needs.check.result == 'failure'
+        uses: ./.github/actions/check-merge
+        with:
+          site: ${{ env.SITE }}
+          label: pl-${{ env.SITE }}-build-${{ needs.assemble.outputs.key }}
+          shards: ${{ needs.assemble.outputs.shards }}
+          reuse: ${{ inputs.fresh && 'false' || 'true' }}
+      - id: gate
+        run: echo "deploy=${{ inputs.deploy != '' && inputs.deploy != 'none' && needs.assemble.result == 'success' && needs.assemble.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.deploy == 'true'
+        uses: ./.github/actions/setup
       - name: Deploy
+        if: steps.gate.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -696,38 +706,25 @@ jobs:
         run: |
           set -euo pipefail
           t=$(date +%s)
+          echo "DEPLOY_STARTED=$t" >> "$GITHUB_ENV"
           receipt() { node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/deploy.jsonl" deploy "$@"; }
           if [ ! -f deploy/cloudflare.sh ]; then receipt deploy="not available: deploy/cloudflare.sh is not on this commit"; exit 0; fi
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$WORKER" ]; then receipt deploy="not available: no CLOUDFLARE_API_TOKEN secret or no worker input"; exit 0; fi
-          bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ needs.build.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
+          bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ needs.assemble.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
           tar -xzf "$RUNNER_TEMP/build/output.tar.gz" -C "$APP"
           PREVIEW=$([ "$MODE" = promote ] && echo '' || echo 1) bash deploy/cloudflare.sh port "$APP" "$WORKER" / /docs /blocks 2>&1 | tee "$RUNNER_TEMP/deploy.txt"
           receipt deploy="$MODE" uploaded="$(grep -oE 'Uploaded [0-9]+ new or modified static assets?' "$RUNNER_TEMP/deploy.txt" | head -n 1 || true)" seconds=$(( $(date +%s) - t ))
+      - if: always() && env.DEPLOY_STARTED != ''
+        run: node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/deploy.jsonl" deploy stage-seconds="$(( $(date +%s) - DEPLOY_STARTED ))" ended="$(date +%s)" result=${{ job.status }}
       - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pl-receipts-deploy
-          path: ${{ runner.temp }}/receipts
-          if-no-files-found: ignore
-
-  report:
-    needs: [prepare, capture, emit, build, check-select, check, deploy]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4
         with:
           pattern: pl-receipts-*
           path: receipts
       - name: Report
+        if: always()
         run: |
           set -euo pipefail
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq '.jobs[]' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const jobs=s.trim()?s.trim().split("\n").map(l=>JSON.parse(l)):[];process.stdout.write(JSON.stringify({jobs:jobs.filter(j=>j.name!=="report")}))})' > jobs.json
+          mkdir -p receipts/finish && cp -R "$RUNNER_TEMP/receipts/." receipts/finish/ 2>/dev/null || true
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq '.jobs[]' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const jobs=s.trim()?s.trim().split("\n").map(l=>JSON.parse(l)):[];process.stdout.write(JSON.stringify({jobs:jobs}))})' > jobs.json
           { echo "### $SITE pipeline"; echo; node scripts/pipeline.ts report receipts jobs.json; } | tee -a "$GITHUB_STEP_SUMMARY"

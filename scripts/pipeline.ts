@@ -174,48 +174,64 @@ export interface Job {
 	readonly completed_at: string | null;
 }
 
-// The workflow's jobs in stage order, by the name each matrix job starts with.
+// The workflow's jobs in stage order, by the name each matrix job starts with. Stages that share a job are timed by the
+// `stage-seconds` receipt each writes when it ends (with `ended`, unix seconds, and `result`).
 export const STAGES: readonly (readonly [stage: string, prefix: string])[] = [
 	['keys and plan', 'prepare'],
 	['capture', 'capture'],
-	['emit', 'emit'],
-	['build', 'build'],
-	['check select', 'check-select'],
+	['emit', 'assemble'],
+	['build', 'assemble'],
+	['check select', 'assemble'],
 	['check', 'check /'],
-	['deploy', 'deploy'],
+	['deploy', 'finish'],
 ];
 
 const at = (s: string | null) => (s ? Date.parse(s) : NaN);
 const mmss = (ms: number) => (Number.isFinite(ms) ? `${Math.floor(ms / 60000)}:${String(Math.round((ms % 60000) / 1000)).padStart(2, '0')}` : '–');
+const TIMING = new Set(['stage', 'stage-seconds', 'ended', 'result']);
 
-/** Per stage: its jobs' wall time (first start to last end), runner time, and what its receipts say; then end to end. */
-export function report(receipts: readonly Receipt[], jobs: readonly Job[]): string {
+/** Per stage: its wall time (first start to last end of its jobs, or its own receipt in a shared job), runner time, and what its receipts say; then end to end. */
+export function report(receipts: readonly Receipt[], jobs: readonly Job[], stages: typeof STAGES = STAGES): string {
 	const rows: string[] = [];
 	let first = Infinity;
 	let last = -Infinity;
-	for (const [stage, prefix] of STAGES) {
+	for (const [stage, prefix] of stages) {
 		const mine = jobs.filter((j) => j.name === prefix || j.name.startsWith(`${prefix} `) || j.name.startsWith(`${prefix} (`) || (prefix.endsWith('/') && j.name.startsWith(prefix)));
 		const ran = mine.filter((j) => j.conclusion !== 'skipped' && j.started_at && j.completed_at);
-		const start = Math.min(...ran.map((j) => at(j.started_at)));
-		const end = Math.max(...ran.map((j) => at(j.completed_at)));
 		if (ran.length) {
-			first = Math.min(first, start);
-			last = Math.max(last, end);
+			first = Math.min(first, ...ran.map((j) => at(j.started_at)));
+			last = Math.max(last, ...ran.map((j) => at(j.completed_at)));
 		}
-		const runner = ran.reduce((sum, j) => sum + at(j.completed_at) - at(j.started_at), 0);
-		const notes = receipts
-			.filter((r) => r.stage === stage)
+		const own = receipts.filter((r) => r.stage === stage);
+		const timed = own.find((r) => typeof r['stage-seconds'] === 'number');
+		if (timed && typeof timed.ended === 'number') last = Math.max(last, timed.ended * 1000);
+		const notes = own
 			.map((r) =>
 				Object.entries(r)
-					.filter(([k, v]) => k !== 'stage' && v !== undefined && v !== '')
+					.filter(([k, v]) => !TIMING.has(k) && v !== undefined && v !== '')
 					.map(([k, v]) => `${k} ${v}`)
 					.join(', '),
 			)
 			.filter(Boolean);
-		const state = !mine.length ? 'not in this run' : !ran.length ? 'skipped' : [...new Set(ran.map((j) => j.conclusion ?? 'running'))].join('/');
-		rows.push(`| ${stage} | ${ran.length ? mmss(end - start) : '–'} | ${ran.length > 1 ? `${ran.length} jobs, ${mmss(runner)}` : ran.length ? mmss(runner) : '–'} | ${state} | ${notes.join('; ').replace(/\|/g, '/')} |`);
+		const shared = stages.filter(([, p]) => p === prefix).length > 1;
+		let wall: string;
+		let runner: string;
+		let state: string;
+		if (timed) {
+			wall = runner = mmss(Number(timed['stage-seconds']) * 1000);
+			state = String(timed.result ?? 'success');
+		} else if (shared || !ran.length) {
+			wall = runner = '–';
+			state = !mine.length ? 'not in this run' : 'skipped';
+		} else {
+			const ms = ran.reduce((sum, j) => sum + at(j.completed_at) - at(j.started_at), 0);
+			wall = mmss(Math.max(...ran.map((j) => at(j.completed_at))) - Math.min(...ran.map((j) => at(j.started_at))));
+			runner = ran.length > 1 ? `${ran.length} jobs, ${mmss(ms)}` : mmss(ms);
+			state = [...new Set(ran.map((j) => j.conclusion ?? 'running'))].join('/');
+		}
+		rows.push(`| ${stage} | ${wall} | ${runner} | ${state} | ${notes.join('; ').replace(/\|/g, '/')} |`);
 	}
-	return [`End to end: ${Number.isFinite(first) ? mmss(last - first) : '–'} (first job start to last job end)`, '', '| Stage | Wall | Runner time | Result | Receipts |', '|---|---:|---:|---|---|', ...rows, ''].join('\n');
+	return [`End to end: ${Number.isFinite(first) ? mmss(last - first) : '–'} (first job start to last stage end)`, '', '| Stage | Wall | Runner time | Result | Receipts |', '|---|---:|---:|---|---|', ...rows, ''].join('\n');
 }
 
 const STAGE_KEYS = ['plan', 'emit', 'emit-base', 'build'] as const;

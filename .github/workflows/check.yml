@@ -72,6 +72,11 @@ on:
         type: string
         required: false
         default: 'true'
+      matrix:
+        description: The shard list, when the caller dealt the routes itself (its check-shards artifact); it then merges the shards' reports too
+        type: string
+        required: false
+        default: ''
   # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
@@ -93,6 +98,7 @@ concurrency:
 
 jobs:
   plan:
+    if: inputs.matrix == ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -125,6 +131,7 @@ jobs:
 
   check:
     needs: plan
+    if: ${{ !cancelled() && (inputs.matrix != '' || needs.plan.result == 'success') }}
     runs-on: ubuntu-latest
     # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
     timeout-minutes: 345
@@ -133,7 +140,7 @@ jobs:
       # The org runs 60 jobs at once: a check leaves room for every other repository's CI.
       max-parallel: ${{ fromJSON(inputs.max_parallel || '10') }}
       matrix:
-        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+        shard: ${{ fromJSON(inputs.matrix || needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -253,29 +260,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: ./.github/actions/check-merge
         with:
-          pattern: check-*
-          path: shards
-      - name: Merge
-        run: |
-          set -euo pipefail
-          # A shard that wrote no report has each of its routes listed as not checked.
-          node scripts/check-shards.ts merge shards merged shards/check-shards
-          reported=$(find shards -name report.json | wc -l)
-          { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
-      # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.
-      - name: Join kept results
-        if: inputs.reuse != 'false'
-        run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
-      - name: Keep results for later runs
-        if: inputs.reuse != 'false'
-        uses: actions/cache/save@v4
-        with:
-          path: reuse
-          key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: check-merged
-          path: merged
-          retention-days: 30
+          site: ${{ env.SITE }}
+          label: ${{ env.BUILD }}
+          shards: ${{ env.SHARDS }}
+          reuse: ${{ inputs.reuse }}
