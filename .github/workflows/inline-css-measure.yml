@@ -1,0 +1,55 @@
+name: inline css measure
+on:
+  push:
+    branches: [scratch/inline-css-remeasure]
+    paths: [.github/workflows/inline-css-measure.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  INPUTS: https://github.com/compiled-run/markless-migrate/releases/download/scratch-inline-css-inputs/remeasure-inputs.tgz
+  ROUTE: /docs/headless/accordion/
+  SITES_RUN: '41226351295'
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 12.14.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile > /tmp/ci.log 2>&1 || (tail -30 /tmp/ci.log; exit 1)
+      - run: pnpm exec playwright install --with-deps ${{ matrix.browser }} > /tmp/pw.log 2>&1 || (tail -30 /tmp/pw.log; exit 1)
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'site-*', path: /tmp/sites, merge-multiple: true, run-id: '${{ env.SITES_RUN }}', github-token: '${{ github.token }}' }
+      - name: serve
+        run: |
+          set -e
+          S=/tmp/serve; mkdir -p $S/caddy-data
+          curl -fsSL "$INPUTS" | tar -xz -C /tmp && mv /tmp/inputs/qwik-client $S/qwik
+          for side in before after; do mkdir -p $S/x-$side && tar -xzf /tmp/sites/site-$side.tgz -C $S/x-$side && mv $S/x-$side/site $S/markless-$side; done
+          curl -fsSL https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_linux_amd64.tar.gz | tar -xz -C /tmp caddy
+          cd $S && openssl req -x509 -newkey rsa:2048 -nodes -keyout test.key -out test.crt -days 3 -subj "/CN=maieul.test" -addext "subjectAltName=DNS:qwik.test,DNS:markless-before.test,DNS:markless-after.test" -addext "extendedKeyUsage=serverAuth" 2>/dev/null
+          { printf '{\n\tadmin off\n\tauto_https disable_redirects\n\tskip_install_trust\n\tstorage file_system %s/caddy-data\n\tservers {\n\t\tprotocols h1 h2\n\t}\n}\n(common) {\n\ttls %s/test.crt %s/test.key\n\tencode gzip\n\theader /build/* Cache-Control "public, max-age=31536000, immutable"\n\tfile_server\n}\n' $S $S $S
+            for n in qwik markless-before markless-after; do printf 'https://%s.test:8443 {\n\troot * %s/%s\n\timport common\n}\n' $n $S $n; done; } > Caddyfile
+          /tmp/caddy version; /tmp/caddy validate --config Caddyfile
+          nohup /tmp/caddy run --config Caddyfile > caddy.log 2>&1 &
+          sleep 2
+      - name: parity
+        if: matrix.browser == 'chromium'
+        run: node scratch-inline-css/parity.mjs "https://markless-before.test:8443$ROUTE" "https://markless-after.test:8443$ROUTE" | tee /tmp/parity.txt
+      - name: matrix
+        run: |
+          mkdir -p /tmp/data
+          node src/check/maieul-run.ts --urls https://markless-after.test:8443$ROUTE,https://markless-before.test:8443$ROUTE,https://qwik.test:8443$ROUTE --profiles regular-3g,slow-4g,fast --browsers ${{ matrix.browser }} --runs 7 --out /tmp/data/matrix-${{ matrix.browser }}.jsonl 2>&1 | tail -80
+          node -e 'const os=require("os"); console.log(os.cpus()[0].model, os.cpus().length, "cpus", Math.round(os.totalmem()/2**30), "GB")' | tee /tmp/data/machine-${{ matrix.browser }}.txt
+          cp /tmp/parity.txt /tmp/data/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'data-${{ matrix.browser }}', path: /tmp/data, retention-days: 7 }
