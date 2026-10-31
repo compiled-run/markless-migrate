@@ -232,6 +232,7 @@ export function bindMount(el: Element): Binding | undefined {
 // first found first.
 const PORT_PROPS: readonly { readonly library: string; readonly export: string; readonly from?: readonly (readonly [string, string])[]; readonly props: readonly string[] }[] = [
 	{ library: 'react-resizable-panels', export: 'Panel', props: ['minSize', 'maxSize'] },
+	{ library: 'cmdk', export: 'Command', props: ['vimBindings'] },
 	{ library: 'radix-ui', export: 'HoverCard.Trigger', from: [['radix-ui', 'HoverCard.Root'], ['shadcn/ui', 'HoverCard']], props: ['openDelay', 'closeDelay'] },
 	{ library: 'embla-carousel-react', export: 'default', props: ['align'] },
 	{ library: '@base-ui/react', export: 'PreviewCard.Trigger', from: [['@base-ui/react', 'PreviewCard.Trigger'], ['shadcn/ui', 'HoverCardTrigger']], props: ['delay', 'closeDelay'] },
@@ -252,7 +253,7 @@ export function portAttributes(el: Element): Binding | undefined {
 		const known = PORT_PROPS.find((p) => p.library === c.library && p.export === c.export);
 		for (const prop of known?.props ?? []) {
 			const value = measured.get(el)?.[prop] ?? (known!.from ?? [[c.library, c.export] as const]).map(([lib, exp]) => resolver?.prop(lib, exp, prop)).find((v) => v !== undefined);
-			if (value !== undefined && (/^-?\d+(\.\d+)?%?$/.test(value) || /^(start|center|end|horizontal|vertical|both)$/.test(value))) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
+			if (value !== undefined && (/^-?\d+(\.\d+)?%?$/.test(value) || /^(start|center|end|horizontal|vertical|both|false)$/.test(value))) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
 		}
 	}
 	// A hover card trigger rendered through its child has no HoverCard part of its own: the delays the old page showed.

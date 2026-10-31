@@ -331,8 +331,9 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const now = selected(root);
 	const at = now ? list.indexOf(now) : -1;
 	let to: HTMLElement | undefined;
-	const down = event.key === 'ArrowDown' || (event.ctrlKey && (event.key === 'n' || event.key === 'j'));
-	const up = event.key === 'ArrowUp' || (event.ctrlKey && (event.key === 'p' || event.key === 'k'));
+	const vim = root.getAttribute('data-mm-vim-bindings') !== 'false';
+	const down = event.key === 'ArrowDown' || (vim && event.ctrlKey && (event.key === 'n' || event.key === 'j'));
+	const up = event.key === 'ArrowUp' || (vim && event.ctrlKey && (event.key === 'p' || event.key === 'k'));
 	if (down) to = event.metaKey ? list[list.length - 1] : event.altKey ? groupStep(root, now, 1) : list[at + 1];
 	else if (up) to = event.metaKey ? list[0] : event.altKey ? groupStep(root, now, -1) : list[at - 1];
 	else if (event.key === 'Home') to = list[0];
