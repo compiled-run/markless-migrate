@@ -147,7 +147,7 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 				const next = resolve(dirname(file), m[1]!);
 				if (next.startsWith(`${app}/`)) queue.push(next);
 			}
-			for (const m of text.matchAll(/["'](\/_converted\/layers\/[^"']+\.html)["']/g)) into.add(join(publicDir, m[1]!));
+			for (const m of text.matchAll(/["'](\/_converted\/layers\/[^"']+(?:\.html|\/))["']/g)) into.add(join(publicDir, m[1]!.endsWith('/') ? `${m[1]}index.html` : m[1]!));
 		}
 	};
 	const shared = new Set<string>(await filesUnder(join(app, 'lib')));

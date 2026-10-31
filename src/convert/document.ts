@@ -185,7 +185,8 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 			let body = `${(layer?.declare ?? []).map((line) => `\t${line}\n`).join('')}\t<>${markup}</>\n`;
 			// A layer a site component stands in for is served whatever its size: the component renders the shell, and the file holds the rest.
 			if ((markup.length >= SERVED_LAYER_BYTES || layer?.imports?.length) && layer?.fill && !layer.declare?.length) {
-				const path = `/_converted/layers/${createHash('sha256').update(layer.fill).digest('hex').slice(0, 16)}.html`;
+				// A directory's index: every static host serves /<hash>/ without the redirect Cloudflare answers <hash>.html with.
+				const path = `/_converted/layers/${createHash('sha256').update(layer.fill).digest('hex').slice(0, 16)}/`;
 				served.push({ path, html: layer.fill });
 				const keys = [...new Set([...layer.shell.matchAll(/ data-mm-layer="([^"]*)"/g)].map((m) => m[1]!))];
 				const origin = layer.fill.includes(APP_URL_TOKEN) || layer.shell.includes(APP_URL_TOKEN) ? ' data-mm-app-url={APP_URL}' : '';
@@ -310,6 +311,8 @@ export interface PageHead {
 
 export function headOf(page: { readonly href: string } | undefined): PageHead {
 	const url = page ? new URL(page.href) : undefined;
+	// A page prerendered at build is rendered by a local server, so its own URLs name the site's public origin when the build has one.
+	const origin = import.meta.env.VITE_APP_URL || (url ? url.origin : '');
 	// A path no route has is the not-found page's.
 	const route = (url && (ROUTES[url.pathname + url.search] ?? ROUTES[url.pathname] ?? ROUTES['/_markless-migrate/not-found'])) ?? ROUTES['/'];
 	if (!route) return { html: {}, body: {}, tags: [], late: [] };
@@ -320,7 +323,7 @@ export function headOf(page: { readonly href: string } | undefined): PageHead {
 		tags: route.tags.map((id, key) => {
 			const t = TAGS[id]!;
 			const a: Record<string, string | undefined> = { ...t.attrs };
-			for (const [name, path] of Object.entries(t.self ?? {})) a[name] = url ? url.origin + path : path;
+			for (const [name, path] of Object.entries(t.self ?? {})) a[name] = origin + path;
 			return { key, tag: t.tag, a, text: t.text ?? '' };
 		}),
 	};
