@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Deploys the qwikui.com migration to Vercel: deploy/qwikui/deploy.sh old | new <release tag> [--preview]
+# or to Cloudflare Workers (deploy/cloudflare.sh): cf-old, the pinned static build as mm-qwikui-old; cf-new|cf-preview <app dir>,
+# a cloudflare-module build of the port as mm-qwikui-new, refused unless the Check of that build is green (CHECK_RUN=<run id>).
 # old: qwik-ui's static build at the pinned commit (fetch-old.sh), as mm-qwikui-old: the files as they are, with the
 #      Cloudflare Pages _headers and _redirects written as vercel.json rules, folders served with a trailing slash.
 # new: the Vercel build a Convert run released (preset vercel): the same files the Check workflow checked, uploaded as built
@@ -53,5 +55,22 @@ case "${1:-}" in
 		echo "$PUBLIC/ still does not serve $TAG" >&2
 		exit 1
 		;;
-	*) echo "usage: $0 old | new <release tag> [--preview]" >&2; exit 1 ;;
+	cf-old)
+		[ -f "$DIR/old/dist/apps/website/client/index.html" ] || "$DIR/fetch-old.sh"
+		OLD="$(mktemp -d)/client"
+		cp -R "$DIR/old/dist/apps/website/client" "$OLD"
+		# _routes.json only routes Pages Functions; Workers static assets read _headers and _redirects as Pages does.
+		rm -f "$OLD/_routes.json"
+		bash "$DIR/../cloudflare.sh" static "$OLD" mm-qwikui-old
+		;;
+	cf-new|cf-preview)
+		APP="$(cd "${2:?usage: $0 $1 <app dir built with NITRO_PRESET=cloudflare-module>}" && pwd)"
+		if [ "$1" = cf-new ]; then
+			gh run view "${CHECK_RUN:?CHECK_RUN=<the Check run of this build>}" --repo compiled-run/markless-migrate --json conclusion --jq .conclusion | grep -qx success \
+				|| { echo "refusing: Check run $CHECK_RUN is not green (cf-preview uploads a preview version instead)" >&2; exit 1; }
+		fi
+		PREVIEW=$([ "$1" = cf-preview ] && echo 1 || true) bash "$DIR/../cloudflare.sh" port "$APP" mm-qwikui-new \
+			/ /docs/headless/accordion/ /docs/styled/modal/ /docs/headless/select/ /docs/styled/tabs/
+		;;
+	*) echo "usage: $0 old | new <release tag> [--preview] | cf-old | cf-new <app dir> | cf-preview <app dir>" >&2; exit 1 ;;
 esac

@@ -26,5 +26,8 @@
 	},
 	"overrides": {
 		"vite": "$vite"
+	},
+	"markless-migrate": {
+		"stylesheetImports": true
 	}
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Serves one side of the qwikui.com check on a CI runner, never a deployment:
 #   ci-serve.sh old          builds the old site (fetch-old.sh) and serves it on http://localhost:4000 (serve-old.mjs), the old origin check.yml names
-#   ci-serve.sh new <url>    serves a built port (a .tar.gz of the app's .output, node-server preset) on http://127.0.0.1:3000
+#   ci-serve.sh new <url>    serves a built port (a .tar.gz of .vercel/output, or of .output: node-server, or cloudflare-module in workerd) on http://127.0.0.1:3000
 # Both start in the background and return once the site answers.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +29,9 @@ case "${1:-}" in
 		# A Vercel build (.vercel/output, what deploy.sh uploads) is served as Vercel serves it; a node-server build runs itself.
 		if [ -d "$dest/.vercel/output" ]; then
 			(cd "$dest" && nohup node "$DIR/../shadcn-ui/serve-vercel-output.mjs" "$dest/.vercel/output" 3000 > "$LOGS/new-serve.log" 2>&1 &)
+		elif [ -f "$dest/.output/server/wrangler.json" ]; then
+			# A cloudflare-module build (what deploy.sh cf-new uploads) runs in workerd, as Workers runs it, with nothing sent to Cloudflare.
+			(cd "$dest/.output/server" && CI=1 WRANGLER_SEND_METRICS=false nohup npx --yes wrangler@4.156.0 dev --config wrangler.json --ip 127.0.0.1 --port 3000 --local --show-interactive-dev-session=false > "$LOGS/new-serve.log" 2>&1 &)
 		else
 			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$LOGS/new-serve.log" 2>&1 &)
 		fi
