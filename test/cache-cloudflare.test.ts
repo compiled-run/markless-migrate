@@ -28,7 +28,8 @@ test('on Cloudflare every page Vercel would cache, revalidated or not, is a buil
 	assert.deepEqual(rules['/_markless/fragment/docs/'], { prerender: true });
 	assert.deepEqual(rules['/news'], { prerender: true }, 'kept until the next deploy: Cloudflare has no ISR');
 	assert.deepEqual(rules['/_markless/fragment/news'], { prerender: true });
-	assert.equal(rules['/search'], undefined, 'a page that reads the query renders per request');
+	assert.deepEqual(rules['/search'], { headers: { 'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=600' } }, 'a page that reads the query renders in the Worker, kept by the edge cache for its s-maxage');
+	assert.deepEqual(rules['/_markless/fragment/search'], rules['/search']);
 	assert.deepEqual(rules['/account'], { headers: { 'cache-control': 'private, no-store' } });
 	assert.deepEqual(rules['/js/app.3f2a9c01.js'], { headers: { 'cache-control': 'public, max-age=31536000, immutable' } });
 	assert.equal(Object.values(rules).some((rule) => 'isr' in rule), false);
