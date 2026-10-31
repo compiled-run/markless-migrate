@@ -2132,8 +2132,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (sharedTables) await writeFile(join(app, 'components', 'converted', TABLES_SHARED), sharedTables);
 	await rm(join(app, 'public', '_converted', 'layers'), { recursive: true, force: true });
 	for (const layer of layers.served) {
-		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });
-		await writeFile(join(app, 'public', layer.path), layer.html);
+		const file = join(app, 'public', layer.path.endsWith('/') ? `${layer.path}index.html` : layer.path);
+		await mkdir(dirname(file), { recursive: true });
+		await writeFile(file, layer.html);
 	}
 	// What a page holds outside its own root (a header that differs per page) is bound as the root is: its library parts
 	// recorded and the site's page components in place.
