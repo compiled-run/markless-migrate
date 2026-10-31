@@ -180,14 +180,22 @@ export function deal<T>(items: readonly T[], n: number): T[][] {
 // Loaded on use: the jobs that only key a stage run this file before any install.
 const { parse } = await import('parse5').catch(() => ({ parse: undefined }));
 
-/** Every `<script src>` of a page, from its parsed HTML, without query or fragment. */
+/**
+ * Every script a page loads or preloads, from its parsed HTML, without query or fragment: `<script src>`, `modulepreload`
+ * and `preload as=script` links, and the same inside an iframe's srcdoc and in templates.
+ */
 export function scriptSources(html: string): string[] {
 	if (!parse) throw new Error('scriptSources needs parse5 installed');
 	const out: string[] = [];
+	const attr = (node: { attrs: { name: string; value: string }[] }, name: string) => node.attrs.find((a) => a.name === name)?.value;
 	const visit = (node: DefaultTreeAdapterMap['parentNode'] | DefaultTreeAdapterMap['childNode']): void => {
-		if ('tagName' in node && node.tagName === 'script') {
-			const src = node.attrs.find((a) => a.name === 'src')?.value;
-			if (src) out.push(src.split(/[?#]/)[0]!);
+		if ('tagName' in node) {
+			const src = node.tagName === 'script' ? attr(node, 'src') : undefined;
+			const rel = node.tagName === 'link' ? (attr(node, 'rel') ?? '').toLowerCase().split(/\s+/) : [];
+			const preloaded = rel.includes('modulepreload') || (rel.includes('preload') && attr(node, 'as') === 'script') ? attr(node, 'href') : undefined;
+			for (const url of [src, preloaded]) if (url) out.push(url.split(/[?#]/)[0]!);
+			const srcdoc = node.tagName === 'iframe' ? attr(node, 'srcdoc') : undefined;
+			if (srcdoc) out.push(...scriptSources(srcdoc));
 		}
 		if ('content' in node && node.content) visit(node.content);
 		if ('childNodes' in node) for (const child of node.childNodes) visit(child);
@@ -195,7 +203,6 @@ export function scriptSources(html: string): string[] {
 	visit(parse(html));
 	return out;
 }
-
 /**
  * Each page or fragment of a build (its static files and the ISR fallbacks Vercel serves) that loads a script the original's
  * pages loaded: a port runs Markless's code, so any is the old framework's runtime come along.
