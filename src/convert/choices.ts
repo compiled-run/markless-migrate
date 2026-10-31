@@ -6,7 +6,7 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
-import { settle, trackSettling } from './settle.ts';
+import { quiet, settle, trackSettling } from './settle.ts';
 import { attr, body, parseDocument, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import type { Reveal } from './reveal.ts';
 import { lit, type Binding } from './tsrx.ts';
@@ -108,11 +108,13 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 }
 
 async function openTrigger(page: Page, path: readonly number[]): Promise<boolean> {
-	const trigger = await page.evaluateHandle((p) => {
+	const trigger = await page.evaluateHandle(({ p, option }) => {
+		// The page's own options (a docs page demoing a command menu) are not the control's: only those it opens are chosen.
+		(window as unknown as { __mmBefore?: WeakSet<Element> }).__mmBefore = new WeakSet(document.querySelectorAll(option));
 		let el: Element | undefined = document.body;
 		for (const i of p) el = el?.children[i];
 		return el ?? null;
-	}, path);
+	}, { p: path, option: OPTION });
 	const el = trigger.asElement();
 	if (!el) return false;
 	await el.click({ timeout: 2000 }).catch(() => {});
@@ -164,21 +166,34 @@ function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } 
 	const seen = { open: new Set<Request>(), ended: 0 };
 	page.on('request', (r) => seen.open.add(r));
 	const end = (r: Request) => {
-		if (seen.open.delete(r)) seen.ended = Date.now();
+		if (seen.open.delete(r) && MOVING.has(r.resourceType())) seen.ended = Date.now();
 	};
 	page.on('requestfinished', end);
 	page.on('requestfailed', end);
 	return seen;
 }
 
-// What choosing an option started is read after 500 ms, or, while it is still fetching what it goes to (a client router
-// loads the next page before it changes the address), once that has answered: at most 5 s.
-async function afterChoosing(page: Page, before: string, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<void> {
+// What choosing an option started is read once the page has finished moving: its requests answered, its address unchanged
+// and nothing due for 150 ms (a server redirect moves it a second time, a router commits after its data). At most 10 s;
+// false when it was still moving then.
+const MOVED_MS = 150;
+async function afterChoosing(page: Page, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<boolean> {
 	await settle(page, 500);
-	const deadline = Date.now() + 4500;
-	const busy = () => [...requests.open].some((r) => !earlier.has(r)) || Date.now() - requests.ended < 150;
-	while (page.url() === before && busy() && Date.now() < deadline) await page.waitForTimeout(50);
+	const deadline = Date.now() + 10_000;
+	let url = page.url();
+	let since = Date.now();
+	for (;;) {
+		if (page.url() !== url) [url, since] = [page.url(), Date.now()];
+		const fetching = [...requests.open].some((r) => !earlier.has(r) && MOVING.has(r.resourceType())) || Date.now() - requests.ended < MOVED_MS;
+		const still = !fetching && Date.now() - since >= MOVED_MS;
+		if (still && (await quiet(page))) return true;
+		if (Date.now() >= deadline) return still;
+		await page.waitForTimeout(50);
+	}
 }
+
+// The requests that move a page: a router's data, a document. Images, fonts and scripts the next page loads do not.
+const MOVING = new Set(['fetch', 'xhr', 'document']);
 
 // Base UI's Select.Root renders its hidden input right after its trigger; Select.Value shows the chosen item's label.
 const chosenOf = (page: Page, path: readonly number[]) =>
@@ -191,6 +206,31 @@ const chosenOf = (page: Page, path: readonly number[]) =>
 		const shown = (el.querySelector('[data-slot="select-value"]') ?? el).textContent?.trim();
 		return { ...(value !== undefined ? { value } : {}), ...(shown ? { shown } : {}) };
 	}, path);
+
+// The option the control opened that is recorded under `key`, as the options were read.
+const optionOf = (page: Page, key: string) =>
+	page.evaluateHandle(
+		({ selector, key }) => {
+			const before = (window as unknown as { __mmBefore?: WeakSet<Element> }).__mmBefore;
+			return [...document.querySelectorAll(selector)].find((o) => !before?.has(o) && (o.getAttribute('data-value') ?? (o.textContent ?? '').trim()) === key) ?? null;
+		},
+		{ selector: OPTION, key },
+	);
+
+/** Where the old server's redirects take `href` (a path on `origin`), the fragment kept as a browser keeps it. */
+async function landing(origin: string, href: string): Promise<string> {
+	let url = new URL(href, origin);
+	for (let hops = 0; hops < 5; hops++) {
+		const response = await fetch(url, { method: 'HEAD', redirect: 'manual' }).catch(() => undefined);
+		const to = response && response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+		if (!to) break;
+		const next = new URL(to, url);
+		if (next.origin !== url.origin) break;
+		if (!next.hash) next.hash = url.hash;
+		url = next;
+	}
+	return url.pathname + url.search + url.hash;
+}
 
 // Options past this many are chosen on further pages at once, each page starting from the control opened afresh.
 const OPTIONS_PER_PAGE = 20;
@@ -213,8 +253,6 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 			for (const key of keys) {
 				if (key in out) continue;
 				const before = page.url();
-				const byValue = page.locator(`[cmdk-item][data-value="${key.replace(/["\\]/g, '\\$&')}"]`).first();
-				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
 				await page.evaluate(() => {
@@ -223,19 +261,25 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 					w.__mmWent = [];
 				});
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
-				if (!(await target.click({ timeout: 2000 }).then(() => true, () => false)) && !((await openOn(page, origin, route, reveal.path)) && (await target.click({ timeout: 5000 }).then(() => true, () => false)))) {
+				const click = async (timeout: number) => {
+					const target = (await optionOf(page, key)).asElement();
+					return !!target && (await target.click({ timeout }).then(() => true, () => false));
+				};
+				if (!(await click(2000)) && !((await openOn(page, origin, route, reveal.path)) && (await click(5000)))) {
 					failure ??= `could not choose ${key}`;
-					await openOn(page, origin, route, reveal.path);
-					continue;
+					return out;
 				}
-				await afterChoosing(page, before, requests, earlier);
+				if (!(await afterChoosing(page, requests, earlier))) {
+					failure ??= `${key} was still moving the page after 10 s`;
+					return out;
+				}
 				const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
 				const went = await page.evaluate(() => (window as unknown as { __mmWent?: string[] }).__mmWent?.at(-1));
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before;
 				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
-				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
+				if (moved || copied !== undefined || !(await (await optionOf(page, key)).asElement()?.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];
@@ -259,7 +303,12 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 		session(async (page) => {
 			try {
 				if (!(await openOn(page, origin, route, reveal.path))) return void known(undefined);
-				const found = await page.evaluate((selector) => [...document.querySelectorAll(selector)].map((o) => o.getAttribute('data-value') ?? (o.textContent ?? '').trim()), OPTION);
+				const found = await page.evaluate((selector) => {
+					const before = (window as unknown as { __mmBefore?: WeakSet<Element> }).__mmBefore;
+					// A disabled option does nothing when chosen.
+					const usable = (o: Element) => !before?.has(o) && o.getAttribute('aria-disabled') !== 'true' && !['', 'true'].includes(o.getAttribute('data-disabled') ?? 'false');
+					return [...document.querySelectorAll(selector)].filter(usable).map((o) => o.getAttribute('data-value') ?? (o.textContent ?? '').trim());
+				}, OPTION);
 				const keys = [...new Set(found.slice(0, MAX_OPTIONS))];
 				known(keys);
 				return choose(page, keys.slice(0, OPTIONS_PER_PAGE));
@@ -277,7 +326,20 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	const [own, ...more] = await Promise.all([first, ...rest.map((chunk) => limit(() => session(async (page) => ((await openOn(page, origin, route, reveal.path).catch(() => false)) ? choose(page, chunk) : {}))))]);
 	if (!keys) return {};
 	const out: Record<string, Choice> = Object.assign({}, own, ...more);
-	log(failure === undefined ? `choices of ${reveal.key} on ${route}: ${Object.keys(out).length} options` : `choices of ${reveal.key} on ${route}: not recorded (${failure})`);
+	// A partial record would depend on which options happened to fail on this machine: refused, never written.
+	if (failure !== undefined) {
+		log(`choices of ${reveal.key} on ${route}: not recorded (${failure})`);
+		throw new Error(`choices of ${reveal.key} on ${route}: ${failure}`);
+	}
+	// A router that prefetched a redirected route goes straight to where it lands, one that did not goes to the route: the
+	// server's redirects are followed, so the record is the same from every page.
+	const landed = new Map<string, Promise<string>>();
+	for (const [key, choice] of Object.entries(out)) {
+		if (choice.href === undefined) continue;
+		if (!landed.has(choice.href)) landed.set(choice.href, landing(origin, choice.href));
+		out[key] = { ...choice, href: await landed.get(choice.href)! };
+	}
+	log(`choices of ${reveal.key} on ${route}: ${Object.keys(out).length} options`);
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(out));
 	return out;

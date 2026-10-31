@@ -1,0 +1,115 @@
+// convert's record of what choosing a palette option did is the same however loaded the machine is: it is read once the
+// page has finished moving (a redirect answered, the router's render committed), only the options the trigger opened are
+// chosen, and a control whose options could not all be chosen is refused, never written as a partial record.
+import assert from 'node:assert/strict';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { chromium, type Browser } from 'playwright';
+import { captureChoices } from '../src/convert/choices.ts';
+import type { Reveal } from '../src/convert/reveal.ts';
+
+const palette = (items: string, extra = '') => `<!doctype html><html><body><button id="open" aria-expanded="false">Search</button>${extra}<script>
+const slice = (ms) => new Promise((done) => { const end = performance.now() + ms; const ch = new MessageChannel(); ch.port1.onmessage = () => (performance.now() < end ? ch.port2.postMessage(0) : done()); ch.port2.postMessage(0); });
+document.getElementById('open').addEventListener('click', () => {
+	const list = document.createElement('div');
+	list.setAttribute('role', 'dialog');
+	list.innerHTML = ${JSON.stringify(items)};
+	for (const item of list.querySelectorAll('[cmdk-item]')) item.addEventListener('click', () => window.choose(item.dataset.value));
+	document.body.append(list);
+});
+</script></body></html>`;
+
+// Next.js on a prefetched route that the server redirects: the address moves to the route first, then to where it redirects.
+const REDIRECT = palette('<div cmdk-item data-value="Typography">Typography</div>') + `<script>
+window.choose = async () => {
+	history.pushState(null, '', '/docs/components/typography');
+	await fetch('/data/redirect').then((r) => r.text());
+	history.replaceState(null, '', '/docs/typeset');
+};
+</script>`;
+
+// Next.js on a route it has not prefetched: the address moves to the route the option names, which the server redirects.
+const UNFETCHED = palette('<div cmdk-item data-value="Typography">Typography</div>') + `<script>
+window.choose = () => history.pushState(null, '', '/docs/components/typography?x=1#top');
+</script>`;
+
+// A client router whose data answers after the first look's 500 ms, and whose render then takes a while to commit the move.
+const LATE = palette('<div cmdk-item data-value="Late">Late</div>') + `<script>
+window.choose = async () => {
+	await fetch('/data/slow').then((r) => r.text());
+	await slice(400);
+	history.pushState(null, '', '/docs/late');
+};
+</script>`;
+
+// A page whose own content is a command menu (a docs page demoing one), beside the palette its header opens.
+const DEMO = palette('<div cmdk-item data-value="Components Button">Button</div>', '<div cmdk-root><div cmdk-item data-value="Calendar">Calendar</div></div>') + `<script>
+window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase().replace(/ /g, '-'));
+</script>`;
+
+// An option that something always lies over: its click can never land.
+const COVERED = palette('<div cmdk-item data-value="Free">Free</div><div cmdk-item data-value="Stuck" style="pointer-events:none">Stuck</div>') + `<script>
+window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase());
+</script>`;
+
+const PAGES: Record<string, string> = { '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
+
+let browser: Browser;
+let server: Server;
+let origin: string;
+before(async () => {
+	browser = await chromium.launch();
+	server = createServer((request, res) => {
+		if (request.url === '/data/redirect') return void setTimeout(() => res.writeHead(200).end('{}'), 800);
+		if (request.url!.startsWith('/docs/components/typography')) return void res.writeHead(308, { location: '/docs/typeset' }).end();
+		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 700);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGES[request.url!.split('?')[0]!] ?? '<!doctype html><title>other</title>');
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+after(async () => {
+	await browser.close();
+	server.close();
+});
+
+const reveal = (key: string, html: string): Reveal => ({ key, path: [0], sig: 'button||Search', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: `<div role="dialog">${html}</div>` }] });
+
+const recorded = async (route: string, r: Reveal) => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-settled-'));
+	try {
+		return await captureChoices(browser, origin, route, r, dir);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+};
+
+test('an option whose route the server redirects is recorded going where the redirect lands', async () => {
+	assert.deepEqual(await recorded('/redirect', reveal('redirect', '<div cmdk-item="" data-value="Typography">Typography</div>')), { Typography: { href: '/docs/typeset' } });
+});
+
+test('an option the router sends to an address the server redirects is recorded going where the redirect lands, as on a page that prefetched it', async () => {
+	assert.deepEqual(await recorded('/unfetched', reveal('unfetched', '<div cmdk-item="" data-value="Typography">Typography</div>')), { Typography: { href: '/docs/typeset#top' } });
+});
+
+test("an option is recorded going where the router moves once its render commits, after its data answered", async () => {
+	assert.deepEqual(await recorded('/late', reveal('late', '<div cmdk-item="" data-value="Late">Late</div>')), { Late: { href: '/docs/late' } });
+});
+
+test("only the options the trigger opened are chosen, never the page's own command menu items", async () => {
+	assert.deepEqual(await recorded('/demo', reveal('demo', '<div cmdk-item="" data-value="Components Button">Button</div>')), { 'Components Button': { href: '/docs/components-button' } });
+});
+
+test('a control with an option that cannot be chosen is refused, and nothing is written for it', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-settled-'));
+	try {
+		await assert.rejects(captureChoices(browser, origin, '/covered', reveal('covered', '<div cmdk-item="" data-value="Free">Free</div>'), dir), /could not choose Stuck/);
+		assert.deepEqual(await readdir(dir).catch(() => []), []);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

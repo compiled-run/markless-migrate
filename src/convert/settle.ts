@@ -183,3 +183,9 @@ export async function requestsDone(page: Page, capMs: number): Promise<void> {
 	const start = Date.now();
 	while (Date.now() - start < capMs && (net.open.size || Date.now() - net.ended < STILL_MS)) await page.waitForTimeout(POLL_MS);
 }
+
+/** Whether the page has nothing due within STILL_MS (timer, frame, finite animation, scheduler slice) and its document was still for STILL_MS. */
+export async function quiet(page: Page): Promise<boolean> {
+	const seen = await page.evaluate((within) => (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(within), STILL_MS).catch(() => undefined);
+	return !seen || (seen.busy === 0 && seen.still >= STILL_MS);
+}

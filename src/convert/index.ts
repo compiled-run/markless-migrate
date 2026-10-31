@@ -1459,7 +1459,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const pending of reads) pending.catch(() => {});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
 		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
-		const choosing = new Map<string, Promise<Record<string, Choice>>>();
+		const choosing = new Map<string, { chosen: Promise<Record<string, Choice>>; dir: string; tries: number }>();
 		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
 		for (const [i, pending] of reads.entries()) {
 			const route = captureRoutes[i]!;
@@ -1468,11 +1468,15 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				// A Base UI listbox's values are its page's: generated ids repeat across pages.
 				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
-				if (!choosing.has(run)) {
-					const dir = await atFor(route, 'choices');
-					const chosen = timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
+				// A control refused on one route (an option that could not be chosen there) is recorded on the next that shows the same
+				// options (three at most), kept where the first route's are read; refused on each, the convert fails.
+				const earlier = choosing.get(run);
+				if (!earlier || earlier.tries < 3) {
+					const dir = earlier?.dir ?? (await atFor(route, 'choices'));
+					const choose = () => timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
+					const chosen = earlier ? earlier.chosen.catch(choose) : choose();
 					chosen.catch(() => {});
-					choosing.set(run, chosen);
+					choosing.set(run, { chosen, dir, tries: (earlier?.tries ?? 0) + 1 });
 				}
 				shownOn.push({ route, reveal, run });
 			}
@@ -1501,7 +1505,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
-		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
+		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, { chosen }]) => [run, await chosen] as const)));
 		for (const { route, reveal, run } of shownOn) {
 			const found = chosenBy.get(run)!;
 			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);

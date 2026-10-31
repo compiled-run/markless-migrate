@@ -260,8 +260,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: captures-*
-          merge-multiple: true
-          path: ${{ env.APP }}/.migrate/convert
+          path: ${{ runner.temp }}/captured
+      # A file two shards recorded differently fails the merge, rather than whichever shard came last winning.
+      - name: Merge the shards' recordings
+        run: node scripts/merge-captures.ts "$APP/.migrate/convert" "$RUNNER_TEMP"/captured/*
       # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
       - name: Restore the old site's build
         id: old-build
