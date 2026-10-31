@@ -145,6 +145,8 @@ const CYCLE_ACTS = 5;
 
 export interface RecordedJourney extends Journey {
 	readonly expected: readonly StepResult[];
+	/** Blocks of the original's code this journey ran that no journey before it in the plan had (V8 block coverage, Chromium), when exploring recorded it. */
+	readonly newCode?: number;
 }
 
 const ROLES = ['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'textbox', 'searchbox', 'spinbutton', 'combobox', 'slider', 'treeitem', 'columnheader', 'row', 'gridcell'] as const;
@@ -1416,13 +1418,33 @@ export interface Session {
 	cycle(steps: readonly Step[], act: CycleAct): Promise<StepResult>;
 	/** Console errors the page logged while it loaded, before any step. */
 	readonly loadErrors: readonly string[];
+	/** With `coverage`: every block of the page's scripts that ran since the load, as `url#offset`. */
+	code?(): Promise<Set<string>>;
 	close(): Promise<void>;
 }
 
 /** `loops`: track loops so the caller can hold them (motion records what an interaction starts, not what a loop keeps doing). */
-export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> = {}): Promise<Session> {
+export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> & { readonly coverage?: boolean } = {}): Promise<Session> {
 	const origin = env.origin;
-	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...options });
+	const { coverage: withCoverage, ...pageOptions } = options;
+	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...pageOptions });
+	// V8 keeps block detail only for scripts compiled after coverage starts and not read from the code cache: started before the load, cache off.
+	const profiler = withCoverage && browser.browserType().name() === 'chromium' ? await context.newCDPSession(page).catch(() => undefined) : undefined;
+	if (profiler) {
+		await profiler.send('Network.setCacheDisabled', { cacheDisabled: true }).catch(() => {});
+		await profiler.send('Profiler.enable');
+		await profiler.send('Profiler.startPreciseCoverage', { callCount: true, detailed: true });
+	}
+	const ranCode = async (): Promise<Set<string>> => {
+		const ran = new Set<string>();
+		if (!profiler) return ran;
+		const { result } = await profiler.send('Profiler.takePreciseCoverage');
+		for (const script of result) {
+			if (!script.url) continue;
+			for (const fn of script.functions) for (const range of fn.ranges) if (range.count > 0) ran.add(`${script.url}#${range.startOffset}`);
+		}
+		return ran;
+	};
 	const host = new URL(origin).origin;
 	const oldHost = env.frontDoor ? new URL(env.frontDoor.old).origin : undefined;
 	const hosts = oldHost && oldHost !== host ? [host, oldHost] : [host];
@@ -1464,6 +1486,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	page.on('pageerror', (error) => errors.push(consoleErrorText(error.message, hosts)));
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
+	if (profiler) await ranCode().catch(() => undefined);
 	const loadErrors = [...errors];
 	const ambient = await ambientOnce(env.origin, route, page, hosts);
 	// A motion recording holds the timeouts itself, across its film.
@@ -1594,6 +1617,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		context,
 		page,
 		loadErrors,
+		...(profiler ? { code: ranCode } : {}),
 		run: (step, destructive = false, patience = QUICK) => observe(() => patiently(page, step, patience), describeTarget(step.target), step, destructive, false),
 		cycle(steps, act) {
 			const use = (step: Step) => observe(() => patiently(page, step), describeTarget(step.target), step, false, false);
@@ -2090,7 +2114,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 
 	const runItem = (item: Item) => inSession(() => runItemOnce(item));
 	const runItemOnce = async (item: Item) => {
-		const session = await openSession(browser, env, route, viewport);
+		const session = await openSession(browser, env, route, viewport, { coverage: true });
 		try {
 			const expected: StepResult[] = [];
 			const page = session.page;
@@ -2140,13 +2164,22 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				for (const close of closes) sequences.push({ journey: { name: `${item.journey.name}, closed by ${closedBy(close)}`, steps, cycle: [close, 'again'] }, depth: item.depth, expand: false, rank: 2, of: item.element });
 				if (stored && navLink) sequences.push({ journey: { name: `${item.journey.name}, then follow ${describeTarget(navLink)}`, steps, cycle: [{ navigate: navLink }, 'again', 'reload'] }, depth: item.depth, expand: false, rank: URGENT, of: item.element });
 			}
-			return { item: { ...item, journey }, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, widgets, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length };
+			const code = await session.code?.().catch(() => undefined);
+			return { item: { ...item, journey }, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, widgets, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length, code };
 		} finally {
 			await session.close();
 		}
 	};
 
 	type Ran = Awaited<ReturnType<typeof runItem>>;
+	// What each journey ran of the original's code that no journey before it in the plan had: counted here, in plan order, never as sessions finish.
+	const seenCode = new Set<string>();
+	const newCode = (code: Set<string> | undefined): { newCode?: number } => {
+		if (!code) return {};
+		let fresh = 0;
+		for (const block of code) if (!seenCode.has(block)) seenCode.add(block), fresh++;
+		return { newCode: fresh };
+	};
 	let sequencesSkipped = 0;
 	const applySequence = (item: Item, r: Ran | undefined): void => {
 		if (!r) {
@@ -2158,9 +2191,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			return;
 		}
 		if (r.empty) return;
-		if (!item.discover) return void journeys.push({ ...r.item.journey, expected: r.expected });
+		if (!item.discover) return void journeys.push({ ...r.item.journey, expected: r.expected, ...newCode(r.code) });
 		const at = journeys.findIndex((j) => j.name === item.journey.name && !j.cycle);
-		if (at >= 0 && r.item.journey.cycle?.length) journeys[at] = { ...r.item.journey, expected: r.expected };
+		if (at >= 0 && r.item.journey.cycle?.length) journeys[at] = { ...r.item.journey, expected: r.expected, ...newCode(r.code) };
 	};
 
 	for (let depth = 1; wave.length; depth++) {
@@ -2191,7 +2224,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				if (item.keys) item.keys.reason = budgetReason(cap);
 				continue;
 			}
-			journeys.push({ ...item.journey, expected: r.expected });
+			journeys.push({ ...item.journey, expected: r.expected, ...newCode(r.code) });
 			item.keys?.journeys.push(item.journey.name);
 			next.push(...keyItems(r.widgets, item.journey.steps, depth + 1));
 			sequences.push(...r.sequences.filter((s) => (s.rank ?? 0) < URGENT));
