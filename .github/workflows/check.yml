@@ -131,8 +131,16 @@ jobs:
         with:
           name: ${{ inputs.only-artifact }}
           path: ${{ runner.temp }}/only
+      # Each route's time in the last finished check packs the shards, longest first (split ignores a report of another site's routes).
+      - name: The last check's route times
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in $(gh run list -R "$GITHUB_REPOSITORY" --workflow check.yml --status success -L 10 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$RUNNER_TEMP/earlier" 2>/dev/null; then echo "route times from run $run"; break; fi
+          done
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
@@ -197,14 +205,19 @@ jobs:
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The old side's captures, journeys and slow-network runs from this shard's earlier runs. Check reuses an entry only while
       # its own code and the old site are unchanged (every response the old page loaded, or the files its HTML names).
+      # One cache for the whole site, joined by the merge job, so a route finds its old side whichever shard it lands on.
       - name: Restore the old side from earlier runs
         uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.APP }}/.migrate/cache/old
-            ${{ env.APP }}/.migrate/slow-network
-          key: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-
+          path: old-joined
+          key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-old-joined-${{ env.SITE }}-
+      - name: Place the old side
+        run: |
+          mkdir -p "$APP/.migrate/cache/old" "$APP/.migrate/slow-network"
+          if [ -d old-joined/cache/old ]; then cp -R old-joined/cache/old/. "$APP/.migrate/cache/old/"; fi
+          if [ -d old-joined/slow-network ]; then cp -R old-joined/slow-network/. "$APP/.migrate/slow-network/"; fi
+          rm -rf old-joined
       # Results of earlier runs, by what each route ships: its served HTML and the code hash of every module it can run.
       - name: Restore results from earlier runs
         if: inputs.reuse != 'false'
@@ -235,14 +248,6 @@ jobs:
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
-      - name: Keep the old side for later runs
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.APP }}/.migrate/cache/old
-            ${{ env.APP }}/.migrate/slow-network
-          key: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -251,6 +256,8 @@ jobs:
             ${{ env.APP }}/.migrate/report.json
             ${{ env.APP }}/.migrate/check-progress
             ${{ env.APP }}/.migrate/reuse
+            ${{ env.APP }}/.migrate/cache/old
+            ${{ env.APP }}/.migrate/slow-network
             ${{ runner.temp }}/check.txt
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log
@@ -284,6 +291,21 @@ jobs:
           reported=$(find shards -name report.json | wc -l)
           { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
       # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.
+      - name: The old side as earlier runs joined it
+        uses: actions/cache/restore@v4
+        with:
+          path: old-joined
+          key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-old-joined-${{ env.SITE }}-
+      - name: Join the old side
+        run: |
+          mkdir -p old-earlier && if [ -d old-joined ]; then mv old-joined old-earlier/; fi
+          node scripts/check-shards.ts join-old old-earlier old-joined >> "$GITHUB_STEP_SUMMARY"
+          node scripts/check-shards.ts join-old shards old-joined >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache/save@v4
+        with:
+          path: old-joined
+          key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
       - name: Join kept results
         if: inputs.reuse != 'false'
         run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
