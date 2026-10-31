@@ -59,6 +59,7 @@ import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUs
 import { guardPages, readAllowances, scanBuild, summarizeBuild } from './client/index.ts';
 import { acceptUpgrade, findUi, summarizeUpgrade, upgrade, writeUpgrade } from './upgrade/index.ts';
 import { scanLibraries } from './library/index.ts';
+import { buildLedger, summarizeLedger, writeLedger } from './ledger/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -89,7 +90,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse]
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse] [--ledger fail|report|off]
           Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
           browser holds it once settled (loaded as check loads it), without the old framework's runtime;
           shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
@@ -106,6 +107,14 @@ const USAGE = `markless-migrate ${VERSION}
           search results come in that deployment's order.
           --reuse (what dev passes) keeps what the app already holds: assets on disk are not fetched, the old
           app's public/ is not copied again, and the server is kept, with only its list of pages written again.
+          With --source, the handler ledger runs after the pages are written (see ledger); --ledger report
+          writes it without failing convert, --ledger off skips it.
+  ledger --source <path> [--json]
+          Map every element the old source wires to a handler (onClick, onValueChange, a library Close...) to
+          what answers it in the converted app: a Markless handler, one of the site's parts, a recorded choice,
+          the library's port (for the library's own behaviour), or a proven no-op. Each page is read from its
+          .tsrx and the app's own parts are run on it outside a browser. Writes .migrate/ledger.json; exits 1
+          when a handler has no answer, naming its source file and line and the port element.
 ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) [--app <dir>] [--old <origin>] [--source <path>]
           [--fallthrough <old deployment>] [--control <regex>] [--widths <px,...>] [--full] [--watch] [--build] [--check]
           [--concurrency <n>] [--port <n>] [--probe <file>] [--no-probes]
@@ -1130,8 +1139,18 @@ async function main(argv: string[]): Promise<number> {
 			out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : `${summarizeCli(report)}Wrote ${join(cwd, STATE_DIR, CLI_REPORT)}\n`);
 			return report.ok ? 0 : 1;
 		}
+		case 'ledger': {
+			const { values } = parseArgs({ args: rest, options: { source: { type: 'string' }, json: { type: 'boolean' } } });
+			const source = values.source ? resolve(values.source) : (await readInventory(cwd))?.source?.path;
+			if (!source) fail('ledger needs --source <old app source>, or a plan that read it');
+			const ledger = await buildLedger({ source, app: cwd });
+			const file = await writeLedger(cwd, ledger);
+			out(values.json ? `${JSON.stringify(ledger.failures, null, '\t')}\n` : `${summarizeLedger(ledger)}Wrote ${file}\n`);
+			return ledger.failures.length ? 1 : 0;
+		}
 		case 'convert': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' }, ledger: { type: 'string' } } });
+			if (values.ledger && !['fail', 'report', 'off'].includes(values.ledger)) fail('--ledger is fail, report or off');
 			if (!values.old) fail('convert needs --old <origin>');
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
 			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), log: (line) => out(`${line}\n`) });
@@ -1140,7 +1159,13 @@ async function main(argv: string[]): Promise<number> {
 				return 0;
 			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
-			return report.routes.length ? 0 : 1;
+			if (!report.routes.length) return 1;
+			const mode = values.ledger ?? 'fail';
+			if (!values.source || mode === 'off') return 0;
+			// Two threads after convert: each reads the whole port, and convert's own memory is still held.
+			const ledger = await buildLedger({ source: resolve(values.source), app: cwd, workers: 2 });
+			out(`${summarizeLedger(ledger)}Wrote ${await writeLedger(cwd, ledger)}\n`);
+			return ledger.failures.length && mode === 'fail' ? 1 : 0;
 		}
 		case 'usage': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, built: { type: 'string' }, source: { type: 'string' }, 'new-source': { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true } } });
