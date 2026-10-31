@@ -65,6 +65,10 @@ on:
         description: runner (this workflow builds), or mac (it stops after emit; scripts/pipeline-mac-build.sh <run> builds and runs it again)
         required: false
         default: runner
+      plan-concurrency:
+        description: Pages plan loads at once in its browser inventory
+        required: false
+        default: '1'
       captures-from:
         description: A pipeline run whose capture shards finished, taken as this run's captures under the keys they were recorded with
         required: false
@@ -201,8 +205,8 @@ jobs:
         run: |
           set -euo pipefail
           t=$(date +%s)
-          # Four pages at once on a 4-vCPU runner; plan takes their findings in the order one page would.
-          PLAN_ONLY=1 PLAN_CONCURRENCY=4 bash "$APP/scripts/convert.sh"
+          # plan --concurrency: one page at a time until several at once are shown to inventory shadcn alike (4 timed out a heavy page).
+          PLAN_ONLY=1 PLAN_CONCURRENCY="${{ inputs.plan-concurrency || '1' }}" bash "$APP/scripts/convert.sh"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan=made seconds=$(( $(date +%s) - t ))
       - if: steps.plan.outputs.run != ''
         run: node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "keys and plan" plan="kept (run ${{ steps.plan.outputs.run }})"
