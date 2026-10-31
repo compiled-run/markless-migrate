@@ -12,7 +12,7 @@ import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
-import { LOAD_TIMEOUT_MS, loadPage } from './infrastructure.ts';
+import { LOAD_TIMEOUT_MS, loadPage, servedHtml } from './infrastructure.ts';
 import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
 import { routeLinks, routePath, shellRoute } from './hash-routes.ts';
@@ -241,7 +241,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		});
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
 		const navigation = await loadPage(page, new URL(route, origin).href);
-		const html = (await navigation?.text().catch(() => '')) ?? '';
+		const html = await servedHtml(page, navigation).catch(() => '');
 		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
 		await settle(page);
