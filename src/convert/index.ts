@@ -696,7 +696,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			if (chosen?.value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value: chosen.value }];
 			if (chosen?.shown !== undefined && chosen.shown !== text) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-text'), { name: 'data-mm-text', value: chosen.shown }];
 			const shows = values && attr(el, 'role') === 'menuitem' ? values[textContent(el).trim()]?.trigger : undefined;
-			if (shows !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-trigger-html'), { name: 'data-mm-trigger-html', value: shows }];
+			if (shows !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-trigger-text'), { name: 'data-mm-trigger-text', value: JSON.stringify(shows) }];
 			markChosenHref(el, values);
 		}
 		selectIndicators(top);

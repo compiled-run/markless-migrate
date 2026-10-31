@@ -324,15 +324,15 @@ test('Radix ContextMenu.Sub on a page listing only the context menu port: restin
 	await page.close();
 });
 
-test("Radix DropdownMenu: an item convert recorded as changing its trigger (a version switcher) shows that on the trigger when chosen", async () => {
-	const switcher = `<main><button type="button" style="position:fixed;left:20px;top:20px" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger"><span>v1.0.1</span></button></main>
-<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1" data-radix-menu-content=""><div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item" data-mm-trigger-html="&lt;span&gt;v1.0.1&lt;/span&gt;">v1.0.1</div><div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item" data-mm-trigger-html="&lt;span&gt;v2.0.0&lt;/span&gt;">v2.0.0</div></div></div>`;
+test("Radix DropdownMenu: an item convert recorded as changing its trigger's text (a version switcher) writes that text in place when chosen", async () => {
+	const switcher = `<main><button type="button" style="position:fixed;left:20px;top:20px" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger"><span>v<!---->1.0.1</span></button></main>
+<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1" data-radix-menu-content=""><div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item" data-mm-trigger-text="[[1,&quot;v1.0.1&quot;]]">v1.0.1</div><div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item" data-mm-trigger-text="[[1,&quot;v2.0.0&quot;]]">v2.0.0</div></div></div>`;
 	const page = await open(switcher, ['radix/dropdown-menu']);
 	await page.click('#menu');
 	await settled(page);
 	await page.getByText('v2.0.0', { exact: true }).click();
 	await settled(page);
-	assert.equal(await page.locator('#menu').innerHTML(), '<span>v2.0.0</span>');
+	assert.equal(await page.locator('#menu').innerHTML(), '<span>v2.0.0<!----></span>', 'its text runs change in place');
 	assert.equal(await page.locator('#menu').getAttribute('aria-expanded'), 'false', 'the menu closed');
 	await page.close();
 });

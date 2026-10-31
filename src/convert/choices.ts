@@ -22,8 +22,8 @@ export interface Choice {
 	readonly copied?: string;
 	readonly value?: string;
 	readonly shown?: string;
-	/** What a menu item's trigger showed after it was chosen, as HTML, when choosing changed only that (a version switcher). */
-	readonly trigger?: string;
+	/** The text a menu item's trigger showed, by element, after it was chosen, when choosing changed only that (a version switcher). */
+	readonly trigger?: readonly (readonly [number, string])[];
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
@@ -195,14 +195,19 @@ const chosenOf = (page: Page, path: readonly number[]) =>
 		return { ...(value !== undefined ? { value } : {}), ...(shown ? { shown } : {}) };
 	}, path);
 
-// A menu's trigger's markup, as what it shows: React's and Radix's generated ids taken out. The trigger is the element
-// openTrigger clicked (Radix's focus guards go in front of the body's children once a menu opens, so a path no longer finds it).
-const triggerHtml = (page: Page, inMenu = false) =>
+// The text a menu's trigger shows, as [element, text] pairs: each element (outside SVG, by its place among the trigger's
+// elements, the trigger itself 0) with the text of its own text nodes. The trigger is the element openTrigger clicked
+// (Radix's focus guards go in front of the body's children once a menu opens, so a path no longer finds it).
+const triggerText = (page: Page, inMenu = false) =>
 	page
 		.evaluate((inMenu) => {
 			const el = (window as unknown as { __mmTrigger?: Element }).__mmTrigger;
 			if (!el?.isConnected || (inMenu && !document.querySelector('[role="menu"]'))) return undefined;
-			return el.innerHTML.replace(/\s(id|aria-controls|aria-labelledby)="[^"]*"/g, '');
+			const elements = [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('svg'));
+			return elements.flatMap((e, i) => {
+				const own = [...e.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.nodeValue ?? '').join('');
+				return own.trim() ? [[i, own] as [number, string]] : [];
+			});
 		}, inMenu)
 		.catch(() => undefined);
 
@@ -215,14 +220,14 @@ const OPTIONS_PER_PAGE = 20;
  */
 export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task()): Promise<Record<string, Choice>> {
 	const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-	// shown2: menu choices also record what their trigger shows after.
-	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown2`}.json`);
+	// shown4: menu choices also record the text their trigger shows after.
+	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown4`}.json`);
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
 	const viewport = VIEWPORTS.find((v) => v.name === reveal.viewport) ?? VIEWPORTS[0]!;
 	let failure: string | undefined;
 	// What an option left its menu's trigger showing when that was what it showed already (the switcher's current item).
-	const kept = new Map<string, string>();
+	const kept = new Map<string, readonly (readonly [number, string])[]>();
 	const choose = async (page: Page, keys: readonly string[]): Promise<Record<string, Choice>> => {
 		const out: Record<string, Choice> = {};
 		const requests = requestsOf(page);
@@ -233,7 +238,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const byValue = page.locator(`[cmdk-item][data-value="${key.replace(/["\\]/g, '\\$&')}"]`).first();
 				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
 				const earlier = new Set(requests.open);
-				const triggerBefore = listbox ? undefined : await triggerHtml(page, true);
+				const triggerBefore = listbox ? undefined : await triggerText(page, true);
 				const ownLabel = triggerBefore === undefined ? '' : await target.evaluate((e) => {
 					const copy = e.cloneNode(true) as Element;
 					for (const k of copy.querySelectorAll('kbd, [data-slot$="shortcut"]')) k.remove();
@@ -257,15 +262,12 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before;
-				const triggerAfter = moved || copied !== undefined || triggerBefore === undefined ? undefined : await triggerHtml(page);
-				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : triggerAfter !== undefined && triggerAfter !== triggerBefore ? { trigger: triggerAfter } : chosen;
+				const triggerAfter = moved || copied !== undefined || triggerBefore === undefined ? undefined : await triggerText(page);
+				const triggerChanged = triggerAfter !== undefined && JSON.stringify(triggerAfter) !== JSON.stringify(triggerBefore);
+				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : triggerChanged ? { trigger: triggerAfter } : chosen;
 				// Only the item the trigger names is the current one; another that changes nothing (Add team) is not.
-				if (triggerAfter !== undefined && triggerAfter === triggerBefore && (await page.evaluate(([html, label]) => {
-					const shown = document.createElement('div');
-					shown.innerHTML = html;
-					return label !== '' && (shown.textContent ?? '').includes(label);
-				}, [triggerAfter, ownLabel] as const))) kept.set(key, triggerAfter);
-				if ((triggerAfter !== undefined && triggerAfter !== triggerBefore) || moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
+				if (triggerAfter !== undefined && !triggerChanged && ownLabel !== '' && triggerAfter.map(([, t]) => t).join(' ').includes(ownLabel)) kept.set(key, triggerAfter);
+				if (triggerChanged || moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];

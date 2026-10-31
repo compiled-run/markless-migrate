@@ -139,11 +139,21 @@ export function click(target: Element): boolean {
 		if (subOf.get(layer)?.trigger !== item) openSub(item, false);
 		return true;
 	}
-	// What choosing it showed on the trigger of the old page (a version switcher), recorded by convert.
-	const shows = item.getAttribute('data-mm-trigger-html');
-	if (shows !== null) menuRoot(layer).trigger.innerHTML = shows;
+	const shows = item.getAttribute('data-mm-trigger-text');
+	if (shows !== null) showOnTrigger(menuRoot(layer).trigger, JSON.parse(shows) as [number, string][]);
 	closeMenu(layer);
 	return true;
+}
+
+// What choosing an item showed on its trigger on the old page (a version switcher), recorded by convert as each element's
+// text (elements outside SVG by their place, the trigger 0): written into that element's own text nodes, as the scene
+// part writes a demo's text.
+function showOnTrigger(trigger: HTMLElement, shown: readonly (readonly [number, string])[]): void {
+	const elements = [trigger, ...trigger.querySelectorAll('*')].filter((e) => !e.closest('svg'));
+	for (const [i, text] of shown) {
+		const runs = [...(elements[i]?.childNodes ?? [])].filter((n): n is Text => n.nodeType === Node.TEXT_NODE);
+		runs.forEach((t, k) => (t.data = k === 0 ? text : ''));
+	}
 }
 
 function openSub(trigger: HTMLElement, keyboard: boolean): Layer | undefined {
