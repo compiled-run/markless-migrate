@@ -2338,7 +2338,8 @@ export function lostRegions(olds: readonly StepResult[], next: StepResult): stri
 	if (!mine || !olds.length || olds.some((o) => !o.reaction?.affected?.length)) return undefined;
 	const bare = (r: string) => r.replace(/ #\d+/g, '');
 	const [first, ...rest] = olds.map((o) => o.reaction!.affected!.map(bare));
-	const lost = [...new Set(first!.filter((r) => rest.every((o) => o.includes(r)) && !mine.map(bare).includes(r)))];
+	// "the page" is what an answer is called when no region holds it: any region the port changed can be it.
+	const lost = [...new Set(first!.filter((r) => rest.every((o) => o.includes(r)) && !mine.map(bare).includes(r) && !(r === 'the page' && mine.length)))];
 	return lost.length ? lost : undefined;
 }
 
