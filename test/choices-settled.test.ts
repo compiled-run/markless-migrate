@@ -100,12 +100,22 @@ window.choose = async (value) => {
 };
 </script>`;
 
+// A page that asks for code it never gets (a chunk the server holds): the move it made is still recorded.
+const STUCK = palette('<div cmdk-item data-value="Charts">Charts</div>') + `<script>
+window.choose = () => {
+	const script = document.createElement('script');
+	script.src = '/stuck.js';
+	document.head.append(script);
+	history.pushState(null, '', '/charts');
+};
+</script>`;
+
 // An option that something always lies over: its click can never land.
 const COVERED = palette('<div cmdk-item data-value="Free">Free</div><div cmdk-item data-value="Stuck" style="pointer-events:none">Stuck</div>') + `<script>
 window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase());
 </script>`;
 
-const PAGES: Record<string, string> = { '/idle': IDLE, '/chunk': CHUNK, '/offscreen': OFFSCREEN, '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
+const PAGES: Record<string, string> = { '/stuck': STUCK, '/idle': IDLE, '/chunk': CHUNK, '/offscreen': OFFSCREEN, '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
 
 let browser: Browser;
 let server: Server;
@@ -117,6 +127,7 @@ before(async () => {
 		if (request.url!.startsWith('/docs/components/typography')) return void res.writeHead(308, { location: '/docs/typeset' }).end();
 		if (request.url!.startsWith('/data/hang')) return void setTimeout(() => res.writeHead(200).end('{}'), 30_000);
 		if (request.url === '/llms.txt') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('# docs'), 300);
+		if (request.url === '/stuck.js') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/javascript' }).end(''), 30_000);
 		if (request.url === '/chunk.js') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/javascript' }).end("history.pushState(null, '', '/docs/chunk');"), 900);
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 700);
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGES[request.url!.split('?')[0]!] ?? '<!doctype html><title>other</title>');
@@ -174,6 +185,10 @@ test("an option is recorded going where the router moves once it has loaded the 
 
 test("an option is recorded going where Next.js's router asked the server for, however long the router waits before it moves", async () => {
 	assert.deepEqual(await recorded('/idle', reveal('idle', '<div cmdk-item="" data-value="Button">Button</div>')), { Typography: { href: '/docs/typeset' }, Button: { href: '/docs/button' } });
+});
+
+test('an option is recorded going where it moved the page, though the code it then asked for never came', async () => {
+	assert.deepEqual(await recorded('/stuck', reveal('stuck', '<div cmdk-item="" data-value="Charts">Charts</div>')), { Charts: { href: '/charts' } });
 });
 
 test('a control with an option that cannot be chosen is refused, and nothing is written for it', async () => {

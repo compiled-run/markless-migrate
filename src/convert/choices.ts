@@ -173,6 +173,7 @@ function requestsOf(page: Page): { readonly open: Set<Request>; ended: number; r
 	page.on('request', (r) => {
 		if (r.isNavigationRequest() && r.frame() === page.mainFrame()) loading = true;
 		seen.open.add(r);
+		asked.set(r, Date.now());
 		// Next.js's App Router asks the server for the page it goes to (not a prefetch) before it moves, however long that takes.
 		const headers = r.headers();
 		if (headers.rsc === '1' && headers['next-router-prefetch'] === undefined && r.frame() === page.mainFrame()) {
@@ -187,7 +188,7 @@ function requestsOf(page: Page): { readonly open: Set<Request>; ended: number; r
 		for (const r of seen.open) if (!r.isNavigationRequest()) seen.open.delete(r);
 	});
 	const end = (r: Request) => {
-		if (seen.open.delete(r) && MOVING.has(r.resourceType())) seen.ended = Date.now();
+		if (seen.open.delete(r) && moving(r)) seen.ended = Date.now();
 	};
 	page.on('requestfinished', end);
 	page.on('requestfailed', end);
@@ -205,7 +206,7 @@ async function afterChoosing(page: Page, requests: ReturnType<typeof requestsOf>
 	let since = Date.now();
 	for (;;) {
 		if (page.url() !== url) [url, since] = [page.url(), Date.now()];
-		const open = [...requests.open].filter((r) => !earlier.has(r) && MOVING.has(r.resourceType()));
+		const open = [...requests.open].filter((r) => !earlier.has(r) && moving(r));
 		const fetching = open.length > 0 || Date.now() - requests.ended < MOVED_MS;
 		const still = !fetching && Date.now() - since >= MOVED_MS;
 		if (still && (await quiet(page))) return undefined;
@@ -215,7 +216,12 @@ async function afterChoosing(page: Page, requests: ReturnType<typeof requestsOf>
 }
 
 // The requests a move waits on: a router's data and the next page's code and styles, or a document. Images and fonts do not.
-const MOVING = new Set(['fetch', 'xhr', 'document', 'script', 'stylesheet']);
+const MOVING = new Set(['fetch', 'xhr', 'document']);
+const CODE = new Set(['script', 'stylesheet']);
+// Code still loading after 3 s (a chunk the server never answers, a preload never used) no longer holds the move.
+const CODE_MS = 3000;
+const asked = new WeakMap<Request, number>();
+const moving = (r: Request) => MOVING.has(r.resourceType()) || (CODE.has(r.resourceType()) && Date.now() - (asked.get(r) ?? 0) < CODE_MS);
 
 // Base UI's Select.Root renders its hidden input right after its trigger; Select.Value shows the chosen item's label.
 const chosenOf = (page: Page, path: readonly number[]) =>
