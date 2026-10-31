@@ -147,8 +147,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/full-site-gate.ts wait
 
+  # A build made elsewhere (build-url) is the converted app already built: the run starts at the check.
   prepare:
     needs: gate
+    if: inputs.build-url == ''
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -495,8 +497,8 @@ jobs:
           if-no-files-found: ignore
 
   build:
-    needs: [prepare, emit]
-    if: ${{ !cancelled() && needs.emit.result == 'success' }}
+    needs: [gate, prepare, emit]
+    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.emit.result == 'success' || inputs.build-url != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -517,7 +519,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - if: inputs.build-url == ''
+        uses: actions/download-artifact@v4
         with:
           name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
           path: ${{ runner.temp }}/converted
@@ -528,6 +531,12 @@ jobs:
           MARKLESS_REF: ${{ inputs.markless || 'main' }}
         run: |
           set -euo pipefail
+          if [ -n "$BUILD_URL" ]; then
+            echo "key=url-$(printf %s "$BUILD_URL" | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+            echo "run=url" >> "$GITHUB_OUTPUT"
+            node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="kept ($BUILD_URL)"
+            exit 0
+          fi
           tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
           sha=$(git -C markless rev-parse HEAD)
           echo "MARKLESS_SHA=$sha" >> "$GITHUB_ENV"
