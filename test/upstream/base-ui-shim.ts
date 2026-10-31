@@ -6,7 +6,7 @@ import { JestAsymmetricMatchers, JestChaiExpect, JestExtend, getState, setState 
 import * as chai from 'chai';
 import { fn, spyOn } from '@vitest/spy';
 import * as dom from '@testing-library/dom';
-import userEvent from '@testing-library/user-event';
+import * as userEventModule from '@testing-library/user-event';
 import * as matchers from '@testing-library/jest-dom/matchers';
 
 type Fn = () => unknown;
@@ -30,6 +30,9 @@ Object.assign(expect, chai.expect);
 (expect as { extend: (m: object) => void }).extend = (m: object) => (chai.expect as unknown as { extend: (e: unknown, m: object) => void }).extend(expect, m);
 setState({ assertionCalls: 0, isExpectingAssertions: false, isExpectingAssertionsError: null, expectedAssertionsNumber: null, expectedAssertionsNumberErrorGen: null, testPath: '', currentTestName: '' }, expect as never);
 (expect as { extend: (m: object) => void }).extend(matchers);
+
+// The package is CommonJS: the bundle's interop puts its export on default, once or twice.
+const userEvent = ((m: any) => (m.setup ? m : m.default?.setup ? m.default : m.default.default))(userEventModule) as { setup: () => unknown };
 
 const unsupported = (what: string) => () => {
 	throw new Error(`the upstream adapter does not run ${what}`);

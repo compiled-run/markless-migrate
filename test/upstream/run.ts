@@ -305,7 +305,8 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 	];
 	process.stdout.write(`${lines.join('\n')}\n`);
 	if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
-	if (unexpected.length || fixed.length || stale.length) process.exitCode = 1;
+	// A suite the adapter admits nothing of measures nothing: that is the adapter broken, not a green.
+	if (unexpected.length || fixed.length || stale.length || !admitted.length) process.exitCode = 1;
 }
 
 await main();
