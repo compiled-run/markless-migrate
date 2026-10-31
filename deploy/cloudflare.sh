@@ -4,7 +4,7 @@
 #   deploy/cloudflare.sh static <dir> <worker>                    a folder of static files (an original), no Worker code; its 404.html answers unknown paths
 # port: the build output check (every cached page and fragment a file at its URL, the Workers limits), a version upload with
 # its preview URL, the live check of that preview (the routes given), then the version deployed to 100%. PREVIEW=1 stops
-# before the deploy and prints the preview URL. ALLOW_WORKER=<path> lets that one same-origin path a page loads run the Worker. A Worker's first upload has no live version to protect and deploys at once.
+# before the deploy and prints the preview URL. ALLOW_WORKER="<path> ..." names same-origin paths a page loads that may run the Worker. A Worker's first upload has no live version to protect and deploys at once.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/.."
@@ -73,13 +73,15 @@ case "${1:-}" in
 			if grep -rqlF --include='*.html' "$script" "$APP/.output/public"; then mkdir -p "$(dirname "$APP/.output/public$script")" && : > "$APP/.output/public$script"; fi
 		done
 		# A cached page or fragment URL that is not a file runs the Worker on every request: refuse before uploading.
-		(cd "$APP" && node "$ROOT/src/cli.ts" cache output --cloudflare ${ALLOW_WORKER:+--allow-worker "$ALLOW_WORKER"})
+		ALLOWED=()
+		for path in ${ALLOW_WORKER:-}; do ALLOWED+=(--allow-worker "$path"); done
+		(cd "$APP" && node "$ROOT/src/cli.ts" cache output --cloudflare ${ALLOWED[@]+"${ALLOWED[@]}"})
 		configure "$CONFIG" "$NAME"
 		upload "$CONFIG" "$NAME"
 		ROUTES=()
 		for route in "$@"; do ROUTES+=(--route "$route"); done
 		# The preview is deployed only when its pages and fragment URLs come from the uploaded files.
-		(cd "$APP" && node "$ROOT/src/cli.ts" cache check --cloudflare --new "$URL" ${ALLOW_WORKER:+--allow-worker "$ALLOW_WORKER"} "${ROUTES[@]}")
+		(cd "$APP" && node "$ROOT/src/cli.ts" cache check --cloudflare --new "$URL" ${ALLOWED[@]+"${ALLOWED[@]}"} "${ROUTES[@]}")
 		promote "$CONFIG" "$NAME"
 		;;
 	static)

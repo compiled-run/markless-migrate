@@ -43,7 +43,8 @@ case "${1:-}" in
 			(cd "$APP" && NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=12288}" NITRO_PRESET=cloudflare-module VITE_APP_URL="${VITE_APP_URL:-$CF_NEW_URL}" npm run build)
 		fi
 		if grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.output/public"; then echo 'FAIL: pages link v0 to a hostless URL: build with VITE_APP_URL set' >&2; exit 1; fi
-		PREVIEW=$([ "$1" = cf-preview ] && echo 1 || true) exec bash "$DIR/../cloudflare.sh" port "$APP" mm-shadcn-ui-new \
+		# Optimized images are answered per query, and the header's /docs/directory reads the query: both render in the Worker.
+		ALLOW_WORKER="${ALLOW_WORKER:-/_next/image /_markless/fragment/docs/directory}" PREVIEW=$([ "$1" = cf-preview ] && echo 1 || true) exec bash "$DIR/../cloudflare.sh" port "$APP" mm-shadcn-ui-new \
 			/ /docs /docs/components/radix/button /examples/dashboard /blocks /charts/area
 		;;
 	old)
