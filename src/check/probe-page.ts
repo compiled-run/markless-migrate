@@ -39,6 +39,14 @@ export function installProbe(): void {
 		return out.sort().join(' ');
 	};
 	const control = () => document.querySelector(`[${MARK}]`);
+	// Every element that scrolled since the last reading, its name taken as it scrolled: a list that jumps while its pop-up fades out is gone by the reading.
+	const g = globalThis as { __markless_migrate_probe_scrolled__?: Set<string> };
+	if (!g.__markless_migrate_probe_scrolled__) {
+		const scrolled = (g.__markless_migrate_probe_scrolled__ = new Set<string>());
+		addEventListener('scroll', (e) => {
+			if (e.target instanceof Element && e.target !== document.scrollingElement && scrolled.size < 20) scrolled.add(describe(e.target));
+		}, { capture: true, passive: true });
+	}
 	const AROUND = 'section, article, figure, form, fieldset, [role="region"], [role="group"], [role="tabpanel"]';
 	const items = () => {
 		const top = [...document.querySelectorAll(POPUP)].filter((p) => shown(p) && p.querySelector(ITEM)).pop();
@@ -180,6 +188,8 @@ export function installProbe(): void {
 			const form = el.closest('form');
 			if (form) out.form = [...new FormData(form)].map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 40) : '(file)'}`);
 			out.scroll = String(Math.round(scrollY / 40) * 40);
+			out['scrolled since'] = [...(g.__markless_migrate_probe_scrolled__ ?? [])].sort();
+			g.__markless_migrate_probe_scrolled__?.clear();
 			return out;
 		},
 		/** A point that holds no control and is outside the control and everything open, for a click outside. */
@@ -210,7 +220,7 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | `item ${number}`): boolean {
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | 'submenu' | 'scroller' | `item ${number}`): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -219,6 +229,8 @@ export function installProbe(): void {
 				const top = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"]')].filter(shown).pop();
 				found = top && [...top.querySelectorAll('button, [role="button"]')].filter(shown).find((b) => /\b(close|cancel|dismiss|done)\b/i.test(`${b.getAttribute('aria-label') ?? ''} ${text(b)}`));
 			} else if (what.startsWith('item ')) found = items()[Number(what.slice(5))];
+			else if (what === 'scroller') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [p, ...p.querySelectorAll('*')]).find((e) => shown(e) && e.scrollHeight > e.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(e).overflowY));
+			else if (what === 'submenu') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [...p.querySelectorAll(ITEM)]).find((i) => shown(i) && /^(true|menu)$/.test(i.getAttribute('aria-haspopup') ?? ''));
 			else if (what === 'popup') found = [...document.querySelectorAll(POPUP)].filter(shown).pop();
 			else if (what === 'toaster') found = [...document.querySelectorAll('[data-sonner-toaster], [aria-live]:not([aria-live="off"]), [role="region"][aria-label*="otification" i]')].find((t) => t.querySelector('*') && shown(t.querySelector('[data-sonner-toast], li, [role="status"]') ?? t));
 			else if (what === 'thumb') found = el && ([el, ...el.querySelectorAll('[role="slider"], input[type="range"]')].find((t) => t.matches('[role="slider"], input[type="range"]') && shown(t)) ?? el);

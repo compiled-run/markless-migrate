@@ -28,7 +28,7 @@ import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { checkControlParity, type ControlParityOptions } from './control-parity.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { choppier, compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -455,16 +455,16 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 	const dropped = new Set<Failure>();
 	const notes = new Map<Failure, string>();
 	for (const failure of slow) {
-		const { journey, step, views } = timedOnly.get(failure)!;
+		const { journey, step, views, cadence } = timedOnly.get(failure)!;
 		const times: { old?: number; next?: number }[] = [];
 		const shown: (string | undefined | null)[] = [];
 		for (let i = 0; i < RETIMES; i++) {
 			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step];
 			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
 			times.push({ old: old?.reaction?.answeredMs, next: next?.reaction?.answeredMs });
-			shown.push(old?.reaction?.views && next?.reaction?.views ? interimViews([old], next) : null);
+			shown.push(old?.reaction?.views && next?.reaction?.views ? (cadence ? choppier([old], next) : interimViews([old], next)) : null);
 		}
-		if (views) {
+		if (views || cadence) {
 			if (shown.some((s) => s === null)) notes.set(failure, '; it could not be timed again one side at a time');
 			else if (shown.some((s) => s === undefined)) dropped.add(failure);
 			else notes.set(failure, `; timed again one side at a time, the new page showed it every time (${shown.join('; ')})`);

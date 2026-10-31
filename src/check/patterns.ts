@@ -17,7 +17,7 @@ export interface PatternWidget {
 }
 
 /** A step's key: one the pattern names, the first letter of the last item shown (typeahead), Tab either way, or none (`Focus`: the step only focuses). */
-export type PatternKey = Key | 'Typeahead' | 'Tab' | 'Shift+Tab' | 'Focus';
+export type PatternKey = Key | 'Typeahead' | 'Tab' | 'Shift+Tab' | 'Focus' | 'Shift+ArrowLeft' | 'Shift+ArrowRight' | 'Shift+PageUp' | 'Shift+PageDown';
 
 /** Widgets of one kind given the journeys, in page order; the rest count as covered by them. */
 export const PATTERN_SAMPLES = 2;
@@ -226,7 +226,11 @@ export function patternJourneys(widget: PatternWidget, prefix: readonly Step[], 
 		case 'tree':
 			return journeys([['down, expand, into, back out, collapse, up, End, Home, typeahead, choose with Enter', [focus('ArrowDown'), key('ArrowDown'), key('ArrowRight'), key('ArrowRight'), key('ArrowLeft'), key('ArrowLeft'), key('ArrowUp'), key('End'), key('Home'), key('Typeahead'), choose]]]);
 		case 'grid':
-			return journeys([['arrows every way, End, Home, Page Down, Page Up, choose with Enter', [focus('ArrowRight'), key('ArrowRight'), key('ArrowDown'), key('ArrowLeft'), key('ArrowUp'), key('End'), key('Home'), key('PageDown'), key('PageUp'), choose]]]);
+			return journeys([
+				['arrows every way, End, Home, Page Down, Page Up, choose with Enter', [focus('ArrowRight'), key('ArrowRight'), key('ArrowDown'), key('ArrowLeft'), key('ArrowUp'), key('End'), key('Home'), key('PageDown'), key('PageUp'), choose]],
+				// A calendar moves by month with Shift and the arrows or Page keys (react-day-picker, React Aria), and on by day from there.
+				['Shift with the arrows and Page keys, then on by day', [focus('Shift+ArrowLeft'), key('ArrowRight'), key('Shift+ArrowRight'), key('Shift+PageUp'), key('Shift+PageDown'), key('ArrowLeft')]],
+			]);
 	}
 }
 
