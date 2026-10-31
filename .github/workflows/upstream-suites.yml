@@ -113,7 +113,7 @@ jobs:
             ${{ runner.temp }}/upstream/${{ matrix.library }}/new.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/console.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/*.json
-            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/convert/report.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/convert
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/pages
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/components
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/document.tsrx
