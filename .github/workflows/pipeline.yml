@@ -129,7 +129,8 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 concurrency:
-  group: pipeline-${{ inputs.site || github.ref }}
+  # A build-only run (run-check false) does not wait behind a full run's hours of check.
+  group: pipeline-${{ inputs.site || github.ref }}${{ inputs.run-check == false && '-build-only' || '' }}
   cancel-in-progress: false
 
 jobs:
