@@ -360,13 +360,13 @@ export async function dev(options: DevOptions): Promise<number> {
 				const verdicts = await verdictOn(routes);
 				const more = [...reached].filter((p) => !built.has(p)).slice(0, MAX_DESTINATIONS);
 				if (!more.length) return verdicts;
+				for (const r of routes) destinations[r] = [...new Set([...(destinations[r] ?? []), ...more])];
+				await writeFile(destinationsFile, JSON.stringify(destinations, null, '\t'));
 				if (round > MAX_ROUNDS) {
-					log(`the routes still navigate to pages this build does not hold (${more.slice(0, 8).join(', ')}): those steps reached the original's page, so the verdict stands as a FAIL`);
+					log(`the routes still navigate to pages this build does not hold (${more.slice(0, 8).join(', ')}): those steps reached the original's page, so the verdict stands as a FAIL; the next run builds them`);
 					return verdicts.map((v) => ({ ...v, pass: false, reasons: [...v.reasons, `navigates to pages the build did not hold after ${MAX_ROUNDS} rounds: ${more.slice(0, 4).join(', ')}`] }));
 				}
 				log(`\nthe routes navigated to ${more.length} page${more.length === 1 ? '' : 's'} this build does not hold (${more.slice(0, 8).join(', ')}${more.length > 8 ? ', ...' : ''}): building them too and checking again`);
-				for (const r of routes) destinations[r] = [...new Set([...(destinations[r] ?? []), ...more])];
-				await writeFile(destinationsFile, JSON.stringify(destinations, null, '\t'));
 				for (const p of more) built.add(p);
 				await writeFile(routesFile, builtList().join('\n'));
 				if (!(await convertRoutes(true))) return verdicts.map((v) => ({ ...v, pass: false, reasons: [...v.reasons, 'convert failed while adding the pages it navigates to'] }));
