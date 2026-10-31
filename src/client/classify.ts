@@ -1,5 +1,5 @@
-import { parseSync } from 'oxc-parser';
-import { walk, type N } from '../source/js.ts';
+import { parse } from 'yuku';
+import { errorsOf, walk, type N } from '../source/js.ts';
 
 /**
  * Which script is another framework's runtime. No such code is ever kept in a Markless port: what the
@@ -92,10 +92,11 @@ const LIBRARY_TOKENS = new RegExp(`/\\*|\\.(${Object.keys(LIBRARY_GLOBALS).join(
 /** Every runtime a script defines (a bundle may hold several: Docusaurus ships React and its router together). */
 export function classifyScript(source: string): Classified {
 	if (!RUNTIME_TOKENS.test(source) && !LIBRARY_TOKENS.test(source)) return { runtimes: [], libraries: [], parsed: true };
-	let result = parseSync('x.js', source, { sourceType: 'module', preserveParens: false });
-	if (result.errors.length) {
-		const script = parseSync('x.js', source, { sourceType: 'script', preserveParens: false });
-		if (script.errors.length < result.errors.length) result = script;
+	let result = parse(source, { sourceType: 'module', preserveParens: false });
+	const errors = errorsOf(result).length;
+	if (errors) {
+		const script = parse(source, { sourceType: 'script', preserveParens: false });
+		if (errorsOf(script).length < errors) result = script;
 	}
 	const found = new Set<Runtime>();
 	const libraries = new Set<string>();
@@ -154,5 +155,5 @@ export function classifyScript(source: string): Classified {
 		}
 	});
 	// A framework runtime that bundles a library (DocSearch's Preact) is the framework; the library inside is not kept on its own.
-	return { runtimes: [...found], libraries: found.size ? [] : [...libraries], parsed: result.errors.length === 0 };
+	return { runtimes: [...found], libraries: found.size ? [] : [...libraries], parsed: errorsOf(result).length === 0 };
 }

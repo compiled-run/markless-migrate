@@ -1,6 +1,7 @@
-import { parseSync, visitorKeys } from 'oxc-parser';
+import { parse, type ParseResult } from 'yuku';
+import { CHILD_KEYS } from 'yuku/ast';
 
-// oxc emits ESTree; a loose node type keeps the walkers readable.
+// yuku emits ESTree; a loose node type keeps the walkers readable.
 export type N = { type: string; start: number; end: number; [key: string]: any };
 
 export interface Module {
@@ -20,6 +21,9 @@ export interface Module {
 	readonly template: string;
 	readonly ok: boolean;
 }
+
+/** The parse's error diagnostics; yuku also reports warnings, which do not make a parse fail. */
+export const errorsOf = (result: ParseResult) => result.diagnostics.filter((d) => d.severity === 'error');
 
 export function lineIndex(text: string): (offset: number) => number {
 	const starts = [0];
@@ -77,12 +81,14 @@ export function splitComponent(file: string, text: string): { script: string; te
 
 export function parseModule(file: string, text: string): Module {
 	const { script, template, lang } = splitComponent(file, text);
-	let result = parseSync(`x.${lang}`, script, { preserveParens: false, sourceType: 'module' });
-	const retries: [string, 'module' | 'commonjs'][] = [...(lang === 'tsx' ? [['ts', 'module'] as [string, 'module']] : []), ...(file.endsWith('.astro') ? [[lang, 'commonjs'] as [string, 'commonjs']] : [])];
+	let result = parse(script, { lang, preserveParens: false, sourceType: 'module' });
+	let errors = errorsOf(result);
+	const retries: ['ts' | 'tsx' | 'js', 'module' | 'commonjs'][] = [...(lang === 'tsx' ? [['ts', 'module'] as ['ts', 'module']] : []), ...(file.endsWith('.astro') ? [[lang, 'commonjs'] as [typeof lang, 'commonjs']] : [])];
 	for (const [l, sourceType] of retries) {
-		if (!result.errors.length) break;
-		const retry = parseSync(`x.${l}`, script, { preserveParens: false, sourceType });
-		if (retry.errors.length < result.errors.length) result = retry;
+		if (!errors.length) break;
+		const retry = parse(script, { lang: l, preserveParens: false, sourceType });
+		const retryErrors = errorsOf(retry);
+		if (retryErrors.length < errors.length) [result, errors] = [retry, retryErrors];
 	}
 	const program = result.program as unknown as N;
 	const imports = new Map<string, { source: string; imported: string; line: number }>();
@@ -137,7 +143,7 @@ export function parseModule(file: string, text: string): Module {
 		const assigned = stmt.type === 'ExpressionStatement' && stmt.expression.type === 'AssignmentExpression' ? stmt.expression : undefined;
 		if (assigned && memberName(assigned.left) === 'module.exports') exports.set('default', assigned.right);
 	}
-	return { file, text, program, line, imports, bindings, exports, reexports, starExports, template, ok: result.errors.length === 0 };
+	return { file, text, program, line, imports, bindings, exports, reexports, starExports, template, ok: errors.length === 0 };
 }
 
 function requireSource(node: N): string | undefined {
@@ -199,7 +205,7 @@ export function memberName(node: N | null | undefined): string | undefined {
 
 export const rootName = (node: N | null | undefined): string | undefined => memberName(node)?.split(/[.(]/)[0];
 
-const KEYS = visitorKeys as Record<string, readonly string[]>;
+const KEYS = CHILD_KEYS;
 
 /** Depth-first walk; return false from `enter` to skip a node's children. */
 export function walk(node: N, enter: (node: N, ancestors: readonly N[]) => void | false, ancestors: N[] = []): void {
@@ -387,8 +393,8 @@ export function property(obj: N | undefined, name: string): N | undefined {
 }
 
 export function parseJsonc(text: string): unknown {
-	const result = parseSync('x.js', `(${text})`, { preserveParens: false });
-	if (result.errors.length) return undefined;
+	const result = parse(`(${text})`, { preserveParens: false });
+	if (errorsOf(result).length) return undefined;
 	const stmt = (result.program.body[0] as unknown as N | undefined)?.expression as N | undefined;
 	const value = staticValue(stmt);
 	return known(value) ? value : undefined;
