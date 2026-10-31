@@ -8,6 +8,7 @@ import { installProbe, probeControls, type ProbeControl } from './probe-page.ts'
 import { matchParts, partSelectors, type PartSelectors } from './probe-parts.ts';
 import type { Dimension, Failure, Viewport } from './types.ts';
 import { clickOnce } from './click.ts';
+import { armStateReader, compareStates, firstDiffs, readState, stateHint, stateSpread, type StateDiff, type StateReading } from './state-probe.ts';
 
 /**
  * Widget probes: one control of each kind, in each class of widget behaviour, is driven through its class's short sequence on
@@ -261,14 +262,16 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 }
 
 /** Runs one sequence on one side from a fresh load of the route; stops after a step that leaves the page. */
-async function runSequence(side: Side, origin: string, route: string, control: ProbeControl, sequence: Sequence, parts: readonly PartSelectors[], found: Set<string>): Promise<Reading[]> {
+async function runSequence(side: Side, origin: string, route: string, control: ProbeControl, sequence: Sequence, parts: readonly PartSelectors[], found: Set<string>, states?: StateReading[]): Promise<Reading[]> {
 	const page = side.page;
 	await loadPage(page, new URL(route, origin).href);
 	await settle(side);
 	await page.evaluate(installProbe);
 	await page.mouse.move(1, 1);
 	if (!(await mark(page, control))) return [{ control: 'not on the page' }];
+	if (states) await armStateReader(page);
 	const out: Reading[] = [await read(page)];
+	if (states) states.push(await readState(page));
 	for (const op of sequence.ops) {
 		let failed: string | undefined;
 		try {
@@ -281,6 +284,7 @@ async function runSequence(side: Side, origin: string, route: string, control: P
 		await page.evaluate(installProbe).catch(() => {});
 		const reading = await read(page);
 		out.push(failed ? { ...reading, step: `could not ${describeOp(op)}: ${failed}` } : reading);
+		if (states) states.push(await readState(page, states.at(-1)));
 		if (parts.length) for (const file of await page.evaluate(matchParts, parts).catch(() => [] as string[])) found.add(file);
 		if (new URL(shownUrl(page)).pathname !== new URL(route, origin).pathname) break;
 	}
@@ -366,6 +370,8 @@ export interface ProbeOptions {
 	readonly concurrency?: number;
 	/** Shared across the routes of a run: a widget is probed on the first route that renders it, keyed by its class, kind, name and its widget's print on both pages; the routes rendering the same widget take that result. */
 	readonly shared?: Map<string, SharedProbe>;
+	/** Each sequence's state readings, old and new, as read: for measuring the state probe's noise. */
+	readonly onStates?: (old: readonly StateReading[], next: readonly StateReading[]) => void;
 }
 
 /** A widget one route probes for every route that renders it the same way. */
@@ -379,6 +385,10 @@ export interface ProbeResult {
 	/** Each probed control and class: `probed`, `alike` (another control of its kind stood for it), or why it was not. */
 	readonly controls: readonly { readonly control: string; readonly cls: ProbeClass; readonly state: string; readonly ms?: number }[];
 	readonly ms: number;
+	/** Time the state probe's reads took, both sides, every step. */
+	readonly stateMs: number;
+	/** The largest old-against-new difference in each measure the state probe's tolerances bound, over every sequence. */
+	readonly stateSpread: Readonly<Record<string, number>>;
 }
 
 const SAMPLES = 1;
@@ -475,6 +485,10 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	const budget = options.budgetMs ?? Math.min(MAX_BUDGET_MS, Math.max(MIN_BUDGET_MS, (probed.size * PER_CONTROL_MS) / pairs));
 	const failures: Failure[] = [];
 	const failuresOf = new Map<string, Failure[]>();
+	let stateMs = 0;
+	const spread: Record<string, number> = {};
+	// A difference every sequence of a control meets (a popup's place) is reported once, at the first sequence that met it.
+	const stated = new Set<string>();
 	const state = new Map<string, { control: string; cls: ProbeClass; state: string; ms: number }>();
 	const drive = async (items: readonly { control: ProbeControl; sequence: Sequence }[]) => {
 		if (!items.length) return;
@@ -492,19 +506,34 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 					}
 					const files = new Set<string>();
 					const began = Date.now();
-					const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set()), runSequence(sides2.new, sides.new.origin, route, item.control, item.sequence, parts, files)]);
+					const oldStates: StateReading[] = [];
+					const newStates: StateReading[] = [];
+					const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set(), oldStates), runSequence(sides2.new, sides.new.origin, route, item.control, item.sequence, parts, files, newStates)]);
+					stateMs += [...oldStates, ...newStates].reduce((t, r) => t + r.ms, 0);
+					options.onStates?.(oldStates, newStates);
+					for (const [k, v] of Object.entries(stateSpread(oldStates, newStates))) spread[k] = Math.max(spread[k] ?? 0, v);
 					// A control the new page lacks is the journeys' and the rendered check's finding; the probe has nothing to drive there.
 					if (old[0]?.control !== 'not on the page' && next[0]?.control === 'not on the page') {
 						entry.state = 'not on the new page: the journeys and the rendered check compare whether it is there';
 						continue;
 					}
 					let steps = compareRuns(old, next);
-					if (steps.some((d) => d.length)) {
-						const again = await runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set());
+					let stateSteps = compareStates(oldStates, newStates);
+					if (steps.some((d) => d.length) || stateSteps.some((d) => d.length)) {
+						const againStates: StateReading[] = [];
+						const again = await runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set(), againStates);
 						steps = compareRuns(old, next, again);
+						stateSteps = compareStates(oldStates, newStates, againStates);
 					}
 					entry.ms += Date.now() - began;
 					if (old[0]?.control === 'not on the page') entry.state = 'not found again on the old page';
+					else for (const { step, diff } of firstDiffs(stateSteps)) {
+						if (stated.has(`${controlKey(item.control)}|${diff.field}`)) continue;
+						stated.add(`${controlKey(item.control)}|${diff.field}`);
+						const failure = stateFailure(route, item.control, item.sequence, step, diff, [...files]);
+						failures.push(failure);
+						failuresOf.set(id, [...(failuresOf.get(id) ?? []), failure]);
+					}
 					const k = steps.findIndex((d) => d.length);
 					if (k < 0) continue;
 					const failure = probeFailure(route, item.control, item.sequence, k, steps, old, next, [...files]);
@@ -547,7 +576,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 		if (e.state.startsWith('left out') || e.state.startsWith('not found')) failures.push(unprobed(route, e.control, e.cls, e.state));
 	}
 	for (const c of controls) if (c.state.startsWith('left out: over')) failures.push(unprobed(route, c.control, c.cls, c.state));
-	return { failures, controls, ms: Date.now() - started };
+	return { failures, controls, ms: Date.now() - started, stateMs, stateSpread: spread };
 }
 
 const DISCOVER_MAX = 24;
@@ -610,5 +639,16 @@ function probeFailure(route: string, control: ProbeControl, sequence: Sequence, 
 		expected: `old, after ${trail.join(', then ')}: ${diffs.map((d) => `${d.field}: ${d.old}`).join('; ')}${context(old[k + 1])}`,
 		actual: `new: ${diffs.map((d) => `${d.field}: ${d.new}`).join('; ')}${context(next[k + 1])}${later.length ? `; it differs again at step${later.length > 1 ? 's' : ''} ${later.join(', ')}` : ''}`,
 		hint: `${PROBE_HINTS[sequence.cls]}${files.length ? ` Likely part: ${files.join(', ')} (its selectors match this control or what it opened).` : ''}`,
+	};
+}
+
+function stateFailure(route: string, control: ProbeControl, sequence: Sequence, k: number, diff: StateDiff, files: readonly string[]): Failure {
+	return {
+		route,
+		dimension: diff.dimension,
+		check: `${diff.field} after ${describeOp(sequence.ops[k]!)} on ${describeControl(control)} (state probe: ${sequence.name}, step ${k + 1} of ${sequence.ops.length})`,
+		expected: `old: ${diff.old}`,
+		actual: `new: ${diff.new}`,
+		hint: `${stateHint(diff.field)}${files.length ? ` Likely part: ${files.join(', ')} (its selectors match this control or what it opened).` : ''}`,
 	};
 }
