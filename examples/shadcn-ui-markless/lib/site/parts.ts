@@ -154,12 +154,18 @@ const themeMenu: Part = {
 	},
 };
 
+// An element's text written into its own text node, in place: Markless's nodes stay where it rendered them.
+function writeText(el: Element, text: string): void {
+	const runs = [...el.childNodes].filter((n): n is Text => n.nodeType === Node.TEXT_NODE);
+	runs.forEach((t, i) => (t.data = i === 0 ? text : ''));
+}
+
 // registry/new-york-v4/examples/form-next-demo.tsx: the description's onChange shows its length as "n/100 characters".
 const lengthCounter: Part = {
 	input(target) {
 		if (!(target instanceof HTMLTextAreaElement)) return false;
 		const counter = [...(target.closest('[data-slot="input-group"]')?.querySelectorAll('span') ?? [])].find((s) => /^\d+\/\d+ characters$/.test(s.textContent ?? ''));
-		if (counter) counter.textContent = counter.textContent!.replace(/^\d+/, String(target.value.length));
+		if (counter) writeText(counter, counter.textContent!.replace(/^\d+/, String(target.value.length)));
 		return false;
 	},
 };
@@ -205,7 +211,7 @@ const drawerGoal: Part = {
 		const shown = [...row.querySelectorAll('div')].find((d) => /^\d+$/.test(d.textContent?.trim() ?? '') && !d.querySelector('div'));
 		if (!shown) return false;
 		const goal = Math.max(200, Math.min(400, Number(shown.textContent) + step));
-		shown.textContent = String(goal);
+		writeText(shown, String(goal));
 		for (const b of row.querySelectorAll<HTMLButtonElement>(':scope > button')) b.disabled = (b.querySelector('.sr-only')?.textContent === 'Decrease' && goal <= 200) || (b.querySelector('.sr-only')?.textContent === 'Increase' && goal >= 400);
 		return true;
 	},
