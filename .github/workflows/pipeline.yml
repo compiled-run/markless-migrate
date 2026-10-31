@@ -69,6 +69,18 @@ on:
         description: Pages plan loads at once in its browser inventory
         required: false
         default: '1'
+      converted-from:
+        description: A pipeline run whose emit finished, whose converted app this run builds (no plan, capture or emit)
+        required: false
+        default: ''
+      build-runner:
+        description: The runner label the build runs on (a larger runner's label when the port needs more than 16 GB)
+        required: false
+        default: ubuntu-latest
+      build-heap:
+        description: The build's Node heap in MB (the live heap of a full shadcn build peaks at 6 to 7 GB)
+        required: false
+        default: '13312'
       captures-from:
         description: A pipeline run whose capture shards finished, taken as this run's captures under the keys they were recorded with
         required: false
@@ -150,7 +162,7 @@ jobs:
   # A build made elsewhere (build-url) is the converted app already built: the run starts at the check.
   prepare:
     needs: gate
-    if: inputs.build-url == ''
+    if: inputs.build-url == '' && inputs.converted-from == ''
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -499,8 +511,8 @@ jobs:
 
   build:
     needs: [gate, prepare, emit]
-    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.emit.result == 'success' || inputs.build-url != '') }}
-    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.emit.result == 'success' || inputs.build-url != '' || inputs.converted-from != '') }}
+    runs-on: ${{ inputs.build-runner || 'ubuntu-latest' }}
     timeout-minutes: 120
     outputs:
       key: ${{ steps.key.outputs.key }}
@@ -520,10 +532,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - if: inputs.build-url == ''
+      - if: inputs.build-url == '' && inputs.converted-from == ''
         uses: actions/download-artifact@v4
         with:
           name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
+          path: ${{ runner.temp }}/converted
+      - if: inputs.build-url == '' && inputs.converted-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-${{ env.SITE }}-converted-*
+          merge-multiple: true
+          run-id: ${{ inputs.converted-from }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/converted
       - name: Key the build
         id: key
@@ -610,7 +630,7 @@ jobs:
           (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
           t=$(date +%s)
           status=0
-          NITRO_PRESET="$PRESET" VITE_APP_URL="$APP_URL" NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          NITRO_PRESET="$PRESET" VITE_APP_URL="$APP_URL" NODE_OPTIONS=--max-old-space-size=${{ inputs.build-heap || '13312' }} /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
           tail -n 30 "$RUNNER_TEMP/build.txt"
           node "$GITHUB_WORKSPACE/scripts/pipeline.ts" receipt "$RUNNER_TEMP/receipts/build.jsonl" build build="made, exit $status" seconds=$(( $(date +%s) - t )) runner-peak-mb=$(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) process-peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') / 1024 ))
           if [ "$status" -ne 0 ] && grep -qiE 'heap out of memory|Killed|signal 9|ENOMEM' "$RUNNER_TEMP/build.txt"; then
