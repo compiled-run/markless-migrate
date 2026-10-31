@@ -2,7 +2,7 @@
 // day-picker-pages.ts built for that render, and screen queries, user-event and jest-dom matchers act on that page
 // through Playwright. The same shim runs on the library's pages and on the port's, so a test the shim cannot express
 // fails on the library too and is never admitted.
-//   node test/upstream/day-picker-shim.ts <checkout> <origin> <out.json> [repeat]
+//   node test/upstream/day-picker-run.ts <checkout> <origin> <out.json> [repeat]
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -33,12 +33,21 @@ let context: BrowserContext | undefined;
 let origin = '';
 let now: Date | undefined;
 const pending: (() => Promise<void>)[] = [];
+// Testing Library acts synchronously; here each act on the page runs after the one before, and a step waits for all.
+let chain: Promise<unknown> = Promise.resolve();
+const queue = <T>(op: () => Promise<T>): Promise<T> => {
+	const next = chain.then(op);
+	chain = next.catch(() => {});
+	inflight.push(next);
+	return next;
+};
+const inflight: Promise<unknown>[] = [];
 const on = () => {
 	if (!page) throw new Error('nothing is rendered');
 	return page;
 };
 
-const handle = (describe: string, resolve: (page: Page) => Locator): Handle => ({ describe, resolve, focus: () => resolve(on()).focus() });
+const handle = (describe: string, resolve: (page: Page) => Locator): Handle => ({ describe, resolve, focus: () => queue(() => resolve(on()).focus()) });
 const role = (name: string, options: { name?: string | RegExp; hidden?: boolean } = {}) =>
 	handle(`${name} ${String(options.name ?? '')}`, (p) => p.getByRole(name as Parameters<Page['getByRole']>[0], { ...(options.name !== undefined ? { name: options.name, exact: typeof options.name === 'string' } : {}), ...(options.hidden ? { includeHidden: true } : {}) }));
 
@@ -58,7 +67,8 @@ export const elements = {
 	activeElement: () => handle('the focused element', (p) => p.locator('*:focus')),
 };
 
-async function render(element: { readonly type: { readonly example: string }; readonly props: Record<string, unknown> }): Promise<void> {
+const render = (element: { readonly type: { readonly example: string }; readonly props: Record<string, unknown> }) => queue(() => mount(element));
+async function mount(element: { readonly type: { readonly example: string }; readonly props: Record<string, unknown> }): Promise<void> {
 	const props = JSON.stringify(Object.fromEntries(Object.entries(element.props).sort(([a], [b]) => a.localeCompare(b))));
 	const found = RENDERS.find((r) => r.example === element.type.example && JSON.stringify(Object.fromEntries(Object.entries(r.props).sort(([a], [b]) => a.localeCompare(b)))) === props);
 	if (!found) throw new Error(`no page renders <${element.type.example} ${props}>`);
@@ -86,12 +96,13 @@ async function keys(text: string): Promise<void> {
 }
 
 export const user = {
-	click: async (target: Handle) => target.resolve(on()).click(),
-	type: async (target: Handle, text: string) => {
-		await target.resolve(on()).click();
-		await keys(text);
-	},
-	keyboard: keys,
+	click: (target: Handle) => queue(() => target.resolve(on()).click()),
+	type: (target: Handle, text: string) =>
+		queue(async () => {
+			await target.resolve(on()).click();
+			await keys(text);
+		}),
+	keyboard: (text: string) => queue(() => keys(text)),
 };
 
 const settled = () => on().evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => setTimeout(done))));
@@ -151,6 +162,7 @@ function collect(): { root: Block; globals: Record<string, unknown> } {
 
 async function step(fn: Fn): Promise<void> {
 	await fn();
+	while (inflight.length) await inflight.shift();
 	if (page) await settled();
 	while (pending.length) await pending.shift()!();
 }
@@ -202,13 +214,18 @@ async function runFile(browser: Browser, checkout: string, file: string): Promis
 			const blocks = chain(child.parent);
 			const title = [...blocks.map((b) => b.title).filter(Boolean), child.title];
 			context = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+			// An action on what is not there fails as the query would, not after Playwright's 30 s.
+			context.setDefaultTimeout(2000);
 			try {
 				for (const b of blocks) for (const fn of b.beforeEach) await step(fn);
 				await step(child.fn);
 				out.push({ file, title, state: 'passed' });
+				process.stdout.write(`  ok ${title.join(' > ')}\n`);
 			} catch (error) {
 				pending.length = 0;
+				await Promise.allSettled(inflight.splice(0));
 				out.push({ file, title, state: 'failed', error: String((error as Error)?.message ?? error) });
+				process.stdout.write(`  FAIL ${title.join(' > ')}: ${String((error as Error)?.message ?? error).split('\n')[0]}\n`);
 			} finally {
 				await context.close();
 				page = undefined;
@@ -220,22 +237,20 @@ async function runFile(browser: Browser, checkout: string, file: string): Promis
 	return out;
 }
 
-if (import.meta.main) {
-	const [checkout, at, outFile, repeat] = process.argv.slice(2);
-	origin = at!;
-	format = (createRequire(join(checkout!, 'package.json'))('date-fns') as { format: typeof format }).format;
+// Run from day-picker-run.ts: the stubs the test file imports import this module, which must have finished evaluating.
+export async function runShim(checkout: string, at: string, outFile: string, repeat = 1): Promise<void> {
+	origin = at;
+	format = (createRequire(join(checkout, 'package.json'))('date-fns') as { format: typeof format }).format;
 	const browser = await chromium.launch();
 	const results: ShimResult[] = [];
 	try {
-		for (let i = 0; i < Number(repeat ?? 1); i++) for (const file of TESTS) results.push(...(await runFile(browser, checkout!, file)));
+		for (let i = 0; i < repeat; i++) for (const file of TESTS) results.push(...(await runFile(browser, checkout, file)));
 	} finally {
 		await browser.close();
 	}
-	await writeFile(outFile!, JSON.stringify(results));
+	await writeFile(outFile, JSON.stringify(results));
 }
 
 export { render };
-export const act = async (fn: Fn) => {
-	await fn();
-};
+export const act = (fn: Fn) => queue(async () => {}).then(() => fn());
 export const React = { createElement: (type: unknown, props: Record<string, unknown> | null) => ({ type, props: props ?? {} }) };

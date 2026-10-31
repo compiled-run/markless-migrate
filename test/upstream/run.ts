@@ -8,6 +8,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { chromium } from 'playwright';
 import { readSource } from '../../src/plan/inventory.ts';
 import { LIBRARIES, type Library } from './libraries.ts';
 
@@ -172,6 +173,26 @@ interface Known {
 	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'adapter'; readonly why: string }>>;
 }
 
+// What each converted page logs as it loads: an error here explains a suite that finds nothing working.
+async function consoleOf(origin: string): Promise<void> {
+	const inventory = JSON.parse(await readFile(join(APP, '.migrate', 'inventory.json'), 'utf8')) as { routes: { route: string }[] };
+	const browser = await chromium.launch();
+	const out: Record<string, string[]> = {};
+	try {
+		for (const { route } of inventory.routes.slice(0, 20)) {
+			const page = await browser.newPage();
+			const lines: string[] = (out[route] = []);
+			page.on('console', (m) => m.type() === 'error' && lines.push(m.text()));
+			page.on('pageerror', (e) => lines.push(String(e)));
+			await page.goto(new URL(route, origin).href, { waitUntil: 'networkidle' }).catch((e: unknown) => lines.push(String(e)));
+			await page.close();
+		}
+	} finally {
+		await browser.close();
+	}
+	await writeFile(join(WORK, 'console.json'), `${JSON.stringify(out, null, 2)}\n`);
+}
+
 async function writeSitemap(origin: string): Promise<void> {
 	const source = await readSource(join(SRC, lib.source));
 	const pages = source.routes.filter((r) => r.kind === 'page' && !/[[:*]/.test(r.path)).map((r) => r.path);
@@ -208,6 +229,7 @@ async function main(): Promise<void> {
 		await timed('convert', () => convert(oldOrigin));
 		await timed('build the port', linkAndBuild);
 		servers.push(await serve(`node ${join(APP, '.output', 'server', 'index.mjs')}`, APP, NEW_PORT));
+		await consoleOf(`http://localhost:${NEW_PORT}`);
 		const port = await timed('suite on the port', async () => suite('new', await front(servers, `http://localhost:${NEW_PORT}`)));
 		await report(old, port);
 	} finally {

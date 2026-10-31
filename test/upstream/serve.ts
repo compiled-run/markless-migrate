@@ -23,7 +23,7 @@ if (import.meta.main) {
 			const path = normalize(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
 			let file = join(target!, path);
 			if (await stat(file).then((s) => s.isDirectory(), () => false)) file = join(file, 'index.html');
-			if (!(await stat(file).then((s) => s.isFile(), () => false))) return res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title>');
+			if (!(await stat(file).then((s) => s.isFile(), () => false))) return res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title><h1>Not found</h1>');
 			res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
 			createReadStream(file).pipe(res);
 		}).listen(Number(port), '127.0.0.1');

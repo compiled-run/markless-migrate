@@ -5,9 +5,10 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 /** Each render the tests make: the example, its props, and the page that shows it. */
-export const RENDERS: readonly { readonly example: string; readonly props: Readonly<Record<string, string>>; readonly path: string }[] = [
+export const RENDERS: readonly { readonly example: string; readonly props: Readonly<Record<string, string | number>>; readonly path: string }[] = [
 	{ example: 'Keyboard', props: { mode: 'single', dir: 'ltr' }, path: '/keyboard-ltr/' },
 	{ example: 'Keyboard', props: { mode: 'single', dir: 'rtl' }, path: '/keyboard-rtl/' },
+	{ example: 'Keyboard', props: { mode: 'single', weekStartsOn: 1 }, path: '/keyboard-monday/' },
 ];
 
 /** The test files whose renders RENDERS covers. */
@@ -26,7 +27,7 @@ export async function writePages(checkout: string): Promise<void> {
 		const page = join(dir, render.path);
 		await mkdir(page, { recursive: true });
 		await writeFile(join(page, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${render.example}</title></head><body><div id="root"></div><script type="module" src="./main.tsx"></script></body></html>\n`);
-		const props = Object.entries(render.props).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ');
+		const props = Object.entries(render.props).map(([k, v]) => `${k}={${JSON.stringify(v)}}`).join(' ');
 		await writeFile(
 			join(page, 'main.tsx'),
 			`import React from 'react';

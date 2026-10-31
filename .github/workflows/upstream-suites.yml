@@ -84,12 +84,17 @@ jobs:
   suite:
     name: ${{ matrix.library }}
     needs: markless
-    runs-on: ubuntu-latest
+    # vaul's pinned Playwright (1.41) installs a WebKit whose system libraries Ubuntu 24.04 no longer has.
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        library: [cmdk, vaul, radix, day-picker]
+        include:
+          - { library: cmdk, os: ubuntu-24.04 }
+          - { library: vaul, os: ubuntu-22.04 }
+          - { library: radix, os: ubuntu-24.04 }
+          - { library: day-picker, os: ubuntu-24.04 }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,7 +116,12 @@ jobs:
             ${{ runner.temp }}/upstream/${{ matrix.library }}/result.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/old.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/new.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/console.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/*.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/convert/report.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/pages
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/components
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/document.tsrx
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14

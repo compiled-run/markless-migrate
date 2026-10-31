@@ -74,6 +74,6 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		serve: (port) => `node ${ROOT}test/upstream/serve.ts static examples-app/upstream-dist ${port}`,
 		serveIn: '.',
 		source: 'examples',
-		runner: { kind: 'shim', script: 'day-picker-shim.ts' },
+		runner: { kind: 'shim', script: 'day-picker-run.ts' },
 	},
 };
