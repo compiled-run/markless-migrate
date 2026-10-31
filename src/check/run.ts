@@ -14,7 +14,7 @@ import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
 import type { ClientFact } from './source-facts.ts';
-import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
+import { adoptAnswers, appHeaders, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
 import { captureHttp, captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
@@ -438,8 +438,20 @@ async function checkArrived(browser: Browser, run: Run, route: string, viewport:
 	});
 	const journeys: Journey[] = distinct.slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
 	if (!journeys.length) return [];
+	// A page the new app does not serve (a port of only some routes) has no link to arrive by: that page's own check reports it, not this route's journeys.
+	if (!(await servesPage(run.new, arrival.entry))) return [];
 	const [a, b, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
 	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements));
+}
+
+async function servesPage(env: SideEnv, path: string): Promise<boolean> {
+	try {
+		const response = await request(new URL(path, env.origin).href, { redirect: 'manual', headers: appHeaders(env), signal: AbortSignal.timeout(15_000) });
+		await response.body?.cancel();
+		return response.status < 400;
+	} catch {
+		return true;
+	}
 }
 
 const RETIMED = 10;

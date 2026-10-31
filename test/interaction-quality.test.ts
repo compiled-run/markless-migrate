@@ -165,6 +165,12 @@ test('a widget that works on a fresh load but not after the router brings its pa
 	assert.match(arrived!.expected, /region \(carousel\) "Gallery" moved/);
 });
 
+test('a port of only some routes is not red for arriving from a page it does not serve: that page has no link to arrive by', async () => {
+	const ported = (path: string) => (path === '/' ? undefined : site(true)(path));
+	const report = await check(site(true), ported, ['/widget']);
+	assert.ok(!open(report).some((f) => /after arriving from/.test(f.check)), JSON.stringify(open(report).map((f) => f.check)));
+});
+
 test('a chart that shows no tooltip where the original shows one as the pointer moves across it is red; the same chart is green', async () => {
 	const same = await check(chart(false), chart(false));
 	assert.deepEqual(open(same).map((f) => `${f.check}: ${f.actual}`), []);
