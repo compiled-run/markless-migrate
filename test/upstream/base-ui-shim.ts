@@ -19,6 +19,9 @@ interface Block {
 	readonly blocks: Map<string, Block>;
 }
 
+// The port keeps a closed layer as a hidden template where React unmounts it; queries skip hidden subtrees on both sides.
+dom.configure({ defaultIgnore: 'script, style, [hidden], [hidden] *' });
+
 chai.use(JestExtend);
 chai.use(JestChaiExpect);
 chai.use(JestAsymmetricMatchers);
