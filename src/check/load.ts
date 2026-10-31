@@ -302,7 +302,9 @@ export function judgeLoad(old: readonly Metrics[], next: readonly Metrics[]): Lo
 		const p = higherIsBetter ? mannWhitneyGreater(n, o) : mannWhitneyGreater(o, n);
 		const paint = PAINTS.has(metric);
 		const f = paint ? Math.max(noiseBand(o) ?? 0, PAINT_STEP_MS) : floor(metric, om);
-		const split = paint ? (clusters(o) ? { side: 'old' as const, clusters: clusters(o)! } : clusters(n) ? { side: 'new' as const, clusters: clusters(n)! } : undefined) : undefined;
+		const found = paint ? (clusters(o) ? { side: 'old' as const, clusters: clusters(o)! } : clusters(n) ? { side: 'new' as const, clusters: clusters(n)! } : undefined) : undefined;
+		// A difference wider than the clustered side's whole spread is told whichever cluster each run landed in.
+		const split = found && Math.abs(worse) <= found.clusters.at(-1)!.at(-1)! - found.clusters[0]![0]! ? found : undefined;
 		return { metric, old: om, new: nm, worse, floor: f, p, spread: { old: spread(o), new: spread(n) }, ...(split ? { bimodal: split } : {}), ok: true };
 	});
 	let rejecting = true;

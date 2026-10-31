@@ -156,6 +156,8 @@ test("a paint time whose runs fall in separate clusters is red as inconclusive, 
 	assert.deepEqual(clusters(VITE_HOME_OLD), [[1860, 1868, 1969], [2415, 2416], [2565], [3013, 3017, 3017, 3020]]);
 	assert.equal(clusters(VITE_BLOG_OLD), undefined);
 	assert.equal(clusters(VITE_BLOG_NEW), undefined, 'one late run is an outlier, not a second cluster');
+	// Run 41196586619 (real throttling): the port's runs fall in two groups 100 ms apart, but it paints 600 ms before the original either way.
+	assert.equal(verdict([2215, 2222, 2238, 2252, 2498].map(paints), [1592, 1607, 1625, 1727, 1727].map(paints), 'fcp').ok, true);
 	const v = verdict(VITE_HOME_OLD.map(paints), VITE_HOME_NEW.map(paints), 'fcp');
 	assert.equal(v.ok, false);
 	assert.equal(v.bimodal?.side, 'old');
