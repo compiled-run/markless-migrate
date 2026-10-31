@@ -20,6 +20,9 @@ importers:
       graphql:
         specifier: ^17.0.2
         version: 17.0.2
+      happy-dom:
+        specifier: 21.0.4
+        version: 21.0.4
       lighthouse:
         specifier: 12.8.2
         version: 12.8.2
@@ -116,7 +119,7 @@ importers:
         version: 3.0.260429-beta(dotenv@17.4.2)(jiti@2.7.0)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
       vite-plus:
         specifier: 0.1.20
-        version: 0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
+        version: 0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
     devDependencies:
       typescript:
         specifier: ^5.9.3
@@ -172,7 +175,7 @@ importers:
         version: 1.4.0
       vite-plus:
         specifier: 0.3.1
-        version: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)
+        version: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)
     devDependencies:
       '@markless/typescript-plugin':
         specifier: 0.7.0
@@ -245,7 +248,7 @@ importers:
         version: 3.0.260903-beta
       vite-plus:
         specifier: 1.3.0
-        version: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
+        version: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
     devDependencies:
       typescript:
         specifier: ^5.9.3
@@ -270,7 +273,7 @@ importers:
         version: 3.0.260903-beta
       vite-plus:
         specifier: 1.3.0
-        version: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
+        version: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
     devDependencies:
       typescript:
         specifier: ^5.9.3
@@ -2720,6 +2723,12 @@ packages:
   '@types/validate-npm-package-name@4.0.2':
     resolution: {integrity: sha512-lrpDziQipxCEeK5kWxvljWYhUvOiB2A9izZd9B2AFarYAkqZshb4lPbRs7zKEic6eGtH8V/2qJW+dPp9OtF6bw==}
 
+  '@types/whatwg-mimetype@3.0.2':
+    resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
+
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
 
@@ -3977,6 +3986,10 @@ packages:
   buffer-crc32@0.2.13:
     resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
 
+  buffer-image-size@0.6.4:
+    resolution: {integrity: sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==}
+    engines: {node: '>=4.0'}
+
   bundle-name@4.1.1:
     resolution: {integrity: sha512-DdH81/zPLVS11EUgWq3tEu/xn+EzljlMYooDNdzWEnFha3R3NBMpMV1UqYIpjYHV/SgpFKMIX1Oh7o06SjM/oA==}
     engines: {node: '>=18'}
@@ -4596,6 +4609,10 @@ packages:
         optional: true
       ocache:
         optional: true
+
+  happy-dom@21.0.4:
+    resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
+    engines: {node: '>=20.0.0'}
 
   has-symbols@1.1.0:
     resolution: {integrity: sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==}
@@ -6285,6 +6302,10 @@ packages:
 
   webdriver-bidi-protocol@0.4.1:
     resolution: {integrity: sha512-ARrjNjtWRRs2w4Tk7nqrf2gBI0QXWuOmMCx2hU+1jUt6d00MjMxURrhxhGbrsoiZKJrhTSTzbIrc554iKI10qw==}
+
+  whatwg-mimetype@3.0.0:
+    resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}
+    engines: {node: '>=12'}
 
   when-exit@2.1.5:
     resolution: {integrity: sha512-VGkKJ564kzt6Ms1dbgPP/yuIoQCrsFAnRbptpC5wOEsDaNsbCB2bnfnaA8i/vRs5tjUSEOtIuvl9/MyVsvQZCg==}
@@ -8562,6 +8583,12 @@ snapshots:
 
   '@types/validate-npm-package-name@4.0.2': {}
 
+  '@types/whatwg-mimetype@3.0.2': {}
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 24.19.2
+
   '@types/yauzl@2.10.3':
     dependencies:
       '@types/node': 24.19.2
@@ -8598,7 +8625,7 @@ snapshots:
       '@testing-library/dom': 10.4.2
       '@testing-library/user-event': 14.6.8(@testing-library/dom@10.4.2)
       '@vitest/browser': 4.1.11(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(vitest@4.1.11)
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
     transitivePeerDependencies:
       - bufferutil
       - msw
@@ -8610,7 +8637,7 @@ snapshots:
       '@testing-library/dom': 10.4.2
       '@testing-library/user-event': 14.6.8(@testing-library/dom@10.4.2)
       '@vitest/browser': 5.0.5(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(vitest@5.0.5)
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
     transitivePeerDependencies:
       - bufferutil
       - msw
@@ -8626,7 +8653,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
@@ -8644,7 +8671,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
@@ -8717,7 +8744,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
 
   '@vitest/utils@4.1.11':
     dependencies:
@@ -8841,7 +8868,7 @@ snapshots:
   '@voidzero-dev/vite-plus-linux-x64-musl@1.3.0':
     optional: true
 
-  '@voidzero-dev/vite-plus-test@0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))':
+  '@voidzero-dev/vite-plus-test@0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
@@ -8860,6 +8887,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@types/node': 24.19.2
+      happy-dom: 21.0.4
     transitivePeerDependencies:
       - '@arethetypeswrong/core'
       - '@tsdown/css'
@@ -9390,6 +9418,10 @@ snapshots:
       update-browserslist-db: 1.3.4(browserslist@4.29.5)
 
   buffer-crc32@0.2.13: {}
+
+  buffer-image-size@0.6.4:
+    dependencies:
+      '@types/node': 24.19.2
 
   bundle-name@4.1.1:
     dependencies:
@@ -9938,13 +9970,26 @@ snapshots:
       crossws: 0.4.15(srvx@0.11.22)
       ocache: 0.1.5
 
-  h3@2.0.2(crossws@0.4.15(srvx@0.11.22))(ocache@0.3.1):
+  h3@2.0.2(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.1):
     dependencies:
       rou3: 1.0.0
       srvx: 1.0.5
     optionalDependencies:
-      crossws: 0.4.15(srvx@0.11.22)
+      crossws: 0.4.15(srvx@1.0.5)
       ocache: 0.3.1
+
+  happy-dom@21.0.4:
+    dependencies:
+      '@types/node': 24.19.2
+      '@types/whatwg-mimetype': 3.0.2
+      '@types/ws': 8.18.2
+      buffer-image-size: 0.6.4
+      entities: 7.0.1
+      whatwg-mimetype: 3.0.0
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   has-symbols@1.1.0: {}
 
@@ -10487,7 +10532,7 @@ snapshots:
       crossws: 0.4.15(srvx@1.0.5)
       db0: 0.4.2
       env-runner: 0.2.3
-      h3: 2.0.2(crossws@0.4.15(srvx@0.11.22))(ocache@0.3.1)
+      h3: 2.0.2(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.1)
       hookable: 6.1.2
       nf3: 0.3.24
       ocache: 0.3.1
@@ -10623,7 +10668,7 @@ snapshots:
       '@oxfmt/binding-win32-ia32-msvc': 0.46.0
       '@oxfmt/binding-win32-x64-msvc': 0.46.0
 
-  oxfmt@0.66.0(svelte@5.57.2)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)):
+  oxfmt@0.66.0(svelte@5.57.2)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)):
     dependencies:
       tinypool: 2.1.0
     optionalDependencies:
@@ -10647,9 +10692,9 @@ snapshots:
       '@oxfmt/binding-win32-ia32-msvc': 0.66.0
       '@oxfmt/binding-win32-x64-msvc': 0.66.0
       svelte: 5.57.2
-      vite-plus: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)
+      vite-plus: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)
 
-  oxfmt@0.73.0(svelte@5.57.2)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)):
+  oxfmt@0.73.0(svelte@5.57.2)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)):
     dependencies:
       tinypool: 2.2.0
     optionalDependencies:
@@ -10673,7 +10718,7 @@ snapshots:
       '@oxfmt/binding-win32-ia32-msvc': 0.73.0
       '@oxfmt/binding-win32-x64-msvc': 0.73.0
       svelte: 5.57.2
-      vite-plus: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
+      vite-plus: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
 
   oxlint-tsgolint@0.22.0:
     optionalDependencies:
@@ -10725,7 +10770,7 @@ snapshots:
       '@oxlint/binding-win32-x64-msvc': 1.61.0
       oxlint-tsgolint: 0.22.0
 
-  oxlint@1.81.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)):
+  oxlint@1.81.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)):
     optionalDependencies:
       '@oxlint/binding-android-arm-eabi': 1.81.0
       '@oxlint/binding-android-arm64': 1.81.0
@@ -10747,9 +10792,9 @@ snapshots:
       '@oxlint/binding-win32-ia32-msvc': 1.81.0
       '@oxlint/binding-win32-x64-msvc': 1.81.0
       oxlint-tsgolint: 7.0.2001
-      vite-plus: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)
+      vite-plus: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3)
 
-  oxlint@1.88.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)):
+  oxlint@1.88.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)):
     optionalDependencies:
       '@oxlint/binding-android-arm-eabi': 1.88.0
       '@oxlint/binding-android-arm64': 1.88.0
@@ -10771,7 +10816,7 @@ snapshots:
       '@oxlint/binding-win32-ia32-msvc': 1.88.0
       '@oxlint/binding-win32-x64-msvc': 1.88.0
       oxlint-tsgolint: 7.0.2004
-      vite-plus: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
+      vite-plus: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3)
 
   p-limit@2.3.0:
     dependencies:
@@ -11612,11 +11657,11 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite-plus@0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)):
+  vite-plus@0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)):
     dependencies:
       '@oxc-project/types': 0.127.0
       '@voidzero-dev/vite-plus-core': 0.1.20(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)
-      '@voidzero-dev/vite-plus-test': 0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
+      '@voidzero-dev/vite-plus-test': 0.1.20(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
       oxfmt: 0.46.0
       oxlint: 1.61.0(oxlint-tsgolint@0.22.0)
       oxlint-tsgolint: 0.22.0
@@ -11659,7 +11704,7 @@ snapshots:
       - vite
       - yaml
 
-  vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3):
+  vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3):
     dependencies:
       '@oxc-project/types': 0.148.0
       '@oxlint/plugins': 1.79.0
@@ -11672,11 +11717,11 @@ snapshots:
       '@vitest/snapshot': 4.1.11
       '@vitest/spy': 4.1.11
       '@vitest/utils': 4.1.11
-      oxfmt: 0.66.0(svelte@5.57.2)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3))
-      oxlint: 1.81.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3))
+      oxfmt: 0.66.0(svelte@5.57.2)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3))
+      oxlint: 1.81.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.3.1(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(jiti@2.7.0)(svelte@5.57.2)(typescript@5.9.3))
       oxlint-tsgolint: 7.0.2001
       vite: '@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)'
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
     optionalDependencies:
       '@voidzero-dev/vite-plus-darwin-arm64': 0.3.1
       '@voidzero-dev/vite-plus-darwin-x64': 0.3.1
@@ -11716,7 +11761,7 @@ snapshots:
       - utf-8-validate
       - yaml
 
-  vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3):
+  vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3):
     dependencies:
       '@oxc-project/types': 0.154.0
       '@oxlint/plugins': 1.88.0
@@ -11727,11 +11772,11 @@ snapshots:
       '@vitest/snapshot': 5.0.5
       '@vitest/spy': 5.0.5
       '@vitest/utils': 5.0.5
-      oxfmt: 0.73.0(svelte@5.57.2)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3))
-      oxlint: 1.88.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3))
+      oxfmt: 0.73.0(svelte@5.57.2)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3))
+      oxlint: 1.88.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(typescript@5.9.3))(happy-dom@21.0.4)(jiti@2.7.0)(playwright@1.64.1)(svelte@5.57.2)(typescript@5.9.3))
       oxlint-tsgolint: 7.0.2004
       vite: '@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3)'
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4)
     optionalDependencies:
       '@voidzero-dev/vite-plus-darwin-arm64': 1.3.0
       '@voidzero-dev/vite-plus-darwin-x64': 1.3.0
@@ -11793,7 +11838,7 @@ snapshots:
     optionalDependencies:
       vite: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)
 
-  vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3)):
+  vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))
@@ -11819,10 +11864,11 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@types/node': 24.19.2
       '@vitest/browser-preview': 4.1.11(@voidzero-dev/vite-plus-core@0.3.1(@types/node@24.19.2)(jiti@2.7.0)(typescript@5.9.3))(vitest@4.1.11)
+      happy-dom: 21.0.4
     transitivePeerDependencies:
       - msw
 
-  vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3)):
+  vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(happy-dom@21.0.4):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.5(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))
@@ -11843,6 +11889,7 @@ snapshots:
       '@types/node': 24.19.2
       '@vitest/browser-preview': 5.0.5(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(jiti@2.7.0)(typescript@5.9.3))(vitest@5.0.5)
       '@vitest/ui': 5.0.5(vitest@5.0.5)
+      happy-dom: 21.0.4
     transitivePeerDependencies:
       - msw
 
@@ -11861,6 +11908,8 @@ snapshots:
   web-tree-sitter@0.27.1: {}
 
   webdriver-bidi-protocol@0.4.1: {}
+
+  whatwg-mimetype@3.0.0: {}
 
   when-exit@2.1.5: {}
 
