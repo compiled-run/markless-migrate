@@ -182,6 +182,7 @@ export const STAGES: readonly (readonly [stage: string, prefix: string])[] = [
 	['build', 'build'],
 	['check select', 'check-select'],
 	['check', 'check /'],
+	['probe', 'probe /'],
 	['deploy', 'deploy'],
 ];
 

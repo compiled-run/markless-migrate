@@ -677,9 +677,21 @@ jobs:
       only-artifact: pl-check-select
       reuse: ${{ inputs.fresh && 'false' || 'true' }}
 
+  # The dead-controls probe on the same build and the same routes, beside the check (its own shards, max-parallel 10).
+  probe:
+    needs: [build, check-select]
+    if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
+    uses: ./.github/workflows/probe-dead-controls.yml
+    with:
+      build: ${{ inputs.build-url }}
+      build-artifact: pl-${{ inputs.site || 'shadcn-ui' }}-build-${{ needs.build.outputs.key }}
+      targets: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
+      targets-artifact: pl-check-select
+      reuse: ${{ inputs.fresh && 'false' || 'true' }}
+
   deploy:
-    needs: [build, check]
-    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
+    needs: [build, check, probe]
+    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') && (needs.probe.result == 'success' || needs.probe.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -711,7 +723,7 @@ jobs:
           if-no-files-found: ignore
 
   report:
-    needs: [prepare, capture, emit, build, check-select, check, deploy]
+    needs: [prepare, capture, emit, build, check-select, check, probe, deploy]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -20,6 +20,23 @@ on:
         description: Use the original's side of each use as earlier runs recorded it ('false' uses the original live throughout)
         required: false
         default: 'true'
+  # The pipeline's check stage, beside check.yml: its build and the routes its selection left to check.
+  workflow_call:
+    inputs:
+      build: { type: string, required: false, default: '' }
+      build-artifact:
+        description: An artifact of this repository holding output.tar.gz, served instead of the build URL
+        type: string
+        required: false
+        default: ''
+      targets: { type: string, required: true }
+      targets-artifact:
+        description: An artifact of this run holding targets.json, probed instead of targets
+        type: string
+        required: false
+        default: ''
+      costs: { type: string, required: false, default: '' }
+      reuse: { type: string, required: false, default: 'true' }
 permissions:
   contents: read
   actions: read
@@ -104,7 +121,13 @@ jobs:
       - name: Serve both sides
         env:
           BUILD: ${{ inputs.build }}
+          ARTIFACT: ${{ inputs.build-artifact }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          if [ -n "$ARTIFACT" ]; then
+            bash scripts/pipeline-artifact.sh build "$ARTIFACT" "$BUILD" "$RUNNER_TEMP/build"
+            BUILD="file://$RUNNER_TEMP/build/output.tar.gz"
+          fi
           # Chromium's two routes at a time get three copies of the old server (one answering every cold load was what they waited
           # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
           OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
@@ -128,11 +151,16 @@ jobs:
           path: ${{ runner.temp }}/reuse
           key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
           restore-keys: probe-reuse-${{ env.SITE }}-
+      - if: inputs.targets-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.targets-artifact }}
+          path: ${{ runner.temp }}/only
       - name: Probe
         env:
           OLD: http://localhost:4000
           NEW: http://127.0.0.1:3000
-          TARGETS: ${{ inputs.targets }}
+          TARGETS: ${{ inputs.targets-artifact != '' && format('{0}/only/targets.json', runner.temp) || inputs.targets }}
           REUSE_ON: ${{ inputs.reuse != 'false' }}
         run: |
           mkdir -p out/strips
