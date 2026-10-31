@@ -27,6 +27,12 @@ for (const profileName of profilesArg!.split(','))
 							: await webkit.launch({ proxy });
 				const page = await (await browser.newContext()).newPage();
 				const fragments: string[] = [];
+				// Off: the idle tier's fetches, the ones made before the click, never arrive, as with idle prefetch turned off.
+				let clicking = false;
+				if (side === 'off')
+					await page.route('**/_markless/fragment/**', (route) =>
+						!clicking && route.request().headers()['purpose'] === 'prefetch' ? route.abort() : route.continue(),
+					);
 				page.on('request', (r) => r.url().includes('/_markless/fragment') && fragments.push(new URL(r.url()).pathname));
 				const row: Record<string, unknown> = { profile: profileName, browser: browserName, side, run };
 				try {
@@ -35,6 +41,7 @@ for (const profileName of profilesArg!.split(','))
 					row.prefetchedBeforeClick = fragments.length;
 					const target = page.locator(link).first();
 					const href = await target.getAttribute('href');
+					clicking = true;
 					const t0 = await page.evaluate(() => performance.now());
 					await target.click();
 					await page.waitForURL((u) => u.pathname === new URL(href!, 'http://x').pathname, { timeout: 60_000 });

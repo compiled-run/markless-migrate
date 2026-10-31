@@ -46,7 +46,7 @@ jobs:
           (PORT=3002 HOST=127.0.0.1 nohup node "$RUNNER_TEMP/off/server/index.mjs" > "$RUNNER_TEMP/off.log" 2>&1 &)
           for p in 3001 3002; do for _ in $(seq 1 120); do curl -sf -o /dev/null "http://127.0.0.1:$p/guide/" && break; sleep 0.5; done; curl -s -o /dev/null -w "$p /guide/ %{http_code} %{time_total}s\n" "http://127.0.0.1:$p/guide/"; done
       - name: First click, idle prefetch on against off
-        run: node scripts/exp/prefetch-idle.ts "$RUNNER_TEMP/prefetch-idle.json" 5 3001 3002 /guide/ 'a[href="/guide/features"]' chromium,firefox,webkit cable,fast-4g,slow-4g,regular-3g
+        run: node scripts/exp/prefetch-idle.ts "$RUNNER_TEMP/prefetch-idle.json" 5 3001 3001 /guide/ 'a[href="/guide/features"]' chromium,firefox,webkit cable,fast-4g,slow-4g,regular-3g
       - name: Summary
         if: always()
         run: |
