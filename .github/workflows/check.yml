@@ -262,6 +262,7 @@ jobs:
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log
             ${{ runner.temp }}/old-build.log
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
@@ -322,3 +323,7 @@ jobs:
           retention-days: 30
       - name: Every route checked to the end
         run: node scripts/check-shards.ts gate merged
+      # A shard that kept results or recorded old pages, but whose artifact holds none, lost them on upload: a silent cold start.
+      - name: Every shard uploaded what it kept
+        if: always()
+        run: node scripts/check-shards.ts uploaded shards

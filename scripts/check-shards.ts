@@ -115,6 +115,26 @@ export async function joinOld(from: string, to: string): Promise<number> {
 	return n;
 }
 
+/**
+ * What each shard said it kept against what its artifact holds: a shard whose log says it kept N results for later runs, or
+ * recorded old pages not cached yet, but whose artifact has no such entries lost them on the way (an upload that left them out).
+ */
+export async function lostUploads(dir: string): Promise<string[]> {
+	const lost: string[] = [];
+	for (const shard of (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory() && /^check-\d+$/.test(e.name))) {
+		const files = await readdir(join(dir, shard.name), { recursive: true, withFileTypes: true });
+		const log = files.find((f) => f.isFile() && f.name === 'check.txt');
+		if (!log) continue;
+		const text = await readFile(join(log.parentPath, log.name), 'utf8');
+		const count = (re: RegExp) => files.filter((f) => f.isFile() && re.test(f.parentPath)).length;
+		const kept = Number(/--reuse: kept (\d+) results/.exec(text)?.[1] ?? 0);
+		const cached = Number(/Old side from the cache[^\n]*?(\d+) not cached yet/.exec(text)?.[1] ?? 0);
+		if (kept && !count(/\.migrate\/reuse$/)) lost.push(`${shard.name} kept ${kept} results for later runs, but its artifact has none`);
+		if (cached && !count(/\.migrate\/cache\/old$/)) lost.push(`${shard.name} recorded ${cached} old pages not cached before, but its artifact has no old-side entries`);
+	}
+	return lost;
+}
+
 export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red');
@@ -219,6 +239,13 @@ async function main(): Promise<void> {
 		await write(a, combine(parts));
 		return;
 	}
+	if (command === 'uploaded' && a) {
+		const lost = await lostUploads(a);
+		for (const l of lost) console.log(l);
+		if (lost.length) process.exit(1);
+		console.log('every shard uploaded what it kept');
+		return;
+	}
 	if (command === 'join-old' && a && b) {
 		console.log(`${await joinOld(a, b)} old-side entries`);
 		return;
@@ -245,7 +272,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir>');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir>');
 	process.exit(2);
 }
 

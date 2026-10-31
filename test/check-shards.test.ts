@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combine, costsOf, joinKept, joinOld, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
+import { combine, costsOf, joinKept, joinOld, lostUploads, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -132,4 +132,20 @@ test("every shard's old-side cache entries and the earlier joined ones become on
 	assert.equal(await joinOld(join(root, 'shards'), join(root, 'out')), 3);
 	assert.deepEqual((await readdir(join(root, 'out/cache/old'))).sort(), ['capture-a.bin', 'capture-b.bin', 'capture-c.bin']);
 	assert.deepEqual(await readdir(join(root, 'out/slow-network')), ['n1.json']);
+});
+
+test("a shard whose log says it kept results or recorded old pages, but whose artifact holds none, is named as an upload that lost them", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'uploaded-'));
+	const shard = async (n: number, log: string, files: string[]) => {
+		await mkdir(join(root, `check-${n}`, '_temp'), { recursive: true });
+		await writeFile(join(root, `check-${n}`, '_temp', 'check.txt'), log);
+		for (const f of files) {
+			await mkdir(join(root, `check-${n}`, 'app', '.migrate', f), { recursive: true });
+			await writeFile(join(root, `check-${n}`, 'app', '.migrate', f, 'entry.json'), '{}');
+		}
+	};
+	await shard(1, '--reuse: kept 3 results for later runs.\nOld side from the cache (.migrate/cache): 0 reused because nothing the old page loads changed, 2 not cached yet.', ['reuse', 'cache/old']);
+	await shard(2, '--reuse: kept 2 results for later runs.\nOld side from the cache (.migrate/cache): 0 reused because nothing the old page loads changed, 1 not cached yet.', []);
+	await shard(3, '--reuse: kept 0 results for later runs.', []);
+	assert.deepEqual(await lostUploads(root), ['check-2 kept 2 results for later runs, but its artifact has none', 'check-2 recorded 1 old pages not cached before, but its artifact has no old-side entries']);
 });
