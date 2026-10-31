@@ -4,10 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
-# A main push gets a group of its own: a shared group cancels the waiting run whenever a newer merge lands, so main never finished one.
+# A main push and a merge queue group get a group of their own: a shared group cancels the waiting run whenever a newer merge lands.
 concurrency:
-  group: ci-${{ github.event_name == 'push' && format('main-{0}', github.sha) || github.ref }}
+  group: ci-${{ github.event_name != 'pull_request' && format('{0}-{1}', github.event_name, github.sha) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -21,9 +22,20 @@ jobs:
     timeout-minutes: 5
     permissions:
       pull-requests: read
+      actions: read
     outputs:
       e2e: ${{ steps.files.outputs.e2e }}
+      tested: ${{ steps.queue.outputs.tested }}
     steps:
+      # A commit the merge queue fast-forwarded main to was already tested whole, at this exact SHA.
+      - id: queue
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=merge_group&status=success&head_sha=$GITHUB_SHA" --jq '.workflow_runs[0].html_url // empty')
+          if [ -n "$run" ]; then echo tested=true >> "$GITHUB_OUTPUT"; echo "Every suite already passed on this commit in the merge queue: $run" >> "$GITHUB_STEP_SUMMARY"; else echo tested=false >> "$GITHUB_OUTPUT"; fi
       - id: files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -38,6 +50,8 @@ jobs:
 
   typecheck:
     name: Typecheck
+    needs: changes
+    if: needs.changes.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -54,12 +68,14 @@ jobs:
 
   unit:
     name: Unit tests (${{ matrix.shard }}/4)
+    needs: changes
+    if: needs.changes.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # With the e2e cap, one pull request holds at most 8 of the org's 60 runners.
-      max-parallel: 2
+      # With the five short e2e jobs, one pull request holds at most 10 of the org's 60 runners, for about 15 minutes.
+      max-parallel: 4
       matrix:
         # Four shards: with journeys after in-place arrival and each route's 3.5 s look at what moves on its own, shard 1 of 3 measured 30 min, its whole budget.
         shard: [1, 2, 3, 4]
@@ -71,15 +87,13 @@ jobs:
       - run: bash scripts/ci-watchdog.sh node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/4 test/*.test.ts
 
   e2e:
-    name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
+    name: E2E ${{ matrix.suite }}
     needs: changes
-    if: needs.changes.outputs.e2e == 'true'
+    if: needs.changes.outputs.e2e == 'true' && needs.changes.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # The org runs 60 jobs at once for every repository: ten pull requests at 23 jobs each held all 60 and queued Markless's CI.
-      max-parallel: 5
       matrix:
         include:
           # Suites of 0 to 4 minutes share a runner, one file after another, instead of each paying its own setup.
@@ -88,6 +102,30 @@ jobs:
           - { suite: networks, files: slow-network late-fonts busy-cpu, browsers: chromium firefox webkit }
           - { suite: shadcn, files: shadcn-typeset shadcn-create, browsers: chromium webkit }
           - { suite: parity, files: control-parity, browsers: chromium webkit }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browsers || 'chromium' }}
+      - run: |
+          files=()
+          for suite in $SUITES; do files+=("test/e2e/$suite.test.ts"); done
+          node --test --test-concurrency=1 "${files[@]}"
+        env:
+          SUITES: ${{ matrix.files || matrix.suite }}
+
+  # The checker's mutation suites were 60% of a pull request's runner time; they run in the merge queue and on main.
+  mutation:
+    name: E2E ${{ matrix.suite }} (${{ matrix.shard }})
+    needs: changes
+    if: github.event_name != 'pull_request' && needs.changes.outputs.tested != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
           - { suite: next-app, shard: 1/6 }
           - { suite: next-app, shard: 2/6 }
           - { suite: next-app, shard: 3/6 }
@@ -101,20 +139,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-        with:
-          browsers: ${{ matrix.browsers || 'chromium' }}
-      - run: |
-          files=()
-          for suite in $SUITES; do files+=("test/e2e/$suite.test.ts"); done
-          node --test --test-concurrency=1 "${files[@]}"
+      - run: node --test --test-concurrency=1 "test/e2e/$SUITE.test.ts"
         env:
-          SUITES: ${{ matrix.files || matrix.suite }}
+          SUITE: ${{ matrix.suite }}
           E2E_SHARD: ${{ matrix.shard }}
 
   passed:
     name: CI passed
     if: always()
-    needs: [changes, typecheck, unit, e2e]
+    needs: [changes, typecheck, unit, e2e, mutation]
     runs-on: ubuntu-latest
     steps:
-      - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.changes.result == 'success' && needs.typecheck.result == 'success' && needs.unit.result == 'success' && (needs.e2e.result == 'success' || (needs.e2e.result == 'skipped' && needs.changes.outputs.e2e == 'false')) }}" = true
+      - run: |
+          set -euo pipefail
+          test "$CHANGES" = success
+          if [ "$TESTED" = true ]; then exit 0; fi
+          test "$TYPECHECK" = success
+          test "$UNIT" = success
+          if [ "$E2E_WANTED" = true ]; then test "$E2E" = success; else test "$E2E" = skipped; fi
+          if [ "$EVENT" = pull_request ]; then test "$MUTATION" = skipped; elif [ "$E2E_WANTED" = true ]; then test "$MUTATION" = success; fi
+        env:
+          EVENT: ${{ github.event_name }}
+          TESTED: ${{ needs.changes.outputs.tested }}
+          E2E_WANTED: ${{ needs.changes.outputs.e2e }}
+          CHANGES: ${{ needs.changes.result }}
+          TYPECHECK: ${{ needs.typecheck.result }}
+          UNIT: ${{ needs.unit.result }}
+          E2E: ${{ needs.e2e.result }}
+          MUTATION: ${{ needs.mutation.result }}
