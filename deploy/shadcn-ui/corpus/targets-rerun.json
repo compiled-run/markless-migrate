@@ -1,0 +1,6 @@
+{
+	"routes": ["/typeset", "/docs/components/base/combobox", "/docs/components/radix/date-picker", "/docs/components/base/code-block"],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
