@@ -45,9 +45,20 @@ export function describe(cause: InfrastructureCause, code: string, url: URL, tim
 
 export const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
+// A page that loads in 25 s alone on a slow runner (ui.shadcn.com's /charts/bar, ten chart frames) times out once the
+// check's other pages of it load beside it: each later load of a URL waits three times its slowest load so far.
+const slowest = new Map<string, number>();
+const loadKey = (url: string) => url.replace(/[?#].*$/, '');
+function learnLoad(url: string, ms: number): void {
+	slowest.set(loadKey(url), Math.max(slowest.get(loadKey(url)) ?? 0, ms));
+}
+export function learnedTimeout(url: string): number {
+	return Math.max(LOAD_TIMEOUT_MS, 3 * (slowest.get(loadKey(url)) ?? 0));
+}
+
 /** Loads a page, retrying once after a backoff when the network fails it; a second failure is an InfrastructureError naming the cause. */
 export async function loadPage(page: Page, url: string, options: { timeout?: number; backoffMs?: number } = {}): Promise<Response | null> {
-	const timeout = options.timeout ?? LOAD_TIMEOUT_MS;
+	const timeout = options.timeout ?? learnedTimeout(url);
 	// What the load is still waiting on when it times out: the request that holds the load event back.
 	const waiting = new Map<Request, number>();
 	const sent = (r: Request) => void waiting.set(r, Date.now());
@@ -71,7 +82,10 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 	for (let attempt = 0; ; attempt++) {
 		waiting.clear();
 		try {
-			return await page.goto(url, { waitUntil: 'load', timeout });
+			const started = Date.now();
+			const response = await page.goto(url, { waitUntil: 'load', timeout });
+			learnLoad(url, Date.now() - started);
+			return response;
 		} catch (error) {
 			// The about:blank left before a retry can commit after its own goto returned, and abort the retried load.
 			if (attempt === 1 && /interrupted by another navigation to "about:blank"/.test(errorText(error))) continue;
