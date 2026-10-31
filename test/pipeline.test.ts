@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { captureCosts, codeClosure, copiedParts, deal, importsOf, partsKeys, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
+import { captureCosts, codeClosure, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
 
 async function tree(files: Record<string, string>): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'pipeline-'));
@@ -138,4 +138,12 @@ test('the report gives each stage its wall time from first start to last end, it
 	assert.match(text, /\| build \| 10:00 \| 10:00 \| success \| hit no, seconds 300 \|/);
 	assert.match(text, /\| check \| 10:00 \|/);
 	assert.match(text, /\| deploy \| – \| – \| not in this run \|/);
+});
+
+test("the plan's key reads the planner's code, not the CLI that hands it its arguments", async () => {
+	const root = join(import.meta.dirname, '..');
+	const files = (await codeClosure(PLAN_ENTRIES.map((f) => join(root, f)))).map((f) => f.slice(root.length + 1));
+	assert.ok(files.includes('src/plan/inventory.ts') && files.includes('src/cache/cli.ts') && files.includes('src/usage/index.ts'));
+	assert.ok(!files.includes('src/cli.ts'));
+	assert.ok(!files.includes('src/convert/index.ts') && !files.includes('src/convert/reveal.ts'), 'a change to the emit or the recorder keeps the plan');
 });
