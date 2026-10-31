@@ -1422,7 +1422,7 @@ async function main(argv: string[]): Promise<number> {
 }
 
 const code = await main(process.argv.slice(2)).catch((error: unknown) => {
-	err(`markless-migrate: ${error instanceof Error ? error.message : String(error)}\n`);
+	err(`markless-migrate: ${error instanceof Error ? (process.env.MARKLESS_MIGRATE_STACK ? error.stack : error.message) : String(error)}\n`);
 	return 1;
 });
 if (code >= 0) process.exitCode = code;

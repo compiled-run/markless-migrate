@@ -1,0 +1,254 @@
+{
+	"cmdk": {
+		"basic.test.ts > webkit > basic behavior > item onSelect is called on click": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"basic.test.ts > webkit > basic behavior > items filter when searching": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs"
+		},
+		"basic.test.ts > webkit > basic behavior > items filter when searching by keywords": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs"
+		},
+		"basic.test.ts > webkit > basic behavior > empty component renders when there are no results": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs"
+		},
+		"basic.test.ts > webkit > basic behavior > className is applied to each part": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs"
+		},
+		"group.test.ts > webkit > group > group can be progressively rendered": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"group.test.ts > webkit > group > mounted group still rendered with filter using forceMount": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item > mounted item matches search": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs; then the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item > mounted item does not match search": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs; then the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item > unmount item that is selected": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item > unmount item that is the only result": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item > mount item that is the only result": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item > selected does not change when mounting new items": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"item.test.ts > webkit > item advanced > re-rendering re-matches implicit textContent value": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"keybind.test.ts > webkit > no-vim keybinds > ctrl n/p does nothing": {
+			"class": "part",
+			"why": "the part always moves the selection on Ctrl+N/P/J/K (parts/cmdk.ts keydown) and ignores <Command vimBindings={false}>, which convert does not carry either",
+			"racy": "the test passes when its key lands before the part listens (listen() runs once the page is idle), so a pass here is that race, not a fix"
+		},
+		"numeric.test.ts > webkit > behavior for numeric values > items filter correctly on numeric inputs": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs"
+		},
+		"numeric.test.ts > webkit > behavior for numeric values > items filter correctly on non-numeric inputs": {
+			"class": "shape",
+			"why": "the part hides an item, group or empty state that scores 0 where cmdk unmounts it (parts/cmdk.ts apply); the test counts DOM nodes, so it fails though nothing visible differs"
+		},
+		"props.test.ts > webkit > props > results match against custom filter": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"props.test.ts > webkit > props > controlled value": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"props.test.ts > webkit > props > keep controlled value if empty results": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"props.test.ts > webkit > props > controlled search": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"props.test.ts > webkit > props > keep focus on the provided initial value": {
+			"class": "convert",
+			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
+		},
+		"keybind.test.ts > webkit > no-vim keybinds > ctrl j/k does nothing": {
+			"class": "part",
+			"why": "the part always moves the selection on Ctrl+N/P/J/K (parts/cmdk.ts keydown) and ignores <Command vimBindings={false}>, which convert does not carry either",
+			"racy": "the test passes when its key lands before the part listens (listen() runs once the page is idle), so a pass here is that race, not a fix"
+		}
+	},
+	"vaul": {
+		"tests/base.spec.ts > iPhone > should close when dragged down and cancelled": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > should close when dragged down and cancelled": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should open drawer": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should close on background interaction": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should close when `Drawer.Close` is clicked": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should close when controlled": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should be open by defafult when `defaultOpen` is true": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should close when dragged down": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > iPhone > Base tests > should not close when dragged up": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should open drawer": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should close on background interaction": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should close when `Drawer.Close` is clicked": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should close when controlled": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should be open by defafult when `defaultOpen` is true": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should close when dragged down": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/base.spec.ts > Pixel > Base tests > should not close when dragged up": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/controlled.spec.ts > iPhone > Initial-snap > should not close when clicked on overlay and only the open prop is passsed": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/controlled.spec.ts > iPhone > Initial-snap > should close when clicked on overlay and open and onOpenChange props are passed": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/controlled.spec.ts > Pixel > Initial-snap > should not close when clicked on overlay and only the open prop is passsed": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/controlled.spec.ts > Pixel > Initial-snap > should close when clicked on overlay and open and onOpenChange props are passed": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/nested.spec.ts > iPhone > Nested tests > should open and close nested drawer": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/nested.spec.ts > Pixel > Nested tests > should open and close nested drawer": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/non-dismissible.spec.ts > iPhone > Non-dismissible > should not close on background interaction": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/non-dismissible.spec.ts > iPhone > Non-dismissible > should not close when dragged down": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/non-dismissible.spec.ts > iPhone > Non-dismissible > should close when the dismiss button is clicked": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/non-dismissible.spec.ts > Pixel > Non-dismissible > should not close on background interaction": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/non-dismissible.spec.ts > Pixel > Non-dismissible > should not close when dragged down": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/non-dismissible.spec.ts > Pixel > Non-dismissible > should close when the dismiss button is clicked": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-handle.spec.ts > iPhone > With handle > click should cycle to the next snap point": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-handle.spec.ts > Pixel > With handle > click should cycle to the next snap point": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-redirect.spec.ts > iPhone > With redirect > should restore body position settings": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-redirect.spec.ts > Pixel > With redirect > should restore body position settings": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-scaled-background.spec.ts > iPhone > With scaled background > should scale background": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-scaled-background.spec.ts > iPhone > With scaled background > should scale background when dragging": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-scaled-background.spec.ts > Pixel > With scaled background > should scale background": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		},
+		"tests/with-scaled-background.spec.ts > Pixel > With scaled background > should scale background when dragging": {
+			"class": "convert",
+			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
+		}
+	},
+	"radix": {
+		"cypress/e2e/Select.cy.ts > electron > Select > given a select inside a form > should submit and react to changes": {
+			"class": "convert",
+			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
+		},
+		"cypress/e2e/Select.cy.ts > electron > Select > given a select with no value > can be reset to the placeholder": {
+			"class": "convert",
+			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
+		}
+	}
+}
