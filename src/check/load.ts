@@ -29,7 +29,7 @@ export const METRIC_LABEL: Readonly<Record<LoadMetric, string>> = {
 export interface LoadOptions {
 	/** Lighthouse runs per side and route, old and new taken in turn; default 5, and as many again when a metric is worse but not yet beyond noise. */
 	readonly runs?: number;
-	/** The CPU slowdown Lighthouse simulates with: 4 by default, as Lighthouse and PageSpeed Insights do; `calibrated` derives it from each run's own benchmarkIndex by Lighthouse's calculator. Against real PageSpeed Insights on ten sites, 4 came closer (TBT within 10% on 18 of 20 pages against 12) and neither matched its score within 5 points on more than 12 of 20, so real PSI is the gate whenever it answers. */
+	/** The CPU slowdown Lighthouse applies, with slow 4G, for real: 4 by default, as Lighthouse and PageSpeed Insights use; `calibrated` simulates instead, at the slowdown each run's own benchmarkIndex calls for by Lighthouse's calculator. Against real PageSpeed Insights on ten sites, 4 came closer (TBT within 10% on 18 of 20 pages against 12) and neither matched its score within 5 points on more than 12 of 20, so real PSI is the gate whenever it answers. */
 	readonly cpu?: 'calibrated' | number;
 	/** Hosts blocked on both sides, as in the rest of the check. */
 	readonly block?: BlockList;
@@ -436,7 +436,9 @@ export function cpuMultiplier(benchmarkIndex: number): number {
 const runLighthouse: Lighthouse = async (url, port, blocked, cpu) => {
 	const flags = { port, output: 'json' as const, onlyCategories: ['performance'], logLevel: 'error' as const, blockedUrlPatterns: [...blocked] };
 	if (cpu !== 'calibrated') {
-		const result = await lighthouse(url, { ...flags, throttling: { ...throttling.mobileSlow4G, cpuSlowdownMultiplier: cpu } });
+		// Throttled for real, not simulated: on a loopback load the fonts and images race the first paint, and the simulation adds
+		// each one that won to the paint it predicts, so the same page's first paint landed at 2.0, 2.4, 2.6, 2.9 or 3.0 s by chance.
+		const result = await lighthouse(url, { ...flags, throttlingMethod: 'devtools', throttling: { ...throttling.mobileSlow4G, cpuSlowdownMultiplier: cpu } });
 		if (!result) throw new Error('Lighthouse returned no result');
 		return result.lhr as unknown as Lhr;
 	}
