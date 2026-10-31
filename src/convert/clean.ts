@@ -19,7 +19,7 @@ const QWIK_ATTRIBUTE = /^(?:q:|on(?:-window|-document)?:)/;
 export interface CleanContext {
 	/** The build paths of the frameworks whose transport global the page carries. */
 	readonly builds: readonly RegExp[];
-	/** Every script URL of the old site already classified as framework code by its own text. */
+	/** Every script of the old site already classified as framework code by its own text, by URL or same-origin path. */
 	readonly frameworkScripts: ReadonlySet<string>;
 	readonly origin: string;
 	/** A Qwik build's handler symbols (q-manifest.json), with the library handlers ports find their elements by. */
@@ -38,8 +38,8 @@ function localPath(url: string, origin: string): string | undefined {
 }
 
 function isFrameworkCode(url: string, ctx: CleanContext): boolean {
-	if (ctx.frameworkScripts.has(url)) return true;
 	const path = localPath(url, ctx.origin);
+	if (ctx.frameworkScripts.has(url) || (path !== undefined && ctx.frameworkScripts.has(path))) return true;
 	return path !== undefined && ctx.builds.some((re) => re.test(path));
 }
 

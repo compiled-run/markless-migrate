@@ -157,7 +157,7 @@ async function convert(old: string): Promise<void> {
 	const source = join(SRC, lib.source);
 	await sh(`${cli} plan --old ${old} --source ${source}`, APP);
 	await sh(`${cli} usage --old ${old} --source ${source}`, APP);
-	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2`, APP);
+	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2 --ledger report`, APP);
 }
 
 async function linkAndBuild(): Promise<void> {
