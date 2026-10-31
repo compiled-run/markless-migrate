@@ -190,6 +190,7 @@ export interface Job {
 export const STAGES: readonly (readonly [stage: string, prefix: string])[] = [
 	['keys and plan', 'prepare'],
 	['capture', 'capture'],
+	['shared', 'shared'],
 	['emit', 'emit'],
 	['build', 'build'],
 	['check select', 'check-select'],
