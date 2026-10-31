@@ -479,14 +479,14 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 }
 
 /** The parts of each route's check that have finished, the ones running and how many it was going to run: what a timed-out route reports. */
-const routeSteps = new Map<string, { readonly done: string[]; readonly running: Set<string>; total: number }>();
+const routeSteps = new Map<string, { readonly done: { readonly name: string; readonly ms: number }[]; readonly running: Set<string>; total: number }>();
 const stepsOf = (route: string) => routeSteps.get(route) ?? routeSteps.set(route, { done: [], running: new Set(), total: 0 }).get(route)!;
 
 /** How far a route's check got: "steps done 2 of 6 (load both sides, forced states; running: journeys)". */
 export function stepsDone(route: string): string {
 	const s = stepsOf(route);
 	const running = [...s.running];
-	return `steps done ${s.done.length} of ${Math.max(s.total, s.done.length + running.length)}${s.done.length || running.length ? ` (${s.done.join(', ')}${running.length ? `${s.done.length ? '; ' : ''}running: ${running.join(', ')}` : ''})` : ''}`;
+	return `steps done ${s.done.length} of ${Math.max(s.total, s.done.length + running.length)}${s.done.length || running.length ? ` (${s.done.map((d) => d.name).join(', ')}${running.length ? `${s.done.length ? '; ' : ''}running: ${running.join(', ')}` : ''})` : ''}`;
 }
 
 // MARKLESS_MIGRATE_PROFILE=1 prints how long each part of a route's check took, on stderr.
@@ -498,7 +498,7 @@ export async function profiled<T>(route: string, part: string, work: () => Promi
 		return await work();
 	} finally {
 		steps.running.delete(part);
-		steps.done.push(part);
+		steps.done.push({ name: part, ms: Date.now() - started });
 		if (process.env.MARKLESS_MIGRATE_PROFILE) process.stderr.write(`[profile] ${route} ${part}: ${((Date.now() - started) / 1000).toFixed(1)} s\n`);
 	}
 }
@@ -700,6 +700,7 @@ export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
 export async function withDeadline(route: string, run: Run, ms: number, work: (run: Run) => Promise<RouteResult>): Promise<RouteResult> {
 	routeSteps.delete(route);
+	const began = Date.now();
 	const scope = new Scope();
 	const task = work({ ...run, old: { ...run.old, scope }, new: { ...run.new, scope } });
 	task.catch(() => {});
@@ -707,7 +708,11 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	const late = new Promise<'late'>((done) => (timer = setTimeout(() => done('late'), ms)));
 	try {
 		const first = await Promise.race([task, late]);
-		if (first !== 'late') return first;
+		if (first !== 'late') {
+			const timed = { ...first, timing: { ms: Date.now() - began, steps: [...stepsOf(route).done] } };
+			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
+			return timed;
+		}
 	} finally {
 		clearTimeout(timer);
 	}

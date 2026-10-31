@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combine, joinKept, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
+import { combine, costsOf, joinKept, joinOld, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -103,4 +103,33 @@ test('a route not checked, or stopped part way at --timeout, is counted at the t
 	assert.deepEqual(unfinished(routes).map((r) => r.route), ['/b', '/c']);
 	assert.match(summary(routes), /\n\*\*2 of 5 routes were not checked to the end \(not checked, or incomplete at --timeout\), so this run is red\.\*\*/);
 	assert.doesNotMatch(summary([{ route: '/a', ok: true }]), /not checked to the end/);
+});
+
+test("shards are packed longest first by each route's time in an earlier run, so no runner is left with the slow pages", () => {
+	const targets = { routes: ['/a', '/b', '/c', '/d', '/e', '/f'], endpoints: [], redirects: [], unchecked: [] };
+	const earlier = costsOf([
+		{ route: '/a', ok: true, timing: { ms: 4_000_000 } },
+		{ route: '/b', ok: true, timing: { ms: 3_800_000 } },
+		{ route: '/c', ok: true, timing: { ms: 100_000 } },
+		{ route: '/d', ok: true, timing: { ms: 120_000 } },
+		{ route: '/e', ok: true },
+	] as never);
+	const shards = split(targets, 3, earlier);
+	// /e and /f were not timed: each counts as the median time, 3,800 s.
+	assert.deepEqual(shards.map((s) => s.routes), [['/a'], ['/b', '/f'], ['/e', '/d', '/c']]);
+	// Dealt in turn, as before, the two slow pages would share a runner with others.
+	assert.deepEqual(split(targets, 3).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']]);
+	assert.deepEqual(split(targets, 3, costsOf([{ route: '/a', ok: true, timing: { ms: 1 } }] as never)).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']], 'times for under half the routes are not used');
+});
+
+test("every shard's old-side cache entries and the earlier joined ones become one cache", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'join-old-'));
+	for (const [dir, name] of [['shards/check-1/app/.migrate/cache/old', 'capture-a.bin'], ['shards/check-2/app/.migrate/cache/old', 'capture-b.bin'], ['shards/check-2/app/.migrate/slow-network', 'n1.json'], ['earlier/old-joined/cache/old', 'capture-c.bin'], ['shards/check-1/app/.migrate/reuse', 'r.json']] as const) {
+		await mkdir(join(root, dir), { recursive: true });
+		await writeFile(join(root, dir, name), name);
+	}
+	assert.equal(await joinOld(join(root, 'earlier'), join(root, 'out')), 1);
+	assert.equal(await joinOld(join(root, 'shards'), join(root, 'out')), 3);
+	assert.deepEqual((await readdir(join(root, 'out/cache/old'))).sort(), ['capture-a.bin', 'capture-b.bin', 'capture-c.bin']);
+	assert.deepEqual(await readdir(join(root, 'out/slow-network')), ['n1.json']);
 });
