@@ -113,3 +113,13 @@ test("the generated config keeps one of each Nitro handler and server asset dire
 	once(options);
 	assert.deepEqual(options, { handlers: [handler, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'b'] });
 });
+
+test('a preview answers a page the app renders itself in either trailing-slash form, and every other page from the old deployment', async () => {
+	const { IS_PAGE } = await import('../src/convert/endpoints.ts');
+	const ts = (await import('typescript')).default;
+	const isPage = new Function('PAGES', `${ts.transpile(IS_PAGE)}\nreturn isPage;`)(new Set(['/docs/x/', '/about', '/'])) as (path: string) => boolean;
+	assert.ok(isPage('/docs/x/'), 'a folder page, as listed');
+	assert.ok(isPage('/docs/x'), 'a folder page without its slash');
+	assert.ok(isPage('/about') && isPage('/about/') && isPage('/'));
+	assert.ok(!isPage('/docs/y/') && !isPage('/docs'));
+});

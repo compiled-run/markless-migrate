@@ -19,6 +19,8 @@ export interface HandlerSite {
 	readonly tag?: string;
 	/** How it is found in a rendered page, best first: itself, then elements inside it and beside it. */
 	readonly anchors: readonly Anchor[];
+	/** The data-slot its own element renders, when it has one but shows nothing to be found by (a trigger around a line). */
+	readonly slot?: string;
 	/** `file#Component` of the function that renders it. */
 	readonly in?: string;
 	/** Words the component shows around it: the port element it is found as must sit among most of them. */
@@ -87,13 +89,16 @@ function literalAttr(a: N): string | undefined {
 	return undefined;
 }
 
-/** The static text an element's children show, without what expressions render. */
+// Children a library renders in a layer elsewhere on the page (a React Aria trigger's Tooltip or Modal beside its button).
+const LAYERED = /(Content|Popup|Portal|Overlay|Positioner|Popover|Tooltip|Modal|Sheet|Drawer)$/;
+
+/** The static text an element's children show, without what expressions render or what a layer shows elsewhere. */
 function staticText(el: N): string {
 	let out = '';
 	const visit = (n: N) => {
 		for (const c of (n.children ?? []) as N[]) {
 			if (c.type === 'JSXText') out += ` ${c.value}`;
-			else if (c.type === 'JSXElement' || c.type === 'JSXFragment') visit(c);
+			else if (c.type === 'JSXFragment' || (c.type === 'JSXElement' && !LAYERED.test(jsxName(c.openingElement.name) ?? ''))) visit(c);
 			else if (c.type === 'JSXExpressionContainer') {
 				const e = unwrap(c.expression);
 				if (e?.type === 'Literal' && typeof e.value === 'string') out += ` ${e.value}`;
@@ -289,7 +294,7 @@ function* jsxBelow(el: N): Generator<N> {
 const MAX_ANCHORS = 3;
 
 /** The elements a site is found by in a page: itself, then findable elements inside it, then ones in its nearest JSX parents. */
-async function anchorsOf(scan: Scan, file: string, el: N, ancestors: readonly N[]): Promise<{ anchors: Anchor[]; tag?: string }> {
+async function anchorsOf(scan: Scan, file: string, el: N, ancestors: readonly N[]): Promise<{ anchors: Anchor[]; tag?: string; slot?: string }> {
 	const own = await signatureOf(scan, file, el);
 	const out: Anchor[] = identifiable(own) ? [{ ...own, anchor: 'self' }] : [];
 	// Rendered through its parent (`<DialogTrigger asChild><Button>`): the element carries the parent's data-slot.
@@ -328,7 +333,7 @@ async function anchorsOf(scan: Scan, file: string, el: N, ancestors: readonly N[
 			if (identifiable(s) && /-trigger$/.test(s.slot ?? '')) out.push({ ...s, anchor: 'near' });
 		}
 	}
-	return { anchors: out, ...(own.tag ? { tag: own.tag } : {}) };
+	return { anchors: out, ...(own.tag ? { tag: own.tag } : {}), ...(own.slot ? { slot: own.slot } : {}) };
 }
 
 /** The longer words of a component's static text, other than the anchors' own, in source order. */
