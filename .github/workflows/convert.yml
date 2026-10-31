@@ -68,6 +68,8 @@ env:
   SITE: ${{ inputs.site || 'shadcn-ui' }}
   APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
   ROUTES: ${{ github.event_name == 'pull_request' && 'deploy/shadcn-ui/convert-routes-subset.txt' || inputs.routes }}
+  # The docs pages' order comes from the old site's own sitemap, served on the runner, never from a deployment.
+  PAGE_ORDER_FROM: http://localhost:4000
 
 concurrency:
   group: convert-${{ inputs.site || 'shadcn-ui' }}-${{ github.ref }}
