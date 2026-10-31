@@ -170,6 +170,8 @@ export interface ConvertOptions {
 	readonly captureOnly?: boolean;
 	/** For `markless-migrate dev`: the app already holds this convert's static files and server; only what is missing is fetched, and the server only learns the pages. */
 	readonly reuse?: boolean;
+	/** Each route's recording key as one earlier request made it (the pipeline's prepare), so every job of a run keys a route alike. */
+	readonly recordKeys?: ReadonlyMap<string, string>;
 }
 
 export interface HeadTag {
@@ -1220,7 +1222,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const sources = new Map<string, Promise<string>>();
 		const atFor = async (route: string, kind: string): Promise<string> => {
 			let source = sources.get(route);
-			if (!source) sources.set(route, (source = fetchRecordKey(recorder, options.old, route)));
+			if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route)!) : fetchRecordKey(recorder, options.old, route)));
 			return dirs.dir(route, await source, kind);
 		};
 		const reveal = options.reveal !== false;
