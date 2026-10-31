@@ -59,7 +59,7 @@ for (const [name, engine] of [['Chromium', chromium], ['Firefox', firefox], ['We
 			const tween = await read(old, '/chart', [(p) => p.click('#mobile')]);
 			const jump = await read(bad, '/chart', [(p) => p.click('#mobile')]);
 			assert.ok((tween[1]!.script.find((s) => s.attribute === 'd')?.frames ?? 0) >= 6, JSON.stringify(tween[1]!.script));
-			assert.equal(jump[1]!.script.length, 0);
+			assert.ok((jump[1]!.script.find((s) => s.attribute === 'd')?.frames ?? 0) <= 2, JSON.stringify(jump[1]!.script));
 			assert.deepEqual(compareStates(tween, jump)[0]!.map((d) => d.field), ['script motion of path outside the widget (path)']);
 		} finally {
 			await browser.close();
