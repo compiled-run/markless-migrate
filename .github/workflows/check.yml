@@ -298,3 +298,5 @@ jobs:
           name: check-merged
           path: merged
           retention-days: 30
+      - name: Every route checked to the end
+        run: node scripts/check-shards.ts gate merged

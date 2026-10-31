@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combine, joinKept, split, summary, unreported } from '../scripts/check-shards.ts';
+import { combine, joinKept, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -90,4 +90,17 @@ test('an entry two folders both keep is joined as the one recorded last, whichev
 	const to = join(from, 'out');
 	assert.equal(await joinKept(from, to, new Date('2026-10-29T00:00:00.000Z')), 1);
 	assert.equal(JSON.parse(await readFile(join(to, 'k.json'), 'utf8')).value, 'newer');
+});
+
+test('a route not checked, or stopped part way at --timeout, is counted at the top of the summary and makes the run red', () => {
+	const routes = [
+		{ route: '/a', ok: true },
+		{ route: '/b', ok: false, failures: [{ dimension: 'http', check: 'the check of this route' }] },
+		{ route: '/c', ok: false, infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 3600 s, steps done 3 of 6' } },
+		{ route: '/d', ok: false, failures: [{ dimension: 'visual', check: 'screenshot' }] },
+		{ route: '/e', ok: false, blocked: { status: 403 }, infrastructure: { cause: 'blocked' } },
+	];
+	assert.deepEqual(unfinished(routes).map((r) => r.route), ['/b', '/c']);
+	assert.match(summary(routes), /\n\*\*2 of 5 routes were not checked to the end \(not checked, or incomplete at --timeout\), so this run is red\.\*\*/);
+	assert.doesNotMatch(summary([{ route: '/a', ok: true }]), /not checked to the end/);
 });
