@@ -159,10 +159,15 @@ export function residueFailures(route: string, next: PageCapture | undefined): F
 export function originalRuntimeFailures(route: string, old: PageCapture | undefined, next: PageCapture | undefined): Failure[] {
 	if (!old || !next?.routeFile) return [];
 	const theirs = new Set(old.assets.flatMap((a) => (a.runtime ? [a.runtime] : [])));
-	const oldScripts = new Set(old.assets.filter((a) => a.type === 'script' && a.url.startsWith('/')).map((a) => a.url));
-	const scripts = next.assets.filter((a) => a.type === 'script' && a.status < 400);
+	const code = (a: { readonly type: string }) => a.type === 'script' || a.type === 'worker' || a.type === 'serviceworker';
+	const oldScripts = new Set(old.assets.filter((a) => code(a) && a.url.startsWith('/')).map((a) => a.url));
+	// A worker's script answers on the page as a script too: one entry per file, named a worker when it is one.
+	const byUrl = new Map<string, (typeof next.assets)[number]>();
+	for (const a of next.assets) if (code(a) && a.status < 400 && (!byUrl.has(a.url) || a.type !== 'script')) byUrl.set(a.url, { ...a, runtime: a.runtime ?? byUrl.get(a.url)?.runtime });
+	const scripts = [...byUrl.values()];
 	const runs = [...new Set(scripts.flatMap((a) => (a.runtime && theirs.has(a.runtime) ? [a.runtime] : [])))];
 	const own = scripts.filter((a) => oldScripts.has(a.url));
+	const carriers = scripts.filter((a) => a.runtime && theirs.has(a.runtime));
 	if (!runs.length && !own.length) return [];
 	const named = (runs.length ? runs : [...theirs]).join(', ') || 'the original\'s';
 	return [{
@@ -171,7 +176,7 @@ export function originalRuntimeFailures(route: string, old: PageCapture | undefi
 		check: "runs the original's framework",
 		viewport: next.viewport,
 		expected: `a Markless page with none of the original's runtime (${[...theirs].join(', ') || 'its scripts'})`,
-		actual: `${named} runs on the port: ${own.length} of the original's own script file${own.length === 1 ? '' : 's'} load${own.length === 1 ? 's' : ''} (${own.slice(0, 3).map((a) => a.url).join(', ')}${own.length > 3 ? ', …' : ''})${runs.length ? `, carrying the ${runs.join(' and ')} runtime` : ''}`,
+		actual: `${named} runs on the port: ${[own.length ? `${own.length} of the original's own script file${own.length === 1 ? '' : 's'} load${own.length === 1 ? 's' : ''} (${own.slice(0, 3).map((a) => a.url).join(', ')}${own.length > 3 ? ', …' : ''})` : '', runs.length ? `${carriers.length} script${carriers.length === 1 ? '' : 's'} carr${carriers.length === 1 ? 'ies' : 'y'} the ${runs.join(' and ')} runtime (${carriers.slice(0, 3).map((a) => `${a.type === 'script' ? '' : `${a.type} `}${a.url}`).join(', ')}${carriers.length > 3 ? ', …' : ''})` : ''].filter(Boolean).join('; ')}`,
 		hint: HINTS.originalRuntime,
 	}];
 }
