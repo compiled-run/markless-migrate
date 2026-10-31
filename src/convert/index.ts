@@ -1116,10 +1116,23 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		const config = lateFontsConfig(faces);
 		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
 	}
-	const kids = elementChildren(body(doc));
+	const kids = bodyChildren(doc);
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
 	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, copyLabels, downloads, late, lateFontPaths, bodyCss };
+}
+
+/** The body's elements; a body showing only text (a bare 404) first gets a <div> holding it, the page's root. */
+export function bodyChildren(doc: Document): Element[] {
+	const b = body(doc);
+	const kids = elementChildren(b);
+	if (kids.length) return kids;
+	const root = elementChildren(body(parseDocument('<div></div>')))[0]!;
+	root.childNodes = b.childNodes;
+	for (const node of root.childNodes) node.parentNode = root;
+	b.childNodes = [root];
+	root.parentNode = b;
+	return [root];
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
