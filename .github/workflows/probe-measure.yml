@@ -49,7 +49,38 @@ permissions:
 env:
   SITE: shadcn-ui
 jobs:
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
+  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  gate:
+    name: full-site gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            deploy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: size
+        name: Count the routes
+        env:
+          SPEC: words:${{ inputs.routes }} ${{ inputs.machine }}
+        run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
+      - name: Wait for a full-site slot
+        if: steps.size.outputs.full == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/full-site-gate.ts wait
+
   old:
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
