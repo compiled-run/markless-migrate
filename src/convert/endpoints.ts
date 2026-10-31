@@ -570,6 +570,9 @@ export async function keepRouting(app: string, pages: readonly string[]): Promis
 	return true;
 }
 
+/** The routing middleware's test for a page the app renders, in either trailing-slash form (a folder page is listed with its slash). */
+export const IS_PAGE = "const isPage = (path: string): boolean => PAGES.has(path) || PAGES.has(path.replace(/\\/+$/, '') || '/') || PAGES.has(`${path}/`);";
+
 export async function writeRouting(input: RoutingInput): Promise<{ ports: EndpointPort[]; packages: Record<string, string>; overrides: Record<string, Record<string, string>> }> {
 	const { app, source } = input;
 	const out = join(app, 'server', 'handlers');
@@ -736,6 +739,7 @@ const REWRITES: readonly { from: string; to: string }[] = ${JSON.stringify(rewri
 const HANDLERS: readonly { pattern: string; module: Record<string, unknown> }[] = [${handlers.map((h, i) => `{ pattern: ${JSON.stringify(h.pattern)}, module: handler${i} }`).join(', ')}];
 const BUILT: Readonly<Record<string, { file: string; type: string; headers?: Record<string, string> }>> = ${JSON.stringify(built)};
 const PAGES = new Set<string>(${JSON.stringify(input.pages)});
+${IS_PAGE}
 const TRAILING: { mode: 'add' | 'strip'; status: number; pagesOnly: boolean } | undefined = ${JSON.stringify(trailing)};
 // A preview with only some pages converted (MIGRATE_FALLTHROUGH set to the old deployment) answers every other page
 // from there, marked as the old app's.
@@ -796,7 +800,7 @@ export default defineHandler(async (event) => {
 		const rewritten = await answer(request, new URL(to, url).pathname, new URL(to, url).search);
 		if (rewritten) return rewritten;
 	}
-	if (FALLTHROUGH && !PAGES.has(url.pathname.replace(/\\/$/, '') || '/') && !OWN.test(url.pathname)) {
+	if (FALLTHROUGH && !isPage(url.pathname) && !OWN.test(url.pathname)) {
 		const upstream = await fetch(new URL(url.pathname + url.search, FALLTHROUGH), { method: request.method, headers: { accept: request.headers.get('accept') ?? '*/*', 'accept-language': request.headers.get('accept-language') ?? '' }, redirect: 'manual' });
 		const headers = new Headers(upstream.headers);
 		headers.delete('content-encoding');
