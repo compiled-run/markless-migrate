@@ -264,6 +264,12 @@ function sample(type: string, name: string): string {
 	if (type === 'tel' || n.includes('phone')) return '+44 20 7946 0000';
 	if (type === 'url') return 'https://example.com';
 	if (type === 'date') return '2026-10-27';
+	// The other date and time inputs take only their own format: anything else is refused before a page's code sees it.
+	if (type === 'time') return '10:30';
+	if (type === 'datetime-local') return '2026-10-27T10:30';
+	if (type === 'month') return '2026-10';
+	if (type === 'week') return '2026-W44';
+	if (type === 'color') return '#336699';
 	if (type === 'search') return 'coffee';
 	if (n.includes('name')) return 'Ada Lovelace';
 	return 'Sample text from markless-migrate';
