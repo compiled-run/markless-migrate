@@ -45,6 +45,8 @@ export interface NetworkVerdict {
 	/** The largest of the old page's own noise, the instrument's step, two frames and 5% of the old median. */
 	readonly band: number;
 	readonly p: number;
+	/** The p it had to be under: `SIGNIFICANCE` for one cell; across a route's cells, Holm's share of it for this p's rank. */
+	readonly alpha?: number;
 	readonly ok: boolean;
 	/** Why there is a red verdict without two medians to compare. */
 	readonly reason?: string;
@@ -74,6 +76,27 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 		out.push({ metric, old: om, new: nm, worse: nm - om, band, p, ok: !(nm - om > band && p < SIGNIFICANCE) });
 	}
 	return out;
+}
+
+/**
+ * Each measured cell's verdicts, red only where the route as a whole stays under `SIGNIFICANCE`: per gated time, Holm's
+ * step-down over the route's cells, so identical pages go red on a route at most that often whatever its cell count.
+ */
+export function routeVerdicts(network: RouteNetwork): (NetworkVerdict[] | undefined)[] {
+	const cells = network.old.cells.map((old, i) => {
+		const next = network.new.cells[i];
+		return !next || old.unavailable || next.unavailable ? undefined : networkVerdicts(old, next);
+	});
+	for (const metric of GATED) {
+		const family = cells.flatMap((vs, cell) => vs?.flatMap((v, at) => (v.metric === metric && !v.reason ? [{ cell, at, v }] : [])) ?? []).sort((a, b) => a.v.p - b.v.p);
+		let rejecting = true;
+		for (const [rank, { cell, at, v }] of family.entries()) {
+			const alpha = SIGNIFICANCE / (family.length - rank);
+			rejecting &&= v.p < alpha;
+			cells[cell]![at] = { ...v, alpha, ok: !(v.worse > v.band && rejecting) };
+		}
+	}
+	return cells;
 }
 
 /** The median of `known` and `missing` more values, each of those as large as it can be (`hi`) or as small (`lo`). */
@@ -140,12 +163,12 @@ export const NETWORK_HINT =
 export function networkFailures(route: string, network: RouteNetwork | { readonly unavailable: string } | undefined): Failure[] {
 	if (!network || 'unavailable' in network) return [];
 	const out: Failure[] = [];
+	const verdicts = routeVerdicts(network);
 	for (const [i, old] of network.old.cells.entries()) {
-		const next = network.new.cells[i];
-		if (!next || old.unavailable || next.unavailable) continue;
+		const next = network.new.cells[i]!;
 		const profile = NETWORK_PROFILES[old.profile];
 		const cell = `${old.browser} ${profile?.label ?? old.profile}`;
-		for (const v of networkVerdicts(old, next).filter((x) => !x.ok)) {
+		for (const v of (verdicts[i] ?? []).filter((x) => !x.ok)) {
 			const runs = next.runs.filter((r) => !r.error).length || next.runs.length;
 			const path = criticalPath(next.medianRun, v.metric, profile?.downBytesPerSecond ?? 1);
 			out.push({
@@ -155,7 +178,7 @@ export function networkFailures(route: string, network: RouteNetwork | { readonl
 				expected: `${formatValue(v.metric, v.old)} or sooner, the old page's median of ${values(old.runs, v.metric).length} cold loads (runs ${runList(old.runs, v.metric)})`,
 				actual: v.reason
 					? `never, in ${next.runs.length} cold loads: ${v.reason}`
-					: `${formatValue(v.metric, v.new)}, the median of ${runs} (runs ${runList(next.runs, v.metric)}): ${formatValue(v.metric, v.worse)} worse, beyond the ${formatValue(v.metric, v.band)} the old page's own runs differ by or the measurement can tell apart (p = ${v.p.toFixed(3)})${path ? `; ${path}` : ''}`,
+					: `${formatValue(v.metric, v.new)}, the median of ${runs} (runs ${runList(next.runs, v.metric)}): ${formatValue(v.metric, v.worse)} worse, beyond the ${formatValue(v.metric, v.band)} the old page's own runs differ by or the measurement can tell apart (p = ${v.p.toFixed(3)}${v.alpha !== undefined && v.alpha < SIGNIFICANCE ? `, under the ${v.alpha.toFixed(4)} its rank among the route's cells needs` : ''})${path ? `; ${path}` : ''}`,
 				hint: NETWORK_HINT,
 			});
 		}
@@ -200,6 +223,7 @@ export function networkHeadline(network: RouteNetwork): string {
 export function networkLines(network: RouteNetwork | { readonly unavailable: string } | undefined): string[] {
 	if (!network) return [];
 	if ('unavailable' in network) return [`slow network: ${network.unavailable}`];
+	const verdicts = routeVerdicts(network);
 	return [
 		networkHeadline(network),
 		...network.old.cells.map((old, i) => {
@@ -207,7 +231,7 @@ export function networkLines(network: RouteNetwork | { readonly unavailable: str
 			const label = `slow network, ${old.browser} ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
 			const skip = old.unavailable ?? next.unavailable;
 			if (skip) return `${label}: skipped, ${skip}`;
-			const slower = new Set(networkVerdicts(old, next).filter((v) => !v.ok).map((v) => v.metric));
+			const slower = new Set((verdicts[i] ?? []).filter((v) => !v.ok).map((v) => v.metric));
 			const runs = Math.min(old.runs.filter((r) => !r.error).length, next.runs.filter((r) => !r.error).length);
 			const parts = SUMMARY_METRICS.filter((m) => old.median[m] !== undefined || next.median[m] !== undefined).map((m) => `${RUN_METRIC_LABEL[m].replace(/ \(Chromium\)$/, '')} ${formatValue(m, old.median[m])} -> ${formatValue(m, next.median[m])}${slower.has(m) ? ' (slower)' : ''}`);
 			const failed = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'new' : 'old'} ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed: ${c.runs.find((r) => r.error)!.error}`] : []));
