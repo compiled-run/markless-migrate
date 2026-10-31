@@ -169,10 +169,10 @@ test('a shard of the site groups templates over every page of the site, so a pag
 	const site = await serve((path) => (docs.includes(path) ? { status: 200, body: page(`Doc ${path}`) } : undefined));
 	try {
 		const shard = ['/docs/p02', '/docs/p03'];
-		const report = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: shard, browser, journeys: { budgetMs: 5_000 }, templates: { site: docs } });
+		const report = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: shard, browser, journeys: { maxJourneys: 10 }, templates: { site: docs } });
 		assert.deepEqual(report.templates?.groups.map((g) => [g.pattern, g.representative, g.members.length]), [['/docs/:page', '/docs/p01', 22]]);
 		assert.deepEqual(report.routes.map((r) => [r.route, r.dimensions.visual, r.template?.representative, r.ok]), [['/docs/p02', 'skipped', '/docs/p01', true], ['/docs/p03', 'skipped', '/docs/p01', true]]);
-		const alone = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: shard, browser, journeys: { budgetMs: 5_000 } });
+		const alone = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: shard, browser, journeys: { maxJourneys: 10 } });
 		assert.equal(alone.templates, undefined, 'two pages alone are under the threshold: each is its own representative');
 	} finally {
 		site.close();
@@ -208,7 +208,7 @@ test('above the threshold, every page gets http, rendered, seo and behaviour, an
 	const site = await serve((path) => (docs.includes(path) ? { status: 200, body: page(`Doc ${path}`) } : undefined));
 	const changed = await serve((path) => (docs.includes(path) ? { status: 200, body: page(path === '/docs/p07' ? 'Renamed' : `Doc ${path}`) } : undefined));
 	try {
-		const report = await runCheck({ oldOrigin: origin(site), newOrigin: origin(changed), routes: docs, browser, journeys: { budgetMs: 5_000 } });
+		const report = await runCheck({ oldOrigin: origin(site), newOrigin: origin(changed), routes: docs, browser, journeys: { maxJourneys: 10 } });
 		assert.deepEqual(report.templates?.groups.map((g) => [g.pattern, g.representative, g.members.length]), [['/docs/:page', '/docs/p01', 22]]);
 		const rep = report.routes.find((r) => r.route === '/docs/p01')!;
 		const member = report.routes.find((r) => r.route === '/docs/p02')!;

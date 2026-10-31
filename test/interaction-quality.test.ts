@@ -106,7 +106,7 @@ function serve(body: string | ((path: string) => string | undefined)): Promise<s
 
 async function check(old: string | ((path: string) => string | undefined), next: string | ((path: string) => string | undefined), routes = ['/']): Promise<Report> {
 	const [a, b] = await Promise.all([serve(old), serve(next)]);
-	return runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } });
+	return runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 }
 
 const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f) => !f.accepted && f.dimension !== 'motion');

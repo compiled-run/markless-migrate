@@ -371,6 +371,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
+	if (explored.incomplete) throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the machine ran far slower than the journeys need, so ${route} is not checked rather than compared on fewer of them` });
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
 	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
@@ -561,8 +562,8 @@ async function checkTimings(browser: Browser, run: Run, route: string, result: R
 export function leftOut(route: string, explored: Pick<Exploration, 'skipped' | 'sequencesSkipped'>): Failure[] {
 	const out: Failure[] = [];
 	const n = (k: number, what: string) => `${k} ${what}${k === 1 ? '' : 's'}`;
-	if (explored.skipped) out.push(notExercised(route, n(explored.skipped, 'keyboard journey'), `left out when the journey budget ran out; raise --journey-budget until they run`));
-	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --journey-budget until they run`));
+	if (explored.skipped) out.push(notExercised(route, n(explored.skipped, 'keyboard journey'), `left out when the journey budget ran out; raise --max-journeys until they run`));
+	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --max-journeys until they run`));
 	return out;
 }
 

@@ -39,7 +39,7 @@ after(async () => {
 });
 
 const http = async (next: Server) => {
-	const report = await runCheck({ oldOrigin: origin(await spa()), newOrigin: origin(next), routes: ['/users'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 10_000 } });
+	const report = await runCheck({ oldOrigin: origin(await spa()), newOrigin: origin(next), routes: ['/users'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { maxJourneys: 20 } });
 	return report.routes[0]!.failures.filter((f) => f.dimension === 'http').map((f) => [f.check, f.expected, f.actual]);
 };
 
@@ -53,7 +53,7 @@ test('a server redirect somewhere other than where the old app moved to in the b
 });
 
 const slashed = async (next: Server) => {
-	const report = await runCheck({ oldOrigin: origin(await spa()), newOrigin: origin(next), routes: ['/users', '/users/'], redirects: ['/users/'], coverage: ['/users'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 10_000 } });
+	const report = await runCheck({ oldOrigin: origin(await spa()), newOrigin: origin(next), routes: ['/users', '/users/'], redirects: ['/users/'], coverage: ['/users'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { maxJourneys: 20 } });
 	const red = report.routes.find((r) => r.route === '/users/')!.failures.filter((f) => f.dimension === 'http').map((f) => [f.check, f.expected, f.actual]);
 	return { red, missing: report.coverage?.missing ?? [] };
 };

@@ -49,7 +49,7 @@ fetch('${api}/posts').then((r) => r.json()).then((posts) => {
 	const ssr = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Posts</title></head><body><main><h1>Posts</h1><div id="out">${list('<li>First post</li><li>Second post</li>')}</div></main>
 <script>document.getElementById('more').onclick = () => document.getElementById('posts').insertAdjacentHTML('beforeend', '<li>Third post</li>');</script></body></html>`;
 	const [oldOrigin, newOrigin] = await Promise.all([serve((p) => (p === '/' ? { type: 'text/html', body: spa } : undefined)), serve((p) => (p === '/' ? { type: 'text/html', body: ssr } : undefined))]);
-	const report: Report = await runCheck({ oldOrigin, newOrigin, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } });
+	const report: Report = await runCheck({ oldOrigin, newOrigin, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 	const route = report.routes[0]!;
 	const journeys = route.journeys?.map((j) => j.name) ?? [];
 	assert.ok(journeys.some((n) => n.includes('Show more')), JSON.stringify(journeys));
@@ -68,7 +68,7 @@ test('with the old source scanned, a data call to a host its API client names is
 	const old = await serve((p) => (p === '/' ? { type: 'text/html', body: page('<h1>Home</h1><a href="/posts">Posts</a>') } : p === '/posts' ? { type: 'text/html', body: page(reader) } : undefined));
 	const next = await serve((p) => (p === '/' ? { type: 'text/html', body: page('<h1>Home</h1><a href="/posts">Posts</a>') } : p === '/posts' ? { type: 'text/html', body: page('<h1>Posts</h1><div id="out">First post</div>') } : undefined));
 	const source = { routes: [], authGuards: [], nondeterminism: [], clients: [{ kind: 'rest', file: 'src/posts.ts', line: 3, queries: [`${api}/posts`] }], writes: [], components: [] } as never;
-	const report: Report = await runCheck({ oldOrigin: old, newOrigin: next, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 }, source });
+	const report: Report = await runCheck({ oldOrigin: old, newOrigin: next, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, source });
 	const route = report.routes[0]!;
 	const followed = route.journeys?.find((j) => j.name === 'click link "Posts"');
 	assert.ok(followed, JSON.stringify(route.journeys?.map((j) => j.name)));
