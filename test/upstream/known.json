@@ -242,13 +242,10 @@
 		}
 	},
 	"radix": {
-		"cypress/e2e/Select.cy.ts > electron > Select > given a select inside a form > should submit and react to changes": {
-			"class": "convert",
-			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
-		},
-		"cypress/e2e/Select.cy.ts > electron > Select > given a select with no value > can be reset to the placeholder": {
-			"class": "convert",
-			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
+		"cypress/e2e/Dialog.cy.ts > electron > Dialog > given a modal dialog > can be open/closed with a pointer": {
+			"class": "part",
+			"why": "some runs leave <body style=\"pointer-events: none\"> after the dialog closes, so the next press on the trigger is refused (parts/radix/dialog-engine.ts, DismissableLayer's body pointer-events); about half the port runs, quarantined in docs/ci-process.md",
+			"racy": "it passes on most runs; the failure is the defect, a pass is not its fix"
 		}
 	}
 }
