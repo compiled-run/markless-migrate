@@ -292,8 +292,6 @@ jobs:
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log
             ${{ runner.temp }}/old-build.log
-          # .migrate/ is hidden: without this the shard's kept results (reuse/) and progress never reach the merge.
-          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
