@@ -7,9 +7,9 @@ import type { Op } from './probes.ts';
  * (https://www.w3.org/WAI/ARIA/apg/patterns/). The probes draw seeded step sequences from a control's model, run each on the old
  * and the new page, and shrink a difference to its shortest sequence.
  */
-export type Model = 'menu' | 'context menu' | 'menubar' | 'listbox' | 'popover' | 'grid' | 'tree' | 'tabs' | 'toolbar' | 'text';
+export type Model = 'menu' | 'context menu' | 'menubar' | 'listbox' | 'popover' | 'disclosure' | 'grid' | 'tree' | 'tabs' | 'toolbar' | 'text';
 
-export function modelOf(c: Pick<ProbeControl, 'role' | 'classes'> & { readonly popup?: string }): Model | undefined {
+export function modelOf(c: Pick<ProbeControl, 'role' | 'classes'> & { readonly popup?: string; readonly expands?: boolean }): Model | undefined {
 	if (c.classes.includes('context menu')) return 'context menu';
 	switch (c.role) {
 		case 'menubar':
@@ -33,6 +33,7 @@ export function modelOf(c: Pick<ProbeControl, 'role' | 'classes'> & { readonly p
 	if (c.role !== 'button') return undefined;
 	if (c.popup === 'listbox') return 'listbox';
 	if (c.popup === 'menu' || c.popup === 'true') return 'menu';
+	if (c.expands) return 'disclosure';
 	if (c.popup || c.classes.includes('popup')) return 'popover';
 	return undefined;
 }
@@ -43,6 +44,7 @@ export function opener(model: Model): Op[] {
 		case 'context menu':
 			return [{ op: 'right click' }];
 		case 'menubar':
+		case 'disclosure':
 		case 'grid':
 		case 'tree':
 		case 'tabs':
@@ -139,6 +141,10 @@ export function modelSteps(model: Model): fc.Arbitrary<Op> {
 				w(1, items('click')),
 				w(1, words.map((text): Op => ({ op: 'type', text }))),
 			);
+		case 'disclosure':
+			// A button that shows and hides a section (an accordion, a collapsible, a file tree's folder): Enter, Space and a
+			// click toggle it, and a disclosure inside what it shows (a nested folder) toggles the same way.
+			return fc.oneof(w(4, keys('Enter', 'Space')), w(4, keys('Tab', 'Shift+Tab')), w(2, op({ op: 'click' })), w(1, keys('Escape')), w(1, op({ op: 'tab in' })));
 		case 'grid':
 			// A month grid or data grid: arrows by cell (a day, a week), Page keys by month, Shift+Page by year, Home/End to the
 			// row's ends; Shift+Arrow extends a selection or does what an arrow does, never something else.
@@ -185,6 +191,11 @@ export function modelMoves(model: Model): fc.Arbitrary<Op[]> {
 		case 'context menu':
 		case 'menubar':
 			return moves({ weight: 2, arbitrary: reach('opener', 2).chain((r) => fc.constantFrom([r, key('ArrowRight')], [r, key('ArrowRight'), key('ArrowLeft')], [r, key('Enter')])) });
+		case 'disclosure':
+			return moves({ weight: 3, arbitrary: fc.constantFrom([key('Tab'), key('Enter')], [key('Tab'), key('Space')], [key('Tab'), key('Tab'), key('Enter')]) });
+		case 'popover':
+			// A date picker's popover opens on its month buttons: a person tabs into the grid, then uses its keys.
+			return moves({ weight: 3, arbitrary: fc.array(keys(...GRID_KEYS, ...SHIFT_ARROWS), { minLength: 1, maxLength: 3 }).map((k): Op[] => [{ op: 'reach', n: 0, which: 'grid' }, ...k]) });
 		case 'tree':
 			return moves({ weight: 2, arbitrary: reach('opener', 3).chain((r) => fc.constantFrom([r, key('ArrowRight')], [r, key('Enter')], [r, key('ArrowRight'), key('ArrowLeft')])) });
 		case 'listbox':
@@ -210,6 +221,7 @@ export const MODEL_HINTS: Record<Model, string> = {
 	'context menu': 'Answer the APG menu pattern as the old context menu does: arrows move, a letter jumps, ArrowRight opens a submenu and ArrowLeft closes it, Escape closes.',
 	menubar: 'Answer the APG menubar pattern as the old one does: ArrowLeft/ArrowRight move between menus (and between open menus), ArrowDown/Enter/Space open one, Escape closes it and leaves focus on its menubar item.',
 	listbox: 'Answer the APG listbox and combobox patterns as the old list does: arrows and Home/End move the active option, Enter and Space choose (in a multi-select, toggle and stay open exactly when the old one stays open), typing filters the same items, clearing restores them, and Escape, Tab or a click outside close it the same way after any choice.',
+	disclosure: 'Answer the APG disclosure pattern as the old one does at every depth: Enter, Space and a click show and hide what it controls, aria-expanded follows, and a disclosure inside what it shows (a nested folder of a file tree) toggles the same way.',
 	popover: 'Answer the APG dialog pattern as the old one does: a modal one keeps Tab and Shift+Tab inside it, wrapping at its ends; Escape and its close button close it and focus goes back to the trigger. When it holds a month grid, every grid key (arrows, PageUp/PageDown, Shift+PageUp/PageDown, Home/End, Shift+Arrow) moves the focused day as the old one does.',
 	grid: 'Answer the APG grid (date picker) keys as the old grid does: arrows move by a cell (a day, a week), PageUp/PageDown by a month, Shift+PageUp/PageDown by a year, Home/End to the row ends, and Shift+Arrow does exactly what it does on the old page; focus stays on a cell after every key.',
 	tree: 'Answer the APG tree pattern as the old tree does at every depth: ArrowRight opens a closed folder or moves into an open one, ArrowLeft closes it or moves to its parent, Up/Down move through what is shown, and a click on a nested folder toggles it.',

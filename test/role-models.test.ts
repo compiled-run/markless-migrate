@@ -152,6 +152,11 @@ tr.addEventListener('keydown', (e) => {
 });
 </script>`;
 
+// The same tree drawn as shadcn's file tree draws it, folders as buttons that show and hide a list; `shallow` leaves a folder
+// inside a folder dead.
+const folders = (shallow: boolean) => `<ul><li><button aria-expanded="true" aria-controls="f-components" data-folder>components</button><ul id="f-components"><li><button aria-expanded="true" aria-controls="f-ui" data-folder>ui</button><ul id="f-ui"><li><button>button.tsx</button></li></ul></li><li><button>login-form.tsx</button></li></ul></li><li><button aria-expanded="true" aria-controls="f-app" data-folder>app</button><ul id="f-app"><li><button>page.tsx</button></li></ul></li></ul>
+<script>for (const b of document.querySelectorAll('[data-folder]')) { if (${shallow} && b.closest('ul ul')) continue; b.onclick = () => { const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); document.getElementById(b.getAttribute('aria-controls')).hidden = !open; }; }</script>`;
+
 // A modal dialog that keeps Tab inside and gives focus back to its trigger; `leaky` lets Shift+Tab leave it.
 const modal = (leaky: boolean) => `<button>Before</button><button id="o" aria-haspopup="dialog" aria-expanded="false">Settings</button><div id="d" role="dialog" aria-modal="true" aria-label="Settings" hidden><input aria-label="Name"><button id="x">Close</button></div><button>After</button>
 <script>
@@ -189,6 +194,7 @@ const PAIRS: Record<string, { old: string; bad: string; control: RegExp; model: 
 	'date field': { old: dateField(false), bad: dateField(true), control: /textbox "Due date"/, model: 'text' },
 	multiselect: { old: multiselect(false), bad: multiselect(true), control: /button "Status"/, model: 'listbox' },
 	'file tree': { old: fileTree(false), bad: fileTree(true), control: /tree "Files"/, model: 'tree' },
+	'nested folders': { old: folders(false), bad: folders(true), control: /button "components"/, model: 'disclosure' },
 	modal: { old: modal(false), bad: modal(true), control: /button "Settings"/, model: 'popover' },
 	tabs: { old: tabs(false), bad: tabs(true), control: /tablist "Views"/, model: 'tabs' },
 };
@@ -253,6 +259,8 @@ test('each role gets the model of its APG keyboard pattern', () => {
 	assert.equal(modelOf(c('button', 'listbox')), 'listbox');
 	assert.equal(modelOf(c('combobox')), 'listbox');
 	assert.equal(modelOf(c('button', 'dialog')), 'popover');
+	assert.equal(modelOf({ ...c('button'), expands: true }), 'disclosure');
+	assert.equal(modelOf({ ...c('button'), classes: ['popup'] }), 'popover');
 	assert.equal(modelOf({ ...c('area'), classes: ['context menu'] }), 'context menu');
 	assert.equal(modelOf(c('menubar')), 'menubar');
 	assert.equal(modelOf(c('grid')), 'grid');

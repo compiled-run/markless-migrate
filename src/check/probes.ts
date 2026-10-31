@@ -26,6 +26,8 @@ export type Op =
 	| { readonly op: 'typeahead'; readonly n: number }
 	/** ArrowDown pressed until the n-th item of what is open (or the n-th that opens a submenu or folder) is active. */
 	| { readonly op: 'reach'; readonly n: number; readonly which: 'item' | 'opener' }
+	/** Tab pressed until focus is in the month grid (or data grid) of what is open. */
+	| { readonly op: 'reach'; readonly n: 0; readonly which: 'grid' }
 	| { readonly op: 'key'; readonly key: string }
 	| { readonly op: 'type'; readonly text: string }
 	| { readonly op: 'drag'; readonly dx: number; readonly dy: number };
@@ -100,6 +102,7 @@ export function describeOp(op: Op): string {
 		case 'item':
 			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1}${op.round ? ' (counted round)' : ''} of what is open`;
 		case 'reach':
+			if (op.which === 'grid') return 'press Tab until focus is in the grid of what is open';
 			return `press ArrowDown until ${op.which === 'opener' ? `item ${op.n + 1} (counted round) of those that open a submenu or folder` : `item ${op.n + 1} (counted round)`} of what is open is active`;
 		case 'typeahead':
 			return `type the first letter of item ${op.n + 1} (by distinct first letter) of what is open`;
@@ -222,14 +225,15 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			return clickOnce(found, { timeout: STEP_TIMEOUT });
 		}
 		case 'reach': {
-			if (!(await aim(`round ${op.which} ${op.n}`))) throw new Error(`nothing open has ${op.which === 'opener' ? 'an item that opens something' : 'an item'}`);
+			if (!(await aim(op.which === 'grid' ? 'grid' : `round ${op.which} ${op.n}`))) throw new Error(`nothing open has ${op.which === 'grid' ? 'a grid' : op.which === 'opener' ? 'an item that opens something' : 'an item'}`);
 			const active = () => page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.active() ?? false).catch(() => false);
+			const press = op.which === 'grid' ? 'Tab' : 'ArrowDown';
 			for (let i = 0; i < REACH_PRESSES; i++) {
 				if (await active()) return;
-				await page.keyboard.press('ArrowDown', { delay: HOLD_MS });
+				await page.keyboard.press(press, { delay: HOLD_MS });
 			}
 			if (await active()) return;
-			throw new Error(`ArrowDown did not reach it in ${REACH_PRESSES} presses`);
+			throw new Error(`${press} did not reach it in ${REACH_PRESSES} presses`);
 		}
 		case 'typeahead': {
 			const letter = await page.evaluate((n) => (globalThis as ProbeWindow).__markless_migrate_probe__?.letter(n) ?? '', op.n).catch(() => '');
