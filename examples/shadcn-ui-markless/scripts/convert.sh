@@ -9,7 +9,7 @@ APP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$APP/../.."
 OLD="${OLD:-http://localhost:4000}"
 SOURCE="$ROOT/deploy/shadcn-ui/old/apps/v4"
-PAGE_ORDER_FROM="${PAGE_ORDER_FROM-https://mm-shadcn-ui-old.vercel.app}"
+PAGE_ORDER_FROM="${PAGE_ORDER_FROM-https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev}"
 cd "$APP"
 [ -f .migrate/inventory.json ] || node "$ROOT/src/cli.ts" plan --old "$OLD" --source "$SOURCE" --limit 5000
 [ -f .migrate/usage.json ] || node "$ROOT/src/cli.ts" usage --old "$OLD" --source "$SOURCE"

@@ -13,7 +13,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."
 APP="$ROOT/examples/shadcn-ui-markless"
 SCOPE=jack-shelton
-OLD_URL=https://mm-shadcn-ui-old.vercel.app
+OLD_URL=https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev
 NEW_URL=https://mm-shadcn-ui-new.vercel.app
 # A concurrent CLI process refreshing the shared login leaves this one's token stale for a moment; Vercel answers that as
 # "no access to the specified account" before doing anything, so the same command is safe to run again.

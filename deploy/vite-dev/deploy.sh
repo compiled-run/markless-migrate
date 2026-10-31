@@ -13,7 +13,7 @@ ROOT="$DIR/../.."
 APP="$ROOT/examples/vite-dev-markless"
 DOCS="${DOCS:-$HOME/dev/scratch/vite/docs}"
 SCOPE=jack-shelton
-OLD_URL=https://vite-dev-old.vercel.app
+OLD_URL=https://mm-vite-dev-old.long-wildflower-ecf7.workers.dev
 NEW_URL=https://vite-dev-markless.vercel.app
 # The caching plan (caching.json here, from cache plan) goes into the app before every build.
 cache_apply() { mkdir -p .migrate && cp "$DIR/caching.json" .migrate/caching.json && node "$ROOT/src/cli.ts" cache apply; }

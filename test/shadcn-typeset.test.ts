@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { DEFAULTS, parseParams, parseSnapshot, previewValues, serializeParams, shuffled, snapshotOf, typesetDocs, updateSearch, type TypesetParams } from '../examples/shadcn-ui-markless/lib/site/typeset-params.ts';
 
 // What ui.shadcn.com's /typeset (the pinned build, mm-shadcn-ui-old) showed for these picks, read off the page.
-const OLD_URL = 'https://mm-shadcn-ui-old.vercel.app';
+const OLD_URL = 'https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev';
 const picks: TypesetParams = { ...DEFAULTS, heading: 'lora', scale: '16' };
 
 test('a pick is written where its key stands, a new key appended, and a default leaves the URL (nuqs clearOnDefault)', () => {
