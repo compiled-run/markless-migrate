@@ -1129,12 +1129,14 @@ const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'm
  * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
  */
 export function pageRoot(kids: readonly Element[]): Element {
-	const own = kids.filter((el) => !isDialog(el));
+	const own = kids.filter((el) => !isDialog(el) && !isPortal(el));
 	const pool = own.length ? own : kids;
 	const holding = pool.filter((el) => isMain(el) || [...walk(el)].some(isMain));
 	return (holding.length ? holding : pool).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
 
+// A popup open on load (a Base UI portal, a Radix popper's wrapper) is a layer the page portaled to the body, not the page.
+const isPortal = (el: Element) => el.attrs.some((a) => a.name === 'data-base-ui-portal' || a.name === 'data-radix-popper-content-wrapper');
 // A dialog open on load is a layer the page portaled to the body, not the page.
 const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
