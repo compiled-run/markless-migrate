@@ -103,7 +103,8 @@
 			"route": "/view/new-york-v4/chart-line-interactive",
 			"gesture": "click Mobile on the interactive chart: the original tweens the line to its new shape over about 80 frames; the port redraws it with a 1500 ms stroke-dasharray animation instead (the view is reached only inside /charts/*'s frames; it is in the site's targets since this change)",
 			"caught": "^(behaviour|motion): [^|]*button \"(Mobile|Desktop)[^\"]*\"[^|]*\\|.*(frame by frame|motion of path|animates)",
-			"fixture": "chart-morph"
+			"fixture": "chart-morph",
+			"pending": "the structured state probe's script motion, run with prefers-reduced-motion: no-preference: check uses controls with reduce, where recharts does not tween at all, so only the template's representative (motion, no-preference) can see it"
 		},
 		{
 			"id": "code-download",
@@ -129,7 +130,7 @@
 			"build": "RrorpvSy",
 			"route": "/docs/components/radix/code-block",
 			"gesture": "click the second Replay with the CPU slowed 6x: the original streams in steps of at most 22 characters, the port in bursts of up to 81",
-			"caught": "^(behaviour|motion): (click|press (Enter|Space) on) button \"Replay\"[^|]*\\|.*arrives",
+			"caught": "^(behaviour|motion): (click|press (Enter|Space) on) button \"Replay\"[^|]*\\|.*(arrives|views? in between|first change \\d+ ms after the step \\|)",
 			"fixture": "markdown-replay"
 		},
 		{

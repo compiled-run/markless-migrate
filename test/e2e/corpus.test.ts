@@ -65,8 +65,8 @@ export const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f
 // A control the run never used is a gap in coverage, not a report of what it does.
 const names = (c: Case, f: Failure) => !f.check.startsWith('not exercised') && c.caught.test(text(f));
 
-/** Not caught yet, each taken by the structured state probe: motion on pages that are not their template's representative, and a check mark only pixels show (lucide's icon is aria-hidden). */
-const PENDING = new Set(['three-dots-motion', 'combobox-close-motion', 'combobox-check']);
+/** Not caught yet, each taken by the structured state probe: motion on pages that are not their template's representative, a check mark only pixels show (lucide's icon is aria-hidden), and a chart's tween, which recharts skips under the reduced motion check browses with. */
+const PENDING = new Set(['three-dots-motion', 'combobox-close-motion', 'combobox-check', 'chart-morph']);
 
 const suite = sharded();
 suite.test('the original against itself: no page of the micro-site is red', async () => {
