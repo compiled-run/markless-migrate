@@ -168,6 +168,11 @@ const NOMINAL_JOURNEY_MS = 2_000;
 const TIME_CAP_FACTOR = 4;
 const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
+const IDLE_CODE_MS = 500;
+// Pruning: a journey reaching fewer new blocks than this repeats what an earlier one proved (two explores of one page differ by up to about 8);
+// an element that had LOW_REPEATS such journeys gets no more sequences or keyboard paths.
+const NEW_CODE_FLOOR = 16;
+const LOW_REPEATS = 3;
 // Journey sessions open at once in this process, across every pool (exploring, and the old and new replays side by side):
 // on a 4-core runner 16 sessions loaded a page of chart frames past its load timeout, and what a step shows varied with the load.
 const SESSIONS = Math.max(2, Number(process.env.MARKLESS_MIGRATE_JOURNEY_SESSIONS) || availableParallelism());
@@ -1486,7 +1491,14 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	page.on('pageerror', (error) => errors.push(consoleErrorText(error.message, hosts)));
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
-	if (profiler) await ranCode().catch(() => undefined);
+	// What the page runs with nobody using it (a poll, a clock) is not any journey's: read over a short idle window and left out.
+	let idle = new Set<string>();
+	if (profiler) {
+		await ranCode().catch(() => undefined);
+		await page.waitForTimeout(IDLE_CODE_MS);
+		idle = await ranCode().catch(() => new Set<string>());
+	}
+	const sinceLoad = async () => new Set([...(await ranCode())].filter((block) => !idle.has(block)));
 	const loadErrors = [...errors];
 	const ambient = await ambientOnce(env.origin, route, page, hosts);
 	// A motion recording holds the timeouts itself, across its film.
@@ -1617,7 +1629,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		context,
 		page,
 		loadErrors,
-		...(profiler ? { code: ranCode } : {}),
+		...(profiler ? { code: sinceLoad } : {}),
 		run: (step, destructive = false, patience = QUICK) => observe(() => patiently(page, step, patience), describeTarget(step.target), step, destructive, false),
 		cycle(steps, act) {
 			const use = (step: Step) => observe(() => patiently(page, step), describeTarget(step.target), step, false, false);
@@ -1696,6 +1708,8 @@ export interface ExploreOptions {
 	readonly budgetMs?: number;
 	/** At most this many journeys, most important elements first (default: one per 2 s of the time the page's controls and widgets are given). */
 	readonly maxJourneys?: number;
+	/** Leave out journeys that reach no new code of the original: each element keeps its first journey, an element stops after LOW_REPEATS of them, and a later one under NEW_CODE_FLOOR new blocks is not replayed. */
+	readonly prune?: boolean;
 	/** How many steps deep exploring goes (a control revealed by the 4th click is used by a 5th step); default 4. */
 	readonly maxDepth?: number;
 	/** The route of this run that exercises a shared layout control, when it is another route. */
@@ -1738,6 +1752,8 @@ export interface Exploration {
 	readonly arrival?: { readonly entry: string; readonly link: Target };
 	/** Set when the time cap, not the journey count, ended exploring: the route is reported not checked rather than compared on fewer journeys. */
 	readonly incomplete?: string;
+	/** With `prune`: journeys left out because they reached no new code of the original. */
+	readonly pruned?: number;
 }
 
 interface Item {
@@ -2174,12 +2190,21 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	type Ran = Awaited<ReturnType<typeof runItem>>;
 	// What each journey ran of the original's code that no journey before it in the plan had: counted here, in plan order, never as sessions finish.
 	const seenCode = new Set<string>();
-	const newCode = (code: Set<string> | undefined): { newCode?: number } => {
+	const lowRuns = new Map<string, number>();
+	const elementOf = (journey: Journey) => {
+		const t = journey.steps.at(-1)!.target;
+		return `${journey.steps.length > 1 ? journey.steps.slice(0, -1).map((step) => `${step.target.role}|${step.target.name}|${step.target.nth}`).join('>') + '>' : ''}${t.role}|${t.name}|${t.nth}`;
+	};
+	const newCode = (code: Set<string> | undefined, journey?: Journey): { newCode?: number } => {
 		if (!code) return {};
 		let fresh = 0;
 		for (const block of code) if (!seenCode.has(block)) seenCode.add(block), fresh++;
+		if (journey && fresh < NEW_CODE_FLOOR) lowRuns.set(elementOf(journey), (lowRuns.get(elementOf(journey)) ?? 0) + 1);
 		return { newCode: fresh };
 	};
+	let pruned = 0;
+	const prune = options.prune ?? process.env.MARKLESS_MIGRATE_PRUNE === '1';
+	const exhausted = (item: Item) => prune && (lowRuns.get(elementOf(item.journey)) ?? 0) >= LOW_REPEATS;
 	let sequencesSkipped = 0;
 	const applySequence = (item: Item, r: Ran | undefined): void => {
 		if (!r) {
@@ -2191,9 +2216,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			return;
 		}
 		if (r.empty) return;
-		if (!item.discover) return void journeys.push({ ...r.item.journey, expected: r.expected, ...newCode(r.code) });
+		if (!item.discover) return void journeys.push({ ...r.item.journey, expected: r.expected, ...newCode(r.code, r.item.journey) });
 		const at = journeys.findIndex((j) => j.name === item.journey.name && !j.cycle);
-		if (at >= 0 && r.item.journey.cycle?.length) journeys[at] = { ...r.item.journey, expected: r.expected, ...newCode(r.code) };
+		if (at >= 0 && r.item.journey.cycle?.length) journeys[at] = { ...r.item.journey, expected: r.expected, ...newCode(r.code, r.item.journey) };
 	};
 
 	for (let depth = 1; wave.length; depth++) {
@@ -2224,7 +2249,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				if (item.keys) item.keys.reason = budgetReason(cap);
 				continue;
 			}
-			journeys.push({ ...item.journey, expected: r.expected, ...newCode(r.code) });
+			journeys.push({ ...item.journey, expected: r.expected, ...newCode(r.code, item.journey) });
 			item.keys?.journeys.push(item.journey.name);
 			next.push(...keyItems(r.widgets, item.journey.steps, depth + 1));
 			sequences.push(...r.sequences.filter((s) => (s.rank ?? 0) < URGENT));
@@ -2273,13 +2298,28 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const ordered = [...sequences.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0)), ...later];
 	// --max-journeys counts journeys: a cycle that replaces its plain journey takes no slot.
 	let room = Math.max(0, cap - journeys.length);
-	const fits = ordered.map((item) => item.discover || room-- > 0);
+	const left = ordered.map(exhausted);
+	const fits = ordered.map((item, i) => !left[i] && (item.discover || room-- > 0));
 	const extra = await pool(ordered, CONCURRENCY, async (item, i) => (fits[i] && !outOfBudget() ? runItem(item) : undefined));
 	let skipped = 0;
 	for (const [i, item] of ordered.entries()) {
 		const r = extra[i];
+		if (left[i]) {
+			pruned++;
+			continue;
+		}
 		if (!r && !item.discover && !item.journey.cycle) skipped++;
 		applySequence(item, r);
+	}
+	if (prune) {
+		const kept = new Set<string>();
+		const replayed = journeys.filter((j) => {
+			const first = !kept.has(elementOf(j));
+			kept.add(elementOf(j));
+			return first || j.newCode === undefined || j.newCode >= NEW_CODE_FLOOR || Boolean(j.cycle?.length);
+		});
+		pruned += journeys.length - replayed.length;
+		journeys.splice(0, journeys.length, ...replayed);
 	}
 	for (const t of tracked) {
 		const at = t.prefix.length;
@@ -2306,7 +2346,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
 		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} ${of}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised${role === 'link' ? ', and every address is compared by the rendered check' : ''}` });
 	}
-	return { journeys, elements, skipped, sequencesSkipped, deferred, ...(arrival ? { arrival } : {}), ...(timedOut ? { incomplete: `exploring stopped at its time cap (${Math.round(budget / 1000)} s) after ${journeys.length} of its ${cap} journeys` } : {}) };
+	return { journeys, elements, skipped, sequencesSkipped, deferred, ...(pruned ? { pruned } : {}), ...(arrival ? { arrival } : {}), ...(timedOut ? { incomplete: `exploring stopped at its time cap (${Math.round(budget / 1000)} s) after ${journeys.length} of its ${cap} journeys` } : {}) };
 }
 
 function budgetReason(cap: number): string {
