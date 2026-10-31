@@ -358,7 +358,9 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads);
-	const probed = run.probes ? await probeRoute(browser, run, route, first[0]!, journeyed) : journeyed;
+	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
+	const oneEngine = run.controls?.webkit ? { ...run, controls: { ...run.controls, webkit: undefined } } : run;
+	const probed = run.probes ? await probeRoute(browser, oneEngine, route, first[0]!, journeyed) : journeyed;
 	const located = await locateFailures(probed, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
