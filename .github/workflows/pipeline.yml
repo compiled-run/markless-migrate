@@ -200,9 +200,15 @@ jobs:
           key=$(node scripts/pipeline.ts key plan "$SITE" "$APP" routes="$ROUTES")
           run=""
           [ "$FRESH" = true ] || run=$(bash scripts/pipeline-artifact.sh find "pl-$SITE-plan-$key")
+          # Converting over a kept app takes that app's own plan.
+          if [ -n "${{ inputs.emit-reuse-from }}" ]; then
+            gh run download "${{ inputs.emit-reuse-from }}" -R "$GITHUB_REPOSITORY" -n pl-inputs -D "$RUNNER_TEMP/kept-inputs"
+            mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/kept-inputs/state/*.json "$APP/.migrate/"
+            run="kept"
+          fi
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "run=$run" >> "$GITHUB_OUTPUT"
-      - if: steps.plan.outputs.run != ''
+      - if: steps.plan.outputs.run != '' && steps.plan.outputs.run != 'kept'
         uses: actions/download-artifact@v4
         with:
           name: pl-${{ env.SITE }}-plan-${{ steps.plan.outputs.key }}
