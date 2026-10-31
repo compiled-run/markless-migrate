@@ -66,6 +66,8 @@ export function armState(): void {
 	let stopped = false;
 	let frame = 0;
 	let lastWrite = 0;
+	// Elements a script was still writing when the last step's state was read move on their own (a marquee, a ticking clock): no step started them.
+	const ongoing = new WeakSet<Element>();
 	const known = new WeakSet<Animation>();
 	for (const a of document.getAnimations()) known.add(a);
 	let found: Animation[] = [];
@@ -129,7 +131,7 @@ export function armState(): void {
 			entry.last = value;
 			entry.t1 = now;
 			byAttr.set(m.attributeName, entry);
-			lastWrite = now;
+			if (!ongoing.has(m.target)) lastWrite = now;
 		}
 	});
 	observer.observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: SCRIPTED, subtree: true });
@@ -207,7 +209,13 @@ export function armState(): void {
 			}
 			found = [];
 			const script: PageScriptMotion[] = [];
+			const now = performance.now();
 			for (const [el, byAttr] of writes) {
+				if ([...byAttr.values()].some((e) => now - e.t1 < 100)) ongoing.add(el);
+				else ongoing.delete(el);
+			}
+			for (const [el, byAttr] of writes) {
+				if (ongoing.has(el)) continue;
 				for (const [attribute, e] of byAttr) {
 					if (e.frames.size < 3 || (attribute === 'style' && el.closest(POPUP) === null && el.getAnimations().length)) continue;
 					script.push({ subject: subject(el), attribute, frames: e.frames.size, span: Math.round(e.t1 - e.t0), first: e.first.slice(0, 400), last: e.last.slice(0, 400) });
