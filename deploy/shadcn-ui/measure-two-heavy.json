@@ -1,0 +1,9 @@
+{
+	"routes": [
+		"/docs/components/radix/breadcrumb",
+		"/docs/components/radix/button-group"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
