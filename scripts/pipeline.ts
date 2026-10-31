@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
+import { packByCost } from './probe/pack.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 
@@ -153,11 +154,22 @@ export async function pruneStore(store: string, keep: ReadonlySet<string>): Prom
 	return { kept, dropped };
 }
 
-/** Pages dealt in turn into at most n shards, none of them empty. */
-export function deal<T>(items: readonly T[], n: number): T[][] {
-	const shards = Array.from({ length: Math.max(1, Math.min(n, items.length)) }, () => [] as T[]);
-	items.forEach((item, i) => shards[i % shards.length]!.push(item));
-	return items.length ? shards : [];
+/**
+ * Pages packed into at most n shards, none of them empty: longest first onto the least loaded shard, by what each page's
+ * capture last cost (one not measured counts as the median; with none measured, dealt in turn).
+ */
+export function deal(items: readonly string[], n: number, costs: ReadonlyMap<string, number> = new Map()): string[][] {
+	return items.length ? packByCost(items, costs, Math.max(1, Math.min(n, items.length))).filter((s) => s.length) : [];
+}
+
+/** What each page's capture cost on the run that last captured it: the files convert --capture-only writes under costs/. */
+export async function captureCosts(store: string): Promise<Map<string, number>> {
+	const costs = new Map<string, number>();
+	for (const name of await readdir(join(store, 'costs')).catch(() => [] as string[])) {
+		const cost = await readFile(join(store, 'costs', name), 'utf8').then((t) => JSON.parse(t) as { route?: unknown; seconds?: unknown }).catch(() => undefined);
+		if (typeof cost?.route === 'string' && typeof cost.seconds === 'number') costs.set(cost.route, cost.seconds);
+	}
+	return costs;
 }
 
 export interface Receipt {
@@ -295,7 +307,7 @@ async function main(): Promise<void> {
 		}
 		const ordered = new Map(routes.map((r) => [r, keys.get(r)!]));
 		const { hits, misses } = await recordHits(ordered, store);
-		const shards = deal(misses, Number(n));
+		const shards = deal(misses, Number(n), await captureCosts(store));
 		await mkdir(join(out, 'shards'), { recursive: true });
 		for (const [i, shard] of shards.entries()) await writeFile(join(out, 'shards', `shard-${i + 1}.txt`), `${shard.join('\n')}\n`);
 		await writeFile(join(out, 'record-keys.json'), `${JSON.stringify(Object.fromEntries(ordered), null, 1)}\n`);

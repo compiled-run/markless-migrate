@@ -284,7 +284,8 @@ jobs:
     timeout-minutes: 345
     strategy:
       fail-fast: false
-      max-parallel: 10
+      # Every shard at once: the capture's wall time is its slowest shard, not waves of ten.
+      max-parallel: 24
       matrix:
         shard: ${{ fromJSON(needs.prepare.outputs.capture) }}
     steps:
