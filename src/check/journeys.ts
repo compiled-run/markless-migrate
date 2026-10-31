@@ -14,6 +14,7 @@ import type { Box, Dimension, Failure, Viewport, WriteLine } from './types.ts';
 import { changedRegions } from './visual.ts';
 import { storageCandidate, type StorageOwner } from './automatic.ts';
 import { loadPage } from './infrastructure.ts';
+import { availableParallelism } from 'node:os';
 import { describeStructure, STRUCTURE_ENGINE, type Structure } from './structure.ts';
 import { compositeWidgets, controlPattern, focusEntry, MAX_PATTERN_WIDGETS, outsidePoint, PATTERN_BUDGET_MS, PATTERN_SAMPLES, patternJourneys, TOOLTIP_PROBES, TOOLTIP_WAIT_MS, typeaheadLetter, unsafeChoice, widgetState, type PatternKey, type PatternWidget } from './patterns.ts';
 
@@ -165,6 +166,21 @@ const NOMINAL_JOURNEY_MS = 2_000;
 const TIME_CAP_FACTOR = 4;
 const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
+// Journey sessions open at once in this process, across every pool (exploring, and the old and new replays side by side):
+// on a 4-core runner 16 sessions loaded a page of chart frames past its load timeout, and what a step shows varied with the load.
+const SESSIONS = Math.max(2, Number(process.env.MARKLESS_MIGRATE_JOURNEY_SESSIONS) || availableParallelism());
+let sessionsOpen = 0;
+const sessionWaiters: (() => void)[] = [];
+async function inSession<T>(task: () => Promise<T>): Promise<T> {
+	while (sessionsOpen >= SESSIONS) await new Promise<void>((wake) => sessionWaiters.push(wake));
+	sessionsOpen++;
+	try {
+		return await task();
+	} finally {
+		sessionsOpen--;
+		sessionWaiters.shift()?.();
+	}
+}
 // Other pages tried as the place a visitor arrives from.
 const ARRIVAL_ENTRIES = 3;
 // Journeys run again after arriving in place, most important first.
@@ -1594,7 +1610,11 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	};
 }
 
-export async function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+export function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+	return inSession(() => replayOnce(browser, env, route, viewport, journey));
+}
+
+async function replayOnce(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
 	const session = await openSession(browser, env, journey.start ?? route, viewport);
 	try {
 		const results: StepResult[] = [];
@@ -2068,7 +2088,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		}
 	}
 
-	const runItem = async (item: Item) => {
+	const runItem = (item: Item) => inSession(() => runItemOnce(item));
+	const runItemOnce = async (item: Item) => {
 		const session = await openSession(browser, env, route, viewport);
 		try {
 			const expected: StepResult[] = [];
