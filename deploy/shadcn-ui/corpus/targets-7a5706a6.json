@@ -1,6 +1,9 @@
 {
 	"routes": [
-		"/examples/dashboard",
-		"/docs/components/radix/date-picker"
-	]
+		"/docs/components/base/date-picker",
+		"/examples/dashboard"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
 }
