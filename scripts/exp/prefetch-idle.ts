@@ -29,10 +29,10 @@ for (const profileName of profilesArg!.split(','))
 				const fragments: string[] = [];
 				// Off: the idle tier's fetches, the ones made before the click, never arrive, as with idle prefetch turned off.
 				let clicking = false;
-				if (side === 'off')
-					await page.route('**/_markless/fragment/**', (route) =>
-						!clicking && route.request().headers()['purpose'] === 'prefetch' ? route.abort() : route.continue(),
-					);
+				// Both sides go through the same interception, so it costs them alike.
+				await page.route('**/_markless/fragment/**', (route) =>
+					side === 'off' && !clicking && route.request().headers()['purpose'] === 'prefetch' ? route.abort() : route.continue(),
+				);
 				page.on('request', (r) => r.url().includes('/_markless/fragment') && fragments.push(new URL(r.url()).pathname));
 				const row: Record<string, unknown> = { profile: profileName, browser: browserName, side, run };
 				try {
