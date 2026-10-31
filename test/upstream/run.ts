@@ -87,7 +87,7 @@ function outcomes(report: { readonly suites: readonly JsonSuite[] }): Map<string
 				const id = `${spec.file} > ${t.projectName} > ${title}`;
 				const prior = out.get(id);
 				const runs = [...(prior?.runs ?? []), ...t.results.map((r) => r.status)];
-				const error = prior?.error ?? t.results.find((r) => r.error?.message)?.error?.message?.split('\n').slice(0, 6).join('\n');
+				const error = prior?.error ?? t.results.find((r) => r.error?.message)?.error?.message?.split('\n').slice(0, 12).join('\n');
 				out.set(id, { id, title: `${spec.file}: ${title} [${t.projectName}]`, runs, ...(error ? { error } : {}) });
 			}
 		}
@@ -117,7 +117,7 @@ export default { ...base, webServer: undefined, retries: 0, forbidOnly: false, w
 		const title = t.title.join(' > ');
 		const id = `${t.file} > ${browser} > ${title}`;
 		const prior = out.get(id);
-		const error = prior?.error ?? t.error?.split('\n').slice(0, 6).join('\n');
+		const error = prior?.error ?? t.error?.split('\n').slice(0, 12).join('\n');
 		out.set(id, { id, title: `${t.file}: ${title} [${browser}]`, runs: [...(prior?.runs ?? []), t.state], ...(error ? { error } : {}) });
 	}
 	return out;
@@ -188,6 +188,14 @@ async function consoleOf(origin: string): Promise<void> {
 			page.on('console', (m) => m.type() === 'error' && lines.push(m.text()));
 			page.on('pageerror', (e) => lines.push(String(e)));
 			await page.goto(new URL(route, origin).href, { waitUntil: 'networkidle' }).catch((e: unknown) => lines.push(String(e)));
+			lines.push(...(await page.evaluate(() =>
+				[...document.querySelectorAll<HTMLElement>('button, [role="combobox"], input, a[href]')].flatMap((el) => {
+					const r = el.getBoundingClientRect();
+					if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight) return [];
+					const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+					return !top || el.contains(top) || top.contains(el) ? [] : [`covered at load: <${el.tagName.toLowerCase()}> "${el.textContent?.trim().slice(0, 30)}" under ${top.outerHTML.slice(0, 200)}`];
+				}),
+			)));
 			// Texts the page shows twice once its first menu or context menu opens: a query by text then finds both.
 			const opener = page.locator('[data-slot="context-menu-trigger"], [aria-haspopup]').first();
 			if (await opener.count()) {
