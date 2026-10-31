@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,7 @@ import { cacheModule } from '../src/cache/apply.ts';
 import { classify } from '../src/cache/classify.ts';
 import { checkCloudflareLive } from '../src/cache/cloudflare-live.ts';
 import type { ResponseFacts, RouteEvidence } from '../src/cache/evidence.ts';
-import { checkCloudflareOutput } from '../src/cache/output.ts';
+import { checkCloudflareOutput, compactCloudflareHeaders, loadedUrls, workerLoads } from '../src/cache/output.ts';
 import { cacheRules, cloudflareAssetFile, cloudflareRules } from '../src/cache/rules.ts';
 import { fileSignals, NO_SIGNALS } from '../src/cache/signals.ts';
 
@@ -71,6 +71,7 @@ test('the Cloudflare build check names each cached path that is not a file, and 
 	await write('public/build/app.js');
 	await write('public/build/app.js.br');
 	await write('public/docs/index.html.gz');
+	await write('public/r/templates/app.tar.gz');
 	await write('server/wrangler.json', JSON.stringify({ assets: { run_worker_first: ['/build/*', '!/build/keep/*'] } }));
 	await write('public/_headers');
 	await write('server/index.mjs', 'export default {}');
@@ -79,7 +80,7 @@ test('the Cloudflare build check names each cached path that is not a file, and 
 	assert.deepEqual(report.missing.sort(), ['/_markless/fragment/news', '/news'], '/news is served from news.html; news/index.html is redirected to /news/');
 	assert.deepEqual(report.compressedCopies.sort(), ['build/app.js.br', 'docs/index.html.gz']);
 	assert.deepEqual(report.workerFirst.sort(), ['/build/app.js', '/build/app.js.br']);
-	assert.equal(report.files, 6);
+	assert.equal(report.files, 7);
 	assert.equal(report.workerBytes, 'export default {}'.length);
 });
 
@@ -110,3 +111,37 @@ test('the live check passes files served by Cloudflare and names a page the Work
 		server.close();
 	}
 });
+
+test('the build check names every same-origin URL a page loads as it opens that is not an uploaded file', async () => {
+	const html = `<!doctype html><link rel="stylesheet" href="/s.css"><link rel="canonical" href="/x"><a href="/nope">x</a>
+<script type="importmap">{"imports":{"a":"/build/a.js","b":"https://cdn.example/b.js"}}</script>
+<script defer src="/_vercel/insights/script.js"></script><img src='/logo.svg?v=2'><script src="//cdn.example/c.js"></script>`;
+	assert.deepEqual(loadedUrls(html).sort(), ['/_vercel/insights/script.js', '/build/a.js', '/logo.svg', '/s.css']);
+	const out = await mkdtemp(join(tmpdir(), 'mm-cf-loads-'));
+	const write = async (path: string, body = 'x') => {
+		await mkdir(dirname(join(out, path)), { recursive: true });
+		await writeFile(join(out, path), body);
+	};
+	await write('public/index.html', html);
+	await write('public/docs.html', '<script defer src="/_vercel/insights/script.js"></script>');
+	await write('public/s.css');
+	await write('public/build/a.js');
+	await write('public/logo.svg');
+	assert.deepEqual((await workerLoads(out)).map(({ url, pages }) => ({ url, pages })), [{ url: '/_vercel/insights/script.js', pages: 2 }]);
+	await write('public/_vercel/insights/script.js', '');
+	assert.deepEqual(await workerLoads(out), []);
+});
+
+test('one immutable rule per /_next/static/ file folds into one rule, so _headers stays under the 100 rules Cloudflare takes', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-cf-headers-'));
+	const rule = (path: string) => `${path}\n  cache-control: public, max-age=31536000, immutable\n`;
+	const files = Array.from({ length: 150 }, (_, i) => rule(`/_next/static/chunks/${i}.js`)).join('');
+	await writeFile(join(dir, '_headers'), `${rule('/build/*')}${files}/x.json\n  cache-control: public, max-age=0, must-revalidate\n`);
+	assert.deepEqual(await compactCloudflareHeaders(dir), { before: 152, after: 3 });
+	const text = await readFile(join(dir, '_headers'), 'utf8');
+	assert.match(text, /^\/_next\/static\/\*\n {2}cache-control: public, max-age=31536000, immutable$/m);
+	assert.match(text, /^\/build\/\*$/m);
+	assert.match(text, /^\/x\.json\n {2}cache-control: public, max-age=0, must-revalidate$/m);
+	assert.doesNotMatch(text, /chunks\/1\.js/);
+});
+

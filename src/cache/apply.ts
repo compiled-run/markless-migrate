@@ -82,8 +82,10 @@ const COVERED = /^\/(build|assets)\//;
 export async function publicHashedAssets(app: string, plan: Pick<CachingPlan, 'hashedAssets'>): Promise<string[]> {
 	const all = (await walk(join(app, 'public'))).filter((p) => !COVERED.test(p) && !/\.(br|gz|zst)$/.test(p));
 	const oldShort = new Set(plan.hashedAssets.filter((a) => !a.longLived).map((a) => a.path));
-	const hashed = all.filter((p) => isContentHashed(p) && !oldShort.has(p));
-	const dirOf = (p: string) => p.split('/').slice(0, -1).join('/');
+	// A hashed directory's index.html (a converted layer, fetched as /_converted/layers/<hash>/) is named by its directory.
+	const unit = (p: string) => (/\/(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{12,}\/index\.html$/.test(p) ? p.slice(0, -'/index.html'.length) : p);
+	const hashed = all.filter((p) => (isContentHashed(p) || unit(p) !== p) && !oldShort.has(p));
+	const dirOf = (p: string) => unit(p).split('/').slice(0, -1).join('/');
 	const whole = new Set([...new Set(hashed.map(dirOf))].filter((dir) => dir && all.every((p) => dirOf(p) !== dir || hashed.includes(p))));
 	return [...new Set(hashed.map((p) => (whole.has(dirOf(p)) ? `${dirOf(p)}/**` : p)))].sort();
 }
