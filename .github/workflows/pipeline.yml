@@ -109,10 +109,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
-  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first, and
+  # only while this repository holds under 40 of the org's 60 runners; the rest wait here on one runner (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
+    outputs:
+      parallel: ${{ steps.wait.outputs.parallel }}
     runs-on: ubuntu-latest
     timeout-minutes: 345
     permissions:
@@ -134,10 +136,21 @@ jobs:
           SPEC: ${{ inputs.priority == 'deploy' && 'priority:deploy' || env.ROUTES }}
         run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
       - name: Wait for a full-site slot
+        id: wait
         if: steps.size.outputs.full == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          WANT: 24
         run: node scripts/full-site-gate.ts wait
+      # The shards this run holds, named so a later run's gate can read them (scripts/full-site-gate.ts RESERVATION).
+      - if: steps.wait.outputs.parallel != ''
+        run: echo "${{ steps.wait.outputs.parallel }}" > "$RUNNER_TEMP/full-site-share"
+      - if: steps.wait.outputs.parallel != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-site-share-${{ steps.wait.outputs.parallel }}
+          path: ${{ runner.temp }}/full-site-share
+          retention-days: 1
 
   prepare:
     needs: gate
@@ -278,14 +291,14 @@ jobs:
           if-no-files-found: ignore
 
   capture:
-    needs: prepare
+    needs: [gate, prepare]
     if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
       fail-fast: false
       # Every shard at once: the capture's wall time is its slowest shard, not waves of ten.
-      max-parallel: 24
+      max-parallel: ${{ fromJSON(needs.gate.outputs.parallel || '24') }}
       matrix:
         shard: ${{ fromJSON(needs.prepare.outputs.capture) }}
     steps:
@@ -699,7 +712,7 @@ jobs:
           if-no-files-found: ignore
 
   check:
-    needs: [build, check-select]
+    needs: [gate, build, check-select]
     if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
     uses: ./.github/workflows/check.yml
     with:
@@ -712,6 +725,7 @@ jobs:
       build-url: ${{ inputs.build-url }}
       only-artifact: pl-check-select
       reuse: ${{ inputs.fresh && 'false' || 'true' }}
+      max-parallel: ${{ needs.gate.outputs.parallel }}
 
   deploy:
     needs: [build, check]

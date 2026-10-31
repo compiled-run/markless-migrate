@@ -49,10 +49,12 @@ permissions:
 env:
   SITE: shadcn-ui
 jobs:
-  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
-  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first, and
+  # only while this repository holds under 40 of the org's 60 runners; the rest wait here on one runner (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
+    outputs:
+      parallel: ${{ steps.wait.outputs.parallel }}
     runs-on: ubuntu-latest
     timeout-minutes: 345
     permissions:
@@ -74,10 +76,21 @@ jobs:
           SPEC: words:${{ inputs.routes }} ${{ inputs.machine }}
         run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
       - name: Wait for a full-site slot
+        id: wait
         if: steps.size.outputs.full == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          WANT: 1
         run: node scripts/full-site-gate.ts wait
+      # The shards this run holds, named so a later run's gate can read them (scripts/full-site-gate.ts RESERVATION).
+      - if: steps.wait.outputs.parallel != ''
+        run: echo "${{ steps.wait.outputs.parallel }}" > "$RUNNER_TEMP/full-site-share"
+      - if: steps.wait.outputs.parallel != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-site-share-${{ steps.wait.outputs.parallel }}
+          path: ${{ runner.temp }}/full-site-share
+          retention-days: 1
 
   old:
     needs: gate
