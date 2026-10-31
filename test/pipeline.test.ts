@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { codeClosure, copiedParts, deal, importsOf, partsKeys, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
+import { captureCosts, codeClosure, copiedParts, deal, importsOf, partsKeys, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
 
 async function tree(files: Record<string, string>): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'pipeline-'));
@@ -105,6 +105,22 @@ test('pages are dealt into at most n shards, none empty, and none at all when ev
 	assert.deepEqual(deal(['a', 'b', 'c'], 2), [['a', 'c'], ['b']]);
 	assert.deepEqual(deal(['a'], 24), [['a']]);
 	assert.deepEqual(deal([], 24), []);
+});
+
+test("pages are packed longest first by their last capture's cost, so no shard is left with every slow page", async () => {
+	const costs = new Map([['/docs/a', 900], ['/docs/b', 100], ['/docs/c', 400], ['/docs/d', 400], ['/docs/e', 300]]);
+	const shards = deal(['/docs/a', '/docs/b', '/docs/c', '/docs/d', '/docs/e', '/new'], 2, costs);
+	assert.deepEqual(shards.map((s) => s.reduce((sum, r) => sum + (costs.get(r) ?? 400), 0)).sort(), [1200, 1300]);
+	const store = await mkdtemp(join(tmpdir(), 'pipeline-costs-'));
+	try {
+		await mkdir(join(store, 'costs'));
+		await writeFile(join(store, 'costs', 'a.json'), JSON.stringify({ route: '/docs/a', seconds: 900 }));
+		await writeFile(join(store, 'costs', 'broken.json'), '{');
+		assert.deepEqual([...(await captureCosts(store))], [['/docs/a', 900]]);
+		assert.deepEqual([...(await captureCosts(join(store, 'none')))], []);
+	} finally {
+		await rm(store, { recursive: true, force: true });
+	}
 });
 
 test('the report gives each stage its wall time from first start to last end, its runner time, its receipts, and the run end to end', () => {

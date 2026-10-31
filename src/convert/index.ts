@@ -1445,7 +1445,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			facts.reveals = reveals;
 			return facts;
 		};
-		const reads = captureRoutes.map((route) => reading(() => readRoute(route)));
+		// What each route's capture took, for the next run's shards to be packed by (scripts/pipeline.ts deal).
+		const spent = new Map<string, number>();
+		const timed = async <T>(route: string, work: () => Promise<T>): Promise<T> => {
+			const start = Date.now();
+			try {
+				return await work();
+			} finally {
+				spent.set(route, (spent.get(route) ?? 0) + (Date.now() - start) / 1000);
+			}
+		};
+		const reads = captureRoutes.map((route) => reading(() => timed(route, () => readRoute(route))));
 		for (const pending of reads) pending.catch(() => {});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
 		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
@@ -1459,7 +1469,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
 				if (!choosing.has(run)) {
-					const chosen = captureChoices(browser, options.old, route, reveal, (await atFor(route, 'choices')), log, limit);
+					const dir = await atFor(route, 'choices');
+					const chosen = timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
 					chosen.catch(() => {});
 					choosing.set(run, chosen);
 				}
@@ -1501,10 +1512,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
-			const forms = await eachLimited(limit, routes, async (route) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] })));
+			const forms = await eachLimited(limit, routes, async (route) => timed(route, async () => captureForms(browser, options.old, route, (await atFor(route, 'toggles')))).catch(() => ({ route, forms: [] })));
 			for (const f of forms) submitted.set(f.route, f.forms);
 		}
 		await dirs.save();
+		if (options.captureOnly) {
+			await mkdir(join(state, 'convert', 'costs'), { recursive: true });
+			for (const [route, seconds] of spent) await writeFile(join(state, 'convert', 'costs', `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`), JSON.stringify({ route, seconds: Math.round(seconds) }));
+		}
 	} finally {
 		await browser.close();
 	}
