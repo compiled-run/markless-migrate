@@ -84,7 +84,7 @@ function serve(body: string | ((path: string) => string | undefined), team: numb
 
 async function check(old: string | ((path: string) => string | undefined), next: string | ((path: string) => string | undefined)): Promise<Report> {
 	const [a, b] = await Promise.all([serve(old), serve(next)]);
-	return runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } });
+	return runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 }
 
 const inBetween = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f) => !f.accepted && /on screen until the result/.test(`${f.expected} ${f.actual}`));
@@ -120,9 +120,9 @@ test('a placeholder the old page also showed is not a difference, however long e
 
 test('a placeholder the new page showed once, because its server was slow that time, is timed again one side at a time and does not stand', async () => {
 	const [a, b] = await Promise.all([serve(spinner), serve(spinner, Array.from({ length: 20 }, () => 400))]);
-	const late = inBetween(await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } }));
+	const late = inBetween(await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 }));
 	assert.ok(late.length, 'a new server slow every time keeps it red');
 	const [c, d] = await Promise.all([serve(spinner), serve(spinner, [400])]);
-	const once = inBetween(await runCheck({ oldOrigin: c, newOrigin: d, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } }));
+	const once = inBetween(await runCheck({ oldOrigin: c, newOrigin: d, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 }));
 	assert.deepEqual(once.map((f) => `${f.check}: ${f.actual}`), []);
 });

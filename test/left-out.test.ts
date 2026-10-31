@@ -8,5 +8,5 @@ test('keyboard journeys and repeated-use sequences the budget left out turn the 
 	assert.equal(keys!.check, 'not exercised: 3 keyboard journeys');
 	assert.equal(cycles!.check, 'not exercised: 1 repeated-use or closing sequence');
 	assert.equal(keys!.dimension, 'behaviour');
-	assert.match(keys!.actual, /raise --journey-budget/);
+	assert.match(keys!.actual, /raise --max-journeys/);
 });
