@@ -222,13 +222,13 @@ const STAGE_KEYS = ['plan', 'emit', 'emit-base', 'build'] as const;
 type Stage = (typeof STAGE_KEYS)[number];
 
 /**
- * A stage's key from the files and values it reads. The app's checked-in files, the pinned old site (fetch-old.sh) and
+ * A stage's key from the files and values it reads. The app's checked-in files, the pinned old site (fetch-old.sh and its old-fixtures.json) and
  * the code of the commands each stage runs (their import closures, cli.ts itself included) go into every key that reads them.
  */
 export async function stageKey(stage: Stage, o: { readonly site: string; readonly app: string; readonly values: Readonly<Record<string, string>>; readonly files?: readonly string[] }): Promise<string> {
 	const parts: KeyPart[] = [['stage', stage], ...Object.entries(o.values).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [`value ${k}`, v] as const)];
 	const add = async (files: readonly string[], prefix: string) => parts.push(...(await fileParts(ROOT, files, prefix)));
-	const pinned = [join(ROOT, 'deploy', o.site, 'fetch-old.sh'), join(ROOT, o.app, 'scripts', 'convert.sh'), join(ROOT, 'src', 'cli.ts')];
+	const pinned = [join(ROOT, 'deploy', o.site, 'fetch-old.sh'), join(ROOT, 'deploy', o.site, 'old-fixtures.json'), join(ROOT, o.app, 'scripts', 'convert.sh'), join(ROOT, 'src', 'cli.ts')].filter((f) => existsSync(f));
 	if (stage === 'plan') {
 		await add(pinned, 'pinned');
 		await add(await codeClosure([join(ROOT, 'src/plan/inventory.ts'), join(ROOT, 'src/usage/index.ts')]), 'code');

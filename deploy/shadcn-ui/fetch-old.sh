@@ -9,4 +9,5 @@ ORIGIN="${ORIGIN:-http://localhost:4000}"
 [ -d "$DIR/old/.git" ] || git clone --quiet https://github.com/shadcn-ui/ui.git "$DIR/old"
 git -C "$DIR/old" fetch --quiet --depth 1 origin "$COMMIT" && git -C "$DIR/old" checkout --quiet "$COMMIT"
 printf 'NEXT_PUBLIC_V0_URL=https://v0.dev\nNEXT_PUBLIC_APP_URL=%s\n' "$ORIGIN" > "$DIR/old/apps/v4/.env.local"
-(cd "$DIR/old" && pnpm install --frozen-lockfile && pnpm --filter=v4 build)
+(cd "$DIR/old" && pnpm install --frozen-lockfile && NODE_OPTIONS="--import $DIR/old-fixtures.mjs" pnpm --filter=v4 build)
+node "$DIR/freeze-old.mjs" "$DIR/old/apps/v4"
