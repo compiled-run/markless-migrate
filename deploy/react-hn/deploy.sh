@@ -2,6 +2,7 @@
 # Deploys the react-hn migration to Vercel production: deploy/react-hn/deploy.sh old|new
 # old: insin/react-hn's own build (dist/ of the pinned commit, built with Node 10 as the log says) as static files, as mm-react-hn-old.
 # new: examples/react-hn-markless with the Vercel preset, as mm-react-hn-new.
+# Not hosted since 2026-10-30: the mm-react-hn-old project were deleted. Run `old` to bring them back; checks serve the old app locally (ci-serve.sh old).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."

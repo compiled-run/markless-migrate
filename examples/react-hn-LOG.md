@@ -249,7 +249,7 @@ Each started from a red run of the check on this port, each is its own PR with a
 
 | Side | URL | What it is |
 | --- | --- | --- |
-| Old | https://mm-react-hn-old.vercel.app/#/news | the old app's own `dist/` from the pinned commit, as static files |
+| Old | https://mm-react-hn-old.vercel.app/#/news (taken down 2026-10-30; serve it locally with `deploy/react-hn/ci-serve.sh old`) | the old app's own `dist/` from the pinned commit, as static files |
 | New | https://mm-react-hn-new.vercel.app/news | `examples/react-hn-markless` with the Vercel preset |
 
 Both read the live Hacker News database from the browser, so they show the same data only as far as HN does not change

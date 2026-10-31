@@ -58,9 +58,9 @@ node ../../deploy/tanstack-query/measure.ts http://127.0.0.1:4520 http://127.0.0
 
 | | URL |
 | --- | --- |
-| Old app (the example's own build on a static host) | https://mm-tanstack-query-old.vercel.app |
+| Old app (the example's own build on a static host) | https://mm-tanstack-query-old.vercel.app (taken down 2026-10-30; serve it locally with `node deploy/tanstack-query/serve-old.ts`) |
 | New app (the port, a Nitro function) | https://mm-tanstack-query-new.vercel.app |
-| Front door and check report | https://mm-tanstack-query.vercel.app (report at `/_migrate/report.html`) |
+| Front door and check report | https://mm-tanstack-query.vercel.app (report at `/_migrate/report.html`) (taken down 2026-10-30, with the old app it proxied to) |
 
 No page is switched to the new app, because no page route is green, so the front door serves the old app on every
 address. The port keeps one store per tab in its function instance's memory; when Vercel answers a later request from

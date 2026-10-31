@@ -223,9 +223,9 @@ G28 there (render data). Fixed since and relied on here: keyed rows updating in 
 
 | What | URL |
 | --- | --- |
-| Old app (Devtron's built panel with the devtools host stub) | https://mm-ag-grid-old.vercel.app |
+| Old app (Devtron's built panel with the devtools host stub) | https://mm-ag-grid-old.vercel.app (taken down 2026-10-30; serve it locally with `node deploy/ag-grid/serve-old.ts`) |
 | Markless app | https://mm-ag-grid-new.vercel.app |
-| Front door (`/manifest.json` from the new app, `/` and the rest from the old one until `/` is accepted and switched) | https://mm-ag-grid.vercel.app |
+| Front door (`/manifest.json` from the new app, `/` and the rest from the old one until `/` is accepted and switched) | https://mm-ag-grid.vercel.app (taken down 2026-10-30, with the old app it proxied to) |
 | Migration index and check report | https://mm-ag-grid.vercel.app/_migrate/ and https://mm-ag-grid.vercel.app/_migrate/report.html |
 
 `deploy/ag-grid/deploy.sh old|new|front` rebuilds each (after `deploy/ag-grid/fetch-old.sh`).

@@ -4,6 +4,7 @@
 # new:   examples/ag-grid-markless with the Vercel preset, as mm-ag-grid-new.
 # front: the vercel.json `markless-migrate config --vercel` writes for .migrate/switched.json, plus the check report
 #        at /_migrate/, as mm-ag-grid.
+# Not hosted since 2026-10-30: the mm-ag-grid-old and mm-ag-grid projects were deleted. Run `old` then `front` to bring them back; checks serve the old app locally (serve-old.ts).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."
