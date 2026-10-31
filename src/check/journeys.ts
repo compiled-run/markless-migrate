@@ -2607,7 +2607,14 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			}
 			if (diverged) {
 				const moved = n.navigated || n.reloaded || oldSteps.some((x) => x.navigated || x.reloaded);
-				const lost = act || moved ? undefined : (deadControl(oldSteps as StepResult[], n) ?? lostRegions(oldSteps as StepResult[], n));
+				// A key pressed where focus already is, or a click outside what is open, follows from the earlier difference: only a step that takes its own control stands alone.
+				const own = step.action === 'click' || step.action === 'press' || step.action === 'fill' || step.action === 'type' || step.action === 'select' || (step.action === 'key' && Boolean(step.focus));
+				const lost = act || moved || !own ? undefined : (deadControl(oldSteps as StepResult[], n) ?? lostRegions(oldSteps as StepResult[], n));
+				// A step that starts on its own control and leaves focus on the page itself, where every old run keeps it on something, lost focus on its own.
+				if (!act && !moved && own && n.focus === 'body' && oldSteps.every((o) => o.focus !== 'body')) {
+					failures.push({ route, dimension, check, expected: `focus on ${a!.focus}, where an earlier step of this journey already differed`, actual: 'focus on the page (body): the port drops focus', hint });
+					break;
+				}
 				if (lost) {
 					failures.push({ route, dimension, check, expected: `${describeTarget(step.target)} changes ${lost.join(', ')} on the original, where an earlier step of this journey already differed; ${format(a!, ['added', 'removed'])}`, actual: `the port does not change ${lost.join(', ')}${n.reaction?.affected?.length ? ` (it changes ${n.reaction.affected.join(', ')})` : ''}; ${format(n, ['added', 'removed'])}`, hint });
 					break;
