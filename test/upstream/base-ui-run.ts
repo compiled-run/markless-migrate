@@ -76,6 +76,27 @@ export async function runBaseUi(checkout: string, origin: string, outFile: strin
 				const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 				context.setDefaultTimeout(5000);
 				const page = await context.newPage();
+				// Who inserts a portal into the page after it loads, for a test that finds one twice.
+				await page.addInitScript(() => {
+					const seen: string[] = ((globalThis as unknown as { __inserts: string[] }).__inserts = []);
+					const note = (node: unknown) => {
+						if (node instanceof Element && (node.hasAttribute('data-base-ui-portal') || node.querySelector?.('[data-base-ui-portal]'))) seen.push(String(new Error('inserted').stack).split('\n').slice(1, 7).join(' | '));
+					};
+					for (const name of ['appendChild', 'insertBefore', 'replaceChild'] as const) {
+						const original = Node.prototype[name] as (...a: unknown[]) => unknown;
+						(Node.prototype as unknown as Record<string, unknown>)[name] = function (this: Node, ...args: unknown[]) {
+							note(args[0]);
+							return original.apply(this, args);
+						};
+					}
+					for (const name of ['append', 'prepend', 'after', 'before', 'replaceWith'] as const) {
+						const original = Element.prototype[name] as (...a: unknown[]) => unknown;
+						(Element.prototype as unknown as Record<string, unknown>)[name] = function (this: Element, ...args: unknown[]) {
+							for (const a of args) note(a);
+							return original.apply(this, args);
+						};
+					}
+				});
 				let result: { state: string; error?: string };
 				try {
 					await page.goto(new URL(`/r/${r.id}/`, origin).href, { waitUntil: 'networkidle' });
@@ -89,7 +110,7 @@ export async function runBaseUi(checkout: string, origin: string, outFile: strin
 					result = { state: 'failed', error: String((error as Error)?.message ?? error) };
 				}
 				// What the page held when the test failed: the error alone rarely says which copy a query found twice.
-				if (result.state !== 'passed') result.error = `${(result.error ?? '').split('\n').slice(0, 4).join('\n')}\n--- body --- ${await page.evaluate(() => { const b = document.body.cloneNode(true) as HTMLElement; for (const x of b.querySelectorAll('script, style')) x.remove(); return b.outerHTML.replace(/\s+/g, ' ').slice(0, 8000); }).catch(() => '')}`;
+				if (result.state !== 'passed') result.error = `${(result.error ?? '').split('\n').slice(0, 4).join('\n')}\n--- body --- ${await page.evaluate(() => { const b = document.body.cloneNode(true) as HTMLElement; for (const x of b.querySelectorAll('script, style')) x.remove(); return `inserted after load: ${(globalThis as unknown as { __inserts?: string[] }).__inserts?.join(' || ') || 'none'} --- ${b.outerHTML.replace(/\s+/g, ' ').slice(0, 8000)}`; }).catch(() => '')}`;
 				results.push({ file: r.file, title: [...r.test], ...result });
 				process.stdout.write(`  ${result.state === 'passed' ? 'ok' : 'FAIL'} ${r.file} > ${r.test.join(' > ')}${result.error ? `: ${result.error.split('\n')[0]}` : ''}\n`);
 				await context.close();
