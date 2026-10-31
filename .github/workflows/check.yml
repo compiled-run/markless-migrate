@@ -178,6 +178,8 @@ jobs:
 
   check:
     needs: plan
+    # The plan ran past a skipped gate (a pipeline's call, priority deploy): without its own condition this job is skipped too.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
     timeout-minutes: 345
