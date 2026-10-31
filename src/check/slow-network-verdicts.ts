@@ -1,11 +1,12 @@
-import { mannWhitneyGreater, median, psiFailures, SIGNIFICANCE } from './load.ts';
+import { mannWhitneyGreater, median, noiseBand, psiFailures, SIGNIFICANCE } from './load.ts';
+
+export { noiseBand };
 import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, RUN_METRIC_LABEL, runMetric, type NetworkCell, type NetworkRun, type RouteNetwork, type RunMetric } from './slow-network.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 import type { Failure, RouteResult } from './types.ts';
 
 /** The times that gate a route: a page that paints or answers later on any browser and network is slower there. */
 export const GATED: readonly RunMetric[] = ['firstFrame', 'lcp', 'answered'];
-const BAND_QUANTILE = 0.9;
 /** Old runs a band needs: fewer cannot be split in two halves of two. */
 const MIN_OLD_RUNS = 4;
 // A paint's time is the frame it was presented in (60 Hz): content ready a few ms later can land a whole frame later.
@@ -16,26 +17,6 @@ export const resolution = (metric: RunMetric): number => (metric === 'firstFrame
 export const MIN_WORSE_MS = 33;
 export const MIN_WORSE_FRACTION = 0.05;
 export const minWorse = (old: number): number => Math.max(MIN_WORSE_MS, old * MIN_WORSE_FRACTION);
-
-/** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
-export function noiseBand(old: readonly number[]): number | undefined {
-	if (old.length < MIN_OLD_RUNS) return undefined;
-	const n = old.length;
-	const small = n >> 1;
-	const gaps: number[] = [];
-	const pick = (start: number, chosen: number[]) => {
-		if (chosen.length === small) {
-			const a = chosen.map((i) => old[i]!);
-			const b = old.filter((_, i) => !chosen.includes(i));
-			gaps.push(Math.abs(median(a) - median(b)));
-			return;
-		}
-		for (let i = start; i < n; i++) pick(i + 1, [...chosen, i]);
-	};
-	pick(0, []);
-	gaps.sort((x, y) => x - y);
-	return gaps[Math.min(gaps.length - 1, Math.floor(BAND_QUANTILE * gaps.length))]!;
-}
 
 export interface NetworkVerdict {
 	readonly metric: RunMetric;
