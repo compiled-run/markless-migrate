@@ -59,11 +59,13 @@ async function trial(sandbox: Sandbox, t: TrialJob, registry: string | undefined
 	const opened = t.el.layer ? undefined : page.layers.get(target.getAttribute('aria-controls') ?? target.id);
 	// A container's own trigger first (a collapsible's), then what else it holds that can be pressed.
 	const inside = [...new Set([...target.querySelectorAll(TRIGGERS), ...target.querySelectorAll(PRESSABLE)])].slice(0, library ? 2 : ITEMS_TRIED);
-	const tries = library ? [target, ...inside] : [target, ...inside, ...(opened ? [...opened.querySelectorAll(ITEM_ROLES)].slice(0, ITEMS_TRIED) : [])];
+	const tries = library ? [target, ...inside] : [target, ...inside, ...(opened ? [...opened.querySelectorAll(`${ITEM_ROLES},[role=gridcell] button,td button`)].slice(0, ITEMS_TRIED) : [])];
 	// A press reaches a part as pointerdown, click or a key, whichever the library listens for (Radix opens on pointerdown).
 	// A tooltip or hover card answers the pointer resting on it, a context menu the right button.
 	const hover = /(Tooltip|HoverCard|PreviewCard)/.test(t.element) ? ['pointerover', 'focusin'] : [];
-	const events = t.events.includes('click') ? [...new Set([...hover, ...t.events, 'pointerdown', 'keydown', 'focusin', ...(/ContextMenu/.test(t.element) ? ['contextmenu'] : [])])] : library ? [...new Set([...hover, ...t.events, 'pointerdown', 'click', 'keydown'])] : t.events;
+	// A choice whose input the label holds (a questionnaire's radio) answers the input it changes.
+	const typed = library && inside.some((x) => x.localName === 'input') ? ['input'] : [];
+	const events = t.events.includes('click') ? [...new Set([...hover, ...t.events, 'pointerdown', 'keydown', 'focusin', ...typed, ...(/ContextMenu/.test(t.element) ? ['contextmenu'] : [])])] : library ? [...new Set([...hover, ...t.events, 'pointerdown', 'click', 'keydown', ...typed])] : t.events;
 	let best: Result | undefined;
 	for (const event of events) {
 		for (const at of tries) {

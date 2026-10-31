@@ -145,6 +145,7 @@ function routesFor(el: PortElement, port: ReadonlyMap<string, PortFile>, roots: 
 
 // How many of a route's segments the source file's path names: an example is tried on its own docs (radix, base,
 // aria), a page's component on its page (app/(app)/(typeset)/... on /typeset).
+const PAGE_OWN = /^(app|examples|registry)\//;
 // Path words every route or source file has, which tell nothing about which component it is.
 const COMMON = new Set(['app', 'components', 'component', 'docs', 'examples', 'example', 'view', 'registry', 'lib', 'src', 'pages', 'page', 'index', 'tsx', 'jsx', 'new', 'york', 'bases', 'styles', 'blocks', 'internal', 'nova', 'default']);
 const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !COMMON.has(w)));
@@ -189,6 +190,10 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 	}
 	const roots = rootsRendering(port);
 	const pages = pageOf(port);
+	const allRoutes = [...pages.keys()];
+	const homed = new Map<string, boolean>();
+	// Whether some route of the port shares a word with the file's path: the page that component or example is for.
+	const homes = (file: string) => homed.get(file) ?? homed.set(file, allRoutes.some((r) => affinity(file, r) > 0)).get(file)!;
 	options.log?.(`ledger: ${sites.length} handler sites in the source, ${port.size} modules in the port`);
 	const entries: LedgerEntry[] = [];
 	const trials = new Map<HandlerSite, Trial[]>();
@@ -217,9 +222,11 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 			const scored = placed.map((c) => ({ ...c, score: affinity(site.file, c.at.route) })).sort((a, b) => Number(a.weak) - Number(b.weak) || b.score - a.score || a.n - b.n);
 			// The routes sharing the most words with the source's path are its own; on any other it may be another component's: weak there.
 			const best = Math.max(0, ...scored.map((c) => c.score));
+			// A page's own component or an example (app/, examples/, registry/) found only on routes sharing no word with it, while a route that does exists, is a guess.
+			const unplacedPage = best === 0 && PAGE_OWN.test(site.file) && homes(site.file);
 			const files = new Set<string>();
 			for (const { el, at, weak: unplaced, score } of scored) {
-				const weak = unplaced || score < best;
+				const weak = unplaced || unplacedPage || score < best;
 				if (files.has(`${el.file} ${at.route}`) || list.length >= PER_SITE) continue;
 				files.add(`${el.file} ${at.route}`);
 				// What the element finally is decides what onChange hears: typing in an <input>, a choice elsewhere.
