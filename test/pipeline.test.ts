@@ -115,6 +115,7 @@ test('the report gives each stage its wall time from first start to last end, it
 			{ stage: 'build', hit: 'no', seconds: 300 },
 		],
 		[job('prepare', '00:00', '04:00'), job('capture (1)', '04:10', '09:10'), job('capture (2)', '04:10', '07:10'), { name: 'emit', conclusion: 'skipped', started_at: null, completed_at: null }, job('build', '09:20', '19:20'), job('check / check (1)', '20:00', '30:00')],
+		[['keys and plan', 'prepare'], ['capture', 'capture'], ['emit', 'emit'], ['build', 'build'], ['check', 'check /'], ['deploy', 'deploy']],
 	);
 	assert.match(text, /^End to end: 30:00 /);
 	assert.match(text, /\| capture \| 5:00 \| 2 jobs, 8:00 \| success \| hits 1020, misses 10 \|/);
@@ -122,4 +123,25 @@ test('the report gives each stage its wall time from first start to last end, it
 	assert.match(text, /\| build \| 10:00 \| 10:00 \| success \| hit no, seconds 300 \|/);
 	assert.match(text, /\| check \| 10:00 \|/);
 	assert.match(text, /\| deploy \| – \| – \| not in this run \|/);
+});
+
+test('stages that share a job are timed by their own receipts, one that wrote none is skipped, and the last stage end closes the run', () => {
+	const job = (name: string, start: string, end: string | null) => ({ name, conclusion: end ? 'success' : null, started_at: `2026-10-30T10:${start}Z`, completed_at: end && `2026-10-30T10:${end}Z` });
+	const ended = (t: string) => Date.parse(`2026-10-30T10:${t}Z`) / 1000;
+	const text = report(
+		[
+			{ stage: 'emit', converted: 'kept (run 7)' },
+			{ stage: 'emit', 'stage-seconds': 120, ended: ended('11:20'), result: 'success' },
+			{ stage: 'build', hit: 'no', seconds: 300 },
+			{ stage: 'build', 'stage-seconds': 600, ended: ended('21:20'), result: 'failure' },
+			{ stage: 'deploy', 'stage-seconds': 60, ended: ended('35:30'), result: 'success' },
+		],
+		[job('prepare', '00:00', '04:00'), job('capture (1)', '04:10', '09:10'), job('assemble', '09:20', '23:00'), job('check / check (1)', '24:00', '34:00'), job('finish', '34:10', null)],
+	);
+	assert.match(text, /^End to end: 35:30 /);
+	assert.match(text, /\| emit \| 2:00 \| 2:00 \| success \| converted kept \(run 7\) \|/);
+	assert.match(text, /\| build \| 10:00 \| 10:00 \| failure \| hit no, seconds 300 \|/);
+	assert.match(text, /\| check select \| – \| – \| skipped \|  \|/);
+	assert.match(text, /\| check \| 10:00 \| 10:00 \| success \|/);
+	assert.match(text, /\| deploy \| 1:00 \| 1:00 \| success \|/);
 });

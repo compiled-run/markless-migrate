@@ -1,0 +1,50 @@
+name: Check merge
+description: Joins the check shards' reports of this run into one, and keeps their results for later runs (check.yml's merge, and the pipeline's finish)
+inputs:
+  site:
+    description: The deploy/<site> folder
+    required: true
+  label:
+    description: What was checked, for the summary's heading
+    required: true
+  shards:
+    description: How many shards the routes were dealt into
+    required: true
+  reuse:
+    description: "'false' keeps no results for later runs"
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: check-*
+        path: shards
+    - name: Merge
+      shell: bash
+      env:
+        SITE: ${{ inputs.site }}
+        LABEL: ${{ inputs.label }}
+        SHARDS: ${{ inputs.shards }}
+      run: |
+        set -euo pipefail
+        # A shard that wrote no report has each of its routes listed as not checked.
+        node scripts/check-shards.ts merge shards merged shards/check-shards
+        reported=$(find shards -name report.json | wc -l)
+        { echo "### $SITE: $LABEL"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+    # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.
+    - name: Join kept results
+      if: inputs.reuse != 'false'
+      shell: bash
+      run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
+    - name: Keep results for later runs
+      if: inputs.reuse != 'false'
+      uses: actions/cache/save@v4
+      with:
+        path: reuse
+        key: check-reuse-${{ inputs.site }}-${{ github.run_id }}
+    - uses: actions/upload-artifact@v4
+      with:
+        name: check-merged
+        path: merged
+        retention-days: 30
