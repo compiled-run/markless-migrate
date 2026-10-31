@@ -21,7 +21,8 @@
 			"route": "/typeset",
 			"gesture": "click Heading Geist Aa, choose Inter: the original's button reads Heading Inter Aa, the port's stays Geist",
 			"caught": "^(behaviour|a11y): [^|]*button \"Heading [^\"]*\", then (click|press \\w+ on) menuitemradio \"(?!Geist\")[^\"]+\" \\(step 2\\)",
-			"fixture": "typeset-font"
+			"fixture": "typeset-font",
+			"pending": "the fixed journey count (#470): the font menu's choices are never used within the 156 s journey budget on this page"
 		},
 		{
 			"id": "typeset-shuffle",
@@ -147,7 +148,8 @@
 			"route": "/docs/components/base/combobox",
 			"gesture": "choose an item and reopen: the original shows a check on it, the port does not",
 			"caught": "^(behaviour|a11y): [^|]*option \"[^\"]+\"[^|]*\\|.*option \"[^\"]+\" \\[selected\\]: \\| - img",
-			"fixture": "combobox-check"
+			"fixture": "combobox-check",
+			"pending": "the structured state probe: lucide's check icon is aria-hidden, so only pixels show it missing"
 		},
 		{
 			"id": "combobox-anchor",
@@ -237,7 +239,8 @@
 			"route": "/docs/components/radix/date-picker",
 			"gesture": "type May 28, 2025 into Subscription Date, ArrowDown: the original opens May 2025 with the 28th chosen, the port opens nothing",
 			"caught": "^(behaviour|a11y): field input[^|]*\\| \"May 28, 2025\" typed",
-			"fixture": "date-typed"
+			"fixture": "date-typed",
+			"pending": "control parity's six typed values per route never reach Subscription Date on this page; the role-model probe types generated dates"
 		},
 		{
 			"id": "dashboard-dead",

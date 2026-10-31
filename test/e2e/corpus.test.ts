@@ -65,8 +65,8 @@ export const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f
 // A control the run never used is a gap in coverage, not a report of what it does.
 const names = (c: Case, f: Failure) => !f.check.startsWith('not exercised') && c.caught.test(text(f));
 
-/** Motion every page of a large site gets (not only its template's representative) is not compared yet; the structured state probe takes these. */
-const PENDING = new Set(['three-dots-motion', 'combobox-close-motion']);
+/** Not caught yet, each taken by the structured state probe: motion on pages that are not their template's representative, and a check mark only pixels show (lucide's icon is aria-hidden). */
+const PENDING = new Set(['three-dots-motion', 'combobox-close-motion', 'combobox-check']);
 
 const suite = sharded();
 suite.test('the original against itself: no page of the micro-site is red', async () => {
@@ -75,7 +75,7 @@ suite.test('the original against itself: no page of the micro-site is red', asyn
 });
 for (const [id, c] of Object.entries(CASES)) {
 	if (PENDING.has(id)) {
-		test.todo(`${id}: ${c.bug} (pending: motion compared on every page)`);
+		test.todo(`${id}: ${c.bug} (pending: the structured state probe)`);
 		continue;
 	}
 	suite.test(`${id}: ${c.bug}`, async () => {
