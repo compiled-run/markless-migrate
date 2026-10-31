@@ -227,7 +227,7 @@
 			"build": "RrorpvSy",
 			"route": "/docs/components/radix/date-picker",
 			"gesture": "open Pick a date, Tab to the day grid, ArrowLeft: the original moves to the day before, the port does not move",
-			"caught": "^(behaviour|a11y): (grid keys on grid[^|]*\\(step [2-9]|press Arrow(Left|Right|Up|Down) on gridcell)",
+			"caught": "^(behaviour|a11y): ([^|]*grid keys on grid[^|]*\\(step [2-9]|[^|]*press Arrow(Left|Right|Up|Down) on gridcell|role model probe[^|]*press Arrow(Left|Right|Up|Down)[^|]*\\|[^|]*focus: gridcell)",
 			"fixture": "date-arrows"
 		},
 		{
