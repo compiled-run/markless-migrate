@@ -16,6 +16,14 @@ on:
         description: The run whose per-route times pack the shards (default the last successful run; none deals routes in turn)
         required: false
         default: ''
+      aa:
+        description: 'A/A: the original on both sides, so every difference is the probe''s own'
+        required: false
+        default: 'false'
+      concurrencies:
+        description: Routes probed at once per runner, as a JSON list; each value is its own job per engine and shard
+        required: false
+        default: '[0]'
       reuse:
         description: Use the original's side of each use as earlier runs recorded it ('false' uses the original live throughout)
         required: false
@@ -117,7 +125,8 @@ jobs:
       max-parallel: 10
       matrix:
         engine: [chromium, webkit]
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        concurrency: ${{ fromJSON(inputs.concurrencies) }}
+        shard: ${{ fromJSON(inputs.aa == 'true' && '[0]' || '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,8 +147,13 @@ jobs:
         run: |
           # Chromium's two routes at a time get three copies of the old server (one answering every cold load was what they waited
           # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
-          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
-          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && [ "${{ matrix.concurrency }}" -le 1 ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
+          if [ "${{ inputs.aa }}" = true ]; then
+            (PORT=3000 OLD_WORKERS=$([ "${{ matrix.concurrency }}" -le 1 ] && echo 1 || echo 3) nohup bash "deploy/$SITE/serve-old.sh" > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+            for _ in $(seq 1 240); do curl -s -o /dev/null http://127.0.0.1:3000/ && break; sleep 0.5; done
+          else
+            bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+          fi
       # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
       - name: The last run's per-route times
         env:
@@ -175,12 +189,13 @@ jobs:
           # One process per runner from one longest-first queue. Chromium probes two routes at a time, each with its own browser:
           # a 4-vCPU runner is busy at two. WebKit probes one: at two it reported 10 to 50 differences the same routes alone do not.
           if [ "${{ matrix.engine }}" = webkit ]; then export MAX_ACTIONS=15 KEY_MAX=8 INPUT_MAX=8 CONCURRENCY=1; else export MAX_ACTIONS=30 KEY_MAX=24 INPUT_MAX=24 CONCURRENCY=2; fi
-          COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
+          if [ "${{ matrix.concurrency }}" -gt 0 ]; then export CONCURRENCY=${{ matrix.concurrency }}; fi
+          COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} ${{ inputs.aa == 'true' && '1' || '10' }} > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
           tail -n 5 out/log.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: dead-controls-${{ matrix.engine }}-${{ matrix.shard }}
+          name: dead-controls-${{ matrix.engine }}-${{ matrix.shard }}${{ matrix.concurrency > 0 && format('-c{0}', matrix.concurrency) || '' }}
           path: out
           include-hidden-files: true
           retention-days: 30

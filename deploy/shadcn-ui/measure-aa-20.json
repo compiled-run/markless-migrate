@@ -1,0 +1,27 @@
+{
+	"routes": [
+		"/",
+		"/docs/ai-elements/aria/confirmation",
+		"/docs/ai-elements/base/model-selector",
+		"/docs/ai-elements/radix/sources",
+		"/docs/changelog/2025-05-new-site",
+		"/docs/changelog/2026-05-shadcn-eject",
+		"/docs/components/aria/button",
+		"/docs/components/aria/label",
+		"/docs/components/aria/toggle-group",
+		"/docs/components/base/data-table",
+		"/docs/components/base/resizable",
+		"/docs/components/data-table",
+		"/docs/components/radix/command",
+		"/docs/components/radix/questionnaire",
+		"/docs/dark-mode",
+		"/docs/directory?page=28",
+		"/docs/directory?page=8",
+		"/docs/official",
+		"/docs/theming",
+		"/view/new-york-v4/sidebar-02"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
