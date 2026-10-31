@@ -1,0 +1,61 @@
+name: Prefetch idle experiment
+# Scratch (owner-approved experiment, 2026-10-31): the Vite port on node-server with the router's idle prefetch on and off,
+# both served on this runner; the first click to a linked page, interleaved, per browser and network. Delete after.
+on:
+  push:
+    branches: [exp/prefetch-idle]
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium firefox webkit
+      - name: Build the Vite port on Markless main with node-server
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+        run: |
+          git init --quiet "$RUNNER_TEMP/markless"
+          git -C "$RUNNER_TEMP/markless" fetch --quiet --depth 1 https://github.com/compiled-run/markless.git main
+          git -C "$RUNNER_TEMP/markless" checkout --quiet FETCH_HEAD
+          echo "markless $(git -C "$RUNNER_TEMP/markless" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          MARKLESS="$RUNNER_TEMP/markless" bash examples/vite-dev-markless/scripts/link-markless.sh
+          cd examples/vite-dev-markless && NITRO_PRESET=node-server npm run build
+      - name: Two servers, idle prefetch on and off, every page rendered per request
+        run: |
+          cd examples/vite-dev-markless
+          # Same-for-everyone pages the server renders on each request: no prerendered page or fragment files.
+          node -e '
+            const fs=require("fs"),path=require("path");const pub=".output/public";let n=0;
+            fs.rmSync(path.join(pub,"_markless/fragment"),{recursive:true,force:true});
+            for (const f of fs.readdirSync(pub,{recursive:true})) if (f.endsWith(".html") && !f.startsWith("_") && !f.startsWith("assets")) { fs.rmSync(path.join(pub,f)); n++ }
+            console.log("removed", n, "prerendered pages");'
+          cp -R .output "$RUNNER_TEMP/off"
+          # The bridge module that carries the router's navigation config: six idle fragments at most, or none.
+          grep -rlE '"?idleFragments"?: ?[0-9]+' "$RUNNER_TEMP/off" | xargs sed -i -E 's/("?idleFragments"?): ?[0-9]+/\1:0/g'
+          echo "on side: $(grep -rhoE '"?idleFragments"?: ?[0-9]+' .output | sort | uniq -c | tr '\n' ' ')" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "off side: $(grep -rhoE '"?idleFragments"?: ?[0-9]+' "$RUNNER_TEMP/off" | sort | uniq -c | tr '\n' ' ')" | tee -a "$GITHUB_STEP_SUMMARY"
+          (PORT=3001 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/on.log" 2>&1 &)
+          (PORT=3002 HOST=127.0.0.1 nohup node "$RUNNER_TEMP/off/server/index.mjs" > "$RUNNER_TEMP/off.log" 2>&1 &)
+          for p in 3001 3002; do for _ in $(seq 1 120); do curl -sf -o /dev/null "http://127.0.0.1:$p/guide/" && break; sleep 0.5; done; curl -s -o /dev/null -w "$p /guide/ %{http_code} %{time_total}s\n" "http://127.0.0.1:$p/guide/"; done
+      - name: First click, idle prefetch on against off
+        run: node scripts/exp/prefetch-idle.ts "$RUNNER_TEMP/prefetch-idle.json" 5 3001 3002 /guide/ 'a[href="/guide/features"]' chromium,firefox,webkit cable,fast-4g,slow-4g,regular-3g
+      - name: Summary
+        if: always()
+        run: |
+          node -e '
+            const rows=require(process.argv[1]);const g={};
+            for(const r of rows){const k=`${r.profile} ${r.browser}`;(g[k]??={on:[],off:[],pre:[],err:0});if(r.error){g[k].err++;continue}g[k][r.side].push(r.clickToPaintMs);if(r.side==="on")g[k].pre.push(r.prefetchedBeforeClick)}
+            const med=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[Math.floor((s.length-1)/2)]:NaN};
+            const lines=["| network | browser | on: click to paint (median ms) | off | off minus on | idle fetches before the click (on) | errors |","|---|---|---:|---:|---:|---:|---:|"];
+            for(const [k,v] of Object.entries(g)){const [p,b]=k.split(" ");lines.push(`| ${p} | ${b} | ${med(v.on)} | ${med(v.off)} | ${med(v.off)-med(v.on)} | ${med(v.pre)} | ${v.err} |`)}
+            console.log(lines.join("\n"));' "$RUNNER_TEMP/prefetch-idle.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prefetch-idle
+          path: ${{ runner.temp }}/prefetch-idle.json
