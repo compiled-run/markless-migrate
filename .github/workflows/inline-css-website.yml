@@ -11,7 +11,7 @@ jobs:
       matrix:
         include:
           - name: after2
-            ref: e45924cff6d7de1f87e60fdf7c51a07e22cfc8d8
+            ref: e45924cff62b6d43b2648c228d375e4d6bc83c6e
     steps:
       - uses: actions/checkout@v4
         with: { path: harness, persist-credentials: false }
