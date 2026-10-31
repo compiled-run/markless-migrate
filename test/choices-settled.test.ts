@@ -90,10 +90,14 @@ window.choose = () => {
 };
 </script>`;
 
-// Next.js's App Router (window.next.router) that takes a while, with nothing pending in between, before it moves.
+// Next.js's App Router: it asks the server for the next page (an RSC request), then, a while later with nothing pending in
+// between (a machine swapping), moves. A redirected route is asked for under its own address.
 const IDLE = palette('<div cmdk-item data-value="Typography">Typography</div><div cmdk-item data-value="Button">Button</div>') + `<script>
-window.next = { router: { push: (href) => setTimeout(() => history.pushState(null, '', href), 1500), replace() {}, prefetch() {} } };
-window.choose = (value) => window.next.router.push(value === 'Button' ? '/docs/button' : '/docs/components/typography');
+window.choose = async (value) => {
+	const to = value === 'Button' ? '/docs/button' : '/docs/components/typography';
+	await fetch(to + '?_rsc=1x2y', { headers: { RSC: '1' } });
+	setTimeout(() => history.pushState(null, '', to), 1500);
+};
 </script>`;
 
 // An option that something always lies over: its click can never land.
@@ -168,7 +172,7 @@ test("an option is recorded going where the router moves once it has loaded the 
 	assert.deepEqual(await recorded('/chunk', reveal('chunk', '<div cmdk-item="" data-value="Docs">Docs</div>')), { Docs: { href: '/docs/chunk' } });
 });
 
-test("an option is recorded going where it sent Next.js's router, however long the router waits before it moves", async () => {
+test("an option is recorded going where Next.js's router asked the server for, however long the router waits before it moves", async () => {
 	assert.deepEqual(await recorded('/idle', reveal('idle', '<div cmdk-item="" data-value="Button">Button</div>')), { Typography: { href: '/docs/typeset' }, Button: { href: '/docs/button' } });
 });
 

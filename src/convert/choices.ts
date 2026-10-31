@@ -96,16 +96,6 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 				return own.call(this, data, unused, url);
 			};
 		}
-		// Where Next.js's App Router was sent, as it is sent: it may move the page much later, or not at all once it learns of a redirect.
-		const router = (window as unknown as { next?: { router?: Record<string, unknown> } }).next?.router;
-		for (const name of ['push', 'replace']) {
-			const own = router?.[name];
-			if (typeof own !== 'function') continue;
-			router![name] = function (this: unknown, href: string, ...rest: unknown[]) {
-				((window as unknown as { __mmSent?: string[] }).__mmSent ??= []).push(new URL(href, location.href).href);
-				return own.call(this, href, ...rest);
-			};
-		}
 		return w.__mmDoc;
 	}, randomUUID());
 	const entry: { state: number; doc: string; selected?: string } = { state: await stateOf(page), doc };
@@ -176,13 +166,20 @@ async function reopenOn(page: Page, origin: string, route: string, path: readonl
 }
 
 /** The requests a page has open, and when the last one ended. */
-function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } {
-	const seen = { open: new Set<Request>(), ended: 0 };
+function requestsOf(page: Page): { readonly open: Set<Request>; ended: number; readonly asked: string[] } {
+	const seen = { open: new Set<Request>(), ended: 0, asked: [] as string[] };
 	// A document the page loads ends what the one it left had open, up to when it shows: those get no finished or failed event.
 	let loading = false;
 	page.on('request', (r) => {
 		if (r.isNavigationRequest() && r.frame() === page.mainFrame()) loading = true;
 		seen.open.add(r);
+		// Next.js's App Router asks the server for the page it goes to (not a prefetch) before it moves, however long that takes.
+		const headers = r.headers();
+		if (headers.rsc === '1' && headers['next-router-prefetch'] === undefined && r.frame() === page.mainFrame()) {
+			const to = new URL(r.url());
+			to.searchParams.delete('_rsc');
+			seen.asked.push(to.href);
+		}
 	});
 	page.on('framenavigated', (frame) => {
 		if (frame !== page.mainFrame() || !loading) return;
@@ -281,11 +278,11 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
 				await page.evaluate(() => {
-					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[]; __mmSent?: string[] };
+					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
 					w.__mmCopied = [];
 					w.__mmWent = [];
-					w.__mmSent = [];
 				});
+				requests.asked.length = 0;
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
 				const click = async (timeout: number) => {
 					const target = (await optionOf(page, key)).asElement();
@@ -299,12 +296,11 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 					failure ??= `could not choose ${key}`;
 					return out;
 				}
-				const sentTo = () => page.evaluate(() => (window as unknown as { __mmSent?: string[] }).__mmSent?.at(-1)).catch(() => undefined);
-				// The router is read as soon as the click is: a document the page goes on to load starts afresh.
-				let sent = await sentTo();
+				const sentTo = () => requests.asked.at(-1);
+				let sent: string | undefined;
 				const arrive = async (since: ReadonlySet<Request>) => {
 					let moving = await afterChoosing(page, requests, since);
-					sent = (await sentTo()) ?? sent;
+					sent = sentTo() ?? sent;
 					// Sent elsewhere and not there yet: the next option is chosen once the page has gone.
 					if (moving === undefined && sent !== undefined && sent !== before && page.url() === before) {
 						await page.waitForURL((u) => u.href !== before, { timeout: 10_000 }).catch(() => {});
@@ -317,10 +313,8 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				if (moving !== undefined && (await openOn(page, origin, route, reveal.path))) {
 					const again = new Set(requests.open);
 					requests.ended = 0;
-					if (await click(5000)) {
-						sent = await sentTo();
-						moving = await arrive(again);
-					}
+					requests.asked.length = 0;
+					if (await click(5000)) moving = await arrive(again);
 				}
 				if (moving !== undefined) {
 					failure ??= `${key} was still moving the page after 10 s (${moving})`;
@@ -331,7 +325,8 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before || sent !== undefined;
-				const to = new URL(sent ?? after);
+				// Where the page went (its fragment too), else where the router asked to go when the page has not moved yet.
+				const to = new URL(after !== before ? after : (sent ?? after));
 				out[key] = moved ? { href: to.pathname + to.search + to.hash } : copied !== undefined ? { copied } : chosen;
 				if (moved || copied !== undefined || !(await (await optionOf(page, key)).asElement()?.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox, requests);
 			}
