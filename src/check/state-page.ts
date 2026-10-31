@@ -16,6 +16,8 @@ export interface PagePopupPlace {
 	readonly covers: number;
 	/** The trigger's centre is hit-tested to the popup rather than to the trigger. */
 	readonly hides: boolean;
+	/** A modal dialog is placed against the viewport, not its trigger. */
+	readonly modal?: boolean;
 }
 
 /** One CSS transition, CSS animation or Web Animation that started since the last drain. */
@@ -192,6 +194,7 @@ export function armState(): void {
 			triggerHeight: r(t.height),
 			covers: t.width * t.height ? Math.round(((ix * iy) / (t.width * t.height)) * 10) / 10 : 0,
 			hides: Boolean(hit && popup.contains(hit) && !trigger.contains(hit)),
+			...(popup.getAttribute('aria-modal') === 'true' || (popup instanceof HTMLDialogElement && popup.matches(':modal')) ? { modal: true } : {}),
 		};
 	};
 	const triggerOf = (popup: Element): Element | null => {

@@ -25,17 +25,17 @@ export interface StateDiff {
 	readonly new: string;
 }
 
-/** Tolerances, each from repeated reads of one page against itself (test/state-probe.test.ts measures them). */
+/** Tolerances: each covers what two runs of one site against itself differed by (scripts/state-control.ts, and each route's `probes.stateSpread`). */
 export const STATE_TOLERANCE = {
-	/** Popup edges against the trigger, px: sub-pixel layout and a scrollbar's rounding. */
+	/** Popup edges against the trigger, px: sub-pixel layout and a scrollbar's rounding (anchored popups measured 0 px apart across two runs of 30 widget routes). */
 	px: 2,
-	/** Popup width against the trigger's, as a share. */
+	/** Popup width against the trigger's, as a share (measured 0). */
 	widthRatio: 0.02,
-	/** Animation duration and delay: ms, or a share of the longer. */
+	/** Animation duration and delay: ms, or a share of the longer (rule durations measured 0 ms apart; motion.ts's bound for a duration computed from a height a few pixels off). */
 	ms: 20,
 	ratio: 0.1,
-	/** Script motion is timed by the wall clock between its first and last written frame. */
-	scriptMs: 80,
+	/** Script motion is timed by the wall clock between its first and last written frame: two runs of one page differed by up to 85 ms on 2-core runners (30 widget routes, CI run 41185919588). */
+	scriptMs: 120,
 	scriptRatio: 0.25,
 	/** A script writing on this many frames or more animates; fewer is set-up. */
 	scriptFrames: 6,
@@ -210,7 +210,7 @@ export function compareStep(oldBefore: StateReading | undefined, old: StateReadi
 	for (const [role, list] of groupBy(old.popups, (p) => p.role)) {
 		list.forEach((p, i) => {
 			const n = nByRole.get(role)?.[i];
-			if (!n) return;
+			if (!n || p.modal || n.modal) return;
 			const a = aByRole?.get(role)?.[i];
 			if (a && placeDiffers(p, a).length) return;
 			const how = placeDiffers(p, n);
@@ -284,7 +284,7 @@ export function stateSpread(a: StateRun, b: StateRun): Record<string, number> {
 		const [x, y] = [a[k]!, b[k]!];
 		x.popups.forEach((p, i) => {
 			const q = y.popups[i];
-			if (!q || q.role !== p.role) return;
+			if (!q || q.role !== p.role || p.modal || q.modal) return;
 			max('px', Math.max(Math.abs(p.gap - q.gap), Math.abs(p.across - q.across), Math.abs(p.width - q.width)));
 			if (p.triggerWidth && q.triggerWidth) max('widthRatio', Math.abs(p.width / p.triggerWidth - q.width / q.triggerWidth));
 		});
