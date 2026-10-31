@@ -8,6 +8,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { attr, childrenOf, elementChildren, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
+import type { Limit } from './limit.ts';
 
 /** What a recharts chart shows for one active data point, as the old page drew it with that point active. */
 export interface ChartState {
@@ -788,7 +789,7 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
  * Every recharts chart on the old page, on the desktop page and at each of CHART_WIDTHS: recharts lays a chart out
  * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
  */
-export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
+export async function captureCharts(browser: Browser, origin: string, route: string, dir: string, limit: Limit = (task) => task()): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
 	const file = join(dir, `${createHash('sha256').update(`charts8:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
 	// A capture from before the update animation (a chart with controls and no lag) or the layout model was read is taken again.
@@ -805,9 +806,11 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 	const sweeping = await chromium.launch({ args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
 	let charts: ChartFacts[];
 	try {
-		charts = known ?? (await captureAt(sweeping, origin, route, VIEWPORTS[0]!));
-		for (const width of missing) {
-			const other = await captureAt(sweeping, origin, route, { name: `w${width}`, width, height: 900, isMobile: false });
+		// The desktop page and each width are read at once, each in a slot of `limit`.
+		const [desktop, ...others] = await Promise.all([known ? Promise.resolve(known) : limit(() => captureAt(sweeping, origin, route, VIEWPORTS[0]!)), ...missing.map((width) => limit(() => captureAt(sweeping, origin, route, { name: `w${width}`, width, height: 900, isMobile: false })))]);
+		charts = desktop!;
+		for (const [k, width] of missing.entries()) {
+			const other = others[k]!;
 			for (const chart of charts) {
 				const same = other.find((o) => o.index === chart.index);
 				if (same) (chart.widths as ChartWidth[]).push({ viewport: width, width: same.width, height: same.height, view: same.view, variants: same.variants, drivers: same.drivers });
@@ -816,7 +819,7 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 	} finally {
 		await sweeping.close();
 	}
-	if (charts.some((c) => c.drivers.length && c.lag === undefined)) await measureLags(browser, origin, route, charts);
+	if (charts.some((c) => c.drivers.length && c.lag === undefined)) await limit(() => measureLags(browser, origin, route, charts));
 	for (const chart of charts) if (chart.start === undefined) await findStart(browser, origin, route, chart);
 	const capture = { route, charts };
 	await mkdir(dir, { recursive: true });

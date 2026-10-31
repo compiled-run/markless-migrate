@@ -1284,9 +1284,68 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			let loaded: Promise<CapturedPage> | undefined;
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
+			// What does not depend on the route's reveals is read alongside them, each capture in a slot of its own.
+			const side = Promise.all([
+				(async () => {
+					if (ref.status !== 200) return;
+					const settled = Object.values((await page()).settled);
+					facts.chart = settled.some((html) => html.includes('recharts-wrapper'));
+					facts.dated = settled.some((html) => DATED.test(html));
+					// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
+					// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
+					await Promise.all([
+						settled.some((html) => html.includes('data-slot="carousel"')) && limit(() => captureCarousels(browser, options.old, route, at('toggles'))).then((r) => void (facts.carousels = r.carousels)),
+						settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"')) && limit(() => captureSliders(browser, options.old, route, at('toggles'))).then((r) => void (facts.sliders = r.sliders)),
+						facts.dated && limit(() => captureClock(browser, options.old, route, at('clock'))).then((r) => void (facts.clock = r.marks)),
+						facts.chart && captureCharts(browser, options.old, route, at('toggles'), limit).then((r) => void (facts.charts = r.charts)),
+					]);
+				})(),
+				(async () => {
+					// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
+					if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(() => captureQwikFloating(browser, options.old, route, at('toggles')))).panels;
+				})(),
+				(async () => {
+					if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(() => captureScrollers(browser, options.old, route, at('toggles')))).scrollers;
+				})(),
+				(async () => {
+					if (!reveal || ref.status !== 200) return;
+					const settled = Object.values((await page()).settled);
+					// What each TanStack table was given and showed in each state, where the settled page has a table.
+					if (usesTables && settled.some(mayHoldTable)) {
+						const captured = await limit(() => captureTables(browser, options.old, route, at('tables'), log));
+						for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
+						if (captured.tables.length) facts.tables = captured.tables;
+					}
+				})(),
+				(async () => {
+					if (!reveal || ref.status !== 200) return;
+					const settled = Object.values((await page()).settled);
+					// What each form-library form was given and showed with each field's errors and values, where the page has a form.
+					if (usesFormLibs && settled.some((html) => /<form[\s>]/.test(html))) {
+						const captured = await limit(() => captureFormLibraries(browser, options.old, route, at('form-libraries'), log));
+						for (const why of captured.skipped) log(`  form on ${route} not read: ${why}`);
+						if (captured.forms.length) facts.formLibs = captured.forms;
+					}
+				})(),
+				(async () => {
+					if (!reveal || !routes.includes(route)) return;
+					const toggles = await limit(() => captureToggles(browser, options.old, route, at('toggles'))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					toggledCount++;
+					if (toggles.groups.length) log(`toggles ${toggledCount}/${routes.length} ${route} (${toggles.groups.length} groups)`);
+					facts.toggles = toggles.groups;
+				})(),
+				(async () => {
+					if (!reveal || !routes.includes(route) || !switchSelectors.length) return;
+					const switches = await limit(() => captureSwitches(browser, options.old, route, at('toggles'), switchSelectors)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
+					facts.switches = switches.switches;
+				})(),
+			]);
+			// Awaited after the reveals; a failure meanwhile is not unhandled.
+			side.catch(() => {});
 			if (reveal && routes.includes(route)) {
 				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
-				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens, loadDialog }));
+				const own = await captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens, loadDialog }, limit);
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
 				for (const why of own.skipped.filter((s) => s.startsWith('the route: '))) log(`  controls on ${route} not used: ${why.slice('the route: '.length)}`);
 				await scenesRead;
@@ -1364,20 +1423,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
 			const others = (reveals ?? []).filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
 			if (reveals && (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|')))) facts.hoverDelays = (await limit(() => captureHoverDelays(browser, options.old, route, at('toggles'), others))).delays;
-			if (ref.status === 200) {
-				const settled = Object.values((await page()).settled);
-				// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
-				// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
-				if (settled.some((html) => html.includes('data-slot="carousel"'))) facts.carousels = (await limit(() => captureCarousels(browser, options.old, route, at('toggles')))).carousels;
-				facts.chart = settled.some((html) => html.includes('recharts-wrapper'));
-				if (settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"'))) facts.sliders = (await limit(() => captureSliders(browser, options.old, route, at('toggles')))).sliders;
-				facts.dated = settled.some((html) => DATED.test(html));
-				if (facts.dated) facts.clock = (await limit(() => captureClock(browser, options.old, route, at('clock')))).marks;
-				if (facts.chart) facts.charts = (await limit(() => captureCharts(browser, options.old, route, at('toggles')))).charts;
-			}
-			// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
-			if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(() => captureQwikFloating(browser, options.old, route, at('toggles')))).panels;
-			if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(() => captureScrollers(browser, options.old, route, at('toggles')))).scrollers;
 			if (reveal && ref.status === 200) {
 				const settled = Object.values((await page()).settled);
 				// What each react-day-picker calendar was given, where the settled page shows a month grid or a control's layer does (a date picker's trigger: read opened).
@@ -1386,34 +1431,33 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				// What each React Aria calendar was given, where the settled page shows one.
 				const opening = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => racCalendar(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0, path: r.path }));
 				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(() => captureRacCalendars(browser, options.old, route, at('rac-calendars'), opening));
-				// What each TanStack table was given and showed in each state, where the settled page has a table.
-				if (usesTables && settled.some(mayHoldTable)) {
-					const captured = await limit(() => captureTables(browser, options.old, route, at('tables'), log));
-					for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
-					if (captured.tables.length) facts.tables = captured.tables;
-				}
-				// What each form-library form was given and showed with each field's errors and values, where the page has a form.
-				if (usesFormLibs && settled.some((html) => /<form[\s>]/.test(html))) {
-					const captured = await limit(() => captureFormLibraries(browser, options.old, route, at('form-libraries'), log));
-					for (const why of captured.skipped) log(`  form on ${route} not read: ${why}`);
-					if (captured.forms.length) facts.formLibs = captured.forms;
-				}
 			}
-			if (reveal && routes.includes(route)) {
-				const toggles = await limit(() => captureToggles(browser, options.old, route, at('toggles'))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
-				toggledCount++;
-				if (toggles.groups.length) log(`toggles ${toggledCount}/${routes.length} ${route} (${toggles.groups.length} groups)`);
-				facts.toggles = toggles.groups;
-				if (switchSelectors.length) {
-					const switches = await limit(() => captureSwitches(browser, options.old, route, at('toggles'), switchSelectors)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
-					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
-					facts.switches = switches.switches;
-				}
-			}
+			await side;
 			facts.reveals = reveals;
 			return facts;
 		};
-		const read = await Promise.all(captureRoutes.map((route) => reading(() => readRoute(route))));
+		const reads = captureRoutes.map((route) => reading(() => readRoute(route)));
+		for (const pending of reads) pending.catch(() => {});
+		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
+		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
+		const choosing = new Map<string, Promise<Record<string, Choice>>>();
+		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
+		for (const [i, pending] of reads.entries()) {
+			const route = captureRoutes[i]!;
+			for (const reveal of (await pending).reveals ?? []) {
+				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
+				// A Base UI listbox's values are its page's: generated ids repeat across pages.
+				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
+				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
+				if (!choosing.has(run)) {
+					const chosen = captureChoices(browser, options.old, route, reveal, at('choices'), log, limit);
+					chosen.catch(() => {});
+					choosing.set(run, chosen);
+				}
+				shownOn.push({ route, reveal, run });
+			}
+		}
+		const read = await Promise.all(reads);
 		captures = await Promise.all(captureRoutes.map((route) => pageOf.get(route)!));
 		await Promise.all([scenesRead, notifiesRead]);
 		captureRoutes.forEach((route, i) => {
@@ -1437,20 +1481,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
-		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options shown.
-		const choosing = new Map<string, { route: string; reveal: Reveal }>();
-		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
-		for (const [route, reveals] of revealed)
-			for (const reveal of reveals) {
-				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
-				// A Base UI listbox's values are its page's: generated ids repeat across pages.
-				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
-				if (!choosing.has(run)) choosing.set(run, { route, reveal });
-				shownOn.push({ route, reveal, run });
-			}
-		const runs = [...choosing];
-		const chosenBy = new Map(await Promise.all(runs.map(async ([run, { route, reveal }]) => [run, await captureChoices(browser, options.old, route, reveal, at('choices'), log, limit)] as const)));
+		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
 		for (const { route, reveal, run } of shownOn) {
 			const found = chosenBy.get(run)!;
 			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);
