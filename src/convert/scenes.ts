@@ -50,7 +50,8 @@ export interface SceneLimits {
 	readonly max: number;
 }
 
-const LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
+export const SCENE_LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
+const LIMITS = SCENE_LIMITS;
 
 /** What a listed text field is given at capture (filled, then Enter): the scene part shows the visitor's own text where it showed this. */
 export const TYPED = 'qz typed note 7';
@@ -262,27 +263,29 @@ async function use(page: Page, selector: string, index: number, listed: string, 
  * Uses the listed controls of each demo on the old page, from every settled state they lead to (breadth first, within
  * `limits`), and records each use frame by frame. A state is reached again by replaying the uses that led to it.
  */
-export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = ''): Promise<SceneCapture> {
-	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
+/** The element a demo's recorded uses play in, by default a docs page's example preview. */
+const PREVIEW = '[data-slot="preview"]';
+
+export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = '', region = PREVIEW): Promise<SceneCapture> {
+	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}${text ? `|text:${text}` : ''}${region !== PREVIEW ? `|region:${region}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
 	const scenes: Scene[] = [];
 	const url = new URL(route, origin).href;
-	const PREVIEW = '[data-slot="preview"]';
 	const fresh = async (index: number) => {
 		current = index;
 		await loadPage(page, url);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 		await page.waitForTimeout(600);
-		await page.evaluate(install, [PREVIEW, index] as const);
+		await page.evaluate(install, [region, index] as const);
 		await page.evaluate(() => {
 			(window as unknown as { __mmSnap: unknown }).__mmSnap = (globalThis as unknown as { __mmSnapshot: () => unknown }).__mmSnapshot;
 		});
 	};
 	const replay = async (control: string) => {
 		await startRecording(page);
-		await use(page, PREVIEW, current, listed, control);
+		await use(page, region, current, listed, control);
 		await stopRecording(page, limits.settle, limits.max);
 	};
 	let current = 0;
@@ -301,7 +304,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 			}
 			const named = (el: Element) => !text || el.matches('textarea, input') || new RegExp(text).test((el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60));
 			return [...document.querySelectorAll(selector)].map((el, index) => ({ index, sig: sigOf(el), nth: order.get(el) ?? 0, has: [...el.querySelectorAll(listed)].some(named) })).filter((d) => d.has);
-		}, [PREVIEW, listed, text] as const);
+		}, [region, listed, text] as const);
 		for (const demo of demos) {
 			const skipped: string[] = [];
 			const states: SceneNode[] = [];
@@ -347,7 +350,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 				if (paths[at]!.length >= limits.depth) continue;
 				await fresh(demo.index);
 				for (const step of paths[at]!) await replay(step);
-				const controls = await page.evaluate(controlsIn, [PREVIEW, demo.index, listed, text] as const);
+				const controls = await page.evaluate(controlsIn, [region, demo.index, listed, text] as const);
 				for (const control of controls) {
 					if (edges.some((e) => e.from === at && e.control === control)) continue;
 					await fresh(demo.index);
@@ -358,7 +361,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 						(window as unknown as { __mmScene: { next: number } }).__mmScene.next = next;
 					}, maxId + 1);
 					await startRecording(page);
-					if (!(await use(page, PREVIEW, demo.index, listed, control))) {
+					if (!(await use(page, region, demo.index, listed, control))) {
 						skipped.push(`${control} from state ${at}: not usable`);
 						continue;
 					}
@@ -368,7 +371,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 					if (frames.length > 3 && took > 0) {
 						await fresh(demo.index);
 						for (const step of paths[at]!) await replay(step);
-						const plain = await timeUse(page, () => use(page, PREVIEW, demo.index, listed, control), limits);
+						const plain = await timeUse(page, () => use(page, region, demo.index, listed, control), limits);
 						if (plain > 0 && plain < took) frames = frames.map((f) => ({ ...f, t: Math.round((f.t * plain) / took) }));
 					}
 					const settled = frames.at(-1)?.tree ?? states[at]!;

@@ -108,3 +108,23 @@ test('a listing that names its controls by text uses only those (Replay), leavin
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("a demo outside a docs preview is recorded in the region its listing names, with a quiet as long as its use's own timer", async () => {
+	const page = `<!doctype html><html><body><main><div data-slot="card"><ul><li>a</li></ul><div data-slot="card-footer"><button id="more">Load more content</button></div></div>
+<script>document.getElementById('more').addEventListener('click', (e) => { e.target.disabled = true; setTimeout(() => { document.querySelector('ul').insertAdjacentHTML('beforeend', '<li>b</li><li>c</li>'); e.target.remove(); }, 900); });</script></main></body></html>`;
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="card-footer"] button', { states: 2, depth: 1, settle: 1200, max: 5000 }, '^Load more content$', '[data-slot="card"]');
+		assert.equal(scenes.length, 1);
+		const last = scenes[0]!.edges[0]!.frames.at(-1)!.tree;
+		assert.equal(texts(last).split('|').filter((t) => /^[abc]$/.test(t)).join(''), 'abc', "the rows the timer added are in the use's last frame");
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
