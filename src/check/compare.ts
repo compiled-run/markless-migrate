@@ -20,6 +20,7 @@ import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts
 import { storageFailure } from './storage.ts';
 import { samePath } from './svg-path.ts';
 import { residueFailures } from './residue.ts';
+import { isSelfUrl, selfPath } from './self-urls.ts';
 
 const LIMIT = 20;
 // lang and dir are compared as internationalisation, not SEO.
@@ -346,7 +347,9 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	failures.push(...images.failures);
 
 	const desktop = Object.keys(oldA.pages)[0]!;
-	const withoutLocale = (seo: Readonly<Record<string, string>>) => Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)));
+	// A page's addresses for itself are compared by path: each site names its own origin (the original whatever its build names,
+	// the port its public URL), and the port's origin is selfUrlFailures' to judge.
+	const withoutLocale = (seo: Readonly<Record<string, string>>) => Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)).map(([key, value]) => [key, isSelfUrl(key) ? selfPath(value) : value]));
 	const seo = diffFields(fieldTemplates(withoutLocale(oldA.pages[desktop]!.seo), ...others.map((o) => withoutLocale(o.pages[desktop]!.seo))), withoutLocale(next.pages[desktop]?.seo ?? {}));
 	if (next.pages[desktop]) failures.push(...compareI18n(route, desktop, oldA.pages[desktop]!, others.map((o) => o.pages[desktop]!), next.pages[desktop]!));
 	for (const d of seo) failures.push({ route, dimension: 'seo', check: d.key, expected: fmt(d.expected), actual: fmt(d.actual), hint: seoHint(d.key) });

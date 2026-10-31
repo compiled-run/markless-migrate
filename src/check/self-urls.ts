@@ -10,6 +10,12 @@ export const isSelfUrl = (key: string): boolean => {
 	return base === 'meta:og:url' || base === 'meta:twitter:url' || base === 'canonical' || base.startsWith('hreflang:') || (base.startsWith('jsonld[') && /\.(url|@id)$/.test(base));
 };
 
+/** A self-address by its path, query and fragment: `{origin}/docs`, `https://ui.shadcn.com/docs` and `/docs` are one address of the page. */
+export function selfPath(value: string): string {
+	const url = URL.parse(value.split('{origin}').join('http://origin.invalid'));
+	return url && /^https?:$/.test(url.protocol) ? `${url.pathname}${url.search}${url.hash}` : value;
+}
+
 export const isLoopback = (host: string): boolean => /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1|0\.0\.0\.0)$/i.test(host);
 
 const originOf = (value: string): string | undefined => {
@@ -75,22 +81,16 @@ export function selfUrlsInHtml(html: string): Map<string, string> {
  * page from (an address built into the page), and, when it is that very address, red if the page names it again when asked at
  * another name for the same host (built in, not taken from the request).
  */
-export async function selfUrlFailures(route: string, seo: Readonly<Record<string, string>>, env: SideEnv, old?: { readonly seo: Readonly<Record<string, string>>; readonly origin: string }, fetchHtml: (url: string, headers: Record<string, string>) => Promise<string | undefined> = defaultFetch): Promise<Failure[]> {
+export async function selfUrlFailures(route: string, seo: Readonly<Record<string, string>>, env: SideEnv, fetchHtml: (url: string, headers: Record<string, string>) => Promise<string | undefined> = defaultFetch): Promise<Failure[]> {
 	const failures: Failure[] = [];
 	const served = new URL(env.origin).origin;
-	// An original that names a loopback host other than its own here has the same fault: the port keeping it is parity.
-	const oldHasIt = (key: string) => {
-		const value = old?.seo[key]?.split('{origin}').join(new URL(old.origin).origin);
-		const origin = value ? originOf(value) : undefined;
-		return Boolean(origin && isLoopback(new URL(origin).hostname) && origin !== new URL(old!.origin).origin);
-	};
 	const fail = (key: string, value: string) => failures.push({ route, dimension: 'seo', check: key, expected: 'an address of the page on its public origin', actual: `${value}: a loopback address`, hint: HINT });
 	const asServed: string[] = [];
 	for (const [key, raw] of Object.entries(seo)) {
 		if (!isSelfUrl(key)) continue;
 		const value = raw.split('{origin}').join(served);
 		const origin = originOf(value);
-		if (!origin || !isLoopback(new URL(origin).hostname) || oldHasIt(key)) continue;
+		if (!origin || !isLoopback(new URL(origin).hostname)) continue;
 		if (origin !== served) fail(key, value);
 		else asServed.push(key);
 	}
