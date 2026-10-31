@@ -17,7 +17,7 @@ function triggerOf(target: Element): HTMLElement | null {
 	for (let el = target.closest<HTMLElement>('[aria-haspopup="dialog"][aria-controls]'); el; el = el.parentElement?.closest<HTMLElement>('[aria-haspopup="dialog"][aria-controls]') ?? null) if (isDialogSlot(layerSlot(el))) return el;
 	return null;
 }
-const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"]';
+const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot="drawer-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"]';
 
 interface Open {
 	readonly trigger: HTMLElement;
