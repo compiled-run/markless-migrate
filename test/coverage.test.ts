@@ -65,10 +65,20 @@ test('without a cap every control is exercised, including the ones the settings 
 	assert.ok(elements.find((e) => e.element === 'button "Settings"')!.layout);
 });
 
-test('a time budget that runs out lists what it did not reach instead of dropping it', async () => {
-	const { elements } = await explore(browser, defaultEnv(origin(old)), '/', desktop[0]!, { budgetMs: 1 });
-	assert.ok(elements.length > LINKS);
-	assert.ok(elements.every((e) => e.by?.startsWith('its address') || e.by?.startsWith('alike') || /out of the journey budget \(0 s\)/.test(e.reason ?? '')), JSON.stringify(elements.slice(0, 3)));
+test('a journey count that runs out lists what it did not reach instead of dropping it, and the time cap marks exploring incomplete', async () => {
+	const counted = await explore(browser, defaultEnv(origin(old)), '/', desktop[0]!, { maxJourneys: 0 });
+	assert.ok(counted.elements.length > LINKS);
+	assert.ok(counted.elements.every((e) => e.by?.startsWith('its address') || e.by?.startsWith('alike') || /out of the journey budget \(0 journeys\)/.test(e.reason ?? '')), JSON.stringify(counted.elements.slice(0, 3)));
+	assert.equal(counted.incomplete, undefined, 'a count is the same on every run: the route is compared');
+	const timed = await explore(browser, defaultEnv(origin(old)), '/', desktop[0]!, { budgetMs: 1 });
+	assert.match(timed.incomplete ?? '', /time cap \(0 s\) after 0 of its \d+ journeys/);
+});
+
+test('a route whose exploring hit its time cap is not checked, named incomplete, rather than compared on fewer journeys', async () => {
+	const report = await runCheck({ oldOrigin: origin(old), newOrigin: origin(same), routes: ['/'], viewports: desktop, browser, journeys: { budgetMs: 1 } });
+	const [r] = report.routes;
+	assert.equal(r!.infrastructure?.cause, 'incomplete');
+	assert.match(r!.infrastructure?.message ?? '', /not checked rather than compared on fewer/);
 });
 
 test('a new app that drops the header settings dialog is red on the first route checked, and on every route sharing the header', async () => {

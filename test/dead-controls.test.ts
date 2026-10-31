@@ -65,7 +65,7 @@ function serve(pages: (path: string) => string | undefined): Promise<string> {
 
 async function check(old: (path: string) => string | undefined, next: (path: string) => string | undefined, routes = ['/']): Promise<Report> {
 	const [a, b] = await Promise.all([serve(old), serve(next)]);
-	return runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } });
+	return runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 }
 
 const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f) => !f.accepted);
@@ -106,7 +106,7 @@ test('a page of a large site is exercised on its own, though its template group 
 	const alive = plain(`${TRACK}<script>document.getElementById('next').onclick = () => { document.getElementById('track').style.transform = 'translateX(-300px)'; };</script>`);
 	const dead = plain(TRACK);
 	const [a, b] = await Promise.all([serve((path) => (routes.includes(path) ? alive : undefined)), serve((path) => (routes.includes(path) ? (path === routes.at(-1) ? dead : alive) : undefined))]);
-	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 }, templates: { threshold: 2 } });
+	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, templates: { threshold: 2 } });
 	assert.ok(report.templates?.groups.some((g) => g.members.length === routes.length), 'one template group');
 	const last = report.routes.find((r) => r.route === routes.at(-1))!;
 	assert.notEqual(last.template?.representative, last.route);
