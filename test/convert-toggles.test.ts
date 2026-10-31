@@ -238,6 +238,19 @@ test('a Radix Collapsible whose content mounts on opening binds its root\'s data
 	assert.match(out, /<div data-slot="trace-collapsible" data-state=\{ins0 \? "open" : "closed"\}>/);
 });
 
+test("a Base UI Collapsible closed on load whose panel stays mounted (keepMounted) opens and closes that panel on Markless state", async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-closed="" data-slot="trace-collapsible"><button type="button" aria-expanded="false" data-slot="trace-collapsible-trigger">Researched</button><div data-closed="" hidden="" id="base-ui-p" data-slot="trace-collapsible-content"><p>steps</p></div></div></body>');
+	const plan = new InsertedDisclosurePlan();
+	assert.equal(plan.add([], [body(doc)]), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.deepEqual(plan.bind(find(body(doc), (el) => el.tagName === 'button')!)?.declare, ['let ins0 = state(false);', 'let ins0x = state(false);']);
+	assert.match(out, /<div data-slot="trace-collapsible" data-open=\{ins0 \? "" : undefined\} data-closed=\{ins0 \? undefined : ""\}>/);
+	assert.match(out, /aria-expanded=\{ins0 \? "true" : "false"\}/);
+	assert.match(out, /aria-controls=\{ins0 \? "base-ui-p" : undefined\}/);
+	assert.match(out, /<div id="base-ui-p" data-slot="trace-collapsible-content" hidden=\{!\(ins0 \|\| ins0x\)\}[^>]*><p>steps<\/p><\/div>/, 'the mounted panel is shown and hidden, its content kept');
+});
+
 test('React Aria ToggleButtonGroup radios leave the arrows to the toolbar part; React Aria radio inputs bind only their checked state', () => {
 	const doc = parseDocument('<body><div data-rac="" role="radiogroup" aria-orientation="vertical"><label data-rac="" data-selected="true"><input type="radio" name="g" value="a" tabindex="0" checked=""></label><label data-rac=""><input type="radio" name="g" value="b" tabindex="-1"></label></div><div data-rac="" role="radiogroup"><button data-rac="" role="radio" aria-checked="true">x</button><button data-rac="" role="radio" aria-checked="false">y</button></div></body>');
 	const [la, lb] = [...walk(body(doc))].filter((el) => el.tagName === 'label') as [Element, Element];

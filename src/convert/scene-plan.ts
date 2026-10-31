@@ -130,6 +130,14 @@ function within(a: SceneNode, b: SceneNode): boolean {
 	return runsOf(a as El).length <= runsOf(b as El).length || runsOf(a as El).slice(runsOf(b as El).length).every((t) => !t);
 }
 
+const HELD = ' is on Markless state already';
+// A node as a visitor sees it: tags, attributes and text, without the ids React and Radix generate.
+const IDS = /^(id|aria-controls|aria-labelledby|aria-describedby|for)$/;
+function shapeOf(n: SceneNode): string {
+	if (!isEl(n)) return JSON.stringify(n.text);
+	return `<${n.tag} ${JSON.stringify(n.attrs.filter(([k]) => !IDS.test(k) && k !== SCROLL))}>${n.kids.map(shapeOf).join('')}</>`;
+}
+
 const condition = (frames: readonly number[], name: string): string => {
 	const sorted = [...new Set(frames)].sort((a, b) => a - b);
 	const parts: string[] = [];
@@ -196,7 +204,12 @@ export class ScenePlan {
 
 	add(scene: Scene, region: Element, listed: string): boolean {
 		const local = new Map<Element, Binding>();
-		const why = this.plan(scene, region, listed, local);
+		let why = this.plan(scene, region, listed, local, false);
+		// Uses that would replace another plan's element play the captured markup only while they run: at rest the page's own shows.
+		if (why?.endsWith(HELD)) {
+			local.clear();
+			why = this.plan(scene, region, listed, local, true) ?? undefined;
+		}
 		if (why) {
 			this.refused.push(`${scene.sig}#${scene.nth}: ${why}`);
 			return false;
@@ -210,7 +223,7 @@ export class ScenePlan {
 		return true;
 	}
 
-	private plan(scene: Scene, region: Element, listed: string, bindings: Map<Element, Binding>): string | undefined {
+	private plan(scene: Scene, region: Element, listed: string, bindings: Map<Element, Binding>, atRest: boolean): string | undefined {
 		if (!scene.edges.some((e) => e.frames.length)) return 'no use changed anything';
 		const t = timeline(scene);
 		const F = t.frames.length;
@@ -386,7 +399,7 @@ export class ScenePlan {
 			const runShapes = new Set(frames.map((f) => runsOf(nodeAt(n.id, f) as El).map((t) => (t ? 'T' : '')).join(',')));
 			if (runShapes.size > 1) {
 				const held = this.holdsBound(el);
-				if (held) return `${held} is on Markless state already`;
+				if (held) return `${held}${HELD}`;
 				bindings.set(el, { replace: arms(n.id, frames) });
 				return undefined;
 			}
@@ -410,7 +423,7 @@ export class ScenePlan {
 					if (why) return why;
 				} else {
 					const held = this.holdsBound(pageEl);
-					if (held) return `${held} is on Markless state already`;
+					if (held) return `${held}${HELD}`;
 					bindings.set(pageEl, { replace: arms(id, present(id, frames)) });
 				}
 			}
@@ -418,8 +431,22 @@ export class ScenePlan {
 			if (inserts.length) bindings.set(el, { ...bindings.get(el), inserts });
 			return undefined;
 		};
-		const why = walk(root, region, Array.from({ length: F }, (_, f) => f));
-		if (why) return why;
+		const all = Array.from({ length: F }, (_, f) => f);
+		if (atRest) {
+			// The frames that show the demo as it loaded (a Replay's last one included) keep the page's own children.
+			const loaded = shapeOf(root);
+			const own = all.filter((f) => shapeOf(nodeAt(root.id, f)!) === loaded);
+			const playing = all.filter((f) => !own.includes(f));
+			if (!playing.length) return 'no use shows anything but the page as it loaded';
+			dynamics(root.id, all, runsOf(root).length);
+			const shownWhilePlaying = (order.get(root.id) ?? []).map((id) => arms(id, present(id, playing))).join('');
+			// Hidden, not unmounted: an @if may not hold the other plan's own arms.
+			for (const child of childrenOf(region).filter(isElement)) bindings.set(child, { omit: ['hidden'], extra: [`hidden={!(${condition(own, name)})}`] });
+			bindings.set(region, { append: shownWhilePlaying });
+		} else {
+			const why = walk(root, region, all);
+			if (why) return why;
+		}
 		// Elements of the page whose values change: keyed now that every entry is known.
 		const keyPage = (n: El, el: Element) => {
 			const own = bindings.get(el);
@@ -429,7 +456,8 @@ export class ScenePlan {
 			let k = 0;
 			for (const kid of n.kids) if (isEl(kid)) keyPage(kid, pageKids[k++]!);
 		};
-		keyPage(root, region);
+		if (!atRest) keyPage(root, region);
+		else if (keyed.has(root.id)) bindings.set(region, { ...bindings.get(region), extra: [`data-mm-k="${root.id}"`] });
 		// An entry has a value in every frame its element is in, whichever arm shows it there.
 		entries.forEach(([key, kind, which], i) => {
 			for (let f = 0; f < F; f++) {
