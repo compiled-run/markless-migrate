@@ -70,3 +70,22 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		assert.ok(m.lcpSavingMs > 100, String(m.lcpSavingMs));
 	});
 });
+
+test("the served HTML is asked for again when the browser evicted it from its cache, and a different answer is refused", async () => {
+	const { createServer } = await import('node:http');
+	const { servedHtml } = await import('../../src/check/infrastructure.ts');
+	let hits = 0;
+	const server = createServer((req, res) => req.url !== '/' ? res.writeHead(404).end() : res.writeHead(++hits > 2 ? 503 : 200, { 'content-type': 'text/html' }).end('<!doctype html><script src="/_next/static/a.js"></script>'));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		const response = (await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}/`))!;
+		const evicted = Object.assign(Object.create(response), { text: () => Promise.reject(new Error('Request content was evicted from inspector cache')) });
+		assert.match(await servedHtml(page, evicted), /_next\/static/);
+		await assert.rejects(servedHtml(page, evicted), /asked again the server answered 503/);
+	} finally {
+		await browser.close();
+		server.close();
+	}
+});
