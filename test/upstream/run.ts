@@ -186,6 +186,21 @@ async function consoleOf(origin: string): Promise<void> {
 			page.on('console', (m) => m.type() === 'error' && lines.push(m.text()));
 			page.on('pageerror', (e) => lines.push(String(e)));
 			await page.goto(new URL(route, origin).href, { waitUntil: 'networkidle' }).catch((e: unknown) => lines.push(String(e)));
+			// Texts the page shows twice once its first menu or context menu opens: a query by text then finds both.
+			const opener = page.locator('[data-slot="context-menu-trigger"], [aria-haspopup]').first();
+			if (await opener.count()) {
+				const context = (await opener.getAttribute('data-slot')) === 'context-menu-trigger';
+				await opener.click({ button: context ? 'right' : 'left', timeout: 2000 }).catch(() => {});
+				await page.waitForTimeout(500);
+				lines.push(...(await page.evaluate(() => {
+					const seen = new Map<string, Element[]>();
+					for (const el of document.body.querySelectorAll('*')) {
+						const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent?.trim()).join('');
+						if (own) seen.set(own, [...(seen.get(own) ?? []), el]);
+					}
+					return [...seen].filter(([, els]) => els.length > 1).slice(0, 5).map(([text, els]) => `twice after opening: "${text}" in ${els.map((e) => `${e.closest('[data-mm-layer]')?.getAttribute('data-mm-layer') ?? 'page'}${e.closest('[hidden]') ? ' (hidden)' : ''}`).join(', ')}`);
+				})));
+			}
 			await page.close();
 		}
 	} finally {
