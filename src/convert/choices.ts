@@ -96,6 +96,16 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 				return own.call(this, data, unused, url);
 			};
 		}
+		// Where Next.js's App Router was sent, as it is sent: it may move the page much later, or not at all once it learns of a redirect.
+		const router = (window as unknown as { next?: { router?: Record<string, unknown> } }).next?.router;
+		for (const name of ['push', 'replace']) {
+			const own = router?.[name];
+			if (typeof own !== 'function') continue;
+			router![name] = function (this: unknown, href: string, ...rest: unknown[]) {
+				((window as unknown as { __mmSent?: string[] }).__mmSent ??= []).push(new URL(href, location.href).href);
+				return own.call(this, href, ...rest);
+			};
+		}
 		return w.__mmDoc;
 	}, randomUUID());
 	const entry: { state: number; doc: string; selected?: string } = { state: await stateOf(page), doc };
@@ -271,9 +281,10 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
 				await page.evaluate(() => {
-					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
+					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[]; __mmSent?: string[] };
 					w.__mmCopied = [];
 					w.__mmWent = [];
+					w.__mmSent = [];
 				});
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
 				const click = async (timeout: number) => {
@@ -288,12 +299,28 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 					failure ??= `could not choose ${key}`;
 					return out;
 				}
+				const sentTo = () => page.evaluate(() => (window as unknown as { __mmSent?: string[] }).__mmSent?.at(-1)).catch(() => undefined);
+				// The router is read as soon as the click is: a document the page goes on to load starts afresh.
+				let sent = await sentTo();
+				const arrive = async (since: ReadonlySet<Request>) => {
+					let moving = await afterChoosing(page, requests, since);
+					sent = (await sentTo()) ?? sent;
+					// Sent elsewhere and not there yet: the next option is chosen once the page has gone.
+					if (moving === undefined && sent !== undefined && sent !== before && page.url() === before) {
+						await page.waitForURL((u) => u.href !== before, { timeout: 10_000 }).catch(() => {});
+						moving = await afterChoosing(page, requests, since);
+					}
+					return moving;
+				};
 				// A page still moving after 10 s is chosen once more on a fresh load.
-				let moving = await afterChoosing(page, requests, earlier);
+				let moving = await arrive(earlier);
 				if (moving !== undefined && (await openOn(page, origin, route, reveal.path))) {
 					const again = new Set(requests.open);
 					requests.ended = 0;
-					if (await click(5000)) moving = await afterChoosing(page, requests, again);
+					if (await click(5000)) {
+						sent = await sentTo();
+						moving = await arrive(again);
+					}
 				}
 				if (moving !== undefined) {
 					failure ??= `${key} was still moving the page after 10 s (${moving})`;
@@ -303,8 +330,9 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const went = await page.evaluate(() => (window as unknown as { __mmWent?: string[] }).__mmWent?.at(-1));
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
-				const moved = after !== before || went === before;
-				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
+				const moved = after !== before || went === before || sent !== undefined;
+				const to = new URL(sent ?? after);
+				out[key] = moved ? { href: to.pathname + to.search + to.hash } : copied !== undefined ? { copied } : chosen;
 				if (moved || copied !== undefined || !(await (await optionOf(page, key)).asElement()?.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox, requests);
 			}
 		} catch (error) {
