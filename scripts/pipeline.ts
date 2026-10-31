@@ -218,6 +218,9 @@ export function report(receipts: readonly Receipt[], jobs: readonly Job[]): stri
 	return [`End to end: ${Number.isFinite(first) ? mmss(last - first) : '–'} (first job start to last job end)`, '', '| Stage | Wall | Runner time | Result | Receipts |', '|---|---:|---:|---|---|', ...rows, ''].join('\n');
 }
 
+/** What `plan` runs: the command (src/cli.ts only hands it its arguments) and the usage scan convert.sh runs when plan wrote none. */
+export const PLAN_ENTRIES = ['src/plan/command.ts', 'src/usage/index.ts'];
+
 const STAGE_KEYS = ['plan', 'emit', 'emit-base', 'build'] as const;
 type Stage = (typeof STAGE_KEYS)[number];
 
@@ -230,8 +233,8 @@ export async function stageKey(stage: Stage, o: { readonly site: string; readonl
 	const add = async (files: readonly string[], prefix: string) => parts.push(...(await fileParts(ROOT, files, prefix)));
 	const pinned = [join(ROOT, 'deploy', o.site, 'fetch-old.sh'), join(ROOT, 'deploy', o.site, 'old-fixtures.json'), join(ROOT, o.app, 'scripts', 'convert.sh'), join(ROOT, 'src', 'cli.ts')].filter((f) => existsSync(f));
 	if (stage === 'plan') {
-		await add(pinned, 'pinned');
-		await add(await codeClosure([join(ROOT, 'src/plan/inventory.ts'), join(ROOT, 'src/usage/index.ts')]), 'code');
+		await add(pinned.slice(0, 2), 'pinned');
+		await add(await codeClosure(PLAN_ENTRIES.map((f) => join(ROOT, f))), 'code');
 	} else if (stage === 'emit' || stage === 'emit-base') {
 		await add(pinned, 'pinned');
 		const converter = await codeClosure([join(ROOT, 'src/convert/index.ts'), join(ROOT, 'src/cache/cli.ts')]);
