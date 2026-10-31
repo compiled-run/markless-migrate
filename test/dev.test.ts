@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { prepareDevApp } from '../src/dev/app.ts';
+import { convertInputArgs, missingDependencies, prepareDevApp } from '../src/dev/app.ts';
 import { diffRuns, formatDiffs, type Finding, type RouteProbe } from '../src/dev/findings.ts';
 import { portsLoading, routeGlob, routesUsing, selectRoutes } from '../src/dev/routes.ts';
 
@@ -81,9 +81,28 @@ test("the dev app links the app's packages, plan state and capture folders, copi
 		await assert.rejects(lstat(join(dev, 'node_modules', '.vite')), 'Vite keeps its own cache in the dev app');
 		await assert.rejects(lstat(join(dev, '.migrate', 'convert', 'report.json')), "the app's full report is not the dev app's");
 		await assert.rejects(lstat(join(dev, '.migrate', 'dev')), 'the dev folder is not linked into itself');
+		for (const cache of ['cache', 'slow-network', 'probe-reuse']) assert.ok(await linked(`.migrate/${cache}`), `the original's side kept in ${cache} is the app's, made before the first check`);
 		await writeFile(join(app, 'lib', 'site', 'parts.ts'), 'changed');
 		await prepareDevApp(app, dev);
 		assert.equal(await readFile(join(dev, 'lib', 'site', 'parts.ts'), 'utf8'), 'changed', 'prepared again, it takes the site code as it is now');
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("a route converted alone gets the whole convert's page order, and nothing when the whole convert had none", () => {
+	assert.deepEqual(convertInputArgs({ pageOrderFrom: 'https://old.example' }), ['--page-order-from', 'https://old.example']);
+	assert.deepEqual(convertInputArgs({ pageOrderFrom: null }), []);
+	assert.deepEqual(convertInputArgs(undefined), []);
+});
+
+test('a dependency a convert added that the app has not installed is named before the build fails on it', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'dev-deps-'));
+	try {
+		await mkdir(join(root, 'app', 'node_modules', 'd3-shape'), { recursive: true });
+		await mkdir(join(root, 'dev'), { recursive: true });
+		await writeFile(join(root, 'dev', 'package.json'), JSON.stringify({ dependencies: { 'd3-shape': '3.2.0', 'chrono-node': '2.8.4' } }));
+		assert.deepEqual(await missingDependencies(join(root, 'app'), join(root, 'dev')), ['chrono-node']);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

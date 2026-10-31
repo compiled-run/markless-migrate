@@ -595,37 +595,47 @@ answered, and the library parts no port implements yet. `--only <file>` converts
 
 ### How to iterate on a port
 
-Fixing one part does not need a full convert, a full build or a deploy. `dev` converts only the routes you name,
-serves them, and compares them with the original in about a minute:
+Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the
+routes you name, builds just them for production, and gives the answer the full check would give for them:
 
 ```bash
 cd examples/shadcn-ui-markless            # the app; or pass --app <dir>
-~/.claude/bin/heavy node ../../src/cli.ts dev --route /docs/components/base/combobox --control '^combobox' --watch
+~/.claude/bin/heavy node ../../src/cli.ts fix --route /examples/dashboard
 ```
 
 - It converts the routes from the cached captures (`.migrate/convert`) into an app of their own,
   `.migrate/dev/app`, and leaves the app's full convert alone. A capture is taken again only when a change
-  invalidates it (a mark's version went up). Assets and the server already there are kept.
-- It serves those routes with Markless's dev server. `--build` serves a production build of just them instead.
-- It runs the dead-controls probe on each route against the original (`--old`, default the plan's origin: a
-  local build such as `deploy/shadcn-ui/serve-old.sh` on :4000, or the reference URL). The probe compares what
-  each control changes, its box, hit points, pop-up anchor, motion (with frame strips), keyboard and input.
-  It prints the differences it found. The probe is `scripts/probe/dead-controls.mjs`; `--probe <file>` picks
-  another. `--check` also runs
-  `check --only probes`.
-- `--control <regex>` probes only the uses whose id matches. One control takes about 20 s; a page's comboboxes
-  about 70 s. `--widths` sets the widths compared (default 1280), and `--full` runs the probe's whole sweep.
-- With `--watch`, saving a file under `parts/` copies it into the dev app and probes again the routes whose
-  page loads it. Saving one under `src/convert/` converts again first. Each run prints what got fixed and
-  what is new.
-- `--routes '/docs/components/*/combobox'` (a glob) or `--part base-ui/combobox` takes several routes at once,
-  to check that a part fix broke no other page. `--part` reads which pages load each part from the last full
-  convert's report. `--concurrency <n>` probes n routes at once, with one browser context each.
+  invalidates it or none was kept. It converts with the inputs the last whole convert had (`.migrate/convert/inputs.json`,
+  for example `--page-order-from`), so the route is the one the whole convert makes.
+- It builds those routes for production (a few seconds) and serves the build. A route's checks leave it: a link, a
+  search result, a journey that follows a link, the navigation check's entry pages. Those pages land on the original
+  unless the build holds them, so `fix` records every page a browser visits that the build lacks, builds those pages
+  too and checks again once (still leaving after that is a FAIL that names the pages). It keeps what it
+  learned in `.migrate/dev/app/.migrate/dev/destinations.json`, so the next run builds them from the start.
+- It runs `check` on them as each CI shard of `check.yml` does: every dimension, the three engines, template groups
+  made over every page of the site (`--site-targets`, default `deploy/<site>/check-targets.json`), and the shard
+  flags in `src/check/ci-settings.ts`, which the workflow reads too. Then it runs the dead-controls probe in Chromium and
+  WebKit with `probe-dead-controls.yml`'s budgets (the same file). Both compare with the original (`--old`, default
+  the plan's origin: a local build such as `deploy/shadcn-ui/serve-old.sh` on :4000, never a bulk run against a
+  deployment). What each side's original did is kept between runs (`.migrate/cache`, `.migrate/slow-network`,
+  `.migrate/probe-reuse`).
+- It prints `PASS` or `FAIL` for each route with the reasons, then one line, `verdict: PASS` or `verdict: FAIL`, and
+  exits 0 or 1. A route check could not finish for an infrastructure failure, or a probe that stopped, is taken once
+  more; if it still has no result it is a FAIL. There is no third outcome.
+- A route that is not its template group's representative gets visual, responsiveness, motion and page load on the
+  representative, as in the full check; the verdict says which page that is, so name it too when the fix changes the
+  layout.
+- `--watch` answers again on every save: a part under `parts/` is copied in and the build redone, a converter file
+  under `src/convert/` converts again first.
+- `--routes '/docs/components/*/combobox'` (a glob) or `--part base-ui/combobox` takes several routes at once, to
+  check that a part fix broke no other page. `--part` reads which pages load each part from the last full convert's
+  report.
 
-Measured on the shadcn port (combobox anchor fix, PR #309): save to verified result took 90 s. That was 19 s to
-convert again, including taking the combobox captures again for the new instance prop, and 71 s to probe the
-page's 9 comboboxes. All 3 anchor differences showed as fixed. Before, the same proof took a full convert, a
-build of about 27 GB, a deploy and a check of several hours.
+Run the site-wide check (`check.yml` on GitHub) only before a deploy.
+
+`dev` is the quicker, looser loop under `fix`: Markless's dev server and the dead-controls probe alone, in Chromium
+at one width (`--control <regex>` for one control, `--widths`, `--full` for the probe's whole sweep, `--build` for a
+production build, `--check` to add `check --only probes`). Use it while you look for the cause; use `fix` for the answer.
 
 ## Command-line tools
 
