@@ -107,6 +107,23 @@ test('a deployment that hangs part way cannot stall the run: the route stops at 
 	}
 });
 
+test('a load that times out names the request the page was still waiting on', async () => {
+	const stuck = await listen((req, res) => {
+		if (req.url === '/never.png') return;
+		res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><title>x</title><img src="/never.png"><script>fetch("/never.png?poll")</script>');
+	});
+	try {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		const error = await loadPage(page, `${origin(stuck)}/chart`, { timeout: 1_500, backoffMs: 10 }).catch((e: Error) => e);
+		await context.close();
+		assert.match((error as Error).message, /did not finish loading within 2 s, twice, 0 s apart; still waiting on http:\/\/127\.0\.0\.1:\d+\/never\.png \(image, \d+ s\)$/);
+	} finally {
+		stuck.closeAllConnections();
+		stuck.close();
+	}
+});
+
 test('a retried load that the about:blank before it aborts is loaded again, not a crash of the whole check', async () => {
 	const calls: string[] = [];
 	const outcomes: (() => unknown)[] = [
@@ -116,6 +133,8 @@ test('a retried load that the about:blank before it aborts is loaded again, not 
 		() => undefined,
 	];
 	const page = {
+		on: () => {},
+		off: () => {},
 		goto: async (url: string) => {
 			calls.push(url);
 			const outcome = outcomes.shift()!();
