@@ -69,6 +69,10 @@ on:
         description: Pages plan loads at once in its browser inventory
         required: false
         default: '1'
+      run-check:
+        description: false stops after the build (a second preset of an already checked converted app)
+        type: boolean
+        default: true
       converted-from:
         description: A pipeline run whose emit finished, whose converted app this run builds (no plan, capture or emit)
         required: false
@@ -675,7 +679,7 @@ jobs:
   # files it names, OLD's HTML, the checker's version): those reuse their result, and only the rest go to check's shards.
   check-select:
     needs: [build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.run != 'mac' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && inputs.run-check != false }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
