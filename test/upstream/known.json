@@ -240,5 +240,15 @@
 			"class": "convert",
 			"why": "convert binds no port to vaul's drawer: vaul renders Radix Dialog's markup (data-state, radix- ids), so narrow() in src/convert/parts.ts keeps only radix-ui candidates and drops every vaul Drawer.* candidate; the trigger opens nothing"
 		}
+	},
+	"radix": {
+		"cypress/e2e/Select.cy.ts > electron > Select > given a select inside a form > should submit and react to changes": {
+			"class": "convert",
+			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
+		},
+		"cypress/e2e/Select.cy.ts > electron > Select > given a select with no value > can be reset to the placeholder": {
+			"class": "convert",
+			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
+		}
 	}
 }
