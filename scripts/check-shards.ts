@@ -79,15 +79,31 @@ export function combine(parts: readonly { readonly name: string; readonly target
 }
 
 /** Every report.json under a directory, leaving out a merged one. */
-async function reports(dir: string): Promise<{ path: string; routes: ReportRoute[] }[]> {
+export async function reports(dir: string): Promise<{ path: string; routes: ReportRoute[] }[]> {
 	const out: { path: string; routes: ReportRoute[] }[] = [];
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
+	const entries = await readdir(dir, { withFileTypes: true });
+	const hasReport = entries.some((e) => e.isFile() && e.name === 'report.json');
+	for (const entry of entries) {
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (entry.name !== 'check-merged') out.push(...(await reports(path)));
+			// A shard stopped before its report (its time ran out, it was cancelled) still has each finished route's result.
+			if (entry.name === 'check-progress') {
+				if (!hasReport) out.push(...(await finished(path)));
+			} else if (entry.name !== 'check-merged') out.push(...(await reports(path)));
 		} else if (entry.name === 'report.json') out.push({ path, routes: (JSON.parse(await readFile(path, 'utf8')) as { routes?: ReportRoute[] }).routes ?? [] });
 	}
 	return out;
+}
+
+/** The results a check wrote route by route as each finished (.migrate/check-progress), as one report. */
+async function finished(dir: string): Promise<{ path: string; routes: ReportRoute[] }[]> {
+	const routes: ReportRoute[] = [];
+	for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+		const saved = JSON.parse(await readFile(join(entry.parentPath, entry.name), 'utf8')) as { result?: ReportRoute };
+		if (saved.result) routes.push(saved.result);
+	}
+	return routes.length ? [{ path: join(dir, 'report.json'), routes }] : [];
 }
 
 async function write(dir: string, routes: readonly ReportRoute[]): Promise<void> {

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combine, costsOf, joinKept, joinOld, lostUploads, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
+import { combine, costsOf, joinKept, joinOld, lostUploads, reports, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -148,4 +148,18 @@ test("a shard whose log says it kept results or recorded old pages, but whose ar
 	await shard(2, '--reuse: kept 2 results for later runs.\nOld side from the cache (.migrate/cache): 0 reused because nothing the old page loads changed, 1 not cached yet.', []);
 	await shard(3, '--reuse: kept 0 results for later runs.', []);
 	assert.deepEqual(await lostUploads(root), ['check-2 kept 2 results for later runs, but its artifact has none', 'check-2 recorded 1 old pages not cached before, but its artifact has no old-side entries']);
+});
+
+test("a shard stopped before writing its report still gives each route it finished, from the results it wrote route by route", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'partial-'));
+	const progress = join(root, 'check-3', 'app', '.migrate', 'check-progress', 'abc');
+	await mkdir(progress, { recursive: true });
+	await writeFile(join(progress, '1.json'), JSON.stringify({ route: '/a', result: { route: '/a', ok: true, failures: [] } }));
+	await writeFile(join(progress, '2.json'), JSON.stringify({ route: '/b', result: { route: '/b', ok: false, failures: [{ dimension: 'css', check: 'x' }] } }));
+	const done = join(root, 'check-4', 'app', '.migrate');
+	await mkdir(join(done, 'check-progress', 'abc'), { recursive: true });
+	await writeFile(join(done, 'report.json'), JSON.stringify({ routes: [{ route: '/c', ok: true, failures: [] }] }));
+	await writeFile(join(done, 'check-progress', 'abc', '1.json'), JSON.stringify({ route: '/c', result: { route: '/c', ok: true, failures: [] } }));
+	const got = (await reports(root)).flatMap((r) => r.routes.map((x) => `${/check-(\d+)/.exec(r.path)![1]} ${x.route}`)).sort();
+	assert.deepEqual(got, ['3 /a', '3 /b', '4 /c'], 'a shard with a report is read from it alone');
 });
