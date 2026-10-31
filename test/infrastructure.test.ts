@@ -133,6 +133,8 @@ test('a retried load that the about:blank before it aborts is loaded again, not 
 		() => undefined,
 	];
 	const page = {
+		on: () => {},
+		off: () => {},
 		goto: async (url: string) => {
 			calls.push(url);
 			const outcome = outcomes.shift()!();
