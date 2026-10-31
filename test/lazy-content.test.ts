@@ -14,7 +14,7 @@ for (const s of document.querySelectorAll('[data-card]')) seen.observe(s);
 </script>`;
 
 test('settling scrolls a tall page through a view at a time, so cards a script loads in view are all loaded', async () => {
-	const server = createServer((req, res) => (req.url?.startsWith('/card/') ? setTimeout(() => res.end(`card ${req.url.slice(6)}`), 30) : res.writeHead(200, { 'content-type': 'text/html' }).end(html)));
+	const server = createServer((req, res) => (req.url?.startsWith('/card/') ? setTimeout(() => res.end(`card ${req.url!.slice(6)}`), 30) : res.writeHead(200, { 'content-type': 'text/html' }).end(html)));
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	const browser = await chromium.launch();
 	try {

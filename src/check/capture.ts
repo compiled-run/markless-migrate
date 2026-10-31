@@ -248,6 +248,10 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const html = (await navigation?.text().catch(() => '')) ?? '';
 		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
+		// Code run at load is what ran once the network rests, before settling scrolls the page or a full-page screenshot
+		// wakes what is below the fold: either would count code a visitor's load never runs.
+		await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+		const coverage = await page.coverage.stopJSCoverage();
 		await settle(page);
 		await finishAnimations(page, await settleMotion(page));
 		await page.evaluate(holdLoops).catch(() => 0);
@@ -258,7 +262,6 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const embedTrees = marked.length ? await Promise.all((await page.locator('[data-markless-migrate-embed]').all()).map((l) => l.ariaSnapshot({ timeout: 2000 }).catch(() => ''))) : [];
 		const aria = withoutEmbeds(routeLinks(await page.locator('body').ariaSnapshot(), env.routing).split(origin).join('').split('\n'), embedTrees.map((t) => t.split(origin).join('').split('\n')));
 		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }), marked);
-		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);
 		const elements = await captureSourceHints(page, await renderedFonts(page, collected.elements, fontHashes));
