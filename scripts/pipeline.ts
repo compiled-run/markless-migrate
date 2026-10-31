@@ -1,7 +1,7 @@
 // The pipeline workflow's keys and caches (.github/workflows/pipeline.yml). Every stage keys its work by content, so a
 // stage whose inputs are unchanged is read back from the run that made it instead of done again:
 //   key plan|emit|emit-base|build ...   one stage's key (see stageKey)
-//   record-split <pages.txt> <origin> <store> <n> <out dir>   each page's recording key; shards of the pages the store lacks
+//   record-split <pages.txt> <origin> <store> <n> <out dir> [<captures>]   each page's recording key; shards of the pages the store lacks
 //   prune <store> <record-keys.json>    drops recordings no page's current key names
 //   copied-parts <app>                  the app's lib/parts files that are copies of parts/ (written beside the converted app)
 //   refresh-parts <app> <list>          copies those files from parts/ again (an emit whose only change is in copied parts)
@@ -153,6 +153,21 @@ export async function pruneStore(store: string, keep: ReadonlySet<string>): Prom
 	return { kept, dropped };
 }
 
+/** The route each capture under the store was recorded for, by the key it was recorded under (captures/<key>/*.json). */
+export async function capturedKeys(store: string): Promise<Map<string, string>> {
+	const out = new Map<string, string>();
+	const dir = join(store, 'captures');
+	if (!existsSync(dir)) return out;
+	for (const key of (await readdir(dir)).sort()) {
+		if (!KEY_DIR.test(key)) continue;
+		for (const file of (await readdir(join(dir, key))).filter((f) => f.endsWith('.json')).sort()) {
+			const route = (JSON.parse(await readFile(join(dir, key, file), 'utf8')) as { route?: unknown }).route;
+			if (typeof route === 'string') out.set(route, key);
+		}
+	}
+	return out;
+}
+
 /** Pages dealt in turn into at most n shards, none of them empty. */
 export function deal<T>(items: readonly T[], n: number): T[][] {
 	const shards = Array.from({ length: Math.max(1, Math.min(n, items.length)) }, () => [] as T[]);
@@ -277,8 +292,8 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === 'record-split') {
-		const [pages, origin, store, n, out] = rest;
-		if (!pages || !origin || !store || !n || !out) throw new Error('usage: pipeline.ts record-split <pages.txt> <origin> <store> <n> <out dir>');
+		const [pages, origin, store, n, out, from] = rest;
+		if (!pages || !origin || !store || !n || !out) throw new Error('usage: pipeline.ts record-split <pages.txt> <origin> <store> <n> <out dir> [<captures of an earlier run>]');
 		const routes = (await readFile(pages, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean);
 		const keys = new Map<string, string>();
 		let keyed = false;
@@ -296,6 +311,9 @@ async function main(): Promise<void> {
 			if ((error as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
 			for (const r of routes) keys.set(r, `unreachable-${createHash('sha256').update(r).digest('hex').slice(0, 8)}`);
 		}
+		// A run's own captures, made by its shards before this run took them over: each route keeps the key it was recorded under.
+		let taken = 0;
+		if (from) for (const [route, key] of await capturedKeys(from)) if (keys.has(route) && keys.get(route) !== key) (keys.set(route, key), taken++);
 		const ordered = new Map(routes.map((r) => [r, keys.get(r)!]));
 		const { hits, misses } = await recordHits(ordered, store);
 		const shards = deal(misses, Number(n));
@@ -303,7 +321,7 @@ async function main(): Promise<void> {
 		for (const [i, shard] of shards.entries()) await writeFile(join(out, 'shards', `shard-${i + 1}.txt`), `${shard.join('\n')}\n`);
 		await writeFile(join(out, 'record-keys.json'), `${JSON.stringify(Object.fromEntries(ordered), null, 1)}\n`);
 		await writeFile(join(out, 'misses.txt'), misses.length ? `${misses.join('\n')}\n` : '');
-		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, keys: digest([...ordered].map(([r, k]) => [r, k] as const)).slice(0, 32) }));
+		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, ...(from ? { recordedKeys: taken } : {}), keys: digest([...ordered].map(([r, k]) => [r, k] as const)).slice(0, 32) }));
 		return;
 	}
 	if (command === 'prune') {

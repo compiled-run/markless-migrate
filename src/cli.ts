@@ -90,7 +90,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse]
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse] [--record-keys <file>]
           Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
           browser holds it once settled (loaded as check loads it), without the old framework's runtime;
           shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
@@ -107,6 +107,8 @@ const USAGE = `markless-migrate ${VERSION}
           search results come in that deployment's order.
           --reuse (what dev passes) keeps what the app already holds: assets on disk are not fetched, the old
           app's public/ is not copied again, and the server is kept, with only its list of pages written again.
+          --record-keys takes each route's recording key from a JSON file of route to key (the pipeline's
+          prepare made them) instead of requesting the old page again, so every job of one run keys a route alike.
 ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) [--app <dir>] [--old <origin>] [--source <path>]
           [--fallthrough <old deployment>] [--control <regex>] [--widths <px,...>] [--full] [--watch] [--build] [--check]
           [--concurrency <n>] [--port <n>] [--probe <file>] [--no-probes]
@@ -1103,10 +1105,11 @@ async function main(argv: string[]): Promise<number> {
 			return report.ok ? 0 : 1;
 		}
 		case 'convert': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' }, 'record-keys': { type: 'string' } } });
 			if (!values.old) fail('convert needs --old <origin>');
+			const recordKeys = values['record-keys'] ? new Map(Object.entries(JSON.parse(await readFile(resolve(values['record-keys']), 'utf8')) as Record<string, string>)) : undefined;
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
-			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), log: (line) => out(`${line}\n`) });
+			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), ...(recordKeys ? { recordKeys } : {}), log: (line) => out(`${line}\n`) });
 			if (values['capture-only']) {
 				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}\n`);
 				return 0;

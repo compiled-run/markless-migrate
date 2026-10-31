@@ -65,6 +65,10 @@ on:
         description: runner (this workflow builds), or mac (it stops after emit; scripts/pipeline-mac-build.sh <run> builds and runs it again)
         required: false
         default: runner
+      captures-from:
+        description: A pipeline run whose capture shards finished, taken as this run's captures under the keys they were recorded with
+        required: false
+        default: ''
       fresh:
         description: Read nothing back from earlier runs (a fresh run's timing)
         type: boolean
@@ -223,6 +227,14 @@ jobs:
           run-id: ${{ steps.store.outputs.run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/store-archive
+      - if: inputs.captures-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-captures-*
+          merge-multiple: true
+          run-id: ${{ inputs.captures-from }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/taken
       - name: Key each page's recordings
         id: records
         env:
@@ -241,7 +253,8 @@ jobs:
           mkdir -p "$store"
           if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
           t=$(date +%s)
-          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out")
+          if [ -d "$RUNNER_TEMP/taken" ]; then cp -R "$RUNNER_TEMP/taken/." "$store/"; fi
+          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out" ${{ inputs.captures-from != '' && '"$RUNNER_TEMP/taken"' || '' }})
           echo "$result"
           echo "matrix=$(node -p 'JSON.stringify(JSON.parse(process.argv[1]).matrix)' "$result")" >> "$GITHUB_OUTPUT"
           echo "keys=$(node -p 'JSON.parse(process.argv[1]).keys' "$result")" >> "$GITHUB_OUTPUT"
@@ -315,7 +328,7 @@ jobs:
           set -euo pipefail
           t=$(date +%s)
           mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
-          env CAPTURE_ONLY=1 CONCURRENCY=3 ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
+          env CAPTURE_ONLY=1 CONCURRENCY=3 RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
           tail -n 15 "$RUNNER_TEMP/capture.txt"
           rm -f "$APP/.migrate/convert/sources.json" "$APP/.migrate/convert/report.json"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") seconds=$(( $(date +%s) - t ))
@@ -397,6 +410,14 @@ jobs:
           pattern: pl-captures-*
           merge-multiple: true
           path: ${{ runner.temp }}/captured
+      - if: (needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true') && inputs.captures-from != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pl-captures-*
+          merge-multiple: true
+          run-id: ${{ inputs.captures-from }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/captured
       - name: Restore the old site's build
         if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         uses: actions/cache/restore@v4
@@ -420,7 +441,7 @@ jobs:
           only=""
           [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/all/shard-1.txt"
           t=$(date +%s)
-          /usr/bin/time -v env ONLY="$only" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
+          /usr/bin/time -v env ONLY="$only" RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
           tail -n 30 "$RUNNER_TEMP/convert.txt"
           node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
           if [ -d "$RUNNER_TEMP/kept-app" ]; then
