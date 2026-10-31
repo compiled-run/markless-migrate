@@ -25,9 +25,10 @@ env:
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
 
+# A run takes about two hours and main moves faster: a run in progress finishes, and only the newest push waits behind it.
 concurrency:
   group: corpus-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   plan:
