@@ -8,7 +8,7 @@ import { installProbe, probeControls, type ProbeControl } from './probe-page.ts'
 import { matchParts, partSelectors, type PartSelectors } from './probe-parts.ts';
 import type { Dimension, Failure, Viewport } from './types.ts';
 import { clickOnce } from './click.ts';
-import { armStateReader, compareStates, firstDiffs, readState, stateHint, type StateDiff, type StateReading } from './state-probe.ts';
+import { armStateReader, compareStates, firstDiffs, readState, stateHint, stateSpread, type StateDiff, type StateReading } from './state-probe.ts';
 
 /**
  * Widget probes: one control of each kind, in each class of widget behaviour, is driven through its class's short sequence on
@@ -387,6 +387,8 @@ export interface ProbeResult {
 	readonly ms: number;
 	/** Time the state probe's reads took, both sides, every step. */
 	readonly stateMs: number;
+	/** The largest old-against-new difference in each measure the state probe's tolerances bound, over every sequence. */
+	readonly stateSpread: Readonly<Record<string, number>>;
 }
 
 const SAMPLES = 1;
@@ -484,6 +486,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	const failures: Failure[] = [];
 	const failuresOf = new Map<string, Failure[]>();
 	let stateMs = 0;
+	const spread: Record<string, number> = {};
 	// A difference every sequence of a control meets (a popup's place) is reported once, at the first sequence that met it.
 	const stated = new Set<string>();
 	const state = new Map<string, { control: string; cls: ProbeClass; state: string; ms: number }>();
@@ -508,6 +511,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 					const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set(), oldStates), runSequence(sides2.new, sides.new.origin, route, item.control, item.sequence, parts, files, newStates)]);
 					stateMs += [...oldStates, ...newStates].reduce((t, r) => t + r.ms, 0);
 					options.onStates?.(oldStates, newStates);
+					for (const [k, v] of Object.entries(stateSpread(oldStates, newStates))) spread[k] = Math.max(spread[k] ?? 0, v);
 					// A control the new page lacks is the journeys' and the rendered check's finding; the probe has nothing to drive there.
 					if (old[0]?.control !== 'not on the page' && next[0]?.control === 'not on the page') {
 						entry.state = 'not on the new page: the journeys and the rendered check compare whether it is there';
@@ -572,7 +576,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 		if (e.state.startsWith('left out') || e.state.startsWith('not found')) failures.push(unprobed(route, e.control, e.cls, e.state));
 	}
 	for (const c of controls) if (c.state.startsWith('left out: over')) failures.push(unprobed(route, c.control, c.cls, c.state));
-	return { failures, controls, ms: Date.now() - started, stateMs };
+	return { failures, controls, ms: Date.now() - started, stateMs, stateSpread: spread };
 }
 
 const DISCOVER_MAX = 24;

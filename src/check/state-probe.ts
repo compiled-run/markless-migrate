@@ -275,7 +275,7 @@ export const STATE_HINTS: Record<string, string> = {
 
 export const stateHint = (field: string) => STATE_HINTS[field.startsWith('pop-up place') ? 'pop-up place' : field.startsWith('script motion') ? 'script motion' : field.startsWith('motion') ? 'motion' : 'accessibility tree']!;
 
-/** The largest difference between two runs of one sequence in each measure the tolerances bound: for measuring noise on pages that match. */
+/** The largest difference between two runs of one sequence in each measure a tolerance bounds; on two sides that match, it is the noise the tolerances must cover. */
 export function stateSpread(a: StateRun, b: StateRun): Record<string, number> {
 	const out: Record<string, number> = { px: 0, widthRatio: 0, ms: 0, ratio: 0, scriptMs: 0, scriptRatio: 0, value: 0 };
 	const max = (k: string, v: number) => (out[k] = Math.max(out[k]!, Number.isFinite(v) ? v : 0));
@@ -288,8 +288,17 @@ export function stateSpread(a: StateRun, b: StateRun): Record<string, number> {
 			max('px', Math.max(Math.abs(p.gap - q.gap), Math.abs(p.across - q.across), Math.abs(p.width - q.width)));
 			if (p.triggerWidth && q.triggerWidth) max('widthRatio', Math.abs(p.width / p.triggerWidth - q.width / q.triggerWidth));
 		});
-		for (const m of x.motion) {
-			const n = y.motion.find((o) => o.subject === m.subject && o.properties.join() === m.properties.join());
+		const longest = (l: readonly PageMotion[]) => {
+			const by = new Map<string, PageMotion>();
+			for (const m of moving(l)) {
+				const k = `${m.subject}|${motionKey(m)}`;
+				if ((by.get(k)?.duration ?? -1) < m.duration) by.set(k, m);
+			}
+			return by;
+		};
+		const ym = longest(y.motion);
+		for (const [k, m] of longest(x.motion)) {
+			const n = ym.get(k);
 			if (!n) continue;
 			max('ms', Math.abs(m.duration - n.duration));
 			max('ratio', rel(m.duration, n.duration));
