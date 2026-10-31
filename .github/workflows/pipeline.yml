@@ -568,7 +568,7 @@ jobs:
             exit 0
           fi
           tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
-          if [ "${{ inputs.refresh-templates }}" = true ]; then node scripts/refresh-templates.ts "$APP" scripts/refresh-templates-old-head.txt; fi
+          if [ "${{ inputs.refresh-templates }}" = true ]; then node scripts/refresh-templates.ts "$APP" scripts/refresh-templates-old-head.txt scripts/refresh-templates-new-head.txt; fi
           sha=$(git -C markless rev-parse HEAD)
           echo "MARKLESS_SHA=$sha" >> "$GITHUB_ENV"
           key=$(node scripts/pipeline.ts key build "$SITE" "$APP" markless="$sha" preset="$PRESET" app-url="$APP_URL" node="$(node -v)")

@@ -3,13 +3,13 @@
 // is first proven to be the template the converted app was made with, so nothing else in it can change.
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { HEAD_HELPER } from '../src/convert/document.ts';
 
-const [app, oldHead] = process.argv.slice(2);
-if (!app || !oldHead) throw new Error('usage: refresh-templates.ts <app> <the old converter HEAD_HELPER file>');
+// The two HEAD_HELPER files are written from src/convert/document.ts at each converter, so this runs before any install.
+const [app, oldHead, newHead] = process.argv.slice(2);
+if (!app || !oldHead || !newHead) throw new Error('usage: refresh-templates.ts <app> <old HEAD_HELPER file> <new HEAD_HELPER file>');
 const head = join(app, 'head.ts');
 if ((await readFile(head, 'utf8')) !== (await readFile(oldHead, 'utf8'))) throw new Error('head.ts is not the old converter\'s HEAD_HELPER');
-await writeFile(head, HEAD_HELPER);
+await writeFile(head, await readFile(newHead, 'utf8'));
 
 const routing = join(app, 'server', 'routing.ts');
 let text = await readFile(routing, 'utf8');
