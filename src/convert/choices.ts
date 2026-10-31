@@ -207,8 +207,8 @@ async function afterChoosing(page: Page, requests: ReturnType<typeof requestsOf>
 	}
 }
 
-// The requests that move a page: a router's data, a document. Images, fonts and scripts the next page loads do not.
-const MOVING = new Set(['fetch', 'xhr', 'document']);
+// The requests a move waits on: a router's data and the next page's code and styles, or a document. Images and fonts do not.
+const MOVING = new Set(['fetch', 'xhr', 'document', 'script', 'stylesheet']);
 
 // Base UI's Select.Root renders its hidden input right after its trigger; Select.Value shows the chosen item's label.
 const chosenOf = (page: Page, path: readonly number[]) =>

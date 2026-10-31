@@ -81,12 +81,21 @@ window.choose = (value) => history.pushState(null, '', '/currency/' + value.spli
 document.addEventListener('keydown', (e) => e.key === 'Enter' && document.activeElement?.hasAttribute('cmdk-item') && window.choose(document.activeElement.dataset.value));
 </script>`;
 
+// A router whose next page's code is not loaded yet (Next.js going from the home page to a docs page): it loads the chunk, then moves.
+const CHUNK = palette('<div cmdk-item data-value="Docs">Docs</div>') + `<script>
+window.choose = () => {
+	const script = document.createElement('script');
+	script.src = '/chunk.js';
+	document.head.append(script);
+};
+</script>`;
+
 // An option that something always lies over: its click can never land.
 const COVERED = palette('<div cmdk-item data-value="Free">Free</div><div cmdk-item data-value="Stuck" style="pointer-events:none">Stuck</div>') + `<script>
 window.choose = (value) => history.pushState(null, '', '/docs/' + value.toLowerCase());
 </script>`;
 
-const PAGES: Record<string, string> = { '/offscreen': OFFSCREEN, '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
+const PAGES: Record<string, string> = { '/chunk': CHUNK, '/offscreen': OFFSCREEN, '/restore': RESTORE, '/document': DOCUMENT, '/redirect': REDIRECT, '/unfetched': UNFETCHED, '/late': LATE, '/demo': DEMO, '/covered': COVERED };
 
 let browser: Browser;
 let server: Server;
@@ -98,6 +107,7 @@ before(async () => {
 		if (request.url!.startsWith('/docs/components/typography')) return void res.writeHead(308, { location: '/docs/typeset' }).end();
 		if (request.url!.startsWith('/data/hang')) return void setTimeout(() => res.writeHead(200).end('{}'), 30_000);
 		if (request.url === '/llms.txt') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('# docs'), 300);
+		if (request.url === '/chunk.js') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/javascript' }).end("history.pushState(null, '', '/docs/chunk');"), 900);
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 700);
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGES[request.url!.split('?')[0]!] ?? '<!doctype html><title>other</title>');
 	});
@@ -146,6 +156,10 @@ test("the next option is chosen once a page taken back has finished coming back,
 
 test('an option the page cannot be scrolled to is chosen from the keyboard', async () => {
 	assert.deepEqual(await recorded('/offscreen', reveal('offscreen', '<div cmdk-item="" data-value="Euro">Euro</div>')), { 'US Dollar': { href: '/currency/us' }, Euro: { href: '/currency/euro' } });
+});
+
+test("an option is recorded going where the router moves once it has loaded the next page's code", async () => {
+	assert.deepEqual(await recorded('/chunk', reveal('chunk', '<div cmdk-item="" data-value="Docs">Docs</div>')), { Docs: { href: '/docs/chunk' } });
 });
 
 test('a control with an option that cannot be chosen is refused, and nothing is written for it', async () => {
