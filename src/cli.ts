@@ -1162,7 +1162,8 @@ async function main(argv: string[]): Promise<number> {
 			if (!report.routes.length) return 1;
 			const mode = values.ledger ?? 'fail';
 			if (!values.source || mode === 'off') return 0;
-			const ledger = await buildLedger({ source: resolve(values.source), app: cwd });
+			// Two threads after convert: each reads the whole port, and convert's own memory is still held.
+			const ledger = await buildLedger({ source: resolve(values.source), app: cwd, workers: 2 });
 			out(`${summarizeLedger(ledger)}Wrote ${await writeLedger(cwd, ledger)}\n`);
 			return ledger.failures.length && mode === 'fail' ? 1 : 0;
 		}
