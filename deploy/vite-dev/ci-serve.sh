@@ -22,6 +22,8 @@ case "${1:-}" in
 		;;
 	new)
 		spec="${2:?usage: ci-serve.sh new markless@<ref> | <url>}"
+		# Measurement only: markless@<ref>+<mode> serves the port with MARKLESS_FIRST_CLICK_EXPERIMENT=<mode>.
+		if [[ "$spec" == *+* ]]; then export MARKLESS_FIRST_CLICK_EXPERIMENT="${spec##*+}"; spec="${spec%+*}"; fi
 		if [[ "$spec" == markless@* ]]; then
 			{
 				git init --quiet "$RUNNER_TEMP/markless"
