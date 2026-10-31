@@ -85,3 +85,12 @@ test("a Markless page that loads the original's own scripts and runs its framewo
 	assert.deepEqual(originalRuntimeFailures('/charts/line', old, { ...port, assets: [script('/build/chunk-a.js')] } as PageCapture), []);
 	assert.deepEqual(originalRuntimeFailures('/charts/line', old, { viewport: 'desktop', assets: nextChunks } as unknown as PageCapture), [], 'a page Markless did not render is the original itself, never this red');
 });
+
+test("the original's stylesheets and images under /_next (cut sheets, next/image URLs) are not its framework: only scripts count", () => {
+	const asset = (url: string, type: string) => ({ url, type, status: 200, contentType: type === 'image' ? 'image/webp' : 'text/css', bytes: 1000, fingerprinted: true });
+	// /blocks on d24ccda5: ten next/image URLs and cut stylesheets under /_next, no script of the original's.
+	const shared = [asset('/_next/static/css/3n2_4ok5y-nmk.used-0a1b2c.css', 'stylesheet'), ...Array.from({ length: 10 }, (_, i) => asset(`/_next/image?url=%2Fr%2Fstyles%2Fnew-york-v4%2Fblock-${i}.png&w=3840&q=75`, 'image'))];
+	const old = { viewport: 'desktop', assets: [...shared, { ...asset('/_next/static/chunks/main.js', 'script'), contentType: 'text/javascript', runtime: 'Next.js' }] } as unknown as PageCapture;
+	const port = { viewport: 'desktop', routeFile: 'pages/blocks.tsrx', assets: shared } as unknown as PageCapture;
+	assert.deepEqual(originalRuntimeFailures('/blocks', old, port), []);
+});
