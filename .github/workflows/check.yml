@@ -88,6 +88,7 @@ env:
   TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
   SHARDS: ${{ inputs.shards || '13' }}
   OLD: http://localhost:4000
+  OLD_ASSET: old-build.tar.zst
   NEW: http://127.0.0.1:3000
 
 concurrency:
@@ -184,9 +185,58 @@ jobs:
           path: shards
           retention-days: 3
 
-  check:
+  # The old site built once, kept as a release asset named by its inputs, and served by every shard of every run on any branch:
+  # a Next.js build differs from the last in every file name, and check records the old side once per build. A branch's
+  # actions cache of it (1.4 GB) was evicted within hours by the repository's 10 GB limit, so most runs rebuilt it.
+  old-site:
     needs: plan
     # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Only a site whose ci-serve.sh marks its build (.ci-built) serves a restored build as it is.
+      - name: Look for the old site's build
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUTS: ${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+        run: |
+          set -euo pipefail
+          grep -q '\.ci-built' "deploy/$SITE/ci-serve.sh" || exit 0
+          tag="$SITE-old-build-$INPUTS"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$OLD_ASSET"; then echo "found=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.release.outputs.tag != '' && steps.release.outputs.found != 'true'
+        uses: ./.github/actions/setup
+      - if: steps.release.outputs.tag != '' && steps.release.outputs.found != 'true'
+        uses: oven-sh/setup-bun@v2
+      - name: Build the old site
+        if: steps.release.outputs.tag != '' && steps.release.outputs.found != 'true'
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Publish the old site's build
+        if: steps.release.outputs.tag != '' && steps.release.outputs.found != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tar --zstd -cf "$RUNNER_TEMP/$OLD_ASSET" -C "deploy/$SITE" --exclude=old/.git --exclude='old/apps/*/.next/cache' old
+          ls -l "$RUNNER_TEMP/$OLD_ASSET"
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || gh release create "$TAG" -R "$GITHUB_REPOSITORY" --prerelease --title "$SITE: the old site's build, served by check" --notes "Built from deploy/$SITE/fetch-old.sh by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || true
+          # Never --clobber: recordings of the old side are keyed on the build already published.
+          gh release upload "$TAG" "$RUNNER_TEMP/$OLD_ASSET" -R "$GITHUB_REPOSITORY" || echo "not published: another run published $TAG first, or the build is over the 2 GiB asset limit"
+
+  check:
+    needs: [plan, old-site]
+    # The gate is skipped when the pipeline calls this workflow; a failed old-site job leaves each shard to build the old site itself.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
@@ -211,26 +261,27 @@ jobs:
         with:
           name: check-shards
           path: ${{ runner.temp }}/shards
-      # The old site as an earlier job built it: a Next.js build differs from the last in every file name, so without this each
-      # shard serves a different deploy and nothing check keeps of the old side survives to the next run.
+      # The old site as the old-site job published it, so every shard and every run serve one build.
+      - name: Fetch the old site's build
+        id: old-release
+        if: needs.old-site.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.old-site.outputs.tag }}
+        run: |
+          if gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$OLD_ASSET" -D "$RUNNER_TEMP"; then
+            tar --zstd -xf "$RUNNER_TEMP/$OLD_ASSET" -C "deploy/$SITE" && rm "$RUNNER_TEMP/$OLD_ASSET" && echo "got=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Restore the old site's build
-        id: old-build
+        if: steps.old-release.outputs.got != 'true'
         uses: actions/cache/restore@v4
         with:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the port
         env:
           GH_TOKEN: ${{ github.token }}
@@ -279,11 +330,14 @@ jobs:
           # Wherever the preset put it: .vercel/output/.markless/static/, or under .output/ for node-server and cloudflare-module.
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/static/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
+          # A site whose ci-serve.sh names its frozen old build gets the old side replayed from that build's recording.
+          OLD_BUILD=""
+          [ ! -s "$RUNNER_TEMP/old-build-id" ] || OLD_BUILD="--old-build $(cat "$RUNNER_TEMP/old-build-id")"
           status=0
           # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
           # shellcheck disable=SC2086
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --concurrency "$CONCURRENCY" --timeout "$TIMEOUT" --control-webkit --busy-cpu $REUSE $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --concurrency "$CONCURRENCY" --timeout "$TIMEOUT" --control-webkit --busy-cpu $REUSE $OLD_BUILD $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
@@ -340,8 +394,11 @@ jobs:
       - name: Join the old side
         run: |
           mkdir -p old-earlier && if [ -d old-joined ]; then mv old-joined old-earlier/; fi
-          node scripts/check-shards.ts join-old old-earlier old-joined >> "$GITHUB_STEP_SUMMARY"
-          node scripts/check-shards.ts join-old shards old-joined >> "$GITHUB_STEP_SUMMARY"
+          {
+            node scripts/check-shards.ts join-old old-earlier old-joined
+            node scripts/check-shards.ts join-old shards old-joined
+            node scripts/check-shards.ts prune-old shards old-joined
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/cache/save@v4
         with:
           path: old-joined

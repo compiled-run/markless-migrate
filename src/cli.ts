@@ -137,7 +137,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--old-build <id>] [--reference-drift] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -153,6 +153,9 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           old address /#<route>, which must land on <route>, so links saved from the old app keep working.
           The old side's loads and journeys are reused from .migrate/cache while every response the old
           page loaded is unchanged (ETag, Last-Modified or content hash); --no-cache loads them again.
+          --old-build <id> names a frozen old build (its pinned source and build output): its loads and
+          journeys are recorded once for that build and replayed on every later run without asking the old
+          site anything; --reference-drift still asks it, only to list the responses that no longer match.
           Each route's result is written to .migrate/check-progress as it finishes; --resume takes the
           results an earlier run of the same check (same origins, routes and options) wrote, so a run that
           stopped carries on where it was.
@@ -930,6 +933,8 @@ async function main(argv: string[]): Promise<number> {
 					only: { type: 'string' },
 					'every-dimension': { type: 'boolean' },
 					'no-cache': { type: 'boolean' },
+					'old-build': { type: 'string' },
+					'reference-drift': { type: 'boolean' },
 					resume: { type: 'boolean' },
 					targets: { type: 'string' },
 					'write-targets': { type: 'string' },
@@ -1061,7 +1066,7 @@ async function main(argv: string[]): Promise<number> {
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
 				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [], ...(site ? { site } : {}) },
-				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
+				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache'), ...(values['old-build'] ? { oldBuild: values['old-build'] } : {}), ...(values['reference-drift'] ? { referenceDrift: true } : {}) }),
 				artifactsDir: join(cwd, STATE_DIR),
 				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
 			});

@@ -701,6 +701,10 @@ jobs:
   check:
     needs: [build, check-select]
     if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
+    # check.yml's old-site job publishes the old site's build as a release asset.
+    permissions:
+      contents: write
+      actions: read
     uses: ./.github/workflows/check.yml
     with:
       site: ${{ inputs.site || 'shadcn-ui' }}

@@ -6,6 +6,7 @@ import { deserialize, serialize } from 'node:v8';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { appHeaders, sharedAnswer, type SideEnv } from './browser.ts';
 import { request } from './http.ts';
+import { IN_USE, TAG_LENGTH } from './cache-names.ts';
 
 /** One response the old page loaded, as it was when the cache entry was written. */
 export interface Fingerprint {
@@ -76,15 +77,25 @@ export async function fingerprint(env: SideEnv, urls: readonly string[]): Promis
 	return got.every((g): g is Fingerprint => typeof g === 'object') ? got : undefined;
 }
 
+/** The recorded responses the old site no longer answers the same way. */
+async function drifted(env: SideEnv, prints: readonly Fingerprint[]): Promise<string[]> {
+	const now = await pool(prints, (p) => fetchOne(env, p.url, p));
+	return prints.flatMap((p, i) => {
+		const n = now[i];
+		return n === 'unchanged' || (n !== undefined && n.status === p.status && n.hash === p.hash) ? [] : [p.url];
+	});
+}
+
 /** Whether every response is as it was: a 304 to its validators, or the same status and content hash. */
 export async function unchanged(env: SideEnv, prints: readonly Fingerprint[]): Promise<boolean> {
-	const now = await pool(prints, (p) => fetchOne(env, p.url, p));
-	return now.every((n, i) => n === 'unchanged' || (n !== undefined && n.status === prints[i]!.status && n.hash === prints[i]!.hash));
+	return !(await drifted(env, prints)).length;
 }
 
 /**
- * The old side's captures and journeys between runs, in `.migrate/cache/old/`. An entry is reused only when the checker's own code,
- * the options that shape what it records (`key`) and every response the old page loaded are unchanged (ETag or Last-Modified
+ * The old side's captures and journeys between runs, in `.migrate/cache/old/`. An entry is reused only when the checker's own code
+ * and browser, and the options that shape what it records (`key`), are unchanged, and the old site is too. With `build`, the
+ * identity of a frozen old build, the entry is that build's reference recording: it holds for every run on the same build, with
+ * no request to the old site. Without it, every response the old page loaded must be unchanged (ETag or Last-Modified
  * revalidation, else the same content hash), so a reused entry is what loading the old page again would record.
  */
 export class OldCache {
@@ -92,20 +103,38 @@ export class OldCache {
 	readonly dir: string;
 	/** The run's options that shape every entry (the block list). */
 	readonly salt: unknown;
-	constructor(dir: string, salt: unknown) {
+	/** The frozen old build's identity (its pinned source and build output), when the run serves one. */
+	readonly build: string | undefined;
+	/** With `drift`, a hit from a frozen build's recording is still revalidated, only to report which old responses no longer match it. */
+	readonly drift: { readonly enabled: boolean; readonly urls: Set<string> };
+	constructor(dir: string, salt: unknown, options: { readonly build?: string; readonly drift?: boolean } = {}) {
 		this.dir = dir;
 		this.salt = salt;
+		this.build = options.build;
+		this.drift = { enabled: Boolean(options.drift), urls: new Set() };
 	}
 
-	private file(kind: string, env: SideEnv, key: unknown): string {
+	private tagged?: Promise<string>;
+	/** The checker version and old build every entry of this run is written for, in each entry's name, so a joined cache can drop the rest. */
+	private tag(): Promise<string> {
+		this.tagged ??= (async () => {
+			const tag = createHash('sha256').update(JSON.stringify([await checkerVersion(), this.build ?? null])).digest('hex').slice(0, TAG_LENGTH);
+			await mkdir(this.dir, { recursive: true });
+			await writeFile(join(this.dir, `${IN_USE}${tag}`), '');
+			return tag;
+		})();
+		return this.tagged;
+	}
+
+	private async file(kind: string, env: SideEnv, key: unknown): Promise<string> {
 		const side = { origin: env.origin, freeze: env.freeze, sendWrites: env.sendWrites, headers: env.headers, cookies: env.cookies, userAgent: env.userAgent, storageState: env.storageState, reducedMotion: env.reducedMotion, colorScheme: env.colorScheme };
-		const digest = createHash('sha256').update(JSON.stringify([kind, this.salt, side, key])).digest('hex').slice(0, 32);
-		return join(this.dir, `${kind}-${digest}.bin`);
+		const digest = createHash('sha256').update(JSON.stringify([kind, this.salt, side, key, this.build ?? null])).digest('hex').slice(0, 32);
+		return join(this.dir, `${kind}-${await this.tag()}-${digest}.bin`);
 	}
 
 	async read<T>(kind: string, env: SideEnv, key: unknown): Promise<T | undefined> {
 		if (env.replay) return undefined;
-		const path = this.file(kind, env, key);
+		const path = await this.file(kind, env, key);
 		let entry: { version: string; prints: Fingerprint[]; value: T };
 		try {
 			entry = deserialize(gunzipSync(await readFile(path))) as typeof entry;
@@ -117,7 +146,9 @@ export class OldCache {
 			this.counts['stale-checker']++;
 			return undefined;
 		}
-		if (!(await unchanged(env, entry.prints))) {
+		if (this.build) {
+			if (this.drift.enabled) for (const url of await drifted(env, entry.prints)) this.drift.urls.add(url);
+		} else if (!(await unchanged(env, entry.prints))) {
 			this.counts.changed++;
 			return undefined;
 		}
@@ -132,10 +163,10 @@ export class OldCache {
 	}
 
 	async write(kind: string, env: SideEnv, key: unknown, urls: readonly string[], value: unknown): Promise<void> {
-		if (env.replay || !urls.length) return;
-		const prints = await fingerprint(env, urls);
+		if (env.replay || (!urls.length && !this.build)) return;
+		const prints = (await fingerprint(env, urls)) ?? (this.build ? [] : undefined);
 		if (!prints) return;
-		const path = this.file(kind, env, key);
+		const path = await this.file(kind, env, key);
 		await mkdir(this.dir, { recursive: true });
 		const temp = `${path}.${process.pid}.tmp`;
 		await writeFile(temp, gzipSync(serialize({ version: await checkerVersion(), prints, value })));
