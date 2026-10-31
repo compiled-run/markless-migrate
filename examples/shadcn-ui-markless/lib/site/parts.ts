@@ -1,6 +1,6 @@
 import type { Part } from '../parts/index.ts';
 import { markSwitched, switchedFor, watchSystemTheme } from '../parts/next-themes.ts';
-import { THEME, toggleTheme } from './theme.ts';
+import { chooseTheme, THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor, copiedLabelFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
@@ -126,7 +126,8 @@ function showCopied(button: HTMLElement, label?: string): void {
 const modeSwitcher: Part = {
 	click(target, event) {
 		const button = target.closest('button');
-		if (!button || button.querySelector('.sr-only')?.textContent !== 'Toggle theme') return false;
+		// The ModeToggle demo's button opens a menu of themes: its menu part answers it.
+		if (!button || button.hasAttribute('aria-haspopup') || button.querySelector('.sr-only')?.textContent !== 'Toggle theme') return false;
 		if (!switchedFor(event)) toggleTheme();
 		return true;
 	},
@@ -136,6 +137,77 @@ const modeSwitcher: Part = {
 		if (switchedFor(event)) return;
 		toggleTheme();
 		markSwitched(event);
+	},
+};
+
+// The ModeToggle demo (examples/mode-toggle.tsx): each item of the menu its "Toggle theme" button opens calls setTheme
+// with its name. Unclaimed, so the menu part still closes the menu.
+const THEME_ITEMS: Readonly<Record<string, string>> = { Light: 'light', Dark: 'dark', System: 'system' };
+const themeMenu: Part = {
+	click(target) {
+		const item = target.closest('[role="menuitem"]');
+		const menu = item?.closest('[role="menu"]');
+		const trigger = menu && document.getElementById(menu.getAttribute('aria-labelledby') ?? '');
+		const theme = THEME_ITEMS[item?.textContent?.trim() ?? ''];
+		if (theme && trigger?.querySelector('.sr-only')?.textContent === 'Toggle theme') chooseTheme(theme);
+		return false;
+	},
+};
+
+// registry/new-york-v4/examples/form-next-demo.tsx: the description's onChange shows its length as "n/100 characters".
+const lengthCounter: Part = {
+	input(target) {
+		if (!(target instanceof HTMLTextAreaElement)) return false;
+		const counter = [...(target.closest('[data-slot="input-group"]')?.querySelectorAll('span') ?? [])].find((s) => /^\d+\/\d+ characters$/.test(s.textContent ?? ''));
+		if (counter) counter.textContent = counter.textContent!.replace(/^\d+/, String(target.value.length));
+		return false;
+	},
+};
+
+// app/(app)/examples/rtl/components/appearance-settings.tsx: a controlled GPU count from 1 to 99. A typed value in range is
+// taken, anything else put back; the buttons beside it step it by one, each disabled at its end.
+const GPU_MIN = 1;
+const GPU_MAX = 99;
+const gpuInput = (el: Element | null): HTMLInputElement | null => el?.closest('[data-slot="button-group"]')?.querySelector<HTMLInputElement>('#rtl-gpu-count') ?? null;
+const gpuShown = new WeakMap<HTMLInputElement, number>();
+function showGpu(input: HTMLInputElement, n: number): void {
+	gpuShown.set(input, n);
+	if (input.value !== String(n)) input.value = String(n);
+	const [minus, plus] = [...input.parentElement!.querySelectorAll('button')];
+	if (minus) minus.disabled = n <= GPU_MIN;
+	if (plus) plus.disabled = n >= GPU_MAX;
+}
+const gpuCount: Part = {
+	input(target) {
+		if (!(target instanceof HTMLInputElement) || target.id !== 'rtl-gpu-count') return false;
+		const n = parseInt(target.value, 10);
+		showGpu(target, !Number.isNaN(n) && n >= GPU_MIN && n <= GPU_MAX ? n : (gpuShown.get(target) ?? parseInt(target.defaultValue, 10)));
+		return true;
+	},
+	click(target) {
+		const button = target.closest('button');
+		const input = gpuInput(button);
+		if (!button || !input) return false;
+		const [minus] = [...input.parentElement!.querySelectorAll('button')];
+		const now = gpuShown.get(input) ?? parseInt(input.value, 10);
+		showGpu(input, Math.max(GPU_MIN, Math.min(GPU_MAX, now + (button === minus ? -1 : 1))));
+		return true;
+	},
+};
+
+// examples/radix/drawer-demo.tsx: the daily goal steps by 10 between 200 and 400, each button disabled at its end.
+const drawerGoal: Part = {
+	click(target) {
+		const button = target.closest('[data-slot="drawer-content"] button');
+		const step = { Decrease: -10, Increase: 10 }[button?.querySelector('.sr-only')?.textContent ?? ''];
+		if (!button || step === undefined) return false;
+		const row = button.parentElement!;
+		const shown = [...row.querySelectorAll('div')].find((d) => /^\d+$/.test(d.textContent?.trim() ?? '') && !d.querySelector('div'));
+		if (!shown) return false;
+		const goal = Math.max(200, Math.min(400, Number(shown.textContent) + step));
+		shown.textContent = String(goal);
+		for (const b of row.querySelectorAll<HTMLButtonElement>(':scope > button')) b.disabled = (b.querySelector('.sr-only')?.textContent === 'Decrease' && goal <= 200) || (b.querySelector('.sr-only')?.textContent === 'Increase' && goal >= 400);
+		return true;
 	},
 };
 
@@ -714,4 +786,4 @@ const colors: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode, colors];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, themeMenu, lengthCounter, gpuCount, drawerGoal, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode, colors];

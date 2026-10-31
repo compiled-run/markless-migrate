@@ -2344,3 +2344,42 @@ test('recharts: a card\'s select choice presses the button of the same text, whi
 	assert.deepEqual(await page.evaluate(() => (window as unknown as { pressed: string[] }).pressed), ['B'], 'the button already pressed, or none of that text, is left');
 	await page.close();
 });
+
+test('shadcn-ui site: the forms demo counts its description as it is typed, as its onChange set the length', async () => {
+	const page = await open('<div data-slot="input-group"><textarea id="description" name="description"></textarea><div data-slot="input-group-addon"><span>0/100 characters</span></div></div>', ['site'], 'body');
+	await page.locator('textarea').click();
+	await page.keyboard.type('hi!');
+	assert.equal(await page.locator('span').textContent(), '3/100 characters');
+	await page.close();
+});
+
+test('shadcn-ui site: the RTL example\'s GPU count takes typed numbers from 1 to 99, puts anything else back, and its buttons step it and stop at the ends', async () => {
+	const page = await open('<div data-slot="button-group"><input id="rtl-gpu-count" value="98"><button type="button" aria-label="decrease">-</button><button type="button" aria-label="increase">+</button></div>', ['site'], 'body');
+	const input = page.locator('#rtl-gpu-count');
+	const [minus, plus] = [page.locator('button').nth(0), page.locator('button').nth(1)];
+	await plus.click();
+	assert.equal(await input.inputValue(), '99');
+	assert.equal(await plus.isDisabled(), true, 'at 99 the increase button is disabled');
+	await input.click();
+	await page.keyboard.press('End');
+	await page.keyboard.type('x');
+	assert.equal(await input.inputValue(), '99', 'a value out of range is put back');
+	await input.fill('');
+	assert.equal(await input.inputValue(), '99');
+	await minus.click();
+	assert.equal(await input.inputValue(), '98');
+	assert.equal(await plus.isDisabled(), false);
+	await page.close();
+});
+
+test('shadcn-ui site: the drawer demo\'s goal steps by 10 between 200 and 400, its buttons disabled at the ends', async () => {
+	const page = await open('<div data-slot="drawer-content"><div><button type="button"><span class="sr-only">Decrease</span></button><div><div>390</div><div>Calories/day</div></div><button type="button"><span class="sr-only">Increase</span></button></div></div>', ['site'], 'body');
+	const goal = page.getByText('390', { exact: true });
+	await page.locator('button').nth(1).click();
+	assert.equal(await page.locator('[data-slot=drawer-content] > div > div > div').first().textContent(), '400');
+	assert.equal(await page.locator('button').nth(1).isDisabled(), true);
+	await page.locator('button').nth(0).click();
+	assert.equal(await page.locator('[data-slot=drawer-content] > div > div > div').first().textContent(), '390');
+	void goal;
+	await page.close();
+});
