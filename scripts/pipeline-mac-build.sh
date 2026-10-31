@@ -24,7 +24,8 @@ key=$(cd "$WORK/migrate" && node scripts/pipeline.ts key build "$SITE" "$APP_REL
 (cd "$WORK/migrate" && "$HEAVY" pnpm install --frozen-lockfile)
 (cd "$APP" && MARKLESS="$WORK/markless" HEAVY_GB=10 "$HEAVY" bash scripts/link-markless.sh)
 (cd "$APP" && node "$WORK/migrate/src/cli.ts" cache apply --prerender)
-(cd "$APP" && HEAVY_GB=32 NITRO_PRESET="${PRESET:-vercel}" VITE_APP_URL="${APP_URL:-}" NODE_OPTIONS=--max-old-space-size=20000 "$HEAVY" npm run build)
+# One compile worker by default: each holds 1 to 1.5 GB through chunk rendering, and the client build alone peaks at 22 to 24 GB.
+(cd "$APP" && HEAVY_GB="${HEAVY_GB:-26}" MARKLESS_COMPILE_WORKERS="${MARKLESS_COMPILE_WORKERS:-1}" NITRO_PRESET="${PRESET:-vercel}" VITE_APP_URL="${APP_URL:-}" NODE_OPTIONS=--max-old-space-size=20000 "$HEAVY" npm run build)
 if [ -n "${APP_URL:-}" ] && grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.vercel/output" "$APP/.output/public" 2>/dev/null; then echo 'FAIL: pages link v0 to a hostless URL' >&2; exit 1; fi
 if [ -d "$APP/.vercel/output" ]; then tar -czf "$WORK/output.tar.gz" -C "$APP" .vercel/output .migrate/caching.json; else tar -czf "$WORK/output.tar.gz" -C "$APP" .output .migrate/caching.json; fi
 TAG="$SITE-build-$key"
