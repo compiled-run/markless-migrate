@@ -103,7 +103,7 @@ copy that refreshes spends the real login (see [docs/notes/agents.md](docs/notes
 
 `plan` also writes `.migrate/usage.json`, the semantic usage inventory: every behaviour the old pages use in the
 browser, read from each page's markup (served, or the old build output with `--built`), the syntax tree of every
-script the pages run (oxc), the theme config and the library scan, each with the routes that use it and where it
+script the pages run (yuku), the theme config and the library scan, each with the routes that use it and where it
 lives (a source file and line, or a page and element). For example, from htmx.org's own pages: `hx-post` on an
 input with `keyup changed delay:500ms` swapping `outerHTML` into `#search-results`; `on click toggle .show on
 #nav` (a _hyperscript feature); `classes="add appear:100ms"` (class-tools); the GitHub star button that

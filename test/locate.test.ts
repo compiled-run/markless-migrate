@@ -44,6 +44,25 @@ test('each migration step lists the route patterns it is part of: a layout the r
 	assert.ok(order.findIndex((s) => s.name === 'Tip') < order.findIndex((s) => s.name === 'Home'));
 });
 
+test('JSX text and attributes with an HTML entity are found by the text and name the page shows', async () => {
+	const { mkdtemp, writeFile } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-entity-'));
+	await writeFile(join(dir, 'Alert.tsx'), 'export const Alert = () => (\n\t<div>\n\t\t<p>We&apos;ve added dark mode</p>\n\t\t<a aria-label="Tom &amp; Jerry" href="/t">T</a>\n\t</div>\n);\n');
+	const index = await indexMarkup(dir);
+	assert.deepEqual(pick(locate(index, { tag: 'p', text: "We've added dark mode", name: '', chain: '' }, ['Alert.tsx'])), ['Alert.tsx', 3]);
+	assert.deepEqual(pick(locate(index, { tag: 'a', text: 'T', name: 'Tom & Jerry', chain: '' })), ['Alert.tsx', 4], 'an attribute is matched by its decoded value');
+});
+
+test('string literals are indexed in source order, a type annotation before the body it types', async () => {
+	const { mkdtemp, writeFile } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-order-'));
+	await writeFile(join(dir, 'format.ts'), "export function format(raw: Post['date']): Post['label'] {\n\treturn new Date(raw).toLocaleDateString('en-US', { month: 'long' });\n}\n");
+	const index = await indexMarkup(dir);
+	assert.deepEqual(index.strings.filter((s) => s.file === 'format.ts').map((s) => s.value), ['date', 'label', 'en-US', 'long']);
+});
+
 test('of two elements written alike, the one whose ancestors and position among its siblings match the page is chosen', async () => {
 	const { mkdtemp, writeFile } = await import('node:fs/promises');
 	const { tmpdir } = await import('node:os');

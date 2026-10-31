@@ -5,7 +5,7 @@ import type { Browser, CDPSession, Page } from 'playwright';
 import { executedBytes } from '../check/capture.ts';
 import { codeEntry, installedPackage } from '../library/package.ts';
 import { newAppImports } from '../usage/implement.ts';
-import { parseSync } from 'oxc-parser';
+import { parse } from 'yuku';
 import { walk, type N } from '../source/js.ts';
 
 /** What a measurement is about: a JavaScript-only library the port kept, or the port of a headless library. */
@@ -49,7 +49,7 @@ function tokens(text: string): Set<string> {
 	const out = new Set<string>();
 	let program: N;
 	try {
-		program = parseSync('x.js', text, { sourceType: 'module', preserveParens: false }).program as unknown as N;
+		program = parse(text, { sourceType: 'module', preserveParens: false }).program as unknown as N;
 	} catch {
 		return out;
 	}

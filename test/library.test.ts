@@ -272,7 +272,7 @@ test('parity skeletons for default exports declare a named binding and export it
 	const app = await newApp();
 	const file = await scanLibraries(dir, { newApp: app });
 	const { parse } = await import('yuku-tsrx');
-	const { parseSync } = await import('oxc-parser');
+	const yuku = await import('yuku');
 	for (const name of ['@microlink/react-json-view', 'pretty-bytes', 'kit-lib']) await writeParity(file, name, { newApp: app });
 	const json = await readFile(join(app, 'lib/parity/microlink-react-json-view/components.tsrx'), 'utf8');
 	assert.match(json, /^function ReactJsonView\(_props: ReactJsonViewProps\) @\{/m);
@@ -283,7 +283,7 @@ test('parity skeletons for default exports declare a named binding and export it
 	const bytes = await readFile(join(app, 'lib/parity/pretty-bytes/index.ts'), 'utf8');
 	assert.match(bytes, /^function prettyBytes\(/m);
 	assert.match(bytes, /^export default prettyBytes;$/m);
-	assert.deepEqual(parseSync('index.ts', bytes).errors, []);
+	assert.deepEqual(yuku.parse(bytes, { lang: 'ts' }).diagnostics.filter((d) => d.severity === 'error'), []);
 });
 
 test('bare imports count: a font package adds its stylesheet, an unknown module is imported for its side effects', async () => {

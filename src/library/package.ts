@@ -1,6 +1,6 @@
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { parseSync } from 'oxc-parser';
+import { parse } from 'yuku';
 import type { N } from '../source/js.ts';
 import type { LibraryUsage } from './types.ts';
 
@@ -88,7 +88,7 @@ export async function exportedNames(pkg: InstalledPackage, root: string): Promis
 		if (seen.has(file) || depth > 6 || seen.size > 80) return;
 		seen.add(file);
 		const text = await readFile(file, 'utf8').catch(() => '');
-		const program = parseSync('x.d.ts', text, { sourceType: 'module' }).program as unknown as N;
+		const program = parse(text, { lang: 'dts', sourceType: 'module' }).program as unknown as N;
 		for (const stmt of program.body as N[]) {
 			if (stmt.type === 'ExportNamedDeclaration') {
 				const d = stmt.declaration;
