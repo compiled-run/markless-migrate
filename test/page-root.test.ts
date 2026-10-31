@@ -19,3 +19,11 @@ test('a dialog open on load, portaled to the body, is never the page root, thoug
 	const dialog = `<div role="dialog" id="dialog" data-state="open" data-slot="dialog-content"><nav>${'<a href="#">x</a>'.repeat(50)}</nav><main><h1>Settings</h1></main></div>`;
 	assert.equal(attr(pageRoot(kids(`${page}<section aria-label="Notifications"></section>${overlay}${dialog}`)), 'id'), 'page');
 });
+
+test("a popup open at load, portaled to the body, is never the page's root though it outweighs it (Base UI's defaultOpen combobox)", () => {
+	const app = '<div id="root"><input role="combobox" aria-expanded="true"></div>';
+	const portal = `<div data-base-ui-portal=""><div role="presentation" data-slot="combobox-positioner"><div role="listbox">${'<div role="option">item</div>'.repeat(20)}</div></div></div>`;
+	assert.equal(attr(pageRoot(kids(`${app}${portal}`)), 'id'), 'root');
+	const radix = `<div data-radix-popper-content-wrapper=""><div role="menu">${'<div role="menuitem">item</div>'.repeat(20)}</div></div>`;
+	assert.equal(attr(pageRoot(kids(`${app}${radix}`)), 'id'), 'root');
+});
