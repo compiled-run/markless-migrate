@@ -81,7 +81,7 @@ test("a Markless page that loads the original's own scripts and runs its framewo
 	const port = { viewport: 'desktop', routeFile: 'pages/charts/line.tsrx', assets: [script('/build/chunk-a.js'), ...nextChunks] } as unknown as PageCapture;
 	const [f] = originalRuntimeFailures('/charts/line', old, port);
 	assert.equal(f?.check, "runs the original's framework");
-	assert.match(f!.actual, /^Next\.js, React runs on the port: 201 of the original's own script files load \(\/_next\/static\/chunks\/0\.js, .*\), carrying the Next\.js and React runtime$/);
+	assert.match(f!.actual, /^Next\.js, React runs on the port: 201 of the original's own script files load \(\/_next\/static\/chunks\/0\.js, .*\); 2 scripts carry the Next\.js and React runtime \(\/_next\/static\/chunks\/0\.js, \/_next\/static\/chunks\/1\.js\)$/);
 	assert.deepEqual(originalRuntimeFailures('/charts/line', old, { ...port, assets: [script('/build/chunk-a.js')] } as PageCapture), []);
 	assert.deepEqual(originalRuntimeFailures('/charts/line', old, { viewport: 'desktop', assets: nextChunks } as unknown as PageCapture), [], 'a page Markless did not render is the original itself, never this red');
 });
@@ -93,4 +93,23 @@ test("the original's stylesheets and images under /_next (cut sheets, next/image
 	const old = { viewport: 'desktop', assets: [...shared, { ...asset('/_next/static/chunks/main.js', 'script'), contentType: 'text/javascript', runtime: 'Next.js' }] } as unknown as PageCapture;
 	const port = { viewport: 'desktop', routeFile: 'pages/blocks.tsrx', assets: shared } as unknown as PageCapture;
 	assert.deepEqual(originalRuntimeFailures('/blocks', old, port), []);
+});
+
+test("a Markless page that starts a worker from the original's own runtime chunk is red as running the original's framework", async () => {
+	const RUNTIME = 'self.__next_f = self.__next_f || []; self.__next_set_public_path__ = () => {}; onmessage = () => {};';
+	const serve = (body: string) => {
+		const server = createServer((req, res) => {
+			const path = new URL(req.url ?? '/', 'http://x').pathname;
+			if (path === '/_next/static/chunks/worker.js' || path === '/_next/static/chunks/main.js') return void res.writeHead(200, { 'content-type': 'text/javascript' }).end(RUNTIME);
+			if (path !== '/') return void res.writeHead(404).end();
+			res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html lang="en"><title>Docs</title><main><h1>Docs</h1><p>Read the guide.</p></main>${body}`);
+		});
+		return new Promise<Server>((done) => server.listen(0, '127.0.0.1', () => done(server)));
+	};
+	const old = await serve('<script src="/_next/static/chunks/main.js"></script>');
+	const port = await serve('<script type="@markless/core/route">{"file":"pages/index.tsrx"}</script><script>new Worker("/_next/static/chunks/worker.js")</script>');
+	const route = await check(old, port);
+	const found = route.failures.find((f) => f.check === "runs the original's framework");
+	assert.ok(found, route.failures.map((f) => f.check).join('\n'));
+	assert.match(found.actual, /^Next\.js runs on the port: 1 script carries the Next\.js runtime \(worker \/_next\/static\/chunks\/worker\.js\)$/);
 });
