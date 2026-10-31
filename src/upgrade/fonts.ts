@@ -182,6 +182,8 @@ export interface FontPreloadMeasure {
 	readonly significant: boolean;
 	/** The FCP comes later with the preload, beyond noise: the font is fetched at the highest priority, and Lighthouse counts it as holding back the first paint. */
 	readonly fcpWorse?: { readonly ms: number; readonly p: number };
+	/** The same comparison with the throttled load simulated, as PageSpeed Insights scores it: reported beside the real one, never what decides. */
+	readonly simulated?: { readonly lcpSavingMs: number; readonly p: number };
 }
 
 const good = (runs: RouteLoad['old']['runs']) => runs.filter((r): r is Metrics => !('error' in r));
@@ -195,16 +197,19 @@ export function fcpCost(load: RouteLoad): FontPreloadMeasure['fcpWorse'] {
 	return fcp.ok ? undefined : { ms: Math.round(fcp.worse), p: fcp.p };
 }
 
-/** Lighthouse mobile on the page as it is and with the preload added, both through the same local proxy so only the preload differs. */
+/**
+ * Lighthouse mobile on the page as it is and with the preload added, both through the same local proxy so only the preload
+ * differs. Slow 4G and the CPU slowdown are applied for real, so the verdict is what a visitor gets; PageSpeed Insights'
+ * simulated score of the same pair is measured too and reported beside it.
+ */
 export async function measurePreload(origin: string, font: LateFont, options: LoadOptions = {}, measure: typeof measureLoad = measureLoad): Promise<FontPreloadMeasure> {
 	const [plain, preloaded] = await Promise.all([proxy(origin, font.route), proxy(origin, font.route, preloadTag(font))]);
 	try {
-		// The preload's gain is judged as PageSpeed Insights would score it, which simulates the throttled load.
-		const loads = await measure({ old: preloaded.origin, new: plain.origin }, [font.route], { throttle: 'simulated', ...options });
-		const load = loads.get(font.route)!;
+		const load = (await measure({ old: preloaded.origin, new: plain.origin }, [font.route], options)).get(font.route)!;
 		const lcp = load.verdicts.find((v) => v.metric === 'lcp');
 		const cost = fcpCost(load);
-		return { font, load, lcpSavingMs: lcp ? Math.round(lcp.worse) : 0, significant: Boolean(lcp && !lcp.ok), ...(cost ? { fcpWorse: cost } : {}) };
+		const scored = (await measure({ old: preloaded.origin, new: plain.origin }, [font.route], { ...options, throttle: 'simulated' })).get(font.route)?.verdicts.find((v) => v.metric === 'lcp');
+		return { font, load, lcpSavingMs: lcp ? Math.round(lcp.worse) : 0, significant: Boolean(lcp && !lcp.ok), ...(cost ? { fcpWorse: cost } : {}), ...(scored ? { simulated: { lcpSavingMs: Math.round(scored.worse), p: scored.p } } : {}) };
 	} finally {
 		await Promise.all([plain.close(), preloaded.close()]);
 	}
@@ -217,5 +222,6 @@ export function describePreload(m: FontPreloadMeasure): string {
 	const list = (side: 'old' | 'new', metric: 'lcp' | 'fcp') => good(m.load[side].runs).map((r) => formatMetric(metric, r[metric])).join(', ');
 	const runs = `; LCP runs now ${list('new', 'lcp')}, with the preload ${list('old', 'lcp')}`;
 	const cost = m.fcpWorse ? `; the preload makes FCP ${formatMetric('fcp', m.fcpWorse.ms)} later beyond noise (p = ${m.fcpWorse.p.toFixed(3)})` : '';
-	return `Lighthouse mobile, median of ${m.load.runs} runs each: LCP ${formatMetric('lcp', lcp.new)} now, ${formatMetric('lcp', lcp.old)} with the preload (${m.lcpSavingMs >= 0 ? `${formatMetric('lcp', m.lcpSavingMs)} sooner` : `${formatMetric('lcp', -m.lcpSavingMs)} later`}, p = ${lcp.p.toFixed(3)})${fcp ? `; FCP ${formatMetric('fcp', fcp.new)} now, ${formatMetric('fcp', fcp.old)} with it` : ''}${cost}${runs}`;
+	const scored = m.simulated ? `; as PageSpeed Insights simulates it, LCP ${m.simulated.lcpSavingMs >= 0 ? `${formatMetric('lcp', m.simulated.lcpSavingMs)} sooner` : `${formatMetric('lcp', -m.simulated.lcpSavingMs)} later`} with the preload (p = ${m.simulated.p.toFixed(3)})` : '';
+	return `Lighthouse mobile, slow 4G applied, median of ${m.load.runs} runs each: LCP ${formatMetric('lcp', lcp.new)} now, ${formatMetric('lcp', lcp.old)} with the preload (${m.lcpSavingMs >= 0 ? `${formatMetric('lcp', m.lcpSavingMs)} sooner` : `${formatMetric('lcp', -m.lcpSavingMs)} later`}, p = ${lcp.p.toFixed(3)})${fcp ? `; FCP ${formatMetric('fcp', fcp.new)} now, ${formatMetric('fcp', fcp.old)} with it` : ''}${cost}${scored}${runs}`;
 }
