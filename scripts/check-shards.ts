@@ -7,6 +7,7 @@
 // results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago.
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { routeState } from '../src/check/route-state.ts';
 
 interface Targets {
 	readonly routes: string[];
@@ -153,7 +154,7 @@ export async function lostUploads(dir: string): Promise<string[]> {
 
 export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
 
-const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red');
+const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : routeState(r) === 'incomplete' ? 'incomplete' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;
 
 export function summary(routes: readonly ReportRoute[]): string {
@@ -170,7 +171,7 @@ export function summary(routes: readonly ReportRoute[]): string {
 		const leading = s === 'red' ? [...mine].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (${v})`).join('; ') : (r.infrastructure?.message ?? '');
 		rows.push(`| \`${r.route}\`${r.role ? ` as ${r.role}` : ''} | ${s}${r.reused ? `, reused from ${r.reused.checkedAt.slice(0, 10)}` : ''} | ${leading.replace(/\|/g, '/')} |`);
 	}
-	const order = ['green', 'red', 'not ported', 'blocked', 'not checked'];
+	const order = ['green', 'red', 'incomplete', 'not ported', 'blocked', 'not checked'];
 	const reused = routes.filter((r) => r.reused).length;
 	const left = unfinished(routes).length;
 	return [
