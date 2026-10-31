@@ -80,6 +80,13 @@ function amongContext(el: PortElement, context: readonly string[], port: Readonl
 	return context.filter((w) => text.includes(w)).length >= Math.ceil(context.length * CONTEXT_SHARE);
 }
 
+/** Whether an element sits in one (at most a few levels up) with the data-slot `slot`. */
+function insideSlot(el: PortElement, slot: string, port: ReadonlyMap<string, PortFile>): boolean {
+	const elements = port.get(el.file)?.elements ?? [];
+	for (let at: PortElement | undefined = el.parent === undefined ? undefined : elements[el.parent], n = 0; at && n < 4; at = at.parent === undefined ? undefined : elements[at.parent], n++) if (at.attrs['data-slot'] === slot) return true;
+	return false;
+}
+
 /** The port elements an anchor can be: same data-slot (or tag), same literal attributes, its static text inside. */
 export function candidates(anchor: Anchor, bySlot: ReadonlyMap<string, readonly PortElement[]>, context: readonly string[] = [], port: ReadonlyMap<string, PortFile> = new Map()): PortElement[] {
 	const key = anchor.slot ?? anchor.tag;
@@ -164,6 +171,7 @@ export interface LedgerOptions {
 	readonly workers?: number;
 }
 
+const CHANGES = /^on(ValueChange|CheckedChange|PressedChange|Select|SelectionChange|Change|OpenChange|ExpandedChange|Action)$/;
 // Pages are tried on up to this many threads, each with its own window and parts; a runner has four cores.
 const WORKERS = Math.max(1, Math.min(4, availableParallelism() - 1));
 
@@ -214,11 +222,16 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 		const list: Trial[] = [];
 		// Elements among the words the source shows around the site, then the rest with its slot and text, whose verdict is weak.
 		for (const anchor of site.anchors) {
-			const all = candidates(anchor, bySlot);
+			const found = candidates(anchor, bySlot);
+			// Found by an element inside it: where some candidates sit in an element with the site's own slot, the rest are another's.
+			const owned = anchor.anchor === 'inside' && site.slot ? found.filter((el) => insideSlot(el, site.slot!, port)) : [];
+			const all = owned.length ? owned : found;
+			// None inside it: the text sits in some other element on the page, so the join is a guess.
+			const astray = anchor.anchor === 'inside' && !!site.slot && bySlot.has(site.slot) && !owned.length;
 			if (!all.length) continue;
 			const strong = new Set(candidates(anchor, bySlot, site.context, port));
 			// Each element's first route before any element's second, so the cap keeps every element in.
-			const placed = all.flatMap((el) => routesFor(el, port, roots, pages).map((at, n) => ({ el, at, n, weak: !strong.has(el) })));
+			const placed = all.flatMap((el) => routesFor(el, port, roots, pages).map((at, n) => ({ el, at, n, weak: astray || !strong.has(el) })));
 			const scored = placed.map((c) => ({ ...c, score: affinity(site.file, c.at.route) })).sort((a, b) => Number(a.weak) - Number(b.weak) || b.score - a.score || a.n - b.n);
 			// The routes sharing the most words with the source's path are its own; on any other it may be another component's: weak there.
 			const best = Math.max(0, ...scored.map((c) => c.score));
@@ -240,7 +253,7 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 	}
 	const byRoute = new Map<string, Trial[]>();
 	for (const list of trials.values()) for (const t of list) (byRoute.get(t.route) ?? byRoute.set(t.route, []).get(t.route)!).push(t);
-	const jobs: RouteJob[] = [...byRoute].sort(([a], [b]) => a.localeCompare(b)).map(([route, list]) => ({ route, page: list[0]!.page, trials: list.map((t) => ({ el: t.el, events: t.events, element: t.site.element, kind: t.site.kind, handler: t.site.handler })) }));
+	const jobs: RouteJob[] = [...byRoute].sort(([a], [b]) => a.localeCompare(b)).map(([route, list]) => ({ route, page: list[0]!.page, trials: list.map((t) => ({ el: t.el, events: t.events, element: t.site.element, kind: t.site.kind, handler: t.site.handler, changes: t.site.props.some((p) => CHANGES.test(p)), inside: t.anchor.anchor === 'inside' })) }));
 	const tried = await runJobs(options.app, port, jobs, options.workers ?? WORKERS);
 	const results = new Map<Trial, Result>();
 	jobs.forEach((job, j) => byRoute.get(job.route)!.forEach((t, i) => results.set(t, tried[j]![i]!)));

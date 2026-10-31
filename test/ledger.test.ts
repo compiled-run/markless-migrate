@@ -14,12 +14,16 @@ const SOURCE: Record<string, string> = {
 	'components/ui/dialog.tsx': `import { Dialog as D } from "@base-ui/react/dialog"
 export function Dialog(props) { return <D.Root data-slot="dialog" {...props} /> }
 export function DialogClose(props) { return <D.Close data-slot="dialog-close" {...props} /> }`,
+	'components/ui/select.tsx': `import { Select as S } from "@base-ui/react/select"
+export function Select(props) { return <S.Root data-slot="select" {...props} /> }
+export function SelectTrigger(props) { return <S.Trigger data-slot="select-trigger" {...props} /> }`,
 	'components/ui/menu.tsx': `import { Menu as M } from "@base-ui/react/menu"
 export function MenuTrigger(props) { return <M.Trigger data-slot="menu-trigger" {...props} /> }`,
 	'app/page.tsx': `"use client"
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose } from "@/components/ui/dialog"
+import { Select, SelectTrigger } from "@/components/ui/select"
 export function Page() {
   const [open, setOpen] = React.useState(true)
   const [seed, setSeed] = React.useState(0)
@@ -32,6 +36,8 @@ export function Page() {
       <Button onClick={() => setSeed(1)}>Reset {seed}</Button>
       <Button onClick={(e) => e.preventDefault()}>Nothing</Button>
       <input placeholder="Search" onChange={(e) => setSeed(e.target.value.length)} />
+      <Select onValueChange={(v) => setSeed(Number(v))}><SelectTrigger aria-label="Rows" /></Select>
+      <Button aria-label="Download" onClick={() => save(seed)} />
     </main>
   )
 }`,
@@ -45,7 +51,7 @@ export default function Page() @{
 `;
 
 // The welcome dialog's Close the base-ui part answers, a Reset written as a Markless handler, a dead Shuffle, a dead search.
-const BODY = `<div role="dialog" data-slot="dialog-content"><button type="button" data-slot="dialog-close">Get Started</button></div><button data-slot="button" class={"btn"}>Shuffle</button><button data-slot="button" onClick={() => reset()}>Reset 0</button><button data-slot="button">Nothing</button><input placeholder="Search" />`;
+const BODY = `<div role="dialog" data-slot="dialog-content"><button type="button" data-slot="dialog-close">Get Started</button></div><button data-slot="button" class={"btn"}>Shuffle</button><button data-slot="button" onClick={() => reset()}>Reset 0</button><button data-slot="button">Nothing</button><input placeholder="Search" /><div onMmchoose={(event) => pick(event)}><button data-slot="select-trigger" aria-label="Rows"></button></div><button data-slot="button" aria-label="Download"></button>`;
 
 async function write(root: string, files: Record<string, string>): Promise<void> {
 	for (const [file, text] of Object.entries(files)) {
@@ -60,6 +66,7 @@ const PORT = (closes: boolean): Record<string, string> => ({
 	'lib/parts/registry.ts': `import { SITE_PARTS } from '../site/parts.ts';\nimport * as port0 from './base-ui/dialog.ts';\nexport const PARTS = [...SITE_PARTS, port0];\n`,
 	'lib/parts/base-ui/dialog.ts': `export function click(target) { return ${closes} && Boolean(target.closest('[data-slot="dialog-close"]')); }\n`,
 	'lib/site/parts.ts': `export const SITE_PARTS = [];\n`,
+	'lib/parts/reveal.ts': `export function download(target) { return Boolean(target.closest('[aria-label="Download"]')); }\n`,
 });
 
 let dir: string;
@@ -82,31 +89,39 @@ const entry = (l: Ledger, line: number) => l.entries.find((e) => e.site.file ===
 test('the source gives each handler site with its class: a mirror of the dialog it opens, an effect, a no-op', async () => {
 	const sites = await handlerSites(source);
 	const at = (line: number) => sites.find((s) => s.file === 'app/page.tsx' && s.line === line);
-	assert.equal(at(10)?.handler, 'mirror');
-	assert.deepEqual(at(11)?.props, ['part']);
-	assert.equal(at(11)?.anchors[0]?.slot, 'dialog-close');
-	assert.equal(at(13)?.handler, 'effect');
-	assert.equal(at(13)?.anchors[0]?.text, 'Shuffle');
-	assert.equal(at(15)?.handler, 'noop');
-	assert.equal(at(16)?.anchors[0]?.attrs.placeholder, 'Search');
+	assert.equal(at(11)?.handler, 'mirror');
+	assert.deepEqual(at(12)?.props, ['part']);
+	assert.equal(at(12)?.anchors[0]?.slot, 'dialog-close');
+	assert.equal(at(14)?.handler, 'effect');
+	assert.equal(at(14)?.anchors[0]?.text, 'Shuffle');
+	assert.equal(at(16)?.handler, 'noop');
+	assert.equal(at(17)?.anchors[0]?.attrs.placeholder, 'Search');
 });
 
 test('a library Close its port answers is mapped; the same Close no part answers is a dead control', () => {
-	assert.equal(entry(ledgers.true!, 11)?.verdict, 'mapped');
-	assert.equal(entry(ledgers.true!, 11)?.by, 'part');
-	assert.equal(entry(ledgers.false!, 11)?.verdict, 'unmapped');
-	assert.ok(ledgers.false!.failures.some((f) => f.check === 'handler ledger: click button "Get Started"' && f.expected.includes('app/page.tsx:11')));
+	assert.equal(entry(ledgers.true!, 12)?.verdict, 'mapped');
+	assert.equal(entry(ledgers.true!, 12)?.by, 'part');
+	assert.equal(entry(ledgers.false!, 12)?.verdict, 'unmapped');
+	assert.ok(ledgers.false!.failures.some((f) => f.check === 'handler ledger: click button "Get Started"' && f.expected.includes('app/page.tsx:12')));
 });
 
 test("an app's own effect needs a Markless handler, a site part or a recording: a dead Shuffle and search fail, Reset maps", () => {
 	const l = ledgers.true!;
-	assert.equal(entry(l, 13)?.verdict, 'unmapped');
-	assert.equal(entry(l, 14)?.verdict, 'mapped');
-	assert.equal(entry(l, 14)?.by, 'markless');
-	assert.equal(entry(l, 15)?.by, 'noop');
-	assert.equal(entry(l, 16)?.verdict, 'unmapped');
-	assert.equal(entry(l, 16)?.event, 'input');
+	assert.equal(entry(l, 14)?.verdict, 'unmapped');
+	assert.equal(entry(l, 15)?.verdict, 'mapped');
+	assert.equal(entry(l, 15)?.by, 'markless');
+	assert.equal(entry(l, 16)?.by, 'noop');
+	assert.equal(entry(l, 17)?.verdict, 'unmapped');
+	assert.equal(entry(l, 17)?.event, 'input');
 	assert.ok(l.failures.some((f) => f.check === 'handler ledger: click button "Shuffle"' && f.route === '/'));
+});
+
+test("a value change the page hears as a part's own event (onMmchoose) and a recorded download answer the app's handler", () => {
+	const l = ledgers.true!;
+	assert.equal(entry(l, 18)?.verdict, 'mapped');
+	assert.equal(entry(l, 18)?.by, 'markless');
+	assert.equal(entry(l, 19)?.verdict, 'mapped');
+	assert.equal(entry(l, 19)?.by, 'recorded');
 });
 
 test('a .tsrx page renders the @case its route selects, with the components it imports inlined', async () => {
@@ -132,4 +147,12 @@ export default function Page({ url }) @{
 	assert.match(plain, /<span title="t" aria-controls="mm-1" data-mm-ledger="components\/converted\/box\.tsrx#0" data-mm-ledger-on="click">box<\/span>/);
 	assert.match(renderRoute(port, 'pages/a.tsrx', '/a?x=1'), />one</);
 	assert.deepEqual(readPortFile('pages/a.tsrx', port.get('pages/a.tsrx')!.text).routes, ['/a', '/a?x=1']);
+});
+
+test("a select that only keeps its own label is not the page's handler for the value; one that acts on it is", () => {
+	const text = (body: string) => `const sel1 = state("A");\nexport default function P() @{\n\t<>${body}</>\n}\n`;
+	const label = readPortFile('x.tsrx', text(`<button data-slot="select-trigger" onMmchoose={(event) => (sel1 = (event as CustomEvent<string>).detail)}><span>{sel1}</span></button>`));
+	const acts = readPortFile('y.tsrx', text(`<button data-slot="select-trigger" onMmchoose={(event) => { rows = Number((event as CustomEvent<string>).detail); }}></button>`));
+	assert.deepEqual(label.elements[0]!.handlers, []);
+	assert.deepEqual(acts.elements[0]!.handlers, ['mm']);
 });
