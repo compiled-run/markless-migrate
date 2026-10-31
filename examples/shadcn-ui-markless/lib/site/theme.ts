@@ -13,6 +13,12 @@ export function toggleTheme(): void {
 	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? META_THEME_COLORS.dark : META_THEME_COLORS.light);
 }
 
+/** A theme chosen by name (the docs' ModeToggle demo menu: Light, Dark, System), as next-themes' setTheme applies it. */
+export function chooseTheme(theme: string): void {
+	setTheme(theme, THEME);
+	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme(THEME) === 'dark' ? META_THEME_COLORS.dark : META_THEME_COLORS.light);
+}
+
 /**
  * A page in an iframe that switched its own theme and then asked this one to switch (/typeset's preview): this one ends on
  * the theme it stored, as the old page's listener did with the theme it held from before the switch.
