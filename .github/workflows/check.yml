@@ -277,7 +277,7 @@ jobs:
           cd "$APP"
           mkdir -p .migrate/cache/old .migrate/slow-network
           # Wherever the preset put it: .vercel/output/.markless/static/, or under .output/ for node-server and cloudflare-module.
-          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/static/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
+          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
           status=0
           # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
