@@ -1,6 +1,7 @@
 // Holds a full-site run (convert, check, pipeline, probes) until fewer than SLOTS older full-site runs are still going,
 // oldest first, so dispatches queue instead of all taking the org's 60 runners at once (docs/ci-process.md "Runners"):
-//   size <spec>   prints full=true|false; spec is '' (every page), count:<n>, words:<routes...>, a .json targets file or a routes file
+//   size <spec>   prints full=true|false; spec is '' (every page), count:<n>, words:<routes...>, a .json targets file or a routes file,
+//                 or priority:deploy (a deploy run tonight's critical path dispatched with priority=deploy: never waits, never counts)
 //   wait          returns once fewer than SLOTS full-site runs are ahead of this one; past MAX_WAIT_MINUTES it fails, and
 //                 `gh run rerun <id> --failed` waits again in the same place (a run keeps its creation time)
 import { readFileSync } from 'node:fs';
@@ -91,7 +92,10 @@ async function wait(): Promise<void> {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const [command, spec = ''] = process.argv.slice(2);
-	if (command === 'size') {
+	if (command === 'size' && spec === 'priority:deploy') {
+		console.error('priority=deploy: not capped and not counted');
+		console.log('full=false');
+	} else if (command === 'size') {
 		const n = routeCount(spec);
 		console.error(n >= SUBSET ? `full site (${n === Infinity ? 'every page' : `${n} routes`}): waits for one of ${SLOTS} slots` : `subset (${n} routes): not capped`);
 		console.log(`full=${n >= SUBSET}`);

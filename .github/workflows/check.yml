@@ -7,6 +7,10 @@ name: Check
 on:
   workflow_dispatch:
     inputs:
+      priority:
+        description: deploy (tonight's deploy run) skips the full-site gate and does not count against its two slots; otherwise leave empty
+        required: false
+        default: ''
       site:
         description: The deploy/<site> folder whose ci-serve.sh serves both sides
         required: true
@@ -114,7 +118,7 @@ jobs:
       - id: size
         name: Count the routes
         env:
-          SPEC: ${{ env.TARGETS }}
+          SPEC: ${{ inputs.priority == 'deploy' && 'priority:deploy' || env.TARGETS }}
         run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
       - name: Wait for a full-site slot
         if: steps.size.outputs.full == 'true'
