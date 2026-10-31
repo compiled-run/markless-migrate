@@ -35,4 +35,7 @@ test('regions every old run changed that the port does not change at all are los
 	assert.deepEqual(lostRegions(old, reached('listbox in main')), ['region in main']);
 	assert.deepEqual(lostRegions(old, reached('listbox in main', 'region #7 in main')), undefined);
 	assert.equal(lostRegions(old, step(undefined)), undefined);
+	// Arriving in place, the original's answer can land in no named region while the port's lands in several.
+	assert.equal(lostRegions([reached('the page'), reached('the page')], reached('banner #1', 'main #1')), undefined);
+	assert.deepEqual(lostRegions([reached('the page'), reached('the page')], reached()), ['the page']);
 });
