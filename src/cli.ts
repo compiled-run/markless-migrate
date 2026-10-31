@@ -243,13 +243,16 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
             quota, best effort, and says "PSI unavailable (quota), using PageSpeed-equivalent (lab)"
             when Google refuses. A free key takes a minute: https://developers.google.com/speed/docs/insights/v5/get-started#APIKey
             (markless-migrate setup --psi-key <key> stores it). --no-psi leaves it out.
-          - PageSpeed-equivalent (lab): Lighthouse mobile here with PageSpeed's settings (simulated slow 4G,
-            4x CPU; --load-cpu calibrated derives the slowdown from this machine's benchmarkIndex instead),
+          - PageSpeed-equivalent (lab): Lighthouse mobile here with PageSpeed's settings, slow 4G and 4x CPU
+            applied for real rather than simulated (--load-cpu calibrated simulates instead, at the slowdown this
+            machine's benchmarkIndex calls for),
             --load-runs a side (default 5; as many again when a metric is worse but within noise). It gates
             the route when PageSpeed Insights cannot, and can differ from it by 10 points or more.
           FCP, LCP, Speed Index, TBT, CLS and the score are compared by their medians: a metric is red when
-          the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and the
-          runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP element, its
+          the new median is worse by more than its allowance (FCP and Speed Index: the old page's own noise or
+          a frame; LCP max(100 ms, 5%), TBT 50 ms, CLS 0.02, 3 score points) and the runs differ beyond noise
+          (one-sided Mann-Whitney, Holm across the route's metrics, family-wise p < 0.05). A paint time whose
+          runs fall in clusters is red as inconclusive. The failure names the LCP element, its
           breakdown and the requests that began before it, old and new.
           - Slow network, on by default: each page loaded cold through a throttling proxy that every
             byte crosses (the bandwidth shared, the round-trip time paid on every packet), in Chromium,

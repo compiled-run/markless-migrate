@@ -6,7 +6,7 @@ import { renderHtml } from '../../src/check/html.ts';
 import { runCheck } from '../../src/check/run.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { serve as serveFont } from '../../fixtures/late-font/server.ts';
-import { findLateFont, measurePreload } from '../../src/upgrade/fonts.ts';
+import { describePreload, findLateFont, measurePreload } from '../../src/upgrade/fonts.ts';
 
 const DESKTOP = [{ name: 'desktop', width: 1280, height: 800, isMobile: false }];
 
@@ -60,14 +60,17 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		assert.equal(route.load?.new.detail?.filmstrip, undefined);
 	});
 
-	test('a preload of the late font of the largest text paints it sooner in Lighthouse, beyond noise', async () => {
+	// Simulated, this preload paints the heading sooner; applied for real it does not, since the font's bytes delay the stylesheet the
+	// first paint waits for. The suggestion follows the real load, with PageSpeed Insights' simulated score beside it.
+	test('a preload of the late font of the largest text is judged on the real load, with the simulated score reported beside it', async () => {
 		const { origin, server } = await serveFont('late');
 		servers.push(server);
 		const found = await findLateFont(browser, origin, '/');
 		assert.ok('late' in found, JSON.stringify(found));
 		const m = await measurePreload(origin, found.late, { runs: 4 });
-		assert.equal(m.significant, true, JSON.stringify(m.load.verdicts));
-		assert.ok(m.lcpSavingMs > 100, String(m.lcpSavingMs));
+		assert.ok(m.simulated && m.simulated.lcpSavingMs > 100, JSON.stringify(m.simulated));
+		assert.equal(m.significant, false, JSON.stringify(m.load.verdicts));
+		assert.match(describePreload(m), /as PageSpeed Insights simulates it, LCP [\d.]+ (ms|s) sooner with the preload/);
 	});
 });
 
