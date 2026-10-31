@@ -8,7 +8,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
-import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
+import { captureChoices, copyBinding, markChosenHref, optionsShown, sharedChoices, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
@@ -1459,12 +1459,15 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const pending of reads) pending.catch(() => {});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
 		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
+		const deferShared = !!options.captureOnly && !!options.only?.length;
 		const choosing = new Map<string, { chosen: Promise<Record<string, Choice>>; dir: string; tries: number }>();
 		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
 		for (const [i, pending] of reads.entries()) {
 			const route = captureRoutes[i]!;
 			for (const reveal of (await pending).reveals ?? []) {
 				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
+				// A shard of the pages records a site-wide palette's reveal, not its choices: the convert of every page chooses it once.
+				if (deferShared && sharedChoices(reveal)) continue;
 				// A Base UI listbox's values are its page's: generated ids repeat across pages.
 				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;

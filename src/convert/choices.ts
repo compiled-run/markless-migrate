@@ -37,9 +37,21 @@ export const optionKey = (el: Tree): string => attr(el, 'data-value') ?? textCon
  * (a docs palette listing the components of the page's own library) is chosen again there; the same options, never.
  */
 export function optionsShown(reveal: Reveal): string {
-	const keys = reveal.added.flatMap((a) => [...walk(body(parseDocument(`<body>${a.html}</body>`)))].filter(isOption).map(optionKey));
-	return createHash('sha256').update(JSON.stringify(keys)).digest('hex').slice(0, 8);
+	return createHash('sha256').update(JSON.stringify(optionKeys(reveal))).digest('hex').slice(0, 8);
 }
+
+const optionKeys = (reveal: Reveal): string[] => reveal.added.flatMap((a) => [...walk(body(parseDocument(`<body>${a.html}</body>`)))].filter(isOption).map(optionKey));
+
+/**
+ * Whether a control's choices are the same on every page that shows its options (not a Base UI listbox, whose values are
+ * its page's) and are many: a site-wide palette. A capture shard leaves those to the convert that has every shard's
+ * reveals, which records each once.
+ */
+export function sharedChoices(reveal: Reveal): boolean {
+	return !isListbox(reveal) && optionKeys(reveal).length > OPTIONS_PER_PAGE;
+}
+
+const isListbox = (reveal: Reveal) => reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 
 /** A cmdk item whose choosing went somewhere on the old page names that address, which the cmdk part goes to when it is chosen. */
 export function markChosenHref(el: Tree, chosen: Readonly<Record<string, Choice>> | undefined): void {
@@ -268,7 +280,7 @@ const OPTIONS_PER_PAGE = 20;
  * page or what it copied, keyed by the option's value (cmdk's data-value) or its text. Each page it opens runs under `limit`.
  */
 export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task()): Promise<Record<string, Choice>> {
-	const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
+	const listbox = isListbox(reveal);
 	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown`}.json`);
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
