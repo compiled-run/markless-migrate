@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parseSync } from 'oxc-parser';
+import { parse } from 'yuku';
 import { lineIndex, walk, type N } from '../source/js.ts';
 import { classesOf, type HtmlElement } from './html.ts';
 import type { BehaviourKind } from './types.ts';
@@ -82,7 +82,7 @@ export async function readThemeConfig(source: string): Promise<ConfigFact[]> {
 	for (const [theme, file, settings] of candidates) {
 		const text = await readFile(join(source, file), 'utf8').catch(() => undefined);
 		if (text === undefined) continue;
-		const program = parseSync(file, text, { sourceType: 'module', preserveParens: false }).program as unknown as N;
+		const program = parse(text, { path: file, sourceType: 'module', preserveParens: false }).program as unknown as N;
 		const line = lineIndex(text);
 		walk(program, (n, ancestors) => {
 			if (n.type !== 'Property' || n.key?.type !== 'Identifier') return;

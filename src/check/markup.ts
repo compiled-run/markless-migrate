@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, posix, relative, sep } from 'node:path';
-import { parseSync } from 'oxc-parser';
+import { parse } from 'yuku';
+import { CHILD_KEYS } from 'yuku/ast';
 import { parse as parseTsrx } from 'yuku-tsrx';
 import { lineIndex, splitComponent } from '../source/js.ts';
 import { parseRules, type CssRule } from './stylesheet.ts';
@@ -48,7 +49,7 @@ async function walk(root: string, dir: string, out: string[]): Promise<void> {
 const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
 const decode = (value: string) => value.replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' })[e] ?? _);
 
-// biome-ignore lint/suspicious/noExplicitAny: ESTree from oxc and yuku-tsrx, walked generically
+// biome-ignore lint/suspicious/noExplicitAny: ESTree from yuku and yuku-tsrx, walked generically
 type Node = any;
 
 function jsxName(name: Node): string | undefined {
@@ -89,6 +90,12 @@ const segment = (parent: Parent, tag: string) => {
 	return parent.chain ? `${parent.chain}>${tag}:${n}` : `${tag}:${n}`;
 };
 
+// Source order: a node's child keys as the parser's walker visits them (yuku lists TypeScript fields last), then anything else (TSRX nodes).
+const keysOf = (node: Node): string[] => {
+	const known = CHILD_KEYS[node.type as string];
+	return known ? [...known, ...Object.keys(node).filter((k) => !known.includes(k))] : Object.keys(node);
+};
+
 // Like visit, but knows each host element's chain; components and fragments are transparent.
 function visitJsx(node: Node, parent: Parent, fn: (n: Node, chain?: string) => void): void {
 	if (!node || typeof node !== 'object') return;
@@ -106,7 +113,7 @@ function visitJsx(node: Node, parent: Parent, fn: (n: Node, chain?: string) => v
 			inner = { chain, counts: new Map() };
 		} else fn(node);
 	} else if (typeof node.type === 'string') fn(node);
-	for (const key of Object.keys(node)) if (key !== 'parent' && typeof node[key] === 'object') visitJsx(node[key], key === 'children' ? inner : parent, fn);
+	for (const key of keysOf(node)) if (key !== 'parent' && typeof node[key] === 'object') visitJsx(node[key], key === 'children' ? inner : parent, fn);
 }
 
 function fromJsx(file: string, text: string, program: Node, elements: MarkupElement[], strings: MarkupIndex['strings'][number][]): void {
@@ -220,7 +227,7 @@ async function build(root: string): Promise<MarkupIndex> {
 		try {
 			if (file.endsWith('.css')) css.push(...parseRules([{ url: file, text }]));
 			else if (file.endsWith('.tsrx')) fromJsx(file, text, parseTsrx(text, { lang: 'tsx' }).program, elements, strings);
-			else if (/\.[cm]?[jt]sx?$/.test(file)) fromJsx(file, text, parseSync(file, text, { sourceType: 'module' }).program, elements, strings);
+			else if (/\.[cm]?[jt]sx?$/.test(file)) fromJsx(file, text, parse(text, { path: file, sourceType: 'module' }).program, elements, strings);
 			else if (/\.mdx?$/.test(file)) {
 				fromMarkdown(file, text, strings);
 				fromHtml(file, text, text, elements);

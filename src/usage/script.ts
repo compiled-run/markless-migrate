@@ -1,5 +1,5 @@
-import { parseSync } from 'oxc-parser';
-import { lineIndex, patternNames, walk, type N } from '../source/js.ts';
+import { parse } from 'yuku';
+import { errorsOf, lineIndex, patternNames, walk, type N } from '../source/js.ts';
 
 /** What a plain script does in the browser, read from its syntax tree. */
 export type Effect =
@@ -51,10 +51,11 @@ export interface ScriptAnalysis {
 /** Every effect a plain script has, with its line: listeners, storage, media queries, timers, requests, navigation, observers, DOM writes and calls into a global library. */
 /** `globals` names functions other scripts of the site define (demo.js's onGet), so calling one is a use of that script. */
 export function analyseScript(source: string, firstLine = 1, globals: ReadonlyMap<string, string> = new Map()): ScriptAnalysis {
-	let result = parseSync('x.js', source, { sourceType: 'script', preserveParens: false });
-	if (result.errors.length) {
-		const mod = parseSync('x.js', source, { sourceType: 'module', preserveParens: false });
-		if (mod.errors.length < result.errors.length) result = mod;
+	let result = parse(source, { sourceType: 'script', preserveParens: false });
+	const errors = errorsOf(result).length;
+	if (errors) {
+		const mod = parse(source, { sourceType: 'module', preserveParens: false });
+		if (errorsOf(mod).length < errors) result = mod;
 	}
 	const line = lineIndex(source);
 	const at = (n: N) => line(n.start) + firstLine - 1;
@@ -88,7 +89,7 @@ export function analyseScript(source: string, firstLine = 1, globals: ReadonlyMa
 		if (found.length > before && found[before]!.kind === 'listener') listeners.set(n, before);
 	});
 	const defines = ((result.program as unknown as N).body as N[]).flatMap((n) => (n.type === 'FunctionDeclaration' && n.id ? [n.id.name as string] : []));
-	return { effects: found.map((e, i) => (owners[i] === undefined ? e : { ...e, in: owners[i] })), parsed: result.errors.length === 0, defines };
+	return { effects: found.map((e, i) => (owners[i] === undefined ? e : { ...e, in: owners[i] })), parsed: errorsOf(result).length === 0, defines };
 
 	// A name the script binds itself is its own (a minifier's `$`), not the library global of that name.
 	function libraryOf(root: string): string | undefined {

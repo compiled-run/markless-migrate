@@ -4,7 +4,7 @@
 #   deploy/cloudflare.sh static <dir> <worker>                    a folder of static files (an original), no Worker code; its 404.html answers unknown paths
 # port: the build output check (every cached page and fragment a file at its URL, the Workers limits), a version upload with
 # its preview URL, the live check of that preview (the routes given), then the version deployed to 100%. PREVIEW=1 stops
-# before the deploy and prints the preview URL. A Worker's first upload has no live version to protect and deploys at once.
+# before the deploy and prints the preview URL. ALLOW_WORKER=<path> lets that one same-origin path a page loads run the Worker. A Worker's first upload has no live version to protect and deploys at once.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/.."
@@ -24,8 +24,19 @@ configure() {
 	' "$1" "$2"
 }
 
+# A first version can only be a preview once the Worker exists: PREVIEW=1 creates it with a placeholder page first.
+placeholder() {
+	local dir
+	dir="$(mktemp -d)"
+	mkdir -p "$dir/public" && printf '<!doctype html><title>Not deployed yet</title>\n' > "$dir/public/index.html"
+	printf '{"name":"%s","compatibility_date":"%s","workers_dev":true,"preview_urls":true,"assets":{"directory":"public"}}\n' "$1" "$COMPATIBILITY_DATE" > "$dir/wrangler.json"
+	$WRANGLER deploy --config "$dir/wrangler.json" > /dev/null
+	rm -rf "$dir"
+}
+
 upload() {
 	local config="$1" name="$2"
+	if [ "${PREVIEW:-}" = 1 ] && ! exists "$name"; then placeholder "$name"; fi
 	if ! exists "$name"; then
 		local out
 		out=$($WRANGLER deploy --config "$config" 2>&1 | tee /dev/stderr)
@@ -57,14 +68,18 @@ case "${1:-}" in
 		shift 3
 		CONFIG="$APP/.output/server/wrangler.json"
 		[ -f "$CONFIG" ] || { echo "no $CONFIG: build the app with NITRO_PRESET=cloudflare-module first" >&2; exit 1; }
+		# Vercel serves its analytics scripts itself; elsewhere a page's request for one 404s through the Worker on every view.
+		for script in /_vercel/insights/script.js /_vercel/speed-insights/script.js; do
+			if grep -rqlF --include='*.html' "$script" "$APP/.output/public"; then mkdir -p "$(dirname "$APP/.output/public$script")" && : > "$APP/.output/public$script"; fi
+		done
 		# A cached page or fragment URL that is not a file runs the Worker on every request: refuse before uploading.
-		(cd "$APP" && node "$ROOT/src/cli.ts" cache output --cloudflare)
+		(cd "$APP" && node "$ROOT/src/cli.ts" cache output --cloudflare ${ALLOW_WORKER:+--allow-worker "$ALLOW_WORKER"})
 		configure "$CONFIG" "$NAME"
 		upload "$CONFIG" "$NAME"
 		ROUTES=()
 		for route in "$@"; do ROUTES+=(--route "$route"); done
 		# The preview is deployed only when its pages and fragment URLs come from the uploaded files.
-		(cd "$APP" && node "$ROOT/src/cli.ts" cache check --cloudflare --new "$URL" "${ROUTES[@]}")
+		(cd "$APP" && node "$ROOT/src/cli.ts" cache check --cloudflare --new "$URL" ${ALLOW_WORKER:+--allow-worker "$ALLOW_WORKER"} "${ROUTES[@]}")
 		promote "$CONFIG" "$NAME"
 		;;
 	static)

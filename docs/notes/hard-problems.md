@@ -1,6 +1,6 @@
 # The hard problems, and where semantic analysis helps
 
-"Semantic analysis" here means reading the old app's source with real parsers (oxc for JS/TS, yuku-css
+"Semantic analysis" here means reading the old app's source with real parsers (yuku for JS/TS, yuku-css
 for CSS, framework-specific readers for routes and config), plus Markless's own analyzer on the new
 app. It never calls a model; the agent can add hints in a file the tool reads.
 

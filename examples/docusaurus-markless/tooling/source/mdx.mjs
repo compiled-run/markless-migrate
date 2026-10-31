@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { compileWithPluginLoaders, website, siteRequire } from './site.mjs';
 import { assetUrl } from './assets.mjs';
 import { idealImage } from './ideal-image.mjs';
-import { parseSync } from '../../../../node_modules/oxc-parser/src-js/index.js';
+import { parse } from '../../../../node_modules/yuku/dist/index.js';
 
 const tooling = join(import.meta.dirname, '..');
 // `@generated/routes` and `@generated/registry`, as the old build generated them from the route tree.
@@ -22,7 +22,7 @@ export function provideGenerated(specifier, value) {
 // `new URL('./file', import.meta.url)`: the bundler's asset URL for that file, as `.href` and as a string.
 export function assetUrlsIn(code, fromFile) {
 	if (!code.includes('import.meta.url')) return code;
-	const { program } = parseSync(fromFile.replace(/\.mdx?$/, '.jsx'), code, { sourceType: 'module', lang: /\.tsx?$/.test(fromFile) ? 'tsx' : 'jsx' });
+	const { program } = parse(code, { sourceType: 'module', lang: /\.tsx?$/.test(fromFile) ? 'tsx' : 'jsx' });
 	const found = [];
 	const walk = (node) => {
 		if (!node || typeof node !== 'object') return;
@@ -191,7 +191,7 @@ export async function compileMdx(filePath, query = '', rules) {
 		const { source } = await compileWithPluginLoaders(rules, filePath, query);
 		const lines = [];
 		let code = source;
-		const { program } = parseSync(filePath.replace(/\.mdx?$/, '.jsx'), code, { sourceType: 'module', lang: 'jsx' });
+		const { program } = parse(code, { sourceType: 'module', lang: 'jsx' });
 		const declarations = program.body.filter((node) => node.source && /^(Import|ExportNamed|ExportAll)Declaration$/.test(node.type));
 		for (const node of declarations.reverse()) {
 			const type = node.attributes?.find((a) => (a.key.name ?? a.key.value) === 'type')?.value.value;

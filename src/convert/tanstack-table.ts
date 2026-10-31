@@ -7,8 +7,8 @@ import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
-import { parseSync } from 'oxc-parser';
-import { patternNames, walk as walkJs, type N } from '../source/js.ts';
+import { parse } from 'yuku';
+import { errorsOf, patternNames, walk as walkJs, type N } from '../source/js.ts';
 import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, outer, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { LATE_FONT } from '../../parts/late-fonts.ts';
 import { emitChildren, lit, mergeBindings, type Binding } from './tsrx.ts';
@@ -448,9 +448,9 @@ const GLOBALS = new Set(['Array', 'Boolean', 'Date', 'Infinity', 'JSON', 'Math',
 /** A column's own function (a filterFn) as code the port runs, when it reads nothing of the old page's: else why not. */
 export function ownFunction(source: string): { readonly code: string } | { readonly why: string } {
 	for (const code of [source, `function ${source}`]) {
-		const parsed = parseSync('fn.js', `(${code})`, { sourceType: 'module', preserveParens: false });
+		const parsed = parse(`(${code})`, { sourceType: 'module', preserveParens: false });
 		const expr = (parsed.program.body[0] as unknown as { expression?: N } | undefined)?.expression;
-		if (parsed.errors.length || !expr || !/^(ArrowFunctionExpression|FunctionExpression)$/.test(expr.type)) continue;
+		if (errorsOf(parsed).length || !expr || !/^(ArrowFunctionExpression|FunctionExpression)$/.test(expr.type)) continue;
 		const declared = new Set<string>();
 		walkJs(expr, (n) => {
 			if (n.type === 'VariableDeclarator' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression' || n.type === 'FunctionDeclaration') {

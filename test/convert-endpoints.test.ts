@@ -48,6 +48,15 @@ test('JSX handed to ImageResponse becomes satori\'s element objects, with React\
 	assert.deepEqual(value, { type: 'div', key: null, props: { tw: 'flex', style: { a: 1 }, children: ['Hello world', { type: 'svg', key: null, props: { width: 48, children: { type: 'line', key: null, props: { x1: '2' } } } }, 'T'] } });
 });
 
+test('JSX text is the text React renders: an HTML entity in it is decoded', () => {
+	const text = 'const el = <p>We&apos;ve added &quot;dark&quot; mode &amp; more</p>;';
+	let jsx: N | undefined;
+	walk(parseModule('og.tsx', text).program, (n: N) => {
+		if (!jsx && n.type === 'JSXElement') jsx = n;
+	});
+	assert.deepEqual(new Function(`return ${jsxObject(jsx!, text)};`)(), { type: 'p', key: null, props: { children: 'We\'ve added "dark" mode & more' } });
+});
+
 test('a sitemap and robots.txt are written as Next.js writes them', () => {
 	assert.equal(sitemapXml([{ url: 'https://x.dev/' }, { url: 'https://x.dev/a', lastModified: '2026-01-01T00:00:00.000Z' }]), '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n<url>\n<loc>https://x.dev/</loc>\n</url>\n<url>\n<loc>https://x.dev/a</loc>\n<lastmod>2026-01-01T00:00:00.000Z</lastmod>\n</url>\n</urlset>\n');
 	assert.equal(robotsTxt({ rules: { userAgent: '*', allow: '/' }, sitemap: 'https://x.dev/sitemap.xml' }), 'User-Agent: *\nAllow: /\n\nSitemap: https://x.dev/sitemap.xml\n');
