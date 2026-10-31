@@ -271,7 +271,7 @@ export interface RouteResult {
 	/** Only this was compared (`check --only load`: page load; `--only embeds`: the embed step; `--only probes`: the widget probes and the moved clock); every other dimension is skipped, not passed. */
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** Each control the widget probes drove, alike controls they let one of their kind stand for, and why any was not driven; how long they took. */
-	readonly probes?: { readonly controls: readonly { readonly control: string; readonly cls: string; readonly state: string; readonly ms?: number }[]; readonly ms: number };
+	readonly probes?: { readonly controls: readonly { readonly control: string; readonly cls: string; readonly state: string; readonly ms?: number }[]; readonly ms: number; readonly stateMs?: number };
 	/** How many uses, keys and typed values control parity tried, how many its budget left out, and how long it took. */
 	readonly controlParity?: { readonly tried: number; readonly leftOut: number; readonly ms: number };
 	/** How long the route's check took, and each of its steps: what the next run packs its shards by. */
