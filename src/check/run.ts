@@ -880,8 +880,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			}
 			// A widget is shared only among one role's routes: a signed-in visitor may meet another one behind the same markup.
 			if (roleRun.probes) roleRun = { ...roleRun, probes: { ...roleRun.probes, shared: new Map<string, SharedProbe>() } };
+			// A run of one part leaves endpoints and redirects to the full check; they are listed as that part's, not as not checked.
+			const outOfPart = (only: 'load' | 'embeds' | 'probes') => [...endpoints, ...redirects].map((route) => asRole({ ...partialResult(route, [], []), ok: true, only }, role));
 			if (options.only === 'load') {
-				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })));
+				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })), ...outOfPart('load'));
 				continue;
 			}
 			if (options.only === 'embeds') {
@@ -892,6 +894,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const result = { ...partialResult(route, out.failures, [...new Set(out.failures.map((f) => f.dimension as Dimension))]), shots: out.shots, only: 'embeds' as const };
 					routes.push(asRole(withTemplate({ ...result, ok: out.failures.length === 0 }), role));
 				}
+				routes.push(...outOfPart('embeds'));
 				continue;
 			}
 			if (options.only === 'probes') {
@@ -902,6 +905,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const result = await probeRoute(browser, probing, route, viewport, empty).catch((error: Error) => partialResult(route, [{ route, dimension: 'behaviour', check: 'the widget probes', expected: 'the widget probes run', actual: error.message.split('\n')[0]!, hint: 'The widget probes could not load the route on one side.' }], []));
 					routes.push(asRole(withTemplate({ ...result, ok: result.failures.length === 0, only: 'probes' as const }), role));
 				}
+				routes.push(...outOfPart('probes'));
 				continue;
 			}
 			const oldLanding = (env: SideEnv) => (route: string) => landing(browser, env, route, (options.viewports ?? VIEWPORTS)[0]!);
