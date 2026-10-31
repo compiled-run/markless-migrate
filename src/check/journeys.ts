@@ -2288,19 +2288,31 @@ const sameSteps = (a: readonly Step[], b: readonly Step[]) => a.length === b.len
 export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<{ layout: string[]; own: number }> {
 	const session = await openSession(browser, env, route, viewport);
 	try {
-		const found = await candidates(session.page, new URL(env.origin).origin);
-		const sampled = new Map<string, number>();
-		const exercised = found.filter((c) => {
-			if (c.covered || c.skip || isLayout(c)) return false;
-			if (!c.group) return true;
-			sampled.set(c.group, (sampled.get(c.group) ?? 0) + 1);
-			return sampled.get(c.group)! <= SAMPLES;
-		});
-		return { layout: found.filter(isLayout).map((c) => c.signature), own: exercised.length };
+		// Read until two reads agree: a control still arriving would move a shared control's result to another route.
+		const read = async () => {
+			const found = await candidates(session.page, new URL(env.origin).origin);
+			const sampled = new Map<string, number>();
+			const exercised = found.filter((c) => {
+				if (c.covered || c.skip || isLayout(c)) return false;
+				if (!c.group) return true;
+				sampled.set(c.group, (sampled.get(c.group) ?? 0) + 1);
+				return sampled.get(c.group)! <= SAMPLES;
+			});
+			return { layout: found.filter(isLayout).map((c) => c.signature).sort(), own: exercised.length };
+		};
+		let last = await read();
+		for (let i = 0; i < SURVEY_READS; i++) {
+			await session.page.waitForTimeout(250);
+			const now = await read();
+			if (JSON.stringify(now) === JSON.stringify(last)) return now;
+			last = now;
+		}
+		return last;
 	} finally {
 		await session.close();
 	}
 }
+const SURVEY_READS = 4;
 
 function stable(values: readonly string[]): (value: string) => boolean {
 	return template(values[0]!, ...values.slice(1)).test;

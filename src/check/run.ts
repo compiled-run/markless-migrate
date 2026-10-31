@@ -809,7 +809,8 @@ const ROUTE_ROOM = 40;
 
 async function layoutOwners(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<Map<string, string>> {
 	const viewport = (options.viewports ?? VIEWPORTS)[0]!;
-	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => ({ layout: [] as string[], own: 0 })));
+	// A survey that fails once is tried again: an empty survey hands its route's shared controls to another route.
+	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => survey(browser, run.old, route, viewport)).catch(() => ({ layout: [] as string[], own: 0 })));
 	// The first route with room exercises a shared control, so one page full of its own controls does not leave
 	// every shared one to run out of its budget; past every route's room, the least loaded takes it.
 	const load = found.map((f) => f.own);
