@@ -5,6 +5,7 @@
 //   prune <store> <record-keys.json>    drops recordings no page's current key names
 //   copied-parts <app>                  the app's lib/parts files that are copies of parts/ (written beside the converted app)
 //   refresh-parts <app> <list>          copies those files from parts/ again (an emit whose only change is in copied parts)
+//   original-scripts <build> <inventory.json>   fails when a page or ISR fallback loads a script the original's pages loaded
 //   receipt <file> <stage> k=v...       appends a stage's receipt (seconds, cache hit, counts)
 //   report <receipts dir> <jobs.json>   the run's table: per stage wall time and cache hits, and end to end
 import { createHash } from 'node:crypto';
@@ -187,6 +188,21 @@ export async function captureCosts(store: string): Promise<Map<string, number>> 
 	return costs;
 }
 
+const SCRIPT_SRC = /<script\b[^>]*\bsrc=["']([^"'?#]+)/gi;
+
+/**
+ * Each page or fragment of a build (its static files and the ISR fallbacks Vercel serves) that loads a script the original's
+ * pages loaded: a port runs Markless's code, so any is the old framework's runtime come along.
+ */
+export async function originalScripts(output: string, scripts: ReadonlySet<string>): Promise<{ readonly page: string; readonly script: string }[]> {
+	const found: { page: string; script: string }[] = [];
+	for (const page of await treeFiles(output, (rel) => /(^|\/)node_modules(\/|$)/.test(rel))) {
+		if (!page.endsWith('.html')) continue;
+		for (const [, src] of (await readFile(join(output, page), 'utf8')).matchAll(SCRIPT_SRC)) if (scripts.has(src!)) found.push({ page, script: src! });
+	}
+	return found;
+}
+
 export interface Receipt {
 	readonly stage: string;
 	readonly seconds?: number;
@@ -353,6 +369,18 @@ async function main(): Promise<void> {
 		const [app, list] = rest;
 		if (!app || !list) throw new Error('usage: pipeline.ts refresh-parts <app> <list>');
 		console.log(await refreshParts(app, join(ROOT, 'parts'), (await readFile(list, 'utf8')).split('\n').filter(Boolean)));
+		return;
+	}
+	if (command === 'original-scripts') {
+		const [output, inventory] = rest;
+		if (!output || !inventory) throw new Error('usage: pipeline.ts original-scripts <build dir> <inventory.json>');
+		const planned = JSON.parse(await readFile(inventory, 'utf8')) as { routes: { assets?: { url: string; type: string }[] }[] };
+		// /_vercel/ is the host's (Web Analytics), not the old framework's: the port keeps that tag.
+		const scripts = new Set(planned.routes.flatMap((r) => (r.assets ?? []).filter((a) => a.type === 'script' && a.url.startsWith('/') && !a.url.startsWith('/_vercel/')).map((a) => a.url.split(/[?#]/)[0]!)));
+		const found = await originalScripts(output, scripts);
+		for (const f of found.slice(0, 20)) console.error(`${f.page} loads the original's ${f.script}`);
+		console.log(JSON.stringify({ scripts: scripts.size, pages: new Set(found.map((f) => f.page)).size }));
+		if (found.length) process.exit(1);
 		return;
 	}
 	if (command === 'receipt') {
