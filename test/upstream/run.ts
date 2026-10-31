@@ -155,7 +155,7 @@ async function convert(old: string): Promise<void> {
 	await writeFile(join(APP, 'package.json'), `${JSON.stringify(MANIFEST, null, '\t')}\n`);
 	const cli = `node ${join(ROOT, 'src', 'cli.ts')}`;
 	const source = join(SRC, lib.source);
-	await sh(`${cli} plan --old ${old} --source ${source}`, APP);
+	await sh(`${cli} plan --old ${old} --source ${source} --limit 5000`, APP);
 	await sh(`${cli} usage --old ${old} --source ${source}`, APP);
 	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2 --ledger report`, APP);
 }

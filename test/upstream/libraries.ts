@@ -28,6 +28,11 @@ export interface Library {
 
 const ROOT = new URL('../..', import.meta.url).pathname;
 
+// The Base UI test files whose renders get pages: the combobox, context menu, menu and popover the owner's bugs sit in.
+const BASE_UI_TESTS = ['root/ComboboxRoot', 'clear/ComboboxClear', 'item-indicator/ComboboxItemIndicator', 'popup/ComboboxPopup', 'item/ComboboxItem', 'input/ComboboxInput', 'trigger/ComboboxTrigger', 'value/ComboboxValue', 'empty/ComboboxEmpty']
+	.map((f) => `combobox/${f}.test.tsx`)
+	.concat(['context-menu/root/ContextMenuRoot.test.tsx', 'context-menu/trigger/ContextMenuTrigger.test.tsx', 'menu/submenu-trigger/MenuSubmenuTrigger.test.tsx', 'menu/root/MenuRoot.test.tsx', 'popover/root/PopoverRoot.test.tsx']);
+
 export const LIBRARIES: Readonly<Record<string, Library>> = {
 	cmdk: {
 		name: 'cmdk',
@@ -92,5 +97,23 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		serveIn: '.',
 		source: 'examples-app',
 		runner: { kind: 'shim', script: 'day-picker-run.ts' },
+	},
+	// Base UI's tests are Vitest's, each rendering its component inline: base-ui-pages.ts builds a page per render, and
+	// base-ui-run.ts runs each test on its page through base-ui-shim.ts.
+	'base-ui': {
+		name: 'base-ui',
+		repo: 'https://github.com/mui/base-ui.git',
+		ref: 'v1.6.0',
+		pm: 'pnpm@11.5.2',
+		build: [
+			`node ${ROOT}test/upstream/base-ui-pages.ts . ${BASE_UI_TESTS.join(' ')}`,
+			`node ${ROOT}test/upstream/slots.ts packages/react/upstream-pages/r Combobox ContextMenu Menu Popover`,
+			'git add -A packages/react/upstream-pages && ln -s ../node_modules packages/react/upstream-pages/node_modules',
+			'npx vite build -c upstream-vite.config.mjs',
+		],
+		serve: (port) => `node ${ROOT}test/upstream/serve.ts static upstream-dist ${port}`,
+		serveIn: '.',
+		source: 'packages/react/upstream-pages',
+		runner: { kind: 'shim', script: 'base-ui-run.ts' },
 	},
 };
