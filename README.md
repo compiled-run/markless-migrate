@@ -627,8 +627,7 @@ cd examples/shadcn-ui-markless            # the app; or pass --app <dir>
   check that a part fix broke no other page. `--part` reads which pages load each part from the last full convert's
   report.
 
-Run the site-wide check (`check.yml` on GitHub) only before a deploy. A route `fix` passes is a route that check passes
-on the full build (see the comparison in `docs/notes/fix-loop.md`).
+Run the site-wide check (`check.yml` on GitHub) only before a deploy.
 
 `dev` is the quicker, looser loop under `fix`: Markless's dev server and the dead-controls probe alone, in Chromium
 at one width (`--control <regex>` for one control, `--widths`, `--full` for the probe's whole sweep, `--build` for a
