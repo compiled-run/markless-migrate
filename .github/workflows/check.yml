@@ -163,7 +163,7 @@ jobs:
         env:
           MAX_PARALLEL: ${{ inputs.max_parallel || '10' }}
           # A deploy run may hold every shard at once (docs/ci-process.md "Runners").
-          CAP: ${{ inputs.priority == 'deploy' && '24' || '10' }}
+          CAP: ${{ inputs.priority == 'deploy' && '40' || '10' }}
         run: |
           case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to $CAP, got '$MAX_PARALLEL'"; exit 1 ;; esac
           if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt "$CAP" ]; then echo "::error::max_parallel must be from 1 to $CAP, got $MAX_PARALLEL"; exit 1; fi
