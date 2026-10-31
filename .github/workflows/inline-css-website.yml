@@ -1,0 +1,31 @@
+name: inline css website html
+on:
+  push:
+    branches: [scratch/inline-css-remeasure]
+    paths: [.github/workflows/inline-css-website.yml]
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: after2
+            ref: e45924cff6d7de1f87e60fdf7c51a07e22cfc8d8
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: harness, persist-credentials: false }
+      - uses: actions/checkout@v4
+        with: { repository: compiled-run/markless, ref: '${{ matrix.ref }}', path: markless, persist-credentials: false }
+      - uses: pnpm/action-setup@v4
+        with: { package_json_file: markless/package.json }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: markless/pnpm-lock.yaml }
+      - name: website html
+        working-directory: markless
+        run: |
+          pnpm install --frozen-lockfile > /tmp/install.log 2>&1 || (tail -40 /tmp/install.log; exit 1)
+          NITRO_PRESET=cloudflare-module pnpm --dir website build > /tmp/website-build.log 2>&1 || (tail -40 /tmp/website-build.log; exit 1)
+          node ../harness/scratch-inline-css/html-sizes.cjs website/.output/public /tmp/website-html.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'website-html-${{ matrix.name }}', path: /tmp/website-html.json, retention-days: 3 }

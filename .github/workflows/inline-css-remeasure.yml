@@ -2,6 +2,7 @@ name: inline css remeasure
 on:
   push:
     branches: [scratch/inline-css-remeasure]
+    paths: [.github/workflows/inline-css-remeasure.yml, scratch-inline-css/**]
 env:
   INPUTS: https://github.com/compiled-run/markless-migrate/releases/download/scratch-inline-css-inputs/remeasure-inputs.tgz
   ROUTE: /docs/headless/accordion/
