@@ -280,6 +280,7 @@ jobs:
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/static/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
           status=0
+          ( while sleep 30; do echo "$(date +%H:%M:%S) $(free -m | awk '/Mem:/ {print $3}') $(ps -C node -o rss= | sort -n | tail -1) $(ps -A -o comm= | grep -ci chrom) $(grep -cE '^(pass|FAIL|INCOMPLETE) ' "$RUNNER_TEMP/check.txt")" >> "$RUNNER_TEMP/rss.log"; done ) &
           # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
           # shellcheck disable=SC2086
@@ -298,6 +299,7 @@ jobs:
             ${{ env.APP }}/.migrate/cache/old
             ${{ env.APP }}/.migrate/slow-network
             ${{ runner.temp }}/check.txt
+            ${{ runner.temp }}/rss.log
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log
             ${{ runner.temp }}/old-build.log
