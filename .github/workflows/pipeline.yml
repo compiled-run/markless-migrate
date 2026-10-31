@@ -217,6 +217,7 @@ jobs:
         with:
           name: pl-${{ env.SITE }}-plan-${{ steps.plan.outputs.key }}
           path: ${{ env.APP }}/.migrate/*.json
+          include-hidden-files: true
           retention-days: 90
       - name: Find the recordings
         id: store
@@ -723,6 +724,7 @@ jobs:
           path: |
             ${{ runner.temp }}/select/check-reused/report.json
             ${{ env.APP }}/.migrate/reuse
+          include-hidden-files: true
           if-no-files-found: warn
       - if: always()
         run: echo "{\"stage\":\"check select\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"
