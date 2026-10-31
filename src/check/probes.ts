@@ -8,20 +8,24 @@ import { installProbe, probeControls, type ProbeControl } from './probe-page.ts'
 import { matchParts, partSelectors, type PartSelectors } from './probe-parts.ts';
 import type { Dimension, Failure, Viewport } from './types.ts';
 import { clickOnce } from './click.ts';
+import fc from 'fast-check';
+import { MODEL_BUDGET, MODEL_HINTS, modelOf, opener, seedOf, sequencesOf, type Model, type ModelBudget } from './role-models.ts';
 
 /**
  * Widget probes: one control of each kind, in each class of widget behaviour, is driven through its class's short sequence on
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle';
+export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle' | 'role model';
 
 export type Op =
 	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
 	/** The n-th item of the list that is open: pointed at or clicked. */
-	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click' }
+	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click'; readonly round?: boolean }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
 	| { readonly op: 'typeahead'; readonly n: number }
+	/** ArrowDown pressed until the n-th item of what is open (or the n-th that opens a submenu or folder) is active. */
+	| { readonly op: 'reach'; readonly n: number; readonly which: 'item' | 'opener' }
 	| { readonly op: 'key'; readonly key: string }
 	| { readonly op: 'type'; readonly text: string }
 	| { readonly op: 'drag'; readonly dx: number; readonly dy: number };
@@ -40,7 +44,7 @@ const item = (n: number, how: 'hover' | 'click'): Op => ({ op: 'item', n, how })
 const letters = (n: number): Op[] => Array.from({ length: n }, (_, i) => ({ op: 'typeahead', n: i }));
 
 /** The sequences a control of each class goes through. */
-export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'> & { readonly popup?: string }): Sequence[] {
+export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'> & { readonly popup?: string; readonly classes?: readonly string[] }): Sequence[] {
 	const s = (name: string, ops: Op[]): Sequence => ({ cls, name, ops });
 	const textual = /^(textbox|searchbox|combobox|spinbutton)$/.test(control.role);
 	switch (cls) {
@@ -76,6 +80,10 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 					: [s('swiped by the pointer both ways', [{ op: 'drag', dx: -260, dy: 0 }, { op: 'drag', dx: 260, dy: 0 }, { op: 'leave' }])];
 		case 'repeat':
 			return [s('used three times in a row, then the pointer resting on what it showed', [{ op: 'click' }, { op: 'click' }, { op: 'click' }, { op: 'point at toasts' }, { op: 'leave' }])];
+		case 'role model': {
+			const model = modelOf(control as Pick<ProbeControl, 'role' | 'classes'>);
+			return model ? [s(model, opener(model))] : [];
+		}
 		case 'tab stops':
 			return [s('Tab in, arrows each way, Space, Tab out and back', [{ op: 'tab in' }, key('ArrowRight'), key('ArrowDown'), key('Space'), key('Tab'), key('Shift+Tab'), key('ArrowLeft'), key('ArrowUp')])];
 	}
@@ -90,7 +98,9 @@ export function describeOp(op: Op): string {
 		case 'click label':
 			return 'click its label';
 		case 'item':
-			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1} of what is open`;
+			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1}${op.round ? ' (counted round)' : ''} of what is open`;
+		case 'reach':
+			return `press ArrowDown until ${op.which === 'opener' ? `item ${op.n + 1} (counted round) of those that open a submenu or folder` : `item ${op.n + 1} (counted round)`} of what is open is active`;
 		case 'typeahead':
 			return `type the first letter of item ${op.n + 1} (by distinct first letter) of what is open`;
 		case 'tab in':
@@ -114,7 +124,7 @@ export function describeOp(op: Op): string {
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y', 'role model': 'behaviour' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
@@ -124,6 +134,7 @@ export const PROBE_HINTS: Record<ProbeClass, string> = {
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 	drag: 'A pointer drag moves this control on the old page: follow the pointer (pointerdown, pointermove, pointerup), move the value, panel or slide by the same amount, take focus as the old one does, and leave the same state attributes after release.',
 	repeat: 'Each use of this control adds what the old page adds (a toast, a notification): the next use stacks on top rather than replacing it, the front one is marked as such, and pointing at the stack expands it as on the old page.',
+	'role model': 'This widget answers a sequence of steps drawn from its role\'s keyboard pattern (WAI-ARIA Authoring Practices) differently from the old page.',
 	'tab stops': 'This widget is one tab stop on the old page with arrows moving inside it (roving tabindex): keep exactly the same tab stops, move with the arrows of its orientation only, remember the last item when Tab leaves and comes back, and leave disabled items out.',
 };
 
@@ -131,9 +142,10 @@ const STEP_TIMEOUT = 2_500;
 const MARK = '[data-markless-migrate-probe]';
 const AIM = '[data-markless-migrate-aim]';
 
-type ProbeWindow = { __markless_migrate_probe__?: { read(): Reading; outside(): { x: number; y: number } | null; aim(what: string): boolean; letter(n: number): string } };
+type ProbeWindow = { __markless_migrate_probe__?: { read(): Reading; outside(): { x: number; y: number } | null; aim(what: string): boolean; active(): boolean; letter(n: number): string } };
 // Keys are held as a person holds them: Radix moves a radio group's focus in a timeout and checks the radio only while the key is still down.
 const HOLD_MS = 60;
+const REACH_PRESSES = 12;
 const ON_CONTROL = new Set<Op['op']>(['click', 'right click', 'click label', 'tab in', 'hover', 'drag']);
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate)\b/i;
 
@@ -203,11 +215,21 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			return clickOnce(label, { timeout: STEP_TIMEOUT });
 		}
 		case 'item': {
-			const found = await aim(`item ${op.n}`);
+			const found = await aim(`${op.round ? 'round ' : ''}item ${op.n}`);
 			if (!found) throw new Error(`nothing open has an item ${op.n + 1}`);
 			if (op.how === 'hover') return found.hover({ timeout: STEP_TIMEOUT });
 			if (DESTRUCTIVE.test((await found.textContent({ timeout: STEP_TIMEOUT }).catch(() => '')) ?? '')) throw new Error('left alone: it ends the session or deletes');
 			return clickOnce(found, { timeout: STEP_TIMEOUT });
+		}
+		case 'reach': {
+			if (!(await aim(`round ${op.which} ${op.n}`))) throw new Error(`nothing open has ${op.which === 'opener' ? 'an item that opens something' : 'an item'}`);
+			const active = () => page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.active() ?? false).catch(() => false);
+			for (let i = 0; i < REACH_PRESSES; i++) {
+				if (await active()) return;
+				await page.keyboard.press('ArrowDown', { delay: HOLD_MS });
+			}
+			if (await active()) return;
+			throw new Error(`ArrowDown did not reach it in ${REACH_PRESSES} presses`);
 		}
 		case 'typeahead': {
 			const letter = await page.evaluate((n) => (globalThis as ProbeWindow).__markless_migrate_probe__?.letter(n) ?? '', op.n).catch(() => '');
@@ -366,6 +388,8 @@ export interface ProbeOptions {
 	readonly concurrency?: number;
 	/** Shared across the routes of a run: a widget is probed on the first route that renders it, keyed by its class, kind, name and its widget's print on both pages; the routes rendering the same widget take that result. */
 	readonly shared?: Map<string, SharedProbe>;
+	/** The role-model probe's step budget per control (role-models.ts), or false to leave it out. Counted in steps, never time. */
+	readonly models?: Partial<ModelBudget> | false;
 }
 
 /** A widget one route probes for every route that renders it the same way. */
@@ -441,8 +465,10 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	const probed = new Set<string>();
 	const owned = new Map<string, (result: { state: string; failures: readonly Failure[] }) => void>();
 	const borrowed: { control: ProbeControl; cls: ProbeClass; from: SharedProbe }[] = [];
+	const modelled = options.models !== false;
 	for (const control of found) {
-		for (const cls of control.classes as ProbeClass[]) {
+		const classes = [...(control.classes as ProbeClass[]), ...(modelled && modelOf(control) ? (['role model'] as const) : [])];
+		for (const cls of classes) {
 			const kind = `${cls}|${control.kind}`;
 			const seen = kinds.get(kind) ?? 0;
 			kinds.set(kind, seen + 1);
@@ -486,6 +512,17 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 					const id = `${controlKey(item.control)}|${item.sequence.cls}`;
 					const entry = state.get(id) ?? { control: describeControl(item.control), cls: item.sequence.cls, state: 'probed', ms: 0 };
 					state.set(id, entry);
+					if (item.sequence.cls === 'role model') {
+						const began = Date.now();
+						const out = await driveModel(sides2, sides, route, item.control, parts, { ...MODEL_BUDGET, ...(options.models || {}) });
+						entry.ms += Date.now() - began;
+						if (out.state) entry.state = out.state;
+						if (out.failure) {
+							failures.push(out.failure);
+							failuresOf.set(id, [...(failuresOf.get(id) ?? []), out.failure]);
+						}
+						continue;
+					}
 					if (Date.now() - probing > budget) {
 						entry.state = `left out: the probes' ${Math.round(budget / 1000)} s budget ran out`;
 						continue;
@@ -548,6 +585,72 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	}
 	for (const c of controls) if (c.state.startsWith('left out: over')) failures.push(unprobed(route, c.control, c.cls, c.state));
 	return { failures, controls, ms: Date.now() - started };
+}
+
+const MODEL_SEED = 'MARKLESS_MIGRATE_MODEL_SEED';
+
+interface Pair {
+	readonly old: Side;
+	readonly new: Side;
+}
+
+/**
+ * Draws the control's model sequences from a seed fixed by the route, the control and the model, runs each on both pages from a
+ * fresh load, and shrinks the first that differs (on two old runs alike) to its shortest form, all within the budget's counts. A
+ * shrunk difference is driven once more before it is reported, so one that does not repeat is no failure.
+ */
+async function driveModel(pair: Pair, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, control: ProbeControl, parts: readonly PartSelectors[], budget: ModelBudget): Promise<{ state?: string; failure?: Failure }> {
+	const model = modelOf(control)!;
+	const seed = process.env[MODEL_SEED] ? Number(process.env[MODEL_SEED]) : seedOf(route, controlKey(control), model);
+	const prefix = opener(model);
+	const limit = budget.runs + budget.shrinks;
+	let calls = 0;
+	let missing: string | undefined;
+	let found: { ops: Op[]; steps: FieldDiff[][]; old: Run; next: Run; files: string[] } | undefined;
+	const differs = async (ops: Op[]) => {
+		const sequence: Sequence = { cls: 'role model', name: model, ops };
+		const files = new Set<string>();
+		const [old, next] = await Promise.all([runSequence(pair.old, sides.old.origin, route, control, sequence, [], new Set()), runSequence(pair.new, sides.new.origin, route, control, sequence, parts, files)]);
+		if (old[0]?.control === 'not on the page') missing = 'not found again on the old page';
+		else if (next[0]?.control === 'not on the page') missing = 'not on the new page: the journeys and the rendered check compare whether it is there';
+		if (missing) return undefined;
+		let steps = compareRuns(old, next);
+		if (!steps.some((d) => d.length)) return undefined;
+		steps = compareRuns(old, next, await runSequence(pair.old, sides.old.origin, route, control, sequence, [], new Set()));
+		return steps.some((d) => d.length) ? { ops, steps, old, next, files: [...files] } : undefined;
+	};
+	const details = await fc.check(
+		fc.asyncProperty(sequencesOf(model, budget), async (drawn) => {
+			if (missing || ++calls > limit) return true;
+			const out = await differs([...prefix, ...drawn]);
+			if (out) found = out;
+			return !out;
+		}),
+		{ seed, numRuns: budget.runs },
+	);
+	if (missing) return { state: missing };
+	if (!found) return {};
+	const shrunk: { ops: Op[]; steps: FieldDiff[][] } = found;
+	const ops = shrunk.ops.slice(0, shrunk.steps.findIndex((d) => d.length) + 1);
+	const confirmed = await differs(ops);
+	if (!confirmed) return { state: `probed: a difference after ${ops.length} steps did not repeat` };
+	return { failure: modelFailure(route, control, model, seed, details.counterexamplePath ?? '', confirmed) };
+}
+
+function modelFailure(route: string, control: ProbeControl, model: Model, seed: number, path: string, found: { ops: readonly Op[]; steps: readonly FieldDiff[][]; old: Run; next: Run; files: readonly string[] }): Failure {
+	// The steps after the first that differs cannot change it: the shortest sequence ends there.
+	const k = found.steps.findIndex((d) => d.length);
+	const trail = found.ops.slice(0, k + 1).map(describeOp);
+	const diffs = found.steps[k]!;
+	const context = (r: Reading | undefined) => (diffs.some((d) => d.field === 'focus') ? '' : `; focus: ${String(r?.focus ?? '?')}`);
+	return {
+		route,
+		dimension: 'behaviour',
+		check: `role model probe of ${describeControl(control)}: the ${model} model, seed ${seed}, shrunk to ${k + 1} step${k ? 's' : ''} (${trail.at(-1)}): ${trail.join(', then ')}`,
+		expected: `old, after ${trail.join(', then ')}: ${diffs.map((d) => `${d.field}: ${d.old}`).join('; ')}${context(found.old[k + 1])}`,
+		actual: `new: ${diffs.map((d) => `${d.field}: ${d.new}`).join('; ')}${context(found.next[k + 1])}`,
+		hint: `${MODEL_HINTS[model]} The steps were drawn with seed ${seed} (fixed by the route, the control and the model; ${MODEL_SEED}=${seed} draws them again${path ? `, fast-check path ${path}` : ''}).${found.files.length ? ` Likely part: ${found.files.join(', ')} (its selectors match this control or what it opened).` : ''}`,
+	};
 }
 
 const DISCOVER_MAX = 24;

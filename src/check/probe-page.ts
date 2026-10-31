@@ -210,7 +210,14 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | `item ${number}`): boolean {
+		/** Whether what `aim` marked has focus, holds it, or is the highlighted or active descendant item. */
+		active(): boolean {
+			const aimed = document.querySelector('[data-markless-migrate-aim]');
+			const at = document.activeElement;
+			if (!aimed || !at) return false;
+			return aimed === at || aimed.contains(at) || aimed.hasAttribute('data-highlighted') || aimed.hasAttribute('data-focused') || (Boolean(aimed.id) && at.getAttribute('aria-activedescendant') === aimed.id);
+		},
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | `item ${number}` | `opener ${number}` | `round item ${number}` | `round opener ${number}`): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -219,6 +226,12 @@ export function installProbe(): void {
 				const top = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"]')].filter(shown).pop();
 				found = top && [...top.querySelectorAll('button, [role="button"]')].filter(shown).find((b) => /\b(close|cancel|dismiss|done)\b/i.test(`${b.getAttribute('aria-label') ?? ''} ${text(b)}`));
 			} else if (what.startsWith('item ')) found = items()[Number(what.slice(5))];
+			else if (/^(round )?opener /.test(what) || what.startsWith('round item ')) {
+				// "round": the n-th counted round the list, so a drawn number always names one of what is shown.
+				const list = what.includes('opener') ? items().filter((i) => (i.hasAttribute('aria-haspopup') && i.getAttribute('aria-haspopup') !== 'false') || i.hasAttribute('aria-expanded')) : items();
+				const n = Number(what.split(' ').at(-1));
+				found = list[what.startsWith('round ') && list.length ? n % list.length : n];
+			}
 			else if (what === 'popup') found = [...document.querySelectorAll(POPUP)].filter(shown).pop();
 			else if (what === 'toaster') found = [...document.querySelectorAll('[data-sonner-toaster], [aria-live]:not([aria-live="off"]), [role="region"][aria-label*="otification" i]')].find((t) => t.querySelector('*') && shown(t.querySelector('[data-sonner-toast], li, [role="status"]') ?? t));
 			else if (what === 'thumb') found = el && ([el, ...el.querySelectorAll('[role="slider"], input[type="range"]')].find((t) => t.matches('[role="slider"], input[type="range"]') && shown(t)) ?? el);

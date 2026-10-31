@@ -128,7 +128,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-role-models] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -199,6 +199,12 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           closed and reopened; a checkbox, switch or toggle button pressed with Enter and Space. The route
           is loaded again with the clock moved 40 days into Pacific/Auckland: text the old page changes with
           the clock must change on new.
+          Role models, with the probes: a menu, listbox, combobox, dialog, grid, tree, tablist, toolbar or
+          text field is driven through 8 sequences of up to 6 moves drawn from its role's WAI-ARIA keyboard
+          pattern (arrows, Home/End, Page keys, ArrowRight into a submenu and ArrowLeft out, typeahead,
+          Tab and Shift+Tab, Escape, choices, typed text and dates such as "May 28, 2025"), from a seed fixed
+          by the route, the control and the model; a difference is shrunk to its shortest steps and reported
+          with its seed (MARKLESS_MIGRATE_MODEL_SEED=<seed> draws them again). --no-role-models leaves them out.
           --no-probes leaves them out; --only probes runs them alone.
           Control parity, with the probes: each width's controls (1280, 1440, 390) are listed on both apps
           and a control the original shows at a width the port lacks is red; each control's box and its
@@ -476,6 +482,7 @@ const TIMING_FLAGS = {
 	'no-motion': { type: 'boolean' },
 	'no-embeds': { type: 'boolean' },
 	'no-probes': { type: 'boolean' },
+	'no-role-models': { type: 'boolean' },
 	'no-control-parity': { type: 'boolean' },
 	'control-webkit': { type: 'boolean' },
 	'busy-cpu': { type: 'boolean' },
@@ -785,7 +792,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
-					...(values['no-probes'] ? {} : { probes: {} }),
+					...(values['no-probes'] ? {} : { probes: values['no-role-models'] ? { models: false } : {} }),
 					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
@@ -1042,7 +1049,7 @@ async function main(argv: string[]): Promise<number> {
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
-				...(values['no-probes'] ? {} : { probes: {} }),
+				...(values['no-probes'] ? {} : { probes: values['no-role-models'] ? { models: false } : {} }),
 				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
 				...(navigation && !probesOnly ? { navigation } : {}),
