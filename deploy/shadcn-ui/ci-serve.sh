@@ -10,7 +10,7 @@ case "${1:-}" in
 	old)
 		# A build restored from an earlier job (check.yml caches deploy/shadcn-ui/old) is served as it is, so every shard and every
 		# run serves the same build and the old side's cached captures, journeys and slow-network runs stay valid between runs.
-		built="$(sha256sum "$DIR/fetch-old.sh" | cut -d' ' -f1)"
+		built="$(cat "$DIR/fetch-old.sh" "$DIR/old-fixtures.json" | sha256sum | cut -d' ' -f1)"
 		if [ "$(cat "$DIR/old/.ci-built" 2>/dev/null)" != "$built" ]; then
 			ORIGIN=http://localhost:4000 "$DIR/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
 			echo "$built" > "$DIR/old/.ci-built"

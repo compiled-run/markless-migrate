@@ -6,6 +6,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${PORT:-4000}"
 WORKERS="${OLD_WORKERS:-1}"
 cd "$DIR/old/apps/v4"
+# A build made before freeze-old.mjs existed is frozen here; a page rendered on request reads the same fixtures as the build.
+node "$DIR/freeze-old.mjs" .
+export NODE_OPTIONS="--import $DIR/old-fixtures.mjs${NODE_OPTIONS:+ $NODE_OPTIONS}"
 if [ "$WORKERS" -le 1 ]; then exec ./node_modules/.bin/next start --port "$PORT"; fi
 origins=()
 for i in $(seq 1 "$WORKERS"); do
