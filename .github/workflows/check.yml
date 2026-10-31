@@ -83,6 +83,7 @@ env:
   APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
   TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
   SHARDS: ${{ inputs.shards || '13' }}
+  MARKLESS_MIGRATE_PROFILE: '1'
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
 
