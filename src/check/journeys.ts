@@ -1371,7 +1371,8 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 			await reach(page, target, (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
 			await sleep(RACE_GAP_MS);
 			// Back is queued so it can leave the document without destroying this evaluate's context.
-			if (step.then === 'back') return void (await page.evaluate(() => void setTimeout(() => history.back())));
+			// A document that started loading in the gap has no context to queue it in: the browser goes back instead.
+			if (step.then === 'back') return void (await page.evaluate(() => void setTimeout(() => history.back())).catch((error: Error) => (/Execution context was destroyed|navigat/i.test(error.message) ? page.goBack({ waitUntil: 'commit', timeout: STEP_TIMEOUT }).then(() => undefined) : Promise.reject(error))));
 			return reach(page, locate(page, step.then), (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
 		}
 		case 'type':
