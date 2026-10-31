@@ -532,7 +532,7 @@ async function stableRead(p, fn, arg) {
 	let last;
 	for (let i = 0; i < STABLE_READS; i++) {
 		if (i) await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 150))))).catch(() => {});
-		const now = await p.evaluate(fn, arg);
+		const now = await p.evaluate(atRest(fn), arg);
 		const text = JSON.stringify(now);
 		if (i && text === last) return now;
 		last = text;
@@ -542,7 +542,11 @@ async function stableRead(p, fn, arg) {
 
 // Where a page's own script leaves its inner scrollers (the docs sidebar centred on its link while the page streams) varies
 // from load to load: before boxes and hit points are read, every inner scroller is put back at its top on both sides.
-const resetScrollers = (p) => p.evaluate(() => { for (const e of document.querySelectorAll('*')) if (e !== document.scrollingElement && e.scrollTop && e.scrollHeight > e.clientHeight + 1) e.scrollTop = 0; }).catch(() => {});
+const RESET_SCROLLERS = () => { for (const e of document.querySelectorAll('*')) if (e !== document.scrollingElement && e.scrollTop && e.scrollHeight > e.clientHeight + 1) e.scrollTop = 0; };
+const resetScrollers = (p) => p.evaluate(RESET_SCROLLERS).catch(() => {});
+// The reset and the read in one task: a page that scrolls a sidebar to its active link late (on a busy runner, after the reset
+// before a separate read) is read at the same place on both sides.
+const atRest = (fn) => new Function('arg', `(${RESET_SCROLLERS})(); return (${fn})(arg);`);
 
 // A page scrolls some of its parts after load (a sidebar to its active link): boxes are read once every scroll position holds.
 async function settleScroll(p) {
@@ -888,7 +892,7 @@ for (let route; (route = queue.shift()) !== undefined; ) {
 			await load('new', route);
 			await resetScrollers(pages.new);
 			const newsRead = await stableRead(pages.new, listControls).catch(() => undefined);
-			const portGrid = await pages.new.evaluate(regionGrid, grid.filter((g) => g.key !== 'no control')).catch(() => []);
+			const portGrid = await pages.new.evaluate(atRest(regionGrid), grid.filter((g) => g.key !== 'no control')).catch(() => []);
 			// A side whose layout never held still is not compared at this width: the route is incomplete there, never red by chance.
 			if (!oldsRead || !newsRead) {
 				unsettled.push({ width, side: !oldsRead ? 'old' : 'new', why: `${!oldsRead ? 'the original' : 'the port'}'s layout at ${width} px kept changing over ${STABLE_READS} reads, so its boxes, hit points and controls at that width were not compared` });
