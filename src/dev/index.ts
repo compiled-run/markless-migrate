@@ -52,7 +52,7 @@ export interface DevOptions {
 }
 
 /** How many times a verdict adds the pages its routes navigate to and checks again, and how many it adds at once. */
-const MAX_ROUNDS = 2;
+const MAX_ROUNDS = 1;
 const MAX_DESTINATIONS = 60;
 
 const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)} s`;
