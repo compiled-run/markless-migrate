@@ -1,0 +1,6 @@
+{
+	"routes": [
+		"/examples/dashboard",
+		"/docs/components/radix/date-picker"
+	]
+}
