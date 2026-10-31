@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations, settle } from '../check/capture.ts';
-import { loadPage } from '../check/infrastructure.ts';
+import { loadPage, servedHtml } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { MEASURE_WIDTHS, readImages, readImageWidths, type ImageFacts } from './images.ts';
 import { fontPreloadsInFirstScreen, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
@@ -116,7 +116,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		try {
 			const response = await loadPage(page, new URL(route, origin).href);
 			if (!server) {
-				server = (await response?.text().catch(() => '')) ?? '';
+				server = await servedHtml(page, response);
 				status = response?.status() ?? 0;
 			}
 			await settle(page);

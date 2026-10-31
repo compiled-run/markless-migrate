@@ -68,6 +68,20 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 	}
 }
 
+/**
+ * The HTML the server sent for a page load. Chrome evicts a document's body from its inspector cache when the page loads a
+ * lot (a page of chart iframes), and `response.text()` then fails: the same request is made again from the page's context.
+ */
+export async function servedHtml(page: Page, response: Response | null): Promise<string> {
+	if (!response) return '';
+	const read = await response.text().catch(() => undefined);
+	if (read !== undefined) return read;
+	const { cookie: _, ...headers } = await response.request().allHeaders();
+	const again = await page.context().request.get(response.url(), { headers, maxRedirects: 0, failOnStatusCode: false, timeout: LOAD_TIMEOUT_MS });
+	if (again.status() !== response.status()) throw new Error(`the server's HTML for ${response.url()} could not be read: the browser evicted it, and asked again the server answered ${again.status()}, not ${response.status()}`);
+	return again.text();
+}
+
 /** The browser contexts one route's check opened, so a check past its deadline can be stopped. */
 export class Scope {
 	closed = false;
