@@ -199,7 +199,8 @@ export function fcpCost(load: RouteLoad): FontPreloadMeasure['fcpWorse'] {
 export async function measurePreload(origin: string, font: LateFont, options: LoadOptions = {}, measure: typeof measureLoad = measureLoad): Promise<FontPreloadMeasure> {
 	const [plain, preloaded] = await Promise.all([proxy(origin, font.route), proxy(origin, font.route, preloadTag(font))]);
 	try {
-		const loads = await measure({ old: preloaded.origin, new: plain.origin }, [font.route], options);
+		// The preload's gain is judged as PageSpeed Insights would score it, which simulates the throttled load.
+		const loads = await measure({ old: preloaded.origin, new: plain.origin }, [font.route], { throttle: 'simulated', ...options });
 		const load = loads.get(font.route)!;
 		const lcp = load.verdicts.find((v) => v.metric === 'lcp');
 		const cost = fcpCost(load);
