@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
-import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
+import { copyAssets, copyStaticDir, MANAGED_ASSETS, pruneUnreferenced, readManaged, referencedAssets, resourcePaths, writeManaged } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
@@ -2169,6 +2169,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
+	// What the old pages loaded and the written app no longer names (the old framework's scripts, a sheet a cut sheet
+	// replaced, a font no kept rule draws) is not shipped; the source's own public/ files stay as they are.
+	const referenced = await referencedAssets(options.old, publicDir, {
+		markup: [...prepared.values()].flatMap((p) => [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)]),
+		urls: [...prepared.values()].flatMap((p) => [...p.head.flatMap((t) => Object.values(t.attrs).flatMap((v) => v.split(',').map((c) => c.trim().split(/\s+/)[0]!))), ...p.late, ...p.lateFontPaths]),
+	});
+	// A whole convert also removes what an earlier one copied or cut and this one no longer references; one of some
+	// routes (--only) leaves every other page's files alone.
+	const whole = !options.only?.length;
+	const managedFile = join(state, 'convert', MANAGED_ASSETS);
+	const earlier = whole ? (await readManaged(managedFile)).filter((path) => !assets.copied.some((c) => c.path === path)) : [];
+	const candidates = [...assets.copied, ...earlier.map((path) => ({ path, bytes: 0 }))];
+	const sourcePublic = options.source ? join(options.source, 'public') : undefined;
+	const ownFiles = await Promise.all(candidates.map((c) => (sourcePublic ? stat(join(sourcePublic, decodeURIComponent(c.path))).then(() => true, () => false) : false)));
+	const unshipped = await pruneUnreferenced(publicDir, candidates, new Set([...referenced, ...candidates.filter((_, i) => ownFiles[i]).map((c) => c.path)]));
+	if (whole) await writeManaged(managedFile, [...assets.copied.map((c) => c.path), ...used.written].filter((path) => referenced.has(path)));
+	if (unshipped.length) log(`assets: ${unshipped.length} the old pages loaded and the written app does not name left out (${Math.round(unshipped.reduce((n, c) => n + c.bytes, 0) / 1024)} kB)`);
 	const endpoints: EndpointPort[] = [];
 	const serverKept = options.reuse && (await keepRouting(app, [...new Set(out.map((r) => new URL(r.route, options.old).pathname))]));
 	if (serverKept) log('server: kept as written before, with these pages');
