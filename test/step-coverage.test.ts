@@ -36,3 +36,24 @@ test("a journey's new code is what it ran first in the plan: a second button cal
 		server.close();
 	}
 });
+
+test('pruning keeps every element its first journey and leaves out later ones that reach no new code', async () => {
+	const page = `<!doctype html><main>${Array.from({ length: 6 }, (_, i) => `<button class="b">Item ${i}</button>`).join('')}<p id="out"></p></main><script src="/app.js"></script>`;
+	const code = `const out = document.querySelector('#out'); const go = (e) => { out.textContent = e.target.textContent; }; for (const b of document.querySelectorAll('.b')) b.onclick = go;`;
+	const server = createServer((req, res) => (req.url === '/app.js' ? res.writeHead(200, { 'content-type': 'text/javascript' }).end(code) : res.writeHead(200, { 'content-type': 'text/html' }).end(page)));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const browser = await chromium.launch();
+	try {
+		const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const viewport = { name: 'desktop', width: 1280, height: 800, isMobile: false };
+		const full = await explore(browser, defaultEnv(origin), '/', viewport, {});
+		const pruned = await explore(browser, defaultEnv(origin), '/', viewport, { prune: true });
+		const used = (x: typeof full) => new Set(x.journeys.map((j) => j.steps.at(-1)!.target.name));
+		assert.deepEqual(used(pruned), used(full), 'every element still has a journey');
+		assert.ok(pruned.journeys.length < full.journeys.length, `${pruned.journeys.length} of ${full.journeys.length}`);
+		assert.equal(pruned.pruned, full.journeys.length - pruned.journeys.length);
+	} finally {
+		await browser.close();
+		server.close();
+	}
+});
