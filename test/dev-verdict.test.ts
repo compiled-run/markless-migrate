@@ -46,3 +46,28 @@ test("the CI workflows read the shard check flags and the probe's budgets from c
 	assert.equal(execFileSync(process.execPath, [script, 'check', '2', '60']).toString().trim(), shardCheckArgs('2', '60').join(' '));
 	assert.equal(execFileSync(process.execPath, [script, 'probe', 'webkit']).toString(), `${Object.entries(PROBE_ENGINES.webkit).map(([k, v]) => `export ${k}=${v}`).join('\n')}\n`);
 });
+
+test('a visit to a page the build does not hold is recorded, by its document or its fragment URL, and only from a browser', async () => {
+	const { createServer } = await import('node:http');
+	const { pageOf, recordingProxy } = await import('../src/dev/proxy.ts');
+	assert.equal(pageOf('/_markless/fragment/docs/installation', '/_markless/fragment/'), '/docs/installation');
+	assert.equal(pageOf('/_markless/fragment/', '/_markless/fragment/'), '/');
+	assert.equal(pageOf('/docs/', undefined), '/docs');
+	const upstream = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/plain' }).end(`served ${req.url}`));
+	await new Promise<void>((done) => upstream.listen(0, '127.0.0.1', done));
+	const seen = new Set<string>();
+	const built = new Set(['/a']);
+	const proxy = await recordingProxy((upstream.address() as { port: number }).port, 0, (p) => !built.has(p), '/_markless/fragment/', seen);
+	const at = `http://127.0.0.1:${(proxy.address() as { port: number }).port}`;
+	try {
+		const browser = { 'user-agent': 'Mozilla/5.0 HeadlessChrome' };
+		assert.equal(await (await fetch(`${at}/b?x=1`, { headers: browser })).text(), 'served /b?x=1');
+		await fetch(`${at}/_markless/fragment/c`, { headers: browser });
+		await fetch(`${at}/a`, { headers: browser });
+		await fetch(`${at}/d`);
+		assert.deepEqual([...seen].sort(), ['/b', '/c']);
+	} finally {
+		proxy.close();
+		upstream.close();
+	}
+});

@@ -12,6 +12,8 @@ import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, write
 import { PROBE_ENGINES, shardCheckArgs, type ProbeEngine } from '../check/ci-settings.ts';
 import { CONVERT_INPUTS, type ConvertInputs } from '../convert/inputs.ts';
 import { formatVerdicts, routeVerdict, type CheckedRoute, type RouteVerdict } from './verdict.ts';
+import { recordingProxy } from './proxy.ts';
+import { fragmentPath } from '../cache/apply.ts';
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = join(REPO, 'src', 'cli.ts');
@@ -48,6 +50,10 @@ export interface DevOptions {
 	readonly siteTargets?: string;
 	readonly log?: (line: string) => void;
 }
+
+/** How many times a verdict adds the pages its routes navigate to and checks again, and how many it adds at once. */
+const MAX_ROUNDS = 2;
+const MAX_DESTINATIONS = 60;
 
 const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)} s`;
 
@@ -206,9 +212,14 @@ export async function dev(options: DevOptions): Promise<number> {
 	await prepareDevApp(app, devApp);
 	await mkdir(work, { recursive: true });
 	const routesFile = join(work, 'routes.txt');
+	// A verdict also builds the pages its routes navigate to (learned from earlier runs), so a click that leaves a route lands on the port.
+	const destinationsFile = join(work, 'destinations.json');
+	const destinations = options.verdict ? (JSON.parse(await readFile(destinationsFile, 'utf8').catch(() => '{}')) as Record<string, string[]>) : {};
+	const built = new Set([...routes, ...routes.flatMap((r) => destinations[r] ?? [])]);
+	const builtList = () => [...routes, ...inventory.pages.filter((p) => built.has(p) && !routes.includes(p))];
 	const lastRoutes = await readFile(routesFile, 'utf8').catch(() => '');
-	if (lastRoutes !== routes.join('\n')) await rm(join(devApp, 'pages'), { recursive: true, force: true });
-	await writeFile(routesFile, routes.join('\n'));
+	if (lastRoutes !== builtList().join('\n')) await rm(join(devApp, 'pages'), { recursive: true, force: true });
+	await writeFile(routesFile, builtList().join('\n'));
 
 	const inputs = await readFile(join(app, '.migrate', 'convert', CONVERT_INPUTS), 'utf8').then((t) => JSON.parse(t) as ConvertInputs, () => undefined);
 	if (options.verdict && !inputs) log(`no ${join('.migrate', 'convert', CONVERT_INPUTS)} from a whole convert of the app: the routes are converted without its --page-order-from, which a whole convert may have had`);
@@ -239,9 +250,15 @@ export async function dev(options: DevOptions): Promise<number> {
 	};
 	if (!(await convertRoutes(true))) return 1;
 
-	const server = new AppServer(devApp, options.port ?? (await freePort()), options.build === true || options.verdict === true, log);
+	const publicPort = options.port ?? (await freePort());
+	const server = new AppServer(devApp, options.verdict ? await freePort() : publicPort, options.build === true || options.verdict === true, log);
+	const pageSet = new Set(inventory.pages);
+	const reached = new Set<string>();
+	const proxy = options.verdict ? await recordingProxy(server.port, publicPort, (page) => pageSet.has(page) && !built.has(page), await fragmentPath(app), reached) : undefined;
+	const origin = proxy ? `http://127.0.0.1:${publicPort}` : server.origin;
 	const stop = () => {
 		server.stop();
+		proxy?.close();
 		process.exit(130);
 	};
 	process.once('SIGINT', stop);
@@ -249,7 +266,7 @@ export async function dev(options: DevOptions): Promise<number> {
 	try {
 		await server.start(routes[0]!);
 		for (const r of routes.slice(1)) await fetch(server.origin + r).catch(() => {});
-		log(`original: ${old}${routes[0]}\nport:     ${server.origin}${routes[0]}`);
+		log(`original: ${old}${routes[0]}\nport:     ${origin}${routes[0]}`);
 		const probe = options.noProbes ? undefined : await probeScript(options.probe);
 		let before: RouteProbe[] | undefined;
 		const probeRoutes = async (asked: readonly string[]) => {
@@ -293,7 +310,7 @@ export async function dev(options: DevOptions): Promise<number> {
 			const since = Date.now();
 			const report = join(devApp, '.migrate', 'report.json');
 			await rm(report, { force: true });
-			const args = [CLI, 'check', '--old', old, '--new', server.origin, ...which.flatMap((r) => ['--route', r]), '--site-targets', siteTargets, ...shardCheckArgs()];
+			const args = [CLI, 'check', '--old', old, '--new', origin, ...which.flatMap((r) => ['--route', r]), '--site-targets', siteTargets, ...shardCheckArgs()];
 			const done = await run(process.execPath, args, { cwd: devApp, env: { MARKLESS_MIGRATE_PROFILE: '1' }, logFile: join(work, 'verdict-check.log') });
 			log(`check in ${seconds(since)} (exit ${done.code}, ${join(work, 'verdict-check.log')})`);
 			const parsed = await readFile(report, 'utf8').then((t) => JSON.parse(t) as { routes?: CheckedRoute[] }, () => undefined);
@@ -307,7 +324,7 @@ export async function dev(options: DevOptions): Promise<number> {
 			await rm(out, { force: true });
 			const strips = join(work, 'strips', engine);
 			await mkdir(strips, { recursive: true });
-			const env = { OLD: old, NEW: server.origin, ENGINE: engine, STRIPS: strips, ...PROBE_ENGINES[engine], ...(oldBuild ? { REUSE: join(app, '.migrate', 'probe-reuse'), OLD_BUILD: oldBuild } : {}) };
+			const env = { OLD: old, NEW: origin, ENGINE: engine, STRIPS: strips, ...PROBE_ENGINES[engine], ...(oldBuild ? { REUSE: join(app, '.migrate', 'probe-reuse'), OLD_BUILD: oldBuild } : {}) };
 			const done = await run(process.execPath, [verdictProbe, routesJson, out], { cwd: REPO, env, logFile: join(work, `verdict-${engine}.log`) });
 			log(`${engine} probe in ${seconds(since)} (exit ${done.code}, ${join(work, `verdict-${engine}.log`)})`);
 			return parseProbeLines(await readFile(out, 'utf8').catch(() => ''));
@@ -337,8 +354,28 @@ export async function dev(options: DevOptions): Promise<number> {
 			log(`\n${formatVerdicts(verdicts).trimEnd()}\n(${seconds(since)} for check and probes; ${join(work, 'verdict.json')})`);
 			return verdicts;
 		};
+		const verdictLanding = async (): Promise<RouteVerdict[]> => {
+			for (let round = 1; ; round++) {
+				reached.clear();
+				const verdicts = await verdictOn(routes);
+				const more = [...reached].filter((p) => !built.has(p)).slice(0, MAX_DESTINATIONS);
+				if (!more.length) return verdicts;
+				if (round > MAX_ROUNDS) {
+					log(`the routes still navigate to pages this build does not hold (${more.slice(0, 8).join(', ')}): those steps reached the original's page, so the verdict stands as a FAIL`);
+					return verdicts.map((v) => ({ ...v, pass: false, reasons: [...v.reasons, `navigates to pages the build did not hold after ${MAX_ROUNDS} rounds: ${more.slice(0, 4).join(', ')}`] }));
+				}
+				log(`\nthe routes navigated to ${more.length} page${more.length === 1 ? '' : 's'} this build does not hold (${more.slice(0, 8).join(', ')}${more.length > 8 ? ', ...' : ''}): building them too and checking again`);
+				for (const r of routes) destinations[r] = [...new Set([...(destinations[r] ?? []), ...more])];
+				await writeFile(destinationsFile, JSON.stringify(destinations, null, '\t'));
+				for (const p of more) built.add(p);
+				await writeFile(routesFile, builtList().join('\n'));
+				if (!(await convertRoutes(true))) return verdicts.map((v) => ({ ...v, pass: false, reasons: [...v.reasons, 'convert failed while adding the pages it navigates to'] }));
+				server.stop();
+				await server.start(routes[0]!);
+			}
+		};
 		if (options.verdict) {
-			const verdicts = await verdictOn(routes);
+			const verdicts = await verdictLanding();
 			if (!options.watch) return verdicts.every((v) => v.pass) ? 0 : 1;
 		} else {
 			await probeRoutes(routes);
@@ -367,7 +404,7 @@ export async function dev(options: DevOptions): Promise<number> {
 						server.stop();
 						await server.start(routes[0]!);
 					}
-					if (options.verdict) await verdictOn(which);
+					if (options.verdict) await verdictLanding();
 					else {
 						await probeRoutes(which);
 						await checkRoutes(which);
@@ -416,5 +453,6 @@ export async function dev(options: DevOptions): Promise<number> {
 		return await new Promise<number>(() => {});
 	} finally {
 		server.stop();
+		proxy?.close();
 	}
 }
