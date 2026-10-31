@@ -521,10 +521,8 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 						const out = await driveModel(sides2, sides, route, item.control, parts, { ...MODEL_BUDGET, ...(options.models || {}) });
 						entry.ms += Date.now() - began;
 						if (out.state) entry.state = out.state;
-						if (out.failure) {
-							failures.push(out.failure);
-							failuresOf.set(id, [...(failuresOf.get(id) ?? []), out.failure]);
-						}
+						failures.push(...out.failures);
+						if (out.failures.length) failuresOf.set(id, [...(failuresOf.get(id) ?? []), ...out.failures]);
 						continue;
 					}
 					if (Date.now() - probing > budget) {
@@ -603,14 +601,21 @@ interface Pair {
  * fresh load, and shrinks the first that differs (on two old runs alike) to its shortest form, all within the budget's counts. A
  * shrunk difference is driven once more before it is reported, so one that does not repeat is no failure.
  */
-async function driveModel(pair: Pair, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, control: ProbeControl, parts: readonly PartSelectors[], budget: ModelBudget): Promise<{ state?: string; failure?: Failure }> {
+/** What a difference changes, word by word: the same attribute missing on new is one difference whatever else the field reads. */
+function signature(d: FieldDiff): string {
+	const words = (v: string) => new Set(v.split(/[\s;,]+/).filter(Boolean));
+	const [o, n] = [words(d.old), words(d.new)];
+	return `${d.field}|${[...[...o].filter((w) => !n.has(w)).map((w) => `-${w}`), ...[...n].filter((w) => !o.has(w)).map((w) => `+${w}`)].sort().join(' ')}`;
+}
+
+async function driveModel(pair: Pair, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, control: ProbeControl, parts: readonly PartSelectors[], budget: ModelBudget): Promise<{ state?: string; failures: Failure[] }> {
 	const model = modelOf(control)!;
-	const seed = process.env[MODEL_SEED] ? Number(process.env[MODEL_SEED]) : seedOf(route, controlKey(control), model);
+	const base = process.env[MODEL_SEED] ? Number(process.env[MODEL_SEED]) : seedOf(route, controlKey(control), model);
 	const prefix = opener(model);
-	const limit = budget.runs + budget.shrinks;
-	let calls = 0;
 	let missing: string | undefined;
-	let found: { ops: Op[]; steps: FieldDiff[][]; old: Run; next: Run; files: string[] } | undefined;
+	// A difference already reported is left out of later rounds, so one that shows on every step cannot hide a later one.
+	const known = new Set<string>();
+	const fresh = (steps: FieldDiff[][]) => steps.map((d) => d.filter((x) => !known.has(signature(x))));
 	const differs = async (ops: Op[]) => {
 		const sequence: Sequence = { cls: 'role model', name: model, ops };
 		const files = new Set<string>();
@@ -618,30 +623,42 @@ async function driveModel(pair: Pair, sides: { readonly old: SideEnv; readonly n
 		if (old[0]?.control === 'not on the page') missing = 'not found again on the old page';
 		else if (next[0]?.control === 'not on the page') missing = 'not on the new page: the journeys and the rendered check compare whether it is there';
 		if (missing) return undefined;
-		let steps = compareRuns(old, next);
+		let steps = fresh(compareRuns(old, next));
 		if (!steps.some((d) => d.length)) return undefined;
-		steps = compareRuns(old, next, await runSequence(pair.old, sides.old.origin, route, control, sequence, [], new Set()));
+		steps = fresh(compareRuns(old, next, await runSequence(pair.old, sides.old.origin, route, control, sequence, [], new Set())));
 		return steps.some((d) => d.length) ? { ops, steps, old, next, files: [...files] } : undefined;
 	};
-	const details = await fc.check(
-		fc.asyncProperty(sequencesOf(model, budget), async (drawn) => {
-			if (missing || ++calls > limit) return true;
-			const out = await differs([...prefix, ...drawn]);
-			if (out) found = out;
-			return !out;
-		}),
-		{ seed, numRuns: budget.runs },
-	);
-	if (missing) return { state: missing };
-	if (!found) return {};
-	const shrunk: { ops: Op[]; steps: FieldDiff[][] } = found;
-	const ops = shrunk.ops.slice(0, shrunk.steps.findIndex((d) => d.length) + 1);
-	const confirmed = await differs(ops);
-	if (!confirmed) return { state: `probed: a difference after ${ops.length} steps did not repeat` };
-	return { failure: modelFailure(route, control, model, seed, details.counterexamplePath ?? '', confirmed) };
+	const failures: Failure[] = [];
+	let state: string | undefined;
+	for (let round = 0; round < budget.findings; round++) {
+		const seed = (base + round) | 0;
+		let calls = 0;
+		let found: { ops: Op[]; steps: FieldDiff[][] } | undefined;
+		const details = await fc.check(
+			fc.asyncProperty(sequencesOf(model, budget), async (drawn) => {
+				if (missing || ++calls > budget.runs + budget.shrinks) return true;
+				const out = await differs([...prefix, ...drawn]);
+				if (out) found = out;
+				return !out;
+			}),
+			{ seed, numRuns: budget.runs },
+		);
+		if (missing) return { state: missing, failures: [] };
+		if (!found) break;
+		const shrunk: { ops: Op[]; steps: FieldDiff[][] } = found;
+		const ops = shrunk.ops.slice(0, shrunk.steps.findIndex((d) => d.length) + 1);
+		const confirmed = await differs(ops);
+		if (!confirmed) {
+			state = `probed: a difference after ${ops.length} steps did not repeat`;
+			break;
+		}
+		failures.push(modelFailure(route, control, model, base, round, details.counterexamplePath ?? '', confirmed));
+		for (const d of confirmed.steps.flat()) known.add(signature(d));
+	}
+	return { ...(state ? { state } : {}), failures };
 }
 
-function modelFailure(route: string, control: ProbeControl, model: Model, seed: number, path: string, found: { ops: readonly Op[]; steps: readonly FieldDiff[][]; old: Run; next: Run; files: readonly string[] }): Failure {
+function modelFailure(route: string, control: ProbeControl, model: Model, seed: number, round: number, path: string, found: { ops: readonly Op[]; steps: readonly FieldDiff[][]; old: Run; next: Run; files: readonly string[] }): Failure {
 	// The steps after the first that differs cannot change it: the shortest sequence ends there.
 	const k = found.steps.findIndex((d) => d.length);
 	const trail = found.ops.slice(0, k + 1).map(describeOp);
@@ -650,10 +667,10 @@ function modelFailure(route: string, control: ProbeControl, model: Model, seed: 
 	return {
 		route,
 		dimension: 'behaviour',
-		check: `role model probe of ${describeControl(control)}: the ${model} model, seed ${seed}, shrunk to ${k + 1} step${k ? 's' : ''} (${trail.at(-1)}): ${trail.join(', then ')}`,
+		check: `role model probe of ${describeControl(control)}: the ${model} model, seed ${seed}${round ? ` round ${round + 1}` : ''}, shrunk to ${k + 1} step${k ? 's' : ''} (${trail.at(-1)}): ${trail.join(', then ')}`,
 		expected: `old, after ${trail.join(', then ')}: ${diffs.map((d) => `${d.field}: ${d.old}`).join('; ')}${context(found.old[k + 1])}`,
 		actual: `new: ${diffs.map((d) => `${d.field}: ${d.new}`).join('; ')}${context(found.next[k + 1])}`,
-		hint: `${MODEL_HINTS[model]} The steps were drawn with seed ${seed} (fixed by the route, the control and the model; ${MODEL_SEED}=${seed} draws them again${path ? `, fast-check path ${path}` : ''}).${found.files.length ? ` Likely part: ${found.files.join(', ')} (its selectors match this control or what it opened).` : ''}`,
+		hint: `${MODEL_HINTS[model]} The steps were drawn with seed ${seed} (fixed by the route, the control and the model; ${MODEL_SEED}=${seed} draws them again${round ? `; round ${round + 1} draws from seed ${(seed + round) | 0} and leaves out the differences the rounds before it reported` : ''}${path ? `, fast-check path ${path}` : ''}).${found.files.length ? ` Likely part: ${found.files.join(', ')} (its selectors match this control or what it opened).` : ''}`,
 	};
 }
 

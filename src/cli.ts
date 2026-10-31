@@ -204,7 +204,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           pattern (arrows, Home/End, Page keys, ArrowRight into a submenu and ArrowLeft out, typeahead,
           Tab and Shift+Tab, Escape, choices, typed text and dates such as "May 28, 2025"), from a seed fixed
           by the route, the control and the model; a difference is shrunk to its shortest steps and reported
-          with its seed (MARKLESS_MIGRATE_MODEL_SEED=<seed> draws them again). --no-role-models leaves them out.
+          with its seed (MARKLESS_MIGRATE_MODEL_SEED=<seed> draws them again), and up to two more rounds look
+          for a difference beyond the ones reported. --no-role-models leaves them out.
           --no-probes leaves them out; --only probes runs them alone.
           Control parity, with the probes: each width's controls (1280, 1440, 390) are listed on both apps
           and a control the original shows at a width the port lacks is red; each control's box and its

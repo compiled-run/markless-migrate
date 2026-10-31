@@ -175,9 +175,11 @@ export interface ModelBudget {
 	readonly runs: number;
 	readonly steps: number;
 	readonly shrinks: number;
+	/** Rounds after a reported difference, each from the next seed with what was reported left out, so one difference cannot mask the next. */
+	readonly findings: number;
 }
 
-export const MODEL_BUDGET: ModelBudget = { runs: 8, steps: 6, shrinks: 24 };
+export const MODEL_BUDGET: ModelBudget = { runs: 8, steps: 6, shrinks: 24, findings: 3 };
 
 const date: fc.Arbitrary<Op> = dateStrings.map((text) => ({ op: 'type', text }));
 const key = (k: string): Op => ({ op: 'key', key: k });
