@@ -66,15 +66,20 @@ export async function workerRequestsOnLoad(origin: string, routes: readonly stri
 			const context = await browser.newContext(options.headers ? { extraHTTPHeaders: { ...options.headers } } : {});
 			const page = await context.newPage();
 			const ran = new Set<string>();
+			const redirected = new Set<string>();
 			page.on('response', (response) => {
 				const url = new URL(response.url());
 				if (!/^https?:$/.test(url.protocol) || url.origin !== new URL(origin).origin || response.headers()['cf-cache-status']) return;
-				ran.add(`${response.status()} ${url.pathname}${url.search}`);
+				// Cloudflare's asset layer answers x.html with a redirect to x: free, but one more round trip.
+				const location = response.headers()['location'];
+				if (response.status() >= 300 && response.status() < 400 && location) redirected.add(`${url.pathname}${url.search} to ${location}`);
+				else ran.add(`${response.status()} ${url.pathname}${url.search}`);
 			});
 			await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
 			await page.waitForTimeout(options.settleMs ?? 3000);
 			await context.close();
 			for (const request of ran) findings.push({ url: route, problem: `loading it ran the Worker for ${request}` });
+			for (const request of redirected) findings.push({ url: route, problem: `loading it was redirected, one more round trip, for ${request}` });
 		}
 	} finally {
 		await browser.close();

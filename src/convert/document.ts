@@ -185,7 +185,8 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 			let body = `${(layer?.declare ?? []).map((line) => `\t${line}\n`).join('')}\t<>${markup}</>\n`;
 			// A layer a site component stands in for is served whatever its size: the component renders the shell, and the file holds the rest.
 			if ((markup.length >= SERVED_LAYER_BYTES || layer?.imports?.length) && layer?.fill && !layer.declare?.length) {
-				const path = `/_converted/layers/${createHash('sha256').update(layer.fill).digest('hex').slice(0, 16)}.html`;
+				// A directory's index: every static host serves /<hash>/ without the redirect Cloudflare answers <hash>.html with.
+				const path = `/_converted/layers/${createHash('sha256').update(layer.fill).digest('hex').slice(0, 16)}/`;
 				served.push({ path, html: layer.fill });
 				const keys = [...new Set([...layer.shell.matchAll(/ data-mm-layer="([^"]*)"/g)].map((m) => m[1]!))];
 				const origin = layer.fill.includes(APP_URL_TOKEN) || layer.shell.includes(APP_URL_TOKEN) ? ' data-mm-app-url={APP_URL}' : '';
