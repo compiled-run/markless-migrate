@@ -269,7 +269,9 @@ jobs:
           path: ${{ env.APP }}/.migrate/reuse
           key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
           restore-keys: check-reuse-${{ env.SITE }}-
+      # Stopped before the job's own limit, so the steps after it still upload each route the shard finished.
       - name: Check
+        timeout-minutes: 320
         env:
           SHARD: ${{ matrix.shard }}
           FLAGS: ${{ inputs.flags }}
