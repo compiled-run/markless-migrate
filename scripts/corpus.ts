@@ -13,6 +13,8 @@ interface Bug {
 	readonly route: string;
 	readonly caught: string;
 	readonly fixture: string;
+	/** Not reported yet on its build, and the work that takes it: verify lists it and does not fail on it. */
+	readonly pending?: string;
 }
 
 interface Corpus {
@@ -86,9 +88,10 @@ if (import.meta.url === `file://${process.argv[1]}` && command && file) {
 		const reports = new Map<string, RouteReport[]>();
 		for (const build of Object.keys(corpus.builds)) reports.set(build, await reportsUnder(join(a, build)));
 		const all = verdicts(corpus, reports);
-		const lines = ['| bug | build | route | verdict | finding |', '| --- | --- | --- | --- | --- |', ...all.map((v) => `| ${v.bug.id} | ${v.bug.build} | ${v.bug.route} | ${v.state} | ${v.detail.replace(/\|/g, '\\|')} |`)];
+		const lines = ['| bug | build | route | verdict | finding |', '| --- | --- | --- | --- | --- |', ...all.map((v) => `| ${v.bug.id} | ${v.bug.build} | ${v.bug.route} | ${v.state}${v.bug.pending && v.state !== 'caught' ? ` (pending: ${v.bug.pending})` : ''} | ${v.detail.replace(/\|/g, '\\|')} |`)];
 		console.log(lines.join('\n'));
-		const bad = all.filter((v) => v.state !== 'caught');
+		for (const v of all.filter((x) => x.bug.pending && x.state === 'caught')) console.log(`\n${v.bug.id} is reported now: drop its "pending" from bugs.json so it stays reported.`);
+		const bad = all.filter((v) => v.state !== 'caught' && !v.bug.pending);
 		if (bad.length) {
 			console.error(`\n${bad.length} of ${all.length} corpus bugs are not reported by check: ${bad.map((v) => `${v.bug.id} (${v.state})`).join(', ')}`);
 			process.exit(1);
