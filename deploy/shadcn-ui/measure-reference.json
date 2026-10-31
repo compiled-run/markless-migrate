@@ -1,0 +1,12 @@
+{
+	"routes": [
+		"/docs/components/radix/breadcrumb",
+		"/docs/components/radix/button-group",
+		"/docs/components/radix/badge",
+		"/docs/components/radix/kbd",
+		"/docs/components/radix/separator"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
