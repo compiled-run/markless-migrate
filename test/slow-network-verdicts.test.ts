@@ -162,3 +162,36 @@ test("a route's cells share one significance: a gap one identical cell of nine s
 	assert.equal(red.length, 1);
 	assert.match(red[0]!.actual, /p = 0\.004, under the 0\.0056 its rank among the route's cells needs/);
 });
+
+test("on identical pages a route of 9 cells is red at most 5% of the time, and a 0.3 s later first frame in one cell is red at least 99% of the time (seeded, so exact)", () => {
+	let seed = 20261030;
+	const uniform = () => {
+		seed = (seed + 0x6d2b79f5) | 0;
+		let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+	const gauss = () => Math.sqrt(-2 * Math.log(1 - uniform())) * Math.cos(2 * Math.PI * uniform());
+	// Run-to-run noise as the #455 Firefox Regular 3G runs showed it (about 60 ms on the first frame), the three times of a run correlated.
+	const runs = (late: number) => Array.from({ length: 5 }, () => {
+		const shared = gauss();
+		const at = (base: number, sd: number) => Math.round(base + sd * (0.84 * shared + 0.55 * gauss()));
+		return { ...run(at(1500, 120), at(500, 60) + late), lcp: at(900, 80) + late };
+	});
+	const cells = (['chromium', 'firefox', 'webkit'] as const).flatMap((b) => ['regular-3g', 'regular-2g', 'slow-4g'].map((p) => [p, b] as const));
+	const redShare = (late: number, routes: number) => {
+		let red = 0;
+		for (let i = 0; i < routes; i++) {
+			const network: RouteNetwork = {
+				old: { url: 'http://old/', cells: cells.map(([p, b]) => summarizeCell(p, b, runs(0))) },
+				new: { url: 'http://new/', cells: cells.map(([p, b], at) => summarizeCell(p, b, runs(at === 0 ? late : 0))) },
+			};
+			if (networkFailures('/', network).length) red++;
+		}
+		return red / routes;
+	};
+	const identical = redShare(0, 1000);
+	assert.ok(identical <= 0.05, `identical pages red on ${identical * 100}% of routes`);
+	const later = redShare(300, 1000);
+	assert.ok(later >= 0.99, `0.3 s later in one cell red on ${later * 100}% of routes`);
+});
