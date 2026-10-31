@@ -157,8 +157,10 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
           journeys are explored main content first (tables, forms), until each element is used or
-          --journey-budget (default 120 s per route, or 3 s for each control the page shows, at most 15 min) runs out; --max-journeys caps their number and
-          --journey-depth (default 4) how many steps deep a journey goes (nested menus, sidebars). A
+          --max-journeys are run (default 1.5 per control the page shows, at least 60, at most 450, plus two per
+          keyboard pattern), so one build gets the same journeys on every run. --journey-budget (default
+          8 s per journey) only stops a run far slower than that: the route is then not checked
+          (incomplete), never compared on fewer journeys. --journey-depth (default 4) is how many steps deep a journey goes (nested menus, sidebars). A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
           run that has it, and the others carry its result. Each step is compared by what the page
           shows and keeps after it, and by how it answered: the viewport's pixels before and after it
