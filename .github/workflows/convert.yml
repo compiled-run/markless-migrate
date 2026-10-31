@@ -337,8 +337,8 @@ jobs:
           cd "$APP"
           status=0
           (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
-          # Node's default heap on a 16 GB runner is 4 GB; the rest of the runner is the build's to use.
-          NITRO_PRESET="${{ inputs.preset }}" NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          # A 6.5 GB heap makes V8 collect before the 16 GB runner fills; at 13 GB the full shadcn build ran the runner out of memory.
+          NITRO_PRESET="${{ inputs.preset }}" NODE_OPTIONS=--max-old-space-size=6656 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/build.txt"
           peak=$(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}')
           echo "build: exit $status, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') wall, peak RSS of one process $((peak / 1024)) MB, runner memory in use at most $(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) MB" >> "$GITHUB_STEP_SUMMARY"
