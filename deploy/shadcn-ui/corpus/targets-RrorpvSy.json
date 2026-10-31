@@ -1,0 +1,19 @@
+{
+	"routes": [
+		"/create",
+		"/typeset",
+		"/docs/directory",
+		"/docs/components/base/button-group",
+		"/docs/components/radix/badge",
+		"/view/new-york-v4/chart-line-interactive",
+		"/docs/components/radix/code-block",
+		"/docs/components/base/code-block",
+		"/docs/components/base/combobox",
+		"/docs/components/aria/context-menu",
+		"/docs/components/base/data-table",
+		"/docs/components/radix/date-picker"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
