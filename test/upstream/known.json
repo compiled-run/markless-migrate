@@ -167,6 +167,26 @@
 		"tests/with-scaled-background.spec.ts > Pixel > With scaled background > should scale background when dragging": {
 			"class": "part",
 			"why": "no part implements vaul's shouldScaleBackground (the wrapper's transform while open)"
+		},
+		"tests/non-dismissible.spec.ts > iPhone > Non-dismissible > should not close on background interaction": {
+			"class": "part",
+			"why": "the port does not carry <Drawer.Root dismissible={false}>: a press outside closes the drawer",
+			"racy": "it passes when the press lands before the part listens (listen() runs once the page is idle), so a pass is that race, not a fix"
+		},
+		"tests/non-dismissible.spec.ts > iPhone > Non-dismissible > should not close when dragged down": {
+			"class": "part",
+			"why": "the port does not carry <Drawer.Root dismissible={false}>: a press outside closes the drawer",
+			"racy": "it passes when the press lands before the part listens (listen() runs once the page is idle), so a pass is that race, not a fix"
+		},
+		"tests/non-dismissible.spec.ts > Pixel > Non-dismissible > should not close on background interaction": {
+			"class": "part",
+			"why": "the port does not carry <Drawer.Root dismissible={false}>: a press outside closes the drawer",
+			"racy": "it passes when the press lands before the part listens (listen() runs once the page is idle), so a pass is that race, not a fix"
+		},
+		"tests/non-dismissible.spec.ts > Pixel > Non-dismissible > should not close when dragged down": {
+			"class": "part",
+			"why": "the port does not carry <Drawer.Root dismissible={false}>: a press outside closes the drawer",
+			"racy": "it passes when the press lands before the part listens (listen() runs once the page is idle), so a pass is that race, not a fix"
 		}
 	},
 	"radix": {
