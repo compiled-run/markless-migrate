@@ -41,7 +41,9 @@ test("with reuse, the app's routing middleware is kept as written and only learn
 	try {
 		assert.equal(await keepRouting(app, ['/a']), false, 'none to keep: convert writes it');
 		await mkdir(join(app, 'server'), { recursive: true });
-		const handlers = `import * as handler0 from './handlers/app/api/search/route.ts';\n`;
+		await writeFile(join(app, 'server', 'routing.ts'), `import * as handler0 from './handlers/app/api/search/route.ts';\nconst PAGES = new Set<string>([]);\n`);
+		assert.equal(await keepRouting(app, ['/a']), false, 'a routing file that imports its handlers as it loads is written again');
+		const handlers = `const handler0 = () => import('./handlers/app/api/search/route.ts');\n`;
 		await writeFile(join(app, 'server', 'routing.ts'), `${handlers}const PAGES = new Set<string>(["/docs/b","/docs/a"]);\nconst OTHER = 1;\n`);
 		assert.equal(await keepRouting(app, ['/docs/c', '/$&']), true);
 		assert.equal(await readFile(join(app, 'server', 'routing.ts'), 'utf8'), `${handlers}const PAGES = new Set<string>(["/docs/c","/$&"]);\nconst OTHER = 1;\n`);
