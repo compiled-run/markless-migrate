@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { convertInputArgs, prepareDevApp } from '../src/dev/app.ts';
+import { convertInputArgs, missingDependencies, prepareDevApp } from '../src/dev/app.ts';
 import { diffRuns, formatDiffs, type Finding, type RouteProbe } from '../src/dev/findings.ts';
 import { portsLoading, routeGlob, routesUsing, selectRoutes } from '../src/dev/routes.ts';
 
@@ -86,4 +86,16 @@ test("a route converted alone gets the whole convert's page order, and nothing w
 	assert.deepEqual(convertInputArgs({ pageOrderFrom: 'https://old.example' }), ['--page-order-from', 'https://old.example']);
 	assert.deepEqual(convertInputArgs({ pageOrderFrom: null }), []);
 	assert.deepEqual(convertInputArgs(undefined), []);
+});
+
+test('a dependency a convert added that the app has not installed is named before the build fails on it', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'dev-deps-'));
+	try {
+		await mkdir(join(root, 'app', 'node_modules', 'd3-shape'), { recursive: true });
+		await mkdir(join(root, 'dev'), { recursive: true });
+		await writeFile(join(root, 'dev', 'package.json'), JSON.stringify({ dependencies: { 'd3-shape': '3.2.0', 'chrono-node': '2.8.4' } }));
+		assert.deepEqual(await missingDependencies(join(root, 'app'), join(root, 'dev')), ['chrono-node']);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });

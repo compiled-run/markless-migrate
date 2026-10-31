@@ -1,5 +1,6 @@
 import type { ConvertInputs } from '../convert/inputs.ts';
-import { copyFile, cp, lstat, mkdir, readdir, readlink, rm, symlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, symlink } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 /** What the dev app links to in the app. */
@@ -58,4 +59,10 @@ export async function prepareDevApp(app: string, dev: string): Promise<void> {
 /** The convert flags that make a route the one the app's whole convert made: what that convert recorded it was given. */
 export function convertInputArgs(inputs: ConvertInputs | undefined): string[] {
 	return inputs?.pageOrderFrom ? ['--page-order-from', inputs.pageOrderFrom] : [];
+}
+
+/** The dependencies a convert wrote into the dev app's package.json that the app has not installed: the build cannot resolve them. */
+export async function missingDependencies(app: string, dev: string): Promise<string[]> {
+	const manifest = JSON.parse(await readFile(join(dev, 'package.json'), 'utf8').catch(() => '{}')) as { dependencies?: Record<string, string> };
+	return Object.keys(manifest.dependencies ?? {}).filter((name) => !existsSync(join(app, 'node_modules', name)));
 }

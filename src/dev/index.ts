@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { convertInputArgs, prepareDevApp, SITE_DIR } from './app.ts';
+import { convertInputArgs, missingDependencies, prepareDevApp, SITE_DIR } from './app.ts';
 import { diffRuns, formatDiffs, parseProbeLines, type RouteProbe } from './findings.ts';
 import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, writePortMap, type PortMap } from './routes.ts';
 import { PROBE_ENGINES, shardCheckArgs, type ProbeEngine } from '../check/ci-settings.ts';
@@ -228,6 +228,12 @@ export async function dev(options: DevOptions): Promise<number> {
 		await writePortMap(portsFile, map);
 		await writeFile(argsFile, JSON.stringify(inputArgs));
 		sameInputs = true;
+		const missing = await missingDependencies(app, devApp);
+		if (missing.length) {
+			log(`the converted routes import ${missing.join(', ')}, which the app has not installed: run npm install in ${app}, then run this again`);
+			return false;
+		}
+		await prepareDevApp(app, devApp);
 		log(`converted in ${seconds(since)} (${join(work, 'convert.log')})`);
 		return true;
 	};
