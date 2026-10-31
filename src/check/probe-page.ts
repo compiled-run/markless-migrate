@@ -154,6 +154,9 @@ export function installProbe(): void {
 			const focusAt = !active || active === document.body ? 'the page (body)' : el && active === el ? `the control` : el && el.contains(active) ? `inside the control: ${describe(active)}` : describe(active);
 			out.focus = focusAt;
 			out['focus ring'] = active && active !== document.body ? (active.matches(':focus-visible') ? 'shown (:focus-visible)' : 'not shown') + (active.hasAttribute('data-focus-visible') ? ', data-focus-visible' : '') : 'no focus';
+			// The state of what focus moved to: a nested folder or a day the keys reached is outside the control's own widget.
+			const focusedState = active && active !== document.body && active !== el ? attrs(active, /^(data-(hovered|focus-visible|focused)|tabindex)$/) : '';
+			if (focusedState) out['focused state'] = focusedState;
 			if (!el) {
 				out.control = 'gone';
 				return out;
@@ -210,7 +213,14 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | `item ${number}`): boolean {
+		/** Whether what `aim` marked has focus, holds it, or is the highlighted or active descendant item. */
+		active(): boolean {
+			const aimed = document.querySelector('[data-markless-migrate-aim]');
+			const at = document.activeElement;
+			if (!aimed || !at) return false;
+			return aimed === at || aimed.contains(at) || aimed.hasAttribute('data-highlighted') || aimed.hasAttribute('data-focused') || (Boolean(aimed.id) && at.getAttribute('aria-activedescendant') === aimed.id);
+		},
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | `item ${number}` | `opener ${number}` | `round item ${number}` | `round opener ${number}` | 'grid'): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -219,6 +229,13 @@ export function installProbe(): void {
 				const top = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"]')].filter(shown).pop();
 				found = top && [...top.querySelectorAll('button, [role="button"]')].filter(shown).find((b) => /\b(close|cancel|dismiss|done)\b/i.test(`${b.getAttribute('aria-label') ?? ''} ${text(b)}`));
 			} else if (what.startsWith('item ')) found = items()[Number(what.slice(5))];
+			else if (/^(round )?opener /.test(what) || what.startsWith('round item ')) {
+				// "round": the n-th counted round the list, so a drawn number always names one of what is shown.
+				const list = what.includes('opener') ? items().filter((i) => (i.hasAttribute('aria-haspopup') && i.getAttribute('aria-haspopup') !== 'false') || i.hasAttribute('aria-expanded')) : items();
+				const n = Number(what.split(' ').at(-1));
+				found = list[what.startsWith('round ') && list.length ? n % list.length : n];
+			}
+			else if (what === 'grid') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [...(p.matches('[role="grid"]') ? [p] : []), ...p.querySelectorAll('[role="grid"]')]).filter(shown).pop();
 			else if (what === 'popup') found = [...document.querySelectorAll(POPUP)].filter(shown).pop();
 			else if (what === 'toaster') found = [...document.querySelectorAll('[data-sonner-toaster], [aria-live]:not([aria-live="off"]), [role="region"][aria-label*="otification" i]')].find((t) => t.querySelector('*') && shown(t.querySelector('[data-sonner-toast], li, [role="status"]') ?? t));
 			else if (what === 'thumb') found = el && ([el, ...el.querySelectorAll('[role="slider"], input[type="range"]')].find((t) => t.matches('[role="slider"], input[type="range"]') && shown(t)) ?? el);
@@ -250,6 +267,8 @@ export interface ProbeControl {
 	readonly region: string;
 	/** What it says it opens (its aria-haspopup), when it says. */
 	readonly popup?: string;
+	/** A button that shows and hides what it controls (aria-expanded and aria-controls, no aria-haspopup): a disclosure. */
+	readonly expands?: boolean;
 	/** Its widget's print (installProbe's `print`), when asked for. */
 	readonly print?: string;
 }
@@ -303,7 +322,8 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 		const popup = (e.getAttribute('aria-haspopup') ?? '').toLowerCase();
 		// Right to left is its own kind: a library flips placement, arrows and outside clicks there, and a port can get that one wrong alone.
 		const dir = e.closest('[dir]')?.getAttribute('dir') === 'rtl' ? '|rtl' : '';
-		out.push({ role, name: label, nth, kind: `${region}|${slot ?? `${e.localName}[${role}]`}${dir}`, classes, region, ...(popup && popup !== 'false' ? { popup } : {}) });
+		const expands = role === 'button' && (!popup || popup === 'false') && e.hasAttribute('aria-expanded') && e.hasAttribute('aria-controls');
+		out.push({ role, name: label, nth, kind: `${region}|${slot ?? `${e.localName}[${role}]`}${dir}`, classes, region, ...(popup && popup !== 'false' ? { popup } : {}), ...(expands ? { expands } : {}) });
 	};
 	if (mark !== undefined) for (const o of document.querySelectorAll('[data-markless-migrate-probe]')) o.removeAttribute('data-markless-migrate-probe');
 	// A right-click target says so only through its handler: React's and Vue's props, or the element's own property.
