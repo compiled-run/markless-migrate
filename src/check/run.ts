@@ -134,6 +134,10 @@ export interface CheckOptions {
 	readonly templates?: false | { readonly patterns?: readonly string[]; /** Above how many pages templates are grouped (default TEMPLATE_THRESHOLD). */ readonly threshold?: number; /** Every page of the site when this run checks a shard of it: groups are made over all of them, so a group's representative may be another shard's page. */ readonly site?: readonly string[] };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
+	/** The frozen old build's identity: OLD's captures and journeys are recorded once per build in `cacheDir` and replayed on every later run, with no request to the old site. */
+	readonly oldBuild?: string;
+	/** With `oldBuild`, a replayed entry's recorded responses are still asked of the old site, only to report the ones it no longer answers the same way. */
+	readonly referenceDrift?: boolean;
 	/** The report directory: each route's screenshots, diffs and motion frames are written under its `shots` as soon as the route is checked, and the report keeps only their paths. */
 	readonly artifactsDir?: string;
 	/** Told as each page route's check finishes, with its result as the report will keep it. */
@@ -369,7 +373,7 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
 async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner, loads: readonly string[] = []): Promise<RouteResult> {
 	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
-	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
+	const cached = loads.length || run.oldCache?.build ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
@@ -388,8 +392,6 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const [oldRisky, newRisky] = risky.length ? await Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
 	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
 	const oldRiskyAgain = cached ? cached.oldRiskyAgain : risky.length && !run.old.sendWrites ? await replayDestructive(browser, run.old, route, viewport, risky) : oldRisky;
-	const mine: OldJourneys = { explored, runs, oldRisky, oldRiskyAgain };
-	if (!cached && loads.length && clientOnly(mine)) await run.oldCache?.write('journeys', run.old, key, loads, mine);
 	const journeys: RecordedJourney[] = [...plain, ...risky.map((j, i) => ({ ...j, expected: oldRisky[i]! }))];
 	const olds = runs.map((r, k) => [...r, ...(k === 0 ? oldRisky : oldRiskyAgain)]);
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
@@ -401,15 +403,19 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	// A theme toggle starts from the OS colour scheme: its cycles run again with the OS in dark mode, twice on old (what varies there may vary) and once on new.
 	const dark = themed(plain);
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
-	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
+	const [darkOlds, darkNext] = dark.length ? await Promise.all([cached?.dark ?? Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
 	const improvements: string[] = [];
+	const arrivedOld: { runs?: [RunResults, RunResults] } = cached?.arrived ? { runs: cached.arrived } : {};
 	// A page to arrive from that does not load is no reason to drop the route's own result: those journeys are reported as not compared, and the route stays red.
 	const arrivedFailures = explored.arrival
-		? await profiled(route, 'arrival journeys', () => checkArrived(browser, run, route, viewport, plain, explored.arrival!, owner, improvements)).catch((error: unknown): Failure[] => {
+		? await profiled(route, 'arrival journeys', () => checkArrived(browser, run, route, viewport, plain, explored.arrival!, owner, improvements, arrivedOld)).catch((error: unknown): Failure[] => {
 				if (run.old.scope?.closed) throw error;
 				return [{ route, dimension: 'behaviour', check: `journeys after arriving from ${explored.arrival!.entry} by ${describeTarget(explored.arrival!.link)}`, expected: 'the route\'s journeys compared after arriving in place', actual: `not compared: ${(error as Error).message.split('\n')[0]}`, hint: HINTS.coverage }];
 			})
 		: [];
+	const mine: OldJourneys = { explored, runs, oldRisky, oldRiskyAgain, ...(dark.length ? { dark: darkOlds as [RunResults, RunResults] } : {}), ...(arrivedOld.runs ? { arrived: arrivedOld.runs } : {}) };
+	const whole = !explored.arrival || Boolean(arrivedOld.runs);
+	if (!cached && whole && (run.oldCache?.build ? replayable(mine) : loads.length && clientOnly(mine))) await run.oldCache?.write('journeys', run.old, key, loads, mine);
 	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements));
 	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
 	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
@@ -424,7 +430,7 @@ const unframed = (key: string, value: unknown) => (key === 'regions' || key === 
  * followed (the router swaps the page in place), then the journey's steps run. Twice on old and once on new, compared alike;
  * a part that only works on a fresh load (one whose script runs once, at load) is red here.
  */
-async function checkArrived(browser: Browser, run: Run, route: string, viewport: Viewport, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[]): Promise<Failure[]> {
+async function checkArrived(browser: Browser, run: Run, route: string, viewport: Viewport, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[], old: { runs?: [RunResults, RunResults] }): Promise<Failure[]> {
 	const arrive: Step = { action: 'click', target: arrival.link };
 	const how = `after arriving from ${arrival.entry} by ${describeTarget(arrival.link)}`;
 	// One journey per kind of control is enough to show the parts are wired after the swap: the same control under another nth repeats it.
@@ -438,7 +444,8 @@ async function checkArrived(browser: Browser, run: Run, route: string, viewport:
 	});
 	const journeys: Journey[] = distinct.slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
 	if (!journeys.length) return [];
-	const [a, b, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
+	const [[a, b], next] = await Promise.all([old.runs ?? Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys)]), replayAll(browser, run.new, route, viewport, journeys)]);
+	old.runs = [a, b];
 	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements));
 }
 
@@ -509,11 +516,22 @@ interface OldJourneys {
 	readonly runs: RunResults[];
 	readonly oldRisky: RunResults;
 	readonly oldRiskyAgain: RunResults;
+	/** The theme toggles' journeys run twice on OLD with the OS in dark mode. */
+	readonly dark?: readonly [RunResults, RunResults];
+	/** The journeys run twice on OLD after arriving from another page. */
+	readonly arrived?: [RunResults, RunResults];
 }
+
+const oldRuns = (o: OldJourneys): RunResults[] => [...o.runs, o.oldRisky, o.oldRiskyAgain, ...(o.dark ?? []), ...(o.arrived ?? [])];
 
 /** OLD's journeys made no request to an app and wrote nothing: what they did is the page's own code, which the page-load fingerprint covers. */
 function clientOnly(o: OldJourneys): boolean {
-	return [...o.runs, o.oldRisky, o.oldRiskyAgain].every((r) => r.every((steps) => steps.every((step) => !step.requests.length && !step.writes?.length && !step.door)));
+	return oldRuns(o).every((r) => r.every((steps) => steps.every((step) => !step.requests.length && !step.writes?.length && !step.door)));
+}
+
+/** On a frozen old build, what OLD's journeys fetched is that build's own answer, recorded with them; a write it sent changed the old site, so those journeys are run again. */
+function replayable(o: OldJourneys): boolean {
+	return oldRuns(o).every((r) => r.every((steps) => steps.every((step) => !step.door && !step.writes?.some((w) => w.sent))));
 }
 
 /** How a control that ends the session or deletes was exercised: by its journey, with the requests it made held back or sent. */
@@ -834,7 +852,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const dataHosts = clientHosts(options.source?.clients ?? []);
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
-	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
+	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null, browser: browser.version() }, { ...(options.oldBuild ? { build: options.oldBuild } : {}), drift: Boolean(options.referenceDrift) }) : undefined;
 	const webkitBrowser = options.controls?.webkit ? await webkit.launch().catch((error: Error) => {
 		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
 	}) : undefined;
@@ -1008,7 +1026,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(options.partial ? { partial: { checked: checkedCount, total: options.partial.total } } : {}),
 			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
 			...(wasteReferences.length ? { wasteReferences } : {}),
-			...(oldCache ? { cache: { ...oldCache.counts } } : {}),
+			...(oldCache ? { cache: { ...oldCache.counts, ...(oldCache.build ? { build: oldCache.build } : {}), ...(oldCache.drift.enabled ? { drifted: [...oldCache.drift.urls].sort() } : {}) } } : {}),
 			...(navigation.length ? { navigation: { destinations: navigation.reduce((n, r) => n + r.destinations.length, 0), pairs: navigation.reduce((n, r) => n + r.pairs.length, 0), inPlace: navigation.reduce((n, r) => n + r.pairs.filter((p) => p.inPlace).length, 0), loads: navigation.reduce((n, r) => n + r.loads, 0), ms: navigation.reduce((n, r) => n + r.ms, 0) } } : {}),
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {

@@ -5,8 +5,9 @@
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
 // routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
 // results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago.
-import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { entryTag, IN_USE } from '../src/check/cache-names.ts';
 
 interface Targets {
 	readonly routes: string[];
@@ -113,6 +114,27 @@ export async function joinOld(from: string, to: string): Promise<number> {
 		n++;
 	}
 	return n;
+}
+
+/**
+ * Drops from a joined old-side cache the entries of checker versions and old builds no shard of this run used: they can
+ * never be read again, and would otherwise grow the cache with every build. A run whose shards used none prunes nothing.
+ */
+export async function pruneOld(shards: string, joined: string): Promise<number> {
+	const used = new Set<string>();
+	for (const entry of await readdir(shards, { recursive: true, withFileTypes: true }).catch(() => [])) {
+		if (entry.isFile() && /(^|\/)cache\/old$/.test(entry.parentPath) && entry.name.startsWith(IN_USE)) used.add(entryTag(entry.name)!);
+	}
+	if (!used.size) return 0;
+	let dropped = 0;
+	const dir = join(joined, 'cache/old');
+	for (const name of await readdir(dir).catch(() => [])) {
+		const tag = entryTag(name);
+		if (used.has(tag ?? '')) continue;
+		await rm(join(dir, name), { force: true });
+		if (name.endsWith('.bin')) dropped++;
+	}
+	return dropped;
 }
 
 /**
@@ -250,6 +272,10 @@ async function main(): Promise<void> {
 		console.log(`${await joinOld(a, b)} old-side entries`);
 		return;
 	}
+	if (command === 'prune-old' && a && b) {
+		console.log(`${await pruneOld(a, b)} old-side entries of other checker versions or old builds dropped`);
+		return;
+	}
 	if (command === 'gate' && a) {
 		const { routes } = JSON.parse(await readFile(join(a, 'report.json'), 'utf8')) as { routes: ReportRoute[] };
 		const left = unfinished(routes);
@@ -272,7 +298,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir>');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | prune-old <shards dir> <joined dir> | uploaded <shards dir>');
 	process.exit(2);
 }
 

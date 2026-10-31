@@ -17,6 +17,9 @@ case "${1:-}" in
 		fi
 		nohup "$DIR/serve-old.sh" > "$RUNNER_TEMP/old-serve.log" 2>&1 &
 		wait_for http://localhost:4000/
+		# The frozen build's identity (pinned source and fixtures, the build's own id, the scripts that serve it as built): check records the old side once per identity and replays it.
+		cat "$DIR/old/.ci-built" "$DIR/old/apps/v4/.next/BUILD_ID" "$DIR/serve-old.sh" "$DIR/freeze-old.mjs" "$DIR/old-fixtures.mjs" | sha256sum | cut -c1-16 > "$RUNNER_TEMP/old-build-id"
+		echo "old build: $(cat "$RUNNER_TEMP/old-build-id")"
 		for path in / /blocks /view/new-york-v4/dashboard-01; do curl -s -o /dev/null -w "old $path: %{http_code} in %{time_total} s\n" "http://localhost:4000$path"; done
 		;;
 	new)
