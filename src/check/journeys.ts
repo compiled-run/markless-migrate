@@ -329,7 +329,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
 			// The items of one long list (a search palette's 450 options) answer through the list's one handler: a few of them stand for the rest.
-			const base = { target, kind: `${info.region || 'page'}|${role}|${name}|${info.kind}`, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : info.list >= 0 ? { group: `${role}|list ${info.list}` } : {}) };
+			const base = { target, kind: `${info.region || 'page'}|${role}|${name}|${info.kind}`, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : info.cellClass ? { group: `${role}|cell ${info.cellClass}` } : info.list >= 0 ? { group: `${role}|list ${info.list}` } : {}) };
 			if (role === 'link') {
 				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
 					add({ ...base, covered: 'its address is compared by the rendered check' });
@@ -405,6 +405,15 @@ function describeElement(el: Element) {
 		grid: Boolean(grid && /^(grid|treegrid|tree)$/.test(grid.getAttribute('role') ?? '')),
 		header: Boolean(el.querySelector('[role="columnheader"], th')),
 		container: grid ? [...document.querySelectorAll('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table')].indexOf(grid) : -1,
+		// A control in an interactive grid's cell (a calendar's day) is alike the others of its kind of grid in the same state:
+		// any month, and the same calendar in another locale, are one class.
+		cellClass: (() => {
+			const cell = el.closest('[role="gridcell"], td');
+			if (!cell || !grid || grid.getAttribute('role') !== 'grid' || cell === el) return '';
+			const flag = (name: string) => (el.hasAttribute(name) && el.getAttribute(name) !== 'false') || (cell.hasAttribute(name) && cell.getAttribute(name) !== 'false');
+			const states = ['aria-selected', 'aria-disabled', 'disabled', 'aria-current', 'data-today', 'data-outside', 'data-selected', 'data-disabled', 'data-range-start', 'data-range-end', 'data-range-middle'].filter(flag);
+			return `${grid.getAttribute('data-slot') ?? grid.localName}|${grid.getAttribute('aria-multiselectable') ?? ''}|${states.join(',')}`;
+		})(),
 		// A list of more than 8 options, menu items, tabs or radios is sampled; a shorter one is exercised item by item.
 		list: (() => {
 			const list = el.closest('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]');
@@ -2269,7 +2278,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		if (n <= SAMPLES) continue;
 		if (group.startsWith('repeat|')) continue;
 		const [role, where] = group.split('|') as [string, string];
-		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
+		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : where.startsWith('cell ') ? 'in the cells of grids of the same kind, in the same state' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
 		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} ${of}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised${role === 'link' ? ', and every address is compared by the rendered check' : ''}` });
 	}
 	return { journeys, elements, skipped, sequencesSkipped, deferred, ...(arrival ? { arrival } : {}) };
