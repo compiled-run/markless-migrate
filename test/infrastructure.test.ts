@@ -99,7 +99,7 @@ test('a deployment that hangs part way cannot stall the run: the route stops at 
 		const route = (await one(origin(good), origin(hung), 3_000)).routes[0]!;
 		assert.ok(Date.now() - started < 20_000, `took ${Date.now() - started} ms`);
 		assert.equal(route.infrastructure?.cause, 'check timeout');
-		assert.match(route.infrastructure!.message, /did not finish within 3 s \(--timeout\)/);
+		assert.match(route.infrastructure!.message, /incomplete: timed out after 3 s, steps done \d+ of \d+/);
 		assert.deepEqual(route.failures, []);
 	} finally {
 		hung.closeAllConnections();
@@ -141,7 +141,24 @@ test('a route whose check is still going at --timeout while both apps keep answe
 	assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
 	assert.equal(route.ok, false);
 	assert.equal(route.failures[0]?.check, 'the check of this route');
-	assert.match(route.failures[0]!.actual, /ran out of time: it did not finish within 2 s \(--timeout\), and both apps were still answering/);
+	assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s, steps done 0 of 0; both apps were still answering/);
+});
+
+test('a route still in a part that sends no request at --timeout, after both apps answered, is red as incomplete and says how far it got', async () => {
+	const { withDeadline, profiled } = await import('../src/check/run.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const run = { old: defaultEnv(origin(good)), new: defaultEnv(origin(good)), frozen: false };
+	const route = await withDeadline('/quiet', run, 2_000, async (scoped) => {
+		const context = await browser.newContext();
+		scoped.old.scope!.track(context);
+		const page = await context.newPage();
+		await profiled('/quiet', 'load both sides', () => page.goto(origin(good)));
+		// Stands in for a busy-CPU lane or journeys deciding what to do: well past the last answer, no request in flight.
+		return profiled('/quiet', 'journeys', () => new Promise<never>(() => {}));
+	});
+	assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
+	assert.equal(route.ok, false);
+	assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s, steps done 1 of 2 \(load both sides; running: journeys\)/);
 });
 
 test('a request its page dropped by navigating away or closing does not make a route that ran out of time an infrastructure failure', async () => {
@@ -164,7 +181,7 @@ test('a request its page dropped by navigating away or closing does not make a r
 			for (;;) await page.goto(origin(good));
 		});
 		assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
-		assert.match(route.failures[0]!.actual, /ran out of time/);
+		assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s/);
 	} finally {
 		hung.closeAllConnections();
 		hung.close();

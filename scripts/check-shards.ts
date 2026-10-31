@@ -83,6 +83,9 @@ async function write(dir: string, routes: readonly ReportRoute[]): Promise<void>
 	console.log(text.split('\n')[0]);
 }
 
+/** Routes the run did not check to the end: not checked at all, or stopped at --timeout part way. Any of them makes the run red. */
+export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
+
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;
 
@@ -102,9 +105,11 @@ export function summary(routes: readonly ReportRoute[]): string {
 	}
 	const order = ['green', 'red', 'not ported', 'blocked', 'not checked'];
 	const reused = routes.filter((r) => r.reused).length;
+	const left = unfinished(routes).length;
 	return [
 		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check` : ''}`,
 		'',
+		...(left ? [`**${left} of ${routes.length} routes were not checked to the end (not checked, or incomplete at --timeout), so this run is red.**`, ''] : []),
 		'| Routes | Cause |',
 		'|---:|---|',
 		...[...causes].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => `| ${v} | ${k.replace(/\|/g, '/')} |`),
@@ -180,6 +185,14 @@ async function main(): Promise<void> {
 		await write(a, combine(parts));
 		return;
 	}
+	if (command === 'gate' && a) {
+		const { routes } = JSON.parse(await readFile(join(a, 'report.json'), 'utf8')) as { routes: ReportRoute[] };
+		const left = unfinished(routes);
+		for (const r of left) console.log(`${r.route}${r.role ? ` as ${r.role}` : ''}: ${r.infrastructure?.message ?? 'incomplete at --timeout'}`);
+		console.log(`${left.length} of ${routes.length} routes not checked to the end`);
+		if (left.length) process.exit(1);
+		return;
+	}
 	if (command === 'keep' && a && b) {
 		console.log(`${await joinKept(a, b, new Date())} kept results`);
 		return;
@@ -194,7 +207,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir>');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir>');
 	process.exit(2);
 }
 
