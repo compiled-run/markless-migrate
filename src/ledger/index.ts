@@ -187,12 +187,19 @@ interface Trial {
 }
 
 
+/** Inside a `<code>` or `<pre>`: a code sample's text (`<Accordion.Trigger>`), never a control. */
+function inCodeSample(el: PortElement, pf: PortFile): boolean {
+	for (let at = el.parent; at !== undefined; at = pf.elements[at]?.parent) if (pf.elements[at]?.tag === 'code' || pf.elements[at]?.tag === 'pre') return true;
+	return el.tag === 'code' || el.tag === 'pre';
+}
+
 /** Every handler the original wires, each mapped to what answers it on the port, or reported. */
 export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 	const started = Date.now();
 	const [sites, port] = await Promise.all([handlerSites(options.source), readPort(options.app)]);
 	const bySlot = new Map<string, PortElement[]>();
 	for (const pf of port.values()) for (const el of pf.elements) {
+		if (inCodeSample(el, pf)) continue;
 		const key = el.attrs['data-slot'] ?? el.tag;
 		(bySlot.get(key) ?? bySlot.set(key, []).get(key)!).push(el);
 	}
