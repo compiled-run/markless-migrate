@@ -11,6 +11,7 @@ import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
 import { readSource } from '../../src/plan/inventory.ts';
 import { LIBRARIES, type Library } from './libraries.ts';
+import { addSlots } from './slots.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { work: { type: 'string' }, 'markless-local': { type: 'string' }, repeat: { type: 'string' } } });
@@ -95,7 +96,7 @@ function outcomes(report: { readonly suites: readonly JsonSuite[] }): Map<string
 }
 
 // The checkout's own config, with the origin under test, no web server of its own, no retries and a JSON report.
-async function suite(side: 'old' | 'new', origin: string): Promise<Map<string, Outcome>> {
+async function suite(side: 'old' | 'new', origin: string, repeat: number): Promise<Map<string, Outcome>> {
 	const report = join(WORK, `${side}.json`);
 	await rm(report, { force: true });
 	const runner = lib.runner;
@@ -103,11 +104,11 @@ async function suite(side: 'old' | 'new', origin: string): Promise<Map<string, O
 		await writeFile(join(SRC, 'upstream-run.config.ts'), `import base from './${runner.config.replace(/\.ts$/, '')}';
 export default { ...base, webServer: undefined, retries: 0, forbidOnly: false, workers: 1, reporter: [['list'], ['json', { outputFile: ${JSON.stringify(report)} }]], use: { ...base.use, baseURL: ${JSON.stringify(origin)} } };
 `);
-		await sh(`npx playwright test -c upstream-run.config.ts --repeat-each ${REPEAT} || true`, SRC, { CI: '' });
+		await sh(`npx playwright test -c upstream-run.config.ts --repeat-each ${repeat} || true`, SRC, { CI: '' });
 		return outcomes(JSON.parse(await readFile(report, 'utf8')));
 	}
-	if (runner.kind === 'shim') await sh(`node ${join(import.meta.dirname, runner.script)} ${SRC} ${origin} ${report} ${REPEAT}`, SRC);
-	else await cypress(runner.specs, origin, report);
+	if (runner.kind === 'shim') await sh(`node ${join(import.meta.dirname, runner.script)} ${SRC} ${origin} ${report} ${repeat}`, SRC);
+	else await cypress(runner.specs, origin, report, repeat);
 	const out = new Map<string, Outcome>();
 	const browser = runner.kind === 'shim' ? 'chromium' : 'electron';
 	for (const t of JSON.parse(await readFile(report, 'utf8')) as { file: string; title: string[]; state: string; error?: string }[]) {
@@ -121,12 +122,12 @@ export default { ...base, webServer: undefined, retries: 0, forbidOnly: false, w
 }
 
 // Cypress has no repeat: the specs run again, and each run's results are added to the test's.
-async function cypress(specs: readonly string[], origin: string, report: string): Promise<void> {
+async function cypress(specs: readonly string[], origin: string, report: string, repeat: number): Promise<void> {
 	const spec = specs.map((name) => `cypress/e2e/${name}.cy.ts`).join(',');
 	await writeFile(join(SRC, 'upstream-run.cypress.mjs'), `import cypress from 'cypress';
 import { writeFileSync } from 'node:fs';
 const tests = [];
-for (let i = 0; i < ${REPEAT}; i++) {
+for (let i = 0; i < ${repeat}; i++) {
 	const result = await cypress.run({ spec: ${JSON.stringify(spec)}, config: { baseUrl: ${JSON.stringify(origin)}, retries: 0, video: false, screenshotOnRunFailure: false } });
 	if (result.status === 'failed') throw new Error(result.message);
 	for (const run of result.runs) for (const t of run.tests) tests.push({ file: run.spec.relative, title: t.title, state: t.state, error: t.displayError ?? undefined });
@@ -216,21 +217,26 @@ async function main(): Promise<void> {
 				await sh(`git init --quiet ${SRC} && git -C ${SRC} remote add origin ${lib.repo}`, WORK);
 				await sh(`git fetch --quiet --depth 1 origin ${lib.ref} && git checkout --quiet FETCH_HEAD`, SRC);
 			}
+			if (lib.slots) process.stdout.write(`data-slot written in ${await addSlots(join(SRC, lib.slots.dir), lib.slots.roots)} files\n`);
 			await sh(`npm install --no-audit --no-fund --global --prefix ${PNPM} ${lib.pm}`, WORK);
 			await sh('pnpm install --frozen-lockfile', SRC);
+			if (lib.playwright) await sh(`pnpm add --save-dev --workspace-root @playwright/test@${lib.playwright}`, SRC);
 			for (const command of lib.build) await sh(command, SRC);
 			if (lib.runner.kind === 'playwright') await sh(`npx playwright install --with-deps ${lib.runner.browsers.join(' ')}`, SRC);
 		});
 		const oldOrigin = `http://localhost:${OLD_PORT}`;
 		if (lib.sitemap) await writeSitemap(oldOrigin);
-		servers.push(await serve(lib.serve(OLD_PORT), join(SRC, lib.serveIn), OLD_PORT));
-		const old = await timed('suite on the library', async () => suite('old', await front(servers, oldOrigin)));
+		const library = await serve(lib.serve(OLD_PORT), join(SRC, lib.serveIn), OLD_PORT);
+		servers.push(library);
+		const old = await timed('suite on the library', async () => suite('old', await front(servers, oldOrigin), REPEAT));
 		if (lib.stories) servers.pop()!.kill();
 		await timed('convert', () => convert(oldOrigin));
+		// Nothing the port asks of the old origin may answer while the suite runs on the port.
+		library.kill();
 		await timed('build the port', linkAndBuild);
 		servers.push(await serve(`node ${join(APP, '.output', 'server', 'index.mjs')}`, APP, NEW_PORT));
 		await consoleOf(`http://localhost:${NEW_PORT}`);
-		const port = await timed('suite on the port', async () => suite('new', await front(servers, `http://localhost:${NEW_PORT}`)));
+		const port = await timed('suite on the port', async () => suite('new', await front(servers, `http://localhost:${NEW_PORT}`), 1));
 		await report(old, port);
 	} finally {
 		for (const server of servers) server.kill();

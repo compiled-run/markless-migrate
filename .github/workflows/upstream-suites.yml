@@ -84,17 +84,12 @@ jobs:
   suite:
     name: ${{ matrix.library }}
     needs: markless
-    # vaul's pinned Playwright (1.41) installs a WebKit whose system libraries Ubuntu 24.04 no longer has.
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { library: cmdk, os: ubuntu-24.04 }
-          - { library: vaul, os: ubuntu-22.04 }
-          - { library: radix, os: ubuntu-24.04 }
-          - { library: day-picker, os: ubuntu-24.04 }
+        library: [cmdk, vaul, radix, day-picker]
     steps:
       - uses: actions/checkout@v4
         with:

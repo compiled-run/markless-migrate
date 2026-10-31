@@ -16,6 +16,10 @@ export interface Library {
 	/** The source convert and usage read, relative to the checkout. */
 	readonly source: string;
 	readonly runner: { readonly kind: 'playwright'; readonly config: string; readonly browsers: readonly string[] } | { readonly kind: 'cypress'; readonly specs: readonly string[] } | { readonly kind: 'shim'; readonly script: string };
+	/** The library's JSX roots (Command, ContextMenu) whose elements get shadcn's data-slot in this source dir (slots.ts). */
+	readonly slots?: { readonly dir: string; readonly roots: readonly string[] };
+	/** A newer @playwright/test than the ref's, when the ref's browsers do not run on the runner. */
+	readonly playwright?: string;
 	/** Where the site serves static files: plan crawls from / and a sitemap there lists the pages no link reaches. */
 	readonly sitemap?: string;
 	/** The address the suite visits stands for a page of the site (serve.ts stories), on both sides. */
@@ -35,6 +39,7 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		serveIn: 'test',
 		source: 'test',
 		sitemap: 'test/public',
+		slots: { dir: 'test/pages', roots: ['Command'] },
 		runner: { kind: 'playwright', config: 'playwright.config.ts', browsers: ['webkit'] },
 	},
 	vaul: {
@@ -48,6 +53,9 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		serveIn: 'test',
 		source: 'test',
 		sitemap: 'test/public',
+		slots: { dir: 'test/src', roots: ['Drawer'] },
+		// Its 1.41 WebKit needs libraries Ubuntu 24.04 dropped (libffi7, libx264-163), and 22.04 is too old for yuku-tsrx.
+		playwright: '1.51.0',
 		runner: { kind: 'playwright', config: 'playwright.config.ts', browsers: ['chromium', 'webkit'] },
 	},
 	// radix-ui 1.4.3 (@radix-ui/react-context-menu 2.2.16, react-dropdown-menu 2.1.16) was released from this commit. Its
@@ -61,6 +69,7 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		serve: (port) => `node ${ROOT}test/upstream/serve.ts static apps/storybook/upstream-dist ${port}`,
 		serveIn: '.',
 		source: 'apps/storybook',
+		slots: { dir: 'apps/storybook/stories', roots: ['ContextMenu', 'DropdownMenu', 'Menubar', 'Select', 'Dialog', 'Form', 'Toast'] },
 		runner: { kind: 'cypress', specs: ['ContextMenu', 'DropdownMenu', 'Menubar', 'Select', 'Dialog', 'Form', 'Toast'] },
 		stories: true,
 	},
@@ -73,7 +82,7 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		build: [`node ${ROOT}test/upstream/day-picker-pages.ts .`, 'cd examples-app && npx vite build -c upstream-vite.config.mjs'],
 		serve: (port) => `node ${ROOT}test/upstream/serve.ts static examples-app/upstream-dist ${port}`,
 		serveIn: '.',
-		source: 'examples',
+		source: 'examples-app',
 		runner: { kind: 'shim', script: 'day-picker-run.ts' },
 	},
 };
