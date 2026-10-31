@@ -1,4 +1,4 @@
-import { access, readdir, readFile, stat } from 'node:fs/promises';
+import { access, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cloudflareAssetFile, type NitroRule } from './rules.ts';
 
@@ -68,7 +68,8 @@ export async function checkCloudflareOutput(outputDir: string, routeRules: Reado
 		files: uploaded.length,
 		tooLarge: uploaded.filter((a) => a.size > CLOUDFLARE_LIMITS.fileBytes).map((a) => a.path),
 		workerBytes: server.filter((f) => /\.(?:m?js|wasm)$/.test(f.path)).reduce((sum, f) => sum + f.size, 0),
-		compressedCopies: uploaded.filter((a) => /\.(?:br|gz|zst)$/.test(a.path)).map((a) => a.path),
+		// A copy is x.br, x.gz or x.zst beside x; a .tar.gz download has no such twin.
+		compressedCopies: uploaded.filter((a) => /\.(?:br|gz|zst)$/.test(a.path) && names.has(a.path.replace(/\.(?:br|gz|zst)$/, ''))).map((a) => a.path),
 		workerFirst: uploaded.map((a) => urlOf(a.path)).filter((url) => patterns.some((p) => p.test(url))),
 	};
 }
@@ -119,4 +120,37 @@ export async function workerLoads(outputDir: string): Promise<{ url: string; pag
 		}
 	}
 	return [...found].map(([url, { page, pages }]) => ({ url, page, pages })).sort((a, b) => b.pages - a.pages);
+}
+
+/** Cloudflare refuses an upload whose _headers file has more rules than this (code 100324). */
+export const CLOUDFLARE_HEADER_RULES = 100;
+
+// Next.js names every file under /_next/static/ by its content and serves them all immutable; a port keeps those files as they were.
+const NEXT_STATIC = '/_next/static/';
+
+/**
+ * Folds a _headers file's one-rule-per-file immutable entries under /_next/static/ into one `/_next/static/*` rule, as
+ * Next itself serves them. Returns the number of rules left; the file is rewritten only when something was folded.
+ */
+export async function compactCloudflareHeaders(publicDir: string): Promise<{ before: number; after: number }> {
+	const file = join(publicDir, '_headers');
+	const text = await readFile(file, 'utf8').catch(() => undefined);
+	if (text === undefined) return { before: 0, after: 0 };
+	const blocks: { path: string; lines: string[] }[] = [];
+	const preamble: string[] = [];
+	for (const line of text.split('\n')) {
+		if (/^\S/.test(line) && !line.startsWith('#')) blocks.push({ path: line.trim(), lines: [] });
+		else if (blocks.length) blocks.at(-1)!.lines.push(line);
+		else preamble.push(line);
+	}
+	const immutable = (block: { lines: string[] }) => {
+		const headers = block.lines.map((l) => l.trim()).filter(Boolean);
+		return headers.length === 1 && /^cache-control:\s*public,\s*max-age=31536000,\s*immutable$/i.test(headers[0]!);
+	};
+	const folded = blocks.filter((b) => b.path.startsWith(NEXT_STATIC) && immutable(b));
+	if (folded.length < 2) return { before: blocks.length, after: blocks.length };
+	const kept = blocks.filter((b) => !folded.includes(b));
+	kept.unshift({ path: `${NEXT_STATIC}*`, lines: ['  cache-control: public, max-age=31536000, immutable'] });
+	await writeFile(file, [...preamble, ...kept.flatMap((b) => [b.path, ...b.lines])].join('\n').replace(/\n*$/, '\n'));
+	return { before: blocks.length, after: kept.length };
 }
