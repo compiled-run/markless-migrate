@@ -89,7 +89,7 @@ export async function runBaseUi(checkout: string, origin: string, outFile: strin
 					result = { state: 'failed', error: String((error as Error)?.message ?? error) };
 				}
 				// What the page held when the test failed: the error alone rarely says which copy a query found twice.
-				if (result.state !== 'passed') result.error = `${(result.error ?? '').split('\n').slice(0, 4).join('\n')}\n--- body --- ${await page.evaluate(() => document.body.outerHTML.replace(/\s+/g, ' ').slice(0, 6000)).catch(() => '')}`;
+				if (result.state !== 'passed') result.error = `${(result.error ?? '').split('\n').slice(0, 4).join('\n')}\n--- body --- ${await page.evaluate(() => { const b = document.body.cloneNode(true) as HTMLElement; for (const x of b.querySelectorAll('script, style')) x.remove(); return b.outerHTML.replace(/\s+/g, ' ').slice(0, 8000); }).catch(() => '')}`;
 				results.push({ file: r.file, title: [...r.test], ...result });
 				process.stdout.write(`  ${result.state === 'passed' ? 'ok' : 'FAIL'} ${r.file} > ${r.test.join(' > ')}${result.error ? `: ${result.error.split('\n')[0]}` : ''}\n`);
 				await context.close();
