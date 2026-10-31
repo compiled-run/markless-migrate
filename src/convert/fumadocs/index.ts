@@ -36,7 +36,8 @@ export async function fumadocsCollection(oldApp: string, order?: readonly string
 	const { text, moved } = orderCollection(read, order);
 	const { stdout } = await run(process.execPath, [DUMP, file], { cwd: source, maxBuffer: 256 * 1024 * 1024 });
 	const data = JSON.parse(stdout) as Record<string, Record<string, unknown>>;
-	const rewritten = text
+	const named = canonicalGlobs(text, data);
+	const rewritten = named.text
 		.replace(/^\/\/ @ts-nocheck\n/, '')
 		.replace(/^import \* as (__fd_glob_\d+) from "[^"]+"$/gm, 'const $1 = COLLECTION.$1;')
 		.replace(/^import \{ default as (__fd_glob_\d+) \} from "[^"]+"$/gm, 'const $1 = COLLECTION.$1.default;')
@@ -49,8 +50,8 @@ export async function fumadocsCollection(oldApp: string, order?: readonly string
 	return {
 		file,
 		source: header + rewritten,
-		data: JSON.stringify(data),
-		entries: Object.keys(data).length,
+		data: JSON.stringify(named.data),
+		entries: Object.keys(named.data).length,
 		moved,
 		async copyRuntime(dir) {
 			await copyFile(runtime, join(dir, 'fumadocs-runtime.mjs'));
@@ -76,6 +77,27 @@ export function orderCollection(text: string, order?: readonly string[]): { read
 		return `{${sorted.map(([path, glob]) => `"${path}": ${glob}, `).join('')}}`;
 	});
 	return { text: out, moved };
+}
+
+/**
+ * The collection with its glob imports numbered and listed by path, and every object of meta files in path order:
+ * fumadocs-mdx numbers and lists them in the order the build machine's directory listing returns them.
+ */
+export function canonicalGlobs(text: string, data: Readonly<Record<string, unknown>>): { readonly text: string; readonly data: Record<string, unknown> } {
+	const imports = [...text.matchAll(/^import (?:\* as|\{ default as) (__fd_glob_\d+) \}? ?from "([^"]+)"$/gm)].map((m) => ({ line: m[0], name: m[1]!, spec: m[2]! }));
+	const sorted = [...imports].sort((a, b) => (a.spec < b.spec ? -1 : a.spec > b.spec ? 1 : 0));
+	const rename = new Map(sorted.map((g, i) => [g.name, `__fd_glob_${i}`]));
+	let k = 0;
+	const lines = text.replace(/^import (?:\* as|\{ default as) __fd_glob_\d+ \}? ?from "[^"]+"$/gm, () => sorted[k++]!.line);
+	const renamed = lines.replace(/\b__fd_glob_\d+\b/g, (name) => rename.get(name) ?? name);
+	const metas = renamed.replace(/\{((?:"[^"]+\.json": __fd_glob_\d+, )+)\}/g, (_, body: string) => {
+		const pairs = [...body.matchAll(/"([^"]+\.json)": (__fd_glob_\d+), /g)].map((m) => [m[1]!, m[2]!] as const);
+		return `{${pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, glob]) => `"${path}": ${glob}, `).join('')}}`;
+	});
+	const out: Record<string, unknown> = {};
+	for (const g of sorted) if (g.name in data) out[rename.get(g.name)!] = data[g.name];
+	for (const [name, value] of Object.entries(data)) if (!rename.has(name)) out[name] = value;
+	return { text: metas, data: out };
 }
 
 /** Each slug's place in `order`, under the base path most slugs share there (/docs for /docs/components/x). */
