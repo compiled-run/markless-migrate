@@ -139,6 +139,9 @@ export function click(target: Element): boolean {
 		if (subOf.get(layer)?.trigger !== item) openSub(item, false);
 		return true;
 	}
+	// What choosing it showed on the trigger of the old page (a version switcher), recorded by convert.
+	const shows = item.getAttribute('data-mm-trigger-html');
+	if (shows !== null) menuRoot(layer).trigger.innerHTML = shows;
 	closeMenu(layer);
 	return true;
 }
