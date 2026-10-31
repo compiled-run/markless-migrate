@@ -607,7 +607,11 @@ cd examples/shadcn-ui-markless            # the app; or pass --app <dir>
   `.migrate/dev/app`, and leaves the app's full convert alone. A capture is taken again only when a change
   invalidates it or none was kept. It converts with the inputs the last whole convert had (`.migrate/convert/inputs.json`,
   for example `--page-order-from`), so the route is the one the whole convert makes.
-- It builds those routes for production (a few seconds) and serves the build.
+- It builds those routes for production (a few seconds) and serves the build. A route's checks leave it: a link, a
+  search result, a journey that follows a link, the navigation check's entry pages. Those pages land on the original
+  unless the build holds them, so `fix` records every page a browser visits that the build lacks, builds those pages
+  too and checks again (twice at most; still leaving after that is a FAIL that names the pages). It keeps what it
+  learned in `.migrate/dev/app/.migrate/dev/destinations.json`, so the next run builds them from the start.
 - It runs `check` on them as each CI shard of `check.yml` does: every dimension, the three engines, template groups
   made over every page of the site (`--site-targets`, default `deploy/<site>/check-targets.json`), and the shard
   flags in `src/check/ci-settings.ts`, which the workflow reads too. Then it runs the dead-controls probe in Chromium and
