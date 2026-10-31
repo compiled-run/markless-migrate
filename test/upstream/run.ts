@@ -8,6 +8,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readSource } from '../../src/plan/inventory.ts';
 import { LIBRARIES, type Library } from './libraries.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -27,7 +28,7 @@ const timings: Record<string, number> = {};
 
 async function sh(command: string, cwd: string, env: Record<string, string> = {}): Promise<void> {
 	process.stdout.write(`$ (${cwd}) ${command}\n`);
-	const child = spawn('bash', ['-c', command], { cwd, stdio: 'inherit', env: { ...process.env, PATH: `${join(PNPM, 'bin')}:${process.env.PATH}`, ...env } });
+	const child = spawn('bash', ['-c', command], { cwd, stdio: 'inherit', env: { ...process.env, MARKLESS_MIGRATE_STACK: '1', PATH: `${join(PNPM, 'bin')}:${process.env.PATH}`, ...env } });
 	const code = await new Promise<number>((done) => child.on('exit', (c) => done(c ?? 1)));
 	if (code !== 0) throw new Error(`${command} exited ${code}`);
 }
@@ -171,6 +172,13 @@ interface Known {
 	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'adapter'; readonly why: string }>>;
 }
 
+async function writeSitemap(origin: string): Promise<void> {
+	const source = await readSource(join(SRC, lib.source));
+	const pages = source.routes.filter((r) => r.kind === 'page' && !/[[:*]/.test(r.path)).map((r) => r.path);
+	await mkdir(join(SRC, lib.sitemap!), { recursive: true });
+	await writeFile(join(SRC, lib.sitemap!, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${pages.map((p) => `<url><loc>${new URL(p, origin).href}</loc></url>`).join('')}</urlset>\n`);
+}
+
 // The suite's adapter: the stories proxy in front of either side, else the side itself.
 async function front(servers: ChildProcess[], origin: string): Promise<string> {
 	if (!lib.stories) return origin;
@@ -193,6 +201,7 @@ async function main(): Promise<void> {
 			if (lib.runner.kind === 'playwright') await sh(`npx playwright install --with-deps ${lib.runner.browsers.join(' ')}`, SRC);
 		});
 		const oldOrigin = `http://localhost:${OLD_PORT}`;
+		if (lib.sitemap) await writeSitemap(oldOrigin);
 		servers.push(await serve(lib.serve(OLD_PORT), join(SRC, lib.serveIn), OLD_PORT));
 		const old = await timed('suite on the library', async () => suite('old', await front(servers, oldOrigin)));
 		if (lib.stories) servers.pop()!.kill();

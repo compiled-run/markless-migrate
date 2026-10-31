@@ -111,6 +111,7 @@ jobs:
             ${{ runner.temp }}/upstream/${{ matrix.library }}/result.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/old.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/new.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/*.json
             ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/convert/report.json
           if-no-files-found: warn
           retention-days: 14

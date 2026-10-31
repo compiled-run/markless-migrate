@@ -16,6 +16,8 @@ export interface Library {
 	/** The source convert and usage read, relative to the checkout. */
 	readonly source: string;
 	readonly runner: { readonly kind: 'playwright'; readonly config: string; readonly browsers: readonly string[] } | { readonly kind: 'cypress'; readonly specs: readonly string[] } | { readonly kind: 'shim'; readonly script: string };
+	/** Where the site serves static files: plan crawls from / and a sitemap there lists the pages no link reaches. */
+	readonly sitemap?: string;
 	/** The address the suite visits stands for a page of the site (serve.ts stories), on both sides. */
 	readonly stories?: true;
 }
@@ -32,6 +34,7 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		serve: (port) => `npx next start -p ${port}`,
 		serveIn: 'test',
 		source: 'test',
+		sitemap: 'test/public',
 		runner: { kind: 'playwright', config: 'playwright.config.ts', browsers: ['webkit'] },
 	},
 	vaul: {
@@ -39,10 +42,12 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		repo: 'https://github.com/emilkowalski/vaul.git',
 		ref: 'v1.1.2',
 		pm: 'pnpm@8.15.9',
-		build: ['pnpm build', 'cd test && npx next build'],
+		// The test app only ever ran under next dev, which skips the type check its pages fail.
+		build: ['pnpm build', `cd test && mv next.config.js next.config.upstream.js && echo "module.exports = { ...require('./next.config.upstream.js'), typescript: { ignoreBuildErrors: true }, eslint: { ignoreDuringBuilds: true } };" > next.config.js && npx next build`],
 		serve: (port) => `npx next start -p ${port}`,
 		serveIn: 'test',
 		source: 'test',
+		sitemap: 'test/public',
 		runner: { kind: 'playwright', config: 'playwright.config.ts', browsers: ['chromium', 'webkit'] },
 	},
 	// radix-ui 1.4.3 (@radix-ui/react-context-menu 2.2.16, react-dropdown-menu 2.1.16) was released from this commit. Its
