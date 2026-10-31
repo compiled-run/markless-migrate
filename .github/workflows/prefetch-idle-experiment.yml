@@ -37,6 +37,9 @@ jobs:
           cp -R .output "$RUNNER_TEMP/off"
           # The bridge module that carries the router's navigation config: six idle fragments at most, or none.
           grep -rlE '"?idleFragments"?: ?[0-9]+' "$RUNNER_TEMP/off" | xargs sed -i -E 's/("?idleFragments"?): ?[0-9]+/\1:0/g'
+          # Idle downloads start only on a link measured fast: no link is that fast, and no measurement is too small to tell.
+          grep -rlE '"?idle(BytesPerSecond|MeasuredBytes)"?: ?[0-9]+' "$RUNNER_TEMP/off" | xargs sed -i -E 's/("?idleBytesPerSecond"?): ?[0-9]+/\1:1e15/g; s/("?idleMeasuredBytes"?): ?[0-9]+/\1:0/g'
+          grep -rhoE '"?idle(BytesPerSecond|MeasuredBytes)"?: ?[0-9e]+' "$RUNNER_TEMP/off" | sort | uniq -c | sed 's/^/off side: /' | tee -a "$GITHUB_STEP_SUMMARY"
           echo "on side: $(grep -rhoE '"?idleFragments"?: ?[0-9]+' .output | sort | uniq -c | tr '\n' ' ')" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "off side: $(grep -rhoE '"?idleFragments"?: ?[0-9]+' "$RUNNER_TEMP/off" | sort | uniq -c | tr '\n' ' ')" | tee -a "$GITHUB_STEP_SUMMARY"
           (PORT=3001 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/on.log" 2>&1 &)
