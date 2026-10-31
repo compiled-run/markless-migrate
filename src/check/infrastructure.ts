@@ -48,7 +48,28 @@ export const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 /** Loads a page, retrying once after a backoff when the network fails it; a second failure is an InfrastructureError naming the cause. */
 export async function loadPage(page: Page, url: string, options: { timeout?: number; backoffMs?: number } = {}): Promise<Response | null> {
 	const timeout = options.timeout ?? LOAD_TIMEOUT_MS;
+	// What the load is still waiting on when it times out: the request that holds the load event back.
+	const waiting = new Map<Request, number>();
+	const sent = (r: Request) => void waiting.set(r, Date.now());
+	const done = (r: Request) => void waiting.delete(r);
+	page.on('request', sent);
+	page.on('requestfinished', done);
+	page.on('requestfailed', done);
+	const held = () => {
+		// A fetch or a socket does not hold the load event back; what the document itself asked for does.
+		const oldest = [...waiting].filter(([r]) => !/^(fetch|xhr|eventsource|websocket|ping|preflight)$/.test(r.resourceType())).sort((a, b) => a[1] - b[1]).slice(0, 3);
+		return oldest.length ? `; still waiting on ${oldest.map(([r, at]) => `${r.url().slice(0, 140)} (${r.resourceType()}, ${Math.round((Date.now() - at) / 1000)} s)`).join(', ')}` : '; no request was still waiting';
+	};
+	try {
+		return await loadWithRetry();
+	} finally {
+		page.off('request', sent);
+		page.off('requestfinished', done);
+		page.off('requestfailed', done);
+	}
+	async function loadWithRetry(): Promise<Response | null> {
 	for (let attempt = 0; ; attempt++) {
+		waiting.clear();
 		try {
 			return await page.goto(url, { waitUntil: 'load', timeout });
 		} catch (error) {
@@ -62,9 +83,10 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 				await sleep(options.backoffMs ?? RETRY_BACKOFF_MS);
 				continue;
 			}
-			const message = `${describe(kind.cause, kind.code, new URL(url), timeout)}, twice, ${Math.round((options.backoffMs ?? RETRY_BACKOFF_MS) / 100) / 10} s apart`;
+			const message = `${describe(kind.cause, kind.code, new URL(url), timeout)}, twice, ${Math.round((options.backoffMs ?? RETRY_BACKOFF_MS) / 100) / 10} s apart${kind.cause === 'timeout' ? held() : ''}`;
 			throw new InfrastructureError({ cause: kind.cause, code: kind.code, origin: new URL(url).origin, message }, { cause: error });
 		}
+	}
 	}
 }
 
