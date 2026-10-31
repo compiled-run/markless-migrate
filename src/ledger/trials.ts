@@ -11,6 +11,10 @@ export interface TrialJob {
 	readonly element: string;
 	readonly kind: HandlerSite['kind'];
 	readonly handler: HandlerClass;
+	/** Its handler hears a value change (onValueChange, onCheckedChange, onSelect...), which a part sends as its own event. */
+	readonly changes?: boolean;
+	/** The element was found by one inside the source element, not by the element itself. */
+	readonly inside?: boolean;
 }
 
 /** The elements tried on one route, on the page module that serves it. */
@@ -58,7 +62,9 @@ async function trial(sandbox: Sandbox, t: TrialJob, registry: string | undefined
 	if (library && t.el.layer && registry) return { answer: { by: 'part', where: 'layer' }, event: t.events[0]! };
 	const opened = t.el.layer ? undefined : page.layers.get(target.getAttribute('aria-controls') ?? target.id);
 	// A container's own trigger first (a collapsible's), then what else it holds that can be pressed.
-	const inside = [...new Set([...target.querySelectorAll(TRIGGERS), ...target.querySelectorAll(PRESSABLE)])].slice(0, library ? 2 : ITEMS_TRIED);
+	// Found by an element inside it (a trigger's own line of text): the control around that element is the one pressed.
+	const around = t.inside ? target.parentElement?.closest(PRESSABLE) : null;
+	const inside = [...new Set([...(around ? [around] : []), ...target.querySelectorAll(TRIGGERS), ...target.querySelectorAll(PRESSABLE)])].slice(0, library ? 3 : ITEMS_TRIED + 1);
 	const tries = library ? [target, ...inside] : [target, ...inside, ...(opened ? [...opened.querySelectorAll(`${ITEM_ROLES},[role=gridcell] button,td button`)].slice(0, ITEMS_TRIED) : [])];
 	// A press reaches a part as pointerdown, click or a key, whichever the library listens for (Radix opens on pointerdown).
 	// A tooltip or hover card answers the pointer resting on it, a context menu the right button.
@@ -69,7 +75,7 @@ async function trial(sandbox: Sandbox, t: TrialJob, registry: string | undefined
 	let best: Result | undefined;
 	for (const event of events) {
 		for (const at of tries) {
-			const answer = await sandbox.answer(at, event, registry, { library });
+			const answer = await sandbox.answer(at, event, registry, { library, changes: !library && t.changes });
 			if (enough(t, answer)) return { answer, event };
 			if (!best || (best.answer.by === 'none' && answer.by !== 'none')) best = { answer, event };
 		}
@@ -89,27 +95,57 @@ export async function tryRoutes(app: string, port: ReadonlyMap<string, PortFile>
 	try {
 		for (const { route, page, trials } of jobs) {
 			const registry = await registryOf(app, page);
-			sandbox.show(renderRoute(port, page, route) + renderRoute(port, DOCUMENT, route));
-			const doc = sandbox.window.document as unknown as Document;
+			const html = renderRoute(port, page, route) + renderRoute(port, DOCUMENT, route);
+			sandbox.show(html);
+			let doc = sandbox.window.document as unknown as Document;
 			const layers = new Map<string, Element>();
-			for (const el of doc.querySelectorAll('[data-mm-layer]')) layers.set(el.getAttribute('data-mm-layer')!, el);
+			const index = () => {
+				layers.clear();
+				for (const el of doc.querySelectorAll('[data-mm-layer]')) layers.set(el.getAttribute('data-mm-layer')!, el);
+			};
+			index();
+			// happy-dom delivers records to the callback a task later; takeRecords() alone sees none.
+			let dirty = false;
+			let watch!: MutationObserver;
+			const observe = () => {
+				watch = new (sandbox.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver(() => {
+					dirty = true;
+				});
+				watch.observe(doc.body, { subtree: true, childList: true, attributes: true });
+			};
+			observe();
 			const memo = new Map<string, Result>();
 			// A trigger opens its layer once per page: another trigger of the same layer (a header drawn twice) gets the same answer.
 			const opens = new Map<string, Result>();
-			const results: Result[] = [];
-			for (const t of trials) {
-				const key = `${t.el.file}#${t.el.index} ${t.events.join(',')} ${libraryOnly(t)}`;
-				const node = doc.querySelector(`[data-mm-ledger="${t.el.file}#${t.el.index}"]`)?.closest('[aria-controls],[data-mm-key]');
+			const results: Result[] = new Array(trials.length);
+			// An app's own handlers first: a library trial opens menus and moves layers, which the app trials must not see.
+			const order = trials.map((t, i) => ({ t, i })).sort((a, b) => Number(libraryOnly(a.t)) - Number(libraryOnly(b.t)));
+			for (const { t, i } of order) {
+				const key = `${t.el.file}#${t.el.index} ${t.events.join(',')} ${libraryOnly(t)} ${Boolean(t.changes)}`;
+				const node = doc.querySelector(`[data-mm-ledger="${t.el.file}#${t.el.index}"]`);
 				const controls = node?.getAttribute('aria-controls') ?? node?.getAttribute('data-mm-key');
-				const layerKey = controls ? `${controls} ${t.events.join(',')} ${libraryOnly(t)}` : undefined;
+				const layerKey = controls ? `${controls} ${t.events.join(',')} ${libraryOnly(t)} ${Boolean(t.changes)}` : undefined;
 				let r = memo.get(key) ?? (layerKey ? opens.get(layerKey) : undefined);
 				if (!r) {
 					r = await trial(sandbox, t, registry, { layers, sited });
 					memo.set(key, r);
-					if (layerKey && r.answer.by !== 'none') opens.set(layerKey, r);
+					if (layerKey && enough(t, r.answer)) opens.set(layerKey, r);
+					// Each trial starts from the page as it was rendered, with nothing the last one scheduled still to run.
+					if (!libraryOnly(t)) await new Promise((done) => setImmediate(done));
+					const changed = dirty || watch.takeRecords().length > 0;
+					if (!libraryOnly(t)) await sandbox.settle();
+					// Only an app trial's change is undone; library trials come last and share the page.
+					if (changed && !libraryOnly(t)) {
+						sandbox.show(html);
+						doc = sandbox.window.document as unknown as Document;
+						index();
+						dirty = false;
+						observe();
+					}
 				}
-				results.push(r);
+				results[i] = r;
 			}
+			watch.disconnect();
 			out.push(results);
 		}
 	} finally {

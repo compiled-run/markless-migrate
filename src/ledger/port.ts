@@ -241,11 +241,24 @@ export function tokenize(text: string): Token[] {
 
 const decode = (s: string) => s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 
-function handlersOf(attrs: readonly (readonly [string, string | undefined, string | undefined])[]): string[] {
+// `(event) => (sel3 = (event as CustomEvent<string>).detail)`: a select keeping its own label, which is the library's behaviour.
+const LABEL_ONLY = /^\s*\(?event\)?\s*=>\s*\(\s*([A-Za-z_$][\w$]*)\s*=\s*\(event as CustomEvent<string>\)\.detail\s*\)\s*$/;
+
+/** Whether a handler only stores the value a part sent into state read nowhere but the control's own label. */
+function labelOnly(expr: string, text: string): boolean {
+	const name = LABEL_ONLY.exec(expr)?.[1];
+	if (!name) return false;
+	// Its declaration, this assignment and the label that shows it.
+	return (text.match(new RegExp(`\\b${name.replace(/\$/g, '\\$')}\\b`, 'g'))?.length ?? 0) <= 3;
+}
+
+function handlersOf(attrs: readonly (readonly [string, string | undefined, string | undefined])[], text = ''): string[] {
 	const out: string[] = [];
 	for (const [name, , expr] of attrs) {
 		const event = EVENT_PROP[name];
 		if (event && expr !== undefined && !/^\s*\(?\s*event\s*\)?\s*=>\s*behave\(event\)\s*$/.test(expr)) out.push(event);
+		// A Markless handler for an event a part dispatches when it changes a value (onMmchoose, onMmset): "mm".
+		else if (/^onMm[a-z]+$/.test(name) && expr !== undefined && !labelOnly(expr, text)) out.push('mm');
 	}
 	return out;
 }
@@ -272,7 +285,7 @@ export function readPortFile(file: string, text: string): PortFile {
 			const attrs: Record<string, string> = {};
 			for (const [n, v, e] of tok.attrs) if (n !== '...' && !UNINDEXED.has(n) && !/^on[A-Z]/.test(n)) attrs[n] = v !== undefined ? decode(v) : e !== undefined ? '{}' : '';
 			const layer = attrs['data-mm-layer'] || attrs['data-mm-layer-keys']?.split(' ')[0] || stack.at(-1)?.layer || (/(^|\/)layers\//.test(file) ? file : undefined);
-			const entry = { tag: tok.tag, attrs, handlers: handlersOf(tok.attrs), text: [] as string[], cases: [...cases], index: elements.length, ...(layer ? { layer } : {}) };
+			const entry = { tag: tok.tag, attrs, handlers: handlersOf(tok.attrs, text), text: [] as string[], cases: [...cases], index: elements.length, ...(layer ? { layer } : {}) };
 			elements.push(undefined as unknown as PortElement);
 			stack.push(entry);
 			if (tok.self || VOID.has(tok.tag)) finish();
@@ -386,7 +399,7 @@ export function renderRoute(port: ReadonlyMap<string, PortFile>, file: string, r
 				if (from) html += renderRoute(port, posix.normalize(posix.join(posix.dirname(file), from)), route, depth + 1);
 				continue;
 			}
-			const on = handlersOf(tok.attrs);
+			const on = handlersOf(tok.attrs, pf.text);
 			const attrs = tok.attrs.map(([n, v, e]) => [n, v ?? valueOf(e)] as const).filter(([n, v]) => n !== '...' && !/^on[A-Z]/.test(n) && v !== undefined).map(([n, v]) => (v === '' ? ` ${n}` : ` ${n}="${escapeAttr(v!)}"`));
 			html += `<${tok.tag}${attrs.join('')} data-mm-ledger="${file}#${at}"${on.length ? ` data-mm-ledger-on="${on.join(' ')}"` : ''}${tok.self && !VOID.has(tok.tag) ? `></${tok.tag}>` : '>'}`;
 		} else if (tok.t === 'close' && tok.tag && !/^[A-Z]/.test(tok.tag)) {

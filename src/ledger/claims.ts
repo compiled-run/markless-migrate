@@ -1,3 +1,4 @@
+import { createHook } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import { register } from 'node:module';
 import { join, posix } from 'node:path';
@@ -17,11 +18,24 @@ export type Answer =
 const RECORDED = new Set(['choices', 'scene', 'switch', 'toggle', 'form', 'sonner', 'form-library', 'form-tanstack', 'form-libraries', 'tanstack-table', 'tanstack-tables', 'day-picker', 'react-aria/calendar']);
 
 type Handler = (target: Element, event: Event) => unknown;
+interface Runtime {
+	readonly download?: (t: Element) => boolean;
+	readonly layersPending?: () => boolean;
+	readonly loadLayers?: () => Promise<void>;
+}
 interface LoadedPart {
 	readonly name: string;
 	readonly site: boolean;
 	readonly part: Readonly<Record<string, unknown>>;
 }
+
+// Promises a part's handler creates while it runs: one that returns false but starts its work async (a form's blur) acts.
+let promises = 0;
+const promiseHook = createHook({
+	init(_id, type) {
+		if (type === 'PROMISE') promises++;
+	},
+});
 
 let hooked = false;
 // A port's packages (@floating-ui/dom) resolve from the app, else from markless-migrate's own dependencies.
@@ -89,10 +103,42 @@ export class Sandbox {
 		if (Style && !Style.prototype[Symbol.iterator]) Style.prototype[Symbol.iterator] = function* (this: { length: number; item(i: number): string }) {
 			for (let i = 0; i < this.length; i++) yield this.item(i);
 		};
-		// A part that fetches a served layer or a table gets nothing; the ledger reads markup, it never serves it.
-		const never = () => new Promise(() => {});
-		set('fetch', never);
-		w.fetch = never;
+		// happy-dom's selector parser refuses the escapes CSS.escape writes for long values (a recorded file's signature);
+		// those selectors (a tag and attribute tests) are matched here instead.
+		for (const proto of [(w.Document as { prototype: object }).prototype, (w.Element as { prototype: object }).prototype, (w.DocumentFragment as { prototype: object }).prototype]) {
+			const p = proto as { querySelector(s: string): unknown; querySelectorAll(s: string): unknown };
+			const one = p.querySelector;
+			const all = p.querySelectorAll;
+			p.querySelector = function (this: ParentNode, sel: string) {
+				try {
+					return one.call(this, sel);
+				} catch (error) {
+					const m = attributeSelector(sel);
+					if (!m) throw error;
+					return [...(all.call(this, m.tag || '*') as Iterable<Element>)].find(m.test) ?? null;
+				}
+			};
+			p.querySelectorAll = function (this: ParentNode, sel: string) {
+				try {
+					return all.call(this, sel);
+				} catch (error) {
+					const m = attributeSelector(sel);
+					if (!m) throw error;
+					return [...(all.call(this, m.tag || '*') as Iterable<Element>)].filter(m.test);
+				}
+			};
+		}
+		// A part fetches what the app serves itself (a layer's file under public/) from disk; anything else never answers.
+		const serve = (input: unknown) => {
+			const url = new URL(String(input instanceof Object && 'url' in input ? (input as { url: string }).url : input), 'http://localhost/');
+			if (url.origin !== 'http://localhost' || url.pathname.includes('..')) return new Promise(() => {});
+			return readFile(join(this.app, 'public', decodeURIComponent(url.pathname))).then(
+				(body) => new Response(body, { status: 200, headers: { 'content-type': url.pathname.endsWith('.html') ? 'text/html' : 'application/octet-stream' } }),
+				() => new Response('', { status: 404 }),
+			);
+		};
+		set('fetch', serve);
+		w.fetch = serve;
 	}
 
 	static async open(app: string): Promise<Sandbox> {
@@ -132,11 +178,34 @@ export class Sandbox {
 		return p;
 	}
 
+	private readonly runtimes = new Map<string, Promise<Runtime | undefined>>();
+	/** The app's copy of the parts runtime's reveal module (lib/parts/reveal.ts), whose download the runtime runs on every click. */
+	private runtime(registry: string): Promise<Runtime | undefined> {
+		const dir = registry.replace(/\/registries\/[^/]+$|\/[^/]+$/, '');
+		let p = this.runtimes.get(dir);
+		if (!p) this.runtimes.set(dir, (p = import(pathToFileURL(join(this.app, dir, 'reveal.ts')).href).then((m) => m as Runtime, () => undefined)));
+		return p;
+	}
+
+	private readonly modalities = new Map<string, Promise<{ setModality?: (m: string) => void } | undefined>>();
+	private modality(registry: string): Promise<{ setModality?: (m: string) => void } | undefined> {
+		const dir = registry.replace(/\/registries\/[^/]+$|\/[^/]+$/, '');
+		let p = this.modalities.get(dir);
+		if (!p) this.modalities.set(dir, (p = import(pathToFileURL(join(this.app, dir, 'react-aria', 'interactions.ts')).href).then((m) => m as { setModality?: (m: string) => void }, () => undefined)));
+		return p;
+	}
+
 	/** Shows `html` as the page's body. */
 	show(html: string): void {
 		this.install();
 		this.window.document.body.innerHTML = html;
 	}
+
+	/** Drops the timers, frames and fetches a trial left pending, so none of them runs during the next. */
+	async settle(): Promise<void> {
+		await this.window.happyDOM.abort().catch(() => {});
+	}
+
 
 	private event(kind: string, target: Element): Event {
 		const w = this.window as unknown as Record<string, new (type: string, init: Record<string, unknown>) => Event>;
@@ -148,15 +217,29 @@ export class Sandbox {
 	}
 
 	/** Who answers `kind` on `target`: a Markless handler on it or around it, else the first part that takes it. */
-	async answer(target: Element, kind: string, registry: string | undefined, options: { readonly library?: boolean } = {}): Promise<Answer> {
+	async answer(target: Element, kind: string, registry: string | undefined, options: { readonly library?: boolean; readonly changes?: boolean } = {}): Promise<Answer> {
 		const own = target.closest(`[data-mm-ledger-on~="${kind}"]`);
 		if (own) return { by: 'markless', where: own.getAttribute('data-mm-ledger') ?? '' };
+		// A value a part changes reaches the page's Markless handler as the part's own event, on the control or close around it.
+		const heard = options.changes ? near(target, '[data-mm-ledger-on~="mm"]') : undefined;
+		if (heard) return { by: 'markless', where: heard.getAttribute('data-mm-ledger') ?? '' };
 		if (!registry) return { by: 'none' };
+		// React Aria's ports read the input modality its document listeners keep, bound to the first page's document.
+		const modal = await this.modality(registry);
+		modal?.setModality?.(kind === 'keydown' ? 'keyboard' : 'pointer');
+		// The parts runtime's own answers before any part's: a listed download saves its recorded file.
+		const saved = await this.runtime(registry);
+		if (kind === 'click') {
+			try {
+				if (saved?.download?.(target) === true) return { by: 'recorded', where: 'download' };
+			} catch {}
+		}
 		if (kind === 'input' && 'value' in target)
 			try {
 				(target as HTMLInputElement).value = 'a';
 			} catch {}
 		const event = this.event(kind, target);
+		const offer = async (): Promise<Answer | undefined> => {
 		for (const { name, site, part } of await this.parts(registry)) {
 			// Only the site's parts and convert's recordings answer an app's own effect, so the library's ports are not run for one.
 			if (!options.library && !site && !RECORDED.has(name)) continue;
@@ -167,18 +250,32 @@ export class Sandbox {
 			const watch = new (this.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver(() => {});
 			watch?.observe(this.window.document as unknown as Node, { subtree: true, childList: true, attributes: true, characterData: true });
 			let took = false;
+			const started = promises;
 			try {
+				promiseHook.enable();
 				took = handler(target, event) === true;
+				promiseHook.disable();
 			} catch (error) {
+				promiseHook.disable();
 				watch?.disconnect();
 				return { by: 'threw', where: name, error: String(error).split('\n')[0]!.slice(0, 200) };
 			}
 			const changed = (watch?.takeRecords().length ?? 0) > 0;
 			watch?.disconnect();
 			// A part that acts without taking the event answers it too: a site part watching what the press changes, a
-			// tooltip opening after its delay (a timer), a hover card changing the page.
-			const watched = this.observers > before || this.timers > timers;
+			// tooltip opening after its delay (a timer), a form starting its validation (a promise), a hover card changing the page.
+			const watched = this.observers > before || this.timers > timers || (!site && promises > started);
 			if (took || changed || watched) return { by: site ? 'site-part' : RECORDED.has(name) ? 'recorded' : 'part', where: name };
+		}
+			return undefined;
+		};
+		const first = await offer();
+		if (first) return first;
+		// As the parts runtime does: a press no part answered loads the served layers, then is offered again.
+		if ((kind === 'click' || kind === 'keydown' || kind === 'contextmenu' || kind === 'pointerdown') && saved?.layersPending?.()) {
+			await saved.loadLayers?.().catch(() => {});
+			const again = await offer();
+			if (again) return again;
 		}
 		return { by: 'none' };
 	}
@@ -186,6 +283,36 @@ export class Sandbox {
 	async close(): Promise<void> {
 		await this.window.happyDOM.close().catch(() => {});
 	}
+}
+
+const unescape = (v: string) => v.replace(/\\([0-9a-fA-F]{1,6}\s?|.)/g, (_, c: string) => (/^[0-9a-fA-F]/.test(c) && c.trim().length > 1 ? String.fromCodePoint(parseInt(c, 16)) : c.trim() || c));
+
+/** A selector of a tag and `[name op "value"]` tests, as a matcher; undefined for anything else. */
+function attributeSelector(sel: string): { tag: string; test: (el: Element) => boolean } | undefined {
+	const m = /^\s*([a-z][\w-]*)?((?:\[[\w-]+(?:[~^$*|]?="(?:[^"\\]|\\.)*")?\])+)\s*$/.exec(sel);
+	if (!m) return undefined;
+	const tests = [...m[2]!.matchAll(/\[([\w-]+)(?:([~^$*|]?)="((?:[^"\\]|\\.)*)")?\]/g)].map(([, name, op, raw]) => {
+		const value = raw === undefined ? undefined : unescape(raw);
+		return (el: Element) => {
+			const v = el.getAttribute(name!);
+			if (v === null) return false;
+			if (value === undefined) return true;
+			if (op === '^') return v.startsWith(value);
+			if (op === '$') return v.endsWith(value);
+			if (op === '*') return v.includes(value);
+			if (op === '~') return v.split(/\s+/).includes(value);
+			if (op === '|') return v === value || v.startsWith(`${value}-`);
+			return v === value;
+		};
+	});
+	return { tag: m[1] ?? '', test: (el) => tests.every((t) => t(el)) };
+}
+
+// Ancestors of a control a value's handler may sit on: the control, its wrapper, its group.
+const NEAR = 4;
+function near(el: Element, selector: string): Element | undefined {
+	for (let at: Element | null = el, n = 0; at && n <= NEAR; at = at.parentElement, n++) if (at.matches(selector)) return at;
+	return undefined;
 }
 
 /** The registry module (under the app) whose parts a page module's markup runs. */
