@@ -2790,6 +2790,22 @@ Fifth change:
 Not yet: `/examples/dashboard` has no chart below its desktop layout, so it has no phone range to start in.
 
 
+## Known differences (not accepted)
+
+- **Where a menu or dialog lands relative to the toast regions** (2026-10-31). Both pages have the same two live
+  regions: sonner's `section` "Notifications alt+T" and Base UI's toast viewport "Notifications" in
+  `div[data-slot=toast-portal]`. When a menu opens, Radix's Portal on the original appends the popper at the end of
+  `<body>`, after the toast portal. The port's dialog engine (`parts/radix/dialog-engine.ts`, `portal()`) moves a layer
+  to just before `<!--markless:page-end-->`, the last place inside the root Markless delegates events from. The site's
+  Toaster is rendered after that comment, so on the port the popper comes before the toast viewport. Journeys then
+  report `moves: - region "Notifications alt+T" | - region "Notifications"` on the original against only the first
+  on the port (about 19 routes). Nothing is missing or announced differently; only the order in the accessibility
+  tree differs. Fixing it means rendering the site's toaster before the page-end comment or moving layers past the
+  site branch, which touches event delegation and in-place page swaps. Low priority, after the menu-item switchers.
+- **Next.js's route announcer** (`next-route-announcer`, an empty `alert` in the accessibility tree). check accepts it
+  automatically only when nothing else in a route's tree differs. The real gap is that the Markless router announces
+  no page change after an in-place navigation; that is a router feature, not a port fix.
+
 ## Open work
 
 - Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
