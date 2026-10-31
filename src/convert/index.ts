@@ -897,6 +897,9 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				} else if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
 				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
 				// there, shown with the layer (data-mm-shown-with names the trigger's key).
+				// A Radix dialog its root portals into a container in the page (vaul's container prop) is a layer of the page all
+				// the same: it is placed at the end of the body, where a dialog's fixed position shows it alike.
+				else if (trigger && attr(trigger, 'aria-haspopup') === 'dialog' && reveal.added.some((a) => /\brole="dialog"[^>]*\bdata-state=|\bdata-state=[^>]*\brole="dialog"/.test(a.html))) pendingLayers.push({ reveal, added, trigger, kept });
 				else if (trigger && parent && (menu || attr(trigger, 'aria-haspopup') !== undefined || attr(trigger, 'data-slot') === 'scroll-area')) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
