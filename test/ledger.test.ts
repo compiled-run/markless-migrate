@@ -156,3 +156,15 @@ test("a select that only keeps its own label is not the page's handler for the v
 	assert.deepEqual(label.elements[0]!.handlers, []);
 	assert.deepEqual(acts.elements[0]!.handlers, ['mm']);
 });
+
+test("a code sample's text is not the control it names: a trigger shown only inside <code> is not tried there", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'ledger-code-'));
+	const src = join(root, 'source');
+	const app = join(root, 'app');
+	await write(src, { 'package.json': '{}', 'app/page.tsx': `"use client"\nexport function Page() {\n  return <button onClick={() => launch()}><span>Launch</span></button>\n}` });
+	await write(app, { ...PORT(true), 'pages/index.tsrx': page(`<pre><code><span class="line"><span>Launch</span></span></code></pre>`) });
+	const ledger = await buildLedger({ source: src, app });
+	const site = ledger.entries.find((e) => e.site.file === 'app/page.tsx');
+	assert.equal(site?.verdict, 'unjoined', JSON.stringify(site));
+	await rm(root, { recursive: true, force: true });
+});
