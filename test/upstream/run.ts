@@ -1,9 +1,11 @@
-// Runs an upstream library's own Playwright suite against its test app twice: as the library renders it (the old side)
+// Runs an upstream library's own browser suite against its test app twice: as the library renders it (the old side)
 // and as markless-migrate converts it onto parts/ (the new side). A test counts only when it passes on the old side
 // every time, so a test the adapter cannot run is never a red for the part.
 //   node test/upstream/run.ts <library> [--work <dir>] [--markless-local <dir of packed @markless tarballs>] [--repeat <n>]
 // Writes <work>/<library>/result.json and prints a summary (to $GITHUB_STEP_SUMMARY too). Exits 1 when an admitted test
-// fails that test/upstream/known.json does not list for it, or a listed one passes.
+// fails that test/upstream/known.json does not list, or a listed one passes (unless its entry says why a pass is a race).
+// known.json classes: part (a bug in parts/), convert (the converter), shape (the port's DOM differs where nothing
+// visible does), adapter (this harness).
 import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -171,7 +173,7 @@ async function linkAndBuild(): Promise<void> {
 }
 
 interface Known {
-	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'shape' | 'adapter'; readonly why: string }>>;
+	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'shape' | 'adapter'; readonly why: string; readonly racy?: string }>>;
 }
 
 // What each converted page logs as it loads: an error here explains a suite that finds nothing working.
@@ -266,7 +268,7 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 	const refused = [...old.values()].filter((o) => !passed(o));
 	const failing = admitted.filter((o) => !passed(port.get(o.id)));
 	const unexpected = failing.filter((o) => !listed[o.id]);
-	const fixed = admitted.filter((o) => listed[o.id] && passed(port.get(o.id)));
+	const fixed = admitted.filter((o) => listed[o.id] && !listed[o.id]!.racy && passed(port.get(o.id)));
 	const stale = Object.keys(listed).filter((id) => !admitted.some((o) => o.id === id));
 	const result = {
 		library: lib.name,

@@ -66,7 +66,14 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		ref: 'a34698ccf1ea956317e5e9b01f0da0b6a2c7d5c1',
 		pm: 'pnpm@10.2.0',
 		// convert lists a git checkout's files with git, so the generated pages are added to its index.
-		build: [`node ${ROOT}test/upstream/radix-stories.ts apps/storybook && git add -A apps/storybook/upstream-pages && ln -s ../node_modules apps/storybook/upstream-pages/node_modules`, 'cd apps/storybook && npx -y vite@6.3.5 build -c upstream-vite.config.mjs', 'pnpm exec cypress install'],
+		build: [
+			`node ${ROOT}test/upstream/radix-stories.ts apps/storybook && git add -A apps/storybook/upstream-pages && ln -s ../node_modules apps/storybook/upstream-pages/node_modules`,
+			'cd apps/storybook && npx -y vite@6.3.5 build -c upstream-vite.config.mjs',
+			'pnpm exec cypress install',
+			// The port keeps a closed layer in the page as a hidden template where Radix unmounts it, so a query by text
+			// would find it beside the open copy. Testing Library skips hidden subtrees on both sides.
+			`echo "import { configure } from '@testing-library/cypress'; configure({ defaultIgnore: 'script, style, [hidden], [hidden] *' });" >> cypress/support/e2e.js`,
+		],
 		serve: (port) => `node ${ROOT}test/upstream/serve.ts static apps/storybook/upstream-dist ${port}`,
 		serveIn: '.',
 		source: 'apps/storybook/upstream-pages',
