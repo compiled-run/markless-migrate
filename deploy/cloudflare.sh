@@ -57,6 +57,10 @@ case "${1:-}" in
 		shift 3
 		CONFIG="$APP/.output/server/wrangler.json"
 		[ -f "$CONFIG" ] || { echo "no $CONFIG: build the app with NITRO_PRESET=cloudflare-module first" >&2; exit 1; }
+		# Vercel serves its analytics scripts itself; elsewhere a page's request for one 404s through the Worker on every view.
+		for script in /_vercel/insights/script.js /_vercel/speed-insights/script.js; do
+			if grep -rqlF --include='*.html' "$script" "$APP/.output/public"; then mkdir -p "$(dirname "$APP/.output/public$script")" && : > "$APP/.output/public$script"; fi
+		done
 		# A cached page or fragment URL that is not a file runs the Worker on every request: refuse before uploading.
 		(cd "$APP" && node "$ROOT/src/cli.ts" cache output --cloudflare)
 		configure "$CONFIG" "$NAME"

@@ -9,7 +9,7 @@ import { cacheModule } from '../src/cache/apply.ts';
 import { classify } from '../src/cache/classify.ts';
 import { checkCloudflareLive } from '../src/cache/cloudflare-live.ts';
 import type { ResponseFacts, RouteEvidence } from '../src/cache/evidence.ts';
-import { checkCloudflareOutput } from '../src/cache/output.ts';
+import { checkCloudflareOutput, loadedUrls, workerLoads } from '../src/cache/output.ts';
 import { cacheRules, cloudflareAssetFile, cloudflareRules } from '../src/cache/rules.ts';
 import { fileSignals, NO_SIGNALS } from '../src/cache/signals.ts';
 
@@ -110,3 +110,24 @@ test('the live check passes files served by Cloudflare and names a page the Work
 		server.close();
 	}
 });
+
+test('the build check names every same-origin URL a page loads as it opens that is not an uploaded file', async () => {
+	const html = `<!doctype html><link rel="stylesheet" href="/s.css"><link rel="canonical" href="/x"><a href="/nope">x</a>
+<script type="importmap">{"imports":{"a":"/build/a.js","b":"https://cdn.example/b.js"}}</script>
+<script defer src="/_vercel/insights/script.js"></script><img src='/logo.svg?v=2'><script src="//cdn.example/c.js"></script>`;
+	assert.deepEqual(loadedUrls(html).sort(), ['/_vercel/insights/script.js', '/build/a.js', '/logo.svg', '/s.css']);
+	const out = await mkdtemp(join(tmpdir(), 'mm-cf-loads-'));
+	const write = async (path: string, body = 'x') => {
+		await mkdir(dirname(join(out, path)), { recursive: true });
+		await writeFile(join(out, path), body);
+	};
+	await write('public/index.html', html);
+	await write('public/docs.html', '<script defer src="/_vercel/insights/script.js"></script>');
+	await write('public/s.css');
+	await write('public/build/a.js');
+	await write('public/logo.svg');
+	assert.deepEqual((await workerLoads(out)).map(({ url, pages }) => ({ url, pages })), [{ url: '/_vercel/insights/script.js', pages: 2 }]);
+	await write('public/_vercel/insights/script.js', '');
+	assert.deepEqual(await workerLoads(out), []);
+});
+

@@ -72,3 +72,51 @@ export async function checkCloudflareOutput(outputDir: string, routeRules: Reado
 		workerFirst: uploaded.map((a) => urlOf(a.path)).filter((url) => patterns.some((p) => p.test(url))),
 	};
 }
+
+const LOAD_TAG = /<(script|link|img)\b([^>]*)>/gi;
+const ATTR = (name: string) => new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+const LOADED_RELS = /\b(?:stylesheet|modulepreload|preload|icon|apple-touch-icon|manifest)\b/i;
+const IMPORT_MAP = /<script\b[^>]*\btype=["']importmap["'][^>]*>([\s\S]*?)<\/script>/gi;
+
+/** Same-origin URLs a page's HTML loads as it opens: scripts, stylesheets, preloads, icons, images and import map targets. */
+export function loadedUrls(html: string): string[] {
+	const urls: string[] = [];
+	const attr = (attrs: string, name: string) => { const m = ATTR(name).exec(attrs); return m ? (m[1] ?? m[2] ?? m[3]) : undefined; };
+	for (const [, tag, attrs] of html.matchAll(LOAD_TAG)) {
+		const lower = tag!.toLowerCase();
+		const url = lower === 'link' ? (LOADED_RELS.test(attr(attrs!, 'rel') ?? '') ? attr(attrs!, 'href') : undefined) : attr(attrs!, 'src');
+		if (url) urls.push(url);
+	}
+	for (const [, source] of html.matchAll(IMPORT_MAP)) {
+		try {
+			const map = JSON.parse(source!) as { imports?: Record<string, string>; scopes?: Record<string, Record<string, string>> };
+			urls.push(...Object.values(map.imports ?? {}), ...Object.values(map.scopes ?? {}).flatMap((scope) => Object.values(scope)));
+		} catch {}
+	}
+	return [...new Set(urls.filter((url) => typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')).map((url) => url.split(/[?#]/)[0]!))];
+}
+
+/**
+ * Same-origin URLs the uploaded pages load as they open that are not uploaded files: each request for one runs the Worker
+ * (a 404 included), on every page view. Returns each URL with the first page that loads it.
+ */
+export async function workerLoads(outputDir: string): Promise<{ url: string; page: string; pages: number }[]> {
+	const publicDir = join(outputDir, 'public');
+	const assets = await filesUnder(publicDir);
+	const names = new Set(assets.map((a) => a.path));
+	const isFile = (url: string) => {
+		const path = decodeURIComponent(url).slice(1);
+		return names.has(path) || names.has(cloudflareAssetFile(url));
+	};
+	const found = new Map<string, { page: string; pages: number }>();
+	for (const asset of assets) {
+		if (!asset.path.endsWith('.html')) continue;
+		for (const url of loadedUrls(await readFile(join(publicDir, asset.path), 'utf8'))) {
+			if (isFile(url)) continue;
+			const seen = found.get(url);
+			if (seen) seen.pages++;
+			else found.set(url, { page: asset.path, pages: 1 });
+		}
+	}
+	return [...found].map(([url, { page, pages }]) => ({ url, page, pages })).sort((a, b) => b.pages - a.pages);
+}
