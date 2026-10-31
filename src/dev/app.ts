@@ -48,5 +48,5 @@ export async function prepareDevApp(app: string, dev: string): Promise<void> {
 	const state = join(app, '.migrate');
 	for (const name of await readdir(state)) if (!OWN_STATE.has(name)) await link(join(state, name), join(dev, '.migrate', name));
 	await mkdir(join(state, 'convert'), { recursive: true });
-	for (const entry of await readdir(join(state, 'convert'), { withFileTypes: true })) if (entry.isDirectory()) await link(join(state, 'convert', entry.name), join(dev, '.migrate', 'convert', entry.name));
+	for (const entry of await readdir(join(state, 'convert'), { withFileTypes: true })) if (entry.isDirectory() || entry.name === 'sources.json') await link(join(state, 'convert', entry.name), join(dev, '.migrate', 'convert', entry.name));
 }

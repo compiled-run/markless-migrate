@@ -26,6 +26,8 @@ test('converts are compared file by file against any reference: renamed ids matc
 		const a = await app('a', { 'pages/x.tsrx': '<b id="_r_1_">x</b>', 'public/_converted/layers/0123456789abcdef.html': '<p id="_r_2_">', '.migrate/convert/reveals/k.json': JSON.stringify({ route: '/', reveals: [{ key: 'radix-_r_0_' }, { key: 'radix-_r_0_' }] }) });
 		const b = await app('b', { 'pages/x.tsrx': '<b id="_r_9_">x</b>', 'public/_converted/layers/fedcba9876543210.html': '<p id="_r_7_">', '.migrate/convert/reveals/k.json': JSON.stringify({ route: '/', reveals: [{ key: 'radix-_r_0_' }, { key: 'radix-_r_5_' }] }) });
 		assert.deepEqual(compareConverts(b, [a]), { files: 3, renamed: [], idsOnly: [] });
+		const keyed = await app('keyed', { 'pages/x.tsrx': '<b id="_r_9_">x</b>', 'public/_converted/layers/fedcba9876543210.html': '<p id="_r_7_">', '.migrate/convert/reveals/di-qJuCSGcUBLlEUchNdd8juBcRINbbcUypnW83jyXo/k.json': JSON.stringify({ route: '/', reveals: [{ key: 'radix-_r_0_' }, { key: 'radix-_r_5_' }] }) });
+		assert.deepEqual(compareConverts(keyed, [a]), { files: 3, renamed: [], idsOnly: [] }, 'a recording under its route key is the same file');
 		const c = await app('c', { 'pages/x.tsrx': '<b id="_r_9_">y</b>', 'public/_converted/layers/fedcba9876543210.html': '<p id="_r_7_">', '.migrate/convert/reveals/k.json': '{"route":"/","reveals":[]}' });
 		assert.deepEqual(compareConverts(c, [a]), { files: 3, renamed: ['.migrate/convert/reveals/k.json', 'pages/x.tsrx'], idsOnly: [] });
 	} finally {

@@ -22,7 +22,8 @@ before(async () => {
 	server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
 		const page = PAGES[path];
-		if (page) loads.push(path);
+		// A browser's load: the plain request convert keys a page's recordings with is not one.
+		if (page && req.headers['user-agent'] !== 'node') loads.push(path);
 		res.writeHead(page ? 200 : 404, { 'content-type': 'text/html' }).end(page ?? '<!doctype html><title>Not found</title>');
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));

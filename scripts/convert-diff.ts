@@ -70,7 +70,7 @@ function grouped(root: string, erase: boolean): Map<string, Set<string>> {
 	const out = new Map<string, Set<string>>();
 	for (const path of files(root)) {
 		// A route's recordings may sit under the key of its old page (record-key.ts): the same file either way.
-		const name = withoutIds(path).replace(/^(\.migrate\/convert\/[^/]+)\/[0-9a-f]{16}\//, '$1/').replace(/[0-9a-f]{16}\.html$/, 'HASH.html').replace(/\/layer-\d+\.tsrx$/, '/layer-N.tsrx');
+		const name = withoutIds(path.replace(/^(\.migrate\/convert\/[^/]+)\/(?:[0-9a-f]{16}|[\w-]{43})\//, '$1/')).replace(/[0-9a-f]{16}\.html$/, 'HASH.html').replace(/\/layer-\d+\.tsrx$/, '/layer-N.tsrx');
 		const set = out.get(name) ?? new Set<string>();
 		set.add(canonicalFile(path, readFileSync(join(root, path), 'utf8'), erase));
 		out.set(name, set);
