@@ -93,6 +93,14 @@ on:
         description: The build's Node heap in MB (the live heap of a full shadcn build peaks at 6 to 7 GB)
         required: false
         default: '13312'
+      rerecord:
+        description: Routes (comma-separated) recorded again even when captures-from holds them
+        required: false
+        default: ''
+      emit-reuse-from:
+        description: A pipeline run whose converted app this run's emit converts over with --reuse (its assets on disk are kept)
+        required: false
+        default: ''
       captures-from:
         description: A pipeline run whose capture shards finished, taken as this run's captures under the keys they were recorded with
         required: false
@@ -101,18 +109,10 @@ on:
         description: Read nothing back from earlier runs (a fresh run's timing)
         type: boolean
         default: false
-      verify-emit:
-        description: Convert again even when a converted app is kept, and fail unless the two match (scripts/convert-diff.ts)
-        type: boolean
-        default: false
       deploy:
         description: none, preview (upload and check a preview version), or promote (then deploy it)
         required: false
         default: none
-      worker:
-        description: The Cloudflare Worker a deploy uploads to
-        required: false
-        default: ''
   # A change to the pipeline runs it on a few ui.shadcn.com pages, two runners a stage.
   pull_request:
     paths:
@@ -285,6 +285,20 @@ jobs:
           mkdir -p "$store"
           if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
           t=$(date +%s)
+          if [ -d "$RUNNER_TEMP/taken" ] && [ -n "${{ inputs.rerecord }}" ]; then
+            node -e '
+              const fs = require("fs"), path = require("path");
+              const [dir, list] = process.argv.slice(1);
+              const again = new Set(list.split(",").map((s) => s.trim()).filter(Boolean));
+              const caps = path.join(dir, "captures");
+              for (const key of fs.existsSync(caps) ? fs.readdirSync(caps) : []) {
+                const routes = fs.readdirSync(path.join(caps, key)).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(fs.readFileSync(path.join(caps, key, f), "utf8")).route);
+                if (!routes.some((r) => again.has(r))) continue;
+                for (const kind of fs.readdirSync(dir)) fs.rmSync(path.join(dir, kind, key), { recursive: true, force: true });
+                console.log(`recorded again: ${routes.join(" ")} (key ${key})`);
+              }
+            ' "$RUNNER_TEMP/taken" "${{ inputs.rerecord }}"
+          fi
           if [ -d "$RUNNER_TEMP/taken" ]; then cp -R "$RUNNER_TEMP/taken/." "$store/"; fi
           result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out" ${{ inputs.captures-from != '' && '"$RUNNER_TEMP/taken"' || '' }})
           echo "$result"
@@ -385,7 +399,7 @@ jobs:
     timeout-minutes: 240
     env:
       # A pull request's run proves a kept converted app (and its parts copied again) equal to a convert of the same inputs.
-      VERIFY: ${{ inputs.verify-emit || github.event_name == 'pull_request' }}
+      VERIFY: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -469,6 +483,11 @@ jobs:
           mkdir -p "$store"
           if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ] && [ "$FRESH" != true ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
           if [ -d "$RUNNER_TEMP/captured" ]; then cp -R "$RUNNER_TEMP/captured/." "$store/"; fi
+          if [ -n "${{ inputs.emit-reuse-from }}" ]; then
+            gh run download "${{ inputs.emit-reuse-from }}" -R "$GITHUB_REPOSITORY" -p "pl-$SITE-converted-*" -D "$RUNNER_TEMP/kept"
+            tar -xzf "$(find "$RUNNER_TEMP/kept" -name app.tar.gz | head -n 1)" -C "$APP"
+            echo "REUSE=1" >> "$GITHUB_ENV"; export REUSE=1
+          fi
           cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
           only=""
           [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/all/shard-1.txt"
@@ -806,7 +825,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WORKER: ${{ inputs.worker }}
+          WORKER: ''
           MODE: ${{ inputs.deploy }}
         run: |
           set -euo pipefail
