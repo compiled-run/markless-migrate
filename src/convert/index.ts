@@ -12,6 +12,7 @@ import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice 
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
+import { frameworkScriptsOf } from './runtime-scripts.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
@@ -1041,10 +1042,10 @@ async function readQwikSymbols(origin: string): Promise<QwikHandlers['symbols'] 
 	return new Map(Object.entries(manifest.symbols).flatMap(([symbol, s]) => (s.origin && s.displayName ? [[symbol, { origin: s.origin, name: s.displayName }] as const] : [])));
 }
 
-function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
+function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan, frameworkScripts: ReadonlySet<string> = new Set()): Prepared {
 	currentRoute = capture.route;
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
-	const ctx = { builds, frameworkScripts: new Set<string>(), origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
+	const ctx = { builds, frameworkScripts, origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
@@ -1129,12 +1130,14 @@ const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'm
  * can outweigh a short page's content (a theme panel's hundreds of swatches), and is then the document's, not the page.
  */
 export function pageRoot(kids: readonly Element[]): Element {
-	const own = kids.filter((el) => !isDialog(el));
+	const own = kids.filter((el) => !isDialog(el) && !isPortal(el));
 	const pool = own.length ? own : kids;
 	const holding = pool.filter((el) => isMain(el) || [...walk(el)].some(isMain));
 	return (holding.length ? holding : pool).reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 }
 
+// A popup open on load (a Base UI portal, a Radix popper's wrapper) is a layer the page portaled to the body, not the page.
+const isPortal = (el: Element) => el.attrs.some((a) => a.name === 'data-base-ui-portal' || a.name === 'data-radix-popper-content-wrapper');
 // A dialog open on load is a layer the page portaled to the body, not the page.
 const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
@@ -1573,6 +1576,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		break;
 	}
+	const scriptVerdicts = new Map<string, Promise<boolean>>();
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -1580,7 +1584,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		racLayer.route = ref.route;
 		templatePorts.routes = [ref.route];
-		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
+		const capture = await ref.load();
+		prepared.set(ref.route, prepare(capture, revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images, await frameworkScriptsOf(capture.server, options.old, scriptVerdicts)));
 		for (const e of racPageEmpties.get(ref.route) ?? []) {
 			const p = prepared.get(ref.route)!;
 			const input = locator(p.root.parentNode as Element)(e.sig, e.nth);

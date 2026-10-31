@@ -155,9 +155,9 @@ async function convert(old: string): Promise<void> {
 	await writeFile(join(APP, 'package.json'), `${JSON.stringify(MANIFEST, null, '\t')}\n`);
 	const cli = `node ${join(ROOT, 'src', 'cli.ts')}`;
 	const source = join(SRC, lib.source);
-	await sh(`${cli} plan --old ${old} --source ${source}`, APP);
+	await sh(`${cli} plan --old ${old} --source ${source} --limit 5000`, APP);
 	await sh(`${cli} usage --old ${old} --source ${source}`, APP);
-	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2`, APP);
+	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2 --ledger report`, APP);
 }
 
 async function linkAndBuild(): Promise<void> {
@@ -305,7 +305,8 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 	];
 	process.stdout.write(`${lines.join('\n')}\n`);
 	if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
-	if (unexpected.length || fixed.length || stale.length) process.exitCode = 1;
+	// A suite the adapter admits nothing of measures nothing: that is the adapter broken, not a green.
+	if (unexpected.length || fixed.length || stale.length || !admitted.length) process.exitCode = 1;
 }
 
 await main();
