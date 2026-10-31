@@ -203,6 +203,8 @@ jobs:
           CONCURRENCY: ${{ inputs.concurrency || '1' }}
           TIMEOUT: ${{ inputs.timeout || '3600' }}
           REUSE: ${{ inputs.reuse != 'false' && '--reuse .migrate/reuse' || '' }}
+          # Each route's time per part (explore, replays, probes, slow network) in check.txt, to tell a slow route's cause.
+          MARKLESS_MIGRATE_PROFILE: '1'
         run: |
           set -uo pipefail
           cd "$APP"
