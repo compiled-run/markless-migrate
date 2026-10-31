@@ -40,6 +40,7 @@ jobs:
       - name: point the port at the packs
         working-directory: migrate/examples/qwikui-markless
         run: |
+          tar -xzf ../../scratch/preload-tti/converted.tgz
           node -e '
             const fs = require("fs"), path = require("path");
             const dir = path.resolve("../../../packs");
