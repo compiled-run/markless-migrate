@@ -40,7 +40,7 @@ for (const [id, c] of Object.entries(CASES)) {
 
 test('a step compares what it changed: tree lines it added, a popup moved past tolerance, an animation only one side ran; what two old runs disagree on is noise', () => {
 	const at = (over: Partial<StateReading> = {}): StateReading => ({ ax: ['- main:', '  - button "Open"'], popups: [], motion: [], script: [], ms: 1, ...over });
-	const place = { role: 'menu', name: '', side: 'below', gap: 4, across: 0, align: 'start', width: 200, height: 100, triggerWidth: 200, triggerHeight: 32, covers: 0, hides: false } as const;
+	const place = { role: 'menu', name: '', side: 'below', gap: 4, across: 0, align: 'start', width: 200, height: 100, triggerWidth: 200, triggerHeight: 32, covers: 0, hides: false, anchored: true } as const;
 	const fade = { kind: 'animation', subject: 'menu', properties: ['opacity'], duration: 150, delay: 0, easing: 'ease-out', iterations: 1, direction: 'normal', keyframes: ['0 opacity=0', '1 opacity=1'] } as const;
 	const open = at({ ax: ['- main:', '  - button "Open"', '  - menu'], popups: [place], motion: [fade] });
 	assert.deepEqual(compareStates([at(), open], [at({ ax: ['- main:', '  - button "Open" [expanded]'] }), { ...open, ax: ['- main:', '  - button "Open" [expanded]', '  - menu'], popups: [{ ...place, gap: 5, width: 201 }], motion: [{ ...fade, duration: 160, easing: 'cubic-bezier(0, 0, 0.58, 1)' }] }]), [[]]);

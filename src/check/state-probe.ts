@@ -1,7 +1,6 @@
 import type { Page } from 'playwright';
 import { maskClocks } from './clock.ts';
 import { armState, type PageMotion, type PagePopupPlace, type PageScriptMotion, type PageState } from './state-page.ts';
-import { samePath } from './svg-path.ts';
 import type { Dimension } from './types.ts';
 
 /**
@@ -34,10 +33,7 @@ export const STATE_TOLERANCE = {
 	/** Animation duration and delay: ms, or a share of the longer (rule durations measured 0 ms apart; motion.ts's bound for a duration computed from a height a few pixels off). */
 	ms: 20,
 	ratio: 0.1,
-	/** Script motion is timed by the wall clock between its first and last written frame: two runs of one page differed by up to 85 ms on 2-core runners (30 widget routes, CI run 41185919588). */
-	scriptMs: 120,
-	scriptRatio: 0.25,
-	/** A script writing on this many frames or more animates; fewer is set-up. */
+	/** A script writing on this many frames or more animates; two or fewer jumps. Its time span is not compared: two runs of one carousel's tween differed by up to 2 s on 2-core runners (198 routes, CI run 41192823809). */
 	scriptFrames: 6,
 	/** Keyframe numbers, as a share. */
 	value: 0.02,
@@ -152,27 +148,24 @@ export function sameMotion(a: readonly PageMotion[], b: readonly PageMotion[]): 
 }
 
 const SCRIPT_ATTR: Record<string, string> = { d: 'path', transform: 'transform', points: 'points', style: 'style' };
-export function describeScript(s: PageScriptMotion | undefined): string {
-	if (!s || s.frames < STATE_TOLERANCE.scriptFrames) return s ? `set on ${s.frames} frame${s.frames === 1 ? '' : 's'}, no motion` : 'jumps: no frame by frame motion';
-	return `moves frame by frame: ${s.frames} frames over ${s.span} ms, ${SCRIPT_ATTR[s.attribute] ?? s.attribute} from "${s.first.slice(0, 60)}" to "${s.last.slice(0, 60)}"`;
+export function describeScript(s: PageScriptMotion): string {
+	const what = `${SCRIPT_ATTR[s.attribute] ?? s.attribute} from "${s.first.slice(0, 60)}" to "${s.last.slice(0, 60)}"`;
+	return s.frames >= STATE_TOLERANCE.scriptFrames ? `moves frame by frame: ${s.frames} frames over ${s.span} ms, ${what}` : `jumps: set on ${s.frames} frame${s.frames === 1 ? '' : 's'}, ${what}`;
 }
 
-export function sameScript(a: PageScriptMotion | undefined, b: PageScriptMotion | undefined): boolean {
-	const t = STATE_TOLERANCE;
-	const moves = (s: PageScriptMotion | undefined) => Boolean(s && s.frames >= t.scriptFrames);
-	if (moves(a) !== moves(b)) return false;
-	if (!moves(a)) return true;
-	if (!near(a!.span, b!.span, t.scriptMs, t.scriptRatio)) return false;
-	const same = (x: string, y: string) => (a!.attribute === 'd' ? samePath(x, y) || nearText(x, y, t.value) : nearText(x, y, t.value));
-	return same(a!.last, b!.last);
+/** One side tweens what the other sets at once. Only when both changed it: whether it changed at all is the probes' and the tree's to compare. */
+export function tweenDiffers(a: PageScriptMotion | undefined, b: PageScriptMotion | undefined): boolean {
+	if (!a || !b) return false;
+	const t = STATE_TOLERANCE.scriptFrames;
+	return (a.frames >= t && b.frames <= 2) || (b.frames >= t && a.frames <= 2);
 }
 
 // The probed widget's own motion: the control, what is inside it, and the popups. Another element's (the control Tab left) starts or not by how fast the step ran.
 const OWN = /^(?!.* outside the widget$)/;
 
-// A transition of a colour or a shadow is a hover or focus feedback that starts or not by whether the pointer crossed the control between two frames; motion is a transition of where or whether an element shows.
+// A transition on the control is hover, press or focus feedback that starts or not by whether the pointer crossed it between two frames (measured: 13 of 30 routes red on identical pages), as is one of a colour or a shadow anywhere; motion is a popup's transition of where or whether it shows.
 const MOVES = /^(opacity|transform|translate|scale|rotate|width|height|max-height|min-height|max-width|top|left|right|bottom|inset.*|margin.*|padding.*|clip-path|visibility|display|overlay|offset.*|grid-template.*|flex.*|filter|backdrop-filter|--.*)$/;
-const moving = (list: readonly PageMotion[]) => list.filter((m) => m.kind !== 'transition' || m.properties.some((p) => MOVES.test(p)));
+const moving = (list: readonly PageMotion[], popup = true) => list.filter((m) => m.kind !== 'transition' || (popup && m.properties.some((p) => MOVES.test(p))));
 
 const popupRoles = (r: StateReading | undefined) => (r?.popups ?? []).map((p) => p.role);
 
@@ -210,7 +203,7 @@ export function compareStep(oldBefore: StateReading | undefined, old: StateReadi
 	for (const [role, list] of groupBy(old.popups, (p) => p.role)) {
 		list.forEach((p, i) => {
 			const n = nByRole.get(role)?.[i];
-			if (!n || p.modal || n.modal) return;
+			if (!n || !p.anchored || !n.anchored) return;
 			const a = aByRole?.get(role)?.[i];
 			if (a && placeDiffers(p, a).length) return;
 			const how = placeDiffers(p, n);
@@ -223,10 +216,14 @@ export function compareStep(oldBefore: StateReading | undefined, old: StateReadi
 	const am = again ? groupBy(again.motion, (m) => m.subject) : undefined;
 	for (const subject of new Set([...om.keys(), ...nm.keys()])) {
 		if (!OWN.test(subject)) continue;
-		const o = moving(om.get(subject) ?? []);
-		const n = moving(nm.get(subject) ?? []);
+		// A popup's motion is compared when the step opened, closed or kept it alike on both sides; one that opened on one side only is a difference of state, not of motion.
+		const role = subject.replace(/^in /, '');
+		const popup = /^(in )?[\w-]+$/.test(subject) && !subject.startsWith('the ');
+		if (popup && (popupRoles(oldBefore).includes(role) !== popupRoles(newBefore).includes(role) || popupRoles(old).includes(role) !== popupRoles(next).includes(role))) continue;
+		const o = moving(om.get(subject) ?? [], popup);
+		const n = moving(nm.get(subject) ?? [], popup);
 		if (sameMotion(o, n)) continue;
-		if (am && !sameMotion(o, moving(am.get(subject) ?? []))) continue;
+		if (am && !sameMotion(o, moving(am.get(subject) ?? [], popup))) continue;
 		out.push({ dimension: 'motion', field: motionField(subject, o.length ? oldBefore : newBefore, o.length ? old : next), old: describeMotion(o), new: describeMotion(n) });
 	}
 	// Script motion, by whose and which attribute.
@@ -237,10 +234,10 @@ export function compareStep(oldBefore: StateReading | undefined, old: StateReadi
 	for (const k of new Set([...os.keys(), ...ns.keys()])) {
 		const o = os.get(k);
 		const n = ns.get(k);
-		if (sameScript(o, n)) continue;
-		if (as && !sameScript(o, as.get(k))) continue;
+		if (!tweenDiffers(o, n)) continue;
+		if (as && tweenDiffers(o, as.get(k))) continue;
 		const [subject, attribute] = k.split('|') as [string, string];
-		out.push({ dimension: 'motion', field: `script motion of ${subject} (${SCRIPT_ATTR[attribute] ?? attribute})`, old: describeScript(o), new: describeScript(n) });
+		out.push({ dimension: 'motion', field: `script motion of ${subject} (${SCRIPT_ATTR[attribute] ?? attribute})`, old: describeScript(o!), new: describeScript(n!) });
 	}
 	return out;
 }
@@ -284,7 +281,7 @@ export function stateSpread(a: StateRun, b: StateRun): Record<string, number> {
 		const [x, y] = [a[k]!, b[k]!];
 		x.popups.forEach((p, i) => {
 			const q = y.popups[i];
-			if (!q || q.role !== p.role || p.modal || q.modal) return;
+			if (!q || q.role !== p.role || !p.anchored || !q.anchored) return;
 			max('px', Math.max(Math.abs(p.gap - q.gap), Math.abs(p.across - q.across), Math.abs(p.width - q.width)));
 			if (p.triggerWidth && q.triggerWidth) max('widthRatio', Math.abs(p.width / p.triggerWidth - q.width / q.triggerWidth));
 		});

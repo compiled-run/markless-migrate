@@ -16,8 +16,8 @@ export interface PagePopupPlace {
 	readonly covers: number;
 	/** The trigger's centre is hit-tested to the popup rather than to the trigger. */
 	readonly hides: boolean;
-	/** A modal dialog is placed against the viewport, not its trigger. */
-	readonly modal?: boolean;
+	/** Placed against its trigger: a menu, listbox, tooltip or tree, or content a positioning library places (it marks the side it chose). A sheet or modal sits against the viewport. */
+	readonly anchored: boolean;
 }
 
 /** One CSS transition, CSS animation or Web Animation that started since the last drain. */
@@ -64,6 +64,7 @@ export function armState(): void {
 	w.__mmState__?.stop();
 	const MARK = '[data-markless-migrate-probe]';
 	const POPUP = 'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="tooltip"], [role="tree"], [popover]';
+	const TOAST = '[aria-live]:not([aria-live="off"]), [data-sonner-toaster], [data-sonner-toast], [role="status"], [role="alert"]';
 	const SCRIPTED = ['d', 'transform', 'points', 'style', 'x', 'y', 'width', 'height', 'cx', 'cy', 'r'];
 	let stopped = false;
 	let frame = 0;
@@ -83,7 +84,7 @@ export function armState(): void {
 		if (!el) return 'the page';
 		const control = document.querySelector(MARK);
 		if (control && (el === control || control.contains(el))) return el === control ? 'the control' : 'inside the control';
-		const popup = el.closest(POPUP);
+		const popup = el.closest(TOAST) ? null : el.closest(POPUP);
 		if (popup) return popup === el ? roleOf(popup) : `in ${roleOf(popup)}`;
 		const t = text(el);
 		return `${el.localName}${el.getAttribute('role') ? `[${el.getAttribute('role')}]` : ''}${t ? ` "${t}"` : ''} outside the widget`;
@@ -194,7 +195,7 @@ export function armState(): void {
 			triggerHeight: r(t.height),
 			covers: t.width * t.height ? Math.round(((ix * iy) / (t.width * t.height)) * 10) / 10 : 0,
 			hides: Boolean(hit && popup.contains(hit) && !trigger.contains(hit)),
-			...(popup.getAttribute('aria-modal') === 'true' || (popup instanceof HTMLDialogElement && popup.matches(':modal')) ? { modal: true } : {}),
+			anchored: /^(menu|listbox|tooltip|tree)$/.test(roleOf(popup)) || Boolean(popup.closest('[data-side], [data-placement], [data-radix-popper-content-wrapper]') ?? popup.querySelector(':scope > [data-side], :scope > [data-placement]')),
 		};
 	};
 	const triggerOf = (popup: Element): Element | null => {
@@ -220,12 +221,13 @@ export function armState(): void {
 			for (const [el, byAttr] of writes) {
 				if (ongoing.has(el)) continue;
 				for (const [attribute, e] of byAttr) {
-					if (e.frames.size < 3 || (attribute === 'style' && el.closest(POPUP) === null && el.getAnimations().length)) continue;
+					if (attribute === 'style' && el.closest(POPUP) === null && el.getAnimations().length) continue;
 					script.push({ subject: subject(el), attribute, frames: e.frames.size, span: Math.round(e.t1 - e.t0), first: e.first.slice(0, 400), last: e.last.slice(0, 400) });
 				}
 			}
 			writes.clear();
-			const list = [...document.querySelectorAll(POPUP)].filter((p) => shown(p) && (!p.hasAttribute('popover') || p.matches(':popover-open')));
+			// A toast is shown and dismissed by its own timers, not by the step: the probes' toast reading follows it.
+			const list = [...document.querySelectorAll(POPUP)].filter((p) => shown(p) && (!p.hasAttribute('popover') || p.matches(':popover-open')) && !p.closest(TOAST));
 			const outer = list.filter((p) => !list.some((o) => o !== p && o.contains(p)));
 			const popups = outer.flatMap((p) => {
 				const t = triggerOf(p);
