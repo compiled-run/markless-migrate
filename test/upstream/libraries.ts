@@ -15,7 +15,7 @@ export interface Library {
 	readonly serveIn: string;
 	/** The source convert and usage read, relative to the checkout. */
 	readonly source: string;
-	readonly runner: { readonly kind: 'playwright'; readonly config: string; readonly browsers: readonly string[] } | { readonly kind: 'cypress'; readonly specs: readonly string[] };
+	readonly runner: { readonly kind: 'playwright'; readonly config: string; readonly browsers: readonly string[] } | { readonly kind: 'cypress'; readonly specs: readonly string[] } | { readonly kind: 'shim'; readonly script: string };
 	/** The address the suite visits stands for a page of the site (serve.ts stories), on both sides. */
 	readonly stories?: true;
 }
@@ -58,5 +58,17 @@ export const LIBRARIES: Readonly<Record<string, Library>> = {
 		source: 'apps/storybook',
 		runner: { kind: 'cypress', specs: ['ContextMenu', 'DropdownMenu', 'Menubar', 'Select', 'Dialog', 'Form', 'Toast'] },
 		stories: true,
+	},
+	// react-day-picker's tests are Jest's on jsdom; day-picker-shim.ts runs the keyboard tests on real pages instead.
+	'day-picker': {
+		name: 'day-picker',
+		repo: 'https://github.com/gpbl/react-day-picker.git',
+		ref: 'v9.8.1',
+		pm: 'pnpm@9.15.9',
+		build: [`node ${ROOT}test/upstream/day-picker-pages.ts .`, 'cd examples-app && npx vite build -c upstream-vite.config.mjs'],
+		serve: (port) => `node ${ROOT}test/upstream/serve.ts static examples-app/upstream-dist ${port}`,
+		serveIn: '.',
+		source: 'examples',
+		runner: { kind: 'shim', script: 'day-picker-shim.ts' },
 	},
 };

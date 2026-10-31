@@ -89,7 +89,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        library: [cmdk, vaul, radix]
+        library: [cmdk, vaul, radix, day-picker]
     steps:
       - uses: actions/checkout@v4
         with:

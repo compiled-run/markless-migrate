@@ -104,8 +104,23 @@ export default { ...base, webServer: undefined, retries: 0, forbidOnly: false, w
 		await sh(`npx playwright test -c upstream-run.config.ts --repeat-each ${REPEAT} || true`, SRC, { CI: '' });
 		return outcomes(JSON.parse(await readFile(report, 'utf8')));
 	}
-	// Cypress has no repeat: the specs run again, and each run's results are added to the test's.
-	const spec = runner.specs.map((name) => `cypress/e2e/${name}.cy.ts`).join(',');
+	if (runner.kind === 'shim') await sh(`node ${join(import.meta.dirname, runner.script)} ${SRC} ${origin} ${report} ${REPEAT}`, SRC);
+	else await cypress(runner.specs, origin, report);
+	const out = new Map<string, Outcome>();
+	const browser = runner.kind === 'shim' ? 'chromium' : 'electron';
+	for (const t of JSON.parse(await readFile(report, 'utf8')) as { file: string; title: string[]; state: string; error?: string }[]) {
+		const title = t.title.join(' > ');
+		const id = `${t.file} > ${browser} > ${title}`;
+		const prior = out.get(id);
+		const error = prior?.error ?? t.error?.split('\n').slice(0, 6).join('\n');
+		out.set(id, { id, title: `${t.file}: ${title} [${browser}]`, runs: [...(prior?.runs ?? []), t.state], ...(error ? { error } : {}) });
+	}
+	return out;
+}
+
+// Cypress has no repeat: the specs run again, and each run's results are added to the test's.
+async function cypress(specs: readonly string[], origin: string, report: string): Promise<void> {
+	const spec = specs.map((name) => `cypress/e2e/${name}.cy.ts`).join(',');
 	await writeFile(join(SRC, 'upstream-run.cypress.mjs'), `import cypress from 'cypress';
 import { writeFileSync } from 'node:fs';
 const tests = [];
@@ -117,15 +132,6 @@ for (let i = 0; i < ${REPEAT}; i++) {
 writeFileSync(${JSON.stringify(report)}, JSON.stringify(tests));
 `);
 	await sh('node upstream-run.cypress.mjs', SRC);
-	const out = new Map<string, Outcome>();
-	for (const t of JSON.parse(await readFile(report, 'utf8')) as { file: string; title: string[]; state: string; error?: string }[]) {
-		const title = t.title.join(' > ');
-		const id = `${t.file} > electron > ${title}`;
-		const prior = out.get(id);
-		const error = prior?.error ?? t.error?.split('\n').slice(0, 6).join('\n');
-		out.set(id, { id, title: `${t.file}: ${title} [electron]`, runs: [...(prior?.runs ?? []), t.state], ...(error ? { error } : {}) });
-	}
-	return out;
 }
 
 const MANIFEST = {
