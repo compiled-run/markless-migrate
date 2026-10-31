@@ -171,7 +171,7 @@ async function linkAndBuild(): Promise<void> {
 }
 
 interface Known {
-	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'adapter'; readonly why: string }>>;
+	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'shape' | 'adapter'; readonly why: string }>>;
 }
 
 // What each converted page logs as it loads: an error here explains a suite that finds nothing working.

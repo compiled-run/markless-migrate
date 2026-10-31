@@ -1,6 +1,6 @@
 // The servers a suite's adapter needs:
 //   node test/upstream/serve.ts static <dir> <port>    a built site, a directory's index.html for its path
-//   node test/upstream/serve.ts stories <origin> <port> Storybook's iframe.html?id=components-<story> as <origin>/stories/<story>/,
+//   node test/upstream/serve.ts stories <origin> <port> Storybook's iframe.html?id=components-<story> as <origin>/story/<story>/,
 //                                                       every other request passed through; the same for the library and the port
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -13,7 +13,7 @@ export function storyPath(url: string): string {
 	const at = new URL(url, 'http://x');
 	const id = at.searchParams.get('id');
 	if (at.pathname !== '/iframe.html' || !id?.startsWith('components-')) return url;
-	return `/stories/${id.slice('components-'.length)}/`;
+	return `/story/${id.slice('components-'.length)}/`;
 }
 
 const [mode, target, port] = process.argv.slice(2);
