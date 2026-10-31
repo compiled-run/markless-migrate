@@ -130,3 +130,11 @@ test("history's own entry state (React Router 2 and 3) in sessionStorage is the 
 	assert.equal(storageOwner([page('React')], [page('React')])('+ sessionStorage @@History/s/uvja5u'), undefined);
 	assert.equal(storageOwner([page('React')], [page()])('+ sessionStorage itemCache'), undefined);
 });
+
+test('a run of one part names every endpoint and redirect of its targets as that part, so the merge never reads them as not checked', async () => {
+	const old = await oldApp();
+	const next = await newApp();
+	servers.push(old, next);
+	const report = await runCheck({ ...quick, oldOrigin: origin(old), newOrigin: origin(next), routes: ['/about', '/feed.xml', '/old'], endpoints: ['/feed.xml'], redirects: ['/old'], browser, oldRouting: 'hash', only: 'probes', probes: {} });
+	assert.deepEqual(report.routes.map((r) => [r.route, r.ok, r.only]).sort(), [['/about', true, 'probes'], ['/feed.xml', true, 'probes'], ['/old', true, 'probes']]);
+});
