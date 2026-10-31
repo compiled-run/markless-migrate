@@ -837,6 +837,24 @@ function chartRegion(wrapper: Element | undefined): Element | undefined {
 	return wrapper?.parentNode && isElement(wrapper.parentNode as Element) ? (wrapper.parentNode as Element) : undefined;
 }
 
+/**
+ * The layer a menu trigger a demo's use adds opens: that of the page's trigger like it in the same table column (a row's
+ * actions menu, the same in every row), which the old page rendered for the rows it loaded with.
+ */
+function rowMenuLayer(p: Prepared): (trigger: Element) => string | undefined {
+	const keys = new Set(p.layers.map((l) => l.key));
+	const keyOf = (t: Element) => [attr(t, 'aria-controls'), triggerKeys.get(t), attr(t, 'id')].find((k): k is string => k !== undefined && keys.has(k));
+	const columnOf = (el: Element): string | undefined => {
+		for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (n.tagName === 'td') return `${childrenOf(n.parentNode as Element).filter(isElement).indexOf(n)}`;
+		return undefined;
+	};
+	const triggers = [...walk(p.root)].filter((t) => attr(t, 'aria-haspopup') !== undefined && columnOf(t) !== undefined && keyOf(t));
+	return (c) => {
+		const like = triggers.filter((t) => t.tagName === c.tagName && attr(t, 'data-slot') === attr(c, 'data-slot') && attr(t, 'aria-haspopup') === attr(c, 'aria-haspopup') && columnOf(t) === columnOf(c));
+		return like.length && !keyOf(c) ? keyOf(like.at(-1)!) : undefined;
+	};
+}
+
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
 	const asLoaded = new Map<string, Element[]>();
@@ -1914,9 +1932,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) {
 		const list = scenes.get(route) ?? [];
 		const locate = list.length ? locator(p.root.parentNode as Element) : undefined;
+		const layerOf = list.length ? rowMenuLayer(p) : undefined;
 		for (const { scene, listed } of list) {
 			const region = locate!(scene.sig, scene.nth);
-			if (region && scenePlan.add(scene, region, listed)) sceneCount++;
+			if (region && scenePlan.add(scene, region, listed, layerOf)) sceneCount++;
 			else if (!region) log(`  recorded uses not played: ${scene.sig}#${scene.nth} is not on the converted page`);
 		}
 	}

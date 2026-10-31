@@ -166,6 +166,7 @@ export class ScenePlan {
 	private n = 0;
 	readonly refused: string[] = [];
 	private readonly bound: (el: Element) => boolean;
+	private layerOf: ((trigger: Element) => string | undefined) | undefined;
 
 	/** `bound`: whether another of convert's plans puts an element on Markless state; a demo whose uses would replace one is not played. */
 	constructor(bound: (el: Element) => boolean = () => false) {
@@ -202,7 +203,12 @@ export class ScenePlan {
 		return slot === 'message-scroller-viewport' ? pending : [...pending, `data-mm-default-scroll-position="${position}"`, 'data-mm-mount=""', 'onVisible={() => mount("data-mm-mount")}'];
 	}
 
-	add(scene: Scene, region: Element, listed: string): boolean {
+	/**
+	 * `layerOf`: for a menu trigger only the playing frames have (a row a Load more adds), the layer key of a page trigger
+	 * like it, whose menu it opens.
+	 */
+	add(scene: Scene, region: Element, listed: string, layerOf?: (trigger: Element) => string | undefined): boolean {
+		this.layerOf = layerOf;
 		const local = new Map<Element, Binding>();
 		let why = this.plan(scene, region, listed, local, false);
 		// Uses that would replace another plan's element play the captured markup only while they run: at rest the page's own shows.
@@ -345,7 +351,8 @@ export class ScenePlan {
 					const extra = sid !== undefined && keyed.has(Number(sid)) ? [`data-mm-k="${sid}"`] : [];
 					// A form in a demo whose state the old page's script drove submitted nowhere.
 					const form = el.tagName === 'form' ? ['data-mm-form=""', 'onSubmit={(event) => event.preventDefault()}'] : [];
-					return { omit: ['data-mm-sid'], extra: [...extra, ...form, ...(this.scroller(el, openings) ?? [])] };
+					const layer = attr(el, 'aria-haspopup') !== undefined ? this.layerOf?.(el) : undefined;
+					return { omit: ['data-mm-sid'], extra: [...extra, ...form, ...(layer ? [`data-mm-key=${lit(layer)}`] : []), ...(this.scroller(el, openings) ?? [])] };
 				},
 			});
 		// The arms node `id` is shown by over `frames` (those it is in): frame 0's own shape, then each largest shape.
