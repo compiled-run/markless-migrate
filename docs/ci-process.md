@@ -29,6 +29,7 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 | e2e next-app (6 shards), vite-site (4 shards) | no | yes | only if the merge queue did not test this commit |
 
 - A pull request's CI holds at most 10 runners (Typecheck, four unit shards, five e2e jobs) for about 15 minutes.
+- The merge queue (ruleset "main protection", on since 2026-10-31) squashes, requires every check green, gives a group 240 minutes, builds up to 2 groups at once, merges up to 10 pull requests per group and waits 1 minute to fill one. Merge with `gh pr merge <n> --squash`, which adds the pull request to the queue.
 - The merge queue tests the exact commit `main` will become, with every suite, before it lands. A push to `main` whose commit passed the merge queue at that SHA does not run them again; the Changes job links the queue's run. A push that did not come through the queue runs everything.
 - No e2e suite reads `examples/`, `deploy/` or `docs/`, so a pull request that only touches those, or Markdown, skips the e2e jobs.
 - Every push to `main` and every merge queue group gets a run of its own that the next merge does not cancel. In one shared group, merges a few minutes apart cancelled each waiting run, and `main` went hours without a finished one.
