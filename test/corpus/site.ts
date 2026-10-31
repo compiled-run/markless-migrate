@@ -136,7 +136,8 @@ const morph = (jump: boolean) =>
 		`const A = [40, 120, 80, 160, 60, 180, 100], B = [150, 50, 170, 70, 140, 30, 120];
 const d = (v) => v.map((y, i) => (i ? 'L' : 'M') + (i * 95 + 15) + ' ' + (210 - y)).join(' ');
 let cur = A.slice(); $('series').setAttribute('d', d(cur));
-const go = (to) => { ${jump ? "cur = to.slice(); $('series').setAttribute('d', d(cur));" : "const from = cur.slice(), t0 = performance.now(); const f = (now) => { const k = Math.min(1, (now - t0) / 400), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2; cur = from.map((v, i) => v + (to[i] - v) * e); $('series').setAttribute('d', d(cur)); if (k < 1) requestAnimationFrame(f); }; requestAnimationFrame(f);"} };
+// Recharts skips the tween under prefers-reduced-motion: reduce, as check's journeys browse.
+const go = (to) => { ${jump ? "cur = to.slice(); $('series').setAttribute('d', d(cur));" : "if (matchMedia('(prefers-reduced-motion: reduce)').matches) { cur = to.slice(); $('series').setAttribute('d', d(cur)); return; } " + "const from = cur.slice(), t0 = performance.now(); const f = (now) => { const k = Math.min(1, (now - t0) / 400), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2; cur = from.map((v, i) => v + (to[i] - v) * e); $('series').setAttribute('d', d(cur)); if (k < 1) requestAnimationFrame(f); }; requestAnimationFrame(f);"} };
 for (const [id, data] of [['desktop', A], ['mobile', B]]) $(id).onclick = () => { for (const b of ['desktop', 'mobile']) { $(b).setAttribute('aria-pressed', String(b === id)); $(b).dataset.active = String(b === id); } go(data); };`);
 
 // The charts page's type links swap the gallery in place; the port's swap waits on work the original does not do.

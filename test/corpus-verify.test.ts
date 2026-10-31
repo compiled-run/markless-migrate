@@ -33,3 +33,9 @@ test('every bug of bugs.json names its micro-site case, and every matcher compil
 		if (b.build) assert.ok(corpus.builds[b.build], `${b.id}: no build ${b.build}`);
 	}
 });
+
+test("every case's pages carry scripts that parse, on both sides", () => {
+	for (const [id, c] of Object.entries(CASES)) {
+		for (const html of [c.old, c.mutant]) for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(m[1]!), id);
+	}
+});
