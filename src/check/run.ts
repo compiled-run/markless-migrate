@@ -101,7 +101,7 @@ export interface CheckOptions {
 	/** Routes checked at once; default half the cores, at most 4. */
 	readonly concurrency?: number;
 	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
-	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
+	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys' | 'prune'>;
 	/** Routes served by the new app (`.migrate/switched.json`): a journey on NEW that reaches any other page gets the old app's, as through the front door. */
 	readonly switched?: readonly string[];
 	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
@@ -368,7 +368,7 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
 async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner, loads: readonly string[] = []): Promise<RouteResult> {
-	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
+	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, prune: run.journeys?.prune ?? process.env.MARKLESS_MIGRATE_PRUNE === '1', owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
 	if (explored.incomplete) throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the machine ran far slower than the journeys need, so ${route} is not checked rather than compared on fewer of them` });
