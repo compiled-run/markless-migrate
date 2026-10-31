@@ -63,8 +63,9 @@ export async function readState(page: Page, previous?: StateReading): Promise<St
 	if (!drained) await armStateReader(page);
 	const state = drained ?? empty;
 	if (previous && drained && !drained.changed) return { ...state, ax: previous.ax, ms: Date.now() - started };
-	const snapshot = await page.locator('body').ariaSnapshot({ timeout: 2_000 }).catch(() => '');
-	const ax = maskClocks(snapshot.split('\n').map(anonymous).filter((l) => l.trim()));
+	const roots = await page.locator('[data-markless-migrate-state]').all().catch(() => []);
+	const snapshots = await Promise.all(roots.map((r) => r.ariaSnapshot({ timeout: 2_000 }).catch(() => '')));
+	const ax = maskClocks(snapshots.join('\n').split('\n').map(anonymous).filter((l) => l.trim()));
 	return { ...state, ax, ms: Date.now() - started };
 }
 
@@ -169,6 +170,10 @@ export function sameScript(a: PageScriptMotion | undefined, b: PageScriptMotion 
 // The probed widget's own motion: the control, what is inside it, and the popups. Another element's (the control Tab left) starts or not by how fast the step ran.
 const OWN = /^(?!.* outside the widget$)/;
 
+// A transition of a colour or a shadow is a hover or focus feedback that starts or not by whether the pointer crossed the control between two frames; motion is a transition of where or whether an element shows.
+const MOVES = /^(opacity|transform|translate|scale|rotate|width|height|max-height|min-height|max-width|top|left|right|bottom|inset.*|margin.*|padding.*|clip-path|visibility|display|overlay|offset.*|grid-template.*|flex.*|filter|backdrop-filter|--.*)$/;
+const moving = (list: readonly PageMotion[]) => list.filter((m) => m.kind !== 'transition' || m.properties.some((p) => MOVES.test(p)));
+
 const popupRoles = (r: StateReading | undefined) => (r?.popups ?? []).map((p) => p.role);
 
 /** The motion field a subject's animation belongs to: the popup a step opened or closed, else the subject itself. */
@@ -218,10 +223,10 @@ export function compareStep(oldBefore: StateReading | undefined, old: StateReadi
 	const am = again ? groupBy(again.motion, (m) => m.subject) : undefined;
 	for (const subject of new Set([...om.keys(), ...nm.keys()])) {
 		if (!OWN.test(subject)) continue;
-		const o = om.get(subject) ?? [];
-		const n = nm.get(subject) ?? [];
+		const o = moving(om.get(subject) ?? []);
+		const n = moving(nm.get(subject) ?? []);
 		if (sameMotion(o, n)) continue;
-		if (am && !sameMotion(o, am.get(subject) ?? [])) continue;
+		if (am && !sameMotion(o, moving(am.get(subject) ?? []))) continue;
 		out.push({ dimension: 'motion', field: motionField(subject, o.length ? oldBefore : newBefore, o.length ? old : next), old: describeMotion(o), new: describeMotion(n) });
 	}
 	// Script motion, by whose and which attribute.

@@ -134,7 +134,10 @@ export function armState(): void {
 	});
 	observer.observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: SCRIPTED, subtree: true });
 	let changed = false;
-	const any = new MutationObserver(() => (changed = true));
+	const SCOPE = 'data-markless-migrate-state';
+	const any = new MutationObserver((list) => {
+		if (list.some((m) => m.type !== 'attributes' || !m.attributeName?.startsWith('data-markless-migrate'))) changed = true;
+	});
 	any.observe(document.documentElement, { attributes: true, childList: true, characterData: true, subtree: true });
 	const round = (v: unknown) => String(v).replace(/-?\d+\.\d+/g, (n) => String(Math.round(Number(n) * 100) / 100));
 	const kebab = (p: string) => (p === 'cssFloat' ? 'float' : p.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`));
@@ -217,6 +220,13 @@ export function armState(): void {
 				const t = triggerOf(p);
 				return t && shown(t) && !p.contains(t) ? [place(p, t)] : [];
 			});
+			// The tree is read where the step acts: the widget around the control and each popup outside it, so a page's other content costs nothing.
+			const control = document.querySelector(MARK);
+			const scope = control?.closest('figure, section, article, form, fieldset, [role="group"], [role="region"], [role="tabpanel"], [data-slot="card"], [data-slot$="preview"]');
+			const roots = [scope && scope.querySelectorAll('*').length <= 1500 ? scope : (control?.parentElement?.parentElement ?? control), ...outer].filter((e): e is Element => Boolean(e));
+			const keep = roots.filter((e, i) => !roots.some((o, j) => j !== i && o.contains(e) && o !== e));
+			for (const o of document.querySelectorAll(`[${SCOPE}]`)) if (!keep.includes(o)) o.removeAttribute(SCOPE);
+			for (const e of keep) if (!e.hasAttribute(SCOPE)) e.setAttribute(SCOPE, '');
 			const was = changed;
 			changed = false;
 			return { changed: was, popups, motion, script };
