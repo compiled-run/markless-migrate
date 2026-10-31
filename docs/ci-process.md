@@ -21,9 +21,18 @@ A nondeterministic failure whose cause is not fixed yet is listed here with its 
 
 The org runs at most 60 jobs at once, shared by every repository, and queued jobs start roughly in the order they were queued. On 2026-10-28 at 01:25Z, ten pull request runs here (29 jobs each) held all 60, with 364 more queued, and Markless's merge queue sat with 3 jobs running and 179 waiting. So:
 
-- A pull request's CI holds at most 8 runners: Typecheck, two unit shards and five e2e jobs at a time. Its 20 jobs are the changes job, Typecheck, 4 unit shards, 13 e2e jobs (the short suites share three runners, one file after another; next-app and vite-site keep their shards) and `CI passed`.
-- No e2e suite reads `examples/`, `deploy/` or `docs/`, so a pull request that only touches those, or Markdown, skips the e2e jobs. Every push to `main` runs all of them.
-- Every push to `main` gets a run of its own that the next merge does not cancel. In one shared group, merges a few minutes apart cancelled each waiting run, and `main` went hours without a finished one.
+Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42% of the time, and this repository's pull request CI was 40% of all runner time; the checker's two mutation suites, next-app (6 shards) and vite-site (4 shards), were 60% of that. So each suite runs here:
+
+| Suite | Pull request | Merge queue | Push to `main` |
+| --- | --- | --- | --- |
+| Typecheck, unit tests (4 shards) | yes | yes | only if the merge queue did not test this commit |
+| e2e quick, pages, networks (Chromium, Firefox, WebKit), shadcn, parity | yes, unless only `examples/`, `deploy/`, `docs/` or Markdown changed | yes | only if the merge queue did not test this commit |
+| e2e next-app (6 shards), vite-site (4 shards) | no | yes | only if the merge queue did not test this commit |
+
+- A pull request's CI holds at most 10 runners (Typecheck, four unit shards, five e2e jobs) for about 15 minutes.
+- The merge queue tests the exact commit `main` will become, with every suite, before it lands. A push to `main` whose commit passed the merge queue at that SHA does not run them again; the Changes job links the queue's run. A push that did not come through the queue runs everything.
+- No e2e suite reads `examples/`, `deploy/` or `docs/`, so a pull request that only touches those, or Markdown, skips the e2e jobs.
+- Every push to `main` and every merge queue group gets a run of its own that the next merge does not cancel. In one shared group, merges a few minutes apart cancelled each waiting run, and `main` went hours without a finished one.
 - `check.yml` and `convert.yml` run at most 10 shards at once. `check.yml` no longer runs on pull requests; try a change to it with `gh workflow run check.yml --ref <branch>`.
 
 ## Slow-network verdicts
