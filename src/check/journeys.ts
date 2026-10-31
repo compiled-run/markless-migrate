@@ -14,6 +14,7 @@ import type { Box, Dimension, Failure, Viewport, WriteLine } from './types.ts';
 import { changedRegions } from './visual.ts';
 import { storageCandidate, type StorageOwner } from './automatic.ts';
 import { loadPage } from './infrastructure.ts';
+import { availableParallelism } from 'node:os';
 import { describeStructure, STRUCTURE_ENGINE, type Structure } from './structure.ts';
 import { compositeWidgets, controlPattern, focusEntry, MAX_PATTERN_WIDGETS, outsidePoint, PATTERN_BUDGET_MS, PATTERN_SAMPLES, patternJourneys, TOOLTIP_PROBES, TOOLTIP_WAIT_MS, typeaheadLetter, unsafeChoice, widgetState, type PatternKey, type PatternWidget } from './patterns.ts';
 
@@ -155,12 +156,31 @@ const SAMPLES = 2;
 /** An element found by its listeners rather than its role: located by its text or label. */
 export const CLICKABLE = 'clickable';
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
-/** How long exploring one route may take by default; what is left is listed as not exercised. */
+/** The time a page's journeys are sized by (one journey per NOMINAL_JOURNEY_MS of it); the time cap is a multiple of it. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
 const BUDGET_PER_CONTROL_MS = 3_000;
 const MAX_ADAPTIVE_BUDGET_MS = 900_000;
+// A route explores a fixed number of journeys, set by its controls and widgets, so one build gets the same journeys on every
+// run and machine; the clock only stops a run that is far slower than that number needs, and that route is incomplete.
+const NOMINAL_JOURNEY_MS = 2_000;
+const TIME_CAP_FACTOR = 4;
 const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
+// Journey sessions open at once in this process, across every pool (exploring, and the old and new replays side by side):
+// on a 4-core runner 16 sessions loaded a page of chart frames past its load timeout, and what a step shows varied with the load.
+const SESSIONS = Math.max(2, Number(process.env.MARKLESS_MIGRATE_JOURNEY_SESSIONS) || availableParallelism());
+let sessionsOpen = 0;
+const sessionWaiters: (() => void)[] = [];
+async function inSession<T>(task: () => Promise<T>): Promise<T> {
+	while (sessionsOpen >= SESSIONS) await new Promise<void>((wake) => sessionWaiters.push(wake));
+	sessionsOpen++;
+	try {
+		return await task();
+	} finally {
+		sessionsOpen--;
+		sessionWaiters.shift()?.();
+	}
+}
 // Other pages tried as the place a visitor arrives from.
 const ARRIVAL_ENTRIES = 3;
 // Journeys run again after arriving in place, most important first.
@@ -1590,7 +1610,11 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	};
 }
 
-export async function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+export function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+	return inSession(() => replayOnce(browser, env, route, viewport, journey));
+}
+
+async function replayOnce(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
 	const session = await openSession(browser, env, journey.start ?? route, viewport);
 	try {
 		const results: StepResult[] = [];
@@ -1644,9 +1668,9 @@ export async function pool<T, R>(items: readonly T[], size: number, task: (item:
 }
 
 export interface ExploreOptions {
-	/** Wall-clock time exploring may take; elements not reached by then are listed as not exercised. */
+	/** Wall-clock time exploring may take: a safety cap, past which the route is incomplete (default four times the time its journeys are sized by). */
 	readonly budgetMs?: number;
-	/** At most this many journeys, most important elements first. */
+	/** At most this many journeys, most important elements first (default: one per 2 s of the time the page's controls and widgets are given). */
 	readonly maxJourneys?: number;
 	/** How many steps deep exploring goes (a control revealed by the 4th click is used by a 5th step); default 4. */
 	readonly maxDepth?: number;
@@ -1688,6 +1712,8 @@ export interface Exploration {
 	readonly deferred: readonly { readonly journey: Journey; readonly signature: string }[];
 	/** Another page of the app with a link that brings a visitor to this route in place (the router swaps the page, no document loads): the journeys run again arriving that way. */
 	readonly arrival?: { readonly entry: string; readonly link: Target };
+	/** Set when the time cap, not the journey count, ended exploring: the route is reported not checked rather than compared on fewer journeys. */
+	readonly incomplete?: string;
 }
 
 interface Item {
@@ -1830,8 +1856,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const origin = env.origin;
 	const host = new URL(origin).origin;
 	const started = Date.now();
-	let budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
-	const cap = options.maxJourneys ?? Number.POSITIVE_INFINITY;
+	let budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS * TIME_CAP_FACTOR;
+	let cap = options.maxJourneys ?? Math.round(DEFAULT_JOURNEY_BUDGET_MS / NOMINAL_JOURNEY_MS);
+	let timedOut = false;
 	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const tracked: Tracked[] = [];
 	const known = new Set<string>();
@@ -1975,7 +2002,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		}
 		return { primary, keyboard };
 	};
-	const outOfBudget = () => Date.now() - started > budget || journeys.length >= cap;
+	const outOfTime = () => Date.now() - started > budget && (timedOut = true);
+	const outOfBudget = () => journeys.length >= cap || outOfTime();
 
 	const start = await openSession(browser, env, route, viewport);
 	let wave: Item[];
@@ -2015,7 +2043,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		formSteps = await forms(start.page, host, found);
 		const keys = keyItems(await findWidgets(start.page, tracked.filter((t) => !t.prefix.length), true), [], 1);
 		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused; exploring ends sooner when its journeys run out.
-		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS) + keys.length * PATTERN_BUDGET_MS);
+		const sized = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS) + keys.length * PATTERN_BUDGET_MS);
+		if (options.maxJourneys === undefined) cap = Math.round(sized / NOMINAL_JOURNEY_MS);
+		if (options.budgetMs === undefined) budget = sized * TIME_CAP_FACTOR;
 		// The keyboard patterns of the page's widgets run first: they are few, and a page whose other controls spend the budget must not leave them out.
 		wave = [...keys, ...first.primary, ...batches(1), ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
 		later.push(...first.keyboard);
@@ -2058,7 +2088,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		}
 	}
 
-	const runItem = async (item: Item) => {
+	const runItem = (item: Item) => inSession(() => runItemOnce(item));
+	const runItemOnce = async (item: Item) => {
 		const session = await openSession(browser, env, route, viewport);
 		try {
 			const expected: StepResult[] = [];
@@ -2122,7 +2153,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			if (item.discover || item.journey.cycle) sequencesSkipped++;
 			if ((item.rank ?? 0) >= URGENT && item.of?.by) {
 				item.of.by = undefined;
-				item.of.reason = `it was used once, but using it again, after a reload or after following a link is ${budgetReason(budget, options.maxJourneys)}`;
+				item.of.reason = `it was used once, but using it again, after a reload or after following a link is ${budgetReason(cap)}`;
 			}
 			return;
 		}
@@ -2136,8 +2167,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const room = Math.max(0, cap - journeys.length);
 		const runnable = wave.slice(0, room);
 		for (const item of wave.slice(room)) {
-			if (item.element) item.element.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
-			if (item.keys) item.keys.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
+			if (item.element) item.element.reason = `out of the journey budget (${cap} journeys)`;
+			if (item.keys) item.keys.reason = `out of the journey budget (${cap} journeys)`;
 		}
 		// A control that changed the page's mode or what it stores is used again straight after, before deeper controls can spend the budget.
 		const results = await pool(runnable, CONCURRENCY, async (item) => {
@@ -2156,8 +2187,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		for (const [i, r] of results.entries()) {
 			const item = r?.item ?? runnable[i]!;
 			if (!r) {
-				if (item.element) item.element.reason = budgetReason(budget, options.maxJourneys);
-				if (item.keys) item.keys.reason = budgetReason(budget, options.maxJourneys);
+				if (item.element) item.element.reason = budgetReason(cap);
+				if (item.keys) item.keys.reason = budgetReason(cap);
 				continue;
 			}
 			journeys.push({ ...item.journey, expected: r.expected });
@@ -2242,11 +2273,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
 		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} ${of}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised${role === 'link' ? ', and every address is compared by the rendered check' : ''}` });
 	}
-	return { journeys, elements, skipped, sequencesSkipped, deferred, ...(arrival ? { arrival } : {}) };
+	return { journeys, elements, skipped, sequencesSkipped, deferred, ...(arrival ? { arrival } : {}), ...(timedOut ? { incomplete: `exploring stopped at its time cap (${Math.round(budget / 1000)} s) after ${journeys.length} of its ${cap} journeys` } : {}) };
 }
 
-function budgetReason(budgetMs: number, maxJourneys: number | undefined): string {
-	return `out of the journey budget (${Math.round(budgetMs / 1000)} s${maxJourneys !== undefined ? ` or ${maxJourneys} journeys` : ''}): raise --journey-budget${maxJourneys !== undefined ? ' or --max-journeys' : ''}`;
+function budgetReason(cap: number): string {
+	return `out of the journey budget (${cap} journeys): raise --max-journeys`;
 }
 
 const sameTarget = (a: Target, b: Target) => a.role === b.role && a.name === b.name && a.nth === b.nth;
@@ -2257,19 +2288,31 @@ const sameSteps = (a: readonly Step[], b: readonly Step[]) => a.length === b.len
 export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<{ layout: string[]; own: number }> {
 	const session = await openSession(browser, env, route, viewport);
 	try {
-		const found = await candidates(session.page, new URL(env.origin).origin);
-		const sampled = new Map<string, number>();
-		const exercised = found.filter((c) => {
-			if (c.covered || c.skip || isLayout(c)) return false;
-			if (!c.group) return true;
-			sampled.set(c.group, (sampled.get(c.group) ?? 0) + 1);
-			return sampled.get(c.group)! <= SAMPLES;
-		});
-		return { layout: found.filter(isLayout).map((c) => c.signature), own: exercised.length };
+		// Read until two reads agree: a control still arriving would move a shared control's result to another route.
+		const read = async () => {
+			const found = await candidates(session.page, new URL(env.origin).origin);
+			const sampled = new Map<string, number>();
+			const exercised = found.filter((c) => {
+				if (c.covered || c.skip || isLayout(c)) return false;
+				if (!c.group) return true;
+				sampled.set(c.group, (sampled.get(c.group) ?? 0) + 1);
+				return sampled.get(c.group)! <= SAMPLES;
+			});
+			return { layout: found.filter(isLayout).map((c) => c.signature).sort(), own: exercised.length };
+		};
+		let last = await read();
+		for (let i = 0; i < SURVEY_READS; i++) {
+			await session.page.waitForTimeout(250);
+			const now = await read();
+			if (JSON.stringify(now) === JSON.stringify(last)) return now;
+			last = now;
+		}
+		return last;
 	} finally {
 		await session.close();
 	}
 }
+const SURVEY_READS = 4;
 
 function stable(values: readonly string[]): (value: string) => boolean {
 	return template(values[0]!, ...values.slice(1)).test;

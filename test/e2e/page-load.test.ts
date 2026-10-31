@@ -54,7 +54,7 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 	});
 
 	test('the same page on both sides is not red, in a full check', async () => {
-		const report = await runCheck({ oldOrigin: await app('old'), newOrigin: await app('equal'), routes: ['/'], browser, viewports: DESKTOP, journeys: { budgetMs: 2000 }, load: { runs: 4 } });
+		const report = await runCheck({ oldOrigin: await app('old'), newOrigin: await app('equal'), routes: ['/'], browser, viewports: DESKTOP, journeys: { maxJourneys: 5 }, load: { runs: 4 } });
 		const route = report.routes[0]!;
 		assert.equal(route.dimensions.load, 'pass', JSON.stringify(route.load?.verdicts));
 		assert.equal(route.load?.new.detail?.filmstrip, undefined);
