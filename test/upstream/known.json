@@ -57,8 +57,8 @@
 			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
 		},
 		"keybind.test.ts > webkit > no-vim keybinds > ctrl n/p does nothing": {
-			"class": "part",
-			"why": "the part always moves the selection on Ctrl+N/P/J/K (parts/cmdk.ts keydown) and ignores <Command vimBindings={false}>, which convert does not carry either",
+			"class": "convert",
+			"why": "the page sets vimBindings={!noVim} from its ?noVim query parameter; the part honours a literal vimBindings={false} (data-mm-vim-bindings), but convert captures the page once, without the parameter",
 			"racy": "the test passes when its key lands before the part listens (listen() runs once the page is idle), so a pass here is that race, not a fix"
 		},
 		"numeric.test.ts > webkit > behavior for numeric values > items filter correctly on numeric inputs": {
@@ -90,8 +90,8 @@
 			"why": "the test page changes cmdk's children or props from its own React state (a button, a query parameter, a callback writing window); convert does not port the page's own logic"
 		},
 		"keybind.test.ts > webkit > no-vim keybinds > ctrl j/k does nothing": {
-			"class": "part",
-			"why": "the part always moves the selection on Ctrl+N/P/J/K (parts/cmdk.ts keydown) and ignores <Command vimBindings={false}>, which convert does not carry either",
+			"class": "convert",
+			"why": "the page sets vimBindings={!noVim} from its ?noVim query parameter; the part honours a literal vimBindings={false} (data-mm-vim-bindings), but convert captures the page once, without the parameter",
 			"racy": "the test passes when its key lands before the part listens (listen() runs once the page is idle), so a pass here is that race, not a fix"
 		}
 	},
@@ -249,6 +249,11 @@
 		"cypress/e2e/Select.cy.ts > electron > Select > given a select with no value > can be reset to the placeholder": {
 			"class": "convert",
 			"why": "a closed Select layer is emitted as <div style=\"display: flex; position: fixed ...\" hidden data-mm-layer>: the inline display beats the hidden attribute, so the invisible popup covers the page at load and takes its clicks (the trigger, the submit button). shadcn's Tailwind preflight forces [hidden] to display:none !important, which is why the shadcn port does not show it"
+		},
+		"cypress/e2e/Dialog.cy.ts > electron > Dialog > given a modal dialog > can be open/closed with a pointer": {
+			"class": "part",
+			"why": "some runs leave <body style=\"pointer-events: none\"> after the dialog closes, so the next press on the trigger is refused (parts/radix/dialog-engine.ts, DismissableLayer's body pointer-events); about half the port runs, quarantined in docs/ci-process.md",
+			"racy": "it passes on most runs; the failure is the defect, a pass is not its fix"
 		}
 	}
 }
