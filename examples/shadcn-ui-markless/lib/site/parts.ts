@@ -1,23 +1,17 @@
 import type { Part } from '../parts/index.ts';
-import { markSwitched, resolvedTheme, switchedFor, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { markSwitched, switchedFor, watchSystemTheme } from '../parts/next-themes.ts';
+import { THEME, toggleTheme } from './theme.ts';
 import { configure } from '../parts/cmdk.ts';
-import { clipboardFor } from '../parts/reveal.ts';
+import { clipboardFor, copiedLabelFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
+import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
+import { show } from '../parts/base-ui/dialog.ts';
+import { GET_CODE, isCreatePreview } from './create-messages.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
 
-// components/theme-provider.tsx: <NextThemesProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange enableColorScheme>
-const THEME: ThemeOptions = { attribute: 'class', themes: ['light', 'dark'], storageKey: 'theme', defaultTheme: 'system', enableSystem: true, enableColorScheme: true, disableTransitionOnChange: true };
 watchSystemTheme(THEME);
-// hooks/use-meta-color.ts
-const META_THEME_COLORS = { light: '#ffffff', dark: '#0a0a0a' };
-
-function toggleTheme(): void {
-	const next = resolvedTheme(THEME) === 'dark' ? 'light' : 'dark';
-	setTheme(next, THEME);
-	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? META_THEME_COLORS.dark : META_THEME_COLORS.light);
-}
 
 const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isContentEditable) || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
@@ -26,7 +20,7 @@ const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isC
 const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10', points: '5 12 10 17 20 7' };
 const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5', points: '20 6 9 17 4 12' };
 type Saved = { cls: string | null; shape: (string | null)[] };
-const copied = new WeakMap<Element, { timer: number; saved: Saved }>();
+const copied = new WeakMap<Element, { timer: number; saved: Saved; label: string | null }>();
 
 // The check is drawn by the icon's first path, or its first polyline (lucide's Terminal has no path); the rest are hidden meanwhile.
 const shapeOf = (svg: SVGElement) => svg.querySelector('path') ?? svg.querySelector('polyline');
@@ -59,7 +53,8 @@ function legacyCopy(value: string): boolean {
 	area.style.position = 'fixed';
 	area.style.opacity = '0';
 	area.style.pointerEvents = 'none';
-	// Outside <body>, the page Markless renders: the textarea is gone again within this call.
+	// Outside <body>, the page Markless renders: the textarea is gone again within this call, and focus goes back.
+	const had = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	document.documentElement.appendChild(area);
 	area.focus();
 	area.select();
@@ -69,6 +64,7 @@ function legacyCopy(value: string): boolean {
 		ok = document.execCommand('copy');
 	} catch {}
 	document.documentElement.removeChild(area);
+	had?.focus({ preventScroll: true });
 	return ok;
 }
 
@@ -103,7 +99,7 @@ function valueFor(button: Element): string {
 }
 
 // registry/bases/*/ui/code-block.tsx's CodeBlockCopyButton: aria-label "Copied" and data-copied while it shows the check.
-function showCopied(button: HTMLElement): void {
+function showCopied(button: HTMLElement, label?: string): void {
 	const svg = button.querySelector('svg');
 	if (!svg) return;
 	const was = copied.get(button);
@@ -113,16 +109,18 @@ function showCopied(button: HTMLElement): void {
 	const codeBlock = button.dataset.slot === 'code-block-copy-button';
 	const marks = button.hasAttribute('data-copied') || codeBlock;
 	if (marks) button.setAttribute('data-copied', 'true');
-	if (codeBlock) button.setAttribute('aria-label', 'Copied');
+	// A control whose label follows the copy (CodeBlockCopyButton, a message's Copy action): the one the old page showed.
+	const own = was?.label ?? button.getAttribute('aria-label');
+	const shown = label ?? (codeBlock ? 'Copied' : undefined);
+	if (shown !== undefined) button.setAttribute('aria-label', shown);
 	const timer = window.setTimeout(() => {
 		setIcon(svg, saved, false);
-		if (codeBlock) {
-			button.removeAttribute('data-copied');
-			button.setAttribute('aria-label', 'Copy');
-		} else if (marks) button.setAttribute('data-copied', 'false');
+		if (codeBlock) button.removeAttribute('data-copied');
+		else if (marks) button.setAttribute('data-copied', 'false');
+		if (shown !== undefined && own !== null) button.setAttribute('aria-label', own);
 		copied.delete(button);
 	}, 2000);
-	copied.set(button, { timer, saved });
+	copied.set(button, { timer, saved, label: own });
 }
 
 const modeSwitcher: Part = {
@@ -180,7 +178,7 @@ const copyPage: Part = {
 		const button = target.closest<HTMLElement>('button');
 		const text = button ? clipboardFor(button) : undefined;
 		if (!button || text === undefined) return false;
-		void copy(text).then((ok) => ok && showCopied(button));
+		void copy(text).then((ok) => ok && showCopied(button, copiedLabelFor(button)));
 		return true;
 	},
 };
@@ -195,6 +193,56 @@ const viewCode: Part = {
 	},
 };
 
+// components/code-collapsible-pre.tsx: Expand toggles isOpened, which the pre carries as data-state (max-h-64 while
+// closed) and the button as aria-expanded and its text; the fade under the code opens it and is not rendered while open.
+function openCode(pre: HTMLElement, on: boolean): void {
+	pre.dataset.state = on ? 'open' : 'closed';
+	for (const el of pre.parentElement?.children ?? []) {
+		if (!(el instanceof HTMLButtonElement)) continue;
+		if (el.getAttribute('aria-controls') === pre.id) {
+			el.setAttribute('aria-expanded', String(on));
+			const text = [...el.childNodes].find((n): n is Text => n instanceof Text && /^(Expand|Collapse)$/.test(n.data.trim()));
+			if (text) text.data = on ? 'Collapse' : 'Expand';
+		} else if (el.getAttribute('aria-hidden') === 'true' && el.tabIndex === -1) el.hidden = on;
+	}
+}
+const codeCollapsible: Part = {
+	click(target) {
+		const button = target.closest<HTMLButtonElement>('button');
+		const parent = button?.parentElement;
+		if (!button || !parent) return false;
+		const controlled = button.getAttribute('aria-controls');
+		const pre = controlled ? document.getElementById(controlled) : button.getAttribute('aria-hidden') === 'true' && button.tabIndex === -1 ? [...parent.children].find((el) => el.tagName === 'PRE') : null;
+		if (!(pre instanceof HTMLPreElement) || pre.parentElement !== parent || !pre.hasAttribute('data-state')) return false;
+		openCode(pre, controlled ? button.getAttribute('aria-expanded') !== 'true' : true);
+		return true;
+	},
+};
+
+// components/code-collapsible-wrapper.tsx: a Radix Collapsible (on Markless state) whose two triggers read
+// {isOpened ? "Collapse" : "Expand"}; the labels follow the root's data-state.
+const labelled = new WeakSet<Element>();
+function syncLabels(root: Element): void {
+	const open = root.getAttribute('data-state') === 'open';
+	const content = root.querySelector(':scope > [data-slot="collapsible-content"]');
+	for (const el of root.querySelectorAll('button, [data-slot="collapsible-trigger"]')) {
+		if (content?.contains(el)) continue;
+		for (const n of el.childNodes) if (n instanceof Text && /^(Expand|Collapse)$/.test(n.data.trim())) n.data = n.data.replace(/Expand|Collapse/, open ? 'Collapse' : 'Expand');
+	}
+}
+const codeCollapsibleWrapper: Part = {
+	click(target) {
+		const root = target.closest('[data-slot="collapsible-trigger"]')?.closest('[data-slot="collapsible"]');
+		if (!root || !root.querySelector(':scope > [data-slot="collapsible-content"] > figure')) return false;
+		if (!labelled.has(root)) {
+			labelled.add(root);
+			new MutationObserver(() => syncLabels(root)).observe(root, { attributes: true, attributeFilter: ['data-state'] });
+		}
+		syncLabels(root);
+		return false;
+	},
+};
+
 // components/block-viewer.tsx's Refresh Preview: setIframeKey mounts the block's frame afresh, which loads its page again.
 const refreshPreview: Part = {
 	click(target) {
@@ -204,6 +252,160 @@ const refreshPreview: Part = {
 		return true;
 	},
 };
+
+// components/component-preview-tabs.tsx's RTL preview: a LanguageProvider (Arabic first) around the example, whose
+// language selector sets the preview's dir and data-lang and the example's text from its translations table
+// (examples/<base>/*-rtl.tsx, extracted into rtl-translations.json by scripts/rtl-translations.ts). The example is told
+// by its text: the table whose Arabic strings the preview shows. Each node's first text is kept, so every language is
+// written from it: the table's strings, the direction and data-lang of what was marked Arabic.
+type RtlTable = Record<string, { readonly dir: 'ltr' | 'rtl'; readonly locale?: string; readonly values: Record<string, string>; readonly place?: readonly (readonly [string, string])[] }>;
+const LANGUAGES: Record<string, string> = { English: 'en', 'Arabic (العربية)': 'ar', 'Hebrew (עברית)': 'he' };
+let rtlTables: Promise<Record<string, RtlTable>> | undefined;
+const loadTables = () => (rtlTables ??= import('./rtl-translations.json').then((m) => (m as unknown as { default: Record<string, RtlTable> }).default));
+const firstText = new WeakMap<Node, string>();
+// What was last written on a text: a text that reads otherwise was written since by the page (a count), and is read again.
+const written = new WeakMap<Node, string>();
+const firstAttrs = new WeakMap<Element, Record<string, string | null>>();
+const PLACED = ['data-side', 'data-align', 'data-mm-side', 'data-mm-align', 'data-mm-placement'] as const;
+const RTL_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'dir', 'data-lang', ...PLACED] as const;
+const rtlTableOf = new WeakMap<Element, RtlTable | null>();
+const firstPlaced = new WeakSet<Element>();
+
+function previewParts(preview: Element): Element[] {
+	// What the example opens is in the layers its controls name (a dialog, a menu, a submenu a menu opens), each keyed by
+	// the control's id, aria-controls or capture key.
+	const parts = [preview];
+	const layers = [...document.querySelectorAll('[data-mm-layer]')];
+	for (let i = 0; i < parts.length; i++) {
+		const keys = new Set([...parts[i]!.querySelectorAll('[id], [aria-controls], [data-mm-key]')].flatMap((e) => [e.id, e.getAttribute('aria-controls'), e.getAttribute('data-mm-key')].filter((k): k is string => Boolean(k))));
+		for (const layer of layers) if (!parts.includes(layer) && keys.has(layer.getAttribute('data-mm-layer') ?? '')) parts.push(layer);
+	}
+	return parts;
+}
+
+function textNodes(root: Element): Text[] {
+	const out: Text[] = [];
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	for (let n = walker.nextNode(); n; n = walker.nextNode()) out.push(n as Text);
+	return out;
+}
+
+function chooseTable(tables: Record<string, RtlTable>, parts: readonly Element[]): RtlTable | undefined {
+	const shown = new Set(parts.flatMap((p) => textNodes(p).map((t) => (firstText.get(t) ?? t.data).trim())).filter(Boolean));
+	// The libraries' examples share their strings: a tie goes to the page's own library's (its place props differ).
+	const library = /^\/docs\/components\/(radix|base|aria)\//.exec(location.pathname)?.[1];
+	let best: RtlTable | undefined;
+	let score = 0;
+	for (const [name, table] of Object.entries(tables)) {
+		const values = Object.values(table.ar?.values ?? {});
+		const hits = values.filter((v) => shown.has(v.trim())).length * 2 + (name.startsWith(`${library}/`) ? 1 : 0);
+		if (hits > 1 && hits > score) [best, score] = [table, hits];
+	}
+	return best;
+}
+
+function writeLanguage(preview: Element, table: RtlTable | undefined, language: string): void {
+	const parts = previewParts(preview);
+	const target = table?.[language];
+	const dir = target?.dir ?? (language === 'en' ? 'ltr' : 'rtl');
+	const from = new Map<string, string>(Object.entries(table?.ar?.values ?? {}).map(([key, v]) => [v.trim(), target?.values[key] ?? v]));
+	// A string the example writes beside numbers ("{n} من {m} صف(وف) محدد."): each of the table's strings standing as words, longest first.
+	const words = [...from.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
+	const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const inside = words.length ? new RegExp(`(^|\\s)(${words.map(escape).join('|')})(?=\\s|$)`, 'gu') : undefined;
+	// Numbers the example formats in its locale (useTranslation's formatNumber): Arabic-Indic digits in Arabic only.
+	const digits = (text: string) => (language === 'ar' ? text : text.replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\u066b/g, '.').replace(/\u066c/g, ','));
+	const translate = (text: string) => {
+		const key = text.trim();
+		const whole = from.get(key);
+		if (whole !== undefined) return text.replace(key, whole);
+		return digits(inside ? text.replace(inside, (_, space: string, word: string) => space + (from.get(word) ?? word)) : text);
+	};
+	// Where the example places its popups by direction (side, align, React Aria's placement): the attribute the part that
+	// opens it reads, from its value as captured in Arabic to this language's. React Aria's is captured physical.
+	const physical = (v: string, d: string) => v.replace(/\bstart\b/, d === 'rtl' ? 'right' : 'left').replace(/\bend\b/, d === 'rtl' ? 'left' : 'right');
+	const placed = new Map<string, Map<string, string>>();
+	(table?.ar?.place ?? []).forEach(([prop, was], i) => {
+		const now = target?.place?.[i]?.[1];
+		if (now === undefined) return;
+		// What the source asked for (data-mm-side, data-mm-align) and where it went as captured are both read.
+		const [names, a, b] = prop === 'placement' ? [['data-mm-placement'], physical(was, 'rtl'), physical(now, dir)] : [[`data-${prop}`, `data-mm-${prop}`], was, now];
+		if (a !== b) for (const name of names) (placed.get(name) ?? placed.set(name, new Map()).get(name)!).set(a, b);
+	});
+	for (const part of parts) {
+		for (const node of textNodes(part)) {
+			if (!firstText.has(node) || (written.has(node) && written.get(node) !== node.data)) firstText.set(node, node.data);
+			const next = translate(firstText.get(node)!);
+			if (node.data !== next) node.data = next;
+			written.set(node, next);
+		}
+		for (const el of [part, ...part.querySelectorAll('*')]) {
+			const first = firstAttrs.get(el) ?? Object.fromEntries(RTL_ATTRS.map((a) => [a, el.getAttribute(a)]));
+			firstAttrs.set(el, first);
+			for (const name of ['placeholder', 'aria-label', 'title', 'alt'] as const) if (first[name] !== null) el.setAttribute(name, translate(first[name]!));
+			if (first.dir === 'rtl') el.setAttribute('dir', dir);
+			if (part !== preview)
+				for (const name of PLACED) {
+					const was = first[name];
+					if (was == null || !placed.has(name) && !firstPlaced.has(el)) continue;
+					const to = placed.get(name)?.get(was) ?? was;
+					if (el.getAttribute(name) !== to) el.setAttribute(name, to);
+					firstPlaced.add(el);
+				}
+			if (first['data-lang'] === 'ar') {
+				if (dir === 'rtl') el.setAttribute('data-lang', language);
+				else el.removeAttribute('data-lang');
+			}
+		}
+	}
+}
+
+// The language each preview shows other than its first; what the page renders in its parts later (a layer opened, a
+// count changed) is written in that language too.
+const shownLanguage = new Map<Element, string>();
+let rewriting = false;
+const rewrite = new MutationObserver(() => {
+	if (rewriting) return;
+	rewriting = true;
+	queueMicrotask(() => {
+		rewriting = false;
+		void loadTables().then(() => {
+			for (const [preview, language] of shownLanguage) if (preview.isConnected) writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+			rewrite.takeRecords();
+		});
+	});
+});
+
+const watchedSelectors = new WeakSet<Element>();
+function watchLanguage(selector: Element): void {
+	if (watchedSelectors.has(selector)) return;
+	watchedSelectors.add(selector);
+	const preview = selector.closest('[data-slot="component-preview"]')?.querySelector(':scope > [data-slot="preview"]');
+	const label = selector.querySelector('[data-slot="select-value"]');
+	if (!preview || !label) return;
+	let shown = 'ar';
+	new MutationObserver(() => {
+		const language = LANGUAGES[(label.textContent ?? '').trim()];
+		if (!language || language === shown) return;
+		shown = language;
+		void loadTables().then((tables) => {
+			if (!rtlTableOf.has(preview)) rtlTableOf.set(preview, chooseTable(tables, previewParts(preview)) ?? null);
+			writeLanguage(preview, rtlTableOf.get(preview) ?? undefined, language);
+			if (language === 'ar') shownLanguage.delete(preview);
+			else if (!shownLanguage.size) {
+				shownLanguage.set(preview, language);
+				rewrite.observe(document.body, { childList: true, characterData: true, subtree: true });
+			} else shownLanguage.set(preview, language);
+			rewrite.takeRecords();
+		});
+	}).observe(label, { childList: true, characterData: true, subtree: true });
+}
+const rtlWatch = (target: Element): boolean => {
+	const selector = target.closest('[data-slot="component-preview"]')?.querySelector('[data-name="language-selector"]');
+	if (selector) watchLanguage(selector);
+	return false;
+};
+const rtlPreview: Part = { pointerdown: rtlWatch, focusin: rtlWatch, keydown: rtlWatch };
 
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
@@ -401,4 +603,115 @@ document.addEventListener('carouselselect', (event) => {
 	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
 });
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, refreshPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame];
+// app/(view)/preview/font-variables.tsx: the preview layout's wrapper, whose classes are the preview fonts' next/font
+// variables, puts them on <html> too, where the pages' CSS variables read them.
+const previewFontVariables: Part = {
+	idle() {
+		for (const el of document.body.children) {
+			const names = [...el.classList];
+			if (names.length && names.every((n) => /^[a-z0-9_]+-module__[\w-]+__variable$/.test(n))) document.documentElement.classList.add(...names);
+		}
+	},
+};
+
+// app/(view)/preview/typeset: the specimen /typeset shows in its iframe. TypesetPreviewProvider puts the params (its URL's,
+// then each the parent posts) on <html> as CSS variables; forward-scripts.tsx's scripts, which the converted page serves
+// in its head, hand R, ⇧R, D and the undo keys to the parent.
+const isTypesetPreview = () => document.querySelector('.preview-params > .typeset, .preview-params > div > .typeset') !== null;
+function applyPreview(params: TypesetParams): void {
+	const style = document.documentElement.style;
+	for (const [name, value] of Object.entries(previewValues(params))) {
+		if (value) style.setProperty(name, value);
+		else style.removeProperty(name);
+	}
+}
+const typesetPreview: Part = {
+	idle() {
+		if (!isTypesetPreview()) return;
+		applyPreview(parseParams(location.search));
+		window.addEventListener('message', (event) => {
+			const data = event.data as { type?: unknown; data?: Partial<Record<TypesetKey, string>> } | null;
+			if (data?.type !== TYPESET_PARAMS_MESSAGE || !data.data) return;
+			const search = updateSearch(location.search, data.data);
+			if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
+			applyPreview(parseParams(search));
+		});
+	},
+};
+
+// app/(view)/preview/[base]/[name]: the page /create shows in its iframe. DesignSystemProvider applies the params (its
+// URL's, then each the designer posts), loaded on that page alone; the beforeInteractive scripts (ActionMenuScript,
+// OpenPresetScript, RandomizeScript, HistoryScript, DarkModeScript), which the converted page serves in its head, forward
+// its keys to the designer.
+const designSystemPreview: Part = {
+	idle() {
+		if (isCreatePreview(location.pathname)) void import('./create-preview.ts').then((m) => m.startPreview());
+	},
+};
+
+// components/designer-actions.tsx: the site header's ProjectForm on /create, the same Get Code dialog as the designer's.
+const designerGetCode: Part = {
+	click(target) {
+		const button = target.closest('header [data-slot="dialog-trigger"]');
+		if (!button || button.textContent?.trim() !== 'Get Code' || !document.querySelector(`[data-mm-layer="${GET_CODE}"]`)) return false;
+		show(GET_CODE);
+		return true;
+	},
+};
+
+// The /colors swatches, on use-colors.ts's localStorage "colors" config (the copy check stays: timeout 0).
+const COLORS = 'colors';
+const FORMATS = ['className', 'hex', 'rgb', 'hsl', 'oklch', 'var'];
+type ColorsConfig = { format: string; lastCopied: string };
+function readColors(): ColorsConfig {
+	try {
+		return { format: 'hsl', lastCopied: '', ...(JSON.parse(localStorage.getItem(COLORS) ?? '{}') as Partial<ColorsConfig>) };
+	} catch {
+		return { format: 'hsl', lastCopied: '' };
+	}
+}
+function colorOf(el: Element): Record<string, string> {
+	try {
+		return JSON.parse(el.getAttribute('data-mm-color') ?? '{}') as Record<string, string>;
+	} catch {
+		return {};
+	}
+}
+function writeColors(config: ColorsConfig): void {
+	localStorage.setItem(COLORS, JSON.stringify(config));
+	for (const trigger of document.querySelectorAll('[data-slot="select-trigger"]')) {
+		const shown = trigger.textContent?.startsWith('Format:') ? trigger.querySelector('.font-mono') : null;
+		const text = shown && [...shown.childNodes].find((n): n is Text => n.nodeType === Node.TEXT_NODE);
+		if (text) text.data = config.format;
+	}
+	for (const swatch of document.querySelectorAll('button[data-mm-color]')) swatch.setAttribute('data-last-copied', String(colorOf(swatch)[config.format] === config.lastCopied));
+}
+const checked = new WeakSet<Element>();
+export function copyColor(target: Element): string {
+	const swatch = target.closest('button[data-mm-color]');
+	if (!swatch) return '';
+	const config = readColors();
+	const value = colorOf(swatch)[config.format] ?? '';
+	void copy(value).then((ok) => {
+		const svg = swatch.querySelector('svg');
+		if (!ok || !svg || checked.has(svg)) return;
+		checked.add(svg);
+		setIcon(svg, savedOf(svg), true);
+		svg.setAttribute('class', 'lucide lucide-check group-hover:opacity-100 group-data-[last-copied=true]:opacity-100');
+	});
+	writeColors({ ...config, lastCopied: value });
+	return value;
+}
+document.addEventListener('mmchoose', (event) => {
+	if (!(event.target as Element).closest?.('[data-slot="select-trigger"]')?.textContent?.includes('Format:')) return;
+	const text = String((event as CustomEvent<string>).detail ?? '');
+	const format = [...FORMATS].sort((a, b) => b.length - a.length).find((f) => text.startsWith(f));
+	if (format) writeColors({ ...readColors(), format });
+});
+const colors: Part = {
+	idle() {
+		if (document.querySelector('button[data-mm-color]')) writeColors(readColors());
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, codeCollapsible, codeCollapsibleWrapper, refreshPreview, rtlPreview, docsSidebar, docsToc, sidebarShortcut, sharedTabs, chartFrame, previewFontVariables, typesetPreview, designSystemPreview, designerGetCode, colors];

@@ -6,7 +6,8 @@ import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { chromium, type Browser } from 'playwright';
+import { chromium, firefox, webkit, type Browser } from 'playwright';
+import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
 import { applyAccepted, type Accept } from './accepted.ts';
 import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
 import type { AutomaticRule } from './automatic.ts';
@@ -24,9 +25,10 @@ import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { checkClock } from './clock-shift.ts';
 import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
+import { checkControlParity, type ControlParityOptions } from './control-parity.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { choppier, compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -118,6 +120,10 @@ export interface CheckOptions {
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** The widget probes (probes.ts) and the moved-clock look (clock-shift.ts) on each page route; left out when absent. */
 	readonly probes?: Omit<ProbeOptions, 'shared'>;
+	/** Control parity (control-parity.ts) with the widget probes: controls at each width and their boxes, hit points, pop-up places (in WebKit too with `webkit`), pop-up motion, keys and field input. */
+	readonly controls?: Omit<ControlParityOptions, 'webkit'> & { readonly webkit?: boolean };
+	/** The busy-CPU lane on each template group's representative: its controls used while the machine's CPUs are kept busy, in Chromium, Firefox and WebKit. */
+	readonly busyCpu?: BusyCpuOptions;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -125,7 +131,7 @@ export interface CheckOptions {
 	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
 	readonly partial?: { readonly total: number | null };
 	/** Above TEMPLATE_THRESHOLD pages, visual, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
-	readonly templates?: false | { readonly patterns?: readonly string[]; /** Above how many pages templates are grouped (default TEMPLATE_THRESHOLD). */ readonly threshold?: number };
+	readonly templates?: false | { readonly patterns?: readonly string[]; /** Above how many pages templates are grouped (default TEMPLATE_THRESHOLD). */ readonly threshold?: number; /** Every page of the site when this run checks a shard of it: groups are made over all of them, so a group's representative may be another shard's page. */ readonly site?: readonly string[] };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
 	/** The report directory: each route's screenshots, diffs and motion frames are written under its `shots` as soon as the route is checked, and the report keeps only their paths. */
@@ -167,6 +173,8 @@ interface Run {
 	readonly motion?: MotionOptions;
 	readonly embeds?: EmbedCheckOptions;
 	readonly probes?: ProbeOptions;
+	readonly controls?: ControlParityOptions;
+	readonly busyCpu?: BusyCpuOptions & { readonly browsers: { readonly chromium: Browser; readonly firefox: Browser; readonly webkit: Browser } };
 }
 
 /** The hosts the old app's API clients name in absolute URLs. */
@@ -276,6 +284,7 @@ const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
 export async function checkRoute(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS, locales: readonly string[] = []): Promise<RouteResult> {
 	const oldOrigin = run.old.origin;
 	const newOrigin = run.new.origin;
+	stepsOf(route).total = 3 + [run.probes, run.busyCpu, run.motion, run.responsiveness, run.embeds].filter(Boolean).length;
 	const { olds, next, loads } = await profiled(route, 'load both sides', () => loadBoth(browser, run, route, viewports));
 	const broken = brokenOld(route, olds);
 	if (broken) return broken;
@@ -291,12 +300,14 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
-	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed)) : journeyed;
-	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
-	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
+	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed;
+	const busy = run.busyCpu ? await profiled(route, 'busy CPU', () => checkBusyCpu(run.busyCpu!.browsers, { old: run.old, new: run.new }, route, viewports[0]!, run.busyCpu)) : undefined;
+	const lane = busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored;
+	const moved = run.motion && lane.journeys?.length ? await profiled(route, 'motion', () => checkMoves(browser, run, route, viewports[0]!, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane;
+	const timed = run.responsiveness && moved.journeys?.length ? await profiled(route, 'responsiveness', () => checkTimings(browser, run, route, moved)) : moved;
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
 	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
-	const checked = run.embeds && embedded ? await checkRouteEmbeds(browser, run, route, viewports, timed) : timed;
+	const checked = run.embeds && embedded ? await profiled(route, 'embeds', () => checkRouteEmbeds(browser, run, route, viewports, timed)) : timed;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
@@ -313,13 +324,17 @@ export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: R
 	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
 }
 
-/** The widget probes of the route's controls and the moved-clock look, old against new, on top of what the journeys found. */
-async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes'>, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
+/** The widget probes of the route's controls, the moved-clock look and control parity, old against new, on top of what the journeys found; pop-up motion is filmed on routes that carry motion. */
+async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes' | 'controls' | 'motion'>, route: string, viewport: Viewport, result: RouteResult, film = false): Promise<RouteResult> {
 	const sides = { old: run.old, new: run.new };
 	const clock = await checkClock(browser, sides, route, viewport);
 	const out = await checkProbes(browser, sides, route, viewport, result.journeys, run.probes);
-	const failures = [...clock, ...out.failures];
-	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures]) : result), probes: { controls: out.controls, ms: out.ms } };
+	const parity = run.controls
+		? await profiled(route, 'control parity', () => checkControlParity(browser, sides, route, viewport, { ...run.controls, film: film && Boolean(run.motion) })).catch((error: Error) => ({ failures: [{ route, dimension: 'behaviour' as const, check: 'control parity', expected: 'control parity runs', actual: error.message.split('\n')[0]!, hint: 'Control parity could not load the route on one side.' }], shots: [], tried: 0, leftOut: 0, ms: 0 }))
+		: undefined;
+	const failures = [...clock, ...out.failures, ...(parity?.failures ?? [])];
+	const shots = parity?.shots.length ? { shots: [...result.shots, ...parity.shots] } : {};
+	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures], shots) : { ...result, ...shots }), probes: { controls: out.controls, ms: out.ms }, ...(parity ? { controlParity: { tried: parity.tried, leftOut: parity.leftOut, ms: parity.ms } } : {}) };
 }
 
 async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], result: RouteResult): Promise<RouteResult> {
@@ -440,16 +455,16 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 	const dropped = new Set<Failure>();
 	const notes = new Map<Failure, string>();
 	for (const failure of slow) {
-		const { journey, step, views } = timedOnly.get(failure)!;
+		const { journey, step, views, cadence } = timedOnly.get(failure)!;
 		const times: { old?: number; next?: number }[] = [];
 		const shown: (string | undefined | null)[] = [];
 		for (let i = 0; i < RETIMES; i++) {
 			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step];
 			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
 			times.push({ old: old?.reaction?.answeredMs, next: next?.reaction?.answeredMs });
-			shown.push(old?.reaction?.views && next?.reaction?.views ? interimViews([old], next) : null);
+			shown.push(old?.reaction?.views && next?.reaction?.views ? (cadence ? choppier([old], next) : interimViews([old], next)) : null);
 		}
-		if (views) {
+		if (views || cadence) {
 			if (shown.some((s) => s === null)) notes.set(failure, '; it could not be timed again one side at a time');
 			else if (shown.some((s) => s === undefined)) dropped.add(failure);
 			else notes.set(failure, `; timed again one side at a time, the new page showed it every time (${shown.join('; ')})`);
@@ -463,14 +478,28 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 	return failures.filter((f) => !dropped.has(f)).map((f) => (notes.has(f) ? { ...f, actual: `${f.actual}${notes.get(f)}` } : f));
 }
 
+/** The parts of each route's check that have finished, the ones running and how many it was going to run: what a timed-out route reports. */
+const routeSteps = new Map<string, { readonly done: { readonly name: string; readonly ms: number }[]; readonly running: Set<string>; total: number }>();
+const stepsOf = (route: string) => routeSteps.get(route) ?? routeSteps.set(route, { done: [], running: new Set(), total: 0 }).get(route)!;
+
+/** How far a route's check got: "steps done 2 of 6 (load both sides, forced states; running: journeys)". */
+export function stepsDone(route: string): string {
+	const s = stepsOf(route);
+	const running = [...s.running];
+	return `steps done ${s.done.length} of ${Math.max(s.total, s.done.length + running.length)}${s.done.length || running.length ? ` (${s.done.map((d) => d.name).join(', ')}${running.length ? `${s.done.length ? '; ' : ''}running: ${running.join(', ')}` : ''})` : ''}`;
+}
+
 // MARKLESS_MIGRATE_PROFILE=1 prints how long each part of a route's check took, on stderr.
-async function profiled<T>(route: string, part: string, work: () => Promise<T>): Promise<T> {
-	if (!process.env.MARKLESS_MIGRATE_PROFILE) return work();
+export async function profiled<T>(route: string, part: string, work: () => Promise<T>): Promise<T> {
+	const steps = stepsOf(route);
+	steps.running.add(part);
 	const started = Date.now();
 	try {
 		return await work();
 	} finally {
-		process.stderr.write(`[profile] ${route} ${part}: ${((Date.now() - started) / 1000).toFixed(1)} s\n`);
+		steps.running.delete(part);
+		steps.done.push({ name: part, ms: Date.now() - started });
+		if (process.env.MARKLESS_MIGRATE_PROFILE) process.stderr.write(`[profile] ${route} ${part}: ${((Date.now() - started) / 1000).toFixed(1)} s\n`);
 	}
 }
 
@@ -670,6 +699,8 @@ export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys
 
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
 export async function withDeadline(route: string, run: Run, ms: number, work: (run: Run) => Promise<RouteResult>): Promise<RouteResult> {
+	routeSteps.delete(route);
+	const began = Date.now();
 	const scope = new Scope();
 	const task = work({ ...run, old: { ...run.old, scope }, new: { ...run.new, scope } });
 	task.catch(() => {});
@@ -677,7 +708,11 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	const late = new Promise<'late'>((done) => (timer = setTimeout(() => done('late'), ms)));
 	try {
 		const first = await Promise.race([task, late]);
-		if (first !== 'late') return first;
+		if (first !== 'late') {
+			const timed = { ...first, timing: { ms: Date.now() - began, steps: [...stepsOf(route).done] } };
+			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
+			return timed;
+		}
 	} finally {
 		clearTimeout(timer);
 	}
@@ -687,13 +722,13 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	const answers = [scope.sinceAnswer(run.old.origin), scope.sinceAnswer(run.new.origin)];
 	const lastAnswer = answers.every((a) => a !== undefined) ? Math.max(...(answers as number[])) : undefined;
 	const failedLately = scope.failed > 0 && Date.now() - scope.failed < window;
+	const steps = stepsDone(route);
 	await scope.close();
 	await Promise.race([task.catch(() => {}), new Promise((done) => setTimeout(done, 10_000))]);
-	if (!stalled && !failedLately && lastAnswer !== undefined && lastAnswer < window) {
-		const actual = `it ran out of time: it did not finish within ${Math.round(ms / 1000)} s (--timeout), and both apps were still answering (each answered within ${(lastAnswer / 1000).toFixed(1)} s of it stopping; no request was waiting or had failed)`;
-		return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual, hint: HINTS.checkOutOfTime }], []);
-	}
-	return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `the check of ${route} did not finish within ${Math.round(ms / 1000)} s (--timeout), so it was stopped: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : 'a server that stops answering part way through does this'}` });
+	// A request left waiting, one failing, or an app that never answered is the servers' doing; a long part that sends no request (journeys deciding, a busy-CPU lane) is the check's own time.
+	if (stalled || failedLately || lastAnswer === undefined) return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` });
+	const answering = lastAnswer < window ? `both apps were still answering (each answered within ${(lastAnswer / 1000).toFixed(1)} s of it stopping)` : `both apps had answered and no request was waiting or had failed (the last answer ${Math.round(lastAnswer / 1000)} s before it stopped)`;
+	return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime }], []);
 }
 
 function asRole(result: RouteResult, role: string | undefined): RouteResult {
@@ -800,7 +835,13 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const webkitBrowser = options.controls?.webkit ? await webkit.launch().catch((error: Error) => {
+		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
+	}) : undefined;
+	const laneBrowsers = options.busyCpu ? await Promise.all([firefox.launch(), webkitBrowser ?? webkit.launch()]).catch((error: Error) => {
+		throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
+	}) : undefined;
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -823,7 +864,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			if (kinds[i] === 'redirect') redirects.add(route);
 		});
 		const allPages = options.routes.filter((route) => !endpoints.has(route) && !redirects.has(route));
-		const groups: TemplateGroup[] = options.templates !== false && allPages.length > (options.templates?.threshold ?? TEMPLATE_THRESHOLD) ? await groupTemplates(base.old, allPages, options.templates?.patterns) : [];
+		const groupPages = options.templates !== false && options.templates?.site ? [...new Set([...options.templates.site, ...allPages])] : allPages;
+		const groups: TemplateGroup[] = options.templates !== false && groupPages.length > (options.templates?.threshold ?? TEMPLATE_THRESHOLD) ? await groupTemplates(base.old, groupPages, options.templates?.patterns) : [];
 		const groupOf = new Map(groups.filter((g) => g.members.length > 1).flatMap((g) => g.members.map((m) => [m, g] as const)));
 		const light = (route: string) => groupOf.has(route) && groupOf.get(route)!.representative !== route;
 		const withTemplate = (result: RouteResult): RouteResult => {
@@ -843,8 +885,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			}
 			// A widget is shared only among one role's routes: a signed-in visitor may meet another one behind the same markup.
 			if (roleRun.probes) roleRun = { ...roleRun, probes: { ...roleRun.probes, shared: new Map<string, SharedProbe>() } };
+			// A run of one part leaves endpoints and redirects to the full check; they are listed as that part's, not as not checked.
+			const outOfPart = (only: 'load' | 'embeds' | 'probes') => [...endpoints, ...redirects].map((route) => asRole({ ...partialResult(route, [], []), ok: true, only }, role));
 			if (options.only === 'load') {
-				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })));
+				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })), ...outOfPart('load'));
 				continue;
 			}
 			if (options.only === 'embeds') {
@@ -855,6 +899,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const result = { ...partialResult(route, out.failures, [...new Set(out.failures.map((f) => f.dimension as Dimension))]), shots: out.shots, only: 'embeds' as const };
 					routes.push(asRole(withTemplate({ ...result, ok: out.failures.length === 0 }), role));
 				}
+				routes.push(...outOfPart('embeds'));
 				continue;
 			}
 			if (options.only === 'probes') {
@@ -865,6 +910,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const result = await probeRoute(browser, probing, route, viewport, empty).catch((error: Error) => partialResult(route, [{ route, dimension: 'behaviour', check: 'the widget probes', expected: 'the widget probes run', actual: error.message.split('\n')[0]!, hint: 'The widget probes could not load the route on one side.' }], []));
 					routes.push(asRole(withTemplate({ ...result, ok: result.failures.length === 0, only: 'probes' as const }), role));
 				}
+				routes.push(...outOfPart('probes'));
 				continue;
 			}
 			const oldLanding = (env: SideEnv) => (route: string) => landing(browser, env, route, (options.viewports ?? VIEWPORTS)[0]!);
@@ -947,7 +993,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		const coverage = options.coverage ? mergeCoverage(coverages) : undefined;
 		const checkedCount = new Set([...options.routes, ...(options.redirects ?? []), ...(options.endpoints ?? [])]).size;
-		const grouped = groups.filter((g) => g.members.length > 1);
+		const grouped = groups.filter((g) => g.members.length > 1 && g.members.some((m) => allPages.includes(m)));
 		return applyAccepted({
 			version: 1,
 			old: options.oldOrigin,
@@ -971,6 +1017,9 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
 		if (!options.browser) await browser.close();
+		await webkitBrowser?.close();
+		await laneBrowsers?.[0].close();
+		if (!webkitBrowser) await laneBrowsers?.[1].close();
 	}
 }
 

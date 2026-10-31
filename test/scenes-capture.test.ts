@@ -90,3 +90,21 @@ test('a state that a replay reaches holding more than it was recorded with is re
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test('a listing that names its controls by text uses only those (Replay), leaving the demo\'s other buttons alone', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 400, max: 5000 }, '^Send$');
+		assert.deepEqual([...new Set(scenes[0]!.edges.map((e) => e.control))], ['button|button|Send#0']);
+		const none = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 400, max: 5000 }, '^Replay$');
+		assert.equal(none.scenes.length, 0, 'a demo with no such control is not captured');
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});

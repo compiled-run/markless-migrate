@@ -5,8 +5,10 @@ export interface InstanceProp {
 	readonly name: string;
 	/** The attribute written, `data-mm-<name in kebab case>` unless given. */
 	readonly attr?: string;
-	/** `form-value`: the string a form submits for the value, as Base UI serializes it (stringifyAsValue). */
-	readonly as?: 'form-value';
+	/** `form-value`: the string a form submits for the value, as Base UI serializes it (stringifyAsValue); `json`: an object, as JSON. */
+	readonly as?: 'form-value' | 'json';
+	/** Written when the instance was given none: the library's default. */
+	readonly fallback?: string;
 }
 
 /** The props a port needs on the elements of one kind it handles, each read from that element's own instance. */
@@ -29,10 +31,22 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
 	// Its Positioner's offsets as this instance gave them (an input with an icon addon moves its list by alignOffset).
 	{ port: 'base-ui/combobox', selector: '[data-slot="combobox-content"]', props: [{ name: 'alignOffset' }, { name: 'sideOffset' }], hints: ['data-slot="combobox-content"'], version: 2 },
+	{ port: 'react-aria/overlay', selector: '[role="tooltip"][data-rac][data-placement]', props: [{ name: 'placement' }, { name: 'offset' }, { name: 'crossOffset' }], hints: ['data-rac', 'role="tooltip"'] },
+	// The side and alignment a popup asked for: its data-side and data-align are where it went, after a flip away from an edge.
+	{ port: 'base-ui/popup', selector: '[data-base-ui-portal] > [role="presentation"][data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-base-ui-portal', 'data-side'] },
+	{ port: 'popper', selector: '[data-radix-popper-content-wrapper] > [data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-radix-popper-content-wrapper'] },
 ];
 
+let siteSpecs: readonly InstanceSpec[] = [];
+/** The site's own specs (lib/site/instance-props.json): props its own components' parts read, read like the libraries'. */
+export function useSiteInstanceProps(specs: readonly InstanceSpec[]): void {
+	siteSpecs = specs;
+}
+/** The libraries' specs, then the site's. */
+export const instanceSpecs = (): readonly InstanceSpec[] => [...INSTANCE_PROPS, ...siteSpecs];
+
 /** Each spec as a mark of its own, so a spec that reads more takes again only the captures holding its hints. */
-export const instancePropMarks = (specs: readonly InstanceSpec[] = INSTANCE_PROPS): Mark[] => specs.map((s) => ({ id: `instance-props:${s.port}:${s.selector}`, version: s.version ?? 1, applies: (html) => s.hints.every((hint) => html.includes(hint)) }));
+export const instancePropMarks = (specs: readonly InstanceSpec[] = instanceSpecs()): Mark[] => specs.map((s) => ({ id: `instance-props:${s.port}:${s.selector}`, version: s.version ?? 1, applies: (html) => s.hints.every((hint) => html.includes(hint)) }));
 
 /** A capture written before each spec had its own version: `instanceProps: 1` was read as holding every spec. */
 export const legacyInstanceProps = (instanceProps: number | undefined, specs: readonly InstanceSpec[] = INSTANCE_PROPS): Marked => (instanceProps === 1 ? Object.fromEntries(specs.map((s) => [`instance-props:${s.port}:${s.selector}`, 1])) : {});
@@ -92,10 +106,10 @@ export function markInstanceProps({ specs, added }: { readonly specs: readonly I
 						break;
 					}
 			for (const p of spec.props) {
-				if (!found.has(p.name)) continue;
 				const value = found.get(p.name);
-				if (value === undefined || (p.as !== 'form-value' && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')) continue;
-				el.setAttribute(p.attr ?? kebab(p.name), p.as === 'form-value' ? formValue(value, toString) : String(value));
+				if (value === undefined && p.fallback !== undefined) el.setAttribute(p.attr ?? kebab(p.name), p.fallback);
+				if (value === undefined || (!p.as && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')) continue;
+				el.setAttribute(p.attr ?? kebab(p.name), p.as === 'form-value' ? formValue(value, toString) : p.as === 'json' ? JSON.stringify(value) : String(value));
 			}
 		}
 	}

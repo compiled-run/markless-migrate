@@ -6,12 +6,14 @@
 #        are checked before the preview is promoted. Requires VITE_APP_URL, the public origin "Open in v0" links name.
 # preview: new without the promote; prints the checked preview URL.
 # front: the vercel.json `markless-migrate config --vercel` writes plus the check report at /_migrate/, as mm-shadcn-ui.
+# cf-new, cf-preview: the port to Cloudflare Workers through deploy/cloudflare.sh, as mm-shadcn-ui-new (BUILT=1 uploads the
+#        cloudflare-module build already in the app's .output).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."
 APP="$ROOT/examples/shadcn-ui-markless"
 SCOPE=jack-shelton
-OLD_URL=https://mm-shadcn-ui-old.vercel.app
+OLD_URL=https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev
 NEW_URL=https://mm-shadcn-ui-new.vercel.app
 # A concurrent CLI process refreshing the shared login leaves this one's token stale for a moment; Vercel answers that as
 # "no access to the specified account" before doing anything, so the same command is safe to run again.
@@ -31,7 +33,19 @@ vercel() {
 }
 link() { [ -f "$1/.vercel/project.json" ] || (cd "$1" && vercel link --yes --project "$2" --scope "$SCOPE" >/dev/null && rm -f .env.local); }
 
+CF_NEW_URL=https://mm-shadcn-ui-new.long-wildflower-ecf7.workers.dev
+
 case "${1:-}" in
+	cf-new|cf-preview)
+		if [ "${BUILT:-}" != 1 ]; then
+			rm -rf "$APP/.output"
+			(cd "$APP" && node "$ROOT/src/cli.ts" cache apply --prerender)
+			(cd "$APP" && NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=12288}" NITRO_PRESET=cloudflare-module VITE_APP_URL="${VITE_APP_URL:-$CF_NEW_URL}" npm run build)
+		fi
+		if grep -rlq --include='*.html' 'chat/api/open?url=/' "$APP/.output/public"; then echo 'FAIL: pages link v0 to a hostless URL: build with VITE_APP_URL set' >&2; exit 1; fi
+		PREVIEW=$([ "$1" = cf-preview ] && echo 1 || true) exec bash "$DIR/../cloudflare.sh" port "$APP" mm-shadcn-ui-new \
+			/ /docs /docs/components/radix/button /examples/dashboard /blocks /charts/area
+		;;
 	old)
 		OLD="$DIR/old"
 		[ -d "$OLD/.git" ] || ORIGIN="$OLD_URL" "$DIR/fetch-old.sh"
@@ -71,5 +85,5 @@ case "${1:-}" in
 		(cd "$APP" && node "$ROOT/src/cli.ts" config --old "$OLD_URL" --new "$NEW_URL" --vercel "$FRONT/vercel.json" --new-build .vercel/output/static)
 		(cd "$FRONT" && vercel build --prod --yes && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
 		;;
-	*) echo "usage: $0 old|new|preview|front" >&2; exit 1 ;;
+	*) echo "usage: $0 old|new|preview|front|cf-new|cf-preview" >&2; exit 1 ;;
 esac

@@ -1,5 +1,5 @@
-import { parseSync } from 'oxc-parser';
-import { walk, type N } from '../source/js.ts';
+import { parse } from 'yuku';
+import { errorsOf, walk, type N } from '../source/js.ts';
 
 /** One trigger of `hx-trigger`, as htmx reads it: the event (or `every <interval>`), its filter and modifiers. */
 export interface HtmxTrigger {
@@ -153,7 +153,7 @@ export function parseAlpineAttribute(name: string): { directive: string; value?:
 
 /** Names an Alpine expression reads: its magics (`$refs`, `$dispatch`), and for `x-data`, the keys of the state object. */
 export function alpineExpression(source: string): { magics: string[]; keys: string[]; parsed: boolean } {
-	const result = parseSync('x.js', `(${source}\n)`, { sourceType: 'script', preserveParens: false });
+	const result = parse(`(${source}\n)`, { sourceType: 'script', preserveParens: false });
 	const magics = new Set<string>();
 	const keys: string[] = [];
 	const program = result.program as unknown as N;
@@ -162,5 +162,5 @@ export function alpineExpression(source: string): { magics: string[]; keys: stri
 	walk(program, (n) => {
 		if (n.type === 'Identifier' && typeof n.name === 'string' && n.name.startsWith('$')) magics.add(n.name);
 	});
-	return { magics: [...magics], keys, parsed: result.errors.length === 0 };
+	return { magics: [...magics], keys, parsed: errorsOf(result).length === 0 };
 }

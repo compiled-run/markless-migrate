@@ -32,6 +32,26 @@ test('radios share one state: choosing one is its index, and a single-choice tog
 	assert.deepEqual(plan.bind(a)?.declare, ['let rg0 = state(0);']);
 });
 
+test('a form\'s Reset puts each checkbox and radio as its defaults say through mmset, which can leave a radio group with none chosen', () => {
+	const doc = parseDocument('<body><div role="group"><button role="radio" aria-checked="true">a</button><button role="radio" aria-checked="false">b</button></div><button role="checkbox" aria-checked="false">c</button></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => attr(el, 'role') === 'radio') as [Element, Element];
+	const c = find(body(doc), (el) => attr(el, 'role') === 'checkbox')!;
+	const state = (role: string, checked: boolean) => ({ attrs: { role, 'aria-checked': String(checked) }, inner: '' });
+	const plan = new CheckablePlan();
+	plan.add(
+		body(doc),
+		[
+			{ kind: 'radio', controls: [{ sig: 'a', nth: 0, role: 'radio', initial: true, on: state('radio', true), off: state('radio', false) }, { sig: 'b', nth: 0, role: 'radio', initial: false, on: state('radio', true), off: state('radio', false) }] },
+			{ kind: 'toggle', controls: [{ sig: 'c', nth: 0, role: 'checkbox', initial: false, on: state('checkbox', true), off: state('checkbox', false) }] },
+		],
+		(sig) => ({ a, b, c })[sig],
+		(h) => h,
+	);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<button role="radio" aria-checked=\{rg0 === 1 \? "true" : "false"\}.*? onMmset=\{\(event\) => \{ if \(\(event as CustomEvent<boolean>\)\.detail\) rg0 = 1; else if \(rg0 === 1\) rg0 = -1; \}\}/);
+	assert.match(out, /onMmset=\{\(event\) => \{ tg1 = \(event as CustomEvent<boolean>\)\.detail; \}\}/);
+});
+
 test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, with the panel\'s id and label bound', async () => {
 	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a" data-activation-direction="none"><p>a</p></div></div></body>');
@@ -292,6 +312,24 @@ test('a sonner toaster renders its lists and toasts from one state, each control
 	assert.ok(plan.hosts(region));
 });
 
+test("a toast template's controls all add its toast, each naming what the site's function made of the control clicked", async () => {
+	const { NotifyPlan } = await import('../src/convert/stateful.ts');
+	const { emitChildren } = await import('../src/convert/tsrx.ts');
+	const { parseFragment } = await import('parse5');
+	const doc = parseDocument('<body><main><button data-last-copied="false">a</button><button data-last-copied="false">b</button><button>Other</button></main><section aria-label="Notifications alt+T" aria-live="polite"></section></body>');
+	const [a, b, other] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element, Element];
+	const region = find(body(doc), (el) => el.tagName === 'section')!;
+	const toaster = { position: 'bottom-right', gap: 14, visibleToasts: 3, expand: false, hotkey: ['altKey', 'KeyT'], ol: [['data-sonner-toaster', 'true'], ['style', '--width: 356px;']] as [string, string][] };
+	const sonner = { toaster, dismissible: true, duration: 4000, promise: false, phases: [{ at: 0, type: 'success', attrs: [['data-sonner-toast', ''], ['data-type', 'success']] as [string, string][], inner: '<div data-content=""><div data-title="">Copied hsl(0 0% 100%) to clipboard.</div></div>' }] };
+	const plan = new NotifyPlan();
+	const placed = plan.add([{ sig: 'a', nth: 0, into: { sig: 'r', nth: 0 }, html: '', ms: 4600, sonner: sonner as never, template: { name: 'copyColor', copied: 'hsl(0 0% 100%)', controls: [{ sig: 'a', nth: 0 }, { sig: 'b', nth: 0 }] } }], (sig) => ({ a, b, r: region })[sig as 'a' | 'b' | 'r'], (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	assert.equal(placed, 2);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-title="">Copied \{item\.text\} to clipboard\.<\/div>/, 'the copied value is the toast\'s own text');
+	for (const el of [a, b]) assert.match(plan.bind(el)!.extra![0]!, /^onClick=\{\(event\) => sonnerAdd\(\{"id":"tst0".*\{ \.\.\.\{"view":0,.*\}, text: copyColor\(event\.target as Element\) \}, \(v\) => \(tst0 = v\)\)\}$/);
+	assert.equal(plan.bind(other), undefined);
+});
+
 test('a Base UI disclosure whose content holds disclosures of its own keeps that content in the page, shown while open, its own bound inside', async () => {
 	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-closed=""><button id="base-ui-a" aria-expanded="false" data-base-ui-collapsible-trigger="">components</button><div data-open="" id="base-ui-pa"><div data-closed=""><button id="base-ui-b" aria-expanded="false" data-base-ui-collapsible-trigger="">ui</button></div></div></div></body>');
@@ -341,4 +379,21 @@ test('content a tab reveals holding a Radix Collapsible of its own is kept in th
 	const roots = (html: string) => [...walk(body(parseDocument(`<body>${html}</body>`)))].slice(0, 1);
 	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="c">Expand</button><div id="c" data-state="closed" data-slot="collapsible-content"></div></div>')), true);
 	assert.equal(holdsRadixDisclosure(roots('<div><button aria-expanded="false" aria-controls="p">Expand</button><pre id="p" data-state="closed"></pre></div>')), false);
+});
+
+test("a form's toast on a passing submit is added by its region's mmformsubmit, and the values it shows are the item's own text", async () => {
+	const { NotifyPlan } = await import('../src/convert/stateful.ts');
+	const { emitChildren } = await import('../src/convert/tsrx.ts');
+	const { parseFragment } = await import('parse5');
+	const doc = parseDocument('<body><main><div data-slot="card"><form></form></div></main><section aria-label="Notifications alt+T" aria-live="polite"></section></body>');
+	const card = find(body(doc), (el) => attr(el, 'data-slot') === 'card')!;
+	const region = find(body(doc), (el) => el.tagName === 'section')!;
+	const values = JSON.stringify({ title: '' }, null, 2);
+	const toaster = { position: 'bottom-right', gap: 14, visibleToasts: 3, expand: false, hotkey: ['altKey', 'KeyT'], ol: [['data-sonner-toaster', 'true'], ['style', '--width: 356px;']] as [string, string][] };
+	const plan = new NotifyPlan();
+	plan.add([{ sig: 'card', nth: 0, into: { sig: 'r', nth: 0 }, html: '', ms: 4600, onSubmit: true, texts: { v: values }, sonner: { toaster, dismissible: true, duration: 4000, promise: false, phases: [{ at: 0, attrs: [['data-sonner-toast', '']], inner: `<div data-title="">You submitted the following values:</div><div data-description=""><pre><code>${values}</code></pre></div>` }] } }], (sig) => (sig === 'card' ? card : region), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="card" onMmformsubmit=\{\(event\) => sonnerAdd\(\{"id":"tst0"[^}]*\}, \{"view":0,[^]*?\}, \(v\) => \(tst0 = v\), \{ v: JSON\.stringify\(\(event as CustomEvent\)\.detail, null, 2\) \}\)\}>/);
+	assert.match(out, /<pre><code>\{item\.t\["v"\] \?\? ""\}<\/code><\/pre>/);
+	assert.doesNotMatch(out, /onClick=\{\(\) => sonnerAdd/);
 });

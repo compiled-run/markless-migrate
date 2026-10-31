@@ -402,15 +402,15 @@
 		},
 		{
 			"source": "/",
-			"destination": "https://vite-dev-old.vercel.app/"
+			"destination": "https://mm-vite-dev-old.long-wildflower-ecf7.workers.dev/"
 		},
 		{
 			"source": "/:path*/",
-			"destination": "https://vite-dev-old.vercel.app/:path*/"
+			"destination": "https://mm-vite-dev-old.long-wildflower-ecf7.workers.dev/:path*/"
 		},
 		{
 			"source": "/:path*",
-			"destination": "https://vite-dev-old.vercel.app/:path*"
+			"destination": "https://mm-vite-dev-old.long-wildflower-ecf7.workers.dev/:path*"
 		}
 	]
 }

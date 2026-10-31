@@ -1,7 +1,7 @@
 // Node module hooks registered after fumadocs-mdx's own loader, so they run first: a content module of a collection is
 // compiled by fumadocs-mdx (nextLoad), and what this returns holds only the compiled module's literal exports, so the
 // components the content imports (React) are never evaluated.
-import { parseSync } from 'oxc-parser';
+import { parse } from 'yuku';
 
 const KEEP = new Set(['frontmatter', 'structuredData', 'toc', 'lastModified', 'extractedReferences']);
 
@@ -46,7 +46,7 @@ export async function load(url, context, nextLoad) {
 	if (!/[?&]collection=/.test(url) || !/\.mdx?(\?|$)/.test(url)) return nextLoad(url, context);
 	const compiled = await nextLoad(url, context);
 	const code = String(compiled.source);
-	const { program } = parseSync('x.js', code, { sourceType: 'module' });
+	const { program } = parse(code, { sourceType: 'module' });
 	const kept = {};
 	for (const stmt of program.body) {
 		if (stmt.type !== 'ExportNamedDeclaration' || stmt.declaration?.type !== 'VariableDeclaration') continue;

@@ -52,6 +52,11 @@ export interface SceneLimits {
 
 const LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
 
+/** What a listed text field is given at capture (filled, then Enter): the scene part shows the visitor's own text where it showed this. */
+export const TYPED = 'qz typed note 7';
+/** A listed text field's uses: filled with TYPED, emptied, and Enter pressed in it. */
+export const FIELD_USES = ['fill', 'clear', 'enter'] as const;
+
 // Runs in the page: installs the recorder on a demo. Every node gets an id the first time it is seen; a frame is taken
 // on the animation frame after anything in the demo changed.
 function install([selector, index]: readonly [string, number]): number {
@@ -109,15 +114,17 @@ async function startRecording(page: Page): Promise<void> {
 		s.clicked = false;
 		s.observer?.disconnect();
 		// A frame's time is when the page changed, after the click itself: the snapshot waits for the next animation frame.
-		document.addEventListener(
-			'click',
-			() => {
-				if (s.clicked) return;
-				s.clicked = true;
-				s.t0 = performance.now();
-			},
-			{ capture: true, once: true },
-		);
+		// A field's use starts as it is given text or a key.
+		for (const type of ['click', 'input', 'keydown'])
+			document.addEventListener(
+				type,
+				() => {
+					if (s.clicked) return;
+					s.clicked = true;
+					s.t0 = performance.now();
+				},
+				{ capture: true, once: true },
+			);
 		s.observer = new MutationObserver(() => {
 			s.last = performance.now();
 			if (s.pending) return;
@@ -196,9 +203,9 @@ const hash = (node: SceneNode) => createHash('sha256').update(shape(node)).diges
 
 // Runs in the page: the demo's listed controls that can be used now, each by its tag, data-slot and text, and which
 // element with them it is inside the demo.
-function controlsIn([selector, index, listed]: readonly [string, number, string]): string[] {
+function controlsIn([selector, index, listed, text]: readonly [string, number, string, string]): string[] {
 	const root = document.querySelectorAll(selector)[index]!;
-	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? (el.matches('textarea, input') ? el.getAttribute('placeholder') : null) ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const counts = new Map<string, number>();
 	const out: string[] = [];
 	for (const el of root.querySelectorAll(listed)) {
@@ -207,17 +214,23 @@ function controlsIn([selector, index, listed]: readonly [string, number, string]
 		counts.set(sig, n + 1);
 		const r = el.getBoundingClientRect();
 		if (r.width < 1 || r.height < 1 || el.matches(':disabled, [aria-disabled="true"], [inert], [inert] *')) continue;
-		out.push(`${sig}#${n}`);
+		// A listing that names its controls by text (Replay) leaves the demo's other controls alone.
+		if (text && !el.matches('textarea, input') && !new RegExp(text).test(sig.split('|')[2]!)) continue;
+		if (el.matches('textarea, input:not([type]), input[type="text"], input[type="search"]')) for (const u of ['fill', 'clear', 'enter']) out.push(`${sig}#${n}|${u}`);
+		else out.push(`${sig}#${n}`);
 	}
 	return out;
 }
 
-async function use(page: Page, selector: string, index: number, listed: string, control: string): Promise<boolean> {
+async function use(page: Page, selector: string, index: number, listed: string, used: string): Promise<boolean> {
+	const suffix = used.slice(used.lastIndexOf('|') + 1) as (typeof FIELD_USES)[number];
+	const field = FIELD_USES.includes(suffix) ? suffix : undefined;
+	const control = field ? used.slice(0, -suffix.length - 1) : used;
 	const handle = (
 		await page.evaluateHandle(
 			([selector, index, listed, control]) => {
 				const root = document.querySelectorAll(selector)[index]!;
-				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? (el.matches('textarea, input') ? el.getAttribute('placeholder') : null) ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 				const counts = new Map<string, number>();
 				for (const el of root.querySelectorAll(listed)) {
 					const sig = sigOf(el);
@@ -231,6 +244,13 @@ async function use(page: Page, selector: string, index: number, listed: string, 
 		)
 	).asElement();
 	if (!handle) return false;
+	if (field) {
+		if (field === 'enter') {
+			await handle.focus();
+			await page.keyboard.press('Enter');
+		} else await handle.fill(field === 'fill' ? TYPED : '');
+		return true;
+	}
 	// A click without the pointer passing over anything: hover cards and tooltips are their own parts' business.
 	return handle.evaluate((el) => {
 		(el as HTMLElement).click();
@@ -242,8 +262,8 @@ async function use(page: Page, selector: string, index: number, listed: string, 
  * Uses the listed controls of each demo on the old page, from every settled state they lead to (breadth first, within
  * `limits`), and records each use frame by frame. A state is reached again by replaying the uses that led to it.
  */
-export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS): Promise<SceneCapture> {
-	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
+export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = ''): Promise<SceneCapture> {
+	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
@@ -270,7 +290,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 		await page.addInitScript(`globalThis.__mmSnapshot = ${snapshotIn.toString()};`);
 		await loadPage(page, url);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-		const demos = await page.evaluate(([selector, listed]) => {
+		const demos = await page.evaluate(([selector, listed, text]) => {
 			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 			const counts = new Map<string, number>();
 			const order = new Map<Element, number>();
@@ -279,8 +299,9 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 				order.set(el, counts.get(sig) ?? 0);
 				counts.set(sig, (counts.get(sig) ?? 0) + 1);
 			}
-			return [...document.querySelectorAll(selector)].map((el, index) => ({ index, sig: sigOf(el), nth: order.get(el) ?? 0, has: el.querySelector(listed) !== null })).filter((d) => d.has);
-		}, [PREVIEW, listed] as const);
+			const named = (el: Element) => !text || el.matches('textarea, input') || new RegExp(text).test((el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60));
+			return [...document.querySelectorAll(selector)].map((el, index) => ({ index, sig: sigOf(el), nth: order.get(el) ?? 0, has: [...el.querySelectorAll(listed)].some(named) })).filter((d) => d.has);
+		}, [PREVIEW, listed, text] as const);
 		for (const demo of demos) {
 			const skipped: string[] = [];
 			const states: SceneNode[] = [];
@@ -326,7 +347,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 				if (paths[at]!.length >= limits.depth) continue;
 				await fresh(demo.index);
 				for (const step of paths[at]!) await replay(step);
-				const controls = await page.evaluate(controlsIn, [PREVIEW, demo.index, listed] as const);
+				const controls = await page.evaluate(controlsIn, [PREVIEW, demo.index, listed, text] as const);
 				for (const control of controls) {
 					if (edges.some((e) => e.from === at && e.control === control)) continue;
 					await fresh(demo.index);

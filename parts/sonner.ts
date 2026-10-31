@@ -27,13 +27,18 @@ export interface SonnerToast {
 	/** The style the toast is given after sonner's own properties. */
 	readonly style: string;
 	readonly phases: readonly { readonly at: number; readonly type?: string; readonly attrs: Readonly<Record<string, string>> }[];
+	/** The text a toast template shows where its capture showed what was copied. */
+	readonly text?: string;
 }
 
 export interface SonnerItemView {
 	readonly id: number;
 	/** The arm of what it shows: `<toast>.<phase>`. */
 	readonly view: string;
+	readonly text: string;
 	readonly a: Readonly<Record<string, string | undefined>>;
+	/** Text its use gave it (a submitted form's values), by the slot its markup shows it in. */
+	readonly t: Readonly<Record<string, string>>;
 }
 export interface SonnerListView {
 	readonly position: string;
@@ -58,6 +63,7 @@ interface Item {
 	readonly id: number;
 	readonly toast: SonnerToast;
 	phase: number;
+	texts: Readonly<Record<string, string>>;
 	mounted: boolean;
 	removed: boolean;
 	offset: number;
@@ -135,6 +141,8 @@ function itemView(t: Toaster, item: Item, index: number, y: string, x: string): 
 	return {
 		id: item.id,
 		view: `${item.toast.view}.${item.phase}`,
+		text: item.toast.text ?? '',
+		t: item.texts,
 		a: {
 			...item.toast.phases[item.phase]!.attrs,
 			'data-mounted': String(item.mounted),
@@ -225,10 +233,10 @@ function timer(t: Toaster, item: Item): void {
 }
 
 /** A use of a control that shows a toast: sonner's Toaster takes it in a timeout after the call. */
-export function sonnerAdd(props: SonnerToaster, toast: SonnerToast, commit: Commit): void {
+export function sonnerAdd(props: SonnerToaster, toast: SonnerToast, commit: Commit, texts: Readonly<Record<string, string>> = {}): void {
 	const t = toasterFor(props, commit);
 	setTimeout(() => {
-		const item: Item = { id: counter++, toast, phase: 0, mounted: false, removed: false, offset: 0, offsetBeforeRemove: 0, initialHeight: 0, remaining: toast.duration ?? Infinity, closeTimerStart: 0, lastCloseTimerStart: 0, swiping: false, swiped: false, swipeOut: false, swipeDirection: null, swipeOutDirection: null, pointerStart: null, dragStart: 0 };
+		const item: Item = { id: counter++, toast, phase: 0, texts, mounted: false, removed: false, offset: 0, offsetBeforeRemove: 0, initialHeight: 0, remaining: toast.duration ?? Infinity, closeTimerStart: 0, lastCloseTimerStart: 0, swiping: false, swiped: false, swipeOut: false, swipeDirection: null, swipeOutDirection: null, pointerStart: null, dragStart: 0 };
 		setToasts(t, [item, ...t.toasts]);
 		// The Toast's mount effect: its height as it enters goes first in the heights, then it is mounted and measured again.
 		setTimeout(() => {

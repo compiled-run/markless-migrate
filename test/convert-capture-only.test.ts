@@ -2,7 +2,7 @@
 // of the same app takes its pages from those captures without loading them from the old site again.
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -22,7 +22,8 @@ before(async () => {
 	server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
 		const page = PAGES[path];
-		if (page) loads.push(path);
+		// A browser's load: the plain request convert keys a page's recordings with is not one.
+		if (page && req.headers['user-agent'] !== 'node') loads.push(path);
 		res.writeHead(page ? 200 : 404, { 'content-type': 'text/html' }).end(page ?? '<!doctype html><title>Not found</title>');
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
@@ -42,6 +43,9 @@ test('convert --capture-only captures every route and writes no page; the full c
 		assert.deepEqual(captured.routes, []);
 		assert.equal(existsSync(join(app, 'pages')), false, 'no page is written');
 		assert.equal((await readdir(join(app, '.migrate', 'convert', 'captures'))).length, only.length);
+		const costs = await Promise.all((await readdir(join(app, '.migrate', 'convert', 'costs'))).map(async (f) => JSON.parse(await readFile(join(app, '.migrate', 'convert', 'costs', f), 'utf8')) as { route: string; seconds: number }));
+		assert.deepEqual(costs.map((c) => c.route).sort(), [...only].sort(), "each page's capture time, for the next run's shards to be packed by");
+		assert.ok(costs.every((c) => Number.isInteger(c.seconds) && c.seconds >= 0));
 		const before = loads.length;
 		assert.ok(before >= only.length);
 		const report = await convert({ old: origin, app, only, reveal: false });

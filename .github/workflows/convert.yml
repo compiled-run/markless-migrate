@@ -74,7 +74,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
+  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  gate:
+    name: full-site gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            deploy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: size
+        name: Count the routes
+        env:
+          SPEC: ${{ inputs.converted-from && 'count:0' || env.ROUTES }}
+        run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
+      - name: Wait for a full-site slot
+        if: steps.size.outputs.full == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/full-site-gate.ts wait
+
   prepare:
+    needs: gate
     if: ${{ !inputs.converted-from }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -306,8 +337,8 @@ jobs:
           cd "$APP"
           status=0
           (while sleep 2; do free -m | awk '/^Mem:/ {print $3}'; done) > "$RUNNER_TEMP/memory.txt" &
-          # Node's default heap on a 16 GB runner is 4 GB; the rest of the runner is the build's to use.
-          NITRO_PRESET="${{ inputs.preset }}" NODE_OPTIONS=--max-old-space-size=13312 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          # A 6.5 GB heap makes V8 collect before the 16 GB runner fills; at 13 GB the full shadcn build ran the runner out of memory.
+          NITRO_PRESET="${{ inputs.preset }}" NODE_OPTIONS=--max-old-space-size=6656 /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/build.txt"
           peak=$(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}')
           echo "build: exit $status, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') wall, peak RSS of one process $((peak / 1024)) MB, runner memory in use at most $(sort -n "$RUNNER_TEMP/memory.txt" | tail -n 1) MB" >> "$GITHUB_STEP_SUMMARY"

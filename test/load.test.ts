@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { blockedPatterns, judgeLoad, loadFailures, loadLine, mannWhitneyGreater, measureLoad, readRun, routeLoad, unmeasured, type LoadRun, type Metrics } from '../src/check/load.ts';
+import { blockedPatterns, clusters, judgeLoad, loadFailures, loadLine, mannWhitneyGreater, measureLoad, readRun, routeLoad, unmeasured, type LoadRun, type Metrics } from '../src/check/load.ts';
 
 const runs = (lcps: readonly number[], over: Partial<Metrics> = {}): Metrics[] => lcps.map((lcp) => ({ score: 80, fcp: 1800, lcp, si: 1900, tbt: 50, cls: 0.001, ...over }));
 const verdict = (old: Metrics[], next: Metrics[], metric: keyof Metrics) => judgeLoad(old, next).find((v) => v.metric === metric)!;
@@ -143,4 +143,61 @@ test('tracker hosts are blocked in Lighthouse as in the rest of the check, and a
 	assert.ok(patterns.includes('*://ads.example.com/*'));
 	assert.ok(!patterns.some((p) => p.includes('google-analytics.com')), 'an allowed host under a blocked domain loads');
 	assert.ok(blockedPatterns().includes('*.google-analytics.com/*'));
+});
+
+// Runs of vite.dev in check.yml run 41181882418 (Lighthouse mobile FCP, ms).
+const VITE_HOME_OLD = [1868, 1969, 3020, 2415, 2416, 3017, 3017, 2565, 1860, 3013];
+const VITE_HOME_NEW = [1730, 2718, 2718, 2716, 2415, 2717, 2715, 2716, 1719, 2712];
+const VITE_BLOG_OLD = [3670, 3653, 3614, 3619, 3616];
+const VITE_BLOG_NEW = [3684, 3660, 3662, 3662, 3769];
+const paints = (fcp: number): Metrics => ({ score: 90, fcp, lcp: fcp + 400, si: fcp, tbt: 0, cls: 0 });
+
+test("a paint time whose runs fall in separate clusters is red as inconclusive, naming them, never a pass", () => {
+	assert.deepEqual(clusters(VITE_HOME_OLD), [[1860, 1868, 1969], [2415, 2416], [2565], [3013, 3017, 3017, 3020]]);
+	assert.equal(clusters(VITE_BLOG_OLD), undefined);
+	assert.equal(clusters(VITE_BLOG_NEW), undefined, 'one late run is an outlier, not a second cluster');
+	// Run 41196586619 (real throttling): the port's runs fall in two groups 100 ms apart, but it paints 600 ms before the original either way.
+	assert.equal(verdict([2215, 2222, 2238, 2252, 2498].map(paints), [1592, 1607, 1625, 1727, 1727].map(paints), 'fcp').ok, true);
+	const v = verdict(VITE_HOME_OLD.map(paints), VITE_HOME_NEW.map(paints), 'fcp');
+	assert.equal(v.ok, false);
+	assert.equal(v.bimodal?.side, 'old');
+	const load = routeLoad(10, VITE_HOME_OLD.map((fcp) => ({ metrics: paints(fcp) })), VITE_HOME_NEW.map((fcp) => ({ metrics: paints(fcp) })));
+	assert.match(loadFailures('/', load).find((f) => /First Contentful Paint/.test(f.check))!.actual, /^inconclusive: bimodal, the old page's 10 runs fall in 4 clusters: 1\.86 s-1\.97 s \(3 runs\), 2\.42 s \(2 runs\), 2\.56 s \(1 run\), 3\.01 s-3\.02 s \(4 runs\)$/);
+});
+
+test("a paint time is red for any slowdown beyond the old page's own noise and a frame, not only beyond 5% of it", () => {
+	// 60 ms later on every run: under the old 5% allowance (181 ms) this passed.
+	const v = verdict(VITE_BLOG_OLD.map(paints), VITE_BLOG_OLD.map((x) => paints(x + 60)), 'fcp');
+	assert.equal(v.ok, false, JSON.stringify(v));
+	// The /blog runs themselves: 43 ms later, within the 45.5 ms its old runs differ from each other by, so not told from noise.
+	const blog = verdict(VITE_BLOG_OLD.map(paints), VITE_BLOG_NEW.map(paints), 'fcp');
+	assert.equal(blog.worse, 43);
+	assert.equal(blog.floor, 45.5);
+	assert.equal(blog.ok, true);
+});
+
+test("on identical pages a route's lab metrics are red at most 5% of the time, and a first paint 5% later is red at least 99% of the time (seeded, so exact)", () => {
+	let seed = 41181882;
+	const uniform = () => {
+		seed = (seed + 0x6d2b79f5) | 0;
+		let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+	const gauss = () => Math.sqrt(-2 * Math.log(1 - uniform())) * Math.cos(2 * Math.PI * uniform());
+	// Noise as the /blog runs show it: about 25 ms on a 3.6 s first paint, the paint times of a run moving together.
+	const runs = (late: number) => Array.from({ length: 5 }, (): Metrics => {
+		const shared = gauss();
+		const fcp = Math.round(3630 + 25 * shared + late);
+		return { score: Math.round(90 + 1.5 * gauss()), fcp, si: fcp + Math.round(10 * gauss()), lcp: fcp + 400 + Math.round(30 * gauss()), tbt: Math.max(0, Math.round(40 + 15 * gauss())), cls: 0 };
+	});
+	const red = (late: number, routes: number) => {
+		let n = 0;
+		for (let i = 0; i < routes; i++) if (judgeLoad(runs(0), runs(late)).some((v) => !v.ok)) n++;
+		return n / routes;
+	};
+	const identical = red(0, 2000);
+	assert.ok(identical <= 0.05, `identical pages red on ${identical * 100}% of routes`);
+	const later = red(181, 2000);
+	assert.ok(later >= 0.99, `a first paint 181 ms later red on ${later * 100}% of routes`);
 });

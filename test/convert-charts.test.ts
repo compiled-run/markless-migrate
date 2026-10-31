@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { animationLag, ChartPlan, spare, spareCounts, template } from '../src/convert/charts.ts';
+import { animationLag, ChartPlan, exactSegments, gridOf, spare, spareCounts, template } from '../src/convert/charts.ts';
 import { attr, body, find, parseDocument, textContent, walk } from '../src/convert/dom.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 
@@ -27,7 +27,7 @@ test('a recharts chart: the active point in state(), the tooltip and the SVG\'s 
 	assert.match(out, /\\"m\\":\\"x\\"/, 'how the pointer picks a point');
 	assert.match(out, /onMmchart=\{\(event\) => \(chart0 = \(event as CustomEvent<number>\)\.detail\)\}/);
 	assert.match(out, /onVisible=\{\(\) => mount\("data-mm-chart"\)\}/, 'wired once visible, for a pointer already over it');
-	assert.match(out, /<link rel="stylesheet" href="\/_converted\/styles\/recharts-[0-9a-f]+\.css" \/>/, 'the entry animation\'s shared stylesheet, linked once');
+	assert.doesNotMatch(out, /<link rel="stylesheet"/, 'the charts\' CSS rides the page\'s own stylesheet, not a request of its own');
 	assert.match(out, /<div class="recharts-tooltip-wrapper" style="visibility: hidden">@if \(chart0 >= 0\) \{ <><div><span>\{chart0t\[chart0\]\[0\]\}<\/span><\/div><\/> \}<\/div>/);
 	assert.match(out, /<g class=\{chart0 >= 0 \? \(chart0w0v0c0\[chart0\] \?\? undefined\) : "layer"\}><path d="M0"><\/path>@if \(chart0 >= 0\) \{ <><g class="recharts-active-dot"><circle cx=\{chart0w0v0a0\[chart0\]\[0\]\} cy=\{chart0w0v0a0\[chart0\]\[1\]\}><\/circle><\/g><\/> \}<\/g>/);
 	assert.deepEqual(plan.bind(wrapper)?.declare, ['let chart0 = state(-1);', 'const chart0t = [["March"],["April"]];', 'const chart0w0v0a0 = [["5","6"],["15","7"]];', 'const chart0w0v0c0 = ["layer","layer recharts-active-shape"];']);
@@ -117,4 +117,54 @@ test('each drawing carries hidden copies of its first tick and grid line, up to 
 	assert.equal(textContent(kids[11]!), 'Apr 1', 'a copy of the first');
 	const grid = find(narrow, (el) => (attr(el, 'class') ?? '').includes('recharts-cartesian-grid-horizontal'))!;
 	assert.equal([...walk(grid)].filter((el) => el.tagName === 'line').length, 8);
+});
+
+test('a category chart\'s tooltip ranges are recharts\': halfway between tick coordinates as it computes them, the ends at the plot\'s edges', () => {
+	const c = [12, 12 + 185.2, 12 + 185.2 * 2, 12 + 185.2 * 3];
+	const axis = { t: 'xAxis' as const, o: 'bottom' as const, box: [12, 504, 556, 30] as const, vb: [0, 0, 580, 534] as const, gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, c, l: ['a', 'b', 'c', 'd'] };
+	// The sweep's boundaries are a quarter pixel off; its states are kept.
+	const segments: [number, number, number][] = [[11.75, 104.75, 0], [104.75, 290, 1], [290, 475.75, 2], [475.75, 568.25, 3]];
+	const variant = { mode: 'x' as const, segments, states: [], points: {}, elements: 0, model: { axes: [axis], layout: 'horizontal' as const } };
+	const exact = exactSegments(variant, [12, 12, 556, 492])!;
+	assert.deepEqual(exact.map((s) => s[2]), [0, 1, 2, 3]);
+	assert.equal(exact[0]![0], 12);
+	assert.equal(exact[2]![1], (c[2]! + c[3]!) / 2, 'the float recharts compares the pointer with, which is not 475');
+	assert.notEqual(exact[2]![1], 475);
+	assert.equal(exact[3]![1], 568);
+	const reversed = exactSegments({ ...variant, segments: segments.map(([a, b, k]) => [a, b, 3 - k] as [number, number, number]), model: { axes: [{ ...axis, c: [...c].reverse() }], layout: 'horizontal' as const } }, [12, 12, 556, 492])!;
+	assert.deepEqual(reversed.map((s) => [s[0], s[2]]), [[12, 3], [(c[1]! + c[0]!) / 2, 2], [(c[2]! + c[1]!) / 2, 1], [(c[3]! + c[2]!) / 2, 0]], 'a reversed axis: recharts searches its ticks left to right');
+});
+
+test('a horizontal grid\'s possible lines are read off the tallest drawing as fractions up the plot, where no number axis is drawn', () => {
+	const svg = parseDocument('<body><svg><g class="recharts-cartesian-grid-horizontal"><line y1="170"></line><line y1="127.5"></line><line y1="85"></line><line y1="42.5"></line><line y1="0"></line></g></svg></body>');
+	const tree = find(body(svg), (el) => el.tagName === 'svg')!;
+	assert.deepEqual(gridOf(tree, [10, 0, 380, 170], { axes: [] }), [0, 0.25, 0.5, 0.75, 1]);
+	assert.equal(gridOf(tree, [10, 0, 380, 170], { axes: [{ t: 'yAxis', o: 'left', box: [0, 0, 0, 0], vb: [0, 0, 0, 0], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, num: true, c: [], l: [] }] }), undefined, 'a drawn number axis has its own ticks');
+});
+
+test('an RTL preview\'s language selector drives the chart through the preview\'s language, and the preview fetches the animation', () => {
+	const doc = parseDocument('<body><div data-slot="component-preview"><button data-slot="select-trigger" data-name="language-selector">Arabic</button><div data-slot="preview" dir="rtl" data-lang="ar"><div class="recharts-wrapper"><svg class="recharts-surface"></svg><div class="recharts-tooltip-wrapper"></div></div></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 0 });
+	const plan = new ChartPlan();
+	const drivers = [{ sig: 's', nth: 0, kind: 'choose' as const, label: 'English', lang: 'en', variant: 1 }, { sig: 's', nth: 0, kind: 'choose' as const, label: 'Arabic (العربية)', lang: 'ar', variant: 0 }, { sig: 's', nth: 0, kind: 'choose' as const, label: 'Hebrew (עברית)', lang: 'he', variant: 2 }];
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants: [one('<svg class="recharts-surface"><g></g></svg>'), one('<svg class="recharts-surface"><g><g></g></g></svg>'), one('<svg class="recharts-surface"><g></g><g></g></svg>')], drivers }], (sig) => (sig === 'w' ? wrapper : find(root, (el) => attr(el, 'data-name') === 'language-selector')), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="component-preview" data-mm-morph="">/);
+	assert.match(out, /data-mm-lang="" onMmlang=\{\(event\) => \{ const k = chart0l\[/);
+	assert.ok(plan.bind(wrapper)?.declare?.includes('const chart0l: Record<string, number> = {"en":1,"ar":0,"he":2};'));
+	assert.ok(!out.includes('onMmchoose'), 'the select itself drives nothing: the site part sets the language');
+});
+
+test('a chart whose card starts in another choice on narrow pages carries that choice and the width', () => {
+	const doc = parseDocument('<body><div data-slot="card"><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper"><svg class="recharts-surface"></svg><div class="recharts-tooltip-wrapper"></div></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 0 });
+	const plan = new ChartPlan();
+	const drivers = [{ sig: 'b', nth: 0, kind: 'choose' as const, label: 'Last 7 days', variant: 1 }];
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants: [one('<svg class="recharts-surface"></svg>'), one('<svg class="recharts-surface"><g></g></svg>')], drivers, start: { below: 768, label: 'Last 7 days' } }], (sig) => (sig === 'w' ? wrapper : find(root, (el) => el.tagName === 'button')), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.ok(out.includes(`data-mm-start={${JSON.stringify(JSON.stringify({ w: 768, l: 'Last 7 days' }))}}`), out.slice(0, 500));
 });

@@ -12,7 +12,7 @@ import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
-import { LOAD_TIMEOUT_MS, loadPage } from './infrastructure.ts';
+import { LOAD_TIMEOUT_MS, loadPage, servedHtml } from './infrastructure.ts';
 import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
 import { routeLinks, routePath, shellRoute } from './hash-routes.ts';
@@ -122,14 +122,18 @@ export async function landing(browser: Browser, env: SideEnv, route: string, vie
 	}
 }
 
+// A page taller than this many views is read with what its first ones loaded (an endless feed).
+const MAX_VIEWS = 150;
+
 export async function settle(page: Page): Promise<void> {
 	await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-	await quietAfter(page, () =>
-		page.evaluate(async () => {
-			scrollTo(0, document.documentElement.scrollHeight);
-			await new Promise(requestAnimationFrame);
-		}),
-	);
+	// A script lazy loader (an IntersectionObserver per card) loads only what passes through the view: the page is scrolled
+	// through a view at a time, not jumped to its end, so every run has loaded the same content before it is read.
+	const views = await page.evaluate((max) => Math.min(max, Math.ceil(document.documentElement.scrollHeight / Math.max(1, innerHeight))), MAX_VIEWS).catch(() => 1);
+	for (let k = 1; k <= views; k++) await quietAfter(page, () => page.evaluate(async (k) => {
+		scrollTo(0, k * innerHeight);
+		await new Promise(requestAnimationFrame);
+	}, k));
 	await page.evaluate(async () => {
 		for (const img of document.images) {
 			if (img.complete || img.loading !== 'lazy' || !img.getClientRects().length) continue;
@@ -147,7 +151,7 @@ export async function settle(page: Page): Promise<void> {
 						img.addEventListener('error', done, { once: true });
 					})
 			).then(() => img.decode().catch(() => {}));
-		await Promise.all([...document.images].map((img) => Promise.race([ready(img), new Promise((done) => setTimeout(done, 5000))])));
+		await Promise.all([...document.images].map((img) => Promise.race([ready(img), new Promise((done) => setTimeout(done, 15_000))])));
 	});
 }
 
@@ -241,9 +245,13 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		});
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
 		const navigation = await loadPage(page, new URL(route, origin).href);
-		const html = (await navigation?.text().catch(() => '')) ?? '';
+		const html = await servedHtml(page, navigation).catch(() => '');
 		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
+		// Code run at load is what ran once the network rests, before settling scrolls the page or a full-page screenshot
+		// wakes what is below the fold: either would count code a visitor's load never runs.
+		await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+		const coverage = await page.coverage.stopJSCoverage();
 		await settle(page);
 		await finishAnimations(page, await settleMotion(page));
 		await page.evaluate(holdLoops).catch(() => 0);
@@ -254,7 +262,6 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const embedTrees = marked.length ? await Promise.all((await page.locator('[data-markless-migrate-embed]').all()).map((l) => l.ariaSnapshot({ timeout: 2000 }).catch(() => ''))) : [];
 		const aria = withoutEmbeds(routeLinks(await page.locator('body').ariaSnapshot(), env.routing).split(origin).join('').split('\n'), embedTrees.map((t) => t.split(origin).join('').split('\n')));
 		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }), marked);
-		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);
 		const elements = await captureSourceHints(page, await renderedFonts(page, collected.elements, fontHashes));

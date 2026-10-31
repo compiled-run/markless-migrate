@@ -7,6 +7,7 @@ import { quiet, type RecordedJourney } from './journeys.ts';
 import { installProbe, probeControls, type ProbeControl } from './probe-page.ts';
 import { matchParts, partSelectors, type PartSelectors } from './probe-parts.ts';
 import type { Dimension, Failure, Viewport } from './types.ts';
+import { clickOnce } from './click.ts';
 
 /**
  * Widget probes: one control of each kind, in each class of widget behaviour, is driven through its class's short sequence on
@@ -19,6 +20,10 @@ export type Op =
 	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
 	/** The n-th item of the list that is open: pointed at or clicked. */
 	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click' }
+	/** The first item of what is open that opens a menu of its own: pointed at, or focused and given ArrowRight. */
+	| { readonly op: 'submenu'; readonly how: 'hover' | 'key' }
+	/** The wheel turned over the first scrolling list of what is open. */
+	| { readonly op: 'scroll' }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
 	| { readonly op: 'typeahead'; readonly n: number }
 	| { readonly op: 'key'; readonly key: string }
@@ -36,6 +41,7 @@ export type Reading = Readonly<Record<string, string | readonly string[]>>;
 
 const key = (k: string): Op => ({ op: 'key', key: k });
 const item = (n: number, how: 'hover' | 'click'): Op => ({ op: 'item', n, how });
+const submenu = (how: 'hover' | 'key'): Op => ({ op: 'submenu', how });
 const letters = (n: number): Op[] => Array.from({ length: n }, (_, i) => ({ op: 'typeahead', n: i }));
 
 /** The sequences a control of each class goes through. */
@@ -52,13 +58,20 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 		case 'popup':
 			return [
 				s('open by pointer, point along its items and away, close by a click outside, reopen, choose by pointer, reopen, close by Escape and its close button', [{ op: 'click' }, item(0, 'hover'), item(1, 'hover'), { op: 'leave' }, { op: 'outside' }, { op: 'click' }, item(0, 'click'), { op: 'click' }, key('Escape'), { op: 'click' }, { op: 'close' }, key('Escape')]),
+				// What it shows stays put while it closes, after its list was scrolled: a list that jumps back as the pop-up fades out is seen.
+				s('open by pointer, scroll its list, close by a click outside, reopen, scroll, close by Escape', [{ op: 'click' }, { op: 'scroll' }, { op: 'outside' }, { op: 'click' }, { op: 'scroll' }, key('Escape')]),
 				// A list (menu, listbox) is typed into; anything else it opens (a dialog, a popover) is tabbed through.
 				/^(menu|listbox|true|combobox)$/.test(control.popup ?? (control.role === 'combobox' ? 'combobox' : ''))
 					? s('open by pointer, move with ArrowDown, type the first letter of each item, close, reopen and Tab', [{ op: 'click' }, key('ArrowDown'), key('ArrowDown'), ...letters(4), key('Escape'), { op: 'click' }, key('Tab')])
 					: s('open by pointer, Tab through it, Escape', [{ op: 'click' }, key('Tab'), key('Tab'), key('Shift+Tab'), key('Escape')]),
+				// A menu without a submenu takes none of these steps on either side, which is no difference.
+				...(/^(menu|true)$/.test(control.popup ?? '') ? [s('open by pointer, into a submenu by pointer, back with ArrowLeft, into it with ArrowRight, Escape', [{ op: 'click' }, submenu('hover'), key('ArrowLeft'), submenu('key'), key('Escape')])] : []),
 			];
 		case 'context menu':
-			return [s('open by right click, point at an item and away, Escape, reopen, close by a click outside, reopen, choose by pointer, reopen and type the first letters of its items', [{ op: 'right click' }, item(1, 'hover'), { op: 'leave' }, key('Escape'), { op: 'right click' }, { op: 'outside' }, { op: 'right click' }, item(0, 'click'), { op: 'right click' }, ...letters(3), key('Escape')])];
+			return [
+				s('open by right click, point at an item and away, Escape, reopen, close by a click outside, reopen, choose by pointer, reopen and type the first letters of its items', [{ op: 'right click' }, item(1, 'hover'), { op: 'leave' }, key('Escape'), { op: 'right click' }, { op: 'outside' }, { op: 'right click' }, item(0, 'click'), { op: 'right click' }, ...letters(3), key('Escape')]),
+				s('open by right click, into a submenu by pointer, back with ArrowLeft, into it with ArrowRight, Escape', [{ op: 'right click' }, submenu('hover'), key('ArrowLeft'), submenu('key'), key('Escape')]),
+			];
 		case 'toggle':
 			return [s('Tab to it, Enter, Space, a click, Enter again, then Tab', [{ op: 'tab in' }, key('Enter'), key('Space'), { op: 'click' }, key('Enter'), key('Tab')]), s('a click on its label, then Space and Tab', [{ op: 'click label' }, key('Space'), key('Tab')])];
 		case 'hover':
@@ -90,6 +103,10 @@ export function describeOp(op: Op): string {
 			return 'click its label';
 		case 'item':
 			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1} of what is open`;
+		case 'scroll':
+			return 'turn the wheel over the list of what is open';
+		case 'submenu':
+			return op.how === 'hover' ? 'point at the first item of what is open that opens a submenu' : 'focus the first item of what is open that opens a submenu and press ArrowRight';
 		case 'typeahead':
 			return `type the first letter of item ${op.n + 1} (by distinct first letter) of what is open`;
 		case 'tab in':
@@ -193,20 +210,33 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 	const away = async () => (await page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.outside() ?? null).catch(() => null)) ?? { x: 2, y: 2 };
 	switch (op.op) {
 		case 'click':
-			return target.click({ timeout: STEP_TIMEOUT }).catch(() => target.click({ timeout: STEP_TIMEOUT, force: true }));
+			return clickOnce(target, { timeout: STEP_TIMEOUT }).catch(() => clickOnce(target, { timeout: STEP_TIMEOUT, force: true }));
 		case 'right click':
 			return target.click({ button: 'right', timeout: STEP_TIMEOUT });
 		case 'click label': {
 			const label = await aim('label');
 			if (!label) throw new Error('it has no label');
-			return label.click({ timeout: STEP_TIMEOUT });
+			return clickOnce(label, { timeout: STEP_TIMEOUT });
 		}
 		case 'item': {
 			const found = await aim(`item ${op.n}`);
 			if (!found) throw new Error(`nothing open has an item ${op.n + 1}`);
 			if (op.how === 'hover') return found.hover({ timeout: STEP_TIMEOUT });
 			if (DESTRUCTIVE.test((await found.textContent({ timeout: STEP_TIMEOUT }).catch(() => '')) ?? '')) throw new Error('left alone: it ends the session or deletes');
-			return found.click({ timeout: STEP_TIMEOUT });
+			return clickOnce(found, { timeout: STEP_TIMEOUT });
+		}
+		case 'scroll': {
+			const found = await aim('scroller');
+			if (!found) throw new Error('nothing open has a list that scrolls');
+			await found.hover({ timeout: STEP_TIMEOUT });
+			return page.mouse.wheel(0, 240);
+		}
+		case 'submenu': {
+			const found = await aim('submenu');
+			if (!found) throw new Error('nothing open has an item that opens a submenu');
+			if (op.how === 'hover') return found.hover({ timeout: STEP_TIMEOUT });
+			await found.focus({ timeout: STEP_TIMEOUT });
+			return page.keyboard.press('ArrowRight', { delay: HOLD_MS });
 		}
 		case 'typeahead': {
 			const letter = await page.evaluate((n) => (globalThis as ProbeWindow).__markless_migrate_probe__?.letter(n) ?? '', op.n).catch(() => '');
@@ -232,7 +262,7 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 		case 'close': {
 			const button = await aim('close');
 			if (!button) throw new Error('no open dialog with a close button');
-			return button.click({ timeout: STEP_TIMEOUT });
+			return clickOnce(button, { timeout: STEP_TIMEOUT });
 		}
 		case 'point at toasts': {
 			const toaster = await aim('toaster');
@@ -571,7 +601,7 @@ async function discover(side: Side, origin: string, route: string, controls: rea
 	for (const control of candidates) {
 		if (!(await mark(page, control, true))) continue;
 		const before = await read(page);
-		const clicked = await page.locator(MARK).first().click({ timeout: 1_500 }).then(() => true, () => false);
+		const clicked = await clickOnce(page.locator(MARK).first(), { timeout: 1_500 }).then(() => true, () => false);
 		await settle(side);
 		if (new URL(shownUrl(page)).pathname !== new URL(route, origin).pathname) {
 			await fresh();

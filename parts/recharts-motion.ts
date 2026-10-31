@@ -4,7 +4,7 @@
 // through; convert marks it with what its path does not say (`data-mm-geo`: its kind, curve, layout and animation).
 import { area, curveBasis, curveBasisClosed, curveBasisOpen, curveBumpX, curveBumpY, curveLinear, curveLinearClosed, curveMonotoneX, curveMonotoneY, curveNatural, curveStep, curveStepAfter, curveStepBefore, line, type CurveFactory } from 'd3-shape';
 
-type Point = { x: number | null; y: number | null };
+export type Point = { x: number | null; y: number | null };
 /** What convert read off the old page's mark: a line, an area's fill or its stroke, or a bar; and its animation. */
 export interface Geo {
 	readonly k: 'line' | 'area' | 'curve' | 'bar';
@@ -13,9 +13,11 @@ export interface Geo {
 	readonly n?: 1;
 	/** animationBegin, animationDuration, animationEasing. */
 	readonly a?: readonly [number, number, string];
+	/** A bar's corner radii, where recharts was given them per corner (its path attribute holds only one). */
+	readonly r?: readonly number[];
 }
 
-interface Shape {
+export interface Shape {
 	readonly points?: readonly Point[];
 	/** An area's baseline, by the coordinate across its layout. */
 	readonly base?: readonly (number | null)[];
@@ -45,7 +47,7 @@ function geoOf(el: Element): Geo | null {
 }
 
 // The points a d3-shape path goes through: its move's and each segment's end. One run only: a gap leaves it unanimated.
-function through(d: string): Point[] | undefined {
+export function through(d: string): Point[] | undefined {
 	const out: Point[] = [];
 	let moves = 0;
 	for (const [, cmd, args] of d.matchAll(/([MLCZHVAQSTmlczhvaqst])([^MLCZHVAQSTmlczhvaqst]*)/g)) {
@@ -59,7 +61,7 @@ function through(d: string): Point[] | undefined {
 	return out;
 }
 
-function shapeOf(el: Element, geo: Geo, d: string): Shape | undefined {
+export function shapeOf(el: Element, geo: Geo, d: string): Shape | undefined {
 	if (geo.k === 'bar') {
 		const [x, y, width, height] = ['x', 'y', 'width', 'height'].map((a) => Number(el.getAttribute(a)));
 		return [x, y, width, height].every((v) => Number.isFinite(v)) ? { rect: { x: x!, y: y!, width: width!, height: height! } } : undefined;
@@ -78,13 +80,19 @@ function marksOf(surface: Element, finals: WeakMap<Element, string>): Mark[] {
 	const out: Mark[] = [];
 	for (const el of surface.querySelectorAll<SVGPathElement>('path[data-mm-geo]')) {
 		const geo = geoOf(el);
-		if (!geo) continue;
+		if (!geo || !['line', 'area', 'curve', 'bar'].includes(geo.k)) continue;
 		if (!finals.has(el)) finals.set(el, el.getAttribute('d') ?? '');
 		const final = finals.get(el)!;
-		out.push({ el, geo, final, to: shapeOf(el, geo, final) });
+		// A bar's own box, read with its path: the frames write it over (as recharts' Rectangle does).
+		const known = shapes.get(el);
+		const to = known?.d === final ? known.shape : shapeOf(el, geo, final);
+		shapes.set(el, { d: final, shape: to });
+		out.push({ el, geo, final, to });
 	}
 	return out;
 }
+
+const shapes = new WeakMap<Element, { d: string; shape: Shape | undefined }>();
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && !Number.isNaN(v);
 // recharts' DataUtils.interpolate
@@ -123,7 +131,7 @@ export function easing(name: string): ((t: number) => number) | null {
 const FACTORIES: Record<string, CurveFactory> = { curveBasisClosed, curveBasisOpen, curveBasis, curveBumpX, curveBumpY, curveLinearClosed, curveLinear, curveMonotoneX, curveMonotoneY, curveNatural, curveStep, curveStepAfter, curveStepBefore };
 
 // recharts' Curve getCurveFactory and getPath: an area's baseline points share its points' position along the layout.
-function curvePath(geo: Geo, points: readonly Point[], base: readonly (number | null)[] | undefined): string {
+export function curvePath(geo: Geo, points: readonly Point[], base: readonly (number | null)[] | undefined): string {
 	const type = geo.t ?? 'linear';
 	const layout = geo.l;
 	let name = `curve${type.charAt(0).toUpperCase()}${type.slice(1)}`;
@@ -146,7 +154,7 @@ const round = (n: number): number => {
 	const r = Math.round(n * 1e4) / 1e4;
 	return Object.is(r, -0) ? 0 : r;
 };
-const rt = (strings: TemplateStringsArray, ...values: number[]) => strings.reduce((out, s, i) => out + (i ? round(values[i - 1]!) : '') + s);
+export const rt = (strings: TemplateStringsArray, ...values: number[]) => strings.reduce((out, s, i) => out + (i ? round(values[i - 1]!) : '') + s);
 
 export function rectPath(x: number, y: number, width: number, height: number, radius: number | readonly number[] | undefined): string {
 	const w = round(width);
@@ -208,9 +216,12 @@ function step(from: Shape | undefined, to: Shape, t: number): Shape {
 }
 
 function draw(mark: Mark, shape: Shape | undefined): void {
-	const radius = mark.el.getAttribute('radius')?.split(',').map(Number);
-	const d = !shape || shape === mark.to ? mark.final : shape.rect ? rectPath(shape.rect.x, shape.rect.y, shape.rect.width, shape.rect.height, radius && radius.length > 1 ? radius : radius?.[0]) : curvePath(mark.geo, shape.points ?? [], shape.base);
+	const radius = mark.geo.r ?? (mark.el.hasAttribute('radius') ? Number(mark.el.getAttribute('radius')) : undefined);
+	const d = !shape || shape === mark.to ? mark.final : shape.rect ? rectPath(shape.rect.x, shape.rect.y, shape.rect.width, shape.rect.height, radius) : curvePath(mark.geo, shape.points ?? [], shape.base);
 	if (mark.el.getAttribute('d') !== d) mark.el.setAttribute('d', d);
+	// recharts' Rectangle also writes its box, rounded, each frame.
+	const box = shape?.rect ?? mark.to?.rect;
+	if (box) for (const k of ['x', 'y', 'width', 'height'] as const) if (mark.el.hasAttribute(k)) mark.el.setAttribute(k, String(round(box[k])));
 }
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;

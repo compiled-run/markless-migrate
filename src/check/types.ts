@@ -266,10 +266,16 @@ export interface RouteResult {
 	readonly newFiles?: readonly string[];
 	/** The old app serves the route and the new one answers 404 or 410. */
 	readonly notPorted?: boolean;
+	/** Not checked this run: the route ships the same HTML and code as when this result was made (`check --reuse`). */
+	readonly reused?: { readonly key: string; readonly checkedAt: string };
 	/** Only this was compared (`check --only load`: page load; `--only embeds`: the embed step; `--only probes`: the widget probes and the moved clock); every other dimension is skipped, not passed. */
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** Each control the widget probes drove, alike controls they let one of their kind stand for, and why any was not driven; how long they took. */
 	readonly probes?: { readonly controls: readonly { readonly control: string; readonly cls: string; readonly state: string; readonly ms?: number }[]; readonly ms: number };
+	/** How many uses, keys and typed values control parity tried, how many its budget left out, and how long it took. */
+	readonly controlParity?: { readonly tried: number; readonly leftOut: number; readonly ms: number };
+	/** How long the route's check took, and each of its steps: what the next run packs its shards by. */
+	readonly timing?: { readonly ms: number; readonly steps: readonly { readonly name: string; readonly ms: number }[] };
 	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: Responsiveness;
 	/** The template group the route was put in (by URL pattern, page structure and the kinds of control it renders); visual, responsiveness and motion were checked on its representative. */

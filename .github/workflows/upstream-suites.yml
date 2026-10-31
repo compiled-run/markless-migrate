@@ -1,0 +1,122 @@
+name: Upstream suites
+
+# The libraries' own browser suites (test/upstream/libraries.ts) against the parts: each library's test app converted by
+# markless-migrate and built on Markless main, a test admitted only when it passes on the library itself. Runs when the
+# parts or the converter change, never per route.
+on:
+  pull_request:
+    paths:
+      - parts/**
+      - src/convert/**
+      - test/upstream/**
+      - .github/workflows/upstream-suites.yml
+  push:
+    branches: [main]
+    paths:
+      - parts/**
+      - src/convert/**
+      - test/upstream/**
+      - .github/workflows/upstream-suites.yml
+  workflow_dispatch:
+    inputs:
+      markless:
+        description: The compiled-run/markless ref the ports build on
+        required: false
+        default: main
+
+concurrency:
+  group: upstream-suites-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  markless:
+    name: Pack Markless
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      run: ${{ steps.find.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: compiled-run/markless
+          ref: ${{ inputs.markless || 'main' }}
+          path: markless
+          persist-credentials: false
+      - id: sha
+        run: echo "sha=$(git -C markless rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      # The pipeline's packs are named by the Markless commit they were packed from.
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "run=$(bash scripts/pipeline-artifact.sh find "pl-markless-${{ steps.sha.outputs.sha }}")" >> "$GITHUB_OUTPUT"
+      - if: steps.find.outputs.run == ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - if: steps.find.outputs.run == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: steps.find.outputs.run == ''
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/packed"
+          cd markless && pnpm install --frozen-lockfile && pnpm run build
+          for p in core router runtime compiler bundler serializer web analyzer typescript-plugin; do (cd "packages/$p" && pnpm pack --pack-destination "$RUNNER_TEMP/packed" > /dev/null); done
+      - if: steps.find.outputs.run == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pl-markless-${{ steps.sha.outputs.sha }}
+          path: ${{ runner.temp }}/packed/*.tgz
+          retention-days: 30
+
+  suite:
+    name: ${{ matrix.library }}
+    needs: markless
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        library: [cmdk, vaul, radix, day-picker]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: pl-markless-${{ needs.markless.outputs.sha }}
+          run-id: ${{ needs.markless.outputs.run || github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/markless-local
+      - name: Run the suite on the library and on the port
+        run: node test/upstream/run.ts ${{ matrix.library }} --work "$RUNNER_TEMP/upstream" --markless-local "$RUNNER_TEMP/markless-local"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-${{ matrix.library }}
+          path: |
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/result.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/old.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/new.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/console.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/*.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/.migrate/convert/report.json
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/pages
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/components
+            ${{ runner.temp }}/upstream/${{ matrix.library }}/app/document.tsrx
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

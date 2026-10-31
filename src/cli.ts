@@ -45,7 +45,8 @@ import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
-import { changedSince, gitHead, selectChanged } from './check/changed.ts';
+import { changedSince, git, gitHead, selectChanged } from './check/changed.ts';
+import { keepChecked, readClosures, selectReusable, shipVersions, type ReuseSelection } from './check/ship-key.ts';
 import { VERSION } from './version.ts';
 import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
@@ -58,6 +59,7 @@ import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUs
 import { guardPages, readAllowances, scanBuild, summarizeBuild } from './client/index.ts';
 import { acceptUpgrade, findUi, summarizeUpgrade, upgrade, writeUpgrade } from './upgrade/index.ts';
 import { scanLibraries } from './library/index.ts';
+import { buildLedger, summarizeLedger, writeLedger } from './ledger/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -88,7 +90,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse]
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--page-order-from <deployment>] [--no-reveal] [--concurrency <n>] [--capture-only] [--reuse] [--ledger fail|report|off]
           Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
           browser holds it once settled (loaded as check loads it), without the old framework's runtime;
           shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
@@ -105,6 +107,14 @@ const USAGE = `markless-migrate ${VERSION}
           search results come in that deployment's order.
           --reuse (what dev passes) keeps what the app already holds: assets on disk are not fetched, the old
           app's public/ is not copied again, and the server is kept, with only its list of pages written again.
+          With --source, the handler ledger runs after the pages are written (see ledger); --ledger report
+          writes it without failing convert, --ledger off skips it.
+  ledger --source <path> [--json]
+          Map every element the old source wires to a handler (onClick, onValueChange, a library Close...) to
+          what answers it in the converted app: a Markless handler, one of the site's parts, a recorded choice,
+          the library's port (for the library's own behaviour), or a proven no-op. Each page is read from its
+          .tsrx and the app's own parts are run on it outside a browser. Writes .migrate/ledger.json; exits 1
+          when a handler has no answer, naming its source file and line and the port element.
 ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) [--app <dir>] [--old <origin>] [--source <path>]
           [--fallthrough <old deployment>] [--control <regex>] [--widths <px,...>] [--full] [--watch] [--build] [--check]
           [--concurrency <n>] [--port <n>] [--probe <file>] [--no-probes]
@@ -121,13 +131,20 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --routes takes a glob (* within a path segment, ** across), --part every route whose page loads that port
           (base-ui/combobox, or a module it needs), from the full convert's report; --concurrency probes that many
           routes at once (each probe holds one browser context). --check also runs check --only probes on them.
+  fix     (--route <path>... | --routes <glob> | --part <module>) [dev's options] [--site-targets <file>]
+          dev --verdict: the fixer's loop, and the answer the full check would give for these routes. It converts them,
+          builds them for production, runs check as each CI shard does (every dimension, the three engines, template
+          groups over --site-targets, default deploy/<site>/check-targets.json) and the dead-controls probe in Chromium
+          and WebKit with CI's budgets, then prints PASS or FAIL per route and one verdict line (exit 0 or 1). A route
+          not checked for an infrastructure failure, or a probe that stopped, is taken once more and is a FAIL if it
+          still is: there is no third outcome. With --watch it answers again on every save.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
-          [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
+          [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -151,6 +168,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, responsiveness
           and motion, which run on one representative per template group (grouped by URL pattern,
           page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
+          --site-targets <targets.json> names every page of the site when this run checks a shard of it: groups,
+          and page load, which runs on representatives too, are then made over the whole site, not the shard.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
           journeys are explored main content first (tables, forms), until each element is used or
@@ -197,6 +216,23 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           is loaded again with the clock moved 40 days into Pacific/Auckland: text the old page changes with
           the clock must change on new.
           --no-probes leaves them out; --only probes runs them alone.
+          Control parity, with the probes: each width's controls (1280, 1440, 390) are listed on both apps
+          and a control the original shows at a width the port lacks is red; each control's box and its
+          parent's and example frame's boxes must agree within 2 px; what a click reaches at five points
+          over each control and over a grid and every control of each landmark in view must match; each
+          pop-up's side, offset and width against its trigger must agree within 4 px at 1280 and 1440,
+          in Chromium, and in WebKit too with --control-webkit; on routes that carry motion the
+          first pop-up of each kind is filmed opening and closing (Escape), and one side moving while the
+          other jumps, or another duration or cadence, is red; a standard key set (arrows, Enter, Space,
+          Escape, Tab, Home, End, short sequences) from each kind of control must leave focus, regions,
+          address and pop-ups as the original does; realistic values (dates in several formats, numbers,
+          text, invalid input) typed into each field then Enter and a blur must leave the same value,
+          aria-invalid, regions, address and the pop-up it drives; an error thrown only by the port after
+          any of these is red. A difference stands only when a second run of each side repeats it.
+          --no-control-parity leaves it out. --busy-cpu adds the busy-CPU lane on one page per template
+          group: a few of its controls and keys used while every CPU of the machine is kept busy, in
+          Chromium, Firefox and WebKit; a control the port answers on an idle machine but not on a busy
+          one, where the original still does, is red.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -262,6 +298,13 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           red. check exits 3 when nothing is red but such a route was not checked.
           --changed checks only routes not green last time, and routes whose files in the new app
           (--new-source, else this directory) changed since the commit of their last check.
+          --reuse <dir> keeps each route's result there under a key of what it ships: the HTML NEW
+          serves (pack file names aside), the code hash of every module the route can run (the Markless
+          build's interaction-closures.json, --closures, else .vercel/output/.markless/static/), the
+          bytes of every other file its HTML names, OLD's HTML, and the git trees of this checker and
+          the Markless packages the port names. A route whose key has a kept result, and whose load-time
+          responses fetch the same again, is not checked: its result is reported marked reused. A route
+          with no key (no Markless route script, a module without a hash) is always checked.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
           blocked. --source scans the old app's code for what varies and which handlers write.
@@ -449,6 +492,9 @@ const TIMING_FLAGS = {
 	'no-motion': { type: 'boolean' },
 	'no-embeds': { type: 'boolean' },
 	'no-probes': { type: 'boolean' },
+	'no-control-parity': { type: 'boolean' },
+	'control-webkit': { type: 'boolean' },
+	'busy-cpu': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -756,6 +802,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(values['no-probes'] ? {} : { probes: {} }),
+					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
@@ -879,6 +926,8 @@ async function main(argv: string[]): Promise<number> {
 					all: { type: 'boolean' },
 					'allow-unchecked': { type: 'boolean' },
 					changed: { type: 'boolean' },
+					reuse: { type: 'string' },
+					closures: { type: 'string' },
 					concurrency: { type: 'string' },
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
@@ -891,6 +940,7 @@ async function main(argv: string[]): Promise<number> {
 					resume: { type: 'boolean' },
 					targets: { type: 'string' },
 					'write-targets': { type: 'string' },
+					'site-targets': { type: 'string' },
 					...TIMING_FLAGS,
 				},
 			});
@@ -942,11 +992,29 @@ async function main(argv: string[]): Promise<number> {
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
 			const partial = !coverageOnly && Boolean(values.route?.length || values.targets || values.changed || loadOnly || embedsOnly);
+			let reuse: ReuseSelection | undefined;
+			if (values.reuse) {
+				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
+				const migrateDir = fileURLToPath(new URL('..', import.meta.url));
+				const versions = await shipVersions(cwd, (args) => git(migrateDir, args));
+				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
+				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
+				if (!versions) out('--reuse: nothing reused, the checker has uncommitted changes or the port names no Markless packages.\n');
+				else if (!closures) out(`--reuse: nothing reused, no closures at ${closuresFile}.\n`);
+				else {
+					reuse = await selectReusable({ routes: routes ?? [], newOrigin: values.new, oldOrigin: values.old, ...(bypass.headers ? { headers: bypass.headers } : {}), closures, versions, dir: resolve(values.reuse) });
+					routes = reuse.check;
+					const why = new Map<string, number>();
+					for (const reason of reuse.unkeyed.values()) why.set(reason.replace(/^\S+ /, ''), (why.get(reason.replace(/^\S+ /, '')) ?? 0) + 1);
+					out(`--reuse: ${reuse.reused.length} route${reuse.reused.length === 1 ? '' : 's'} ship what they shipped when last checked and reuse that result; ${reuse.check.length} to check${reuse.unkeyed.size ? ` (${reuse.unkeyed.size} with no key: ${[...why].map(([w, n]) => `${n} ${w}`).join('; ')})` : ''}.\n`);
+				}
+			}
 			const navigation = navigationOptions(values, partial ? planned : undefined);
 			const load = loadOptions(values);
 			requireNetworkBrowsers(load, values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
+			const site = values['site-targets'] ? (JSON.parse(await readFile(resolve(values['site-targets']), 'utf8')) as { routes: string[] }).routes : undefined;
 			const newDir = resolve(values['new-source'] ?? cwd);
 			const commit = await gitHead(newDir);
 			if (values.changed) {
@@ -965,7 +1033,7 @@ async function main(argv: string[]): Promise<number> {
 				source = scanned.facts;
 			}
 			const freeze = values['no-freeze'] ? false : { ...(time !== undefined ? { time } : {}), ...(seed !== undefined ? { seed } : {}), ...(values.timezone ? { timezone: values.timezone } : {}), ...(values.locale ? { locale: values.locale } : {}) };
-			const report = await runCheck({
+			let report = await runCheck({
 				oldOrigin: values.old,
 				newOrigin: values.new,
 				routes: routes ?? [],
@@ -991,17 +1059,24 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				...(values['no-probes'] ? {} : { probes: {} }),
+				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
+				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
-				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [] },
+				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [], ...(site ? { site } : {}) },
 				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
 				artifactsDir: join(cwd, STATE_DIR),
 				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
 			});
+			if (reuse) {
+				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse.keys, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
+				out(`--reuse: kept ${kept} result${kept === 1 ? '' : 's'} for later runs.\n`);
+				report = { ...report, ok: report.ok && reuse.reused.every((r) => r.ok), routes: [...report.routes, ...reuse.reused] };
+			}
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 			const html = join(dirname(path), 'report.html');
@@ -1022,8 +1097,9 @@ async function main(argv: string[]): Promise<number> {
 			if (!red) err(`markless-migrate: nothing is red, but ${report.routes.filter((r) => r.infrastructure).length} route check(s) could not be done for an infrastructure failure; check them again.\n`);
 			return red ? 1 : 3;
 		}
+		case 'fix':
 		case 'dev': {
-			const { values } = parseArgs({ args: rest, options: { app: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, part: { type: 'string' }, old: { type: 'string' }, source: { type: 'string' }, fallthrough: { type: 'string' }, control: { type: 'string' }, widths: { type: 'string' }, full: { type: 'boolean' }, watch: { type: 'boolean' }, build: { type: 'boolean' }, check: { type: 'boolean' }, concurrency: { type: 'string' }, port: { type: 'string' }, probe: { type: 'string' }, 'no-probes': { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { verdict: { type: 'boolean' }, 'site-targets': { type: 'string' }, app: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, part: { type: 'string' }, old: { type: 'string' }, source: { type: 'string' }, fallthrough: { type: 'string' }, control: { type: 'string' }, widths: { type: 'string' }, full: { type: 'boolean' }, watch: { type: 'boolean' }, build: { type: 'boolean' }, check: { type: 'boolean' }, concurrency: { type: 'string' }, port: { type: 'string' }, probe: { type: 'string' }, 'no-probes': { type: 'boolean' } } });
 			const { dev } = await import('./dev/index.ts');
 			try {
 				return await dev({
@@ -1044,6 +1120,8 @@ async function main(argv: string[]): Promise<number> {
 					build: values.build === true,
 					check: values.check === true,
 					noProbes: values['no-probes'] === true,
+					verdict: command === 'fix' || values.verdict === true,
+					...(values['site-targets'] ? { siteTargets: values['site-targets'] } : {}),
 				});
 			} catch (error) {
 				fail((error as Error).message);
@@ -1071,8 +1149,18 @@ async function main(argv: string[]): Promise<number> {
 			out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : `${summarizeCli(report)}Wrote ${join(cwd, STATE_DIR, CLI_REPORT)}\n`);
 			return report.ok ? 0 : 1;
 		}
+		case 'ledger': {
+			const { values } = parseArgs({ args: rest, options: { source: { type: 'string' }, json: { type: 'boolean' } } });
+			const source = values.source ? resolve(values.source) : (await readInventory(cwd))?.source?.path;
+			if (!source) fail('ledger needs --source <old app source>, or a plan that read it');
+			const ledger = await buildLedger({ source, app: cwd });
+			const file = await writeLedger(cwd, ledger);
+			out(values.json ? `${JSON.stringify(ledger.failures, null, '\t')}\n` : `${summarizeLedger(ledger)}Wrote ${file}\n`);
+			return ledger.failures.length ? 1 : 0;
+		}
 		case 'convert': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'page-order-from': { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' }, 'capture-only': { type: 'boolean' }, reuse: { type: 'boolean' }, ledger: { type: 'string' } } });
+			if (values.ledger && !['fail', 'report', 'off'].includes(values.ledger)) fail('--ledger is fail, report or off');
 			if (!values.old) fail('convert needs --old <origin>');
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
 			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), log: (line) => out(`${line}\n`) });
@@ -1081,7 +1169,13 @@ async function main(argv: string[]): Promise<number> {
 				return 0;
 			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
-			return report.routes.length ? 0 : 1;
+			if (!report.routes.length) return 1;
+			const mode = values.ledger ?? 'fail';
+			if (!values.source || mode === 'off') return 0;
+			// Two threads after convert: each reads the whole port, and convert's own memory is still held.
+			const ledger = await buildLedger({ source: resolve(values.source), app: cwd, workers: 2 });
+			out(`${summarizeLedger(ledger)}Wrote ${await writeLedger(cwd, ledger)}\n`);
+			return ledger.failures.length && mode === 'fail' ? 1 : 0;
 		}
 		case 'usage': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, built: { type: 'string' }, source: { type: 'string' }, 'new-source': { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true } } });
@@ -1338,7 +1432,7 @@ async function main(argv: string[]): Promise<number> {
 }
 
 const code = await main(process.argv.slice(2)).catch((error: unknown) => {
-	err(`markless-migrate: ${error instanceof Error ? error.message : String(error)}\n`);
+	err(`markless-migrate: ${error instanceof Error ? (process.env.MARKLESS_MIGRATE_STACK ? error.stack : error.message) : String(error)}\n`);
 	return 1;
 });
 if (code >= 0) process.exitCode = code;

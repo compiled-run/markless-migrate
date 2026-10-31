@@ -300,13 +300,15 @@ export class CheckablePlan {
 								? [`onKeyDown={(event) => { if (event.key === ' ') event.preventDefault(); else if (event.key === 'Enter') { event.preventDefault(); ${role === 'switch' ? `${choose};` : 'submitForm(event);'} } }}`, `onKeyUp={(event) => { if (event.key === ' ') { ${choose}; } }}`]
 								: [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
 				// React Aria's ToggleButtonGroup and Radix's RovingFocusGroup items move focus in toggle.ts's keydown.
+				// A form's Reset (parts/form-library.ts) sets each control as its defaults say, which may leave no radio chosen.
+				const set = `onMmset={(event) => { ${group.kind === 'radio' ? `if ((event as CustomEvent<boolean>).detail) ${name} = ${k}; else if (${name} === ${k}) ${name} = -1;` : `${name} = (event as CustomEvent<boolean>).detail;`} }}`;
 				const radioRoving = el.tagName === 'button' && group.kind === 'radio' && attr(el, 'role') === 'radio' && attr(el, 'data-rac') === undefined && attr(el, 'data-radix-collection-item') === undefined ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
 				// React Aria's Checkbox, Switch and Radio: a label around a visually hidden input that holds focus. A click
 				// on the label reaches the input too, and Space on the input clicks it: the input's click is the one use.
 				// Only the descendants that differ are bound, so the focused input is never rendered again.
 				if (el.tagName === 'label' && attr(el, 'data-rac') !== undefined) {
 					const pick = group.kind === 'radio' ? `${name} = ${k}` : choose;
-					this.bindings.set(el, { declare, omit: names, extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${pick}; } }}`] });
+					this.bindings.set(el, { declare, omit: names, extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${pick}; } }}`, set] });
 					this.diff(el, c.on.inner, c.off.inner, on, declare, emit);
 					const input = [...walk(el)].find((x) => x.tagName === 'input');
 					if (input) this.bindings.set(input, mergeBindings(this.bindings.get(input), { declare, omit: ['checked'], extra: [`checked={${on}}`] })!);
@@ -315,7 +317,7 @@ export class CheckablePlan {
 				this.bindings.set(el, {
 					declare,
 					omit: names,
-					extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving],
+					extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving, set],
 					...(c.on.inner !== c.off.inner ? { children: `@if (${on}) { <>${emit(c.on.inner)}</> } @else { <>${emit(c.off.inner)}</> }` } : {}),
 				});
 				const parent = el.parentNode as Element | null;
@@ -728,14 +730,15 @@ export class NotifyPlan {
 
 	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): number {
 		let placed = 0;
-		const toasters = new Map<Element, { control: Element; toast: SonnerToast }[]>();
+		const toasters = new Map<Element, { control: Element; toast: SonnerToast; note: Notify; template?: { name: string; copied: string; controls: Element[] } }[]>();
 		for (const note of notifications) {
 			const control = locate(note.sig, note.nth);
 			const region = locate(note.into.sig, note.into.nth);
 			if (!control || !region || this.bindings.has(control)) continue;
 			if (note.sonner) {
-				(toasters.get(region) ?? toasters.set(region, []).get(region)!).push({ control, toast: note.sonner });
-				placed++;
+				const template = note.template && { name: note.template.name, copied: note.template.copied, controls: note.template.controls.map((c) => locate(c.sig, c.nth)).filter((el): el is Element => el !== undefined && !this.bindings.has(el)) };
+				(toasters.get(region) ?? toasters.set(region, []).get(region)!).push({ control, toast: note.sonner, note, ...(template ? { template } : {}) });
+				placed += template ? template.controls.length : 1;
 				continue;
 			}
 			const markup = emit(note.html);
@@ -757,7 +760,7 @@ export class NotifyPlan {
 	 * A sonner Toaster on Markless state (parts/sonner.ts): its section renders a list per position in use and a toast per
 	 * entry of one state(), each toast showing the markup its control's use showed then, in an arm per toast and phase.
 	 */
-	private sonnerToaster(region: Element, all: readonly { control: Element; toast: SonnerToast }[], emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): void {
+	private sonnerToaster(region: Element, all: readonly { control: Element; toast: SonnerToast; note: Notify; template?: { name: string; copied: string; controls: Element[] } }[], emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): void {
 		// Only elements can be hidden while another phase shows: a toast showing bare text is left unported.
 		const toasts = all.filter(({ toast }) => toast.phases.every((p) => !childrenOf(parseFragment(p.inner) as unknown as Element).some((n) => isText(n) && n.value.trim())));
 		if (!toasts.length) return;
@@ -781,16 +784,31 @@ export class NotifyPlan {
 				});
 		for (const n of SONNER_STATE) if (!names.includes(n)) names.push(n);
 		const arms: string[] = [];
-		toasts.forEach(({ control, toast }, k) => {
+		// A template's toast names what its control copied: written there from the toast's own text (item.text).
+		const HOLE = '\uE000';
+		const escaped = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		toasts.forEach(({ control, toast, note, template }, k) => {
 			const spec = { view: k, ...(toast.position ? { position: toast.position } : {}), duration: toast.duration, dismissible: toast.dismissible, promise: toast.promise, style: rest(style(toast.phases[0]!.attrs), ['--index', '--toasts-before', '--z-index', '--offset', '--initial-height']), phases: toast.phases.map((p) => ({ at: p.at, ...(p.type !== undefined ? { type: p.type } : {}), attrs: Object.fromEntries(p.attrs.filter(([n]) => n !== 'style' && !SONNER_STATE.has(n))) })) };
 			toast.phases.forEach((p, i) => {
 				// What each toast shows is all in its row, but for its view hidden: Markless rebuilds a row holding an arm
 				// whenever the rows move (a new toast goes first), and a rebuilt toast loses its transitions.
 				const view = lit(`${k}.${i}`);
-				arms.push(emit(p.inner, (el) => (el.parentNode && !('tagName' in el.parentNode) ? { omit: ['style'], extra: [`style={item.view === ${view} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] } : undefined)));
+				const inner = template ? p.inner.split(escaped(template.copied)).join(HOLE) : p.inner;
+				// Text the use gives the toast (a submitted form's values) is the item's own, in place of what the capture showed.
+				const slots = Object.entries(note.texts ?? {});
+				const arm = slots.reduce((markup, [slot, text]) => markup.replaceAll(`{${lit(text)}}`, `{item.t[${lit(slot)}] ?? ""}`), emit(inner, (el) => (el.parentNode && !('tagName' in el.parentNode) ? { omit: ['style'], extra: [`style={item.view === ${view} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] } : undefined)));
+				arms.push(template ? arm.split(HOLE).join('{item.text}') : arm);
 			});
-			this.names.set(control, `${name}:${k}`);
-			this.bindings.set(control, { declare, extra: [`onClick={() => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit})}`] });
+			for (const each of template ? template.controls : [control]) {
+				this.names.set(each, `${name}:${k}`);
+				// A form's toast shows when it is submitted and passes, with the values it passed (the form-library part's mmformsubmit).
+				const add = template
+					? `onClick={(event) => sonnerAdd(${T}, { ...${JSON.stringify(spec)}, text: ${template.name}(event.target as Element) }, ${commit})}`
+					: note.onSubmit
+						? `onMmformsubmit={(event) => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit}, { v: JSON.stringify((event as CustomEvent).detail, null, 2) })}`
+						: `onClick={() => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit})}`;
+				this.bindings.set(each, mergeBindings(this.bindings.get(each), { declare, extra: [add] })!);
+			}
 		});
 		const on = (events: readonly string[], call: string) => events.map((e) => `on${e}={(event) => ${call}}`);
 		const li = names.map((n) => `${n}={item.a[${lit(n)}]}`);

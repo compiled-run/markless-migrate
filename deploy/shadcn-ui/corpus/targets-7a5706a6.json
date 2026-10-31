@@ -1,0 +1,9 @@
+{
+	"routes": [
+		"/docs/components/base/date-picker",
+		"/examples/dashboard"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}

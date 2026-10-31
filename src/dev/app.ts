@@ -1,4 +1,6 @@
-import { copyFile, cp, lstat, mkdir, readdir, readlink, rm, symlink } from 'node:fs/promises';
+import type { ConvertInputs } from '../convert/inputs.ts';
+import { existsSync } from 'node:fs';
+import { copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, symlink } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 /** What the dev app links to in the app. */
@@ -9,6 +11,8 @@ const OWN_CACHES = new Set(['.vite', '.nitro', '.cache', '.vite-plus', '.markles
 const COPIED = ['package.json', 'tsconfig.json', 'markless-router-env.d.ts'];
 /** The app's hand-written code, copied on every start and on each save: linked, Vite would load it from the app and its imports of `lib/parts` would reach the app's parts, not the dev app's. */
 export const SITE_DIR = 'lib/site';
+/** Check's and the probe's caches of the original's side: made in the app first, so the dev app shares them instead of keeping its own. */
+const SHARED_CACHES = ['cache', 'slow-network', 'probe-reuse'];
 /** What convert writes in the state directory and must stay the dev app's own; every other entry links to the app's. */
 const OWN_STATE = new Set(['convert', 'dev', 'report.json', 'report.html', 'results.json', 'check-progress', 'shots', 'diffs', 'journeys']);
 
@@ -46,7 +50,19 @@ export async function prepareDevApp(app: string, dev: string): Promise<void> {
 	if ((await exists(join(dev, SITE_DIR))) && (await lstat(join(dev, SITE_DIR))).isSymbolicLink()) await rm(join(dev, SITE_DIR));
 	if (await exists(join(app, SITE_DIR))) await cp(join(app, SITE_DIR), join(dev, SITE_DIR), { recursive: true, force: true });
 	const state = join(app, '.migrate');
+	for (const name of SHARED_CACHES) await mkdir(join(state, name), { recursive: true });
 	for (const name of await readdir(state)) if (!OWN_STATE.has(name)) await link(join(state, name), join(dev, '.migrate', name));
 	await mkdir(join(state, 'convert'), { recursive: true });
-	for (const entry of await readdir(join(state, 'convert'), { withFileTypes: true })) if (entry.isDirectory()) await link(join(state, 'convert', entry.name), join(dev, '.migrate', 'convert', entry.name));
+	for (const entry of await readdir(join(state, 'convert'), { withFileTypes: true })) if (entry.isDirectory() || entry.name === 'sources.json') await link(join(state, 'convert', entry.name), join(dev, '.migrate', 'convert', entry.name));
+}
+
+/** The convert flags that make a route the one the app's whole convert made: what that convert recorded it was given. */
+export function convertInputArgs(inputs: ConvertInputs | undefined): string[] {
+	return inputs?.pageOrderFrom ? ['--page-order-from', inputs.pageOrderFrom] : [];
+}
+
+/** The dependencies a convert wrote into the dev app's package.json that the app has not installed: the build cannot resolve them. */
+export async function missingDependencies(app: string, dev: string): Promise<string[]> {
+	const manifest = JSON.parse(await readFile(join(dev, 'package.json'), 'utf8').catch(() => '{}')) as { dependencies?: Record<string, string> };
+	return Object.keys(manifest.dependencies ?? {}).filter((name) => !existsSync(join(app, 'node_modules', name)));
 }

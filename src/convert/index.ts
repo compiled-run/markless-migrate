@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
+import { CONVERT_INPUTS, type ConvertInputs } from './inputs.ts';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
+import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -16,7 +18,7 @@ import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
+import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, type Scene } from './scenes.ts';
@@ -25,6 +27,8 @@ import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpeni
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
+import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
+import { formSources } from './form-schemas.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
 import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendarMessages, RacCalendarPlan, type CapturedCalendars } from './rac-calendar.ts';
@@ -41,7 +45,8 @@ import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
-import { componentImport, componentName, pageComponentOf, readSiteComponents, siteComponentOf, withSiteImports, type SiteComponent } from './site-components.ts';
+import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
+import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -55,6 +60,9 @@ interface Registries {
 	readonly mount: () => string;
 }
 
+// The site's own functions a listing names (a toast template's text): lib/site/parts.ts exports them.
+let siteFunctions: readonly string[] = [];
+
 /** Imports the parts runtime's functions a generated module calls, after its first line. */
 function withPartImports(source: string, dir: string, registries: Registries): string {
 	const used = ['behave', 'listen'].filter((name) => source.includes(`=> ${name}(`));
@@ -67,14 +75,18 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (motion.length) out = out.replace('\n', `\nimport { ${motion.join(', ')} } from '${dir}/panel-motion.ts';\n`);
 	const toggleNames = ['radioKeys', 'submitForm', 'focusControl'].filter((name) => new RegExp(`\\b${name}\\(event`).test(out));
 	if (toggleNames.length) out = out.replace('\n', `\nimport { ${toggleNames.join(', ')} } from '${dir}/toggle.ts';\n`);
+	const own = siteFunctions.filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (own.length) out = out.replace('\n', `\nimport { ${own.join(', ')} } from '${dir}/../site/parts.ts';\n`);
 	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
 	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
+	const chronoNames = ['chronoDate', 'loadChrono'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (chronoNames.length) out = out.replace('\n', `\nimport { ${chronoNames.join(', ')} } from '${dir}/chrono-date.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
 	const racCalendar = ['racCalendarView', 'racCalendarModel', 'racCalendarEvent', 'racCalendarWake', 'racDateLabel'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -219,7 +231,7 @@ function selfReferences(attrs: Record<string, string>, origin: string): Record<s
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);
 
-interface Prepared {
+export interface Prepared {
 	/** The same-origin resources the page loads, for the byte-for-byte copy. */
 	readonly resources: readonly string[];
 	readonly htmlAttrs: Record<string, string>;
@@ -233,14 +245,20 @@ interface Prepared {
 	readonly appends: Map<Element, string>;
 	/** What controls portal to the end of the body, rendered hidden by the Document. */
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
+	/** The page site components on the page that render their own layers, with the page's layers (their `Layers` export). */
+	readonly siteLayers: readonly SiteComponent[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** The label a copy control took once it had copied, by the same key. */
+	readonly copyLabels: Readonly<Record<string, string>>;
 	/** The file each listed download control saved on the old page, by its signature#nth, as JSON ({ name, type, text }). */
 	readonly downloads: Readonly<Record<string, string>>;
 	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 	/** The paths of the web fonts only text below every first screen draws, whose faces wait for the page's scripts. */
 	readonly lateFontPaths: readonly string[];
+	/** The CSS of the page's own body <style> elements, in order, appended to its last head stylesheet instead of fetched apart. */
+	readonly bodyCss: string[];
 }
 
 // What a library's runtime adds around revealed content for focus handling; its Markless port adds its own.
@@ -410,6 +428,8 @@ let optionValues: Record<string, Record<string, Choice>> = {};
 let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+// The label each copy control took once it had copied, where it changed (a message's Copy reads Copied).
+let currentCopyLabels: Record<string, string> = {};
 let currentDownloads: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
@@ -797,6 +817,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	for (const reveal of reveals) {
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
+		// What a control a page site component renders opens is that component's own.
+		if (trigger && inPageComponent(trigger, siteComponents)) continue;
 		const controlled = trigger ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
 		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger) || (controlled && attr(trigger, 'aria-expanded') !== undefined && radixDisclosurePanel(controlled))) ? controlled : undefined;
 		if (trigger && isBaseTab(trigger)) {
@@ -837,6 +859,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				pendingLayers.push({ reveal, added, trigger, kept: layerElements(added) });
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
+				if (reveal.sig !== undefined && added.label !== undefined) currentCopyLabels[`${reveal.sig}#${reveal.nth ?? 0}`] = added.label;
 			} else if (added.into === 'download') {
 				if (reveal.sig !== undefined) currentDownloads[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
 			} else if (added.into === 'replace') {
@@ -917,6 +940,80 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	return appends;
 }
 
+/** A `<style>` element's CSS, its `media` as an `@media` block; undefined with an `@import`, which is valid only at the top of a sheet. */
+function foldable(node: Element): string | undefined {
+	const css = childrenOf(node)
+		.map((n) => ('value' in n ? (n as { value: string }).value : ''))
+		.join('');
+	if (/@import\b/i.test(css)) return undefined;
+	const media = attr(node, 'media');
+	return media && media !== 'all' ? `@media ${media}{${css}}` : css;
+}
+
+/**
+ * Takes the body's own `<style>` elements out, outside templates, and returns their CSS: each would otherwise be one more
+ * render-blocking request, and they apply after every head stylesheet, as the end of the last one does.
+ */
+export function foldBodyStyles(parent: Element): string[] {
+	const out: string[] = [];
+	const visit = (el: Element) => {
+		const list = childrenOf(el);
+		for (let i = list.length - 1; i >= 0; i--) {
+			const node = list[i]!;
+			if (!isElement(node) || node.tagName === 'template') continue;
+			if (node.tagName !== 'style') {
+				visit(node);
+				continue;
+			}
+			const css = foldable(node);
+			if (css === undefined) continue;
+			out.unshift(css);
+			list.splice(i, 1);
+		}
+	};
+	visit(parent);
+	return out;
+}
+
+/** The CSS of the `<style>` elements the old page's scripts added to its head after load (lateHead), and those that must stay linked. */
+export function foldLateStyles(late: readonly Element[]): { css: string[]; kept: Element[] } {
+	const css: string[] = [];
+	const kept: Element[] = [];
+	for (const el of late) {
+		const text = foldable(el);
+		if (text === undefined) kept.push(el);
+		else css.push(text);
+	}
+	return { css, kept };
+}
+
+/** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. */
+export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>): Promise<number> {
+	const sheets = new Map<string, Promise<string>>();
+	const read = (href: string) => sheets.get(href) ?? sheets.set(href, readFile(join(publicDir, href), 'utf8')).get(href)!;
+	let count = 0;
+	for (const page of pages) {
+		if (!page.bodyCss.length) continue;
+		const at = page.head.findLastIndex((t) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? '') && t.attrs.integrity === undefined && /^\/(?!\/)[^?#]*\.css$/.test(t.attrs.href ?? ''));
+		const extra = page.bodyCss.join('\n');
+		if (at === -1) {
+			// No sheet of its own to extend: the CSS goes in a file linked at the end of the head.
+			const path = `/_converted/styles/${hash(extra)}.css`;
+			await mkdir(dirname(join(publicDir, path)), { recursive: true });
+			await writeFile(join(publicDir, path), extra);
+			page.head.push({ tag: 'link', attrs: { rel: 'stylesheet', href: path } });
+			continue;
+		}
+		const tag = page.head[at]!;
+		const css = `${await read(tag.attrs.href!)}\n${extra}`;
+		const href = tag.attrs.href!.replace(/(\.used-[0-9a-f]{12})?\.css$/, `.used-${hash(css)}.css`);
+		await writeFile(join(publicDir, href), css);
+		page.head[at] = { ...tag, attrs: { ...tag.attrs, href } };
+		count++;
+	}
+	return count;
+}
+
 /** Pulls each inline `<style>` out of `parent` into a stylesheet file, linked from where it stood. */
 function extractStyles(parent: Element, styles: Map<string, string>): void {
 	const list = childrenOf(parent);
@@ -953,18 +1050,22 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	currentCopyLabels = {};
 	currentDownloads = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
+	const copyLabels = currentCopyLabels;
 	const downloads = currentDownloads;
 	cleanDocument(doc, ctx, dropped);
 	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
 	const headAt = capture.server.search(/<head[\s>]/i);
 	const served = parseDocument(headAt > 0 ? capture.server.slice(0, headAt) : capture.server);
 	cleanDocument(served, ctx, new Map());
-	const late = lateHead(doc, parseDocument(capture.server), dropped).map((el) => {
+	// Added to the head after its stylesheets and before the body's styles: folded ahead of those, not linked at the body's end.
+	const lateStyles = foldLateStyles(lateHead(doc, parseDocument(capture.server), dropped));
+	const late = lateStyles.kept.map((el) => {
 		const holder = { nodeName: 'div', tagName: 'div', attrs: [], childNodes: [el] } as unknown as Element;
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
@@ -977,6 +1078,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const plan = planImages(doc, paired, optimizer, dropped);
 	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
+	const bodyCss = [...lateStyles.css, ...foldBodyStyles(body(doc))];
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
 	for (const node of childrenOf(head(doc))) {
@@ -1005,7 +1107,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const swapFonts = fontPreloads(capture.swapFirstScreenFonts ?? [], origin, 0).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
 	tags.splice(0, tags.length, ...swapFontPreloadsLow(tags, capture.swapFontPreloads ?? [], origin, swapFonts));
 	fontPreloadCount += swapFonts.length;
-	const faces = lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin);
+	const idle = (capture.offscreenFontPreloads ?? []).map((u) => {
+		const url = new URL(u, origin);
+		return { href: url.origin === new URL(origin).origin ? url.pathname + url.search : url.href };
+	});
+	const faces = [...lateFaces((capture.lateFonts ?? []).flatMap((f) => (f.face ? [f.face] : [])), origin), ...idle];
+	if (idle.length) lateFontPages.add(capture.route);
 	if (faces.length) {
 		const config = lateFontsConfig(faces);
 		tags.push({ tag: 'script', attrs: { type: 'application/json', [config.attribute]: '' }, text: config.text });
@@ -1013,7 +1120,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = pageRoot(kids);
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, downloads, late, lateFontPaths };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, copyLabels, downloads, late, lateFontPaths, bodyCss };
 }
 
 const isMain = (el: Element) => el.tagName === 'main' || attr(el, 'role') === 'main';
@@ -1077,6 +1184,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const htmlRoutes = inventory.routes.filter((r) => r.status === 200 && (r.contentType ?? 'text/html').includes('html')).map((r) => r.route);
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
 	siteComponents = await readSiteComponents(app);
+	useSiteInstanceProps(await readFile(join(app, 'lib', 'site', 'instance-props.json'), 'utf8').then((t) => JSON.parse(t) as InstanceSpec[], () => []));
 	const browser = await chromium.launch();
 	const width = Math.max(1, options.concurrency ?? 4);
 	let captures: CapturedRef[];
@@ -1098,6 +1206,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
+	const formLibsRead = new Map<string, readonly CapturedForm[]>();
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
@@ -1106,10 +1215,19 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
 		const reading = limiter(width * 2);
-		const at = (name: string) => join(state, 'convert', name);
+		// Each route's recordings are kept under a key made from its old page as the server sends it (record-key.ts).
+		const dirs = await RecordDirs.open(join(state, 'convert'));
+		const recorder = await recorderVersions();
+		const sources = new Map<string, Promise<string>>();
+		const atFor = async (route: string, kind: string): Promise<string> => {
+			let source = sources.get(route);
+			if (!source) sources.set(route, (source = fetchRecordKey(recorder, options.old, route)));
+			return dirs.dir(route, await source, kind);
+		};
 		const reveal = options.reveal !== false;
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string }[], () => []);
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string; text?: string; template?: string }[], () => []);
+		siteFunctions = listed.flatMap((c) => (c.template ? [c.template] : []));
 		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' || c.action === 'theme' ? [] : [[c.selector, c.action, c.routes] as const]));
 		// Controls the site lists as opening a layer no ARIA marks (a button whose click sets a dialog's open state).
 		const opens = listed.filter((c) => c.action === 'open').map((c) => ({ selector: c.selector, routes: c.routes }));
@@ -1117,26 +1235,28 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
 		// TanStack tables are read when the usage inventory finds a TanStack table library (or there is none).
 		const usesTables = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"@tanstack\/(react|vue|solid|svelte)-table"/.test(text), () => true);
+		// Form-library forms are read when the usage inventory finds one of the form libraries the port runs.
+		const usesFormLibs = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"(react-hook-form|@tanstack\/react-form|@formisch\/react)"/.test(text), () => false);
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		const captureRoutes = options.only?.length ? routes : [...routes, NOT_FOUND];
 		let capturedCount = 0;
 		const pageOf = new Map(
 			captureRoutes.map((route) => {
-				const ref = limit(() => capturePage(browser, options.old, route, at('captures'))).then(({ status }): CapturedRef => {
+				const ref = limit(async () => capturePage(browser, options.old, route, (await atFor(route, 'captures')))).then(({ status }): CapturedRef => {
 					log(`captured ${++capturedCount}/${captureRoutes.length} ${route}`);
-					return { route, status, load: () => capturePage(browser, options.old, route, at('captures')) };
+					return { route, status, load: async () => capturePage(browser, options.old, route, (await atFor(route, 'captures'))) };
 				});
 				ref.catch(() => {});
 				return [route, ref] as const;
 			}),
 		);
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
-		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r] as const));
-		const scenesRead = eachLimited(limit, plays, ([selector, r]) => captureScenes(browser, options.old, r, at('scenes'), selector)).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...got[i]!.scenes.map((scene) => ({ scene, listed: selector }))])));
+		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
+		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text)).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...got[i]!.scenes.map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
-		const notifies = listed.filter((x) => x.action === 'notify').flatMap((c) => routes.filter((r) => !c.routes || new RegExp(c.routes).test(r)).map((r) => [c.selector, r] as const));
-		const notifiesRead = eachLimited(limit, notifies, ([selector, r]) => captureNotifications(browser, options.old, r, at('toggles'), [selector])).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...got[i]!.notifications])));
+		const notifies = listed.filter((x) => x.action === 'notify').flatMap((c) => routes.filter((r) => !c.routes || new RegExp(c.routes).test(r)).map((r) => [c.selector, r, c.template] as const));
+		const notifiesRead = eachLimited(limit, notifies, async ([selector, r, template]) => captureNotifications(browser, options.old, r, (await atFor(r, 'toggles')), [selector], template)).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...got[i]!.notifications])));
 		notifiesRead.catch(() => {});
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
@@ -1162,6 +1282,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			pickers?: CapturedPickers;
 			racCalendars?: CapturedCalendars;
 			tables?: readonly CapturedTable[];
+			formLibs?: readonly CapturedForm[];
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
 			floating?: readonly QwikFloating[];
@@ -1173,15 +1294,76 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			let loaded: Promise<CapturedPage> | undefined;
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
+			// What does not depend on the route's reveals is read alongside them, each capture in a slot of its own.
+			const side = Promise.all([
+				(async () => {
+					if (ref.status !== 200) return;
+					const settled = Object.values((await page()).settled);
+					facts.chart = settled.some((html) => html.includes('recharts-wrapper'));
+					facts.dated = settled.some((html) => DATED.test(html));
+					// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
+					// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
+					await Promise.all([
+						settled.some((html) => html.includes('data-slot="carousel"')) && limit(async () => captureCarousels(browser, options.old, route, (await atFor(route, 'toggles')))).then((r) => void (facts.carousels = r.carousels)),
+						settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"')) && limit(async () => captureSliders(browser, options.old, route, (await atFor(route, 'toggles')))).then((r) => void (facts.sliders = r.sliders)),
+						facts.dated && limit(async () => captureClock(browser, options.old, route, (await atFor(route, 'clock')))).then((r) => void (facts.clock = r.marks)),
+						facts.chart && captureCharts(browser, options.old, route, (await atFor(route, 'toggles')), limit).then((r) => void (facts.charts = r.charts)),
+					]);
+				})(),
+				(async () => {
+					// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
+					if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(async () => captureQwikFloating(browser, options.old, route, (await atFor(route, 'toggles'))))).panels;
+				})(),
+				(async () => {
+					if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(async () => captureScrollers(browser, options.old, route, (await atFor(route, 'toggles'))))).scrollers;
+				})(),
+				(async () => {
+					if (!reveal || ref.status !== 200) return;
+					const settled = Object.values((await page()).settled);
+					// What each TanStack table was given and showed in each state, where the settled page has a table.
+					if (usesTables && settled.some(mayHoldTable)) {
+						const captured = await limit(async () => captureTables(browser, options.old, route, (await atFor(route, 'tables')), log));
+						for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
+						if (captured.tables.length) facts.tables = captured.tables;
+					}
+				})(),
+				(async () => {
+					if (!reveal || ref.status !== 200) return;
+					const settled = Object.values((await page()).settled);
+					// What each form-library form was given and showed with each field's errors and values, where the page has a form.
+					if (usesFormLibs && settled.some((html) => /<form[\s>]/.test(html))) {
+						const captured = await limit(async () => captureFormLibraries(browser, options.old, route, (await atFor(route, 'form-libraries')), log));
+						for (const why of captured.skipped) log(`  form on ${route} not read: ${why}`);
+						if (captured.forms.length) facts.formLibs = captured.forms;
+					}
+				})(),
+				(async () => {
+					if (!reveal || !routes.includes(route)) return;
+					const toggles = await limit(async () => captureToggles(browser, options.old, route, (await atFor(route, 'toggles')))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					toggledCount++;
+					if (toggles.groups.length) log(`toggles ${toggledCount}/${routes.length} ${route} (${toggles.groups.length} groups)`);
+					facts.toggles = toggles.groups;
+				})(),
+				(async () => {
+					if (!reveal || !routes.includes(route) || !switchSelectors.length) return;
+					const switches = await limit(async () => captureSwitches(browser, options.old, route, (await atFor(route, 'toggles')), switchSelectors)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
+					facts.switches = switches.switches;
+				})(),
+			]);
+			// Awaited after the reveals; a failure meanwhile is not unhandled.
+			side.catch(() => {});
 			if (reveal && routes.includes(route)) {
-				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), { extra, opens }));
+				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
+				const own = await captureRouteReveals(browser, options.old, route, (await atFor(route, 'reveals')), { extra, opens, loadDialog }, limit);
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
+				for (const why of own.skipped.filter((s) => s.startsWith('the route: '))) log(`  controls on ${route} not used: ${why.slice('the route: '.length)}`);
 				await scenesRead;
 				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
 			}
 			// React Aria tooltips and previews, on the pages whose server HTML has React Aria controls.
 			if (reveal && (await page()).server.includes('data-react-aria-pressable')) {
-				const hovers = [...(await limit(() => captureRacHovers(browser, options.old, route, at('reveals')))), ...((await page()).server.includes('role="combobox"') ? await limit(() => captureRacComboInputs(browser, options.old, route, at('reveals'))) : [])];
+				const hovers = [...(await limit(async () => captureRacHovers(browser, options.old, route, (await atFor(route, 'reveals'))))), ...((await page()).server.includes('role="combobox"') ? await limit(async () => captureRacComboInputs(browser, options.old, route, (await atFor(route, 'reveals')))) : [])];
 				const own = reveals ?? [];
 				const added = hovers.filter((h) => !own.some((r) => r.key === h.key));
 				if (added.length) reveals = [...own, ...added];
@@ -1190,23 +1372,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				// React Aria and Radix submenus, where a revealed menu has an item that opens one; Radix's menus come back with their
 				// sub-triggers keyed, in place of the menus' own reveals.
 				const from = reveals;
-				const submenus = await limit(() => captureRacSubmenus(browser, options.old, route, at('reveals'), from));
-				const radix = await limit(() => captureRadixSubmenus(browser, options.old, route, at('reveals'), from));
+				const submenus = await limit(async () => captureRacSubmenus(browser, options.old, route, (await atFor(route, 'reveals')), from));
+				const radix = await limit(async () => captureRadixSubmenus(browser, options.old, route, (await atFor(route, 'reveals')), from));
 				const all = [...from.map((r) => radix.find((m) => same(m, r)) ?? r), ...[...submenus, ...radix].filter((s) => !from.some((r) => same(r, s) || r.key === s.key))];
 				if (all.length !== from.length || radix.length) reveals = all;
 				// Base UI submenus: the menus they open from come back with their triggers keyed, in place of the menus' own reveals.
 				const before = reveals;
-				const base = await limit(() => captureBaseSubmenus(browser, options.old, route, at('reveals'), before));
+				const base = await limit(async () => captureBaseSubmenus(browser, options.old, route, (await atFor(route, 'reveals')), before));
 				if (base.length) reveals = [...before.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !before.some((r) => same(r, s) || r.key === s.key))];
 				// Controls inside content another revealed in place (a file tree's nested folders), after the ones holding them.
 				const outer = reveals;
-				const nested = await limit(() => captureNestedReveals(browser, options.old, route, at('reveals'), outer));
+				const nested = await limit(async () => captureNestedReveals(browser, options.old, route, (await atFor(route, 'reveals')), outer));
 				if (nested.length) reveals = [...outer, ...nested.filter((n) => !outer.some((r) => r.key === n.key))];
 			}
 			// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 			const comboboxes = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
 			if (reveals && comboboxes.length) {
-				const found = (await limit(() => captureComboboxEmpties(browser, options.old, route, at('toggles'), comboboxes))).empties;
+				const found = (await limit(async () => captureComboboxEmpties(browser, options.old, route, (await atFor(route, 'toggles')), comboboxes))).empties;
 				reveals = reveals.map((r) => {
 					const html = found.find((f) => f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
 					return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
@@ -1234,7 +1416,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					visit(body(parseDocument(settled)));
 				}
 				if (fromLayers.length || inPage.length) {
-					const found = (await limit(() => captureRacEmpties(browser, options.old, route, at('toggles'), [...fromLayers, ...inPage]))).empties;
+					const found = (await limit(async () => captureRacEmpties(browser, options.old, route, (await atFor(route, 'toggles')), [...fromLayers, ...inPage]))).empties;
 					if (found.length) {
 						const mine = (f: ComboboxEmpty) => inPage.some((x) => x.sig === f.sig && x.nth === f.nth);
 						facts.racEmpties = found.filter(mine);
@@ -1247,54 +1429,56 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 			// Whether each accordion lets several items be open, where one revealed an item's content; React Aria's accordion
 			// panels are in the page while collapsed, so expanding one reveals nothing: its server HTML says it is there.
-			if (reveals?.some((r) => r.sig?.includes('|accordion-trigger|')) || /data-slot="accordion"[^>]*data-rac=/.test((await page()).server)) facts.accordions = (await limit(() => captureAccordions(browser, options.old, route, at('toggles')))).accordions;
+			if (reveals?.some((r) => r.sig?.includes('|accordion-trigger|')) || /data-slot="accordion"[^>]*data-rac=/.test((await page()).server)) facts.accordions = (await limit(async () => captureAccordions(browser, options.old, route, (await atFor(route, 'toggles'))))).accordions;
 			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
 			const others = (reveals ?? []).filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-			if (reveals && (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|')))) facts.hoverDelays = (await limit(() => captureHoverDelays(browser, options.old, route, at('toggles'), others))).delays;
-			if (ref.status === 200) {
-				const settled = Object.values((await page()).settled);
-				// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
-				// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
-				if (settled.some((html) => html.includes('data-slot="carousel"'))) facts.carousels = (await limit(() => captureCarousels(browser, options.old, route, at('toggles')))).carousels;
-				facts.chart = settled.some((html) => html.includes('recharts-wrapper'));
-				if (settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"'))) facts.sliders = (await limit(() => captureSliders(browser, options.old, route, at('toggles')))).sliders;
-				facts.dated = settled.some((html) => DATED.test(html));
-				if (facts.dated) facts.clock = (await limit(() => captureClock(browser, options.old, route, at('clock')))).marks;
-				if (facts.chart) facts.charts = (await limit(() => captureCharts(browser, options.old, route, at('toggles')))).charts;
-			}
-			// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
-			if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(() => captureQwikFloating(browser, options.old, route, at('toggles')))).panels;
-			if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(() => captureScrollers(browser, options.old, route, at('toggles')))).scrollers;
+			if (reveals && (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|')))) facts.hoverDelays = (await limit(async () => captureHoverDelays(browser, options.old, route, (await atFor(route, 'toggles')), others))).delays;
 			if (reveal && ref.status === 200) {
 				const settled = Object.values((await page()).settled);
 				// What each react-day-picker calendar was given, where the settled page shows a month grid or a control's layer does (a date picker's trigger: read opened).
 				const openers = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-				if (openers.length || settled.some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) facts.pickers = await limit(() => captureDayPickers(browser, options.old, route, at('day-pickers'), openers));
+				if (openers.length || settled.some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) facts.pickers = await limit(async () => captureDayPickers(browser, options.old, route, (await atFor(route, 'day-pickers')), openers));
 				// What each React Aria calendar was given, where the settled page shows one.
 				const opening = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => racCalendar(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0, path: r.path }));
-				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(() => captureRacCalendars(browser, options.old, route, at('rac-calendars'), opening));
-				// What each TanStack table was given and showed in each state, where the settled page has a table.
-				if (usesTables && settled.some(mayHoldTable)) {
-					const captured = await limit(() => captureTables(browser, options.old, route, at('tables'), log));
-					for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
-					if (captured.tables.length) facts.tables = captured.tables;
-				}
+				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(async () => captureRacCalendars(browser, options.old, route, (await atFor(route, 'rac-calendars')), opening));
 			}
-			if (reveal && routes.includes(route)) {
-				const toggles = await limit(() => captureToggles(browser, options.old, route, at('toggles'))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
-				toggledCount++;
-				if (toggles.groups.length) log(`toggles ${toggledCount}/${routes.length} ${route} (${toggles.groups.length} groups)`);
-				facts.toggles = toggles.groups;
-				if (switchSelectors.length) {
-					const switches = await limit(() => captureSwitches(browser, options.old, route, at('toggles'), switchSelectors)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
-					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
-					facts.switches = switches.switches;
-				}
-			}
+			await side;
 			facts.reveals = reveals;
 			return facts;
 		};
-		const read = await Promise.all(captureRoutes.map((route) => reading(() => readRoute(route))));
+		// What each route's capture took, for the next run's shards to be packed by (scripts/pipeline.ts deal).
+		const spent = new Map<string, number>();
+		const timed = async <T>(route: string, work: () => Promise<T>): Promise<T> => {
+			const start = Date.now();
+			try {
+				return await work();
+			} finally {
+				spent.set(route, (spent.get(route) ?? 0) + (Date.now() - start) / 1000);
+			}
+		};
+		const reads = captureRoutes.map((route) => reading(() => timed(route, () => readRoute(route))));
+		for (const pending of reads) pending.catch(() => {});
+		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
+		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
+		const choosing = new Map<string, Promise<Record<string, Choice>>>();
+		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
+		for (const [i, pending] of reads.entries()) {
+			const route = captureRoutes[i]!;
+			for (const reveal of (await pending).reveals ?? []) {
+				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
+				// A Base UI listbox's values are its page's: generated ids repeat across pages.
+				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
+				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
+				if (!choosing.has(run)) {
+					const dir = await atFor(route, 'choices');
+					const chosen = timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
+					chosen.catch(() => {});
+					choosing.set(run, chosen);
+				}
+				shownOn.push({ route, reveal, run });
+			}
+		}
+		const read = await Promise.all(reads);
 		captures = await Promise.all(captureRoutes.map((route) => pageOf.get(route)!));
 		await Promise.all([scenesRead, notifiesRead]);
 		captureRoutes.forEach((route, i) => {
@@ -1313,24 +1497,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.pickers) pickers.set(route, f.pickers);
 			if (f.racCalendars) racCalendarsRead.set(route, f.racCalendars);
 			if (f.tables) tablesRead.set(route, f.tables);
+			if (f.formLibs) formLibsRead.set(route, f.formLibs);
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
-		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options shown.
-		const choosing = new Map<string, { route: string; reveal: Reveal }>();
-		const shownOn: { route: string; reveal: Reveal; run: string }[] = [];
-		for (const [route, reveals] of revealed)
-			for (const reveal of reveals) {
-				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
-				// A Base UI listbox's values are its page's: generated ids repeat across pages.
-				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
-				if (!choosing.has(run)) choosing.set(run, { route, reveal });
-				shownOn.push({ route, reveal, run });
-			}
-		const runs = [...choosing];
-		const chosenBy = new Map(await Promise.all(runs.map(async ([run, { route, reveal }]) => [run, await captureChoices(browser, options.old, route, reveal, at('choices'), log, limit)] as const)));
+		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
 		for (const { route, reveal, run } of shownOn) {
 			const found = chosenBy.get(run)!;
 			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);
@@ -1341,8 +1513,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
-			const forms = await eachLimited(limit, routes, (route) => captureForms(browser, options.old, route, at('toggles')).catch(() => ({ route, forms: [] })));
+			const forms = await eachLimited(limit, routes, async (route) => timed(route, async () => captureForms(browser, options.old, route, (await atFor(route, 'toggles')))).catch(() => ({ route, forms: [] })));
 			for (const f of forms) submitted.set(f.route, f.forms);
+		}
+		await dirs.save();
+		if (options.captureOnly) {
+			await mkdir(join(state, 'convert', 'costs'), { recursive: true });
+			for (const [route, seconds] of spent) await writeFile(join(state, 'convert', 'costs', `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`), JSON.stringify({ route, seconds: Math.round(seconds) }));
 		}
 	} finally {
 		await browser.close();
@@ -1378,7 +1555,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	// A calendar in a layer (a date picker's popover) is bound as its layer is rendered, in prepare.
-	const dayPickers = new DayPickerPlan();
+	const dayPickers = new DayPickerPlan(options.source);
 	layerPickers = (route, reveal, kept) => {
 		const captured = pickers.get(route);
 		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
@@ -1550,7 +1727,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const trigger = locate(raw.opener.sig, raw.opener.nth);
 			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
 			const field = raw.opener.field && locate(raw.opener.field.sig, raw.opener.field.nth);
-			if (field && trigger) dayPickers.field(route, field, trigger, raw.opener);
+			if (field && trigger) dayPickers.field(route, captured, field, trigger, raw.opener, locate);
 		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
@@ -1574,7 +1751,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (handledForms.size) templatePorts.plan('form');
 	const notifyPlan = new NotifyPlan();
 	let notifyCount = 0;
-	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	// A form-library form's toast on a passing submit is a notification too, shown by its form's region.
+	for (const [route, p] of prepared) notifyCount += notifyPlan.add([...(notified.get(route) ?? []), ...(formLibsRead.get(route) ?? []).flatMap((f) => (f.toast ? [f.toast] : []))], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
 	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
 	if (notifyPlan.sonner) templatePorts.add('sonner');
 	// The shared body children holding a live region a page shows its notifications in: that page renders them.
@@ -1617,10 +1795,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const charts = new ChartPlan();
 	let chartCount = 0;
-	for (const [route, p] of prepared) chartCount += charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	for (const [route, p] of prepared) {
+		const placed = charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+		// The charts' CSS rides the page's own stylesheet, as its body styles do: one request less before first paint.
+		if (placed) p.bodyCss.unshift(CHART_CSS);
+		chartCount += placed;
+	}
 	if (chartCount) {
 		log(`recharts charts on Markless state: ${chartCount} charts`);
-		styles.set(MOTION_FILE, CHART_CSS);
 		templatePorts.plan('recharts');
 	}
 	let racCalendarCount = 0;
@@ -1633,6 +1815,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`React Aria calendars on Markless state: ${racCalendarCount}`);
 		templatePorts.plan('react-aria/calendar');
 	}
+	// Form-library forms: each field's errors and shown value on Markless state, validated with the old source's schema.
+	const formLibs = new FormPlan(await formSources(options.source, join(state, 'usage.json')));
+	let formLibCount = 0;
+	for (const [route, p] of prepared) formLibCount += formLibs.add(route, formLibsRead.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	for (const line of formLibs.notes) log(`  ${line}`);
+	if (formLibCount) log(`form-library forms on Markless state: ${formLibCount}`);
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
@@ -1681,7 +1869,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		// A site component the site lists for a page element renders it, and what it shows, itself.
 		const standIn = pageComponentOf(el, siteComponents);
-		if (standIn) return { replace: `<${componentName(standIn)} />` };
+		if (standIn) {
+			// It renders the controls the old page had there, so the page's registry carries their parts.
+			for (const x of walk(el)) if (x !== el) bindParts(x, usedPorts);
+			for (const port of standIn.ports ?? []) usedPorts.add(port);
+			return { replace: `<${componentName(standIn)} />` };
+		}
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
 		const keyed = triggerKeys.get(el);
@@ -1700,6 +1893,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(needs(racCalendars.bind(el), 'react-aria/calendar'), binding);
 		binding = mergeBindings(racTables.bind(el), binding);
 		binding = mergeBindings(tables.bind(el), binding);
+		binding = mergeBindings(needs(formLibs.bind(el), 'form-library'), binding);
+		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
 		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? needs(formBinding, 'form') : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
@@ -1707,6 +1902,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// A table's rows and hideable cells are emitted by its plan, with every plan's bindings, as their page is.
 	tables.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)), dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
 	tables.emitHtml = emitHtml;
+	// A form's list rows are emitted by its plan once, as their row template, with every plan's bindings.
+	formLibs.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)) });
 	// What a page gives an element beyond its markup (what a control shows on use, a trigger's layer key, measured
 	// props) is part of its identity: two pages' alike code blocks whose View Code shows different sources are not one.
 	const insertedInto = new Map<Element, string>();
@@ -1811,8 +2008,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
-		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
-		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), { markup: copied });
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}${p.copyLabels[key] !== undefined ? ` data-mm-label=${lit(p.copyLabels[key]!)}` : ''}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
+		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
 		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
 		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
 		const list = byFile.get(file) ?? [];
@@ -1907,8 +2104,20 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts, choices, tables.used ? ['tanstack-table'] : []);
+	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : []), ...(await siteImportedParts(app))], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
+	for (const [file, source] of formLibs.files()) {
+		await mkdir(dirname(join(app, 'lib', 'parts', file)), { recursive: true });
+		await writeFile(join(app, 'lib', 'parts', file), source);
+	}
+	if (formLibs.packages.size) {
+		const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
+		const missing = [...formLibs.packages].filter(([name]) => !manifest.dependencies?.[name]);
+		if (missing.length) {
+			manifest.dependencies = { ...manifest.dependencies, ...Object.fromEntries(missing) };
+			await writeFile(join(app, 'package.json'), `${JSON.stringify(manifest, null, '\t')}\n`);
+		}
+	}
 	const tableSpecs = tables.specsModule();
 	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);
 	if (shell) await writeFile(join(app, 'lib', 'parts', 'docsearch-shell.ts'), `// Generated by markless-migrate convert: DocSearch's dialog as the old site first draws it on a press (captured by plan).\nexport default ${JSON.stringify(shell)};\n`);
@@ -1957,6 +2166,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
+	const folded = await appendBodyCss(publicDir, prepared.values());
+	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const endpoints: EndpointPort[] = [];
@@ -2008,6 +2219,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
+	if (!options.only?.length) await writeFile(join(state, 'convert', CONVERT_INPUTS), JSON.stringify({ pageOrderFrom: options.pageOrderFrom ?? null } satisfies ConvertInputs));
 	return report;
 }
 

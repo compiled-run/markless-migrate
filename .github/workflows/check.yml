@@ -7,6 +7,10 @@ name: Check
 on:
   workflow_dispatch:
     inputs:
+      priority:
+        description: deploy (tonight's deploy run) skips the full-site gate and does not count against its two slots; otherwise leave empty
+        required: false
+        default: ''
       site:
         description: The deploy/<site> folder whose ci-serve.sh serves both sides
         required: true
@@ -16,8 +20,8 @@ on:
         required: true
         default: examples/shadcn-ui-markless
       build:
-        description: URL of the port's build (a .tar.gz of its .output, node-server preset)
-        required: true
+        description: URL of the port's build (a .tar.gz of its .output or .vercel/output); empty is the site's newest <site>-deployed-build-* or <site>-build-* release
+        required: false
       targets:
         description: A `check --all --write-targets` file in the repository
         required: true
@@ -31,42 +35,122 @@ on:
         required: false
         default: ''
       concurrency:
-        description: Routes checked at once on each runner (2 cores; a heavy page wants one)
+        description: Routes checked at once on each runner (2 cores; a heavy page wants one; default src/check/ci-settings.ts)
         required: false
-        default: '1'
+        default: ''
       timeout:
-        description: Seconds one route may take (a page's journey budget grows with its controls)
+        description: Seconds one route may take (a page's journey budget grows with its controls; default src/check/ci-settings.ts)
         required: false
-        default: '3600'
+        default: ''
+      reuse:
+        description: Reuse each route's last result while it ships the same HTML and code ('false' checks every route)
+        required: false
+        default: 'true'
       max_parallel:
         description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI)
         required: false
         default: '10'
+  # The pipeline workflow's check stage: its build artifact, and the routes its selection left to check.
+  workflow_call:
+    inputs:
+      site: { type: string, required: true }
+      app: { type: string, required: true }
+      targets: { type: string, required: true }
+      shards: { type: string, required: true }
+      flags: { type: string, required: false, default: '' }
+      build-artifact:
+        description: An artifact of this repository holding output.tar.gz, served instead of the build URL
+        type: string
+        required: false
+        default: ''
+      build-url:
+        type: string
+        required: false
+        default: ''
+      only-artifact:
+        description: An artifact of this run holding targets.json, the routes to deal into shards (targets stays the whole site's)
+        type: string
+        required: false
+        default: ''
+      reuse:
+        type: string
+        required: false
+        default: 'true'
   # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
   contents: read
+  actions: read
 
 env:
   SITE: ${{ inputs.site || 'shadcn-ui' }}
   APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
-  BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-subset-build-6f528da/shadcn-ui-markless-output.tar.gz' }}
   TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
   SHARDS: ${{ inputs.shards || '13' }}
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
 
 concurrency:
-  group: check-${{ inputs.build || github.ref }}-${{ inputs.targets }}-${{ inputs.flags }}
+  group: check-${{ inputs.build-artifact || inputs.build || github.ref }}-${{ inputs.targets }}-${{ inputs.flags }}
   cancel-in-progress: false
 
 jobs:
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
+  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  gate:
+    name: full-site gate
+    if: github.workflow == 'Check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            deploy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: size
+        name: Count the routes
+        env:
+          SPEC: ${{ inputs.priority == 'deploy' && 'priority:deploy' || env.TARGETS }}
+        run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
+      - name: Wait for a full-site slot
+        if: steps.size.outputs.full == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/full-site-gate.ts wait
+
   plan:
+    needs: gate
+    if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
+      build: ${{ steps.build.outputs.build }}
     steps:
+      # A build named by its release key, never a fixed archive, so the default cannot fall behind what was deployed.
+      - id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIVEN: ${{ inputs.build }}
+          ARTIFACT: ${{ inputs.build-artifact }}
+        run: |
+          build="$GIVEN"
+          if [ -z "$build" ] && [ -z "$ARTIFACT" ]; then
+            tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt --jq "[.[] | select(.tagName | startswith(\"$SITE-deployed-build-\") or startswith(\"$SITE-build-\"))] | sort_by(.createdAt) | last | .tagName // empty")
+            [ -n "$tag" ] || { echo "::error::no $SITE-deployed-build-* or $SITE-build-* release: pass build"; exit 1; }
+            build=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json assets --jq '[.assets[] | select(.name | endswith(".tar.gz"))][0].url // empty')
+            [ -n "$build" ] || { echo "::error::release $tag has no .tar.gz build"; exit 1; }
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Build: ${build:-artifact $ARTIFACT}" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -79,8 +163,21 @@ jobs:
         run: |
           case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 10, got '$MAX_PARALLEL'"; exit 1 ;; esac
           if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 10 ]; then echo "::error::max_parallel must be from 1 to 10, got $MAX_PARALLEL"; exit 1; fi
+      - if: inputs.only-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.only-artifact }}
+          path: ${{ runner.temp }}/only
+      # Each route's time in the last finished check packs the shards, longest first (split ignores a report of another site's routes).
+      - name: The last check's route times
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in $(gh run list -R "$GITHUB_REPOSITORY" --workflow check.yml --status success -L 10 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$RUNNER_TEMP/earlier" 2>/dev/null; then echo "route times from run $run"; break; fi
+          done
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
@@ -89,6 +186,8 @@ jobs:
 
   check:
     needs: plan
+    # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
     timeout-minutes: 345
@@ -133,41 +232,61 @@ jobs:
             !deploy/${{ env.SITE }}/old/**/.next/cache
           key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
       - name: Serve the port
-        run: bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ needs.plan.outputs.build }}
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.build-artifact }}" ]; then
+            bash scripts/pipeline-artifact.sh build "${{ inputs.build-artifact }}" "${{ inputs.build-url }}" "$RUNNER_TEMP/build"
+            BUILD="file://$RUNNER_TEMP/build/output.tar.gz"
+          fi
+          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The old side's captures, journeys and slow-network runs from this shard's earlier runs. Check reuses an entry only while
       # its own code and the old site are unchanged (every response the old page loaded, or the files its HTML names).
+      # One cache for the whole site, joined by the merge job, so a route finds its old side whichever shard it lands on.
       - name: Restore the old side from earlier runs
         uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.APP }}/.migrate/cache/old
-            ${{ env.APP }}/.migrate/slow-network
-          key: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-
+          path: old-joined
+          key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-old-joined-${{ env.SITE }}-
+      - name: Place the old side
+        run: |
+          mkdir -p "$APP/.migrate/cache/old" "$APP/.migrate/slow-network"
+          if [ -d old-joined/cache/old ]; then cp -R old-joined/cache/old/. "$APP/.migrate/cache/old/"; fi
+          if [ -d old-joined/slow-network ]; then cp -R old-joined/slow-network/. "$APP/.migrate/slow-network/"; fi
+          rm -rf old-joined
+      # Results of earlier runs, by what each route ships: its served HTML and the code hash of every module it can run.
+      - name: Restore results from earlier runs
+        if: inputs.reuse != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.APP }}/.migrate/reuse
+          key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-reuse-${{ env.SITE }}-
       - name: Check
         env:
           SHARD: ${{ matrix.shard }}
           FLAGS: ${{ inputs.flags }}
-          CONCURRENCY: ${{ inputs.concurrency || '1' }}
-          TIMEOUT: ${{ inputs.timeout || '3600' }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          TIMEOUT: ${{ inputs.timeout }}
+          REUSE: ${{ inputs.reuse != 'false' && '--reuse .migrate/reuse' || '' }}
         run: |
           set -uo pipefail
           cd "$APP"
           mkdir -p .migrate/cache/old .migrate/slow-network
+          # Wherever the preset put it: .vercel/output/.markless/static/, or under .output/ for node-server and cloudflare-module.
+          closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/static/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
+          [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
           status=0
+          # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
+          # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
           # shellcheck disable=SC2086
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --concurrency "$CONCURRENCY" --timeout "$TIMEOUT" $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY" "$TIMEOUT") $REUSE $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
-      - name: Keep the old side for later runs
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.APP }}/.migrate/cache/old
-            ${{ env.APP }}/.migrate/slow-network
-          key: check-old-${{ env.SITE }}-${{ hashFiles(env.TARGETS) }}-${{ env.SHARDS }}-${{ matrix.shard }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -175,10 +294,14 @@ jobs:
           path: |
             ${{ env.APP }}/.migrate/report.json
             ${{ env.APP }}/.migrate/check-progress
+            ${{ env.APP }}/.migrate/reuse
+            ${{ env.APP }}/.migrate/cache/old
+            ${{ env.APP }}/.migrate/slow-network
             ${{ runner.temp }}/check.txt
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log
             ${{ runner.temp }}/old-build.log
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
@@ -199,14 +322,47 @@ jobs:
           pattern: check-*
           path: shards
       - name: Merge
+        env:
+          BUILD: ${{ needs.plan.outputs.build || format('artifact {0}', inputs.build-artifact) }}
         run: |
           set -euo pipefail
           # A shard that wrote no report has each of its routes listed as not checked.
           node scripts/check-shards.ts merge shards merged shards/check-shards
           reported=$(find shards -name report.json | wc -l)
           { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+      # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.
+      - name: The old side as earlier runs joined it
+        uses: actions/cache/restore@v4
+        with:
+          path: old-joined
+          key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: check-old-joined-${{ env.SITE }}-
+      - name: Join the old side
+        run: |
+          mkdir -p old-earlier && if [ -d old-joined ]; then mv old-joined old-earlier/; fi
+          node scripts/check-shards.ts join-old old-earlier old-joined >> "$GITHUB_STEP_SUMMARY"
+          node scripts/check-shards.ts join-old shards old-joined >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache/save@v4
+        with:
+          path: old-joined
+          key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
+      - name: Join kept results
+        if: inputs.reuse != 'false'
+        run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep results for later runs
+        if: inputs.reuse != 'false'
+        uses: actions/cache/save@v4
+        with:
+          path: reuse
+          key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         with:
           name: check-merged
           path: merged
           retention-days: 30
+      - name: Every route checked to the end
+        run: node scripts/check-shards.ts gate merged
+      # A shard that kept results or recorded old pages, but whose artifact holds none, lost them on upload: a silent cold start.
+      - name: Every shard uploaded what it kept
+        if: always()
+        run: node scripts/check-shards.ts uploaded shards

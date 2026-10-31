@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page, Request } from 'playwright';
@@ -6,6 +6,7 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { settle, trackSettling } from './settle.ts';
 import { attr, body, parseDocument, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import type { Reveal } from './reveal.ts';
 import { lit, type Binding } from './tsrx.ts';
@@ -48,13 +49,44 @@ export function markChosenHref(el: Tree, chosen: Readonly<Record<string, Choice>
 
 const MAX_OPTIONS = 800;
 
+// What a page shows and holds, to tell a page put back after a choice from the one a fresh load gave: the document
+// without the scripts, styles and resource hints a framework adds as it loads code, form values, storage, scroll and address.
+const stateOf = (page: Page) =>
+	page.evaluate(() => {
+		const root = document.documentElement.cloneNode(true) as HTMLElement;
+		// React Aria's live region and an emptied Base UI portal stay behind a closed layer, and show nothing.
+		for (const el of root.querySelectorAll('script, style, link, noscript, [data-live-announcer], [data-base-ui-portal]:empty')) el.remove();
+		// A scroll lock lifted leaves an empty style attribute behind, which shows nothing.
+		for (const el of [root, ...root.querySelectorAll('[style=""]')]) if (el.getAttribute('style') === '') el.removeAttribute('style');
+		const values = [...document.querySelectorAll('input, textarea, select')].map((el) => (el instanceof HTMLInputElement ? `${el.value}|${el.checked}` : (el as HTMLTextAreaElement | HTMLSelectElement).value));
+		const stored = (s: Storage) => Object.keys(s).sort().map((k) => `${k}=${s.getItem(k)}`);
+		const text = JSON.stringify([root.outerHTML, document.title, values, stored(localStorage), stored(sessionStorage), document.cookie, scrollX, scrollY, location.href, (window as unknown as { __mmDrawn?: number }).__mmDrawn ?? 0]);
+		let hash = 0x811c9dc5;
+		for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+		return hash >>> 0;
+	});
+
+// The state each page's last fresh load had before its control was opened, and the document that load made.
+const loaded = new WeakMap<Page, { state: number; doc: string; selected?: string }>();
+
 async function openOn(page: Page, origin: string, route: string, path: readonly number[]): Promise<boolean> {
 	await loadPage(page, new URL(route, origin).href);
-	await page.waitForTimeout(400);
-	await page.evaluate(() => {
-		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
+	await settle(page, 400);
+	const doc = await page.evaluate((token) => {
+		const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[]; __mmDoc?: string };
 		w.__mmCopied = [];
 		w.__mmWent = [];
+		w.__mmDoc = token;
+		// The seeded randomness a choice drew from moves on: the next choice on this page would draw what a fresh load does not.
+		const drawn = w as unknown as { __mmDrawn: number };
+		drawn.__mmDrawn = 0;
+		const counted = <A extends unknown[], R>(own: (...a: A) => R) => function (this: unknown, ...a: A): R {
+			drawn.__mmDrawn++;
+			return own.apply(this, a);
+		};
+		Math.random = counted(Math.random);
+		const proto = Object.getPrototypeOf(crypto) as Crypto;
+		for (const name of ['getRandomValues', 'randomUUID'] as const) if (typeof proto[name] === 'function') Object.defineProperty(proto, name, { value: counted(proto[name] as (...a: unknown[]) => unknown), writable: true, configurable: true });
 		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.__mmCopied!.push(t), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 		// A router sent to the address the page is already at replaces the history entry: the address alone shows no move.
 		for (const name of ['pushState', 'replaceState'] as const) {
@@ -64,7 +96,18 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 				return own.call(this, data, unused, url);
 			};
 		}
-	});
+		return w.__mmDoc;
+	}, randomUUID());
+	const entry: { state: number; doc: string; selected?: string } = { state: await stateOf(page), doc };
+	loaded.set(page, entry);
+	const opened = await openTrigger(page, path);
+	// The option a select shows chosen on a fresh load, which choosing again puts the page back.
+	const selected = await page.evaluate((option) => document.querySelector(`:is(${option})[aria-selected="true"]`)?.textContent?.trim(), OPTION).catch(() => undefined);
+	if (selected) entry.selected = selected;
+	return opened;
+}
+
+async function openTrigger(page: Page, path: readonly number[]): Promise<boolean> {
 	const trigger = await page.evaluateHandle((p) => {
 		let el: Element | undefined = document.body;
 		for (const i of p) el = el?.children[i];
@@ -74,9 +117,46 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 	if (!el) return false;
 	await el.click({ timeout: 2000 }).catch(() => {});
 	// A loaded page slow to answer its trigger shows its options later than 400 ms: they are waited for, a while.
-	await Promise.all([page.waitForTimeout(400), page.locator(OPTION).first().waitFor({ state: 'attached', timeout: 3000 }).catch(() => {})]);
+	const clicked = Date.now();
+	await page.locator(OPTION).first().waitFor({ state: 'attached', timeout: 3000 }).catch(() => {});
+	await settle(page, 400 - (Date.now() - clicked));
 	await finishAnimations(page).catch(() => {});
 	return true;
+}
+
+/**
+ * Opens the control again for the next option: on the same document when the choice left it as the fresh load had it (a
+ * client router's move taken back first), else on a fresh load. Choosing on a page put back records what a fresh one would.
+ */
+const backFails = new WeakSet<Page>();
+
+async function reopenOn(page: Page, origin: string, route: string, path: readonly number[], before: string, listbox: boolean): Promise<boolean> {
+	const fresh = loaded.get(page);
+	const putBack = async () => {
+		// A closed layer hands focus back to its trigger; a fresh load has nothing focused.
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()).catch(() => {});
+		await settle(page, 500);
+		await finishAnimations(page).catch(() => {});
+		return page.url() === before && (await stateOf(page).catch(() => undefined)) === fresh!.state;
+	};
+	const same = fresh && (await page.evaluate((doc) => (window as unknown as { __mmDoc?: string }).__mmDoc === doc, fresh.doc).catch(() => false));
+	const moved = page.url() !== before;
+	// A router whose page differs after Back (Next.js re-renders it) is not taken back again on this page.
+	if (fresh && same && !(moved && backFails.has(page))) {
+		if (moved) {
+			await page.evaluate(() => history.back()).catch(() => {});
+			await page.waitForURL(before, { timeout: 3000 }).catch(() => {});
+		}
+		if (await putBack()) return openTrigger(page, path);
+		if (moved) backFails.add(page);
+		// A select keeps the value chosen: choosing the one it loaded with puts it back.
+		if (listbox && fresh.selected !== undefined && (await openTrigger(page, path))) {
+			await page.locator(OPTION).filter({ hasText: fresh.selected }).first().click({ timeout: 2000 }).catch(() => {});
+			await settle(page, 500);
+			if (await putBack()) return openTrigger(page, path);
+		}
+	}
+	return openOn(page, origin, route, path);
 }
 
 /** The requests a page has open, and when the last one ended. */
@@ -94,7 +174,7 @@ function requestsOf(page: Page): { readonly open: Set<Request>; ended: number } 
 // What choosing an option started is read after 500 ms, or, while it is still fetching what it goes to (a client router
 // loads the next page before it changes the address), once that has answered: at most 5 s.
 async function afterChoosing(page: Page, before: string, requests: ReturnType<typeof requestsOf>, earlier: ReadonlySet<Request>): Promise<void> {
-	await page.waitForTimeout(500);
+	await settle(page, 500);
 	const deadline = Date.now() + 4500;
 	const busy = () => [...requests.open].some((r) => !earlier.has(r)) || Date.now() - requests.ended < 150;
 	while (page.url() === before && busy() && Date.now() < deadline) await page.waitForTimeout(50);
@@ -137,7 +217,11 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
 				const earlier = new Set(requests.open);
 				requests.ended = 0;
-				await page.evaluate(() => ((window as unknown as { __mmWent?: string[] }).__mmWent = []));
+				await page.evaluate(() => {
+					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
+					w.__mmCopied = [];
+					w.__mmWent = [];
+				});
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
 				if (!(await target.click({ timeout: 2000 }).then(() => true, () => false)) && !((await openOn(page, origin, route, reveal.path)) && (await target.click({ timeout: 5000 }).then(() => true, () => false)))) {
 					failure ??= `could not choose ${key}`;
@@ -151,7 +235,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before;
 				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
-				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await openOn(page, origin, route, reveal.path);
+				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];
@@ -160,6 +244,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	};
 	const session = async <T>(use: (page: Page) => Promise<T>): Promise<T> => {
 		const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+		await trackSettling(context);
 		try {
 			return await use(page);
 		} finally {

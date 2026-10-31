@@ -1,0 +1,34 @@
+// react-lite-youtube-embed as it renders before a visitor plays the video: the poster with a play button.
+// The page carries the library's server markup (the poster from i.ytimg.com); lib/site.ts moves a maxresdefault poster
+// to img.youtube.com once the page starts, adds the preconnect links on hover and the player iframe on click, as the
+// library does.
+import { isReactServerMarkup } from '../source/h.mjs';
+
+export default function LiteYouTubeEmbed({ id, title, poster = 'hqdefault', webp, announce = 'Watch', params, wrapperClass = 'yt-lite', playerClass = 'lty-playbtn', aspectHeight = 9, aspectWidth = 16, noscriptFallback = true }) {
+	const format = webp ? 'webp' : 'jpg';
+	const folder = webp ? 'vi_webp' : 'vi';
+	const image = `https://i.ytimg.com/${folder}/${encodeURIComponent(id)}/${poster}.${format}`;
+	const posterAfterStart = poster === 'maxresdefault' ? `https://img.youtube.com/${folder}/${encodeURIComponent(id)}/${poster}.${format}` : undefined;
+	const style = isReactServerMarkup()
+		? { backgroundImage: `url(${image})`, '--aspect-ratio': `${(aspectHeight / aspectWidth) * 100}%` }
+		: `background-image:url(${image});--aspect-ratio:${(aspectHeight / aspectWidth) * 100}%`;
+	return (
+		<>
+			<link rel="preload" href={image} as="image" />
+			{noscriptFallback && (
+				<noscript>
+					<a href={`https://www.youtube.com/watch?v=${id}`} aria-label={`${announce} ${title} on YouTube`}>
+						{`${announce} "`}
+						{title}
+						{`" on YouTube`}
+					</a>
+				</noscript>
+			)}
+			<article className={`${wrapperClass} `} data-title={title} role="img" aria-label={`${title} - YouTube video preview`} style={style} data-mm-youtube={JSON.stringify({ id, params, title, poster: posterAfterStart })}>
+				<button type="button" className={playerClass} aria-label={`${announce} ${title}`} tabIndex={0}>
+					<span className="lty-visually-hidden">{announce}</span>
+				</button>
+			</article>
+		</>
+	);
+}

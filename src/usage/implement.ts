@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { parseSync } from 'oxc-parser';
+import { parse } from 'yuku';
 import type { N } from '../source/js.ts';
 import type { Behaviour, BehaviourKind, Implementation } from './types.ts';
 
@@ -55,7 +55,7 @@ export async function newAppImports(dir: string): Promise<Map<string, Set<string
 					const end = lines.findIndex((l) => /^(export\s+)?(default\s+)?(function|component|const|let|class)\b|@\{/.test(l));
 					text = lines.slice(0, end < 0 ? lines.length : end).join('\n');
 				}
-				const program = parseSync(path.endsWith('.tsrx') ? 'x.ts' : path, text, { sourceType: 'module' }).program as unknown as N;
+				const program = parse(text, { path: path.endsWith('.tsrx') ? 'x.ts' : path, sourceType: 'module' }).program as unknown as N;
 				for (const node of program.body as N[]) {
 					if (node.type !== 'ImportDeclaration') continue;
 					const names = imports.get(node.source.value) ?? new Set<string>();

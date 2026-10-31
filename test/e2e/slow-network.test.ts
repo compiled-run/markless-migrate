@@ -110,21 +110,25 @@ test('the same page against itself is not red on the slow network, and a page wi
 });
 
 
-test('a resource only Firefox requests turns the route red in the Firefox cell alone, and the same page without it is green in every browser', async () => {
+// Whether identical pages stay green is a rate, asserted exactly by the seeded simulation in test/slow-network-verdicts.test.ts;
+// here the real browsers check the wiring: the resource reaches Firefox's runs alone, and its cell gets a red verdict.
+test('a resource only Firefox requests is fetched in Firefox runs alone and turns the Firefox cell red', async () => {
 	const { measureRoutesNetwork } = await import('../../src/check/slow-network.ts');
 	const { networkFailures } = await import('../../src/check/slow-network-verdicts.ts');
-	const [old, slower, same] = await Promise.all([serve(), serve(48_000, 0, true, 0, 120_000), serve()]);
+	const [old, slower] = await Promise.all([serve(), serve(48_000, 0, true, 0, 120_000)]);
 	try {
 		// WebKit sends loopback origins past any proxy; names the proxy maps reach the servers in every browser.
-		const hosts = { 'old.test': new URL(old.origin).host, 'slower.test': new URL(slower.origin).host, 'same.test': new URL(same.origin).host };
+		const hosts = { 'old.test': new URL(old.origin).host, 'slower.test': new URL(slower.origin).host };
 		const options = { profiles: ['regular-3g'], browsers: [...NETWORK_BROWSERS], runs: 4, concurrency: 2, hosts, afterAnswerMs: 2_000, timeoutMs: 60_000 };
 		const red = (await measureRoutesNetwork({ old: 'http://old.test', new: 'http://slower.test' }, ['/'], options)).get('/')!;
-		const failing = networkFailures('/', red).map((f) => f.check);
-		assert.ok(failing.length && failing.every((c) => c.startsWith('page load: slow network, firefox ')), networkFailures('/', red).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
 		assert.ok(red.new.cells.every((c) => !c.unavailable), 'every browser measured');
-		const green = (await measureRoutesNetwork({ old: 'http://old.test', new: 'http://same.test' }, ['/'], options)).get('/')!;
-		assert.deepEqual(networkFailures('/', green).map((f) => f.check), [], networkFailures('/', green).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
+		for (const cell of red.new.cells) {
+			const fetched = cell.runs.filter((r) => r.requests.some((q) => q.url.endsWith('/firefox-only.js'))).length;
+			assert.equal(fetched, cell.browser === 'firefox' ? cell.runs.length : 0, `${cell.browser}: ${fetched} of ${cell.runs.length} runs fetched it`);
+		}
+		const failing = networkFailures('/', red).map((f) => f.check);
+		assert.ok(failing.some((c) => c.startsWith('page load: slow network, firefox ')), networkFailures('/', red).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
 	} finally {
-		for (const s of [old, slower, same]) s.server.close();
+		for (const s of [old, slower]) s.server.close();
 	}
 });

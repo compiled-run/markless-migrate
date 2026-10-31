@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Serves one side of the ui.shadcn.com check on a CI runner, never a Vercel deployment:
 #   ci-serve.sh old          builds the old site (fetch-old.sh) and serves it on http://localhost:4000
-#   ci-serve.sh new <url>    serves a built port (a .tar.gz of the app's .output, node-server preset) on http://127.0.0.1:3000
+#   ci-serve.sh new <url>    serves a built port (a .tar.gz of .vercel/output, or of .output: node-server, or cloudflare-module in workerd) on http://127.0.0.1:3000
 # Both start in the background and return once the site answers.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,7 +10,7 @@ case "${1:-}" in
 	old)
 		# A build restored from an earlier job (check.yml caches deploy/shadcn-ui/old) is served as it is, so every shard and every
 		# run serves the same build and the old side's cached captures, journeys and slow-network runs stay valid between runs.
-		built="$(sha256sum "$DIR/fetch-old.sh" | cut -d' ' -f1)"
+		built="$(cat "$DIR/fetch-old.sh" "$DIR/old-fixtures.json" | sha256sum | cut -d' ' -f1)"
 		if [ "$(cat "$DIR/old/.ci-built" 2>/dev/null)" != "$built" ]; then
 			ORIGIN=http://localhost:4000 "$DIR/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
 			echo "$built" > "$DIR/old/.ci-built"
@@ -41,6 +41,10 @@ case "${1:-}" in
 		fi
 		if [ -n "$vercel" ]; then
 			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		elif [ -f "$dest/.output/server/wrangler.json" ]; then
+			# A cloudflare-module build runs in workerd, as Workers runs it, with no account and nothing sent to Cloudflare.
+			# Local workerd holds a compressed streamed response until it ends, where the edge flushes it: late @pending arms show late here.
+			(cd "$dest/.output/server" && CI=1 WRANGLER_SEND_METRICS=false nohup npx --yes wrangler@4.156.0 dev --config wrangler.json --ip 127.0.0.1 --port 3000 --local --show-interactive-dev-session=false > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		else
 			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		fi

@@ -147,9 +147,9 @@ were switched with `switch --force` and these reasons, so the front door could b
 
 | What | URL |
 | --- | --- |
-| Old app (its own Vite build, SPA fallback) | https://mm-shadcn-admin-old.vercel.app |
+| Old app (its own Vite build, SPA fallback) | https://mm-shadcn-admin-old.vercel.app (taken down 2026-10-30; serve it locally with `node deploy/shadcn-admin/serve-old.ts`) |
 | Markless app | https://mm-shadcn-admin-new.vercel.app |
-| Front door (`/`, `/users`, `/sign-in` to the new app, the rest to the old one) | https://mm-shadcn-admin.vercel.app |
+| Front door (`/`, `/users`, `/sign-in` to the new app, the rest to the old one) | https://mm-shadcn-admin.vercel.app (taken down 2026-10-30, with the old app it proxied to) |
 | Check report | https://mm-shadcn-admin.vercel.app/_migrate/report.html |
 
 `deploy/shadcn-admin/deploy.sh old|new|front` rebuilds each (after `deploy/shadcn-admin/fetch-old.sh`).

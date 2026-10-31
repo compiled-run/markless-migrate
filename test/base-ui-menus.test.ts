@@ -10,7 +10,7 @@ import { registryModule } from '../src/convert/parts.ts';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
 // Placement is not under test: a popup goes to the page's corner, a submenu (placed on a side) beside its trigger.
-const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
+const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { window.asked = o.placement; if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
 
@@ -62,6 +62,14 @@ const menu = (items: readonly string[], disabled: readonly string[] = []) => `<m
 const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
 const select = `<main style="height:3000px;padding:200px"><button type="button" id="before">Before</button><button type="button" id="base" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Select a fruit</span></button><input id="base-ui-x-hidden-input" tabindex="-1" aria-hidden="true" value="" style="position:fixed;width:1px;height:1px;clip-path:inset(50%)"><button type="button" id="after">After</button></main>
 	<div data-base-ui-portal hidden data-mm-layer="base"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="none" data-align="center" role="presentation" style="position:fixed" data-closed><div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox" style="position:relative">${FRUITS.map((f) => `<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`;
+
+test('a Base UI menu opens on the side and alignment its source asked for, not the side a flip at capture left on it', async () => {
+	const page = await open(menu(FRUITS).replace('<div data-side="bottom" data-align="start" role="presentation"', '<div data-side="top" data-align="end" data-mm-side="bottom" data-mm-align="start" role="presentation"'), ['base-ui/menu']);
+	await page.click('#dd');
+	await settled(page);
+	assert.equal(await page.evaluate(() => (window as unknown as { asked: string }).asked), 'bottom-start');
+	await page.close();
+});
 
 test('a Base UI menu trigger names its popup in aria-controls while the popup is mounted, as MenuTrigger does', async () => {
 	const page = await open(menu(FRUITS).replace('role="menu" aria-labelledby="dd"', 'role="menu" id="dd-popup" aria-labelledby="dd"'), ['base-ui/menu']);
@@ -576,6 +584,30 @@ test("a Base UI combobox's own alignOffset (convert reads it per instance) moves
 	const placed = await page.evaluate(() => (window as unknown as { placed: { anchor: string; middleware: unknown[] } }).placed);
 	assert.equal(placed.anchor, 'input-group-control');
 	assert.deepEqual(placed.middleware[0], { mainAxis: 6, crossAxis: -28, alignmentAxis: -28 });
+	await page.close();
+});
+
+// Floating UI as the positioner calls it, recording each flip's options in order.
+const FLIP_RECORDING = `export const computePosition = async (anchor, floating, o) => { (window.flips ??= []).push(o.middleware.filter((m) => m && m.name === 'flip').map((m) => m.options.fallbackAxisSideDirection)[0]); return { x: 0, y: 0, placement: o.placement, middlewareData: {} }; };
+export const autoUpdate = () => () => {};
+export const arrow = () => ({}), hide = () => ({}), limitShift = () => ({}), size = () => ({}), shift = () => ({}), offset = () => ({});
+export const flip = (options) => ({ name: 'flip', options });`;
+
+test("a Base UI menu's root popup flips only along its side (DROPDOWN_COLLISION_AVOIDANCE); its submenu may fall back to the other axis", async () => {
+	const page = await open(withSub(), ['base-ui/menu'], {}, FLIP_RECORDING);
+	await page.locator('#dd').click();
+	await settled(page);
+	await page.locator('#sub1').hover();
+	await page.waitForTimeout(300);
+	assert.deepEqual([...new Set(await page.evaluate(() => (window as unknown as { flips: string[] }).flips))], ['none', 'end']);
+	await page.close();
+});
+
+test('a Base UI select flips only along its side, as its positioner never falls back to the other axis', async () => {
+	const page = await open(select.replace('data-side="none" data-align="center" role="presentation"', 'data-side="bottom" data-align="start" role="presentation"').replace('<div data-side="none" tabindex="-1"', '<div data-side="bottom" tabindex="-1"'), ['base-ui/select'], {}, FLIP_RECORDING);
+	await page.locator('#base').click();
+	await settled(page);
+	assert.deepEqual([...new Set(await page.evaluate(() => (window as unknown as { flips: string[] }).flips))], ['none']);
 	await page.close();
 });
 

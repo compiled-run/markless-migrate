@@ -3,6 +3,7 @@
 # old:   old-app's own Remix build as one function (build-old.mjs), seeded SQLite in /tmp, as mm-remix-notes-old.
 # new:   examples/remix-notes-markless with the Vercel preset, seeded SQLite in /tmp, as mm-remix-notes-new.
 # front: the vercel.json `markless-migrate config --vercel` writes plus the report and demo index at /_migrate/, as mm-remix-notes.
+# Not hosted since 2026-10-30: the mm-remix-notes-old and mm-remix-notes projects were deleted. Run `old` then `front` to bring them back; checks serve the old app locally (local.sh old).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."

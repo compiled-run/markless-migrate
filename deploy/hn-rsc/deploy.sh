@@ -3,6 +3,7 @@
 # old:   nextjs/next-react-server-components at e5cdd85, source unchanged, built on Vercel, as mm-hn-rsc-old.
 # new:   examples/hn-rsc-markless with the Vercel preset, as mm-hn-rsc-new.
 # front: the vercel.json `markless-migrate config --vercel` writes plus the report at /_migrate/, as mm-hn-rsc.
+# Not hosted since 2026-10-30: the mm-hn-rsc-old project were deleted. Run `old` to bring them back; checks serve the old app locally (build the pinned clone and run next start).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/../.."

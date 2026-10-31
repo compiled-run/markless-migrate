@@ -3,7 +3,7 @@ import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
 import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail, type RouteLoad } from './load.ts';
 import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMetric } from './slow-network.ts';
-import { GATED, networkHeadline, networkVerdicts } from './slow-network-verdicts.ts';
+import { GATED, networkHeadline, routeVerdicts } from './slow-network-verdicts.ts';
 import { overBudget, referenceLine, wasteHeadline, wasteHtml } from './waste.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 import { partialLine } from './summary.ts';
@@ -82,12 +82,13 @@ function loadStrip(side: string, d: LoadDetail | undefined): string {
 function slowNetwork(network: RouteLoad['network']): string {
 	if (!network) return '';
 	if ('unavailable' in network) return `<h4>Slow network</h4><p>${esc(network.unavailable)}</p>`;
+	const routeWide = routeVerdicts(network);
 	const tables = network.old.cells.map((old, i) => {
 		const next = network.new.cells[i]!;
 		const title = `${old.browser}, ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
 		const skip = old.unavailable ?? next.unavailable;
 		if (skip) return `<h4>${esc(title)}: skipped</h4><p>${esc(skip)}</p>`;
-		const verdicts = new Map(networkVerdicts(old, next).map((v) => [v.metric, v]));
+		const verdicts = new Map((routeWide[i] ?? []).map((v) => [v.metric, v]));
 		const verdict = (m: RunMetric) => {
 			const v = verdicts.get(m);
 			if (!v) return GATED.includes(m) ? 'no verdict' : '';

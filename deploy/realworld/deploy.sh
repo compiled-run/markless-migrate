@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build and deploy one RealWorld demo project to Vercel production: deploy/realworld/deploy.sh api|old|new|front
+# Not hosted since 2026-10-30: the mm-realworld-api, mm-realworld-old and mm-realworld projects were deleted. Run `api`, `old`, then `front` to bring them back; checks serve the old app locally (serve-old.ts).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCOPE=jack-shelton

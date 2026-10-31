@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -47,7 +47,12 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
 		// What choosing each option did on the old page, which convert writes beside the ports.
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
-		const text = path === '/parts/registry.ts' ? registry : path === '/parts/site.ts' ? (await readFile(SITE, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
+		// The site's JSON (its RTL translations) as the module a bundler makes of it.
+		if (path.startsWith('/parts/') && path.endsWith('.json')) return route.fulfill({ contentType: 'text/javascript', body: `export default ${await readFile(join(dirname(SITE), path.replace(/^\/parts\//, '')), 'utf8')};` });
+		// The site's parts import their siblings in lib/site (the theme toggle, the typeset params) as well as the ports.
+		const name = path.replace(/^\/parts\//, '');
+		const sibling = path === '/parts/site.ts' ? SITE : await stat(join(PARTS, name)).then(() => undefined, () => join(dirname(SITE), name));
+		const text = path === '/parts/registry.ts' ? registry : sibling ? (await readFile(sibling, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, name), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
 	});
 	await page.goto('http://parts.test/');
@@ -341,6 +346,18 @@ test("a Base UI menu whose Positioner takes another anchor than its trigger (the
 	await page.close();
 });
 
+test("the typeset preview takes its params as CSS variables on <html>, beside the preview fonts' variables: its URL's once idle, then each set the designer posts", async () => {
+	const page = await open('<div class="inter_e8e54af-module__r7opxW__variable lora_89cfb44c-module__fAxLeq__variable"><div class="preview-params w-full"><div class="typeset w-full"><h1>Building a Streaming Chatbot</h1></div></div></div><div class="flex"></div>', ['site']);
+	assert.deepEqual(await page.evaluate(() => [...document.documentElement.classList]), ['inter_e8e54af-module__r7opxW__variable', 'lora_89cfb44c-module__fAxLeq__variable'], "the preview layout's font variables go on <html>, a page's other classes do not");
+	const vars = () => page.evaluate(() => ['--preview-size', '--preview-font', '--preview-font-heading', '--preview-measure'].map((v) => document.documentElement.style.getPropertyValue(v)));
+	assert.deepEqual(await vars(), ['15px', "var(--font-geist-sans), 'Geist Variable', sans-serif", "var(--font-geist-sans), 'Geist Variable', sans-serif", '37em']);
+	await page.evaluate(() => window.postMessage({ type: 'typeset-params', data: { body: 'inter', heading: 'inherit', mono: 'geist-mono', scale: '18', measure: '60', flow: '1.25em', leading: '1.75', item: 'docs' } }, location.origin));
+	await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--preview-size') === '18px');
+	assert.deepEqual(await vars(), ['18px', "var(--font-inter), 'Inter Variable', sans-serif", "var(--font-inter), 'Inter Variable', sans-serif", '28em']);
+	assert.equal(await page.evaluate(() => location.search), '?body=inter&scale=18&measure=60', 'the preview keeps them in its own URL, as its nuqs setParams did');
+	await page.close();
+});
+
 // Base UI Combobox as the converter renders it: the list a portal keyed by the input's id, every item's indicator and
 // every chip already there, hidden.
 const comboboxLayer = (key: string, multi: boolean) => `<div data-mm-layer="${key}" hidden data-base-ui-portal><div data-slot="positioner"><div data-slot="combobox-content" data-closed><div role="status" data-slot="combobox-empty" class="empty">No items found.</div><div role="listbox" id="${key}-list" data-slot="combobox-list"${multi ? ' aria-multiselectable="true"' : ''}>${['Next.js', 'SvelteKit', 'Nuxt.js']
@@ -616,6 +633,27 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+// sidebar-13's settings dialog: its state opens it on mount, so the page came with it open and Radix's marks on the rest.
+const shownDialog = `<main data-aria-hidden="true" aria-hidden="true"><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="true" aria-controls="dlg" data-state="open">Open Dialog</button><button type="button">Behind</button></main>
+	<div data-state="open" data-slot="dialog-overlay" style="position:fixed;inset:0"></div><div role="dialog" id="dlg" data-state="open" data-slot="dialog-content" tabindex="-1" style="pointer-events:auto;position:fixed;top:40px;left:40px"><a href="#x">Link</a><button type="button" data-slot="dialog-close">Close</button></div>`;
+
+for (const how of ['Escape', 'outside', 'close'] as const)
+	test(`a Radix dialog the page shows open at load is taken as open: focus moves into it, and ${how === 'close' ? 'its Close' : how === 'Escape' ? 'Escape' : 'a press outside'} closes it and shows the page again`, async () => {
+		const page = await open(shownDialog, ['radix/dialog']);
+		await page.evaluate(() => (document.body.style.pointerEvents = 'none'));
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-slot') === 'dialog-close', undefined, { timeout: 3000 }).catch(() => {});
+		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), 'dialog-close', 'Radix focuses its first tabbable control that is not a link');
+		if (how === 'Escape') await page.keyboard.press('Escape');
+		else if (how === 'outside') await page.mouse.click(600, 700);
+		else await page.getByText('Close').click();
+		await page.waitForTimeout(100);
+		assert.deepEqual(await page.evaluate(() => ({ state: document.getElementById('dlg')!.getAttribute('data-state'), trigger: document.querySelector('[data-slot="dialog-trigger"]')!.getAttribute('aria-expanded'), main: document.querySelector('main')!.getAttribute('aria-hidden'), body: document.body.style.pointerEvents })), { state: 'closed', trigger: 'false', main: null, body: '' });
+		await page.getByText('Open Dialog').click();
+		await page.waitForTimeout(100);
+		assert.deepEqual(await page.evaluate(() => ({ state: document.getElementById('dlg')!.getAttribute('data-state'), shown: document.getElementById('dlg')!.checkVisibility(), focus: document.activeElement?.getAttribute('data-slot') })), { state: 'open', shown: true, focus: 'dialog-close' }, 'its trigger opens it again');
+		await page.close();
+	});
+
 // Markless finds a bound element by its place in the page's element order, counted once on first use: moved before then, it is not found.
 test('a Radix dialog holding Markless handlers (the docs palette) opens where the page rendered it; one without them goes to the end of the page', async () => {
 	for (const bound of [true, false]) {
@@ -675,6 +713,75 @@ test('shadcn-ui site: the block viewer\'s Refresh Preview loads the block\'s fra
 	await page.close();
 });
 
+test('shadcn-ui site: a long code block\'s Expand opens it and reads Collapse, and its fade under the code opens it too', async () => {
+	const page = await open(
+		`<figure><pre id="_R_1_" data-state="closed" class="data-[state=closed]:max-h-64"><code>line</code></pre><button data-slot="button" type="button" aria-expanded="false" aria-controls="_R_1_">Expand</button><button type="button" tabindex="-1" aria-hidden="true">Expand</button></figure>`,
+		['site'],
+	);
+	const look = () => page.evaluate(() => { const pre = document.querySelector('pre')!; const [button, fade] = document.querySelectorAll('button'); return [pre.dataset.state, button!.getAttribute('aria-expanded'), button!.textContent, fade!.hidden].join(' '); });
+	const nodes = () => page.evaluate(() => document.querySelectorAll('*').length);
+	const before = await nodes();
+	await page.getByRole('button', { name: 'Expand' }).click();
+	assert.equal(await look(), 'open true Collapse true');
+	await page.getByRole('button', { name: 'Collapse' }).click();
+	assert.equal(await look(), 'closed false Expand false');
+	await page.locator('button[aria-hidden]').click();
+	assert.equal(await look(), 'open true Collapse true', 'the fade opens it (it is not there while open)');
+	assert.equal(await nodes(), before, 'no node is added or removed');
+	await page.close();
+});
+
+test('shadcn-ui site: an RTL preview\'s language selector writes the example\'s text, direction and data-lang in that language', async () => {
+	const badge = (t: string) => `<span data-slot="badge">${t}</span>`;
+	const page = await open(
+		`<div data-slot="component-preview"><div><button type="button" role="combobox" data-slot="select-trigger" dir="ltr" data-name="language-selector"><span data-slot="select-value">Arabic (العربية)</span></button></div>
+		<div data-slot="preview" dir="rtl" data-lang="ar"><div class="flex" dir="rtl">${badge('شارة')}${badge('ثانوي')}${badge('مدمر')}${badge('مخطط')}${badge('متحقق')}${badge('إشارة مرجعية')}<span>١٢</span><p>3 مدمر</p></div></div></div>
+		<script>window.choose = (label) => (document.querySelector('[data-slot="select-value"]').textContent = label);</script>`,
+		['site'],
+		'body',
+		'<meta charset="utf-8">',
+	);
+	await page.locator('[data-name="language-selector"]').click();
+	const look = () => page.evaluate(() => { const p = document.querySelector('[data-slot="preview"]')!; return [p.getAttribute('dir'), p.getAttribute('data-lang'), p.firstElementChild!.getAttribute('dir'), p.textContent].join(' | '); });
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('Hebrew (עברית)'));
+	await page.waitForFunction(() => document.querySelector('[data-slot="preview"]')!.getAttribute('data-lang') === 'he');
+	assert.equal(await look(), 'rtl | he | rtl | תגמשניהרסניקווי מתארמאומתסימנייה123 הרסני');
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('English'));
+	await page.waitForFunction(() => document.querySelector('[data-slot="preview"]')!.getAttribute('dir') === 'ltr');
+	assert.equal(await look(), 'ltr |  | ltr | BadgeSecondaryDestructiveOutlineVerifiedBookmark123 Destructive');
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('Arabic (العربية)'));
+	await page.waitForFunction(() => document.querySelector('[data-slot="preview"]')!.getAttribute('dir') === 'rtl');
+	assert.equal(await look(), 'rtl | ar | rtl | شارةثانويمدمرمخططمتحققإشارة مرجعية١٢3 مدمر');
+	await page.close();
+});
+
+test('shadcn-ui site: an RTL preview\'s language reaches the layers its controls open, by capture key, opened after the switch, and their placement', async () => {
+	// Base UI's dropdown-menu-rtl: its trigger keyed by the capture, its menu a layer, align end in Arabic and start otherwise.
+	const page = await open(
+		`<div data-slot="component-preview"><div><button type="button" role="combobox" data-slot="select-trigger" dir="ltr" data-name="language-selector"><span data-slot="select-value">Arabic (العربية)</span></button></div>
+		<div data-slot="preview" dir="rtl" data-lang="ar"><button data-slot="dropdown-menu-trigger" data-mm-key="p:1" dir="rtl">افتح القائمة</button></div></div>
+		<script>
+		history.replaceState(null, '', '/docs/components/base/dropdown-menu');
+		window.choose = (label) => (document.querySelector('[data-slot="select-value"]').textContent = label);
+		window.mount = () => document.body.insertAdjacentHTML('beforeend', '<div data-mm-layer="p:1"><div data-side="bottom" data-align="end" data-mm-align="end"><div role="menu" dir="rtl" data-lang="ar"><div role="menuitem">الحساب</div><div role="menuitem">١٢</div></div></div></div>');
+		</script>`,
+		['site'],
+		'body',
+		'<meta charset="utf-8">',
+	);
+	await page.locator('[data-name="language-selector"]').click();
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('English'));
+	await page.waitForFunction(() => document.querySelector('[data-mm-key="p:1"]')!.textContent === 'Open');
+	await page.evaluate(() => (window as unknown as { mount: () => void }).mount());
+	await page.waitForFunction(() => document.querySelector('[role="menu"]')!.getAttribute('dir') === 'ltr');
+	const look = () => page.evaluate(() => { const l = document.querySelector('[data-mm-layer]')!.firstElementChild!; return [l.getAttribute('data-align'), l.getAttribute('data-mm-align'), l.textContent].join(' | '); });
+	assert.equal(await look(), 'start | start | Account12');
+	await page.evaluate(() => (window as unknown as { choose: (l: string) => void }).choose('Arabic (العربية)'));
+	await page.waitForFunction(() => document.querySelector('[role="menu"]')!.getAttribute('dir') === 'rtl');
+	assert.equal(await look(), 'end | end | الحساب١٢');
+	await page.close();
+});
+
 test('a control listed as a download saves the file its use saved on the old page: name, type and content', async () => {
 	const page = await open(
 		`<div data-slot="code-block"><button aria-label="Download">D</button></div><template data-mm-download="button||D#0" data-mm-name="route.ts" data-mm-type="text/plain" data-mm-text="import { streamText } from &quot;ai&quot;"></template>`,
@@ -703,6 +810,48 @@ test('shadcn-ui site: a package manager list a page brings in place shows the ke
 			}),
 	);
 	assert.equal(seen, 'npm', 'chosen before the next frame');
+	await page.close();
+});
+
+test('shadcn-ui site: a long code block in a Collapsible reads Collapse on both its triggers while open, Expand once closed', async () => {
+	// The Collapsible's state is the converter's (DisclosurePlan): here a click handler flips the root's data-state.
+	const page = await open(
+		`<div data-state="closed" data-slot="collapsible"><div data-slot="collapsible-trigger" aria-expanded="false"><button data-slot="button" type="button">Expand</button></div><div data-slot="collapsible-content" data-state="closed"><figure><pre>code</pre></figure></div><button data-slot="collapsible-trigger" type="button" aria-expanded="false">Expand</button></div>
+		<script>document.addEventListener('click', (e) => { if (!e.target.closest('[data-slot="collapsible-trigger"]')) return; const r = document.querySelector('[data-slot="collapsible"]'); setTimeout(() => r.setAttribute('data-state', r.getAttribute('data-state') === 'open' ? 'closed' : 'open')); });</script>`,
+		['site'],
+		'body',
+	);
+	const labels = () => page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.textContent).join(','));
+	await page.getByRole('button', { name: 'Expand' }).first().click();
+	await page.waitForTimeout(50);
+	assert.equal(await labels(), 'Collapse,Collapse');
+	await page.getByRole('button', { name: 'Collapse' }).last().click();
+	await page.waitForTimeout(50);
+	assert.equal(await labels(), 'Expand,Expand');
+	await page.close();
+});
+
+test('shadcn-ui site: a copy control whose label followed the copy on the old page (a message\'s Copy) reads that label for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-copy" width="24" height="24"><rect></rect><path d="M4 16"></path></svg>';
+	const page = await open(`<button data-slot="tooltip-trigger" type="button" aria-label="Copy">${icon}</button><template data-mm-clipboard="button|tooltip-trigger|#0" data-mm-text="reply" data-mm-label="Copied"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve(), write: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button').evaluate((b) => [b.getAttribute('aria-label'), b.querySelector('svg')!.getAttribute('class')]);
+	assert.deepEqual(await look(), ['Copied', 'lucide lucide-check']);
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['Copy', 'lucide lucide-copy']);
+	await page.close();
+});
+
+test('shadcn-ui site: a copy button pressed with Enter keeps focus when the clipboard API refuses and the copy falls back to a selection', async () => {
+	const icon = '<svg width="24" height="24"><rect></rect><path d="M4 16"></path></svg>';
+	const page = await open(`<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button><template data-mm-clipboard="button|code-block-copy-button|#0" data-mm-text="code"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')), write: () => Promise.reject(new Error('denied')) } }));
+	await page.locator('button').focus();
+	await page.keyboard.press('Enter');
+	await page.waitForTimeout(100);
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), 'code-block-copy-button');
 	await page.close();
 });
 
@@ -1769,9 +1918,14 @@ test('recharts: a control switching the chart moves each mark from its old shape
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	// The pointer over the card fetches the animation before its control is used; the module is in once it and
 	// d3-shape's modules have all loaded (the same module record the part imported).
+	// From outside the card: a pointer already resting on the button (a layout's synthetic move at 0,0) sends no pointerover.
+	const view = page.viewportSize()!;
+	await page.mouse.move(view.width - 1, view.height - 1);
 	await page.hover('button');
+	await page
+		.waitForFunction(() => performance.getEntriesByType('resource').some((e) => e.name.endsWith('/parts/recharts-motion.ts')), undefined, { timeout: 10_000 })
+		.catch(async () => assert.fail(`hovering the button did not fetch recharts-motion.ts; pointer events seen: ${await page.evaluate(() => JSON.stringify((window as unknown as { pointerLog: string[] }).pointerLog))}`));
 	await page.evaluate('import("/parts/recharts-motion.ts")');
-	await page.waitForTimeout(50);
 	type Sample = { ts: number; d: string[] };
 	const run = await page.evaluate(
 		() =>
@@ -1882,8 +2036,6 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
-	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent?.startsWith('Mar') || [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].some((t) => t.textContent === 'Apr 11'), undefined, { timeout: 5000 }).catch(() => {});
-	await page.waitForTimeout(300);
 	const west = ['Mar 31', ...labels.slice(0, -1)];
 	const widths = await page.evaluate((texts) => {
 		const span = document.createElement('span');
@@ -1893,6 +2045,9 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	}, west);
 	const expected = preserveEnd(coords, widths, 0, 300, 8);
 	assert.notDeepEqual(expected.map((e) => e.i), shown, 'the west dates keep other ticks');
+	// The clock relabels the ticks a day earlier before the part lays them out again: wait for the layout, not the text.
+	const want = expected.map((e) => `${west[e.i]}@${e.at}`).join(',');
+	await page.waitForFunction((w) => [...document.querySelectorAll('.recharts-xAxis-tick-labels > g:not([display="none"]) text')].map((t) => `${t.textContent}@${t.getAttribute('x')}`).join(',') === w, want, { timeout: 5000 }).catch(() => {});
 	const seen = await read(page);
 	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
 	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
@@ -1919,5 +2074,273 @@ test('capture: a chart\'s axes are read off React\'s current tree, not the stale
 		return chartModel(document.querySelector('svg')).axes.map((a) => a && a.c.length);
 	})()`);
 	assert.deepEqual(axes, [8]);
+	await page.close();
+});
+
+test('recharts: at a width the capture did not see, the drawing is laid out as recharts lays it out: band, whole-pixel bar size, ticks, grid and tooltip areas', async () => {
+	// Captured at 400 x 200, plot box [10, 0, 380, 170]: four bands of 95 px; recharts' bar is 10% in from each side and
+	// its size truncated, 76 px.
+	const cats = ['Q1', 'Q2', 'Q3', 'Q4'];
+	const band = (w: number) => (w - 20) / 4;
+	const bar = (w: number, i: number) => ({ x: 10 + band(w) * i + band(w) * 0.1, width: Math.trunc(band(w) - 2 * band(w) * 0.1) });
+	const heights = [100, 60, 140, 30];
+	const rect = (x: number, y: number, w: number, h: number) => `M ${x},${y} h ${w} v ${h} h ${-w} Z`;
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 380, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: band(400) / 2, pad: [0, 0], c: cats.map((_, i) => 10 + band(400) * (i + 0.5)), l: cats };
+	const segments = cats.map((_, i) => [10 + band(400) * i, 10 + band(400) * (i + 1), i]);
+	const facts = JSON.stringify({ w: 400, h: 200, v: [10, 0, 380, 170], m: 'x', g: segments, sp: [0, 170], p: cats.map(() => [null, null]), a: [axis], b: { gap: 4, cat: '10%', groups: [{}] }, l: 'horizontal' });
+	const bars = heights.map((h, i) => { const b = bar(400, i); return `<g class="recharts-layer recharts-bar-rectangle"><path class="recharts-rectangle" x="${b.x}" y="${170 - h}" width="${b.width}" height="${h}" radius="0" d="${rect(b.x, 170 - h, b.width, h)}" data-mm-geo='{"k":"bar"}'></path></g>`; }).join('');
+	const grid = [0, 85, 170].map((y) => `<line x="10" y="0" width="380" height="170" x1="10" y1="${y}" x2="390" y2="${y}"></line>`).join('');
+	const ticks = cats.map((c, i) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" width="380" height="30" x="${axis.c[i]}" y="178" style="font-size:12px"><tspan x="${axis.c[i]}" dy="0.71em">${c}</tspan></text></g>`).join('');
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts}'><defs><clipPath id="c"><rect x="10" y="0" width="380" height="170"></rect></clipPath></defs><g class="recharts-cartesian-grid"><g class="recharts-cartesian-grid-horizontal">${grid}</g></g><g class="recharts-layer recharts-bar"><g class="recharts-layer recharts-bar-rectangles">${bars}</g></g><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${ticks}</g></g></svg>`;
+	const page = await open(`<div style="width:600px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '600', undefined, { timeout: 5000 }).catch(() => {});
+	const seen = await page.evaluate(() => {
+		const svg = document.querySelector('svg.recharts-surface')!;
+		const attrs = (el: Element, names: string[]) => names.map((n) => el.getAttribute(n));
+		return {
+			svg: attrs(svg, ['width', 'height', 'viewBox']),
+			clip: attrs(svg.querySelector('clipPath rect')!, ['x', 'y', 'width', 'height']),
+			bars: [...svg.querySelectorAll('path.recharts-rectangle')].map((p) => attrs(p, ['x', 'y', 'width', 'height', 'd'])),
+			grid: [...svg.querySelectorAll('.recharts-cartesian-grid-horizontal line')].map((l) => attrs(l, ['width', 'x1', 'x2', 'y1'])),
+			ticks: [...svg.querySelectorAll('.recharts-xAxis-tick-labels text')].map((t) => `${t.textContent}@${t.getAttribute('x')}/${t.getAttribute('width')}`),
+		};
+	});
+	assert.deepEqual(seen.svg, ['600', '200', '0 0 600 200']);
+	assert.deepEqual(seen.clip, ['10', '0', '580', '170']);
+	assert.deepEqual(seen.bars, heights.map((h, i) => { const b = bar(600, i); return [String(Math.round(b.x * 1e4) / 1e4), String(170 - h), String(b.width), String(h), rect(Math.round(b.x * 1e4) / 1e4, 170 - h, b.width, h)]; }), 'each band 145 px, its bar 116 px');
+	assert.deepEqual(seen.grid, [0, 85, 170].map((y) => ['580', '10', '590', String(y)]));
+	assert.deepEqual(seen.ticks, cats.map((c, i) => `${c}@${10 + band(600) * (i + 0.5)}/580`));
+	// The pointer over the third band's middle at the new width picks its point.
+	const picked = page.evaluate(() => new Promise<number>((resolve) => document.querySelector('.recharts-wrapper')!.addEventListener('mmchart', (e) => resolve((e as CustomEvent<number>).detail), { once: true })));
+	const box = (await page.locator('svg.recharts-surface').boundingBox())!;
+	await page.mouse.move(box.x + 10 + band(600) * 2.5, box.y + 100);
+	assert.equal(await picked, 2);
+	await page.close();
+});
+
+test('recharts: a switch moves the marks from the drawing that was on screen, not from the same state\'s drawing for another width', async () => {
+	const { line, curveMonotoneX } = await import('d3-shape');
+	type P = [number, number];
+	const draw = (ps: readonly P[]) => line().curve(curveMonotoneX)(ps as P[])!;
+	const shownA: P[] = [[10, 80], [60, 20], [110, 60]];
+	const otherWidthA: P[] = [[10, 10], [30, 10], [50, 10]];
+	const toB: P[] = [[10, 30], [60, 70], [110, 20]];
+	const geo = JSON.stringify({ k: 'line', t: 'monotone', l: 'horizontal', a: [0, 1500, 'ease'] });
+	const facts = JSON.stringify({ w: 200, h: 100, v: [5, 5, 190, 90], m: 'x', g: [], p: [], z: 0 });
+	const svg = (ps: readonly P[], style: string, widths: string, cls = '') => `<svg class="recharts-surface ${cls}" width="200" height="100" style="${style}" data-mm-b="${widths}" data-mm-facts='${facts}'><path class="recharts-curve recharts-line-curve" d="${draw(ps)}" data-mm-geo='${geo}'></path></svg>`;
+	// The first drawing is the same state at a width the container does not have (a container query hides it).
+	const page = await open(`<style>.narrow{display:none!important}</style><div data-mm-morph><button>Mobile</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1">${svg(otherWidthA, 'display:block', '2 3', 'narrow')}${svg(shownA, 'display:block', '1 2')}${svg(toB, 'display: none;', '1 2 3')}<div class="recharts-tooltip-wrapper" style="visibility: hidden"></div></div></div>`, ['recharts']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.hover('button');
+	await page.evaluate('import("/parts/recharts-motion.ts")');
+	await page.waitForTimeout(50);
+	const first = await page.evaluate(
+		() =>
+			new Promise<string>((resolve) => {
+				const [a, b, c] = [...document.querySelectorAll('svg.recharts-surface')] as SVGSVGElement[];
+				a!.setAttribute('style', 'display: none;');
+				b!.setAttribute('style', 'display: none;');
+				c!.setAttribute('style', 'display:block');
+				queueMicrotask(() => resolve(c!.querySelector('path')!.getAttribute('d')!));
+			}),
+	);
+	assert.equal(first, draw(shownA), 'the marks start where the drawing on screen had them');
+	await page.close();
+});
+
+test('recharts: at another width, a LabelList label sits where getCartesianPosition puts it against its new bar, and the grid keeps the lines getTicks keeps', async () => {
+	const band = (w: number) => (w - 20) / 2;
+	const bar = (w: number, i: number) => ({ x: 10 + band(w) * i + band(w) * 0.1, width: Math.trunc(band(w) * 0.8) });
+	const tops = [50, 110];
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 380, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: band(400) / 2, pad: [0, 0], c: [0, 1].map((i) => 10 + band(400) * (i + 0.5)), l: ['A', 'B'] };
+	// Five grid lines at the drawing's capture, the tallest; a 70 px plot keeps three of them for a 16 px body font.
+	const gy = [0, 0.25, 0.5, 0.75, 1];
+	const facts = (h: number) => JSON.stringify({ w: 400, h, v: [10, 0, 380, h - 30], m: 'x', g: [], p: [], a: [{ ...axis, box: [10, h - 30, 380, 30], vb: [0, 0, 400, h] }], b: { gap: 4, cat: '10%', groups: [{}] }, l: 'horizontal', gy });
+	const bars = tops.map((y, i) => { const b = bar(400, i); return `<g class="recharts-layer recharts-bar-rectangle"><path class="recharts-rectangle" x="${b.x}" y="${y}" width="${b.width}" height="${170 - y}" radius="0" d="M ${b.x},${y} h ${b.width} v ${170 - y} h ${-b.width} Z" data-mm-geo='{"k":"bar"}'></path></g>`; }).join('');
+	const labels = tops.map((y, i) => { const b = bar(400, i); return `<text class="recharts-text" width="${b.width}" height="${y}" offset="12" x="${b.x + b.width / 2}" y="${y - 12}"><tspan x="${b.x + b.width / 2}" dy="0em">${i}</tspan></text>`; }).join('');
+	const grid = gy.map((f) => `<line x="10" y="0" width="380" height="170" x1="10" y1="${170 - f * 170}" x2="390" y2="${170 - f * 170}"></line>`).join('');
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts(200)}'><g class="recharts-cartesian-grid"><g class="recharts-cartesian-grid-horizontal">${grid}</g></g><g class="recharts-layer recharts-bar" id="recharts-bar-x"><g class="recharts-layer recharts-bar-rectangles">${bars}</g></g><g class="recharts-layer recharts-label-list" data-mm-geo='{"k":"labels","s":"recharts-bar-x","p":"top","o":12}'>${labels}</g></svg>`;
+	const page = await open(`<div id="box" style="width:600px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '600', undefined, { timeout: 5000 }).catch(() => {});
+	const read = () => page.evaluate(() => ({
+		labels: [...document.querySelectorAll('.recharts-label-list text')].map((t) => [t.getAttribute('x'), t.getAttribute('y'), t.getAttribute('width'), t.getAttribute('height'), t.querySelector('tspan')!.getAttribute('x')]),
+		grid: [...document.querySelectorAll('.recharts-cartesian-grid-horizontal line:not([display="none"])')].map((l) => l.getAttribute('y1')),
+	}));
+	const wide = await read();
+	assert.deepEqual(wide.labels, tops.map((y, i) => { const b = bar(600, i); const x = String(b.x + b.width / 2); return [x, String(y - 12), String(b.width), String(y), x]; }), 'top: the bar\'s middle, offset above it; clamped to its width and the room above');
+	assert.deepEqual(wide.grid, gy.map((f) => String(170 - f * 170)), 'a tall plot keeps every line');
+	// recharts' getTicks over the grid's ticks, each as tall as a line of the body's font, minTickGap 5 apart.
+	await page.evaluate(() => (document.getElementById('box')!.style.height = '100px'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('height') === '100', undefined, { timeout: 5000 }).catch(() => {});
+	const lineHeight = await page.evaluate(() => { const s = document.createElement('span'); s.textContent = '0'; s.style.position = 'absolute'; document.body.appendChild(s); return s.getBoundingClientRect().height; });
+	// recharts' getTicksEnd for an axis whose ticks run up the plot (sign -1, from the bottom of the 100 px chart to its top).
+	const coords = gy.map((f) => 70 - f * 70);
+	const kept: number[] = [];
+	let end = 0;
+	for (let i = coords.length - 1; i >= 0; i--) {
+		const c = coords[i]!;
+		const over = -(c - lineHeight / 2 - end);
+		const at = i === coords.length - 1 && over > 0 ? c + over : c;
+		if (-at < -100 || -at > -end) continue;
+		if (-(at + lineHeight / 2 - 100) >= 0 && -(at - lineHeight / 2 - end) <= 0) {
+			kept.unshift(c);
+			end = at + lineHeight / 2 + 5;
+		}
+	}
+	const expected = [...kept, ...(kept.includes(0) ? [] : [0]), ...(kept.includes(70) ? [] : [70])];
+	assert.ok(expected.length < 5, `a short plot keeps fewer lines (${expected})`);
+	assert.deepEqual((await read()).grid, expected.map(String));
+	await page.close();
+});
+
+test('recharts: at another width, a step line\'s corners stay halfway between its points, as curveStep draws them', async () => {
+	const { line, curveStep } = await import('d3-shape');
+	type P = [number, number];
+	const xs = (w: number) => [10, 10 + (w - 20) / 2, w - 10];
+	const ys = [150, 60, 110];
+	const draw = (w: number) => line().curve(curveStep).digits(3)(xs(w).map((x, i) => [x, ys[i]!] as P))!;
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 380, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, pad: [0, 0], c: xs(400), l: ['a', 'b', 'c'] };
+	const facts = JSON.stringify({ w: 400, h: 200, v: [10, 0, 380, 170], m: 'x', g: [], p: [], a: [axis], l: 'horizontal' });
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts}'><path class="recharts-curve recharts-line-curve" d="${draw(400)}" data-mm-geo='{"k":"line","t":"step","l":"horizontal"}'></path><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"></g></svg>`;
+	const page = await open(`<div style="width:600px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '600', undefined, { timeout: 5000 }).catch(() => {});
+	assert.equal(await page.locator('path.recharts-line-curve').getAttribute('d'), draw(600));
+	await page.close();
+});
+
+test('recharts: behind UTC, ticks a formatter wrote with toLocaleDateString read as the visitor\'s page writes them, where no clock part does', async () => {
+	const values = ['2024-07-15', '2024-07-16', '2024-07-17', '2024-07-18'];
+	const utc = ['Mon', 'Tue', 'Wed', 'Thu'];
+	const coords = [50, 150, 250, 350];
+	const axis = { t: 'xAxis', o: 'bottom', box: [0, 170, 400, 30], vb: [0, 0, 400, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 50, pad: [0, 0], c: coords, l: utc, v: values, f: { weekday: 'short' }, lo: 'en-US' };
+	const facts = JSON.stringify({ w: 400, h: 200, v: [0, 0, 400, 170], m: 'x', g: [], p: [], a: [axis], l: 'horizontal' });
+	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="178" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${utc[i]}</tspan></text></g>`;
+	const svg = `<svg class="recharts-surface" width="400" height="200" viewBox="0 0 400 200" style="width:100%;height:100%" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${coords.map((_, i) => tick(i)).join('')}</g></g></svg>`;
+	const body = `<div style="width:400px;height:200px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	const read = (page: Page) => page.evaluate(() => [...document.querySelectorAll('.recharts-xAxis-tick-labels text')].map((t) => t.textContent));
+	const utcPage = await open(body, ['recharts', 'clock'], undefined, '', 'Asia/Tokyo');
+	await utcPage.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await utcPage.waitForTimeout(300);
+	assert.deepEqual(await read(utcPage), utc, 'east of UTC the capture stands');
+	await utcPage.close();
+	const page = await open(body, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent === 'Sun', undefined, { timeout: 5000 }).catch(() => {});
+	assert.deepEqual(await read(page), ['Sun', 'Mon', 'Tue', 'Wed']);
+	await page.close();
+	// In a chart whose tooltip dates the clock part writes (a region of fixed instants), weekdays alone are still the page's to write.
+	const region = await open(`<div data-slot="chart" data-mm-clock='[{"*":2024}]'>${body}</div>`, ['recharts', 'clock'], undefined, '', 'America/Los_Angeles');
+	await region.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await region.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-clock'));
+	await region.waitForFunction(() => document.querySelector('.recharts-xAxis-tick-labels text')?.textContent === 'Sun', undefined, { timeout: 5000 }).catch(() => {});
+	assert.deepEqual(await read(region), ['Sun', 'Mon', 'Tue', 'Wed']);
+	await region.close();
+});
+
+test('recharts: an RTL preview\'s language, as the site part sets it on the preview, picks the chart\'s drawing for that language', async () => {
+	const svg = (style: string) => `<svg class="recharts-surface" width="200" height="100" style="${style}" data-mm-facts='{"w":200,"h":100,"v":[0,0,200,100],"m":"x","g":[],"p":[]}'></svg>`;
+	const page = await open(`<div data-slot="component-preview"><div data-slot="preview" dir="rtl" data-lang="ar"><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1" data-mm-lang="">${svg('display:block')}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div></div>`, ['recharts']);
+	await page.evaluate(() => {
+		(window as unknown as { langs: string[] }).langs = [];
+		document.querySelector('.recharts-wrapper')!.addEventListener('mmlang', (e) => (window as unknown as { langs: string[] }).langs.push((e as CustomEvent<string>).detail));
+		(window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart');
+	});
+	await page.evaluate(() => {
+		const preview = document.querySelector('[data-slot="preview"]')!;
+		preview.setAttribute('dir', 'ltr');
+		preview.removeAttribute('data-lang');
+	});
+	await page.waitForTimeout(50);
+	await page.evaluate(() => {
+		const preview = document.querySelector('[data-slot="preview"]')!;
+		preview.setAttribute('dir', 'rtl');
+		preview.setAttribute('data-lang', 'he');
+	});
+	await page.waitForTimeout(50);
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { langs: string[] }).langs), ['en', 'he'], 'English where the preview reads left to right, else its data-lang');
+	await page.close();
+});
+
+test('recharts: on a page narrower than where the old card started otherwise, the card makes its choice through its select, and the chart does not move for it', async () => {
+	const svg = (style: string, b: string) => `<svg class="recharts-surface" width="200" height="100" style="${style}" data-mm-b="${b}" data-mm-facts='{"w":200,"h":100,"v":[0,0,200,100],"m":"x","g":[],"p":[],"z":0}'><path class="recharts-curve recharts-line-curve" d="M0,50L200,50" data-mm-geo='{"k":"line","t":"linear","l":"horizontal","a":[0,1500,"ease"]}'></path></svg>`;
+	// What the card's handler does on the choice: Markless shows the chosen drawing.
+	const handler = `<script>window.seen = []; document.addEventListener('mmchoose', (e) => { window.seen.push(e.detail); const [a, b] = document.querySelectorAll('svg.recharts-surface'); a.setAttribute('style', 'display: none;'); b.setAttribute('style', 'display:block'); }, true);</script>`;
+	const body = (w: number) => `${handler}<div data-mm-morph><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper" style="position:relative;width:200px;height:100px" data-mm-chart="1" data-mm-start='{"w":${w},"l":"Last 7 days"}'>${svg('display:block', '0')}${svg('display: none;', '0')}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
+	for (const [w, expected] of [[1100, ['Last 7 days']], [768, []]] as const) {
+		const page = await open(body(w), ['recharts']);
+		await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+		await page.waitForTimeout(150);
+		const seen = await page.evaluate(() => ({ seen: (window as unknown as { seen: string[] }).seen, moved: document.querySelector('.recharts-wrapper')!.hasAttribute('data-mm-moved') }));
+		assert.deepEqual(seen.seen, expected, `the page is 1000 px wide; the card starts otherwise below ${w} px`);
+		assert.equal(seen.moved, false, 'its entry animation plays for the chosen drawing');
+		await page.close();
+	}
+});
+
+test('recharts: a pie at another size is drawn as recharts draws it there: its centre, its percent radius and its fixed inner radius, its centre text', async () => {
+	// Captured at 300 x 300, plot [5, 5, 290, 290]: outer radius 80% of 145, inner 60; an active sector 10 px past it.
+	const geo = (ir: number, or: number, a0: number, a1: number) => JSON.stringify({ k: 'sector', r: [ir, or], a: [a0, a1], p: [60, '80%', '50%', '50%'] });
+	const facts = JSON.stringify({ w: 300, h: 300, v: [5, 5, 290, 290], m: 'i', g: [[0, 0, 0], [1, 1, 1]], p: [[null, null], [null, null]], pl: [0, '80%', '50%', '50%'] });
+	const svg = `<svg class="recharts-surface" width="300" height="300" viewBox="0 0 300 300" style="width:100%;height:100%" data-mm-facts='${facts}'><defs><clipPath id="c"><rect x="5" y="5" width="290" height="290"></rect></clipPath></defs><g class="recharts-layer recharts-pie"><g class="recharts-layer recharts-pie-sector"><path class="recharts-sector" cx="150" cy="150" d="M0,0" data-mm-geo='${geo(60, 126, 0, 90)}'></path></g><g class="recharts-layer recharts-pie-sector"><path class="recharts-sector" cx="150" cy="150" d="M0,0" data-mm-geo='${geo(60, 116, 90, 360)}'></path></g></g><text x="150" y="150"><tspan x="150" y="150">42</tspan><tspan x="150" y="174">Visitors</tspan></text></svg>`;
+	const page = await open(`<div style="width:280px;height:280px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '280', undefined, { timeout: 5000 }).catch(() => {});
+	const seen = await page.evaluate(() => ({
+		sectors: [...document.querySelectorAll('path.recharts-sector')].map((p) => [p.getAttribute('cx'), p.getAttribute('cy'), p.getAttribute('d')]),
+		text: [...document.querySelectorAll('text, tspan')].map((t) => `${t.getAttribute('x')},${t.getAttribute('y')}`),
+	}));
+	// At 280 x 280 the plot is 270 square: centre 140, outer radius 0.8 * 135 = 108; the active sector 10 px past it.
+	const nums = (d: string) => (d.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+	const [active, rest] = seen.sectors;
+	assert.deepEqual(active!.slice(0, 2), ['140', '140']);
+	assert.deepEqual(nums(active![2]!).slice(0, 4), [140 + 118, 140, 118, 118], 'the active sector starts at angle 0 on its 118 px arc');
+	assert.ok(nums(rest![2]!).includes(108) && nums(rest![2]!).includes(60), 'the rest at 108 px, the inner radius kept at 60');
+	assert.deepEqual(seen.text, ['140,140', '140,140', '140,164'], 'the centre text moves with the centre');
+	await page.close();
+});
+
+test('recharts: a radar at another size scales what is inside its outer radius and keeps its axis labels as far past it', async () => {
+	// Captured at 300 x 300, plot [5, 5, 290, 290]: centre 150, outer radius 80% of 145 = 116.
+	const facts = JSON.stringify({ w: 300, h: 300, v: [5, 5, 290, 290], m: 'a', c: [150, 150], g: [[0, 360, 0]], sp: [0, 116], p: [[null, null]], q: [90], pl: [0, '80%', '50%', '50%'] });
+	const svg = `<svg class="recharts-surface" width="300" height="300" viewBox="0 0 300 300" style="width:100%;height:100%" data-mm-facts='${facts}'><g class="recharts-polar-grid"><circle class="recharts-polar-grid-concentric-circle" cx="150" cy="150" r="116"></circle></g><g class="recharts-layer recharts-radar"><g class="recharts-layer recharts-radar-polygon"><path class="recharts-polygon" d="M150,92L208,150L150,150Z"></path></g></g><g class="recharts-layer recharts-polar-angle-axis"><g class="recharts-layer recharts-polar-angle-axis-ticks"><g class="recharts-layer recharts-polar-angle-axis-tick"><text class="recharts-text recharts-polar-angle-axis-tick-value" x="150" y="26"><tspan x="150" dy="0em">Jan</tspan></text></g></g></g></svg>`;
+	const page = await open(`<div style="width:280px;height:280px"><div class="recharts-wrapper" style="position:relative;width:100%;height:100%" data-mm-chart="1">${svg}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`, ['recharts', 'clock']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForFunction(() => document.querySelector('svg.recharts-surface')!.getAttribute('width') === '280', undefined, { timeout: 5000 }).catch(() => {});
+	const seen = await page.evaluate(() => ({
+		grid: ['cx', 'cy', 'r'].map((a) => document.querySelector('circle')!.getAttribute(a)),
+		polygon: document.querySelector('path.recharts-polygon')!.getAttribute('d'),
+		label: [document.querySelector('text')!.getAttribute('x'), document.querySelector('text')!.getAttribute('y'), document.querySelector('tspan')!.getAttribute('x')],
+		facts: JSON.parse(document.querySelector('svg')!.getAttribute('data-mm-facts')!) as { c: number[]; sp: number[] },
+	}));
+	// At 280: centre 140, outer radius 108; the polygon's 58 px is half the radius, 54 px; the label 8 px past it.
+	assert.deepEqual(seen.grid, ['140', '140', '108']);
+	assert.equal(seen.polygon, 'M140,86L194,140L140,140Z');
+	assert.deepEqual(seen.label, ['140', '24', '140']);
+	assert.deepEqual(seen.facts.c, [140, 140]);
+	assert.deepEqual(seen.facts.sp, [0, 108]);
+	await page.close();
+});
+
+test('recharts: a card that started otherwise on the old page chooses once, on load, even where its chart is not scrolled to', async () => {
+	const page = await open(`<script>window.chosen = []; document.addEventListener('mmchoose', (e) => window.chosen.push(e.detail), true);</script><div style="height:3000px"></div><div data-mm-morph><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper" data-mm-chart="1" data-mm-start='{"w":5000,"l":"Last 7 days"}'><svg class="recharts-surface"></svg></div></div>`, ['recharts']);
+	await page.waitForFunction(() => (window as unknown as { chosen: string[] }).chosen.length > 0, undefined, { timeout: 5000 }).catch(() => {});
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { chosen: string[] }).chosen), ['Last 7 days'], 'chosen when the page is idle, the chart off screen');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForTimeout(100);
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { chosen: string[] }).chosen), ['Last 7 days'], 'not again when it scrolls into view');
+	await page.close();
+});
+
+test('recharts: a card\'s select choice presses the button of the same text, which holds the card\'s one range', async () => {
+	const page = await open(`<div data-mm-morph><button data-mm-variant="1" aria-checked="true" onclick="window.pressed.push('A')">Last 3 months</button><button data-mm-variant="2" aria-checked="false" onclick="window.pressed.push('B')">Last 30 days</button><button data-slot="select-trigger">Last 3 months</button><div class="recharts-wrapper" data-mm-chart="1"><svg class="recharts-surface"></svg></div></div><script>window.pressed = [];</script>`, ['recharts']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => {
+		const trigger = document.querySelector('[data-slot="select-trigger"]')!;
+		for (const text of ['Last 30 days', 'Last 3 months', 'Last 7 days']) trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: text }));
+	});
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { pressed: string[] }).pressed), ['B'], 'the button already pressed, or none of that text, is left');
 	await page.close();
 });

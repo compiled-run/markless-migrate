@@ -21,6 +21,12 @@ interface Facts {
 	readonly k?: readonly (readonly [number, number, number])[];
 	/** Frames from a control's use to the one recharts' update animation begins at, on the old page. */
 	readonly z?: number;
+	/** Per state, where recharts anchors the tooltip along the category axis (a drawing laid out again). */
+	readonly pa?: readonly (number | null)[];
+	/** The drawing's axes, every tick they could show, and its layout, where it is cartesian (recharts-layout). */
+	readonly a?: readonly unknown[];
+	readonly l?: string;
+	readonly pl?: readonly unknown[];
 }
 
 const WRAPPER = '[data-mm-chart]';
@@ -91,16 +97,19 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 		const scale = m.a || 1;
 		let x: number;
 		let y: number;
+		const [vx, vy, vw, vh] = f.v;
+		const fixed = f.pa?.[shown] ?? null;
 		if ('key' in place) {
 			const entry = f.k![place.key]!;
 			x = entry[1];
 			y = entry[2];
+			if (fixed !== null && f.m === 'x') x = follow(fixed, tip.offsetWidth / scale, vx, vw);
+			if (fixed !== null && f.m === 'y') y = follow(fixed, tip.offsetHeight / scale, vy, vh);
 		} else {
 			const [fx, fy] = f.p[shown] ?? [null, null];
-			const [vx, vy, vw, vh] = f.v;
 			const [ax, ay] = anchor(f, shown, place.x, place.y);
-			x = fx ?? follow(ax, tip.offsetWidth / scale, vx, vw);
-			y = fy ?? follow(ay, tip.offsetHeight / scale, vy, vh);
+			x = fx ?? follow(fixed !== null && f.m === 'x' ? fixed : ax, tip.offsetWidth / scale, vx, vw);
+			y = fy ?? follow(fixed !== null && f.m === 'y' ? fixed : ay, tip.offsetHeight / scale, vy, vh);
 		}
 		// The old page's translate is in its SVG's pixels; this SVG is scaled to its container.
 		const at = new DOMPoint(x, y).matrixTransform(m);
@@ -130,12 +139,14 @@ function pick(f: Facts, svg: Element, target: Element, x: number, y: number, cli
 	return inside(f.g, ((Math.atan2(cy - y, x - cx) * 180) / Math.PI + 360) % 360);
 }
 
-function at(wrapper: HTMLElement, event: PointerEvent): void {
+function at(wrapper: HTMLElement, event: MouseEvent): void {
 	const surface = surfaceOf(wrapper);
 	const f = surface && factsOf(surface);
 	const m = surface?.getScreenCTM();
 	if (!surface || !f || !m || !f.p.length) return;
-	const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
+	// recharts' getRelativeCoordinate rounds the pointer to whole pixels.
+	const inSvg = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
+	const p = { x: Math.round(inSvg.x), y: Math.round(inSvg.y) };
 	const inBox = p.x >= 0 && p.y >= 0 && p.x <= f.w && p.y <= f.h;
 	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y, event) : -1, { x: p.x, y: p.y });
 }
@@ -143,7 +154,9 @@ function at(wrapper: HTMLElement, event: PointerEvent): void {
 function wire(wrapper: HTMLElement): void {
 	if (wired.has(wrapper)) return;
 	wired.add(wrapper);
-	wrapper.addEventListener('pointermove', (e) => at(wrapper, e));
+	// recharts follows mousemove, whose coordinates the browser gives in whole pixels; a touch or a pen, pointermove.
+	wrapper.addEventListener('mousemove', (e) => at(wrapper, e));
+	wrapper.addEventListener('pointermove', (e) => e.pointerType !== 'mouse' && at(wrapper, e));
 	wrapper.addEventListener('pointerleave', () => show(wrapper, surfaceOf(wrapper), -1));
 }
 
@@ -161,21 +174,147 @@ export function mount(el: Element): void {
 	if (!(el instanceof HTMLElement) || !el.matches(WRAPPER)) return;
 	wire(el);
 	watch(el);
-	relabel(el);
+	track(el);
+	const card = el.closest('[data-mm-morph]');
+	if (card?.querySelector('[data-mm-variant]') && card.querySelector('[data-slot="select-trigger"]')) share(card);
+	followLanguage(el);
+	begin(el);
 }
 
-// Behind UTC, the dates recharts formats from UTC midnights read a day earlier, so their axis keeps other ticks.
-function relabel(wrapper: HTMLElement): void {
-	const region = wrapper.closest('[data-mm-clock]');
-	let rules: { '*'?: number }[];
+// An RTL preview's language (its data-lang, which the site's RTL part sets; English where it is left to right) picks
+// the chart's drawing for that language, as the example draws it again (convert's mmlang).
+const followed = new WeakSet<Element>();
+function followLanguage(wrapper: HTMLElement): void {
+	const preview = wrapper.hasAttribute('data-mm-lang') ? wrapper.closest('[data-slot="preview"]') : null;
+	if (!preview || followed.has(wrapper)) return;
+	followed.add(wrapper);
+	const language = () => preview.getAttribute('data-lang') ?? (preview.getAttribute('dir') === 'ltr' ? 'en' : undefined);
+	let shownLanguage = language();
+	const send = () => {
+		const now = language();
+		if (!now || now === shownLanguage) return;
+		shownLanguage = now;
+		wrapper.dispatchEvent(new CustomEvent('mmlang', { detail: now }));
+	};
+	new MutationObserver(send).observe(preview, { attributes: true, attributeFilter: ['data-lang', 'dir'] });
+}
+
+// The choice the old page's card made for itself on a page narrower than `w` (dashboard-01's useIsMobile: the last 7
+// days): made through the card's select, as a visitor would, before the chart has moved; recharts drew it from the start.
+const starting = new WeakSet<Element>();
+const begun = new WeakSet<Element>();
+function begin(wrapper: HTMLElement): void {
+	if (begun.has(wrapper)) return;
+	begun.add(wrapper);
+	let start: { w: number; l: string };
 	try {
-		rules = JSON.parse(region?.getAttribute('data-mm-clock') ?? '[]') as { '*'?: number }[];
+		start = JSON.parse(wrapper.getAttribute('data-mm-start') ?? '') as { w: number; l: string };
 	} catch {
 		return;
 	}
-	const year = rules.find((r) => r['*'] !== undefined)?.['*'];
-	if (year === undefined || ![0, 6].some((month) => new Date(Date.UTC(year, month, 1)).getTimezoneOffset() > 0)) return;
-	void Promise.all([import('./recharts-layout.ts'), import('./clock.ts')]).then(([layout, clock]) => layout.relabel(wrapper, rules, clock));
+	const card = wrapper.closest('[data-mm-morph]');
+	const trigger = card?.querySelector('[data-slot="select-trigger"]');
+	if (!card || !trigger || innerWidth >= start.w) return;
+	share(card);
+	if (watched.has(wrapper)) starting.add(wrapper);
+	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: start.l }));
+}
+
+/**
+ * A card whose select and buttons set one range (dashboard-01's timeRange): the select's choice also presses the button
+ * of the same text, which Markless keeps the range in (the toggle group's state, the select's shown value).
+ */
+const shared = new WeakSet<Element>();
+function share(card: Element): void {
+	if (shared.has(card)) return;
+	shared.add(card);
+	card.addEventListener('mmchoose', (event) => {
+		const text = (event as CustomEvent<string>).detail;
+		const press = [...card.querySelectorAll<HTMLElement>('[data-mm-variant]')].find((el) => el.textContent?.trim() === text);
+		if (press && press.getAttribute('aria-checked') !== 'true' && press.getAttribute('data-state') !== 'on') press.click();
+	});
+}
+
+// The old card chose on load wherever the chart was, scrolled to or not.
+export function idle(): void {
+	for (const el of document.querySelectorAll<HTMLElement>(`${WRAPPER}[data-mm-start]`)) begin(el);
+}
+
+// The drawing laid out for the chart's own size and the visitor's time zone (recharts-layout), where either differs
+// from the capture's: a width the old page was not captured at, or dates read a day earlier behind UTC.
+type Layout = typeof import('./recharts-layout.ts');
+type Axis = import('./recharts-layout.ts').Axis;
+type Clock = typeof import('./clock.ts');
+let layoutLoad: Promise<[Layout, Clock]> | undefined;
+let layoutIn: [Layout, Clock] | undefined;
+const loadLayout = () => (layoutLoad ??= Promise.all([import('./recharts-layout.ts'), import('./clock.ts')]).then((m) => (layoutIn = m)));
+const laid = new WeakMap<SVGSVGElement, string>();
+const sized = new WeakSet<Element>();
+
+function clockOf(wrapper: Element): { rules: unknown[]; year: number } | undefined {
+	try {
+		const rules = JSON.parse(wrapper.closest('[data-mm-clock]')?.getAttribute('data-mm-clock') ?? '[]') as { '*'?: number }[];
+		const year = rules.find((r) => r['*'] !== undefined)?.['*'];
+		return year === undefined ? undefined : { rules, year };
+	} catch {
+		return undefined;
+	}
+}
+
+// Behind UTC, the dates recharts formats from UTC midnights read a day earlier, so their axis keeps other ticks.
+const behind = (year: number) => [0, 6].some((month) => new Date(Date.UTC(year, month, 1)).getTimezoneOffset() > 0);
+
+function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wrapper)): void {
+	const f = svg && factsOf(svg);
+	if (!svg || !f || (!f.a && !f.l && !f.pl)) return;
+	const box = wrapper.getBoundingClientRect();
+	const W = Math.round(box.width);
+	const H = Math.round(box.height);
+	const clock = clockOf(wrapper);
+	const west = !!clock && behind(clock.year);
+	const axes = (f.a ?? []) as (Axis | null)[];
+	// Dates an axis' formatter wrote with toLocaleDateString: this visitor's (a chart's clock region writes those with
+	// a month itself; a weekday alone it leaves).
+	const intl = (axis: Axis) => (axis.f && axis.v ? axis.v.map((v) => new Date(v).toLocaleDateString(axis.lo, axis.f)) : undefined);
+	const dated = axes.some((a) => a && intl(a)?.some((l, i) => l !== a.l[i]));
+	const key = `${W}x${H}${west || dated ? 'w' : ''}`;
+	if (laid.get(svg) === key || (!laid.has(svg) && f.w === W && f.h === H && !west && !dated)) return;
+	const run = ([layout, c]: [Layout, Clock]) => {
+		// The axis' text for this visitor, written in place; the clock part is told it is written.
+		const local = (axis: Axis) => {
+			const own = intl(axis);
+			const clocked = !!clock && axis.l.some((l) => new RegExp(c.DATE_TEXT.source).test(l));
+			if (own && !clocked) return own;
+			if (!west) return undefined;
+			const may = c.monthNamesIn(axis.l.join('\n'));
+			return axis.l.map((l) => c.rewrite(l, clock!.rules as never, Date.now(), may));
+		};
+		layout.fit(svg, W, H, local, c.claim);
+		laid.set(svg, key);
+		parsed.delete(svg);
+		for (const path of svg.querySelectorAll('path[data-mm-geo]')) finals.delete(path);
+	};
+	if (layoutIn) run(layoutIn);
+	else void loadLayout().then(run);
+}
+
+function track(wrapper: HTMLElement): void {
+	if (sized.has(wrapper)) return;
+	sized.add(wrapper);
+	// ResponsiveContainer gives the chart its container's size in whole pixels (convert writes the wrapper at 100%).
+	const container = wrapper.style.width === '100%' && wrapper.style.height === '100%' ? wrapper.parentElement : null;
+	const resized = () => {
+		if (container) {
+			const box = container.getBoundingClientRect();
+			wrapper.style.width = `${Math.round(box.width)}px`;
+			wrapper.style.height = `${Math.round(box.height)}px`;
+		}
+		const svg = surfaceOf(wrapper);
+		if (svg) shown.set(wrapper, svg);
+		fit(wrapper, svg);
+	};
+	resized();
+	new ResizeObserver(resized).observe(container ?? wrapper);
 }
 
 // recharts' update animation runs in its own module, fetched once a card whose controls switch its chart is about to be used.
@@ -184,6 +323,8 @@ let motion: Promise<Motion> | undefined;
 let motionIn: Motion | undefined;
 const loadMotion = () => (motion ??= import('./recharts-motion.ts').then((m) => (motionIn = m)));
 const watched = new WeakSet<Element>();
+/** The drawing each chart shows, which a control's switch moves from. */
+const shown = new WeakMap<Element, SVGSVGElement>();
 /** Each mark's own path, as convert wrote it: where its animation ends. */
 const finals = new WeakMap<Element, string>();
 
@@ -198,8 +339,15 @@ function watch(wrapper: HTMLElement): void {
 	new MutationObserver((records) => {
 		const now = surfaceOf(wrapper);
 		const widths = new Set(now?.getAttribute('data-mm-b')?.split(' '));
-		const from = records.find((r) => r.target !== now && r.target instanceof SVGSVGElement && r.target.parentElement === wrapper && r.target.getAttribute('data-mm-b')?.split(' ').some((b) => widths.has(b)) && !/display:\s*none/.test(r.oldValue ?? ''))?.target as SVGSVGElement | undefined;
+		// The drawing on screen until now: every drawing of the old control state is hidden at once, at every width.
+		const hidden = records.filter((r) => r.target !== now && r.target instanceof SVGSVGElement && r.target.parentElement === wrapper && r.target.getAttribute('data-mm-b')?.split(' ').some((b) => widths.has(b)) && !/display:\s*none/.test(r.oldValue ?? '')).map((r) => r.target as SVGSVGElement);
+		const before = shown.get(wrapper);
+		const from = before && hidden.includes(before) ? before : hidden[0];
+		if (now) shown.set(wrapper, now);
 		if (!now || !from) return;
+		fit(wrapper, now);
+		// The card's own start (begin) is no switch: the chart's entry animation plays for it.
+		if (starting.has(wrapper)) return void starting.delete(wrapper);
 		wrapper.setAttribute('data-mm-moved', '');
 		if (!now.querySelector('[data-mm-geo]') || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		const lag = factsOf(now)?.z ?? 0;
@@ -213,9 +361,9 @@ function watch(wrapper: HTMLElement): void {
 		};
 		requestAnimationFrame(count);
 		// Before the module is in: the old shape, which the new SVG's paths hold until it moves them.
-		const before = [...from.querySelectorAll('path[data-mm-geo]')];
+		const old = [...from.querySelectorAll('path[data-mm-geo]')];
 		now.querySelectorAll('path[data-mm-geo]').forEach((path, i) => {
-			const d = before[i]?.getAttribute('d');
+			const d = old[i]?.getAttribute('d');
 			if (!finals.has(path)) finals.set(path, path.getAttribute('d') ?? '');
 			if (d) path.setAttribute('d', d);
 		});

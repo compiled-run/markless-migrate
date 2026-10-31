@@ -1,0 +1,218 @@
+name: probe dead controls
+# Dispatched only. Each runner serves both sides itself, as check.yml does: the old site built from its source (cached
+# between runs) and the port from a build archive, so a scan sends no request to a deployment.
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: URL of the port's build (a .tar.gz of its .vercel/output or its node-server .output)
+        required: true
+        default: https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz
+      targets:
+        description: The routes file to probe
+        required: true
+        default: deploy/shadcn-ui/check-targets.json
+      costs:
+        description: The run whose per-route times pack the shards (default the last successful run; none deals routes in turn)
+        required: false
+        default: ''
+      reuse:
+        description: Use the original's side of each use as earlier runs recorded it ('false' uses the original live throughout)
+        required: false
+        default: 'true'
+permissions:
+  contents: read
+  actions: read
+env:
+  SITE: shadcn-ui
+jobs:
+  # At most two full-site runs (50 routes or more) at once across convert, check, pipeline and the probes, oldest first; the
+  # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
+  gate:
+    name: full-site gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            deploy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: size
+        name: Count the routes
+        env:
+          SPEC: ${{ inputs.targets }}
+        run: node scripts/full-site-gate.ts size "$SPEC" >> "$GITHUB_OUTPUT"
+      - name: Wait for a full-site slot
+        if: steps.size.outputs.full == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/full-site-gate.ts wait
+
+  # The old site is built once here and cached, so the shards restore it instead of each building it. The run whose times
+  # pack the shards is chosen here too: shards started hours apart must all pack the same way.
+  old:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      costs: ${{ steps.costs.outputs.run }}
+    steps:
+      - id: costs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.costs }}
+        run: |
+          run="$RUN"
+          [ -n "$run" ] || run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow probe-dead-controls.yml --status success -L 1 --json databaseId --jq '.[0].databaseId // empty')
+          # Results past their retention leave nothing to pack by: routes are then dealt in turn.
+          if [ -n "$run" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | select(.name | startswith("dead-controls-"))] | length')" = 0 ]; then run=""; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: oven-sh/setup-bun@v2
+      - name: Restore the old site's build
+        id: old-build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          lookup-only: true
+      - name: Build the old site
+        if: steps.old-build.outputs.cache-hit != 'true'
+        run: |
+          built="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
+          ORIGIN=http://localhost:4000 "deploy/$SITE/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
+          echo "$built" > "deploy/$SITE/old/.ci-built"
+      - if: steps.old-build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+
+  probe:
+    needs: old
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        engine: [chromium, webkit]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.engine }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          fail-on-cache-miss: true
+      - name: Serve both sides
+        env:
+          BUILD: ${{ inputs.build }}
+        run: |
+          # Chromium's two routes at a time get three copies of the old server (one answering every cold load was what they waited
+          # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
+          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
+          bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+      # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
+      - name: The last run's per-route times
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ needs.old.outputs.costs }}
+        run: |
+          run="$RUN"
+          mkdir -p "$RUNNER_TEMP/costs"
+          # A shard that could not fetch them would pack differently from the rest: it fails instead of losing or repeating routes.
+          if [ -n "$run" ]; then gh run download "$run" -R "$GITHUB_REPOSITORY" -p "dead-controls-${{ matrix.engine }}-*" -D "$RUNNER_TEMP/costs"; fi
+          echo "$(find "$RUNNER_TEMP/costs" -name '*.jsonl' | wc -l) result files from run ${run:-none}"
+      # What each use does on the original, as earlier runs recorded it: the original is a fixed build (fetch-old.sh's commit).
+      - name: The original's side from earlier runs
+        if: inputs.reuse != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/reuse
+          key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: probe-reuse-${{ env.SITE }}-
+      - name: Probe
+        env:
+          OLD: http://localhost:4000
+          NEW: http://127.0.0.1:3000
+          TARGETS: ${{ inputs.targets }}
+          REUSE_ON: ${{ inputs.reuse != 'false' }}
+        run: |
+          mkdir -p out/strips
+          if [ "$REUSE_ON" = true ]; then
+            mkdir -p "$RUNNER_TEMP/reuse"
+            OLD_BUILD="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
+            export REUSE="$RUNNER_TEMP/reuse" REUSE_OUT=out/.migrate/reuse OLD_BUILD
+          fi
+          # One process per runner from one longest-first queue. Chromium probes two routes at a time, each with its own browser:
+          # a 4-vCPU runner is busy at two. WebKit probes one: at two it reported 10 to 50 differences the same routes alone do not.
+          eval "$(node scripts/ci-flags.ts probe ${{ matrix.engine }})"
+          COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
+          tail -n 5 out/log.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dead-controls-${{ matrix.engine }}-${{ matrix.shard }}
+          path: out
+          include-hidden-files: true
+          retention-days: 30
+
+  # The shards' new and re-recorded entries joined with the earlier ones (the last recording of each wins, none over 30 days
+  # old) into the next run's cache.
+  keep:
+    needs: probe
+    if: always() && inputs.reuse != 'false' && needs.probe.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/reuse
+          key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}
+          restore-keys: probe-reuse-${{ env.SITE }}-
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dead-controls-*
+          path: shards
+      - run: |
+          mkdir -p shards/earlier/.migrate
+          if [ -d "$RUNNER_TEMP/reuse" ]; then mv "$RUNNER_TEMP/reuse" shards/earlier/.migrate/reuse; fi
+          node scripts/check-shards.ts keep shards "$RUNNER_TEMP/reuse" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/reuse
+          key: probe-reuse-${{ env.SITE }}-${{ github.run_id }}

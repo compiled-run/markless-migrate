@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
+import { defaultEnv, openPage } from '../src/check/browser.ts';
 import { captureChoices, markChosenHref, optionsShown } from '../src/convert/choices.ts';
 import { body, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { limiter, type Limit } from '../src/convert/limit.ts';
@@ -65,14 +66,131 @@ document.getElementById('open').addEventListener('click', () => {
 });
 </script></body></html>`;
 
+// A menu that closes on each choice: one item marks the page (state a fresh load would not have), one copies, one does nothing.
+const MENU = `<!doctype html><html><body><button id="open" aria-expanded="false">Actions</button><script>
+document.getElementById('open').addEventListener('click', () => {
+	const menu = document.createElement('div');
+	menu.setAttribute('role', 'menu');
+	for (const name of ['Copy', 'Mark', 'Plain', 'Copy again']) {
+		const item = document.createElement('div');
+		item.setAttribute('role', 'menuitem');
+		item.textContent = name;
+		item.addEventListener('click', () => {
+			if (name.startsWith('Copy')) navigator.clipboard.writeText(name + ' text');
+			if (name === 'Mark') document.body.dataset.marked = '';
+			menu.remove();
+		});
+		menu.append(item);
+	}
+	document.body.append(menu);
+});
+</script></body></html>`;
+
+// A client router: each option moves to another page in the same document, and going back shows the first page again.
+const CLIENT = `<!doctype html><html><body><button id="open" aria-expanded="false">Search</button><main>Home</main><script>
+const main = document.querySelector('main');
+addEventListener('popstate', () => (main.textContent = location.pathname === '/client' ? 'Home' : location.pathname));
+document.getElementById('open').addEventListener('click', () => {
+	const list = document.createElement('div');
+	list.setAttribute('cmdk-list', '');
+	for (const to of ['a', 'b', 'c']) {
+		const item = document.createElement('div');
+		item.setAttribute('cmdk-item', '');
+		item.setAttribute('data-value', to);
+		item.textContent = to;
+		item.addEventListener('click', () => {
+			list.remove();
+			history.pushState(null, '', '/docs/' + to);
+			main.textContent = '/docs/' + to;
+		});
+		list.append(item);
+	}
+	document.body.append(list);
+});
+</script></body></html>`;
+
+// A Base UI Select: its hidden input follows the trigger, and the option chosen stays chosen.
+const SELECT = `<!doctype html><html><body><button id="open" role="combobox" aria-expanded="false"><span data-slot="select-value">English</span></button><input aria-hidden="true" value="en"><script>
+const trigger = document.getElementById('open');
+trigger.addEventListener('click', () => {
+	const portal = document.createElement('div');
+	portal.setAttribute('data-base-ui-portal', '');
+	const list = document.createElement('div');
+	list.setAttribute('role', 'listbox');
+	for (const [value, label] of [['en', 'English'], ['ar', 'Arabic'], ['he', 'Hebrew']]) {
+		const option = document.createElement('div');
+		option.setAttribute('role', 'option');
+		option.setAttribute('aria-selected', String(trigger.nextElementSibling.value === value));
+		option.textContent = label;
+		option.addEventListener('click', () => {
+			trigger.nextElementSibling.value = value;
+			trigger.firstElementChild.textContent = label;
+			portal.remove();
+		});
+		list.append(option);
+	}
+	portal.append(list);
+	document.body.append(portal);
+});
+</script></body></html>`;
+
+// A menu whose first item draws from the page's seeded randomness and whose second copies the next draw.
+const DRAW = `<!doctype html><html><body><button id="open" aria-expanded="false">Dice</button><script>
+document.getElementById('open').addEventListener('click', () => {
+	const menu = document.createElement('div');
+	menu.setAttribute('role', 'menu');
+	for (const name of ['Roll', 'Copy roll']) {
+		const item = document.createElement('div');
+		item.setAttribute('role', 'menuitem');
+		item.textContent = name;
+		item.addEventListener('click', () => {
+			const roll = String(Math.random());
+			if (name === 'Copy roll') navigator.clipboard.writeText(roll);
+			menu.remove();
+		});
+		menu.append(item);
+	}
+	document.body.append(menu);
+});
+</script></body></html>`;
+
+// A router whose page, once taken back, keeps a trace of the visit (Next.js's docs write their sidebar's scroll to session storage).
+const TRACE = `<!doctype html><html><body><button id="open" aria-expanded="false">Search</button><main>Home</main><script>
+const main = document.querySelector('main');
+addEventListener('popstate', () => {
+	fetch('/back-seen');
+	sessionStorage.setItem('visited', location.pathname);
+	main.textContent = location.pathname === '/trace' ? 'Home' : location.pathname;
+});
+document.getElementById('open').addEventListener('click', () => {
+	const list = document.createElement('div');
+	list.setAttribute('cmdk-list', '');
+	for (const to of ['a', 'b', 'c']) {
+		const item = document.createElement('div');
+		item.setAttribute('cmdk-item', '');
+		item.setAttribute('data-value', to);
+		item.textContent = to;
+		item.addEventListener('click', () => {
+			list.remove();
+			history.pushState(null, '', '/docs/' + to);
+			main.textContent = '/docs/' + to;
+		});
+		list.append(item);
+	}
+	document.body.append(list);
+});
+</script></body></html>`;
+
 let browser: Browser;
+const loads = new Map<string, number>();
 let server: Server;
 let origin: string;
 before(async () => {
 	browser = await chromium.launch();
 	server = createServer((request, res) => {
 		if (request.url === '/data/slow') return void setTimeout(() => res.writeHead(200).end('{}'), 1500);
-		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : PAGE);
+		loads.set(request.url!, (loads.get(request.url!) ?? 0) + 1);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(request.url === '/router' ? ROUTER : request.url === '/home' ? HOME : request.url === '/menu' ? MENU : request.url === '/client' ? CLIENT : request.url === '/select' ? SELECT : request.url === '/draw' ? DRAW : request.url === '/trace' ? TRACE : PAGE);
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -136,4 +254,68 @@ test("a palette listing other options on another page is chosen again there, and
 	const doc = parseDocument(`<body>${radix.added[0]!.html}<div role="menuitem">Copy</div></body>`);
 	for (const el of walk(body(doc))) markChosenHref(el, { 'Components Button': { href: '/docs/components/radix/button' }, Copy: { href: '/x' } });
 	assert.equal(outer(body(doc)), '<body><div cmdk-list=""><div cmdk-item="" data-value="Components Menubar" id="r1">Menubar</div><div cmdk-item="" data-value="Components Button" id="r2" data-mm-href="/docs/components/radix/button">Button</div></div><div role="menuitem">Copy</div></body>');
+});
+
+test('captureChoices opens a menu again on the same page while a choice left it as loaded, and loads it again once one did not', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-menu-'));
+	try {
+		const reveal: Reveal = { key: 'menu', path: [0], sig: 'button||Actions', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div role="menu"><div role="menuitem">Copy</div></div>' }] };
+		loads.delete('/menu');
+		assert.deepEqual(await captureChoices(browser, origin, '/menu', reveal, dir), { Copy: { copied: 'Copy text' }, Mark: {}, Plain: {}, 'Copy again': { copied: 'Copy again text' } });
+		assert.equal(loads.get('/menu'), 2, 'the first load, and one more after the choice that marked the page');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("captureChoices takes back a client router's move and chooses the next option on the same page", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-client-'));
+	try {
+		const reveal: Reveal = { key: 'client', path: [0], sig: 'button||Search', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div cmdk-list=""><div cmdk-item="" data-value="a">a</div></div>' }] };
+		loads.delete('/client');
+		assert.deepEqual(await captureChoices(browser, origin, '/client', reveal, dir), { a: { href: '/docs/a' }, b: { href: '/docs/b' }, c: { href: '/docs/c' } });
+		assert.equal(loads.get('/client'), 1);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('captureChoices puts a select back by choosing the value it loaded with, and chooses the next option on the same page', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-select-'));
+	try {
+		const reveal: Reveal = { key: 'select', path: [0], sig: 'button||English', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div data-base-ui-portal=""><div role="listbox"><div role="option">English</div></div></div>' }] };
+		loads.delete('/select');
+		assert.deepEqual(await captureChoices(browser, origin, '/select', reveal, dir), { English: { value: 'en', shown: 'English' }, Arabic: { value: 'ar', shown: 'Arabic' }, Hebrew: { value: 'he', shown: 'Hebrew' } });
+		assert.equal(loads.get('/select'), 1);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("captureChoices loads the page again after a choice drew from its seeded randomness, so the next choice draws what a fresh load would", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-draw-'));
+	try {
+		const { context, page } = await openPage(browser, defaultEnv(origin), { name: 'desktop', width: 1280, height: 800, isMobile: false });
+		await page.goto(`${origin}/draw`);
+		const first = await page.evaluate(() => String(Math.random()));
+		await context.close();
+		const reveal: Reveal = { key: 'draw', path: [0], sig: 'button||Dice', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div role="menu"><div role="menuitem">Roll</div></div>' }] };
+		assert.deepEqual(await captureChoices(browser, origin, '/draw', reveal, dir), { Roll: {}, 'Copy roll': { copied: first } });
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("captureChoices stops taking a page back once Back left it different, and loads it again for each next move", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'choices-trace-'));
+	try {
+		const reveal: Reveal = { key: 'trace', path: [0], sig: 'button||Search', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: '<div cmdk-list=""><div cmdk-item="" data-value="a">a</div></div>' }] };
+		loads.delete('/trace');
+		loads.delete('/back-seen');
+		assert.deepEqual(await captureChoices(browser, origin, '/trace', reveal, dir), { a: { href: '/docs/a' }, b: { href: '/docs/b' }, c: { href: '/docs/c' } });
+		assert.equal(loads.get('/back-seen'), 1, 'Back is tried once');
+		assert.equal(loads.get('/trace'), 4, 'the first load and one after each option');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });

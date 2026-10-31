@@ -8,13 +8,15 @@ import { loadPage } from '../check/infrastructure.ts';
 import { commandEmptyMark, keepCommandEmpty, markedOf } from './capture.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { markTextValues } from './rac-text.ts';
-import { INSTANCE_PROPS, instancePropMarks, markInstanceProps } from './instance-props.ts';
+import { requestsDone, settle, trackSettling } from './settle.ts';
+import { instancePropMarks, instanceSpecs, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
+import type { Limit } from './limit.ts';
 
 // What the old page's React tree knows of the content a gesture added, written on it before it is read.
 async function markAdded(page: Page): Promise<void> {
 	await page.evaluate(markTextValues);
-	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: true }).catch(() => {});
+	await page.evaluate(markInstanceProps, { specs: instanceSpecs(), added: true }).catch(() => {});
 }
 
 // A cache of content gestures added and markAdded marked: kept while it holds every mark that applies to it.
@@ -36,6 +38,8 @@ export interface Revealed {
 	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. For `replace`, how many levels above the control the replaced container is. */
 	readonly before: number;
 	readonly html: string;
+	/** `clipboard`: the label (aria-label) the control took once it had copied, where it changed. */
+	readonly label?: string;
 }
 
 export interface Reveal {
@@ -207,10 +211,12 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			};
 			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write, write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 		});
+		const before = await el.getAttribute('aria-label').catch(() => null);
 		await el.click({ timeout: 2000 }).catch(() => {});
 		await quiet(page, 300);
 		const written = await page.evaluate(() => (window as unknown as { __mmClipboard?: string[] }).__mmClipboard ?? []);
-		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]! }] : [];
+		const after = await el.getAttribute('aria-label').catch(() => null);
+		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]!, ...(after !== null && after !== before ? { label: after } : {}) }] : [];
 	}
 	await el.evaluate((e) => {
 		const chain: Element[] = [];
@@ -295,10 +301,9 @@ async function settleScroll(page: Page): Promise<void> {
 		.catch(() => {});
 }
 
-/** Waits for what a gesture started: a short pause, then the requests it made and the animations it ran. */
+/** Waits for what a gesture started: until the page settles (at most `ms`), with the requests it made, then finishes the animations it ran. */
 async function quiet(page: Page, ms: number): Promise<void> {
-	await page.waitForTimeout(ms);
-	await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+	await settle(page, ms);
 	await finishAnimations(page).catch(() => {});
 }
 
@@ -334,29 +339,48 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 	return (await bodyHash(page)) === baseline;
 }
 
-async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport) {
+/** Whether a settled document holds a dialog open at load (Radix data-state="open", Base UI data-open). */
+export const openDialogAtLoad = (html: string): boolean => [...html.matchAll(/<[a-z][^>]*\brole="(?:alert)?dialog"[^>]*>/g)].some(([tag]) => /\s(?:data-open(?:="")?|data-state="open")[\s>]/.test(tag));
+
+async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport, dismiss = false) {
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+	await trackSettling(context);
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, 300);
+	// What the load still fetches (a router's prefetches) ends first, at most 2 s.
+	await requestsDone(page, 2000);
+	for (let i = 0; dismiss && i < 3 && (await page.evaluate(() => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].some((d) => d.checkVisibility()))); i++) {
+		await page.keyboard.press('Escape');
+		await quiet(page, 300);
+	}
 	return { context, page, baseline: await bodyHash(page) };
 }
 
 type Open = { context: BrowserContext; page: Page; baseline: string };
 
-/** Uses one candidate the way captureReveals does, then puts the page back (loading it again when using the control left it changed). */
-async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
-	const previous = await selectedSibling(open.page, candidate.path);
-	const raw = await reveal(open.page, candidate);
-	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
-	if (!(await undo(open.page, previous, open.baseline))) {
-		await open.context.close().catch(() => {});
-		open = await again();
+/** Uses one candidate the way captureReveals does, then puts the page back; `clean` is false when it could not, and the page must be loaded again. */
+async function useCandidate(open: Open, candidate: Candidate): Promise<{ added: Revealed[] | string; clean: boolean }> {
+	try {
+		const previous = await selectedSibling(open.page, candidate.path);
+		const raw = await reveal(open.page, candidate);
+		const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
+		return { added, clean: await undo(open.page, previous, open.baseline) };
+	} catch (error) {
+		return { added: `could not use it: ${(error as Error).message.split('\n')[0]}`, clean: false };
 	}
-	return { added, open };
 }
 
+/** A new load of the route, tried once more when it fails: a pass keeps what it took so far only if it can go on. */
+async function reload(open: Open, load: () => Promise<Open>): Promise<Open> {
+	await open.context.close().catch(() => {});
+	return load().catch(() => load());
+}
+
+/** The candidate found on a page loaded since `of` was found there: by its own key, else by what it is and its place among its likes. */
+const foundAgain = (found: readonly Candidate[], of: Candidate): Candidate | undefined => (of.key.startsWith('p:') ? undefined : found.find((c) => c.key === of.key && c.action === of.action)) ?? found.find((c) => c.sig === of.sig && c.nth === of.nth && c.action === of.action);
+
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) {
@@ -365,7 +389,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
 		if (!stale.length) return cached;
 		// Only the controls whose content a newer mark reads are used again; every other reveal is kept as it was.
-		const taken = await retake(browser, origin, route, stale, extra, pass.controls, viewports);
+		const taken = await retake(browser, origin, route, stale, extra, pass.controls, viewports, pass.dismiss);
 		const capture: RevealCapture = { route, reveals: cached.reveals.map((r) => taken.get(r) ?? r), skipped: cached.skipped, marks: marksOf(marks) };
 		await writeFile(file, JSON.stringify(capture));
 		return capture;
@@ -378,14 +402,25 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		// A control another viewport could not show is the only reason to load the page again at this one.
 		if (!hidden) break;
 		hidden = false;
-		let open = await fresh(browser, origin, route, viewport);
+		const load = () => fresh(browser, origin, route, viewport, pass.dismiss);
+		let open = await load();
 		try {
 			const found = await candidates(open.page, extra, pass.controls);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
-			for (const candidate of found) {
-				if (!candidate.visible || done.has(candidate.key)) continue;
-				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
-				open = used.open;
+			// A page loaded again can lay itself out differently, so each control is found again on it rather than reached by its old path.
+			let current = found;
+			for (const first of found) {
+				if (!first.visible || done.has(first.key)) continue;
+				const candidate = current === found ? first : foundAgain(current, first);
+				if (!candidate?.visible) {
+					skipped.push(`${first.key} (${viewport.name}): not found on the page loaded again`);
+					continue;
+				}
+				const used = await useCandidate(open, candidate);
+				if (!used.clean) {
+					open = await reload(open, load);
+					current = await candidates(open.page, extra, pass.controls);
+				}
 				const added = used.added;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
 				else {
@@ -405,17 +440,21 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 
 // The cached reveals' controls used again on a fresh load at each one's viewport, found by key and else by tag, slot, text
 // and order: what each shows now, by the reveal it replaces. A control not found again, or showing nothing now, keeps its reveal.
-async function retake(browser: Browser, origin: string, route: string, stale: readonly Reveal[], extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[], viewports: readonly Viewport[]): Promise<Map<Reveal, Reveal>> {
+async function retake(browser: Browser, origin: string, route: string, stale: readonly Reveal[], extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[], viewports: readonly Viewport[], dismiss = false): Promise<Map<Reveal, Reveal>> {
 	const out = new Map<Reveal, Reveal>();
 	for (const viewport of viewports.filter((v) => stale.some((r) => r.viewport === v.name))) {
-		let open = await fresh(browser, origin, route, viewport);
+		const load = () => fresh(browser, origin, route, viewport, dismiss);
+		let open = await load();
 		try {
-			const found = await candidates(open.page, extra, controls);
+			let found = await candidates(open.page, extra, controls);
 			for (const old of stale.filter((r) => r.viewport === viewport.name)) {
 				const candidate = found.find((c) => c.key === old.key && c.action === old.action) ?? found.find((c) => c.sig === old.sig && c.nth === old.nth && c.action === old.action);
 				if (!candidate?.visible) continue;
-				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
-				open = used.open;
+				const used = await useCandidate(open, candidate);
+				if (!used.clean) {
+					open = await reload(open, load);
+					found = await candidates(open.page, extra, controls);
+				}
 				if (typeof used.added !== 'string' && used.added.length) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added });
 			}
 		} finally {
@@ -429,28 +468,45 @@ async function retake(browser: Browser, origin: string, route: string, stale: re
 export interface ListedControls {
 	readonly extra?: readonly (readonly [selector: string, action: RevealAction, routes?: string])[];
 	readonly opens?: readonly { readonly selector: string; readonly routes?: string }[];
+	/** The settled page holds a dialog open at load (openDialogAtLoad): its page's controls are used again with it dismissed. */
+	readonly loadDialog?: boolean;
 }
 
 /** Every pass over one route's controls (ARIA-marked, listed, child-rendered hovers, listed openers, scroll areas), joined. */
-export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls = {}): Promise<RevealCapture> {
+export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls = {}, limit: Limit = (task) => task()): Promise<RevealCapture> {
 	const failed = (error: Error): RevealCapture => ({ route, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
 	// A listed control with routes is the site's on those routes only.
 	const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(route)).map(([selector, action]) => [selector, action] as const);
-	const own = await captureReveals(browser, origin, route, dir, VIEWPORTS, extra).catch(failed);
-	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
-	const listed = extra.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
-	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
-	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download'))), ...listed.reveals] : own.reveals;
-	const child = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
-	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);
-	const opened = opens.length ? await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
-	const scroll = await captureReveals(browser, origin, route, dir, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
-	const keys = new Set(base.map((r) => r.key));
-	// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
-	const wide = await captureReveals(browser, origin, route, dir, [WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys).catch(failed);
-	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped] };
+	// Each pass loads the page afresh, so the passes run at once, each in a slot of `limit`; the wide screen's and the
+	// dismissed dialog's passes need the keys the ARIA-marked and listed controls found.
+	const pass = (viewports: readonly Viewport[], extraOf: readonly (readonly [string, RevealAction])[], tagged?: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean }, marks?: readonly Mark[], taken?: ReadonlySet<string>) => limit(() => captureReveals(browser, origin, route, dir, viewports, extraOf, tagged, marks, taken)).catch(failed);
+	const [first, child, opened, scroll] = await Promise.all([
+		(async () => {
+			const [own, listed] = await Promise.all([
+				pass(VIEWPORTS, extra),
+				// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
+				extra.length ? pass(VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }) : undefined,
+			]);
+			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
+			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download'))), ...listed.reveals] : own.reveals;
+			const keys = new Set(base.map((r) => r.key));
+			const [wide, dismissed, dismissedOpens] = await Promise.all([
+				// Controls neither viewport shows (a card a page lays out only from 1440 px) are used once more on a wide screen.
+				pass([WIDE], extra, { controls: CONTROLS, tag: 'wide:' }, addedMarks(), keys),
+				options.loadDialog ? pass(VIEWPORTS, extra, { controls: CONTROLS, tag: 'dismissed:', dismiss: true }, addedMarks(), keys) : undefined,
+				options.loadDialog && opens.length ? pass(VIEWPORTS, [], { controls: opens, tag: 'dismissed-open:', dismiss: true }, addedMarks(), keys) : undefined,
+			]);
+			return { own, listed, base, keys, wide, dismissed, dismissedOpens };
+		})(),
+		pass(VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }),
+		// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
+		opens.length ? pass(VIEWPORTS, [], { controls: opens, tag: 'open:' }) : undefined,
+		pass(VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }),
+	]);
+	const { own, listed, base, keys, wide, dismissed, dismissedOpens } = first;
+	const more = [...child.reveals, ...(dismissed?.reveals ?? []), ...(dismissedOpens?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,

@@ -1,0 +1,255 @@
+{
+	"about": "The bugs the owner found by hand in the ui.shadcn.com port, each with the port build that still has it, the route and gesture, and the finding check must report for it. scripts/corpus.ts verify fails when a bug's route was checked and no finding matches. Bugs no kept build reproduces are covered by their case in test/corpus/site.ts (fixture).",
+	"builds": {
+		"RrorpvSy": "https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz",
+		"7a5706a6": "https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-corpus-build-7a5706a6/shadcn-ui-vercel-output-7a5706a6.tar.gz"
+	},
+	"bugs": [
+		{
+			"id": "create-get-started",
+			"report": "the create route's Get Started button did nothing",
+			"build": "RrorpvSy",
+			"route": "/create",
+			"gesture": "click Get Started in the welcome dialog: the original closes it, the port leaves it open",
+			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) button \"Get Started\"[^|]*\\|",
+			"fixture": "create-get-started"
+		},
+		{
+			"id": "typeset-font",
+			"report": "typeset: changing fonts didn't work",
+			"build": "RrorpvSy",
+			"route": "/typeset",
+			"gesture": "click Heading Geist Aa, choose Inter: the original's button reads Heading Inter Aa, the port's stays Geist",
+			"caught": "^(behaviour|a11y): [^|]*button \"Heading [^\"]*\", then (click|press \\w+ on) menuitemradio \"(?!Geist\")[^\"]+\" \\(step 2\\)",
+			"fixture": "typeset-font",
+			"pending": "the fixed journey count (#470): the font menu's choices are never used within the 156 s journey budget on this page"
+		},
+		{
+			"id": "typeset-shuffle",
+			"report": "typeset: the shuffle button didn't work",
+			"build": "RrorpvSy",
+			"route": "/typeset",
+			"gesture": "click Shuffle: the original picks new fonts and sizes, the port changes nothing",
+			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) button \"Shuffle\"[^|]*\\|",
+			"fixture": "typeset-shuffle"
+		},
+		{
+			"id": "framework-switch",
+			"report": "the next.js to vite switch did nothing",
+			"build": "RrorpvSy",
+			"route": "/typeset",
+			"gesture": "open the Next.js combobox and choose Vite: the original swaps the font instructions to @fontsource, the port changes only the label",
+			"caught": "^(behaviour|a11y): [^|]*(option \"Vite\" \\(step 2\\)|combobox keys on combobox[^|]*press Enter to choose\\)) \\|.*fontsource",
+			"fixture": "framework-switch"
+		},
+		{
+			"id": "directory-search",
+			"report": "the directory page search filter didn't work",
+			"build": "RrorpvSy",
+			"route": "/docs/directory",
+			"gesture": "type magic into Search: the original lists 3 registries, the port still lists 479",
+			"caught": "^behaviour: (type|fill) [^|]* into textbox \"Search\"( \\(step 1\\))?\\s*\\|",
+			"fixture": "directory-search"
+		},
+		{
+			"id": "avatar-motion",
+			"report": "the avatar dropdown animated when the original doesn't",
+			"build": null,
+			"route": "/docs/components/radix/avatar",
+			"gesture": "click the avatar (button shadcn) in the Dropdown example: not reproduced on any kept build in headless Chromium (both sides scale and fade in over 100 ms)",
+			"caught": "^motion: [^|]*\"shadcn\"",
+			"fixture": "avatar-motion"
+		},
+		{
+			"id": "three-dots-motion",
+			"report": "the breadcrumb three dots and button group three dots animations differed",
+			"build": null,
+			"route": "/docs/components/radix/breadcrumb",
+			"gesture": "open and close Toggle menu (breadcrumb) and More Options (button group): not reproduced on any kept build in headless Chromium (same keyframes, origin and timing)",
+			"caught": "^motion: [^|]*\"(Toggle menu|More Options)\"",
+			"fixture": "three-dots-motion"
+		},
+		{
+			"id": "currency-select",
+			"report": "the button group currency select was anchored wrong and didn't select",
+			"build": "RrorpvSy",
+			"route": "/docs/components/base/button-group",
+			"gesture": "open the $ select and choose Euro: the original's list opens at the trigger and shows €, the port's opens 46 px to the left and keeps $",
+			"caught": "^(behaviour|a11y): [^|]*(option \"(€ Euro|£ British Pound)\" \\(step 2\\)|pop-up place[^|]*\\| combobox \"\\$\")",
+			"fixture": "currency-select"
+		},
+		{
+			"id": "rtl-language",
+			"report": "RTL toggles changed nothing (including on badge)",
+			"build": "RrorpvSy",
+			"route": "/docs/components/radix/badge",
+			"gesture": "in the RTL example choose Hebrew: the original translates the badges, the port changes only the select's label",
+			"caught": "^(behaviour|a11y): [^|]*option \"(English|Hebrew \\(עברית\\))\" \\(step 2\\)",
+			"fixture": "rtl-language"
+		},
+		{
+			"id": "chart-switch-speed",
+			"report": "chart-type switching was slower than the original",
+			"build": null,
+			"route": "/charts/area",
+			"gesture": "the Area/Bar/Line chart links: not reproduced locally (the port arrives first); covered by the fixture's in-place switch",
+			"caught": "^(behaviour|responsiveness): [^|]*link \"(Bar|Line) Charts?\"",
+			"fixture": "chart-switch-speed"
+		},
+		{
+			"id": "chart-morph",
+			"report": "paths morphing in a chart",
+			"build": "RrorpvSy",
+			"route": "/view/new-york-v4/chart-line-interactive",
+			"gesture": "click Mobile on the interactive chart: the original tweens the line to its new shape over about 80 frames; the port redraws it with a 1500 ms stroke-dasharray animation instead (the view is reached only inside /charts/*'s frames; it is in the site's targets since this change)",
+			"caught": "^(behaviour|motion): [^|]*button \"(Mobile|Desktop)[^\"]*\"[^|]*\\|.*(frame by frame|motion of path|animates)",
+			"fixture": "chart-morph"
+		},
+		{
+			"id": "code-download",
+			"report": "the code block download icon didn't work",
+			"build": "RrorpvSy",
+			"route": "/docs/components/radix/code-block",
+			"gesture": "click Download: the original saves route.ts, the port saves nothing",
+			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) button \"Download\"[^|]*\\|.*downloads:",
+			"fixture": "code-download"
+		},
+		{
+			"id": "code-tabs",
+			"report": "the code block tabs didn't work",
+			"build": "RrorpvSy",
+			"route": "/docs/components/base/code-block",
+			"gesture": "click the chat.tsx tab: the original shows useChat's code, the port keeps route.ts's",
+			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) tab \"chat\\.tsx\"[^|]*\\|",
+			"fixture": "code-tabs"
+		},
+		{
+			"id": "markdown-replay",
+			"report": "markdown replay was less smooth",
+			"build": "RrorpvSy",
+			"route": "/docs/components/radix/code-block",
+			"gesture": "click the second Replay with the CPU slowed 6x: the original streams in steps of at most 22 characters, the port in bursts of up to 81",
+			"caught": "^(behaviour|motion): (click|press (Enter|Space) on) button \"Replay\"[^|]*\\|.*arrives",
+			"fixture": "markdown-replay"
+		},
+		{
+			"id": "file-tree-nested",
+			"report": "file tree nested triggers didn't work",
+			"build": null,
+			"route": "/docs/ai-elements/radix/file-tree",
+			"gesture": "click the nested ui folder: works on every kept build (fixed by #332 before RrorpvSy was converted, or never in a deployed build)",
+			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) button \"ui\"[^|]*\\|",
+			"fixture": "file-tree-nested"
+		},
+		{
+			"id": "combobox-check",
+			"report": "combobox: missing check mark",
+			"build": "RrorpvSy",
+			"route": "/docs/components/base/combobox",
+			"gesture": "choose an item and reopen: the original shows a check on it, the port does not",
+			"caught": "^(behaviour|a11y): [^|]*option \"[^\"]+\"[^|]*\\|.*option \"[^\"]+\" \\[selected\\]: \\| - img",
+			"fixture": "combobox-check",
+			"pending": "the structured state probe: lucide's check icon is aria-hidden, so only pixels show it missing"
+		},
+		{
+			"id": "combobox-anchor",
+			"report": "combobox: popup anchored wrong; Multiple popup too narrow",
+			"build": "RrorpvSy",
+			"route": "/docs/components/base/combobox",
+			"gesture": "open the Multiple (chips) combobox: the original's list is 320 px under the chips, the port's 237 px, 78 px to the right",
+			"caught": "^behaviour: [^|]*pop-up place[^|]*\\|[^|]*(combobox|listbox)",
+			"fixture": "combobox-narrow"
+		},
+		{
+			"id": "combobox-clear",
+			"report": "combobox: clear button broken",
+			"build": null,
+			"route": "/docs/components/base/combobox",
+			"gesture": "click the clear button of the Clear Button example: clears on every kept build",
+			"caught": "^(behaviour|a11y): [^|]*button \"Clear\"[^|]*\\|",
+			"fixture": "combobox-clear"
+		},
+		{
+			"id": "combobox-close-motion",
+			"report": "combobox: no closing animation",
+			"build": null,
+			"route": "/docs/components/base/combobox",
+			"gesture": "close a combobox's list: not measured on the kept builds",
+			"caught": "^motion: [^|]*(closing|closed by|press Escape)[^|]*\\|[^|]*(combobox|listbox)",
+			"fixture": "combobox-close-motion"
+		},
+		{
+			"id": "palette-click-off",
+			"report": "clicking off a scrollable moved the list item position",
+			"build": null,
+			"route": "/docs",
+			"gesture": "open the command palette, scroll its list, click outside: the list jumps while it fades on the port, not on Escape; not reproduced on the kept builds",
+			"caught": "^(behaviour|a11y): popup probe of [^|]*scroll its list[^|]*\\|.*scrolled since",
+			"fixture": "palette-click-off"
+		},
+		{
+			"id": "context-submenu",
+			"report": "context menu submenus worked only in the radix one",
+			"build": "RrorpvSy",
+			"route": "/docs/components/aria/context-menu",
+			"gesture": "right-click Right click here, point at More Tools: the original opens its submenu, the port's React Aria menu does not",
+			"caught": "^(behaviour|a11y): (context menu probe|[^|]*menuitem \"More Tools\")[^|]*(submenu|More Tools)",
+			"fixture": "context-submenu"
+		},
+		{
+			"id": "tooltip-anchor",
+			"report": "a tooltip anchor got hidden on hover",
+			"build": null,
+			"route": "/docs/components/radix/tooltip",
+			"gesture": "hover a tooltip trigger in a docs example: not reproduced on the kept builds",
+			"caught": "^(behaviour|a11y|motion): [^|]*button \"Hover\"",
+			"fixture": "tooltip-anchor"
+		},
+		{
+			"id": "columns-menu",
+			"report": "the base ui data table left the popover open on multiselect",
+			"build": "RrorpvSy",
+			"route": "/docs/components/base/data-table",
+			"gesture": "open Columns and untick email: the original keeps the menu open, the port closes it",
+			"caught": "^(behaviour|a11y): [^|]*button \"Columns\", then (click|press \\w+ on) menuitemcheckbox \"(status|email|amount)\" \\(step 2\\)",
+			"fixture": "columns-menu"
+		},
+		{
+			"id": "date-shift-left",
+			"report": "base ui date picker: Shift+Left jumped the month and broke it",
+			"build": "7a5706a6",
+			"route": "/docs/components/base/date-picker",
+			"gesture": "open Pick a date, Tab twice to the day grid, Shift+ArrowLeft: the original moves to September and keeps focus in the grid, the port's focus falls to the page (on RrorpvSy, live 3a8230cc and 7a5706a6 alike)",
+			"caught": "^(behaviour|a11y): [^|]*Shift\\+ArrowLeft",
+			"fixture": "date-shift-left"
+		},
+		{
+			"id": "date-arrows",
+			"report": "radix date picker keyboard navigation broke",
+			"build": "RrorpvSy",
+			"route": "/docs/components/radix/date-picker",
+			"gesture": "open Pick a date, Tab to the day grid, ArrowLeft: the original moves to the day before, the port does not move",
+			"caught": "^(behaviour|a11y): ([^|]*grid keys on grid[^|]*\\(step [2-9]|[^|]*press Arrow(Left|Right|Up|Down) on gridcell|role model probe[^|]*press Arrow(Left|Right|Up|Down)[^|]*\\|[^|]*focus: gridcell)",
+			"fixture": "date-arrows"
+		},
+		{
+			"id": "date-typed",
+			"report": "typing May 28, 2025 into the date input became May 1",
+			"build": "RrorpvSy",
+			"route": "/docs/components/radix/date-picker",
+			"gesture": "type May 28, 2025 into Subscription Date, ArrowDown: the original opens May 2025 with the 28th chosen, the port opens nothing",
+			"caught": "^(behaviour|a11y): field input[^|]*\\| \"May 28, 2025\" typed",
+			"fixture": "date-typed",
+			"pending": "control parity's six typed values per route never reach Subscription Date on this page; the role-model probe types generated dates"
+		},
+		{
+			"id": "dashboard-dead",
+			"report": "the dashboard search button was dead and the cover-page drawer didn't open (dropped recordings, #452)",
+			"build": "7a5706a6",
+			"route": "/examples/dashboard",
+			"gesture": "click Search documentation... and the Cover page row: the original opens the palette and the drawer, the port opens neither",
+			"caught": "^(behaviour|a11y): (click|press (Enter|Space) on) button \"(Cover page|Search documentation\\.\\.\\.)\"[^|]*\\|",
+			"fixture": "dashboard-dead"
+		}
+	]
+}

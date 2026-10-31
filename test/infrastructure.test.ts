@@ -99,11 +99,28 @@ test('a deployment that hangs part way cannot stall the run: the route stops at 
 		const route = (await one(origin(good), origin(hung), 3_000)).routes[0]!;
 		assert.ok(Date.now() - started < 20_000, `took ${Date.now() - started} ms`);
 		assert.equal(route.infrastructure?.cause, 'check timeout');
-		assert.match(route.infrastructure!.message, /did not finish within 3 s \(--timeout\)/);
+		assert.match(route.infrastructure!.message, /incomplete: timed out after 3 s, steps done \d+ of \d+/);
 		assert.deepEqual(route.failures, []);
 	} finally {
 		hung.closeAllConnections();
 		hung.close();
+	}
+});
+
+test('a load that times out names the request the page was still waiting on', async () => {
+	const stuck = await listen((req, res) => {
+		if (req.url === '/never.png') return;
+		res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><title>x</title><img src="/never.png"><script>fetch("/never.png?poll")</script>');
+	});
+	try {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		const error = await loadPage(page, `${origin(stuck)}/chart`, { timeout: 1_500, backoffMs: 10 }).catch((e: Error) => e);
+		await context.close();
+		assert.match((error as Error).message, /did not finish loading within 2 s, twice, 0 s apart; still waiting on http:\/\/127\.0\.0\.1:\d+\/never\.png \(image, \d+ s\)$/);
+	} finally {
+		stuck.closeAllConnections();
+		stuck.close();
 	}
 });
 
@@ -116,6 +133,8 @@ test('a retried load that the about:blank before it aborts is loaded again, not 
 		() => undefined,
 	];
 	const page = {
+		on: () => {},
+		off: () => {},
 		goto: async (url: string) => {
 			calls.push(url);
 			const outcome = outcomes.shift()!();
@@ -141,7 +160,24 @@ test('a route whose check is still going at --timeout while both apps keep answe
 	assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
 	assert.equal(route.ok, false);
 	assert.equal(route.failures[0]?.check, 'the check of this route');
-	assert.match(route.failures[0]!.actual, /ran out of time: it did not finish within 2 s \(--timeout\), and both apps were still answering/);
+	assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s, steps done 0 of 0; both apps were still answering/);
+});
+
+test('a route still in a part that sends no request at --timeout, after both apps answered, is red as incomplete and says how far it got', async () => {
+	const { withDeadline, profiled } = await import('../src/check/run.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const run = { old: defaultEnv(origin(good)), new: defaultEnv(origin(good)), frozen: false };
+	const route = await withDeadline('/quiet', run, 2_000, async (scoped) => {
+		const context = await browser.newContext();
+		scoped.old.scope!.track(context);
+		const page = await context.newPage();
+		await profiled('/quiet', 'load both sides', () => page.goto(origin(good)));
+		// Stands in for a busy-CPU lane or journeys deciding what to do: well past the last answer, no request in flight.
+		return profiled('/quiet', 'journeys', () => new Promise<never>(() => {}));
+	});
+	assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
+	assert.equal(route.ok, false);
+	assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s, steps done 1 of 2 \(load both sides; running: journeys\)/);
 });
 
 test('a request its page dropped by navigating away or closing does not make a route that ran out of time an infrastructure failure', async () => {
@@ -164,7 +200,7 @@ test('a request its page dropped by navigating away or closing does not make a r
 			for (;;) await page.goto(origin(good));
 		});
 		assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
-		assert.match(route.failures[0]!.actual, /ran out of time/);
+		assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s/);
 	} finally {
 		hung.closeAllConnections();
 		hung.close();

@@ -6,6 +6,7 @@
 	{"selector": "button:has(> svg.lucide-terminal)", "action": "copy"},
 	{"selector": "[role=\"tabpanel\"] button[data-slot=\"button\"]:has(> svg.lucide-copy)", "action": "copy", "routes": "^/typeset$"},
 	{"selector": "[data-slot=\"code-block-copy-button\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/code-block|ai-elements/[^/]+/message|changelog|changelog/2026-10-ai-elements)$"},
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"tooltip-trigger\"][aria-label=\"Copy\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/message|ai-elements/[^/]+/message)$"},
 	{"selector": "button[data-slot=\"button\"][aria-label=\"Copy\"]", "action": "copy", "routes": "^/docs/(components/[^/]+/(input-group|message)|ai-elements/[^/]+/message|changelog|changelog/2025-10-new-components|changelog/2026-10-ai-elements)$"},
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]", "action": "notify", "routes": "^/docs/components/[^/]+/(sonner|toast)$"},
 	{"selector": "[data-slot=\"preview\"] form[data-slot=\"questionnaire\"] button[type=\"reset\"]", "action": "notify", "routes": "^/docs/components/[^/]+/questionnaire$"},
@@ -14,5 +15,10 @@
 	{"selector": "[data-slot=\"preview\"] [data-slot=\"collapsible-trigger\"], [data-slot=\"preview\"] [data-slot=\"collapsible\"] > button[slot=\"trigger\"]", "action": "play", "routes": "^/docs/components/[^/]+/bubble$"},
 	{"action": "theme", "name": "Toggle theme", "key": "d", "metaColors": {"light": "#ffffff", "dark": "#0a0a0a"}, "disableTransitionOnChange": true},
 	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-haspopup]):not([aria-expanded])", "action": "open", "routes": "^/docs/components/[^/]+/command$"},
-	{"selector": "[data-slot=\"code-block\"] button[aria-label=\"Download\"]", "action": "download", "routes": "^/docs/(components/[^/]+/code-block|changelog|changelog/2026-10-ai-elements)$"}
+	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"]", "action": "play", "routes": "^/docs/ai-elements/[^/]+/(chat|model-selector|prompt-input|suggestion)$"},
+	{"selector": "[data-slot=\"preview\"] button", "action": "play", "text": "^Replay$", "routes": "^/docs/ai-elements/[^/]+/(chain-of-thought|plan|queue|reasoning|sources|stack-trace|subagent|task|terminal|test-results|tool)$"},
+	{"selector": "[data-slot=\"preview\"] textarea[data-slot=\"input-group-control\"], [data-slot=\"preview\"] button", "action": "play", "text": "^Replay$", "routes": "^/docs/changelog(/2026-10-ai-elements)?$"},
+	{"selector": "[data-slot=\"preview\"] button", "action": "play", "text": "^(Restore to .+|Continue)$", "routes": "^/docs/ai-elements/[^/]+/checkpoint$"},
+	{"selector": "[data-slot=\"code-block\"] button[aria-label=\"Download\"]", "action": "download", "routes": "^/docs/(components/[^/]+/code-block|changelog|changelog/2026-10-ai-elements)$"},
+	{"selector": "button[data-last-copied]", "action": "notify", "routes": "^/colors$", "template": "copyColor"}
 ]
