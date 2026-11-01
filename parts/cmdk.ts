@@ -296,6 +296,7 @@ function choose(item: HTMLElement): void {
 
 // Command's mount layout effect (scrollSelectedIntoView), for each command the page shows, in document order.
 export function idle(): void {
+	document.addEventListener('pointermove', pointermove, { capture: true, passive: true });
 	for (const root of document.querySelectorAll<HTMLElement>('[cmdk-root]')) {
 		if (!root.checkVisibility()) continue;
 		const item = selected(root) ?? items(root)[0];
@@ -347,12 +348,16 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	return true;
 }
 
+// cmdk selects on an item's pointermove: items scrolling under a still pointer get pointerover but no pointermove.
+function pointermove(event: PointerEvent): void {
+	const item = event.target instanceof Element ? event.target.closest<HTMLElement>(ITEM) : null;
+	const root = item && rootOf(item);
+	if (item && root && enabled(item)) select(root, item, 'pointer');
+}
+
 export function pointerover(target: Element): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
-	const root = item && rootOf(item);
-	if (!item || !root || !enabled(item)) return false;
-	select(root, item, 'pointer');
-	return true;
+	return Boolean(item && rootOf(item) && enabled(item));
 }
 
 export function click(target: Element): boolean {
