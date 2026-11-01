@@ -1066,6 +1066,40 @@ async function hold(page: Page, key: string): Promise<void> {
 	await settled(page);
 }
 
+test('Radix NavigationMenu: moving to another trigger morphs one frame, from the open viewport\'s size to the new content\'s, while the old content slides out and the new slides in', async () => {
+	// shadcn's viewport (duration-100 transitions its size, zoom-in on open) and the contents' data-motion keyframes.
+	const css = `<style>[data-slot=navigation-menu-viewport]{position:relative;overflow:hidden;background:white;box-shadow:0 0 0 1px #ccc;width:var(--radix-navigation-menu-viewport-width);height:var(--radix-navigation-menu-viewport-height);transition-duration:100ms}[data-slot=navigation-menu-viewport][data-state=open]{animation:zoom 150ms}@keyframes zoom{from{transform:scale(.9)}}[data-slot=navigation-menu-content]{position:absolute;top:0;left:0}[data-motion=to-start]{animation:out 200ms forwards}[data-motion=from-end]{animation:in 200ms}@keyframes out{to{opacity:0;translate:-208px}}@keyframes in{from{opacity:0;translate:208px}}#c1{width:300px;height:120px}#c2{width:500px;height:200px}</style>`;
+	const page = await open(`${css}<div style="padding:40px">${navigationMenu.replace('<div><div hidden', '<div style="position:absolute;top:100%;left:0;display:flex;justify-content:center"><div hidden')}</div>`, ['radix/navigation-menu']);
+	await page.getByText('Getting started').click();
+	await page.waitForTimeout(300);
+	const frame = () =>
+		page.evaluate(() =>
+			new Promise<string[]>((done) =>
+				requestAnimationFrame(() =>
+					done(
+						[...document.querySelectorAll<HTMLElement>('[data-slot=navigation-menu-viewport]')]
+							.filter((v) => !v.hidden)
+							.map((v) => {
+								const r = v.getBoundingClientRect();
+								const c = v.querySelector<HTMLElement>('[data-slot=navigation-menu-content]')!;
+								return `${c.id} ${Math.round(r.width)}x${Math.round(r.height)} ${Number(getComputedStyle(c).opacity).toFixed(1)} ${getComputedStyle(v).backgroundColor === 'rgba(0, 0, 0, 0)' ? 'clear' : 'framed'} ${new DOMMatrixReadOnly(getComputedStyle(v).transform).m11}`;
+							}),
+					),
+				),
+			),
+		);
+	await page.getByText('Components').hover();
+	const first = await frame();
+	assert.equal(first.length, 2, 'the old content is still there, sliding out');
+	assert.match(first[0]!, /^c1 \d+x\d+ \S+ clear 1$/, 'over the new frame, its own cleared');
+	assert.match(first[1]!, /^c2 (\d+)x(\d+) \S+ framed 1$/, 'the new viewport does not zoom in');
+	const [w, h] = /c2 (\d+)x(\d+)/.exec(first[1]!)!.slice(1).map(Number) as [number, number];
+	assert.ok(w < 500 && h < 200, `it grows from the old size, at ${w}x${h} on its first frame`);
+	await page.waitForTimeout(400);
+	assert.deepEqual(await frame(), ['c2 500x200 1.0 framed 1']);
+	await page.close();
+});
+
 test('Radix NavigationMenu from the keyboard: ArrowDown on an open trigger enters its content, Tab goes through the content via the focus proxy and on to the next trigger, the arrows rove the list', async () => {
 	const page = await open(navigationMenu, ['radix/navigation-menu']);
 	await page.locator('#t1').focus();

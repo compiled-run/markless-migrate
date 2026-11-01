@@ -281,6 +281,23 @@ test('the side arrows in an open Base UI menubar menu open the next menu focused
 	await page.close();
 });
 
+test('switching between open Base UI menubar menus is instant (data-instant="group"): the old menu goes and the new one is in on the next frame, while a first open still fades in', async () => {
+	const bar = (id: string, text: string) => `<button type="button" role="menuitem" id="${id}" aria-haspopup="menu" aria-expanded="false" data-slot="menubar-trigger">${text}</button>`;
+	const layer = (id: string, items: readonly string[]) => `<div data-base-ui-portal hidden data-mm-layer="${id}"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="${id}" data-slot="menubar-content" data-closed>${items.map((t) => `<div role="menuitem" tabindex="-1" data-slot="menubar-item">${t}</div>`).join('')}</div></div></div>`;
+	// tw-animate's enter and exit as shadcn's menubar content uses them (duration-100).
+	const css = '<style>@keyframes enter{from{opacity:0;transform:scale(.95)}}@keyframes exit{to{opacity:0;transform:scale(.95)}}[role=menu][data-open]{animation:enter 100ms}[role=menu][data-closed]{animation:exit 100ms}</style>';
+	const page = await open(`${css}<main style="padding:100px"><div role="menubar" data-slot="menubar">${bar('m1', 'File')}${bar('m2', 'Edit')}</div></main>${layer('m1', ['New Tab', 'Print'])}${layer('m2', ['Undo', 'Redo'])}`, ['base-ui/menu']);
+	const frame = () =>
+		page.evaluate(() => new Promise<string[]>((done) => requestAnimationFrame(() => done([...document.querySelectorAll<HTMLElement>('[role=menu]')].filter((m) => m.getClientRects().length).map((m) => `${m.getAttribute('aria-labelledby')} ${Number(getComputedStyle(m).opacity).toFixed(2)} ${m.getAttribute('data-instant') ?? '-'}`)))));
+	await page.locator('#m1').click();
+	assert.deepEqual(await frame(), ['m1 0.00 -'], 'a first open fades in');
+	await page.waitForTimeout(200);
+	await page.locator('#m2').hover();
+	assert.deepEqual(await frame(), ['m2 1.00 group'], 'no fade either way on a switch');
+	assert.equal(await page.evaluate(() => document.querySelector('[role=menu][aria-labelledby=m1]')!.getAttribute('data-instant')), 'group');
+	await page.close();
+});
+
 test('the arrows, Home and End rove focus and the Tab stop between closed Base UI menubar triggers, looping, as its CompositeRoot does', async () => {
 	const bar = (id: string, text: string, i: number) => `<button type="button" role="menuitem" id="${id}" tabindex="${i ? -1 : 0}" aria-haspopup="menu" aria-expanded="false" data-slot="menubar-trigger">${text}</button>`;
 	const page = await open(`<main style="padding:100px"><div role="menubar" data-slot="menubar">${['File', 'Edit', 'View'].map((t, i) => bar(`m${i}`, t, i)).join('')}</div></main>`, ['base-ui/menu']);

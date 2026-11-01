@@ -109,3 +109,40 @@ test('Base UI NavigationMenu: Tab past the last link of the last trigger\'s cont
 	assert.deepEqual(await state(page), { triggers: 'Getting started:false Components:false', open: '-', focus: 'After' });
 	await page.close();
 });
+
+test('Base UI NavigationMenu: moving the pointer to another trigger morphs one popup from the open one\'s size to the new content\'s, the old content leaving over it and the new one entering', async () => {
+	const css = '<style>nav[id$=-popup]{display:block;background:white;box-shadow:0 0 0 1px #ccc;width:var(--popup-width);height:var(--popup-height);transition:width .35s,height .35s,opacity .35s,scale .35s}nav[id$=-popup][data-starting-style]{opacity:0;scale:.9}[data-slot=navigation-menu-content]{transition:opacity .35s}[data-slot=navigation-menu-content][data-ending-style],[data-slot=navigation-menu-content][data-starting-style]{opacity:0}#t1-popup ul{width:300px;height:120px;margin:0}#t2-popup ul{width:500px;height:200px;margin:0}</style>';
+	const page = await open(css + MENU.replaceAll('style="position:absolute;left:0;top:300px"', 'style="position:absolute;left:0;top:300px"').replaceAll('<nav id="', '<nav style="--popup-width:auto;--popup-height:auto" id="'), ['base-ui/navigation-menu']);
+	const frame = () =>
+		page.evaluate(() =>
+			new Promise<string[]>((done) =>
+				requestAnimationFrame(() =>
+					done(
+						[...document.querySelectorAll<HTMLElement>('[data-mm-layer]')]
+							.filter((l) => !l.hidden)
+							.map((l) => {
+								const nav = l.querySelector<HTMLElement>('nav')!;
+								const content = l.querySelector<HTMLElement>('[data-slot=navigation-menu-content]')!;
+								return `${l.dataset.mmLayer} ${nav.offsetWidth}x${nav.offsetHeight} ${getComputedStyle(nav).backgroundColor === 'rgba(0, 0, 0, 0)' ? 'clear' : 'framed'} ${Number(getComputedStyle(nav).opacity).toFixed(1)} content ${Number(getComputedStyle(content).opacity).toFixed(1)}`;
+							}),
+					),
+				),
+			),
+		);
+	const second = (await page.getByText('Components').boundingBox())!;
+	await page.getByText('Getting started').hover();
+	await page.waitForTimeout(500);
+	assert.deepEqual(await frame(), ['t1 300x120 framed 1.0 content 1.0']);
+	await page.evaluate(() => document.querySelectorAll<HTMLElement>('[data-mm-layer] [role=presentation]').forEach((p) => (p.style.pointerEvents = 'none')));
+	await page.mouse.move(second.x + 5, second.y + 5);
+	await page.waitForTimeout(70);
+	const [old, next] = await frame();
+	assert.match(old ?? '', /^t1 \d+x\d+ clear 1\.0 content 0\.\d$/, 'the old popup stays, its frame cleared, its content leaving');
+	const m = /^t2 (\d+)x(\d+) framed 1\.0 content 0\.\d$/.exec(next ?? '');
+	assert.ok(m, `the new popup does not fade or zoom in: ${next}`);
+	assert.ok(Number(m![1]) > 300 && Number(m![1]) < 500, `it grows from the old size: ${next}`);
+	await page.waitForTimeout(500);
+	assert.deepEqual(await frame(), ['t2 500x200 framed 1.0 content 1.0']);
+	await page.close();
+});
+

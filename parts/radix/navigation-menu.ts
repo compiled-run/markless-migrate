@@ -32,31 +32,83 @@ function setTrigger(trigger: HTMLElement, open: boolean): void {
 	trigger.setAttribute('data-state', open ? 'open' : 'closed');
 }
 
+// A switch keeps one frame on screen, as Radix's single viewport does: the new viewport starts at the old one's size and
+// resizes to its content (the viewport's own 100 ms transition), and the old one stays over it, its frame cleared, while
+// its content slides out (data-motion to-*).
+const leaving = new Map<Element, () => void>();
+const SWITCH_STYLES = ['position', 'left', 'top', 'z-index', 'background', 'box-shadow', 'pointer-events', 'animation', 'transition-property'];
+
+function sizeTo(viewport: HTMLElement, content: HTMLElement): void {
+	viewport.style.setProperty('--radix-navigation-menu-viewport-width', `${content.offsetWidth}px`);
+	viewport.style.setProperty('--radix-navigation-menu-viewport-height', `${content.offsetHeight}px`);
+}
+
+interface Geometry {
+	readonly left: number;
+	readonly top: number;
+	readonly width: string;
+	readonly height: string;
+}
+
+// Where the open viewport stands and its size, read before anything else is shown.
+function geometry(viewport: HTMLElement | undefined): Geometry | undefined {
+	if (!viewport || viewport.hidden) return undefined;
+	const css = getComputedStyle(viewport);
+	return { left: viewport.offsetLeft - parseFloat(css.marginLeft), top: viewport.offsetTop - parseFloat(css.marginTop), width: viewport.style.getPropertyValue('--radix-navigation-menu-viewport-width'), height: viewport.style.getPropertyValue('--radix-navigation-menu-viewport-height') };
+}
+
+function morph(root: Element, from: { viewport?: HTMLElement; content?: HTMLElement }, to: { viewport?: HTMLElement; content?: HTMLElement }, previous: HTMLElement, at: Geometry | undefined): void {
+	const a = from.viewport;
+	const b = to.viewport;
+	const content = to.content;
+	if (!a || !b || a === b || !content || !at) return showCompanions(previous.id, false);
+	showCompanions(previous.id, false);
+	a.hidden = false;
+	Object.assign(a.style, { position: 'absolute', left: `${at.left}px`, top: `${at.top}px`, zIndex: '1', background: 'transparent', boxShadow: 'none', pointerEvents: 'none', animation: 'none', transitionProperty: 'width, height' });
+	b.style.animation = 'none';
+	b.style.setProperty('--radix-navigation-menu-viewport-width', at.width);
+	b.style.setProperty('--radix-navigation-menu-viewport-height', at.height);
+	// NavigationMenuViewport sizes itself from its content's ResizeObserver, a frame after the content mounts.
+	requestAnimationFrame(() => {
+		sizeTo(b, content);
+		sizeTo(a, content);
+	});
+	const done = () => {
+		if (leaving.get(root) !== done) return;
+		leaving.delete(root);
+		for (const prop of SWITCH_STYLES) a.style.removeProperty(prop);
+		if (opened.get(root) !== previous) a.hidden = true;
+		from.content?.removeAttribute('data-motion');
+	};
+	leaving.set(root, done);
+	const out = from.content;
+	if (out && getComputedStyle(out).animationName !== 'none') out.addEventListener('animationend', done, { once: true });
+	else done();
+}
+
 function open(trigger: HTMLElement): void {
 	const root = trigger.closest(ROOT);
 	if (!root || opened.get(root) === trigger) return;
 	clearTimeout(timers.get(root));
 	const previous = opened.get(root);
+	leaving.get(root)?.();
 	const all = triggersOf(root);
-	if (previous) {
-		const forward = all.indexOf(trigger) > all.indexOf(previous);
-		const before = parts(previous);
-		before.content?.setAttribute('data-motion', forward ? 'to-start' : 'to-end');
-		setTrigger(previous, false);
-		showCompanions(previous.id, false);
-		const next = parts(trigger);
-		next.content?.setAttribute('data-motion', forward ? 'from-end' : 'from-start');
-	}
+	const next = parts(trigger);
+	const before = previous ? parts(previous) : {};
+	const at = geometry(before.viewport);
 	opened.set(root, trigger);
 	setTrigger(trigger, true);
 	showCompanions(trigger.id, true);
-	const { viewport, content } = parts(trigger);
+	const { viewport, content } = next;
 	// A content shown in the viewport carries no data-state of its own (NavigationMenuViewport renders it).
 	for (const el of viewport ? [viewport] : [content]) el?.setAttribute('data-state', 'open');
-	if (viewport && content) {
-		viewport.style.setProperty('--radix-navigation-menu-viewport-width', `${content.offsetWidth}px`);
-		viewport.style.setProperty('--radix-navigation-menu-viewport-height', `${content.offsetHeight}px`);
-	}
+	if (previous) {
+		const forward = all.indexOf(trigger) > all.indexOf(previous);
+		before.content?.setAttribute('data-motion', forward ? 'to-start' : 'to-end');
+		content?.setAttribute('data-motion', forward ? 'from-end' : 'from-start');
+		setTrigger(previous, false);
+		morph(root, before, next, previous, at);
+	} else if (viewport && content) sizeTo(viewport, content);
 }
 
 function close(root: Element, focus = false): void {
@@ -64,7 +116,9 @@ function close(root: Element, focus = false): void {
 	if (!trigger) return;
 	opened.delete(root);
 	setTrigger(trigger, false);
+	leaving.get(root)?.();
 	const { viewport, content } = parts(trigger);
+	viewport?.style.removeProperty('animation');
 	for (const el of viewport ? [viewport] : [content]) el?.setAttribute('data-state', 'closed');
 	const hide = () => opened.get(root) !== trigger && showCompanions(trigger.id, false);
 	const animated = viewport && getComputedStyle(viewport).animationName !== 'none';
