@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { parseFragment } from 'parse5';
 import { chromium } from 'playwright';
 import ts from 'typescript';
-import type { Element } from '../src/convert/dom.ts';
+import { attr, type Element } from '../src/convert/dom.ts';
 import { ScenePlan, type SceneData } from '../src/convert/scene-plan.ts';
 import { TYPED, type Scene, type SceneNode } from '../src/convert/scenes.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
@@ -276,10 +276,47 @@ test('a node that shows different children by turns is one arm over all of them,
 	assert.deepEqual(data.entries.filter(([, kind]) => kind === 'h').map(([k]) => k).sort(), [5, 6]);
 });
 
-test('a demo whose uses would replace an element another plan puts on Markless state is not played', () => {
+test("a demo whose uses would replace an element another plan puts on Markless state plays them, and shows the page's own markup at rest", () => {
 	const region = parseFragment(html(REPLAY.states[0]!)).childNodes[0] as unknown as Element;
 	const plan = new ScenePlan((e) => e.tagName === 'span');
-	assert.equal(plan.add(REPLAY, region, 'button'), false);
-	assert.match(plan.refused[0]!, /<span> is on Markless state already/);
-	assert.equal(plan.bind(region), undefined);
+	assert.ok(plan.add(REPLAY, region, 'button'), plan.refused.join('\n'));
+	const out = emitElement(region, { bind: (e) => plan.bind(e) });
+	assert.match(out, /\}\)\}><pre hidden=\{!\(sc0 === 0 \|\| sc0 === 4\)\}><span>a<\/span><span>b<\/span><span>c<\/span><\/pre><button hidden=\{!\(sc0 === 0 \|\| sc0 === 4\)\}>Replay<\/button>/, 'the frames that look as the page loaded show its own elements, with their bindings, hidden but never unmounted');
+	assert.match(out, /@if \(\(sc0 >= 1 && sc0 <= 3\)\) \{ <><pre/, 'the frames between play the captured markup');
+	assert.match(out, /playScene/);
+});
+
+// Replay of a Radix trace: the list is mounted again under new ids, its collapsible open while the steps stream, and it
+// settles in a new state that looks as the page loaded.
+const trace = (ids: readonly [number, number, number], open: boolean, steps: string[]) =>
+	el(1, 'div', { 'data-slot': 'preview' }, el(ids[0], 'div', { 'data-slot': 'trace-collapsible', 'data-state': open ? 'open' : 'closed' }, el(ids[1], 'button', { 'aria-controls': `radix-${ids[0]}`, 'aria-expanded': String(open) }, text(ids[1] * 10, 'Researched')), el(ids[2], 'div', { id: `radix-${ids[0]}`, 'data-state': open ? 'open' : 'closed', ...(open ? {} : { hidden: '' }) }, ...steps.map((t, i) => el(ids[2] * 10 + i, 'p', {}, text(ids[2] * 100 + i, t))))), el(9, 'button', {}, text(90, 'Replay')));
+const TRACE: Scene = {
+	sig: 'div|preview|',
+	nth: 0,
+	states: [trace([2, 3, 4], false, []), trace([12, 13, 14], false, [])],
+	edges: [
+		{
+			from: 0,
+			control: 'button||Replay#0',
+			to: 1,
+			frames: [
+				{ t: 16, tree: trace([12, 13, 14], true, ['one']) },
+				{ t: 32, tree: trace([12, 13, 14], true, ['one', 'two']) },
+				{ t: 48, tree: trace([12, 13, 14], false, []) },
+			],
+		},
+		{ from: 1, control: 'button||Replay#0', to: 1, frames: [{ t: 16, tree: trace([22, 23, 24], true, ['one']) }, { t: 48, tree: trace([22, 23, 24], false, []) }] },
+	],
+	skipped: [],
+};
+
+test("a Replay that remounts a collapsible another plan owns keeps that plan's element at rest, every time it settles", () => {
+	const region = parseFragment(html(TRACE.states[0]!)).childNodes[0] as unknown as Element;
+	const plan = new ScenePlan((e) => attr(e, 'data-slot') === 'trace-collapsible');
+	assert.ok(plan.add(TRACE, region, 'button'), plan.refused.join('\n'));
+	const out = emitElement(region, { bind: (e) => plan.bind(e) });
+	const data = JSON.parse(JSON.parse(/data-mm-scene=\{("(?:[^"\\]|\\.)*")\}/.exec(out)![1]!) as string) as SceneData;
+	const own = /\}\)\}><div data-slot="trace-collapsible"[^>]* hidden=\{!\((.*?)\)\}>/.exec(out)![1]!;
+	for (const rest of data.rest) assert.ok(new RegExp(`sc0 === ${rest}\\b|sc0 >= \\d+ && sc0 <= \\d+`).test(own), `rest frame ${rest} shows the page's own markup: ${own}`);
+	assert.match(out, /<p[^>]*>one<\/p>/, 'the streamed steps are in the captured arm');
 });

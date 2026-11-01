@@ -504,6 +504,7 @@ export class InsertedDisclosurePlan {
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
 		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
 		const openPanels = new Map<Element, Element>();
+		const keptPanels = new Map<Element, Element>();
 		for (const root of roots) {
 			const byId = new Map<string, Element>();
 			for (const el of walk(root)) {
@@ -514,6 +515,14 @@ export class InsertedDisclosurePlan {
 				if (attr(t, 'aria-expanded') !== 'true' || attr(t, 'aria-haspopup') !== undefined || !t.attrs.some((a) => a.name === 'data-panel-open')) continue;
 				const panel = byId.get(attr(t, 'aria-controls') ?? '');
 				if (panel && !this.bindings.has(t)) openPanels.set(t, panel);
+			}
+			// A Base UI disclosure closed on load whose panel stays mounted (keepMounted): its trigger names no panel yet.
+			for (const t of walk(root)) {
+				if (attr(t, 'aria-expanded') !== 'false' || attr(t, 'aria-haspopup') !== undefined || attr(t, 'aria-controls') !== undefined || this.bindings.has(t)) continue;
+				const holder = t.parentNode as Element | null;
+				if (!holder || !('tagName' in holder) || !holder.attrs.some((a) => a.name === 'data-closed')) continue;
+				const panel = childrenOf(holder).filter(isElement).find((p) => p !== t && /^base-ui-/.test(attr(p, 'id') ?? '') && attr(p, 'hidden') !== undefined && p.attrs.some((a) => a.name === 'data-closed'));
+				if (panel) keptPanels.set(t, panel);
 			}
 		}
 		// A Base UI disclosure's root (Collapsible.Root, Accordion.Item) carries data-open or data-closed, and so does an
@@ -534,7 +543,7 @@ export class InsertedDisclosurePlan {
 			return undefined;
 		};
 		const groups = new Map<Element, Element[]>();
-		for (const trigger of [...byTrigger.keys(), ...[...openPanels.keys()].filter((t) => !accordionOf(t))]) {
+		for (const trigger of [...byTrigger.keys(), ...[...openPanels.keys(), ...keptPanels.keys()].filter((t) => !accordionOf(t))]) {
 			if (this.bindings.has(trigger)) continue;
 			const key = accordionOf(trigger) ?? trigger;
 			// A group key is the accordion, or the trigger itself for a standalone disclosure.
@@ -553,14 +562,15 @@ export class InsertedDisclosurePlan {
 				if (panel) panels.set(t, panel);
 			}
 			if (standalone && openPanels.has(key)) panels.set(key, openPanels.get(key)!);
+			if (standalone && keptPanels.has(key)) panels.set(key, keptPanels.get(key)!);
 			const triggers = [...closed.filter((t) => !panels.has(t)), ...[...panels.keys()]];
 			const name = `ins${this.n++}`;
 			const closing = `${name}x`;
 			const single = !standalone && triggers.length > 1;
 			const initial = triggers.findIndex((t) => panels.has(t));
-			const declare = [`let ${name} = state(${single ? initial : String(standalone && panels.has(key))});`, `let ${closing} = state(${single ? -1 : false});`];
+			const declare = [`let ${name} = state(${single ? initial : String(standalone && openPanels.has(key))});`, `let ${closing} = state(${single ? -1 : false});`];
 			// Base UI names the panel in aria-controls only while it is mounted.
-			const panelIds = triggers.map((t) => (panels.has(t) ? attr(t, 'aria-controls') : byTrigger.get(t)?.find((i) => i.panelId)?.panelId) ?? '');
+			const panelIds = triggers.map((t) => (panels.has(t) ? (attr(t, 'aria-controls') ?? attr(panels.get(t)!, 'id')) : byTrigger.get(t)?.find((i) => i.panelId)?.panelId) ?? '');
 			const ids = `[${panelIds.map(lit).join(', ')}]`;
 			// The arm's root closes with the panel when the panel sits inside it (a navigation menu's viewport).
 			const depth = triggers.map((t) => (panels.has(t) ? 0 : (byTrigger.get(t)?.find((i) => i.panelId)?.panelDepth ?? 0)));
@@ -572,7 +582,7 @@ export class InsertedDisclosurePlan {
 				const toggle = single
 					? `const was = ${name}; ${name} = ${name} === ${k} ? -1 : ${k}; if (was >= 0 && was !== ${name}) { ${closing} = was; panelExit(${ids}[was] ?? '', () => { if (${closing} === was) ${closing} = -1; }${depth.some(Boolean) ? `, [${depth.join(', ')}][was]` : ''}); } if (${name} === ${k}) panelEnter(${lit(panelIds[k]!)}${deep(k)});`
 					: `${name} = !${name}; if (${name}) panelEnter(${lit(panelIds[k]!)}${deep(k)}); else { ${closing} = true; panelExit(${lit(panelIds[k]!)}, () => { ${closing} = false; }${deep(k)}); }`;
-				const base = isBase(trigger);
+				const base = isBase(trigger) || keptPanels.has(trigger);
 				const extra = [`aria-expanded={${open} ? "true" : "false"}`, `onClick={() => { ${toggle} }}`];
 				const omit = ['aria-expanded'];
 				if (attr(trigger, 'data-state') !== undefined) {

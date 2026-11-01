@@ -401,15 +401,19 @@ function walkAll(root: Element): Element[] {
 }
 
 // The same signature as the capture computes in the page: tag, data-slot and text.
-function sigOf(el: Element): string {
-	return `${el.tagName}|${attr(el, 'data-slot') ?? ''}|${textOf(el).trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+function sigOf(el: Element, skip?: ReadonlySet<Element>): string {
+	return `${el.tagName}|${attr(el, 'data-slot') ?? ''}|${textOf(el, skip).trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 }
 
-function textOf(node: Element): string {
+function textOf(node: Element, skip?: ReadonlySet<Element>): string {
 	return childrenOf(node)
-		.map((n) => (n.nodeName === '#text' ? (n as unknown as { value: string }).value : isElement(n) && n.tagName !== 'template' ? textOf(n) : ''))
+		.map((n) => (n.nodeName === '#text' ? (n as unknown as { value: string }).value : isElement(n) && n.tagName !== 'template' && !skip?.has(n) ? textOf(n, skip) : ''))
 		.join('');
 }
+
+// What convert put into a closed panel of the page from a reveal (content holding a Collapsible of its own): the old page as
+// it loaded had none of it, so an element is found by the text it had then too.
+const insertedContent = new Set<Element>();
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
@@ -781,16 +785,21 @@ function chartRegion(wrapper: Element | undefined): Element | undefined {
 
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
+	const asLoaded = new Map<string, Element[]>();
 	const index = (el: Element) => {
 		for (const child of childrenOf(el)) {
 			if (!isElement(child) || child.tagName === 'template') continue;
 			const sig = sigOf(child);
 			(bySig.get(sig) ?? bySig.set(sig, []).get(sig)!).push(child);
+			if (insertedContent.size && !insertedContent.has(child)) {
+				const loaded = sigOf(child, insertedContent);
+				if (loaded !== sig) (asLoaded.get(loaded) ?? asLoaded.set(loaded, []).get(loaded)!).push(child);
+			}
 			index(child);
 		}
 	};
 	index(root);
-	return (sig, nth) => bySig.get(sig)?.[nth];
+	return (sig, nth) => bySig.get(sig)?.[nth] ?? asLoaded.get(sig)?.[nth];
 }
 
 function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (what: string) => void): Map<Element, string> {
@@ -837,6 +846,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 					for (const el of childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)) {
 						el.parentNode = panel as never;
 						panel.childNodes.push(el as never);
+						insertedContent.add(el);
 						for (const x of [el, ...walkAll(el)]) {
 							const id = attr(x, 'id');
 							if (id) byId.set(id, x);
