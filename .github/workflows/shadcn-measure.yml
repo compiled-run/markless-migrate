@@ -1,0 +1,54 @@
+name: shadcn Cloudflare measurement
+# Scratch (owner-approved, 2026-10-31): the shadcn port against its original, both on Cloudflare Workers. Delete after.
+on:
+  push:
+    branches: [exp/prefetch-idle]
+    paths: [.github/workflows/shadcn-measure.yml]
+env:
+  OLD: https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev
+  NEW: https://mm-shadcn-ui-new-measure.long-wildflower-ecf7.workers.dev
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup
+        with: { browsers: chromium }
+      - run: bash scripts/exp/shadcn-lh.sh "$RUNNER_TEMP/lh.tsv" 3 "$OLD" "$NEW" / /docs /examples/dashboard /blocks /charts/area /create
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: lh, path: "${{ runner.temp }}/lh.tsv" }
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup
+        with: { browsers: chromium firefox webkit }
+      - run: node scripts/exp/shadcn-load.ts "$RUNNER_TEMP/load.json" 3 "$OLD" "$NEW" /,/examples/dashboard ${{ matrix.browser }} regular-3g,slow-4g,fast-4g
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "load-${{ matrix.browser }}", path: "${{ runner.temp }}/load.json" }
+  nav:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup
+        with: { browsers: chromium firefox webkit }
+      - run: node scripts/exp/shadcn-nav.ts "$RUNNER_TEMP/nav.json" 3 "$OLD" "$NEW" ${{ matrix.browser }} unthrottled,fast-4g
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "nav-${{ matrix.browser }}", path: "${{ runner.temp }}/nav.json" }
