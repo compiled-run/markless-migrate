@@ -54,6 +54,21 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.match(renderHtml(report), /class="filmstrip"/);
 	});
 
+	test("a key press is recorded after its control is focused: the focus ring's own transition is not the press's motion", async () => {
+		const { createServer } = await import('node:http');
+		const page = '<!doctype html><html lang="en"><title>Ring</title><style>button{outline:none;transition:box-shadow 150ms ease}button:focus-visible{box-shadow:0 0 0 3px blue}</style><main><h1>Ring</h1><button type="button">Plain</button></main>';
+		const host = () => new Promise<string>((done) => {
+			const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(page));
+			servers.push(server);
+			server.listen(0, '127.0.0.1', () => done(`http://127.0.0.1:${(server.address() as { port: number }).port}`));
+		});
+		const report = await runCheck({ oldOrigin: await host(), newOrigin: await host(), routes: ['/'], browser, viewports: DESKTOP, motion: {} });
+		const press = report.routes[0]!.motion!.interactions.filter((i) => /^press (Space|Enter) on button "Plain"/.test(i.name));
+		assert.ok(press.length, report.routes[0]!.motion!.interactions.map((i) => i.name).join('\n'));
+		for (const i of press) assert.ok(!i.old.some((l) => /box-shadow/.test(l)), `${i.name}: ${i.old.join('; ')}`);
+		assert.deepEqual(motion(report), []);
+	});
+
 	test('a fade a 2 s timer starts after the click is recorded on both sides, however long the click held either page', async () => {
 		const timer = async (busy: number) => {
 			const { origin, server } = await serveTimer(busy);

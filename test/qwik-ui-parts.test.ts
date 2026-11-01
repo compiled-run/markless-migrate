@@ -192,14 +192,27 @@ test("modal: a press on the backdrop closes it and focus goes back to its trigge
 	await p.close();
 });
 
-test("a Qwik UI modal's own props come from its context in the page's paused state: closeOnBackdropClick false is written on its dialog", () => {
-	const objs = Object.assign(new Array(100).fill(''), { 1: 'm2', 2: false, 3: '\u0001', 4: 'm1', 5: { localId: '4', closeOnBackdropClick: '3', alert: '3' }, 6: { localId: '1', closeOnBackdropClick: '2', alert: '3' } });
+test("a Qwik UI modal's own props come from its context in the page's paused state: closeOnBackdropClick false and its nesting level are written on its dialog", () => {
+	const objs = Object.assign(new Array(100).fill(''), { 1: 'm2', 2: false, 3: '\u0001', 4: 'm1', 5: { localId: '4', closeOnBackdropClick: '3', alert: '3', level: '7' }, 6: { localId: '1', closeOnBackdropClick: '2', alert: '3', level: '8' }, 7: 1, 8: 2 });
 	const html = page(`<dialog id="m1-root" q:id="a"></dialog><dialog id="m2-root" q:id="b"></dialog><script type="qwik/json">${JSON.stringify({ refs: {}, ctx: {}, objs })}</script>`);
 	const doc = parseDocument(html);
 	cleanDocument(doc, { builds: frameworkBuilds(html).map((b) => b.path), frameworkScripts: new Set(), origin: 'http://old', qwik: { symbols: new Map(), marks: QWIK_HANDLER_MARKS, contexts: QWIK_CONTEXT_PROPS } }, new Map());
 	const [m1, m2] = [...walk(doc)].filter((el) => el.tagName === 'dialog');
 	assert.equal(attr(m1!, 'data-mm-backdrop-close'), undefined);
 	assert.equal(attr(m2!, 'data-mm-backdrop-close'), 'false');
+	assert.equal(attr(m1!, 'data-mm-level'), '1');
+	assert.equal(attr(m2!, 'data-mm-level'), '2');
+});
+
+test('modal: one nested in another modal\'s Root (level 2) leaves the page locked when it closes, as only a root modal restores scroll', async () => {
+	const p = await open(MODAL.replace('<dialog id="m1-root"', '<dialog id="m1-root" data-mm-level="2"'), ['qwik-ui/modal']);
+	const locked = () => p.evaluate(() => document.body.hasAttribute('data-noscroll-target-scroll-disabled') && getComputedStyle(document.body).overflow === 'hidden');
+	await p.getByText('Open').click();
+	assert.equal(await locked(), true);
+	await p.keyboard.press('Escape');
+	assert.equal(await p.locator('dialog').evaluate((d) => (d as HTMLDialogElement).open), false);
+	assert.equal(await locked(), true, 'still locked after Escape');
+	await p.close();
 });
 
 test("Qwik's manifest names each handler's source: a library handler a port needs marks its element, the site's own are named", () => {
