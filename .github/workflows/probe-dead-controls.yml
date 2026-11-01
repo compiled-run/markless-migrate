@@ -92,12 +92,14 @@ jobs:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
           lookup-only: true
       - name: Build the old site
         if: steps.old-build.outputs.cache-hit != 'true'
         run: |
-          built="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
+          # The stamp ci-serve.sh compares: the build script and, where the site has them, the fixtures the build reads.
+          stamped=("deploy/$SITE/fetch-old.sh"); [ -f "deploy/$SITE/old-fixtures.json" ] && stamped+=("deploy/$SITE/old-fixtures.json")
+          built="$(cat "${stamped[@]}" | sha256sum | cut -d' ' -f1)"
           ORIGIN=http://localhost:4000 "deploy/$SITE/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
           echo "$built" > "deploy/$SITE/old/.ci-built"
       - if: steps.old-build.outputs.cache-hit != 'true'
@@ -106,7 +108,7 @@ jobs:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
 
   probe:
     needs: old
@@ -130,7 +132,7 @@ jobs:
           path: |
             deploy/${{ env.SITE }}/old
             !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
           fail-on-cache-miss: true
       - name: Serve both sides
         env:
