@@ -36,7 +36,7 @@ import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendar
 import type { CalendarMessages } from '../../parts/react-aria/calendar.ts';
 import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
+import { framesAsServed, nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
@@ -1132,6 +1132,8 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
+	const servedDoc = parseDocument(capture.server);
+	framesAsServed(doc, servedDoc, (el) => bindMount(el) !== undefined);
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
@@ -1150,7 +1152,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const served = parseDocument(headAt > 0 ? capture.server.slice(0, headAt) : capture.server);
 	cleanDocument(served, ctx, new Map());
 	// Added to the head after its stylesheets and before the body's styles: folded ahead of those, not linked at the body's end.
-	const lateStyles = foldLateStyles(lateHead(doc, parseDocument(capture.server), dropped));
+	const lateStyles = foldLateStyles(lateHead(doc, servedDoc, dropped));
 	const late = lateStyles.kept.map((el) => {
 		const holder = { nodeName: 'div', tagName: 'div', attrs: [], childNodes: [el] } as unknown as Element;
 		extractStyles(holder, styles);
@@ -1675,6 +1677,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		break;
 	}
+	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : []), ...([...clockMarks.values()].some((m) => m.length) ? ['data-mm-clock'] : [])]);
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -1714,7 +1717,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	};
 	const appended = new Map<Element, string>();
 	for (const p of prepared.values()) for (const [el, markup] of p.appends) appended.set(el, markup);
-	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : []), ...([...clockMarks.values()].some((m) => m.length) ? ['data-mm-clock'] : [])]);
 	const tabs = new TabsPlan();
 	let tabGroups = 0;
 	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel));

@@ -248,3 +248,23 @@ function insideTemplate(el: Element): boolean {
 	}
 	return false;
 }
+
+/** An iframe a site part mounts keeps the class its server sent (opacity-0 before onLoad): the part plays the change the capture caught. */
+export function framesAsServed(doc: Document, served: Document, mounted: (el: Element) => boolean): number {
+	const keyOf = (el: Element) => `${attr(el, 'src') ?? ''}|${attr(el, 'title') ?? ''}`;
+	const sent = new Map<string, Element[]>();
+	for (const el of walk(served)) if (el.tagName === 'iframe') sent.set(keyOf(el), [...(sent.get(keyOf(el)) ?? []), el]);
+	const seen = new Map<string, number>();
+	let n = 0;
+	for (const el of walk(doc)) {
+		if (el.tagName !== 'iframe') continue;
+		const key = keyOf(el);
+		const i = seen.get(key) ?? 0;
+		seen.set(key, i + 1);
+		const was = sent.get(key)?.[i] && attr(sent.get(key)![i]!, 'class');
+		if (was === undefined || was === attr(el, 'class') || !mounted(el)) continue;
+		setAttr(el, 'class', was);
+		n++;
+	}
+	return n;
+}
