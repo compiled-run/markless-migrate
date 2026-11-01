@@ -774,852 +774,346 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
-	"/_converted/styles/011a60044a35.css": {
+	"/_converted/styles/**": {
 		"headers": {
 			"cache-control": "public, max-age=31536000, immutable"
 		}
+	}
+};
+
+// Cloudflare has no ISR: these pages and their fragment URLs are built into files it serves without running the Worker.
+export const cloudflareRouteRules: Record<string, Record<string, unknown>> = {
+	"/": {
+		"prerender": true
 	},
-	"/_converted/styles/04da96088eaf.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/05083ec5d1c9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/05083ec5d1c9.used-0ce99439785f.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/0a545f18a366.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/0b818ba5977d.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/0f82b9294b9b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/18b3fb3e9811.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/1a8876a4611a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/1b14c193d4ce.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/1bfedbc6182a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/1bfedbc6182a.used-ff55e3dd2f41.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/2412c95c8ba6.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/2412c95c8ba6.used-78e961aeefd5.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/3356a2fb65f9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/3356a2fb65f9.used-9458c4ad4c22.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/354741c4a970.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/37babb791ff3.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/42cee7600efa.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/4565a17facdf.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/513fc8a42c84.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/51fe843598ed.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/5c8b76238ca5.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/6b24f6740011.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/6e6b3654eb68.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/7b3a5f122086.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/8310b0ada00e.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/8c49a3629c53.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/9404d5ed4541.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/aaf7bff90913.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/ac056a96ca40.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/ae01b667037c.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/b708e2ba7d8f.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/bb2e8113a202.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/bd66d044a45b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/bd66d044a45b.used-499ca56617d2.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/bdfab3a25e87.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-0c46907401f8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-0c806eaf5524.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-0ce224347f92.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-0d572d2461c9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-11422316aad6.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-13147b66afda.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-15bfa1ebb036.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-16ea000439bc.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-18670ecf91ce.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-1bfa6a42116f.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-1cb4fabf1627.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-1d801b10f9af.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-1f0fcb5e0866.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-207cfb78930a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-208c0eaa4f27.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-2362c9f82e5a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-2a07e39cb5ef.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-2a8ed76a4d09.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-2e532fb858b4.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-2fbf44f3d1a8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-2fdecd0e3c48.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-327f28825d2f.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-33fe91978bf8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-342c4a48aaa3.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-34c09120d13c.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/contributing/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-36d2388b6cdd.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
-	},
-	"/_converted/styles/c0e754ddd264.used-36ffa88dcf25.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/contributing/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-3ab97475007b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/contributors/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-3f83d682d4e0.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/contributors/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-3fc5d003216d.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/accordion/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-41cab666ad88.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/accordion/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-41fa33cc1a4b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/carousel/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-4283da1da1c5.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/carousel/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-435398c84c1d.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/checkbox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-4484511d918c.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/checkbox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-460375a693c8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/collapsible/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-462f7bfb63b8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/collapsible/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-49b506bd7c3e.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/combobox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-4e22b0436034.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/combobox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-55a308b91205.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/dropdown/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-58edb5b466c9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/dropdown/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-59b7ca030ed6.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/install/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-5b0461d19c0a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/install/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-5b6e52b45848.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/introduction/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-5b87144033fa.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/introduction/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-5ba52f51c693.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/label/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-5ca0c69be29b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/label/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-5d613a68c507.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/missing/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-605da35034f7.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/missing/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-63241bf6e5ae.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/modal/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-64e9aa746d69.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/modal/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-64fd6285a678.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/pagination/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-671fc30118da.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/pagination/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-679c18ea14d9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/popover/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-684e49b4bc78.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/popover/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-6a5e72f25952.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/progress/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-6d33b16ec109.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/progress/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-6d89f161bc53.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/select/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-6e4a214bab88.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/select/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-716a0c9fa733.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/separator/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-78f472b31a80.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/separator/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-7c926e0b1cfb.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/tabs/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-823317c8477b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/tabs/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-8267d126cf0c.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/toggle-group/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-83d32c62e5e8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/toggle-group/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-841c8e025650.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/toggle/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-8629dbb35c91.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/toggle/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-88344c3e3b92.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/headless/tooltip/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-893ea39c3148.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/headless/tooltip/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-8b8f44d32f8a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/accordion/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-8cbc52e21de5.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/accordion/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-8e04a6aac02e.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/alert/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-8e164c6d1033.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/alert/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-92009bc4dbdb.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/avatar/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-945e5e728504.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/avatar/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-963eff1a7d23.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/badge/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-96bd13229a40.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/badge/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-9d7d4025978d.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/breadcrumb/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-a83de2fd46a6.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/breadcrumb/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-ab9d2b62d207.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/button/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-adfc370cc2b7.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/button/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-b2e6d8a2904b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/card/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-b3a0dff9b372.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/card/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-b62e6f729e29.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/carousel/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-b876eba78ea9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/carousel/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-bee9ca665a54.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/checkbox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-c2ab42db44b0.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/checkbox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-c468b9217e7f.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/collapsible/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-c50fe542b1a0.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/collapsible/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-c768c929f51a.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/combobox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-c863324177e3.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/combobox/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d04b921b626b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/dropdown/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d05dce99b3a3.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/dropdown/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d16a04e9c9b9.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/input/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d30c814737b0.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/input/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d3747d15ebfb.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/install/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d4cdfc606ea8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/install/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d5ea9989d0e1.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/introduction/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d6adc5f64014.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/introduction/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d6cc548131c2.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/label/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d73b627b1fee.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/label/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d99138462977.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/legacy/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-d9cd829cf0f8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/legacy/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-dad656b8433f.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/missing/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-dfc672068640.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/missing/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-dfdeed815705.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/modal/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-e40c4c9789e5.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/modal/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-e444e7d38a20.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/pagination/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-e704fc538383.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/pagination/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-e7aa14b94cf0.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/popover/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-e86d42dae81b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/popover/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-ec3112606850.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/progress/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-ed2c3529744e.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/progress/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-f6c2aeb035f7.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/radio-group/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-f792b3545a25.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/radio-group/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-f8b6e6e6e023.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/select/": {
+		"prerender": true
 	},
-	"/_converted/styles/c0e754ddd264.used-fd437850d5e1.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/select/": {
+		"prerender": true
 	},
-	"/_converted/styles/c580ed0ae921.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/separator/": {
+		"prerender": true
 	},
-	"/_converted/styles/c94691da0eb6.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/separator/": {
+		"prerender": true
 	},
-	"/_converted/styles/cb2e3ceb293b.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/skeleton/": {
+		"prerender": true
 	},
-	"/_converted/styles/ce1c9ef54ce0.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/skeleton/": {
+		"prerender": true
 	},
-	"/_converted/styles/d20e03b85260.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/tabs/": {
+		"prerender": true
 	},
-	"/_converted/styles/daaddac386ff.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/tabs/": {
+		"prerender": true
 	},
-	"/_converted/styles/dde1fcbec7f8.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/tailwind-3-migration/": {
+		"prerender": true
 	},
-	"/_converted/styles/ec3eca518ec7.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/tailwind-3-migration/": {
+		"prerender": true
 	},
-	"/_converted/styles/ec3eca518ec7.used-708b2771fe42.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/textarea/": {
+		"prerender": true
 	},
-	"/_converted/styles/ec3eca518ec7.used-90eb2a6767bb.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/textarea/": {
+		"prerender": true
 	},
-	"/_converted/styles/f0e7afb7e884.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/toggle-group/": {
+		"prerender": true
 	},
-	"/_converted/styles/f5f02ff64a18.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/toggle-group/": {
+		"prerender": true
 	},
-	"/_converted/styles/f78bed997052.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/docs/styled/toggle/": {
+		"prerender": true
 	},
-	"/_converted/styles/f8eda4fc5761.css": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
+	"/_markless/fragment/docs/styled/toggle/": {
+		"prerender": true
+	},
+	"/docs/styled/tooltip/": {
+		"prerender": true
+	},
+	"/_markless/fragment/docs/styled/tooltip/": {
+		"prerender": true
 	},
-	"/_converted/styles/fa964a70d316.css": {
+	"/_converted/styles/**": {
 		"headers": {
 			"cache-control": "public, max-age=31536000, immutable"
 		}
@@ -1662,10 +1156,11 @@ export function applyRules(nitro: NitroLike): void {
 	nitro.hooks?.hook('compiled', () => prerenderFallbacks(nitro));
 	const rules = nitro.options.routeRules;
 	const proxied = (path: string) => Boolean(rules[path]?.proxy);
-	for (const [path, rule] of Object.entries(routeRules)) {
+	const own = String(nitro.options.preset ?? '').startsWith('cloudflare') ? cloudflareRouteRules : routeRules;
+	for (const [path, rule] of Object.entries(own)) {
 		if (proxied(path)) continue;
-		const own = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
-		rules[path] = { ...own, ...structuredClone(rule), ...(rule.headers || own.headers ? { headers: { ...(own.headers as object), ...(rule.headers as object) } } : {}) };
+		const kept = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
+		rules[path] = { ...kept, ...structuredClone(rule), ...(rule.headers || kept.headers ? { headers: { ...(kept.headers as object), ...(rule.headers as object) } } : {}) };
 	}
 }
 
