@@ -2383,3 +2383,19 @@ test('shadcn-ui site: the drawer demo\'s goal steps by 10 between 200 and 400, i
 	void goal;
 	await page.close();
 });
+
+test("Base UI Select: the chosen option's indicator follows the choice (convert's hidden copies, data-mm-indicator)", async () => {
+	const withIndicators = baseSelect.replace(/<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>(\w+)<\/div><\/div>/g, (_, f: string) => `<div role="option" aria-selected="${f === 'Apple'}" tabindex="-1" data-slot="select-item"${f === 'Apple' ? ' data-selected=""' : ''}><div>${f}</div><span aria-hidden="true" data-mm-indicator=""${f === 'Apple' ? ' data-selected=""' : ' hidden=""'}>✓</span></div>`);
+	const page = await open(withIndicators, ['base-ui/select'], 'body');
+	const shown = () => page.evaluate(() => [...document.querySelectorAll('[role="option"]')].filter((o) => !o.querySelector('[data-mm-indicator]')!.hasAttribute('hidden')).map((o) => o.querySelector('div')!.textContent).join(','));
+	assert.equal(await shown(), 'Apple');
+	await page.locator('[data-slot="select-trigger"]').click();
+	await page.getByRole('option', { name: 'Grapes', exact: true }).click();
+	await settled(page);
+	assert.equal(await shown(), 'Grapes');
+	await page.locator('[data-slot="select-trigger"]').click();
+	await page.getByRole('option', { name: /^Apple/ }).click();
+	await settled(page);
+	assert.equal(await shown(), 'Apple');
+	await page.close();
+});
