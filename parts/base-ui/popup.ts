@@ -193,7 +193,7 @@ function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement |
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
 // pressable: data-pressed on the trigger while open (pressableTriggerOpenStateMapping); lockScroll: modal; tabOut: Tab leaves.
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly fallbackAxisSide?: 'end' | 'none'; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly anchorOf?: (popup: HTMLElement) => Element | null | undefined; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly fallbackAxisSide?: 'end' | 'none'; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly anchorOf?: (popup: HTMLElement) => Element | null | undefined; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean; readonly triggerOutside?: boolean }): Popup | undefined {
 	// A context menu's trigger area has no id: its layer key, and the point it opens at.
 	const key = options.key || trigger.id;
 	if (!key || isOpen(key)) return undefined;
@@ -267,7 +267,9 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	};
 	const onDown = (event: PointerEvent) => {
 		const target = event.target as Node | null;
-		if (!target || top() !== p || popup.contains(target) || trigger.contains(target)) return;
+		// A context menu's trigger is the area it opens over: a press there other than the right button is outside.
+		const inTrigger = trigger.contains(target) && !(options.triggerOutside && event.button !== 2);
+		if (!target || top() !== p || popup.contains(target) || inTrigger) return;
 		pressedOutside = p;
 		try {
 			options.onDismiss(p, 'outside', event);
