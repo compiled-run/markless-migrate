@@ -12,6 +12,7 @@ import pixelmatch from 'pixelmatch';
 import { execFileSync } from 'node:child_process';
 import { costsFrom, packByCost } from './pack.ts';
 import { agreed, oldKey, readOld, writeOld } from './reuse.ts';
+import { TYPED_TO_ENTER_MS } from './typing.ts';
 import { markUse, settle as settleOnce, settleCalm, settleDeferred, trackRequests, trackTimers } from '../../src/check/settle.ts';
 
 // Each route's settles: how many, their time, and how many each cause held to the cap.
@@ -32,6 +33,7 @@ const BOX_TOLERANCE = Number(process.env.BOX_TOLERANCE ?? 2);
 const KEY_MAX = Number(process.env.KEY_MAX ?? 24);
 const INPUT_MAX = Number(process.env.INPUT_MAX ?? 24);
 const KEYS_PER_CONTROL = Number(process.env.KEYS_PER_CONTROL ?? 4);
+const TYPED_TO_ENTER = Number(process.env.TYPED_TO_ENTER_MS ?? TYPED_TO_ENTER_MS);
 const [routesFile, out, shardArg, countArg] = process.argv.slice(2);
 const all = JSON.parse(readFileSync(routesFile, 'utf8'));
 const routes = (Array.isArray(all) ? all : Array.isArray(all.routes) ? all.routes : Object.keys(all.routes ?? all)).filter((r) => typeof r === 'string' && r.startsWith('/'));
@@ -387,7 +389,7 @@ function reuseVersions() {
 	const git = (...args) => execFileSync('git', args, { cwd: new URL('../..', import.meta.url), encoding: 'utf8' }).trim();
 	try {
 		if (git('status', '--porcelain', '--', 'scripts/probe', 'src/check/settle.ts')) return void console.log('REUSE: the probe has uncommitted changes, so the original is used live');
-		return { probe: git('rev-parse', 'HEAD:scripts/probe'), settle: git('rev-parse', 'HEAD:src/check/settle.ts'), old: process.env.OLD_BUILD, origin: OLD, waits: `${SETTLE} ${process.env.SCROLL_SETTLE ?? 500}` };
+		return { probe: git('rev-parse', 'HEAD:scripts/probe'), settle: git('rev-parse', 'HEAD:src/check/settle.ts'), old: process.env.OLD_BUILD, origin: OLD, waits: `${SETTLE} ${process.env.SCROLL_SETTLE ?? 500} ${TYPED_TO_ENTER}` };
 	} catch (e) {
 		return void console.log(`REUSE: no probe version (${e.message.split('\n')[0]}), so the original is used live`);
 	}
@@ -729,6 +731,7 @@ async function typeInto(side, route, prefix, control, value) {
 		await p.keyboard.press('Backspace');
 		await p.keyboard.type(value, { delay: 15 });
 	}
+	await sleep(TYPED_TO_ENTER);
 	await p.keyboard.press('Enter');
 	await settle(p, nets[side], 200);
 	await quietly(p, side, () => p.evaluate(() => (document.querySelector('[data-dc-used]') ?? globalThis.__dc?.el)?.blur?.()).catch(() => {}), SETTLE);
