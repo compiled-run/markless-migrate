@@ -1,7 +1,7 @@
 // @qwik-ui/headless Carousel (carousel/*): Next and Previous step through the stops (0, move, 2·move, … up to
 // slides − slidesPerView, which is always one), clamped unless rewind; a bullet's click, focus, Home, End and arrows go to
 // its slide; a step's click goes to its index; the player toggles autoplay. Moving sets the scroller's transform to the
-// sum of the slides before the stop and their gaps (adjusted for center and end alignment, clamped to what scrolls), marks
+// sum of the slides before the stop (their fractional sizes) and their gaps (adjusted for center and end alignment, clamped to what scrolls), marks
 // the slides in view data-active and the rest inert, disables Previous and Next at the ends, and marks the current
 // bullet and step. A mouse drag on the viewport moves the track and snaps to the nearest slide when released.
 // What a Root's bind:selectedIndex and bind:autoplay signals would hear is dispatched on the root (qui-carousel-index,
@@ -58,11 +58,11 @@ function indexOf(c: Carousel): number {
 function position(c: Carousel, index: number): number {
 	if (!c.scroller) return 0;
 	const gap = parseFloat(getComputedStyle(c.scroller).gap) || 0;
-	const size = (s: HTMLElement) => (c.vertical ? s.offsetHeight : s.offsetWidth);
+	const size = (s: HTMLElement) => s.getBoundingClientRect()[c.vertical ? 'height' : 'width'];
 	let at = 0;
 	for (let i = 0; i < index && i < c.slides.length; i++) at += size(c.slides[i]!) + gap;
 	const align = c.scroller.dataset.align;
-	const view = c.vertical ? c.scroller.parentElement!.clientHeight : c.scroller.parentElement!.clientWidth;
+	const view = c.vertical ? c.scroller.clientHeight : c.scroller.clientWidth;
 	const slide = c.slides[index] ? size(c.slides[index]!) : 0;
 	if (align === 'center') at -= (view - slide) / 2;
 	else if (align === 'end') at -= view - slide;
@@ -109,7 +109,7 @@ function go(c: Carousel, index: number, focusBullet = false): void {
 		if (on && focusBullet) b.focus();
 	});
 	for (const step of c.root.querySelectorAll<HTMLElement>('[data-qui-carousel-step]')) {
-		const on = Number(step.dataset.step) === index;
+		const on = Number(step.dataset.step) - 1 === index;
 		step.toggleAttribute('data-current', on);
 		if (on) step.setAttribute('aria-current', 'step');
 		else step.removeAttribute('aria-current');
@@ -161,9 +161,10 @@ export function click(target: Element): boolean {
 	else if (target.closest('[data-qui-carousel-player]')) setPlaying(c, !autoplay.get(c.root));
 	else {
 		const bullet = target.closest('[role="tablist"] [role="tab"]');
-		const stepEl = target.closest<HTMLElement>('[data-qui-carousel-step]');
+		// A Step answers clicks only as a <button> (step.tsx); data-step counts from 1.
+		const stepEl = target.closest<HTMLElement>('button[data-qui-carousel-step]');
 		if (bullet) go(c, [...c.root.querySelectorAll('[role="tablist"] [role="tab"]')].indexOf(bullet));
-		else if (stepEl) go(c, Number(stepEl.dataset.step));
+		else if (stepEl) go(c, Number(stepEl.dataset.step) - 1);
 		else return false;
 	}
 	return true;

@@ -340,6 +340,22 @@ test("carousel: the player turns autoplay on and off under reduced motion too, a
 	await p.close();
 });
 
+test('carousel: a step button goes to its slide (data-step counts from 1); a step drawn as a div is not one to click; the track moves by fractional slide widths', async () => {
+	const steps = (tag: string) => `<div data-qui-carousel-stepper>${[1, 2, 3].map((n) => `<${tag} data-qui-carousel-step data-step="${n}"${n === 1 ? ' aria-current="step" data-current' : ''}>Header ${n}</${tag}>`).join('')}</div>`;
+	const fractional = CAROUSEL.replaceAll('flex:0 0 200px', 'flex:0 0 133.5px');
+	const p = await open(fractional.replace('<div role="tablist">', `${steps('button')}<div role="tablist">`), ['qwik-ui/carousel']);
+	await p.getByRole('button', { name: 'Header 2' }).click();
+	assert.deepEqual(await p.locator('[data-qui-carousel-slide]').evaluateAll((s) => s.map((x) => x.hasAttribute('data-active'))), [false, true, false]);
+	assert.equal(await p.locator('[aria-current="step"]').textContent(), 'Header 2');
+	assert.equal(await p.locator('[data-qui-carousel-scroller]').evaluate((e) => (e as HTMLElement).style.transform), 'translate3d(-143.5px, 0px, 0px)');
+	await p.close();
+	const q = await open(CAROUSEL.replace('<div role="tablist">', `${steps('div')}<div role="tablist">`), ['qwik-ui/carousel']);
+	await q.getByText('Header 2').click();
+	assert.deepEqual(await q.locator('[data-qui-carousel-slide]').evaluateAll((s) => s.map((x) => x.hasAttribute('data-active'))), [true, false, false]);
+	assert.equal(await q.locator('[aria-current="step"]').textContent(), 'Header 1');
+	await q.close();
+});
+
 test('accordion: each open and close is told on its item, as a bound signal hears it', async () => {
 	const p = await open(ACCORDION, ['qwik-ui/collapsible']);
 	await p.evaluate(() => {
