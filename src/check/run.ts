@@ -14,7 +14,7 @@ import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
 import type { ClientFact } from './source-facts.ts';
-import { adoptAnswers, appHeaders, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
+import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
 import { captureHttp, captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
@@ -452,9 +452,9 @@ async function checkArrived(browser: Browser, run: Run, route: string, viewport:
 	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next);
 }
 
-async function servesPage(env: SideEnv, path: string): Promise<boolean> {
+export async function servesPage(env: SideEnv, path: string): Promise<boolean> {
 	try {
-		const response = await request(new URL(path, env.origin).href, { redirect: 'manual', headers: appHeaders(env), signal: AbortSignal.timeout(15_000) });
+		const response = await request(new URL(path, env.origin).href, { redirect: 'manual', headers: tagHeaders(env), signal: AbortSignal.timeout(15_000) });
 		await response.body?.cancel();
 		return response.status < 400;
 	} catch {
