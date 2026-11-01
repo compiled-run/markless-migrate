@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { classTokens, usedCss, usedStylesheets } from '../src/convert/used-css.ts';
+import { classTokens, declareLayerOrder, layerNames, usedCss, usedStylesheets } from '../src/convert/used-css.ts';
 
 const SHEET = [
 	'@layer theme,base,utilities;',
@@ -151,4 +151,31 @@ test("a late face's @font-face leaves the page's stylesheet, its url() resolved 
 	const sheet = '@font-face{font-family:Geist;src:url(../media/geist.woff2)format("woff2");font-display:swap}@layer base{@font-face{font-family:"Noto Sans Arabic";font-style:normal;font-weight:100 900;src:url(../media/arabic.woff2)format("woff2");unicode-range:U+6??,U+750-77F;font-display:swap}}.flex{display:flex}';
 	const out = usedCss(sheet, classTokens(['flex']), { sheet: '/_next/static/chunks/site.css', withheld: new Set(['/_next/static/media/arabic.woff2']) });
 	assert.equal(out, '@font-face{font-family:Geist;src:url(../media/geist.woff2)format("woff2");font-display:swap}@layer base{}.flex{display:flex}');
+});
+
+test('the layers a stylesheet names come in their order of first mention, nested ones by their full name', () => {
+	const tailwind = '@supports (x:y){@layer base{*{margin:0}}}@layer theme{:root{--a:1}}@layer base{}@layer qwik-ui,popover-polyfill,components;@layer utilities{@media (min-width:40rem){.a{b:c}}}';
+	assert.deepEqual(layerNames(tailwind), ['base', 'theme', 'qwik-ui', 'popover-polyfill', 'components', 'utilities']);
+	assert.deepEqual(layerNames('@layer a{@layer b{} @layer c, d;}@layer{@layer hidden{}}@layer a.b, e;'), ['a', 'a.b', 'a.c', 'a.d', 'e']);
+	assert.deepEqual(layerNames('.x{}'), []);
+});
+
+test("each page links its layers' order before its first stylesheet, so a shared sheet the build carries first cannot outrank a later layer", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'layer-order-'));
+	try {
+		await mkdir(join(dir, '_converted/styles'), { recursive: true });
+		await writeFile(join(dir, 'site.css'), '.plain{}');
+		await writeFile(join(dir, 'tw.css'), '@layer base{*{margin:0}}@layer theme{}@layer qwik-ui,utilities;');
+		await writeFile(join(dir, 'qwik.css'), '@layer qwik-ui{[data-start]{margin-right:-31px}}');
+		type Tag = { tag: string; attrs: Record<string, string> };
+		const link = (href: string): Tag => ({ tag: 'link', attrs: { rel: 'stylesheet', href } });
+		const page: Tag[] = [{ tag: 'meta', attrs: { charset: 'utf-8' } }, link('/site.css'), link('/tw.css'), link('/qwik.css')];
+		const plain = [link('/site.css')];
+		assert.equal(await declareLayerOrder(dir, [page, plain], link), 1);
+		assert.deepEqual(page.map((t) => t.attrs.href ?? t.tag), ['meta', page[1]!.attrs.href, '/site.css', '/tw.css', '/qwik.css']);
+		assert.equal(await readFile(join(dir, page[1]!.attrs.href!), 'utf8'), '@layer base, theme, qwik-ui, utilities;\n');
+		assert.deepEqual(plain.map((t) => t.attrs.href), ['/site.css'], 'a page whose sheets name one layer or none keeps its head');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });

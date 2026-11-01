@@ -38,7 +38,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
-import { usedStylesheets } from './used-css.ts';
+import { declareLayerOrder, usedStylesheets } from './used-css.ts';
 import { importStylesheets } from './stylesheet-imports.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
@@ -2190,6 +2190,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
 	const folded = await appendBodyCss(publicDir, prepared.values());
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
+	const ordered = await declareLayerOrder(publicDir, [...prepared.values()].map((p) => p.head), (href): HeadTag => ({ tag: 'link', attrs: { rel: 'stylesheet', href } }));
+	if (ordered) log(`stylesheets: ${ordered} pages link the order of their cascade layers first, so the order the build carries their sheets in cannot change it`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	if (site.stylesheetImports) {
 		const pagesOf = new Map<string, string[]>();

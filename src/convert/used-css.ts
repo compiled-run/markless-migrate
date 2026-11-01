@@ -102,6 +102,58 @@ export function usedCss(css: string, tokens: { has(token: string): boolean }, la
 	return out + css.slice(at);
 }
 
+/** Every cascade layer `css` names, in the order of first mention (a nested one as `outer.inner`): the order the cascade ranks them in. */
+export function layerNames(css: string): string[] {
+	let ast: Node;
+	try {
+		ast = parse(css).ast;
+	} catch {
+		return [];
+	}
+	const names: string[] = [];
+	const walk = (nodes: readonly Node[], within: string) => {
+		for (const node of nodes) {
+			if (node.type !== 'Atrule') continue;
+			const listed = node.name.toLowerCase() === 'layer' ? ((node.prelude?.children?.[0]?.children ?? []) as Node[]).map((l) => `${within}${l.name}`) : [];
+			for (const name of listed) if (!names.includes(name)) names.push(name);
+			// An anonymous layer's own layers can never be named again, so their order is its own.
+			if (node.block) {
+				if (node.name.toLowerCase() === 'layer' && !listed.length) continue;
+				walk(node.block.children, listed.length === 1 ? `${listed[0]}.` : within);
+			}
+		}
+	};
+	walk(ast.children, '');
+	return names;
+}
+
+const isLocalSheet = (t: Tag) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? '') && t.attrs.integrity === undefined && /^\/(?!\/)[^?#]*\.css$/.test(t.attrs.href ?? '');
+
+/**
+ * Links, before each page's first stylesheet, a sheet holding one `@layer` statement: the layers its stylesheets name, in
+ * their order. The cascade ranks layers by first mention, and the build carries the sheets pages share ahead of a page's own,
+ * so a shared sheet's layer (Qwik UI's `qwik-ui`) would otherwise rank below a later one (Tailwind's `base`) it outranked.
+ */
+export async function declareLayerOrder<T extends Tag>(publicDir: string, heads: Iterable<T[]>, link: (href: string) => T): Promise<number> {
+	const names = new Map<string, Promise<string[]>>();
+	const of = (href: string) => names.get(href) ?? names.set(href, readFile(join(publicDir, href), 'utf8').then(layerNames, () => [])).get(href)!;
+	const written = new Set<string>();
+	let count = 0;
+	for (const head of heads) {
+		const sheets = head.filter(isLocalSheet);
+		const order: string[] = [];
+		for (const sheet of sheets) for (const name of await of(sheet.attrs.href!)) if (!order.includes(name)) order.push(name);
+		if (order.length < 2) continue;
+		const css = `@layer ${order.join(', ')};\n`;
+		const path = `/_converted/styles/layers-${createHash('sha256').update(css).digest('hex').slice(0, 12)}.css`;
+		if (!written.has(path)) await writeFile(join(publicDir, path), css);
+		written.add(path);
+		head.splice(head.indexOf(sheets[0]!), 0, link(path));
+		count++;
+	}
+	return count;
+}
+
 function withheldFace(css: string, node: Node, late: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): boolean {
 	const src = (node.block.children as Node[]).find((d) => d.type === 'Declaration' && d.property.toLowerCase() === 'src');
 	if (!src) return false;
