@@ -47,7 +47,11 @@ t.addEventListener('pointerenter', () => setTimeout(show, 200)); t.addEventListe
 t.addEventListener('focus', show); t.addEventListener('blur', () => { c.hidden = true; });</script>`;
 
 /** The owner's examples: each the original's page and the port's with the bug, and the finding that must name it. */
+// The original honours prefers-reduced-motion: reduce and opens its menu without the animation; the port animates anyway.
+const STILL = '<style>@media (prefers-reduced-motion: reduce) { #m[data-state] { animation: none } }</style>';
+
 export const CASES: Record<string, { old: string; bad: string; caught: RegExp }> = {
+	'reduced-motion': { old: dropdown('Account', ANIMATED_IN, ANIMATED_OUT) + STILL, bad: dropdown('Account', ANIMATED_IN, ANIMATED_OUT), caught: /^motion: motion opening menu with prefers-reduced-motion: reduce after click it on button "Account" \(state probe: .*\) \| old: no animation \| new: opacity,transform 150 ms/ },
 	avatar: { old: dropdown('shadcn', '', ''), bad: dropdown('shadcn', ANIMATED_IN, ''), caught: /^motion: motion opening menu after click it on button "shadcn" \(state probe: .*\) \| old: no animation \| new: opacity,transform 150 ms/ },
 	'three-dots': { old: dropdown('Toggle menu', ANIMATED_IN, ANIMATED_OUT), bad: dropdown('Toggle menu', 'in 300ms ease-out', 'out 150ms linear'), caught: /^motion: motion (opening|closing) menu after .* on button "Toggle menu"/ },
 	chart: { old: chart(false), bad: chart(true), caught: /^motion: script motion of path outside the widget \(path\) after .* on button "Mobile".*\| old: moves frame by frame: \d+ frames .*\| new: (jumps|set on)/ },
