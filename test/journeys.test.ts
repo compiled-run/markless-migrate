@@ -98,6 +98,8 @@ test('a step that only reorders nodes reports what moved, and a new page that le
 
 test('an element found by its listeners is located by its exact text, innermost first, or by its label when it has no text', () => {
 	assert.equal(labelled("it's"), `//body//*[(normalize-space(.)=concat('it', "'", 's') and not(*[normalize-space(.)=concat('it', "'", 's')])) or (normalize-space(.)='' and (@aria-label=concat('it', "'", 's') or @title=concat('it', "'", 's')))]`);
+	const kept = 'x'.repeat(80);
+	assert.equal(labelled(kept), `//body//*[(starts-with(normalize-space(.), '${kept}') and not(*[starts-with(normalize-space(.), '${kept}')])) or (normalize-space(.)='' and (starts-with(@aria-label, '${kept}') or starts-with(@title, '${kept}')))]`, 'a name cut to the length names keep is the start of the text');
 });
 
 test("an error the old app's own page logs on a plain load is not the port's when a NEW journey reaches that page on the old app", () => {
