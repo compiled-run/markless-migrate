@@ -87,7 +87,7 @@ test('upgrade suggests the preload with its measured LCP saving, ranks it, and a
 	assert.equal(s.saving.lcpMs, 2000);
 	const text = summarizeUpgrade(report);
 	assert.match(text, /#1 \[suggested\] preload-font:\/heading\.woff2: preload heading \(\/heading\.woff2\), the font of the largest text on \//);
-	assert.match(text, /measured: Lighthouse mobile, median of 5 runs each: LCP 4\.20 s now, 2\.20 s with the preload \(2\.00 s sooner/);
+	assert.match(text, /measured: Lighthouse mobile, slow 4G applied, median of 5 runs each: LCP 4\.20 s now, 2\.20 s with the preload \(2\.00 s sooner/);
 	assert.match(text, /add: <link rel="preload" href="\/heading\.woff2" as="font" type="font\/woff2" crossorigin>/);
 	await writeUpgrade(report, dir);
 	const task = await readFile(await acceptUpgrade(dir, s.id, 'http://before.test'), 'utf8');
