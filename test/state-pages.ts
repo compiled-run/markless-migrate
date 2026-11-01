@@ -19,13 +19,13 @@ for (const i of m.children) i.onclick = () => show(false);</script>`;
 const ANIMATED_IN = 'in 150ms ease-out';
 const ANIMATED_OUT = 'out 150ms ease-in';
 
-/** Recharts tweens a series' path to its new shape when the shown key changes; `jump` sets it at once. One toggle flips Desktop and Mobile. */
+/** Recharts tweens a series' path to its new shape when the shown key changes, and skips the tween under prefers-reduced-motion; `jump` sets it at once. One toggle flips Desktop and Mobile. */
 const chart = (jump: boolean) =>
 	`<button id="mobile" aria-pressed="false">Mobile</button><svg width="600" height="220"><path id="s" fill="none" stroke="#2563eb"/></svg>
 <script>const A = [40, 120, 80, 160, 60, 180, 100], B = [150, 50, 170, 70, 140, 30, 120]; const s = document.getElementById('s'), m = document.getElementById('mobile');
 const d = (v) => v.map((y, i) => (i ? 'L' : 'M') + (i * 95 + 15) + ' ' + (210 - Math.round(y))).join(' ');
 let cur = A.slice(); s.setAttribute('d', d(cur));
-const go = (to) => { ${jump ? "cur = to.slice(); s.setAttribute('d', d(cur));" : "const from = cur.slice(), t0 = performance.now(); const f = (now) => { const k = Math.min(1, (now - t0) / 400); cur = from.map((v, i) => v + (to[i] - v) * k); s.setAttribute('d', d(cur)); if (k < 1) requestAnimationFrame(f); }; requestAnimationFrame(f);"} };
+const go = (to) => { ${jump ? "cur = to.slice(); s.setAttribute('d', d(cur));" : "if (matchMedia('(prefers-reduced-motion: reduce)').matches) { cur = to.slice(); s.setAttribute('d', d(cur)); return; } const from = cur.slice(), t0 = performance.now(); const f = (now) => { const k = Math.min(1, (now - t0) / 400); cur = from.map((v, i) => v + (to[i] - v) * k); s.setAttribute('d', d(cur)); if (k < 1) requestAnimationFrame(f); }; requestAnimationFrame(f);"} };
 m.onclick = () => { const on = m.getAttribute('aria-pressed') !== 'true'; m.setAttribute('aria-pressed', String(on)); go(on ? B : A); };</script>`;
 
 /** Base UI's Combobox: its list opens under the chips at their width and fades out on close; the bugs: narrower and moved, or no fade. */
@@ -47,7 +47,11 @@ t.addEventListener('pointerenter', () => setTimeout(show, 200)); t.addEventListe
 t.addEventListener('focus', show); t.addEventListener('blur', () => { c.hidden = true; });</script>`;
 
 /** The owner's examples: each the original's page and the port's with the bug, and the finding that must name it. */
+// The original honours prefers-reduced-motion: reduce and opens its menu without the animation; the port animates anyway.
+const STILL = '<style>@media (prefers-reduced-motion: reduce) { #m[data-state] { animation: none } }</style>';
+
 export const CASES: Record<string, { old: string; bad: string; caught: RegExp }> = {
+	'reduced-motion': { old: dropdown('Account', ANIMATED_IN, ANIMATED_OUT) + STILL, bad: dropdown('Account', ANIMATED_IN, ANIMATED_OUT), caught: /^motion: motion opening menu with prefers-reduced-motion: reduce after click it on button "Account" \(state probe: .*\) \| old: no animation \| new: opacity,transform 150 ms/ },
 	avatar: { old: dropdown('shadcn', '', ''), bad: dropdown('shadcn', ANIMATED_IN, ''), caught: /^motion: motion opening menu after click it on button "shadcn" \(state probe: .*\) \| old: no animation \| new: opacity,transform 150 ms/ },
 	'three-dots': { old: dropdown('Toggle menu', ANIMATED_IN, ANIMATED_OUT), bad: dropdown('Toggle menu', 'in 300ms ease-out', 'out 150ms linear'), caught: /^motion: motion (opening|closing) menu after .* on button "Toggle menu"/ },
 	chart: { old: chart(false), bad: chart(true), caught: /^motion: script motion of path outside the widget \(path\) after .* on button "Mobile".*\| old: moves frame by frame: \d+ frames .*\| new: (jumps|set on)/ },

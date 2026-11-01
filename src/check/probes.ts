@@ -290,9 +290,10 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 	}
 }
 
-/** Runs one sequence on one side from a fresh load of the route; stops after a step that leaves the page. */
-async function runSequence(side: Side, origin: string, route: string, control: ProbeControl, sequence: Sequence, parts: readonly PartSelectors[], found: Set<string>, states?: StateReading[]): Promise<Reading[]> {
+/** Runs one sequence on one side from a fresh load of the route; stops after a step that leaves the page. Without `reduced` the page sees no reduced-motion preference, so a library that skips its tween under reduce (Recharts) shows it. */
+async function runSequence(side: Side, origin: string, route: string, control: ProbeControl, sequence: Sequence, parts: readonly PartSelectors[], found: Set<string>, states?: StateReading[], reduced = false): Promise<Reading[]> {
 	const page = side.page;
+	await page.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' });
 	await loadPage(page, new URL(route, origin).href);
 	await settle(side);
 	await page.evaluate(installProbe);
@@ -553,6 +554,20 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 						const again = await runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set(), againStates);
 						steps = compareRuns(old, next, again);
 						stateSteps = compareStates(oldStates, newStates, againStates);
+					}
+					// Where either side moved, the sequence runs again with prefers-reduced-motion: reduce, a visitor's setting the port must honour as the old page does.
+					if (old[0]?.control !== 'not on the page' && [...oldStates, ...newStates].some((r) => r.motion.length || r.script.length)) {
+						const reducedOld: StateReading[] = [];
+						const reducedNew: StateReading[] = [];
+						await Promise.all([runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set(), reducedOld, true), runSequence(sides2.new, sides.new.origin, route, item.control, item.sequence, [], new Set(), reducedNew, true)]);
+						stateMs += [...reducedOld, ...reducedNew].reduce((t, r) => t + r.ms, 0);
+						let reducedSteps = compareStates(reducedOld, reducedNew);
+						if (reducedSteps.some((d) => d.some((x) => x.dimension === 'motion'))) {
+							const reducedAgain: StateReading[] = [];
+							await runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set(), reducedAgain, true);
+							reducedSteps = compareStates(reducedOld, reducedNew, reducedAgain);
+						}
+						stateSteps = stateSteps.map((d, i) => [...d, ...(reducedSteps[i] ?? []).filter((x) => x.dimension === 'motion').map((x) => ({ ...x, field: `${x.field} with prefers-reduced-motion: reduce` }))]);
 					}
 					entry.ms += Date.now() - began;
 					if (old[0]?.control === 'not on the page') entry.state = 'not found again on the old page';
