@@ -285,7 +285,8 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	return p;
 }
 
-export function closePopup(p: Popup, returnFocus = true, keep = false, focus: FocusOptions = {}): void {
+/** `handoff`: the caller ends the popup's exit itself, calling `finish` when it is done (a navigation menu's switch). */
+export function closePopup(p: Popup, returnFocus = true, keep = false, focus: FocusOptions = {}, handoff?: (finish: () => void) => void): void {
 	const at = open.indexOf(p);
 	if (at < 0) return;
 	open.splice(at, 1);
@@ -306,7 +307,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false, focus: Fo
 		// The outside press's own mousedown then blurs to the body: focus comes back after it.
 		if (pressedOutside === p) setTimeout(refocus);
 	}
-	exit(p.popup, p.around, () => {
+	const finish = () => {
 		p.stop?.();
 		// Opened again before this exit ended: it stays mounted, raised as it was.
 		const again = open.find((o) => o.portal === p.portal);
@@ -322,7 +323,9 @@ export function closePopup(p: Popup, returnFocus = true, keep = false, focus: Fo
 			if (p.backdrop) p.backdrop.hidden = true;
 		} else p.portal.hidden = true;
 		if (p.controls) p.trigger.removeAttribute('aria-controls');
-	});
+	};
+	if (handoff) handoff(finish);
+	else exit(p.popup, p.around, finish);
 }
 
 /** One list's useTypeahead session (floating-ui's, as Base UI ships it, reset after TYPEAHEAD_RESET_MS). */

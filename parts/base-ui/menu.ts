@@ -87,6 +87,7 @@ function openMenu(trigger: HTMLElement, focus: 'first' | 'last' | 'popup'): bool
 	return true;
 }
 function close(p: Popup, returnFocus = true): void {
+	p.popup.removeAttribute('data-instant');
 	const child = childOf.get(p);
 	if (child) closeSub(child, false);
 	const t = typing.get(p);
@@ -199,12 +200,26 @@ function openSub(parent: Popup, trigger: HTMLElement, via: 'pointer' | 'keyboard
 const popupFor = (trigger: HTMLElement) => [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 const barTriggers = (trigger: HTMLElement) => [...(trigger.closest('[role="menubar"]')?.querySelectorAll<HTMLElement>(OPENER) ?? [])].filter((t) => t.closest('[role="menubar"]') === trigger.closest('[role="menubar"]') && !popupOf(t));
 
+// A menubar's switch is instantType 'group' (data-instant): the original's switch renders for longer than the menus'
+// 100 ms fade, so its first frame shows the fades all but done; here the old menu goes and the new one is in at once.
+function instant(popup: HTMLElement): void {
+	popup.setAttribute('data-instant', 'group');
+	for (const a of popup.getAnimations()) a.finish();
+}
+
 function switchTo(p: Popup, to: HTMLElement | undefined, focus: 'popup'): boolean {
 	if (!to || to === p.trigger) return false;
 	close(p, false);
 	const bar = to.closest('[role="menubar"]');
 	if (bar) for (const t of bar.querySelectorAll<HTMLElement>(OPENER)) if (t.closest('[role="menubar"]') === bar) t.tabIndex = t === to ? 0 : -1;
-	return openMenu(to, focus);
+	if (bar) {
+		p.popup.setAttribute('data-instant', 'group');
+		p.portal.hidden = true;
+	}
+	const opened = openMenu(to, focus);
+	const next = opened ? popupFor(to) : undefined;
+	if (bar && next) instant(next.popup);
+	return opened;
 }
 
 // The item a press or Enter activated while it was enabled: Base UI's handler read `disabled` as rendered then, so an
