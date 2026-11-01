@@ -556,6 +556,64 @@ export function trailingPolicy(nextConfig: string | undefined, observed: Routing
 	return undefined;
 }
 
+const OWN_PATH = String.raw`^\/(?:build|_markless|_converted|assets|_next\/static)\/`;
+const regexText = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export interface VercelRedirect {
+	readonly src: string;
+	readonly status: number;
+	readonly headers: { readonly Location: string };
+}
+
+/**
+ * The trailing-slash policy as Vercel routes ahead of its static files: a prerendered page's file answers both forms of
+ * its path before the routing middleware runs.
+ */
+export function trailingRoutes(policy: TrailingPolicy | undefined, pages: readonly string[]): VercelRedirect[] {
+	if (!policy) return [];
+	const route = (src: string, location: string): VercelRedirect => ({ src, status: policy.status, headers: { Location: location } });
+	const own = `(?!${OWN_PATH.slice(1)})`;
+	if (!policy.pagesOnly) return [policy.mode === 'strip' ? route(`^${own}(/.*?)/+$`, '$1') : route(`^${own}(?!.*\\.\\w+$)(/.*[^/])$`, '$1/')];
+	const bare = pages.filter((p) => p !== '/' && p.endsWith('/') === (policy.mode === 'add')).map((p) => regexText(p.replace(/\/$/, '')));
+	// Long alternations are split: Vercel caps a route's src.
+	const groups: string[][] = [];
+	let length = Infinity;
+	for (const path of bare) {
+		if (length + path.length > 2000) groups.push([]), (length = 0);
+		groups.at(-1)!.push(path);
+		length += path.length + 1;
+	}
+	return groups.map((g) => (policy.mode === 'strip' ? route(`^(${g.join('|')})/+$`, '$1') : route(`^(${g.join('|')})$`, '$1/')));
+}
+
+export interface CloudflareTrailing {
+	/** `_redirects` lines, which Workers static assets answer ahead of html_handling, whose own redirect is always a 307. */
+	readonly redirects: readonly string[];
+	/** Pages past Cloudflare's cap on static redirects, left to html_handling's 307. */
+	readonly beyond: number;
+}
+
+const CLOUDFLARE_STATIC_REDIRECTS = 2000;
+const CLOUDFLARE_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * The trailing-slash policy for Cloudflare Workers static assets, which answer a prerendered page's file before the
+ * Worker runs: html_handling (auto-trailing-slash) already redirects its other form with a 307, and a `_redirects` line per
+ * page gives that redirect the old site's status.
+ */
+export function cloudflareTrailing(policy: TrailingPolicy | undefined, pages: readonly string[]): CloudflareTrailing | undefined {
+	if (!policy || !CLOUDFLARE_REDIRECT_STATUSES.has(policy.status)) return undefined;
+	const lines = [...new Set(pages)]
+		.filter((p) => p !== '/' && p.endsWith('/') === (policy.mode === 'add'))
+		.map((p) => (policy.mode === 'strip' ? `${p}/ ${p} ${policy.status}` : `${p.slice(0, -1)} ${p} ${policy.status}`));
+	return { redirects: lines.slice(0, CLOUDFLARE_STATIC_REDIRECTS), beyond: Math.max(0, lines.length - CLOUDFLARE_STATIC_REDIRECTS) };
+}
+
+export interface TrailingOutput {
+	readonly vercel: readonly VercelRedirect[];
+	readonly cloudflare?: CloudflareTrailing;
+}
+
 /**
  * Keeps the app's routing middleware (server/routing.ts) as it was written, its handlers and outputs included, for the
  * pages given: only the list of pages the app renders is written again. False when the app has none to keep.
@@ -570,7 +628,7 @@ export async function keepRouting(app: string, pages: readonly string[]): Promis
 	return true;
 }
 
-export async function writeRouting(input: RoutingInput): Promise<{ ports: EndpointPort[]; packages: Record<string, string>; overrides: Record<string, Record<string, string>> }> {
+export async function writeRouting(input: RoutingInput): Promise<{ ports: EndpointPort[]; packages: Record<string, string>; overrides: Record<string, Record<string, string>>; trailing: TrailingOutput }> {
 	const { app, source } = input;
 	const out = join(app, 'server', 'handlers');
 	await rm(out, { recursive: true, force: true });
@@ -740,7 +798,7 @@ const TRAILING: { mode: 'add' | 'strip'; status: number; pagesOnly: boolean } | 
 // A preview with only some pages converted (MIGRATE_FALLTHROUGH set to the old deployment) answers every other page
 // from there, marked as the old app's.
 const FALLTHROUGH: string | undefined = process.env.MIGRATE_FALLTHROUGH${input.fallthrough ? ` ?? ${JSON.stringify(input.fallthrough)}` : ''};
-const OWN = /^\\/(build|_markless|_converted|assets|_next\\/static)\\//;
+const OWN = /${OWN_PATH}/;
 
 const matchers = new Map<string, ReturnType<typeof match>>();
 const matcher = (pattern: string) => matchers.get(pattern) ?? matchers.set(pattern, match(pattern, { decode: decodeURIComponent })).get(pattern)!;
@@ -807,7 +865,9 @@ export default defineHandler(async (event) => {
 });
 `;
 	await writeFile(join(app, 'server', 'routing.ts'), routing);
-	return { ports, packages, overrides: peerOverrides(source, packages) };
+	const cloudflare = cloudflareTrailing(trailing, input.pages);
+	if (cloudflare?.beyond) input.log?.(`trailing slash on Cloudflare: ${cloudflare.beyond} pages past its ${CLOUDFLARE_STATIC_REDIRECTS} static redirects answer the other form with html_handling's 307, not ${trailing!.status}`);
+	return { ports, packages, overrides: peerOverrides(source, packages), trailing: { vercel: trailingRoutes(trailing, input.pages), ...(cloudflare ? { cloudflare } : {}) } };
 }
 
 /**
