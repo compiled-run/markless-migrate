@@ -90,3 +90,22 @@ test('a radio drawn by its label is used through the label', async () => {
 	assert.equal(by('radio "pnpm"'), 'click radio "pnpm"');
 	assert.equal(route.failures.find((f) => f.check === `${NOT_EXERCISED}radio "pnpm"`), undefined);
 });
+
+// React Aria's switch: the input sits inside its label, clipped to nothing by a visually hidden wrapper; a person clicks the drawn switch.
+const switches = `<!doctype html><html lang="en"><title>Settings</title>
+<style>.track { display: inline-flex; width: 32px; height: 18px; border-radius: 9px; background: #ccc; } .track:has(:checked) { background: #333; }</style>
+<main><h1>Settings</h1><div>
+<label class="track"><span style="border:0;clip:rect(0 0 0 0);clip-path:inset(50%);height:1px;margin:-1px;overflow:hidden;padding:0;position:absolute;width:1px;white-space:nowrap"><input id="airplane" type="checkbox" role="switch"></span><span></span></label>
+<label for="airplane">Airplane Mode</label></div><p id="state">off</p></main>
+<script>document.getElementById('airplane').addEventListener('change', (e) => { document.getElementById('state').textContent = e.target.checked ? 'on' : 'off'; });</script>`;
+
+test('a switch input clipped away inside its label is used through the label, as a person clicks the drawn switch', async () => {
+	const [a, b] = await Promise.all(
+		[0, 1].map(() => new Promise<Server>((done) => { const s = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(switches)); s.listen(0, '127.0.0.1', () => done(s)); })),
+	);
+	servers.push(a!, b!);
+	const route = (await runCheck({ oldOrigin: origin(a!), newOrigin: origin(b!), routes: ['/'], viewports: [VIEWPORTS[0]!], browser })).routes[0]!;
+	const by = (name: string) => route.coverage!.elements.find((e) => e.element === name)?.by;
+	assert.equal(route.failures.find((f) => f.check === `${NOT_EXERCISED}switch "Airplane Mode"`)?.actual, undefined);
+	assert.equal(by('switch "Airplane Mode"'), 'click switch "Airplane Mode"');
+});
