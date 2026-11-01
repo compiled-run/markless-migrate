@@ -114,6 +114,30 @@ jobs:
         env:
           SUITES: ${{ matrix.files || matrix.suite }}
 
+  # The checker's own time and memory on a fixed page, base against head on one runner (scripts/check-budget.ts states the bounds).
+  budget:
+    name: Check budget
+    needs: changes
+    if: github.event_name != 'push' && needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          path: .budget-base
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium firefox webkit
+      - run: |
+          pnpm install --frozen-lockfile --dir .budget-base
+          (cd .budget-base && timeout 1200 pnpm exec playwright install chromium firefox webkit)
+      - run: |
+          node scripts/check-budget.ts measure .budget-base "$RUNNER_TEMP/base.json"
+          node scripts/check-budget.ts measure . "$RUNNER_TEMP/head.json"
+          node scripts/check-budget.ts compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
+
   # The checker's mutation suites were 60% of a pull request's runner time; they run in the merge queue and on main.
   mutation:
     name: E2E ${{ matrix.suite }} (${{ matrix.shard }})
@@ -154,7 +178,7 @@ jobs:
   passed:
     name: CI passed
     if: always()
-    needs: [changes, typecheck, unit, e2e, mutation]
+    needs: [changes, typecheck, unit, e2e, budget, mutation]
     runs-on: ubuntu-latest
     steps:
       - run: |
@@ -164,6 +188,7 @@ jobs:
           test "$TYPECHECK" = success
           test "$UNIT" = success
           if [ "$E2E_WANTED" = true ]; then test "$E2E" = success; else test "$E2E" = skipped; fi
+          if [ "$E2E_WANTED" = true ] && [ "$EVENT" != push ]; then test "$BUDGET" = success; fi
           if [ "$EVENT" = pull_request ]; then test "$MUTATION" = skipped; elif [ "$E2E_WANTED" = true ]; then test "$MUTATION" = success; fi
         env:
           EVENT: ${{ github.event_name }}
@@ -173,4 +198,5 @@ jobs:
           TYPECHECK: ${{ needs.typecheck.result }}
           UNIT: ${{ needs.unit.result }}
           E2E: ${{ needs.e2e.result }}
+          BUDGET: ${{ needs.budget.result }}
           MUTATION: ${{ needs.mutation.result }}

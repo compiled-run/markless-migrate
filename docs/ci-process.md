@@ -28,8 +28,9 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 | Typecheck, unit tests (4 shards) | yes | yes | only if the merge queue did not test this commit |
 | e2e quick, pages, networks (Chromium, Firefox, WebKit), shadcn, parity | yes, unless only `examples/`, `deploy/`, `docs/` or Markdown changed | yes | only if the merge queue did not test this commit |
 | e2e next-app (6 shards), vite-site (4 shards), corpus (4 shards) | no | yes | only if the merge queue did not test this commit |
+| Check budget (`scripts/check-budget.ts`: the checker's own time and peak memory on one fixed page, base against head on one runner) | yes, unless only `examples/`, `deploy/`, `docs/` or Markdown changed | yes | no |
 
-- A pull request's CI holds at most 10 runners (Typecheck, four unit shards, five e2e jobs) for about 15 minutes.
+- A pull request's CI holds at most 11 runners (Typecheck, four unit shards, five e2e jobs, the check budget) for about 15 minutes; the check budget measures the checker twice, about 6 minutes each on a Mac, so expect it to run longest.
 - The merge queue (ruleset "main protection", on since 2026-10-31) squashes, requires every check green, gives a group 240 minutes, builds up to 2 groups at once, merges up to 10 pull requests per group and waits 1 minute to fill one. Merge with `gh pr merge <n> --squash`, which adds the pull request to the queue.
 - The merge queue tests the exact commit `main` will become, with every suite, before it lands. A push to `main` whose commit passed the merge queue at that SHA does not run them again; the Changes job links the queue's run. A push that did not come through the queue runs everything.
 - No e2e suite reads `examples/`, `deploy/` or `docs/`, so a pull request that only touches those, or Markdown, skips the e2e jobs.
