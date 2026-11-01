@@ -336,7 +336,7 @@ async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'prob
 		: undefined;
 	const failures = [...clock, ...out.failures, ...(parity?.failures ?? [])];
 	const shots = parity?.shots.length ? { shots: [...result.shots, ...parity.shots] } : {};
-	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures], shots) : { ...result, ...shots }), probes: { controls: out.controls, ms: out.ms }, ...(parity ? { controlParity: { tried: parity.tried, leftOut: parity.leftOut, ms: parity.ms } } : {}) };
+	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures], shots) : { ...result, ...shots }), probes: { controls: out.controls, ms: out.ms, stateMs: out.stateMs, stateSpread: out.stateSpread }, ...(parity ? { controlParity: { tried: parity.tried, leftOut: parity.leftOut, ms: parity.ms } } : {}) };
 }
 
 async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], result: RouteResult): Promise<RouteResult> {
