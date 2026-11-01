@@ -37,7 +37,7 @@ const UNINDEXED = new Set(['class', 'style', 'd', 'viewBox', 'points', 'transfor
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const RAW = new Set(['style', 'script', 'textarea', 'title']);
 const CONTROL = /^@(switch|case|default|if|else|for)\b/;
-const EVENT_PROP: Readonly<Record<string, string>> = { onClick: 'click', onKeyDown: 'keydown', onKeyUp: 'keyup', onInput: 'input', onChange: 'input', onSubmit: 'submit', onPointerDown: 'pointerdown', onPointerOver: 'pointerover', onPointerOut: 'pointerout', onFocusIn: 'focusin', onFocusOut: 'focusout', onContextMenu: 'contextmenu', onMouseDown: 'pointerdown' };
+const EVENT_PROP: Readonly<Record<string, string>> = { onClick: 'click', onKeyDown: 'keydown', onKeyUp: 'keyup', onInput: 'input', onChange: 'input', onSubmit: 'submit', onMmsubmit: 'submit', onPointerDown: 'pointerdown', onPointerOver: 'pointerover', onPointerOut: 'pointerout', onFocusIn: 'focusin', onFocusOut: 'focusout', onContextMenu: 'contextmenu', onMouseDown: 'pointerdown' };
 
 /** Index of the end of a `{...}` (or `(...)`) group starting at `at`, past strings, templates and comments. */
 export function groupEnd(text: string, at: number): number {

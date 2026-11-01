@@ -2,5 +2,6 @@
 export function submit(target: Element, event: SubmitEvent): boolean {
 	if (!target.matches('form[data-mm-form]') || target.closest('[data-mm-fl]')) return false;
 	event.preventDefault();
-	return true;
+	// Unclaimed: a library port of the same form (a questionnaire's) still answers its submit.
+	return false;
 }

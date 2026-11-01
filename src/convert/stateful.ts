@@ -733,6 +733,21 @@ export class NotifyPlan {
 	sonner = false;
 	/** Whether a Base UI toast was placed: parts/base-ui/toast.ts runs it. */
 	baseToast = false;
+	/** Whether the page's own handlers call sonner's toast() (carried from the source): each toaster then shows those too. */
+	programmatic = false;
+	private readonly programs = new Map<Element, { readonly call: string; readonly declare: readonly string[] }>();
+
+	/** What the page's own `toast()` calls in a handler carried onto `el` call: the toaster of its page, or none. */
+	programFor(el: Element): { readonly call: string; readonly declare: readonly string[] } | undefined {
+		let top: Element = el;
+		while (top.parentNode) top = top.parentNode as Element;
+		for (const [region, program] of this.programs) {
+			let r: Element = region;
+			while (r.parentNode) r = r.parentNode as Element;
+			if (r === top) return program;
+		}
+		return undefined;
+	}
 	private readonly toasterRegions = new Set<Element>();
 
 	/** Whether the element is (not merely holds) a region a sonner Toaster renders its toasts in. */
@@ -889,6 +904,11 @@ export class NotifyPlan {
 				this.bindings.set(each, mergeBindings(this.bindings.get(each), { declare, extra: [add] })!);
 			}
 		});
+		const program = this.programmatic ? this.programArm(toasts, toasts.length, emit) : undefined;
+		if (program) {
+			arms.push(program.arm);
+			this.programs.set(region, { call: `(message, options) => sonnerToast(${T}, ${JSON.stringify(program.spec)}, ${commit}, message, options)`, declare });
+		}
 		const on = (events: readonly string[], call: string) => events.map((e) => `on${e}={(event) => ${call}}`);
 		const li = names.map((n) => `${n}={item.a[${lit(n)}]}`);
 		const ol = first.ol.map(([n, v]) => (n === 'data-y-position' ? `${n}={list.y}` : n === 'data-x-position' ? `${n}={list.x}` : n === 'style' ? 'style={list.style}' : `${n}=${lit(v)}`));
@@ -899,6 +919,40 @@ export class NotifyPlan {
 		const own = this.bindings.get(region);
 		this.bindings.set(region, { ...own, declare: [...(own?.declare ?? []), ...declare], extra: [...(own?.extra ?? []), `data-mm-toaster=${lit(name)}`], children: markup });
 		this.sonner = true;
+	}
+
+	/**
+	 * The arm a toast the page's own code shows (sonner's `toast(title, { description })`) renders: a plain toast the old
+	 * page showed, its title the call's and a description beside it shaped as sonner renders one (the title's element with
+	 * data-description), shown only when the call gives one.
+	 */
+	private programArm(toasts: readonly { toast: SonnerToast }[], view: number, emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): { arm: string; spec: object } | undefined {
+		const TITLE = 'mmToastTitle0f3a';
+		const DESCRIPTION = 'mmToastDescription0f3a';
+		for (const { toast } of toasts) {
+			const phase = toast.phases.find((p) => !p.type || p.type === 'default');
+			if (!phase) continue;
+			const holder = parseFragment(phase.inner) as unknown as Element;
+			const title = [...walk(holder)].find((el) => attr(el, 'data-title') !== undefined);
+			if (!title?.parentNode) continue;
+			title.childNodes = [{ nodeName: '#text', value: TITLE, parentNode: title } as unknown as Node] as never;
+			const attrs = [...title.attrs.map((a) => (a.name === 'data-title' ? { ...a, name: 'data-description' } : a)).filter((a) => a.name !== 'class' || !a.value), { name: 'data-mm-description', value: '' }];
+			const description = { ...title, attrs, childNodes: [] as Node[] } as unknown as Element;
+			description.childNodes = [{ nodeName: '#text', value: DESCRIPTION, parentNode: description } as unknown as Node] as never;
+			const siblings = childrenOf(title.parentNode as Element);
+			siblings.splice(siblings.indexOf(title as never) + 1, 0, description as never);
+			const key = lit(`${view}.0`);
+			const markup = emit(innerOf(holder as never), (el) => {
+				if (el.parentNode && !('tagName' in el.parentNode)) return { omit: ['style'], extra: [`style={item.view === ${key} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] };
+				if (attr(el, 'data-mm-description') !== undefined) return { omit: ['data-mm-description'], extra: ['hidden={!item.t["description"]}'] };
+				return undefined;
+			});
+			const arm = markup.replaceAll(`{${lit(TITLE)}}`, TITLE).replaceAll(`{${lit(DESCRIPTION)}}`, DESCRIPTION).replaceAll(TITLE, '{item.t["title"] ?? ""}').replaceAll(DESCRIPTION, '{item.t["description"] ?? ""}');
+			if (!arm.includes('item.t["title"]')) continue;
+			const spec = { view, ...(toast.position ? { position: toast.position } : {}), duration: toast.duration, dismissible: toast.dismissible, promise: false, style: '', phases: [{ at: 0, attrs: Object.fromEntries(phase.attrs.filter(([n]) => n !== 'style' && !SONNER_STATE.has(n))) }] };
+			return { arm, spec };
+		}
+		return undefined;
 	}
 
 	/**

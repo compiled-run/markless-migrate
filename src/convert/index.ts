@@ -9,15 +9,15 @@ import { eachLimited, limiter } from './limit.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
-import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
+import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
 import { RuntimeScripts } from '../client/builds.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
-import { factor, type Factored } from './factor.ts';
+import { factor, type Factored, type SharedComponent } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
-import { layerNames } from './layer-ids.ts';
+import { hollowOf, layerNames } from './layer-ids.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
@@ -26,9 +26,10 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, announced, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
+import { carriedBinding, carriesCall, markHandlers, notCarried, useHandlers, type HandlerFact, type PortedCall } from './handlers.ts';
 import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
 import { formSources } from './form-schemas.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
@@ -45,10 +46,12 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort, type TrailingOutput } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, SERVED_LAYER_BYTES, splitBody, type LayerTable } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
+import { fragmentPath } from '../cache/apply.ts';
+import { queryVariants, variantValue, VARIANT_DECLARATIONS, variantPick, VARIANT_TABLE, type QueryVariants } from './query-variants.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -79,10 +82,11 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (toggleNames.length) out = out.replace('\n', `\nimport { ${toggleNames.join(', ')} } from '${dir}/toggle.ts';\n`);
 	const own = siteFunctions.filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	if (own.length) out = out.replace('\n', `\nimport { ${own.join(', ')} } from '${dir}/../site/parts.ts';\n`);
-	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
+	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY', 'sonnerToast'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	const baseToastNames = ['baseToastAdd', 'baseToastViewport', 'BASE_TOAST_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (baseToastNames.length) out = out.replace('\n', `\nimport { ${baseToastNames.join(', ')} } from '${dir}/base-ui/toast.ts';\n`);
+	if (/\bscrollToMessage\(/.test(out)) out = out.replace('\n', `\nimport { scrollToMessage } from '${dir}/shadcn/message-scroller.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
 	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -440,6 +444,8 @@ const insertedContent = new Set<Element>();
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
 let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[]; imports?: readonly string[] }[] = [];
 let siteComponents: readonly SiteComponent[] = [];
+// What a carried handler's library calls become on the page being emitted (set once the notification plan has placed its toasters).
+let portedCall: (el: Element, port: string) => PortedCall | undefined = () => undefined;
 let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The TanStack tables whose visibility menus are layers (convert's TablePlan): their items bind the table's shared state.
@@ -687,21 +693,6 @@ function panelOf(kept: readonly Element[], controls: string | undefined): { pane
 const layerElements = (added: Reveal['added'][number]) => childrenOf(parseFragment(added.html) as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
 
 /**
- * The element of a layer most of its markup sits in (a command palette's list): a served layer's page keeps the layer
- * with this element emptied as its shell, and the file holds this element's content.
- */
-function hollowOf(kept: readonly Element[]): Element | undefined {
-	const size = (el: Element) => outer(el).length;
-	let at = [...kept].sort((x, y) => size(y) - size(x))[0];
-	for (let next = at; next; ) {
-		at = next;
-		const total = size(at);
-		next = elementChildren(at).find((child) => size(child) >= total * 0.9);
-	}
-	return at;
-}
-
-/**
  * A layer as tsrx; its shell (the same with its largest content emptied and marked with LAYER_FILL); and that content as
  * HTML, for a layer served as a file: the shell renders at once on use, the content when the file lands.
  */
@@ -761,6 +752,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
 	markCompositions(kept);
+	markHandlers(kept);
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -790,7 +782,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
-	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies)));
+	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies) || scrollBinding(x, copies)));
 	const emit = (shell: boolean) =>
 		kept
 			.map((top) =>
@@ -798,7 +790,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies)));
+						const own = mergeBindings(mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), mergeBindings(copyBinding(x, copies), scrollBinding(x, copies)))), carriedBinding(x, announced, false, portedCall));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
@@ -1026,6 +1018,52 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	return appends;
 }
 
+function pageMarkup(root: string, leading: string, after: readonly { readonly markup: string; readonly toaster?: boolean }[]): string {
+	const body = pageBody(root, after, PAGE_SHOWN);
+	return leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === root ? `@if (${PAGE_SHOWN}) { ${root} }` : body}</>` : body;
+}
+
+type PageVariant = { readonly search: string; readonly root: string; readonly planned?: string; readonly leading: string; readonly after: readonly { readonly markup: string; readonly toaster?: boolean; readonly layer?: string }[] };
+
+/**
+ * The base's page with each captured variant's differences resolved in the browser: its attributes, and the file of a
+ * served layer the variants show alike but for its content, from the table. Undefined when anything else differs:
+ * Markless rebuilds no other file's component in a branch, so the page stays rendered per query on the server.
+ */
+function staticVariants(base: PageVariant, others: readonly PageVariant[], variant: { readonly plan: QueryVariants; readonly failed?: string; readonly used: ReadonlySet<string> }, layers: LayerTable): { markup: string; table: Record<string, Record<string, string>>; differs: boolean; layers: string[] } | undefined {
+	if (variant.failed || base.planned === undefined || others.some((v) => v.after.length !== base.after.length || v.leading !== base.leading)) return undefined;
+	const table = Object.fromEntries(Object.entries(variant.plan.table).map(([search, values]) => [search, Object.fromEntries(Object.entries(values).filter(([key]) => variant.used.has(key)))]));
+	const after: { markup: string; toaster?: boolean }[] = [];
+	const kept: string[] = [];
+	for (const [i, a] of base.after.entries()) {
+		const theirs = others.map((v) => v.after[i]!);
+		if (theirs.every((t) => t.markup === a.markup && Boolean(t.toaster) === Boolean(a.toaster))) {
+			after.push(a);
+			if (a.layer) kept.push(a.layer);
+			continue;
+		}
+		if (!a.layer || theirs.some((t) => !t.layer)) return undefined;
+		const mine = layers.servedLayer(a.layer);
+		const files = theirs.map((t) => layers.servedLayer(t.layer!));
+		if (mine && files.every((f) => f?.shell === mine.shell)) {
+			const key = `l${i}`;
+			table['']![key] = mine.path;
+			others.forEach((v, k) => (table[v.search]![key] = files[k]!.path));
+			after.push({ markup: mine.markup(variantValue(key)) });
+			continue;
+		}
+		// Hidden until their own key opens them, each variant's layer sits beside the others: the variant's trigger names its key.
+		const names = [...new Set([a.layer, ...theirs.map((t) => t.layer!)])];
+		const known = names.map((n) => layers.layerOf(n));
+		if (known.some((k) => !k || layers.servedLayer(names[known.indexOf(k)]!)) || new Set(known.map((k) => k!.key)).size !== names.length) return undefined;
+		if (known.slice(1).reduce((n, k) => n + k!.bytes, 0) > SERVED_LAYER_BYTES) return undefined;
+		after.push({ markup: names.map((n) => `<${n} />`).join('') });
+		kept.push(...names);
+	}
+	const differs = Object.values(table).some((row) => Object.keys(row).length > 0) || after.some((x, i) => x.markup !== base.after[i]!.markup);
+	return { markup: differs ? pageMarkup(base.planned, base.leading, after) : pageMarkup(base.root, base.leading, base.after), table, differs, layers: differs ? kept : base.after.flatMap((a) => (a.layer ? [a.layer] : [])) };
+}
+
 /** A `<style>` element's CSS, its `media` as an `@media` block; undefined with an `@import`, which is valid only at the top of a sheet. */
 function foldable(node: Element): string | undefined {
 	const css = childrenOf(node)
@@ -1144,6 +1182,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	markCompositions([body(doc)]);
+	markHandlers([body(doc)]);
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
 	const copyLabels = currentCopyLabels;
@@ -1574,7 +1613,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
 				if (!choosing.has(run)) {
 					const dir = await atFor(route, 'choices');
-					const chosen = timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
+					const chosen = timed(route, async () => captureChoices(browser, options.old, route, reveal, dir, log, limit, Boolean((await pending).scrollers?.length)));
 					chosen.catch(() => {});
 					choosing.set(run, chosen);
 				}
@@ -1635,9 +1674,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
 	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
-	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[] }) : undefined;
+	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[]; handlers?: HandlerFact[] }) : undefined;
 	useMarkupLibraries((libraries?.libraries ?? []).map((l) => l.name));
 	useCompositions(libraries?.compositions);
+	useHandlers(libraries?.handlers);
+	const uncarried = (libraries?.handlers ?? []).filter((h) => notCarried(h)).length;
+	if (libraries?.handlers?.length) log(`app submit handlers carried from the source: ${libraries.handlers.length - uncarried} (${uncarried} not: React state, props, hooks or an unported call)`);
 	useDocSearch(hasUsage ? ((JSON.parse(await readFile(usagePath, 'utf8')) as { docsearch?: Parameters<typeof useDocSearch>[0] }).docsearch) : undefined);
 	useOrigin(new URL(options.old).origin);
 	placementResolver = resolver;
@@ -1856,8 +1898,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	const formBinding: Binding = { extra: ['data-mm-form=""', 'onSubmit={(event) => event.preventDefault()}'] };
+	// A handled form given a carried submit handler prevents the submit in that handler's listener.
+	const formOf = (el: Element): Binding | undefined => {
+		const carried = carriedBinding(el, announced, handledForms.has(el), portedCall);
+		if (!handledForms.has(el)) return carried;
+		templatePorts.add('form');
+		return carried && carried.extra?.some((x) => x.startsWith('onSubmit=')) ? mergeBindings({ extra: ['data-mm-form=""'] }, carried) : mergeBindings(formBinding, carried);
+	};
 	if (handledForms.size) templatePorts.plan('form');
 	const notifyPlan = new NotifyPlan();
+	notifyPlan.programmatic = carriesCall('sonnerToast');
+	portedCall = (el, port) => (port === 'sonnerToast' ? notifyPlan.programFor(el) : undefined);
 	let notifyCount = 0;
 	// A form-library form's toast on a passing submit is a notification too, shown by its form's region.
 	for (const [route, p] of prepared) notifyCount += notifyPlan.add([...(notified.get(route) ?? []), ...(formLibsRead.get(route) ?? []).flatMap((f) => (f.toast ? [f.toast] : []))], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
@@ -2004,7 +2055,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(tables.bind(el), binding);
 		binding = mergeBindings(needs(formLibs.bind(el), 'form-library'), binding);
 		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
-		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? needs(formBinding, 'form') : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
+		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), formOf(el))), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
@@ -2060,10 +2111,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();
 	const out: ConvertedRoute[] = [];
-	const byFile = new Map<string, { route: string; search: string; markup: string; parts: PartUse[]; declarations: string[]; layers: readonly string[] }[]>();
+	const byFile = new Map<string, { route: string; search: string; markup: string; root: string; planned?: string; leading: string; after: readonly { markup: string; toaster?: boolean; layer?: string }[]; parts: PartUse[]; declarations: string[]; layers: readonly string[] }[]>();
 	const noteDropped = (what: string) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1);
 	const layers = layerTable(new Map([...prepared].map(([route, p]) => [route, p.layers])));
-	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, ownAfter.size > 0);
+	const afterKeys = new Map<string, string>();
+	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, ownAfter.size > 0, afterKeys);
 	// Markless wires no handler and no state the Document renders: a page's own body children that hold some (a header
 	// with a site component, a control on Markless state) are rendered by the page, in their place around its root.
 	const wired = (x: Element) => {
@@ -2072,38 +2124,66 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		return Boolean(b?.declare?.length || b?.extra?.some((e) => /^on[A-Z]/.test(e)));
 	};
 	for (const [route, extras] of pagesWiring(bodyParts.extras, wired)) if (!ownExtras.has(route)) ownExtras.set(route, extras);
+	const fragmentPrefix = await fragmentPath(app);
+	const fileOf = (route: string) => (route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(new URL(route, options.old).pathname, folders));
+	const variantPlans = new Map<string, { readonly base: string; readonly plan: QueryVariants; failed?: string; readonly used: Set<string>; readonly components: Set<SharedComponent> }>();
+	const byPage = new Map<string, string[]>();
+	for (const route of prepared.keys()) (byPage.get(fileOf(route)) ?? byPage.set(fileOf(route), []).get(fileOf(route))!).push(route);
+	for (const [file, routes] of byPage) {
+		const searches = routes.map((r) => new URL(r, options.old).search);
+		if (routes.length < 2 || new Set(searches).size !== routes.length) continue;
+		const base = routes[searches.indexOf('')] ?? routes[0]!;
+		const others = routes.filter((r) => r !== base);
+		variantPlans.set(file, { base, plan: queryVariants(prepared.get(base)!.root, new Map(others.map((r) => [new URL(r, options.old).search, prepared.get(r)!.root])), ownContent), used: new Set(), components: new Set() });
+	}
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
-		const file = route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(url.pathname, folders);
+		const file = fileOf(route);
 		const parts: PartUse[] = [];
 		const declarations: string[] = [];
 		onRoute(route);
 		usedPorts.routes = [route];
-		const rootMarkup = emitElement(p.root, {
-			declarations,
-			bind: (el): Binding | undefined => {
-				const own = factored.binding(route, el) ?? withAppend(el, bindParts(el, usedPorts));
-				return el === p.root ? mergeBindings(own, { extra: [ROOT_HANDLERS] }) : own;
-			},
-			dropped: noteDropped,
-		});
+		const variant = variantPlans.get(file);
+		const emitRoot = (planned?: NonNullable<typeof variant>) =>
+			emitElement(p.root, {
+				declarations,
+				bind: (el): Binding | undefined => {
+					const shared = planned?.plan.holds.has(el) ? undefined : factored.binding(route, el);
+					if (planned && shared) planned.components.add(factored.of(el)!);
+					let own = shared ?? withAppend(el, bindParts(el, usedPorts));
+					if (planned && own?.replace === undefined) {
+						if (planned.plan.unaligned.has(el) && own?.children === undefined) planned.failed ??= `<${el.tagName}${attr(el, 'data-slot') ? ` data-slot="${attr(el, 'data-slot')}"` : ''}> differs in what a visitor sees`;
+						const keys = planned.plan.expressions.get(el);
+						if (keys) {
+							for (const key of Object.values(keys)) planned.used.add(key);
+							own = { ...own, expressions: { ...Object.fromEntries(Object.entries(keys).map(([name, key]) => [name, variantValue(key)])), ...own?.expressions } };
+						}
+					}
+					if (el !== p.root) return own;
+					if (planned && own?.replace !== undefined) planned.failed ??= 'the page root is a component';
+					return mergeBindings(own, { extra: [ROOT_HANDLERS, ...(planned ? [variantPick(fragmentPrefix)] : [])] });
+				},
+				dropped: noteDropped,
+			});
+		const rootMarkup = emitRoot();
+		const plannedRoot = variant?.base === route ? emitRoot(variant) : undefined;
 		// The layers only this page portals are the page's, beside its root at the end of the body, so its server code
 		// carries only its own. Markless renders a fragment root of components only inside branches: both are arms of
 		// a branch on a module constant, which never changes.
 		const pageLayers = layers.own(route);
 		// A toaster nests a repeat in a repeat's rows, which Markless renders only outside a branch: it stays in the old order between them.
-		const after: { markup: string; toaster?: boolean }[] = [];
+		const after: { markup: string; toaster?: boolean; layer?: string }[] = [];
 		const owned = ownAfter.get(route);
 		if (bodyAfter && owned?.length) {
 			let from = 0;
 			for (const i of owned) {
-				for (let j = from; j < i; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
+				for (let j = from; j < i; j++) after.push({ markup: `<BodyAfter${j} route={${lit(afterKeys.get(route) ?? route)}} />` });
 				const el = bodyParts.after[i]!.byRoute.get(route)!;
 				after.push({ markup: emitElement(el, { declarations, bind: (x) => mergeBindings(bindParts(x, usedPorts), notifyPlan.bind(x)), dropped: noteDropped }), toaster: notifyPlan.rendersToasts(el) });
 				from = i + 1;
 			}
-			for (let j = from; j < bodyParts.after.length; j++) after.push({ markup: `<BodyAfter${j} route={${lit(route)}} />` });
-		} else if (bodyAfter) after.push({ markup: `<BodyAfter route={${lit(route)}} />` });
+			for (let j = from; j < bodyParts.after.length; j++) after.push({ markup: `<BodyAfter${j} route={${lit(afterKeys.get(route) ?? route)}} />` });
+		} else if (bodyAfter) after.push({ markup: `<BodyAfter route={${lit(afterKeys.get(route) ?? route)}} />` });
 		const emitOwn = (el: Element) =>
 			emitElement(el, {
 				declarations,
@@ -2118,39 +2198,43 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}${p.copyLabels[key] !== undefined ? ` data-mm-label=${lit(p.copyLabels[key]!)}` : ''}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
-		after.push(...pageLayers.map((n) => ({ markup: `<${n} />` })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
-		const body = pageBody(rootMarkup, after, PAGE_SHOWN);
-		const markup = leading ? `<>@if (${PAGE_SHOWN}) { <>${leading}</> }${body === rootMarkup ? `@if (${PAGE_SHOWN}) { ${rootMarkup} }` : body}</>` : body;
+		after.push(...pageLayers.map((n) => ({ markup: `<${n} />`, layer: n })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
 		const list = byFile.get(file) ?? [];
-		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
+		list.push({ route, search: url.search, markup: pageMarkup(rootMarkup, leading, after), root: rootMarkup, ...(plannedRoot !== undefined ? { planned: plannedRoot } : {}), leading, after, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
 	}
 	usedPorts.routes = undefined;
 	const partsDir = (from: string) => relative(dirname(join(app, from)), join(app, 'lib', 'parts')).replace(/^(?!\.)/, './');
 	for (const [file, variants] of byFile) {
+		const variant = variantPlans.get(file);
+		const base = variants.find((v) => v.route === variant?.base) ?? variants.find((v) => v.search === '') ?? variants[0]!;
+		const others = variants.filter((v) => v !== base);
+		const static_ = variant && base.planned !== undefined ? staticVariants(base, others, variant, layers) : undefined;
 		const imports = new Set<string>(["import type { PageProps } from '@markless/router';"]);
-		for (const v of variants) for (const component of factored.used(v.route)) imports.add(`import ${component.name} from '${relative(dirname(join(app, file)), join(app, component.file)).replace(/^(?!\.)/, './')}';`);
+		for (const component of static_?.differs ? variant!.components : static_ ? factored.used(base.route) : variants.flatMap((v) => factored.used(v.route))) imports.add(`import ${component.name} from '${relative(dirname(join(app, file)), join(app, component.file)).replace(/^(?!\.)/, './')}';`);
 		for (const v of variants) for (const part of v.parts) imports.add(part.import(partsDir(file)));
 		if (bodyAfter) {
 			const ranges = [...new Set(variants.flatMap((v) => [...v.markup.matchAll(/<(BodyAfter\d+) /g)].map((m) => m[1]!)))];
 			imports.add(`import BodyAfter${ranges.length ? `, { ${ranges.join(', ')} }` : ''} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'body-after.tsrx')).replace(/^(?!\.)/, './')}';`);
 		}
-		for (const v of variants) for (const name of v.layers) imports.add(`import ${name} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'layers', `${name.replace(/^Layer/, 'layer-')}.tsrx`)).replace(/^(?!\.)/, './')}';`);
-		const base = variants.find((v) => v.search === '') ?? variants[0]!;
-		const others = variants.filter((v) => v !== base);
+		for (const name of static_ ? static_.layers : variants.flatMap((v) => v.layers)) imports.add(`import ${name} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'layers', `${name.replace(/^Layer/, 'layer-')}.tsrx`)).replace(/^(?!\.)/, './')}';`);
 		const pathExpr = lit(pathOf(base.route));
+		if (variant && others.length) log(static_ ? `${pathOf(base.route)}: ${others.length + 1} captured queries written as one page built ahead, ${static_.differs ? 'the query resolved in the browser' : 'all alike'}` : `${pathOf(base.route)}: rendered per query on the server: ${variant.failed ?? 'what follows the page differs by query'}`);
 		let markup: string;
-		if (!others.length) markup = `\t${base.markup}\n`;
+		if (static_) markup = `\t${static_.markup}\n`;
+		else if (!others.length) markup = `\t${base.markup}\n`;
 		else {
 			const arms = others.map((v) => `\t\t@case ${lit(v.search)}: {\n\t\t\t${v.markup}\n\t\t}`).join('\n');
 			// A page whose root is a bare @switch builds but is no page module at request time; in a fragment it is.
 			markup = `\t<>\n\t@switch (search) {\n${arms}\n\t\t@default: {\n\t\t\t${base.markup}\n\t\t}\n\t}\n\t</>\n`;
 		}
+		const perQuery = others.length > 0 && !static_;
 		if (markup.includes(`(${PAGE_SHOWN})`)) imports.add(`const ${PAGE_SHOWN} = true;`);
 		const usesPath = markup.includes('path={path}') || markup.includes('path ===');
-		const declared = [...new Set(variants.flatMap((v) => v.declarations))];
-		if (declared.length) imports.add("import { state } from '@markless/core';");
-		const source = `${GENERATED} (${variants.map((v) => v.route).join(', ')})\n${[...imports].join('\n')}\n\nexport default function Page(${others.length ? '{ url }: PageProps' : '_props: PageProps'}) @{\n${usesPath ? `\tconst path = ${pathExpr};\n` : ''}${others.length ? '\tconst search = url.search;\n' : ''}${declared.map((d) => `\t${d}\n`).join('')}\n${markup}}\n`;
+		const declared = [...new Set(variants.flatMap((v) => v.declarations)), ...(static_?.differs ? VARIANT_DECLARATIONS : [])];
+		if (declared.length) imports.add(static_?.differs ? "import { computed, state } from '@markless/core';" : "import { state } from '@markless/core';");
+		if (static_?.differs) imports.add(`const ${VARIANT_TABLE}: Readonly<Record<string, Readonly<Record<string, string>>>> = ${JSON.stringify(static_.table)};`);
+		const source = `${GENERATED} (${variants.map((v) => v.route).join(', ')})\n${[...imports].join('\n')}\n\nexport default function Page(${perQuery ? '{ url }: PageProps' : '_props: PageProps'}) @{\n${usesPath ? `\tconst path = ${pathExpr};\n` : ''}${perQuery ? '\tconst search = url.search;\n' : ''}${declared.map((d) => `\t${d}\n`).join('')}\n${markup}}\n`;
 		written.set(file, source);
 		for (const v of variants) out.push({ route: v.route, page: file, bytes: v.markup.length, parts: v.parts });
 	}

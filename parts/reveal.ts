@@ -24,7 +24,8 @@ function request(src: string): Promise<string> {
 function fill(template: HTMLTemplateElement): void {
 	const src = template.dataset.mmLayerSrc!;
 	const html = markup.get(src);
-	const into = document.querySelector<HTMLElement>(`[data-mm-layer-fill="${CSS.escape(src)}"]`);
+	// A page that picks its file per query names it in its template, not in the shell it was written with.
+	const into = document.querySelector<HTMLElement>(`[data-mm-layer-fill="${CSS.escape(src)}"]`) ?? document.querySelector<HTMLElement>(`[data-mm-served="${CSS.escape(src)}"] [data-mm-layer-fill], [data-mm-served="${CSS.escape(src)}"][data-mm-layer-fill]`);
 	if (html === undefined || !into) return;
 	into.removeAttribute('data-mm-layer-fill');
 	const range = document.createRange();

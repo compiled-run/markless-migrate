@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { attr, outer, walk, type Element } from './dom.ts';
+import { attr, elementChildren, outer, walk, type Element } from './dom.ts';
+import { SERVED_LAYER_BYTES } from './document.ts';
 import { GENERATED_ID } from './factor.ts';
 
 export interface CapturedLayer {
@@ -7,6 +8,21 @@ export interface CapturedLayer {
 	readonly kept: readonly Element[];
 	/** The layer whose content holds this one's trigger, when the capture knows it (a submenu opened from its menu). */
 	readonly from?: string;
+}
+
+/**
+ * The element of a layer most of its markup sits in (a command palette's list): a served layer's page keeps the layer
+ * with this element emptied as its shell, and the file holds this element's content.
+ */
+export function hollowOf(kept: readonly Element[]): Element | undefined {
+	const size = (el: Element) => outer(el).length;
+	let at = [...kept].sort((x, y) => size(y) - size(x))[0];
+	for (let next = at; next; ) {
+		at = next;
+		const total = size(at);
+		next = elementChildren(at).find((child) => size(child) >= total * 0.9);
+	}
+	return at;
 }
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 8);
@@ -19,20 +35,35 @@ const hash = (text: string) => createHash('sha256').update(text).digest('hex').s
 // The same layer on every page that shows it (a site's search palette) is named once: by its key and its markup.
 const named = new Map<string, ReadonlyMap<string, string>>();
 
+function withoutContent(kept: readonly Element[], hollow: Element): string {
+	const children = hollow.childNodes;
+	hollow.childNodes = [];
+	try {
+		return kept.map((e) => outer(e)).join('');
+	} finally {
+		hollow.childNodes = children;
+	}
+}
+
 export function layerIds(key: string, kept: readonly Element[]): Map<string, string> {
 	const markup = kept.map((e) => outer(e)).join('');
 	const memo = `${key}\0${createHash('sha256').update(markup).digest('hex')}`;
 	const known = named.get(memo);
 	if (known) return new Map(known);
+	// A layer served as a file is named by its shell: the same dialog showing other content (a query's) keeps its names.
+	const hollow = markup.length >= SERVED_LAYER_BYTES ? hollowOf(kept) : undefined;
+	const inside = new Set(hollow ? walk(hollow) : []);
+	inside.delete(hollow!);
 	const own: string[] = [];
 	const seen = new Set<string>();
-	for (const top of kept)
-		for (const el of walk(top)) {
-			const id = attr(el, 'id');
-			if (id && GENERATED_ID.test(id) && !seen.has(id)) own.push(id), seen.add(id);
-		}
+	for (const outside of [true, false])
+		for (const top of kept)
+			for (const el of walk(top)) {
+				const id = attr(el, 'id');
+				if (id && GENERATED_ID.test(id) && !seen.has(id) && inside.has(el) !== outside) own.push(id), seen.add(id);
+			}
 	if (GENERATED_ID.test(key) && !seen.has(key)) own.push(key);
-	let text = markup;
+	let text = hollow ? withoutContent(kept, hollow) : markup;
 	own.forEach((id, k) => (text = text.split(id).join(`@${k}`)));
 	const h = hash(text);
 	const names = new Map(own.map((id, k) => [id, `mm-${h}-${k}`]));

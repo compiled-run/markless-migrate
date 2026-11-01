@@ -434,3 +434,12 @@ test("a form's toast on a passing submit is added by its region's mmformsubmit, 
 	assert.match(out, /<pre><code>\{item\.t\["v"\] \?\? ""\}<\/code><\/pre>/);
 	assert.doesNotMatch(out, /onClick=\{\(\) => sonnerAdd/);
 });
+
+test('a menu item whose choosing scrolled a message scroller to a message scrolls it there on the port; other items get nothing', async () => {
+	const { scrollBinding } = await import('../src/convert/choices.ts');
+	const doc = parseDocument('<body><div role="menuitem">What should I compare</div><div role="menuitem">Copy</div></body>');
+	const [jump, copy] = [...walk(body(doc))].filter((el) => attr(el, 'role') === 'menuitem') as [Element, Element];
+	const choices = { 'What should I compare': { scrolled: { message: 'msg-3', smooth: true } }, Copy: { copied: 'x' } };
+	assert.deepEqual(scrollBinding(jump, choices), { extra: ['onClick={() => scrollToMessage("msg-3", "smooth")}'] });
+	assert.equal(scrollBinding(copy, choices), undefined);
+});

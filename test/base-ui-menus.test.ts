@@ -736,3 +736,35 @@ test('an item-aligned Base UI select that closes takes the unplaced positioner s
 	assert.equal(await read(), 'absolute 0px 0 none popup:-');
 	await page.close();
 });
+
+// The trigger takes the press's own focus, as Base UI's does: the browser's focus-visible heuristic then follows the
+// visitor's modality (a key shows the ring on the focused option, the pointer never does).
+const ring = (page: Page) =>
+	page.evaluate(() => {
+		const at = document.activeElement;
+		return `${at?.matches('[role="option"], button') ? at.textContent?.trim() : at?.getAttribute('data-slot')} ${at?.matches(':focus-visible')}`;
+	});
+
+test('a Base UI select opened by a press shows the focus ring once a key is typed on the option it focused', async () => {
+	const page = await open(select, ['base-ui/select']);
+	await page.locator('#base').click();
+	await settled(page);
+	assert.equal(await ring(page), 'Apple false');
+	await press(page, 'a');
+	assert.equal(await ring(page), 'Apple true');
+	await page.close();
+});
+
+test("a Base UI select opened by a press shows no focus ring as the pointer leaves its options or presses outside", async () => {
+	const page = await open(select, ['base-ui/select']);
+	await page.locator('#base').click();
+	await page.locator('[role="option"]', { hasText: 'Banana' }).hover();
+	assert.equal(await ring(page), 'Banana false');
+	await page.mouse.move(990, 790, { steps: 3 });
+	await settled(page);
+	assert.equal(await ring(page), 'select-content false');
+	await page.mouse.click(990, 790);
+	await page.waitForTimeout(400);
+	assert.equal(await ring(page), 'Select a fruit false');
+	await page.close();
+});

@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import lighthouse from 'lighthouse';
+import { Worker } from 'node:worker_threads';
 import { throttling } from 'lighthouse/core/config/constants.js';
 import { chromium } from 'playwright';
 import { HINTS } from './hints.ts';
@@ -435,33 +435,32 @@ export function cpuMultiplier(benchmarkIndex: number): number {
 	return 1;
 }
 
-const runLighthouse: Lighthouse = async (url, port, blocked, cpu, throttle = 'applied') => {
-	const flags = { port, output: 'json' as const, onlyCategories: ['performance'], logLevel: 'error' as const, blockedUrlPatterns: [...blocked] };
-	if (cpu !== 'calibrated') {
-		// Throttled for real, not simulated: on a loopback load the fonts and images race the first paint, and the simulation adds
-		// each one that won to the paint it predicts, so the same page's first paint landed at 2.0, 2.4, 2.6, 2.9 or 3.0 s by chance.
-		const result = await lighthouse(url, { ...flags, throttlingMethod: throttle === 'applied' ? 'devtools' : 'simulate', throttling: { ...throttling.mobileSlow4G, cpuSlowdownMultiplier: cpu } });
-		if (!result) throw new Error('Lighthouse returned no result');
-		return result.lhr as unknown as Lhr;
-	}
-	// The simulation runs when the artifacts are audited, so the load is gathered once and simulated at the slowdown its own benchmarkIndex calls for.
-	const dir = await mkdtemp(join(tmpdir(), 'markless-migrate-lhr-'));
-	try {
-		await lighthouse(url, { ...flags, gatherMode: dir });
-		const file = join(dir, 'artifacts.json');
-		const artifacts = JSON.parse(await readFile(file, 'utf8')) as { BenchmarkIndex?: number; settings?: { throttlingMethod?: string; throttling?: Record<string, number> } };
-		const multiplier = artifacts.BenchmarkIndex ? cpuMultiplier(artifacts.BenchmarkIndex) : throttling.mobileSlow4G.cpuSlowdownMultiplier;
-		// With simulated throttling the gather never slows the CPU, so the saved settings may name the slowdown the audit simulates.
-		if (artifacts.settings?.throttlingMethod !== 'simulate') throw new Error(`Lighthouse gathered with ${artifacts.settings?.throttlingMethod} throttling; a calibrated run needs simulate`);
-		artifacts.settings.throttling = { ...artifacts.settings.throttling, cpuSlowdownMultiplier: multiplier };
-		await writeFile(file, JSON.stringify(artifacts));
-		const result = await lighthouse(url, { ...flags, auditMode: dir, throttling: { ...throttling.mobileSlow4G, cpuSlowdownMultiplier: multiplier } });
-		if (!result) throw new Error('Lighthouse returned no result');
-		return result.lhr as unknown as Lhr;
-	} finally {
-		await rm(dir, { recursive: true, force: true }).catch(() => {});
-	}
-};
+/** What one Lighthouse run is given, in its worker. */
+export interface LighthouseJob {
+	readonly url: string;
+	readonly port: number;
+	readonly blocked: readonly string[];
+	readonly cpu: 'calibrated' | number;
+	readonly throttle: 'applied' | 'simulated';
+}
+
+// Each run in a worker of its own, which takes the trace engine's module state with it when it exits.
+const runLighthouse: Lighthouse = (url, port, blocked, cpu, throttle = 'applied') =>
+	new Promise<Lhr>((resolve, reject) => {
+		const job: LighthouseJob = { url, port, blocked: [...blocked], cpu, throttle };
+		const worker = new Worker(new URL('./lighthouse-worker.ts', import.meta.url), { workerData: job });
+		let answered = false;
+		worker.once('message', (out: { lhr: Lhr } | { error: string }) => {
+			answered = true;
+			void worker.terminate();
+			if ('error' in out) reject(new Error(out.error));
+			else resolve(out.lhr);
+		});
+		worker.once('error', reject);
+		worker.once('exit', (code) => {
+			if (!answered) reject(new Error(`the Lighthouse worker exited (${code}) before it answered`));
+		});
+	});
 
 const lcpOf = (run: LoadRun) => run.metrics?.lcp ?? Infinity;
 

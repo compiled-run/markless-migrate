@@ -51,3 +51,34 @@ test('the Questionnaire port shows what @shadcn/react showed after every step of
 	}
 	assert.deepEqual(failures, []);
 });
+
+test('a submit the questionnaire\'s checks pass is announced once (mmsubmit), for the app\'s own handler; one they stop is not', async () => {
+	const source = ts.transpileModule(await readFile(join(ROOT, 'parts/shadcn/questionnaire.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/questionnaire.js' ? route.fulfill({ contentType: 'text/javascript', body: source }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		const counts = await page.evaluate(async (html) => {
+			const part = (await import('/questionnaire.js' as string)) as Record<string, (t: Element, e: Event) => boolean>;
+			document.body.innerHTML = html;
+			for (const type of ['click', 'keydown', 'input', 'submit'] as const) document.addEventListener(type, (event) => void part[type]!(event.target as Element, event));
+			const form = document.querySelector('form')!;
+			form.addEventListener('submit', (event) => event.preventDefault());
+			let announced = 0;
+			form.addEventListener('mmsubmit', () => announced++);
+			const submit = () => form.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+			submit();
+			const early = announced;
+			for (const item of form.querySelectorAll('[data-slot="questionnaire-item"]')) {
+				item.querySelector<HTMLInputElement>('input[data-slot="questionnaire-choice-input"]')?.click();
+				form.querySelector<HTMLButtonElement>('[data-slot="questionnaire-next"]:not([hidden])')?.click();
+			}
+			submit();
+			return [early, announced];
+		}, demos[0]!.html);
+		assert.deepEqual(counts, [0, 1]);
+	} finally {
+		await browser.close();
+	}
+});

@@ -95,6 +95,19 @@ function snapshotIn(): unknown {
 			const max = el.scrollHeight - el.clientHeight;
 			live.push(['.scroll', max <= 1 || Math.abs(el.scrollTop - max) <= 1 ? 'end' : el.scrollTop <= 1 ? 'start' : 'last-anchor']);
 		}
+		// A script's own animation (motion's element.animate) changes nothing in the DOM: its keyframes and timing are recorded.
+		const own = el.getAnimations().filter((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition) && a.effect instanceof KeyframeEffect && a.effect.target === el);
+		if (own.length)
+			live.push([
+				'.animate',
+				JSON.stringify(
+					own.map((a) => {
+						const effect = a.effect as KeyframeEffect;
+						const t = effect.getTiming();
+						return { k: effect.getKeyframes().map(({ computedOffset: _, ...k }) => k), d: t.duration, e: t.easing, l: t.delay, f: t.fill };
+					}),
+				),
+			]);
 		return { id: id(el), tag: el.tagName.toLowerCase(), attrs: [...[...el.attributes].map((a) => [a.name, value(el, a)]), ...live], kids };
 	};
 	return snap(s.root);
@@ -263,7 +276,7 @@ async function use(page: Page, selector: string, index: number, listed: string, 
  * `limits`), and records each use frame by frame. A state is reached again by replaying the uses that led to it.
  */
 export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = ''): Promise<SceneCapture> {
-	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`scenes:7:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
