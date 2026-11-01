@@ -151,7 +151,8 @@ test('a layer captured open loses the interaction state the server never renders
 		`<div role="dialog" data-state="closed" data-mm-layer="k">
 	<div role="option" data-state="checked" aria-selected="false">Apple</div><div role="menuitem" data-disabled="">Cut</div>
 	<button data-slot="tooltip-trigger" data-state="closed">Copy</button><button data-state="closed">Paste</button><button aria-describedby="hint">Plain</button>
-	<pre><span data-highlighted-line="">x</span><mark data-highlighted-chars="">y</mark></pre><div data-selected="" aria-selected="true" cmdk-item="">First</div></div>`,
+	<pre><span data-highlighted-line="">x</span><mark data-highlighted-chars="">y</mark></pre><div data-selected="false" aria-selected="false" cmdk-item="">First</div></div>`,
+		'cmdk selects its first item as it mounts, so a closed layer holds none',
 	);
 });
 

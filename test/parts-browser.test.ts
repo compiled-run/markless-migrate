@@ -479,6 +479,28 @@ test('cmdk: the wheel turned over the list under a still pointer leaves the sele
 	await page.close();
 });
 
+test('cmdk: a command in a closed layer holds no selection; opening it selects the first item, each time, as cmdk does on mount', async () => {
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k" hidden>${COMMAND.replace('aria-selected="true"', 'aria-selected="false"').replace('data-selected="true"', 'data-selected="false"')}</div>`, ['cmdk']);
+	await page.evaluate(() => {
+		const log: string[] = [];
+		(window as unknown as { flips: string[] }).flips = log;
+		new MutationObserver((ms) => { for (const m of ms) log.push(`${(m.target as Element).id} ${m.attributeName} ${m.oldValue}->${(m.target as Element).getAttribute(m.attributeName!)}`); }).observe(document.body, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['aria-selected', 'data-selected'] });
+	});
+	const flips = () => page.evaluate(() => (window as unknown as { flips: string[] }).flips.splice(0));
+	for (const round of ['first open', 'reopen']) {
+		await page.evaluate(() => ((document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false));
+		await page.locator('[cmdk-input]').focus();
+		assert.deepEqual(await flips(), ['cal aria-selected false->true', 'cal data-selected false->true'], round);
+		assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false }, round);
+		await page.keyboard.press('ArrowDown');
+		await page.locator('#trigger').focus();
+		await page.evaluate(() => ((document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true));
+		await page.waitForFunction(() => !document.querySelector('[cmdk-item][aria-selected="true"]'));
+		await flips();
+	}
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
@@ -491,6 +513,7 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
 	await page.waitForFunction(() => (document.querySelector('[cmdk-input]') as HTMLInputElement).value === '');
 	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
+	await page.locator('[cmdk-input]').focus();
 	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
 	await page.close();
 });
