@@ -1051,6 +1051,14 @@ export function foldLateStyles(late: readonly Element[]): { css: string[]; kept:
 	return { css, kept };
 }
 
+/** A closed layer's own display (an inline style, a class such as Tailwind 3's `flex`) would beat its hidden attribute. */
+export const HIDDEN_LAYER_CSS = '[data-mm-layer][hidden]{display:none!important}';
+
+/** A page with layers carries HIDDEN_LAYER_CSS in its own stylesheet, as its body styles ride it. */
+export function withHiddenLayers(page: { readonly layers: readonly unknown[]; readonly bodyCss: string[] }): void {
+	if (page.layers.length && !page.bodyCss.includes(HIDDEN_LAYER_CSS)) page.bodyCss.unshift(HIDDEN_LAYER_CSS);
+}
+
 /** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. */
 export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>): Promise<number> {
 	const sheets = new Map<string, Promise<string>>();
@@ -2230,6 +2238,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
+	for (const p of prepared.values()) withHiddenLayers(p);
 	const folded = await appendBodyCss(publicDir, prepared.values());
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
