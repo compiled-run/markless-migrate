@@ -1,5 +1,6 @@
 name: shadcn Cloudflare measurement
 # Scratch (owner-approved, 2026-10-31): the shadcn port against its original, both on Cloudflare Workers. Delete after.
+# Nav: a covered link is clicked from script on both sites.
 on:
   push:
     branches: [exp/prefetch-idle]
