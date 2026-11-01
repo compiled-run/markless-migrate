@@ -43,7 +43,8 @@ async function step(page: Page, origin: string, s: (typeof STEPS)[number], log: 
 	else {
 		const link = page.locator(`a[href="${s.to}"]`).filter({ visible: true }).first();
 		if (!(await link.count())) return { error: `no visible link to ${s.to} on ${before.path}` };
-		await link.click({ noWaitAfter: true });
+		// A link the page covers (the /create designer's header) is clicked from script on both sites alike.
+		await link.click({ noWaitAfter: true, timeout: 5000 }).catch(() => link.evaluate((a: HTMLAnchorElement) => a.click()));
 	}
 	await page.waitForFunction((b) => location.pathname !== b.path && document.title !== b.title, before, { timeout: 30_000 }).catch(() => undefined);
 	await settle(page);
@@ -72,7 +73,7 @@ for (const profileName of profilesArg!.split(','))
 						if (pass === 'warm') await page.goto(`${origin}/`, { waitUntil: 'load', timeout: 120_000 });
 						await page.waitForTimeout(3000);
 						for (const s of STEPS) {
-							const r = await step(page, origin!, s, log);
+							const r = await step(page, origin!, s, log).catch((error: unknown) => ({ error: String(error).slice(0, 200) }));
 							const row = { profile: profileName, browser: browserName, side, run, pass, step: s.name, ...r };
 							rows.push(row);
 							console.log(JSON.stringify({ ...row, requests: (r as { requests?: unknown[] }).requests?.length }));
