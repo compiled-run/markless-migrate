@@ -45,6 +45,10 @@ on:
         description: Runners the routes whose shipped code changed are split across
         required: false
         default: '24'
+      check-max-parallel:
+        description: Check shards run at once, at most 10, or 24 with priority deploy
+        required: false
+        default: '10'
       check-flags:
         description: Extra check flags
         required: false
@@ -769,6 +773,8 @@ jobs:
       build-url: ${{ inputs.build-url }}
       only-artifact: pl-check-select
       reuse: ${{ inputs.fresh && 'false' || 'true' }}
+      max_parallel: ${{ inputs.check-max-parallel || '10' }}
+      priority: ${{ inputs.priority }}
 
   deploy:
     needs: [build, check]
