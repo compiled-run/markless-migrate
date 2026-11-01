@@ -117,3 +117,17 @@ test('rows prepended above keep the row the reader was looking at in place', asy
 	assert.equal(Math.round(afterTop), Math.round(before));
 	await page.close();
 });
+
+test('a control outside the transcript scrolls it to a message by its id, smoothly, as useMessageScroller\'s scrollToMessage with align start', async () => {
+	const page = await open(transcript('end', rows(12)));
+	const tops: number[] = [];
+	await page.evaluate(() => (globalThis as unknown as { part: typeof import('../parts/shadcn/message-scroller.ts') }).part.scrollToMessage('m2', 'smooth'));
+	for (let i = 0; i < 4; i++) {
+		await page.waitForTimeout(30);
+		tops.push(await page.evaluate(() => document.querySelector<HTMLElement>('[data-slot="message-scroller-viewport"]')!.scrollTop));
+	}
+	await page.waitForTimeout(800);
+	assert.equal(await page.evaluate(() => document.querySelector<HTMLElement>('[data-slot="message-scroller-viewport"]')!.scrollTop), 100, 'row m2 at the top');
+	assert.ok(tops.some((t) => t > 100 && t < 400), `it got there over frames: ${tops}`);
+	await page.close();
+});
