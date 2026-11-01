@@ -18,13 +18,13 @@ const options = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)]
 // isElementDisabled; a captured Base UI item carries data-disabled as well.
 const enabled = (o: HTMLElement) => !o.hasAttribute('disabled') && o.getAttribute('aria-disabled') !== 'true' && !o.hasAttribute('data-disabled');
 const enabledOptions = (p: Popup) => options(p).filter(enabled);
-// A press focuses as a mouse does, without a focus ring (Base UI's trigger takes the mousedown's focus, the option a script's).
+// After a mouse press the browser's focus-visible heuristic decides the ring, as for Base UI; a touch press shows none.
 const quietly = { preventScroll: true, focusVisible: false } as FocusOptions;
-function highlight(p: Popup, option: HTMLElement | undefined, keyboard = false): void {
+function highlight(p: Popup, option: HTMLElement | undefined, keyboard = false, focus: FocusOptions | false = { preventScroll: true }): void {
 	for (const o of options(p)) o.removeAttribute('data-highlighted');
 	if (!option) return;
 	option.setAttribute('data-highlighted', '');
-	option.focus(keyboard ? { preventScroll: true } : quietly);
+	if (focus) option.focus(focus);
 	if (keyboard) option.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 const selectedValue = new WeakMap<HTMLElement, string>();
@@ -134,9 +134,9 @@ function dismiss(p: Popup, focus?: FocusOptions): void {
 	closePopup(p, true, true, focus);
 	unplace(p);
 }
-function choose(p: Popup, option: HTMLElement, pressed = false): void {
+function choose(p: Popup, option: HTMLElement): void {
 	select(p.trigger, p.popup, option);
-	dismiss(p, pressed ? quietly : undefined);
+	dismiss(p);
 }
 
 const popupFor = (trigger: HTMLElement) => [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
@@ -146,7 +146,7 @@ const typingOf = (trigger: HTMLElement) => typings.get(trigger) ?? typings.set(t
 // SelectIcon (aria-hidden, its default child ▼ kept beside a rendered svg) carries data-popup-open while the select is open.
 const iconOf = (trigger: HTMLElement) => [...trigger.children].find((c) => c.getAttribute('aria-hidden') === 'true' && (c.textContent ?? '').includes('▼'));
 
-function openSelect(trigger: HTMLElement, key?: string): boolean {
+function openSelect(trigger: HTMLElement, key?: string, press?: 'mouse' | 'other'): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, fallbackAxisSide: 'none', onDismiss: (q) => dismiss(q) });
 	if (!p) return false;
 	const icon = iconOf(trigger);
@@ -172,7 +172,12 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	// useListNavigation: the selected item, else from ArrowUp the last enabled one, else the first.
 	const list = options(p);
 	const selected = list.find((o) => o.getAttribute('aria-selected') === 'true');
-	highlight(p, selected ?? (key === 'ArrowUp' ? list.findLast(enabled) : undefined) ?? enabledOptions(p)[0], key !== undefined);
+	const first = selected ?? (key === 'ArrowUp' ? list.findLast(enabled) : undefined) ?? enabledOptions(p)[0];
+	highlight(p, first, key !== undefined, press === 'mouse' ? false : press ? quietly : undefined);
+	// FloatingFocusManager's initial focus comes after the press has focused the trigger.
+	if (press === 'mouse' && first) setTimeout(() => {
+		if (popupFor(trigger) === p && first.hasAttribute('data-highlighted')) first.focus({ preventScroll: true });
+	});
 	return true;
 }
 
@@ -180,11 +185,12 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);
 	if (!trigger || event.button !== 0) return false;
 	const p = popupFor(trigger);
-	event.preventDefault();
+	// A mouse press is left its own focus of the trigger (SelectTrigger opens on mousedown without preventing it).
+	if (p || event.pointerType !== 'mouse') event.preventDefault();
 	if (p) dismiss(p);
 	else {
-		trigger.focus(quietly);
-		openSelect(trigger);
+		if (event.pointerType !== 'mouse') trigger.focus(quietly);
+		openSelect(trigger, undefined, event.pointerType === 'mouse' ? 'mouse' : 'other');
 	}
 	return true;
 }
@@ -193,7 +199,7 @@ export function click(target: Element): boolean {
 	const option = target.closest<HTMLElement>(OPTION);
 	const p = option && popupOfSelect(option);
 	if (!option || !p) return false;
-	if (enabled(option)) choose(p, option, true);
+	if (enabled(option)) choose(p, option);
 	return true;
 }
 export function pointerover(target: Element): boolean {
