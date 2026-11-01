@@ -734,6 +734,13 @@ export function routeJourneyBudget(options: Pick<CheckOptions, 'journeys' | 'rou
 	return own ? { ...options.journeys, ...own } : options.journeys;
 }
 
+/** One route's deadline: the run's, raised to five of the route's own journey budgets when it has one, as an unset --timeout is. */
+export function routeDeadline(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'routeJourneys' | 'embeds'>, route: string): number {
+	const base = routeTimeout(options);
+	const own = options.routeJourneys?.[route]?.budgetMs;
+	return own === undefined ? base : Math.max(base, routeTimeout({ ...options, timeoutMs: undefined, journeys: routeJourneyBudget(options, route) }));
+}
+
 export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'embeds'>): number {
 	return options.timeoutMs ?? Math.max(1_800_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
 }
@@ -973,7 +980,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, shared!) : { run: roleRun, failures: [] };
 				const own = options.routeJourneys?.[route];
 				const routed = own ? { ...run, journeys: { ...run.journeys, ...own } } : run;
-				const done = await withDeadline(route, routed, routeTimeout({ ...options, journeys: routeJourneyBudget(options, route) }), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
+				const done = await withDeadline(route, routed, routeDeadline(options, route), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
 				const old = oldCaptures.get(done);
 				oldCaptures.delete(done);
 				forgetFailures(done.failures);
