@@ -1,13 +1,47 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.svg">
-  <img src="docs/assets/logo-on-light.svg" width="96" height="96" alt="">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/migrate-icon-on-dark.svg">
+    <img src="docs/assets/migrate-icon-on-light.svg" alt="The Markless Migrate box" width="150" height="150">
+  </picture>
+</p>
 
-# Markless Migrate
+<h1 align="center">Markless Migrate</h1>
 
-Markless Migrate moves an existing web app to [Markless](https://markless.dev) one page at a time. Your coding agent rewrites the pages, and a checker proves each page matches the original before it switches over.
+<p align="center">
+  <strong>Move any web app to Markless, one page at a time.</strong><br />
+  Your coding agent rewrites each page. A checker proves it matches the original before it goes live.
+</p>
 
-It is an early preview. It has been used on the ports listed [below](#ports-so-far), and it changes often.
+<p align="center">
+  <a href="https://markless.dev/start/migrate">Docs</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#ports-so-far">Ports so far</a>
+</p>
+
+> Early preview. It changes often and isn't on npm yet.
+
+## What it looks like
+
+```bash
+markless-migrate plan  --old https://old.example.com --source ../old-app   # what the old app has and uses
+markless-migrate check --old https://old.example.com --new http://localhost:5173 --open
+markless-migrate switch /pricing                                            # only once /pricing is green
+```
+
+`check` opens the old page and the new one side by side in a real browser and reports every difference, with what each side showed and the file and line on each side, in a form your agent can fix. Every report leads with the slowest first click on each side: `First interaction: old 40 ms → new 230 ms (4x CPU)`.
+
+## What makes it different
+
+**Proof, not a promise.** A page switches over only when its check is green. Check compares what people see, what screen readers get, what search engines get, how fast it loads and how every control behaves when it's used, with the clock, randomness and the page's data frozen so both sides show the same thing.
+
+**From any framework, with nothing of the old one left.** Sites built with Next.js, Remix, Angular, VitePress, Docusaurus, htmx and Alpine.js are among the ports so far. The old framework's runtime never ships: a guard fails the build if it does. Widgets from UI libraries such as Radix, Base UI and React Aria are rebuilt once as small Markless parts and reused on every site.
+
+**Read from the source, not guessed from the screen.** Migrate reads the old app's code to know what each element is and what each handler does, instead of guessing from how the page looks.
+
+**Ship before you're done.** Switched pages go to the new app and every other page stays on the old one, behind a local proxy or generated Vercel or Nitro routing. A big app moves bit by bit without ever shipping a broken page.
+
+**Your agent, your login.** Migrate drives Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot CLI or opencode on the login you already have. It never calls a model or holds an API key itself.
 
 ## How it works
 
