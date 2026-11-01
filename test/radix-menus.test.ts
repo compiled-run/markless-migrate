@@ -302,6 +302,22 @@ test('Radix DropdownMenu.Sub: a press outside the menu and its open submenu clos
 	await page.close();
 });
 
+test('Radix ContextMenu: a left click in the trigger area while the menu is open closes it, as a press outside its content', async () => {
+	const page = await open(
+		`<main><div data-slot="context-menu-trigger" data-state="closed" data-mm-key="ctx" style="position:fixed;left:0;top:0;width:600px;height:300px">Right click here</div></main>
+<div data-mm-layer="ctx" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="context-menu-content" role="menu" id="ctx-content" data-state="closed" tabindex="-1" data-radix-menu-content=""><div role="menuitem" tabindex="-1">Back</div><div role="menuitem" tabindex="-1">Reload</div></div></div>`,
+		['radix/context-menu'],
+	);
+	const st = () => page.evaluate(() => `open=${!document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden} trigger=${document.querySelector('[data-slot="context-menu-trigger"]')!.getAttribute('data-state')} focus=${document.activeElement?.tagName}`);
+	await page.mouse.click(20, 20, { button: 'right' });
+	await settled(page);
+	assert.equal(await st(), 'open=true trigger=open focus=DIV');
+	await page.mouse.click(550, 250);
+	await page.waitForTimeout(300);
+	assert.equal(await st(), 'open=false trigger=closed focus=BODY');
+	await page.close();
+});
+
 test('Radix ContextMenu.Sub on a page listing only the context menu port: resting on the sub-trigger opens it, ArrowLeft closes it, ArrowDown moves in the menu', async () => {
 	const page = await open(
 		`<main><div data-slot="context-menu-trigger" data-state="closed" data-mm-key="ctx" style="position:fixed;left:0;top:0;width:600px;height:300px">Right click here</div></main>

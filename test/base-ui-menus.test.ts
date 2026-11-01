@@ -525,6 +525,22 @@ test('a Base UI context menu opened under the pointer highlights nothing until i
 	await page.close();
 });
 
+test("a left click in a Base UI context menu's trigger area while its menu is open closes it, as a press outside its popup", async () => {
+	const page = await open(
+		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
+		<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px">${['Back', 'Forward', 'Reload'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="context-menu-item">${t}</div>`).join('')}</div></div></div>`,
+		['base-ui/context-menu'],
+	);
+	const st = () => page.evaluate(() => `open=${!document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden} pressed=${document.querySelector('[data-slot="context-menu-trigger"]')!.hasAttribute('data-pressed')} focus=${document.activeElement?.tagName}`);
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	assert.equal(await st(), 'open=true pressed=true focus=DIV');
+	await page.mouse.click(550, 250);
+	await page.waitForTimeout(300);
+	assert.equal(await st(), 'open=false pressed=false focus=BODY');
+	await page.close();
+});
+
 test("a click on a Base UI context menu's submenu trigger leaves the menu open and its submenu opens; choosing in the submenu closes both", async () => {
 	const page = await open(
 		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
