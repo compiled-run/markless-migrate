@@ -11,6 +11,8 @@ minimumReleaseAgeExclude:
   - '@markless/web@0.6.0 || 0.7.0'
   - yuku-css@0.2.0
 allowBuilds:
+  esbuild: false
   tree-sitter-php: false
   tree-sitter-python: false
   tree-sitter-ruby: false
+  workerd: false

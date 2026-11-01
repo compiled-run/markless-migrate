@@ -129,7 +129,7 @@ export const cloudflareRouteRules: Record<string, Record<string, unknown>> = ${J
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
 interface NitroLike {
-	options: { routeRules: Record<string, Record<string, any>>; preset?: string; output?: { dir: string; publicDir: string; serverDir: string } };
+	options: { routeRules: Record<string, Record<string, any>>; preset?: string; output?: { dir: string; publicDir: string; serverDir: string }; prerender?: Record<string, unknown> };
 	hooks?: { hook(name: string, run: (arg: any) => unknown): void };
 }
 
@@ -162,7 +162,10 @@ export function applyRules(nitro: NitroLike): void {
 	nitro.hooks?.hook('compiled', () => prerenderFallbacks(nitro));
 	const rules = nitro.options.routeRules;
 	const proxied = (path: string) => Boolean(rules[path]?.proxy);
-	const own = String(nitro.options.preset ?? '').startsWith('cloudflare') ? cloudflareRouteRules : routeRules;
+	const cloudflare = String(nitro.options.preset ?? '').startsWith('cloudflare');
+	// Cloudflare serves /guide from guide.html and redirects it to /guide/ when the file is guide/index.html.
+	if (cloudflare) nitro.options.prerender = { ...nitro.options.prerender, autoSubfolderIndex: false };
+	const own = cloudflare ? cloudflareRouteRules : routeRules;
 	for (const [path, rule] of Object.entries(own)) {
 		if (proxied(path)) continue;
 		const kept = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));

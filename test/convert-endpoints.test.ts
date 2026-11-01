@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { codeOnly, fileSignals } from '../src/cache/signals.ts';
-import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml, trailingPolicy, trailingRoutes } from '../src/convert/endpoints.ts';
+import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml, cloudflareTrailing, trailingPolicy, trailingRoutes } from '../src/convert/endpoints.ts';
 import { parseModule, walk, type N } from '../src/source/js.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 import { body, parseDocument } from '../src/convert/dom.ts';
@@ -134,7 +135,7 @@ test("a prerendered page's file does not answer the other trailing-slash form: V
 		}
 	};
 	const next = trailingRoutes({ mode: 'strip', status: 308, pagesOnly: false }, ['/view/chart']);
-	assert.match(viteConfig([], next), new RegExp(`vercel: \\{ config: \\{ routes: ${JSON.stringify(next).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\} \\}`));
+	assert.match(viteConfig([], { vercel: next }), new RegExp(`vercel: \\{ config: \\{ routes: ${JSON.stringify(next).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\} \\}`));
 	await serve(next, async (get) => {
 		assert.deepEqual(await get('/view/chart/'), [308, '/view/chart'], 'Next.js answers the slash form of every path with a 308 to the bare one');
 		assert.deepEqual(await get('/view/chart'), [200, null]);
@@ -146,7 +147,78 @@ test("a prerendered page's file does not answer the other trailing-slash form: V
 		assert.deepEqual(await get('/docs/other'), [200, null], 'only where a page with the slash exists');
 	});
 	assert.deepEqual(trailingRoutes(undefined, ['/a']), []);
-	assert.doesNotMatch(viteConfig([], []), /vercel:/);
+	assert.doesNotMatch(viteConfig([], { vercel: [] }), /vercel:|cloudflare/);
+});
+
+test("on Cloudflare a prerendered page's file does not answer the other trailing-slash form with html_handling's 307: _redirects gives the old site's status", async () => {
+	const { viteConfig } = await import('../src/convert/index.ts');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-trailing-cf-'));
+	const publicDir = join(dir, 'public');
+	await mkdir(join(publicDir, 'view'), { recursive: true });
+	await writeFile(join(publicDir, 'view', 'chart.html'), '<p>chart</p>');
+	await mkdir(join(publicDir, '_markless', 'fragment'), { recursive: true });
+	await writeFile(join(publicDir, '_markless', 'fragment', 'index.html'), '<main></main>');
+	await mkdir(join(publicDir, 'guide'));
+	await writeFile(join(publicDir, 'guide', 'index.html'), '<p>guide</p>');
+	await writeFile(join(dir, 'worker.mjs'), "export default { fetch: () => new Response('worker') };");
+	await writeFile(join(dir, 'wrangler.json'), JSON.stringify({ name: 'trailing', main: 'worker.mjs', compatibility_date: '2026-10-27', assets: { directory: 'public', binding: 'ASSETS' } }));
+	const build = (policy: Parameters<typeof cloudflareTrailing>[0], pages: readonly string[]) => {
+		const cloudflare = cloudflareTrailing(policy, pages)!;
+		const config = viteConfig([], { vercel: [], cloudflare });
+		const source = /const cloudflareRedirects: .+? => void = (\(nitro\) => \{[\s\S]+?\n\});\n/.exec(config)?.[1];
+		assert.ok(source, config);
+		assert.match(config, /modules: \[.*\{ name: 'markless-migrate:cloudflare-redirects', setup: cloudflareRedirects \}\]/);
+		const setup = new Function('existsSync', 'readFileSync', 'writeFileSync', 'join', `return ${source}`)(existsSync, readFileSync, writeFileSync, join) as (nitro: object) => void;
+		writeFileSync(join(publicDir, '_redirects'), '/from-the-app /guide/ 301\n');
+		const nitro = { options: { preset: 'cloudflare-module', output: { publicDir } }, hooks: { hook: (name: string, run: () => void) => name === 'compiled' && run() } };
+		setup(nitro);
+		setup(nitro);
+		setup({ ...nitro, options: { ...nitro.options, preset: 'vercel' } });
+		assert.deepEqual(readFileSync(join(publicDir, '_redirects'), 'utf8').trim().split('\n'), [...cloudflare.redirects, '/from-the-app /guide/ 301'], "written once though the router runs the module twice, ahead of the app's own lines, and only on Cloudflare");
+	};
+	const serve = async (run: (get: (path: string) => Promise<[number, string | null]>) => Promise<void>) => {
+		const port = await new Promise<number>((done) => {
+			const probe = createServer().listen(0, '127.0.0.1', () => {
+				const { port } = probe.address() as AddressInfo;
+				probe.close(() => done(port));
+			});
+		});
+		const wrangler = fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url));
+		const server = spawn(process.execPath, [wrangler, 'dev', '--local', '--ip', '127.0.0.1', '--port', String(port)], { cwd: dir, detached: true, stdio: 'ignore', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+		const get = async (path: string): Promise<[number, string | null]> => {
+			const r = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+			await r.arrayBuffer();
+			const location = r.headers.get('location');
+			return [r.status, location && new URL(location, `http://127.0.0.1:${port}`).pathname];
+		};
+		try {
+			for (let tries = 0; !(await get('/').then(() => true, () => false)); tries++) {
+				if (tries > 600) throw new Error('wrangler dev did not answer');
+				await new Promise((done) => setTimeout(done, 100));
+			}
+			await run(get);
+		} finally {
+			process.kill(-server.pid!);
+		}
+	};
+	build({ mode: 'strip', status: 308, pagesOnly: false }, ['/', '/view/chart']);
+	await serve(async (get) => {
+		assert.deepEqual(await get('/view/chart/'), [308, '/view/chart'], 'Next.js answers the slash form with a 308; html_handling alone gives a 307');
+		assert.deepEqual(await get('/view/chart'), [200, null]);
+		assert.deepEqual(await get('/_markless/fragment/'), [200, null], "the home page's fragment URL keeps its slash");
+		assert.deepEqual(await get('/from-the-app'), [301, '/guide/']);
+		assert.deepEqual(await get('/not-a-page/'), [200, null], 'what is not a file reaches the Worker, whose routing answers it');
+	});
+	build({ mode: 'add', status: 301, pagesOnly: true }, ['/guide/']);
+	await serve(async (get) => {
+		assert.deepEqual(await get('/guide'), [301, '/guide/']);
+		assert.deepEqual(await get('/guide/'), [200, null]);
+		assert.deepEqual(await get('/view/chart/'), [307, '/view/chart'], "a page the policy was not given keeps html_handling's own redirect");
+	});
+	assert.equal(cloudflareTrailing(undefined, ['/a']), undefined);
+	assert.equal(cloudflareTrailing({ mode: 'add', status: 300, pagesOnly: true }, ['/a/']), undefined, 'a status _redirects cannot give');
+	assert.deepEqual(cloudflareTrailing({ mode: 'add', status: 302, pagesOnly: true }, ['/a/', '/b', '/a/']), { redirects: ['/a /a/ 302'], beyond: 0 });
+	assert.equal(cloudflareTrailing({ mode: 'strip', status: 308, pagesOnly: false }, Array.from({ length: 2003 }, (_, i) => `/p${i}`))!.beyond, 3, "Cloudflare's cap on static redirects");
 });
 
 test("the generated config keeps one of each Nitro handler and server asset directory, though the router hands Vite the app's nitro config again", async () => {
