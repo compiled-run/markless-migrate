@@ -1,6 +1,6 @@
 import type { ConvertInputs } from '../convert/inputs.ts';
 import { existsSync } from 'node:fs';
-import { copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, symlink } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 /** What the dev app links to in the app. */
@@ -47,6 +47,7 @@ export async function prepareDevApp(app: string, dev: string): Promise<void> {
 	await mkdir(join(dev, 'node_modules'), { recursive: true });
 	for (const name of await readdir(join(app, 'node_modules')).catch(() => [])) if (!OWN_CACHES.has(name)) await link(join(app, 'node_modules', name), join(dev, 'node_modules', name));
 	for (const path of COPIED) if ((await exists(join(app, path))) && !(await exists(join(dev, path)))) await copyFile(join(app, path), join(dev, path));
+	await syncSiteOptions(app, dev);
 	if ((await exists(join(dev, SITE_DIR))) && (await lstat(join(dev, SITE_DIR))).isSymbolicLink()) await rm(join(dev, SITE_DIR));
 	if (await exists(join(app, SITE_DIR))) await cp(join(app, SITE_DIR), join(dev, SITE_DIR), { recursive: true, force: true });
 	const state = join(app, '.migrate');
@@ -54,6 +55,16 @@ export async function prepareDevApp(app: string, dev: string): Promise<void> {
 	for (const name of await readdir(state)) if (!OWN_STATE.has(name)) await link(join(state, name), join(dev, '.migrate', name));
 	await mkdir(join(state, 'convert'), { recursive: true });
 	for (const entry of await readdir(join(state, 'convert'), { withFileTypes: true })) if (entry.isDirectory() || entry.name === 'sources.json') await link(join(state, 'convert', entry.name), join(dev, '.migrate', 'convert', entry.name));
+}
+
+/** The app's convert options (package.json "markless-migrate") as they are now: the rest of the dev app's copy is convert's. */
+async function syncSiteOptions(app: string, dev: string): Promise<void> {
+	const read = (dir: string) => readFile(join(dir, 'package.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>, () => undefined);
+	const [own, copy] = await Promise.all([read(app), read(dev)]);
+	if (!own || !copy || JSON.stringify(own['markless-migrate']) === JSON.stringify(copy['markless-migrate'])) return;
+	if (own['markless-migrate'] === undefined) delete copy['markless-migrate'];
+	else copy['markless-migrate'] = own['markless-migrate'];
+	await writeFile(join(dev, 'package.json'), `${JSON.stringify(copy, null, '\t')}\n`);
 }
 
 /** The convert flags that make a route the one the app's whole convert made: what that convert recorded it was given. */

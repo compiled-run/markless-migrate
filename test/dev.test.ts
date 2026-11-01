@@ -85,6 +85,10 @@ test("the dev app links the app's packages, plan state and capture folders, copi
 		await writeFile(join(app, 'lib', 'site', 'parts.ts'), 'changed');
 		await prepareDevApp(app, dev);
 		assert.equal(await readFile(join(dev, 'lib', 'site', 'parts.ts'), 'utf8'), 'changed', 'prepared again, it takes the site code as it is now');
+		await writeFile(join(dev, 'package.json'), JSON.stringify({ dependencies: { 'd3-shape': '3.2.0' } }));
+		await writeFile(join(app, 'package.json'), JSON.stringify({ 'markless-migrate': { loadOnUse: true } }));
+		await prepareDevApp(app, dev);
+		assert.deepEqual(JSON.parse(await readFile(join(dev, 'package.json'), 'utf8')), { dependencies: { 'd3-shape': '3.2.0' }, 'markless-migrate': { loadOnUse: true } }, "the app's convert options as they are now; the rest is convert's");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
