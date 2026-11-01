@@ -1280,6 +1280,14 @@ function diagnose(el: Element): Diagnosis {
 	if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return { kind: 'offscreen', detail: `its centre (${Math.round(x)}, ${Math.round(y)}) cannot be scrolled into the ${innerWidth}x${innerHeight} viewport` };
 	const hit = document.elementFromPoint(x, y);
 	if (hit && hit !== el && hit.contains(el) && getComputedStyle(el).pointerEvents === 'none') return { kind: 'hidden', detail: 'it does not take the pointer (pointer-events: none)' };
+	if (hit && hit !== el && hit.contains(el)) {
+		for (let at = el.parentElement; at && at !== hit; at = at.parentElement) {
+			const style = getComputedStyle(at);
+			const box = at.getBoundingClientRect();
+			const outside = x < box.left || x > box.right || y < box.top || y > box.bottom;
+			if (style.clipPath !== 'none' || style.clip !== 'auto' || (style.overflow !== 'visible' && outside)) return { kind: 'hidden', detail: `it is clipped out of view (inside ${name(at)})` };
+		}
+	}
 	if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) return { kind: 'occluded', detail: `covered by ${name(hit)} at its centre (${Math.round(x)}, ${Math.round(y)})` };
 	return { kind: 'ok', detail: '' };
 }
