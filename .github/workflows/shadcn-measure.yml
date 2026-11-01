@@ -5,7 +5,7 @@ on:
     branches: [exp/prefetch-idle]
     paths: [.github/workflows/shadcn-measure.yml]
 env:
-  OLD: https://ui.shadcn.com
+  OLD: https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev
   NEW: https://mm-shadcn-ui-new-measure.long-wildflower-ecf7.workers.dev
 jobs:
   lighthouse:
