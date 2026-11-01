@@ -1,6 +1,7 @@
 // Two-app fixture for a canvas animated from load, as a Rive hero is: a square crossing the canvas every 2 s, drawn on
-// animation frames from the page's own clock. `late` starts the same drawing 400 ms later (start-time jitter, the same
-// frames); `low` draws it 30 px lower (a real offset).
+// animation frames at a position set by the document's clock alone, so how long either load took does not move it.
+// `late` runs the same drawing 400 ms behind on that clock (a start-time shift, the same frames); `low` draws it 30 px
+// lower (a real offset).
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -15,17 +16,17 @@ function page(variant: Variant): string {
 document.getElementById('more').addEventListener('click', () => document.title = 'Canvas');
 const ctx = document.querySelector('canvas').getContext('2d');
 const row = ${variant === 'low' ? 100 : 70};
-let start;
+const behind = ${variant === 'late' ? 400 : 0};
 const draw = (now) => {
-	start ??= now;
-	const x = ((now - start) % 2000) / 2000 * 340;
+	requestAnimationFrame(draw);
+	if (now < behind) return;
+	const x = ((now - behind) % 2000) / 2000 * 340;
 	ctx.fillStyle = '#eee';
 	ctx.fillRect(0, 0, 400, 200);
 	ctx.fillStyle = '#222';
 	ctx.fillRect(x, row, 60, 60);
-	requestAnimationFrame(draw);
 };
-setTimeout(() => requestAnimationFrame(draw), ${variant === 'late' ? 400 : 0});
+requestAnimationFrame(draw);
 </script></body></html>`;
 }
 
