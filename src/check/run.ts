@@ -35,7 +35,7 @@ import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
 import { selfUrlFailures } from './self-urls.ts';
 import { routeState } from './route-state.ts';
-import { answerFloor, judgeTiming, type Samples } from './timing-verdicts.ts';
+import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -462,8 +462,8 @@ async function servesPage(env: SideEnv, path: string): Promise<boolean> {
 	}
 }
 
-// The candidates a route confirms, the largest first, and the rounds of old and new each gets: five old and four new samples
-// in all, enough for a one-sided test to reach the share of 0.05 five candidates leave the first of them.
+// The candidates a route confirms at a time, the largest first, and the rounds of old and new each journey gets: five old and
+// four new samples in all, enough for a one-sided test to reach the share of 0.05 five candidates leave the first of them.
 const RETIMED = 5;
 const RETIMES = 3;
 
@@ -484,37 +484,46 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 	const timed = failures.filter((f) => timedOnly.has(f));
 	// Within what the route's own old runs differ by is the machine, not the page.
 	const candidates = timed.filter((f) => effect(f) > floor).sort((a, b) => effect(b) - effect(a));
-	const tested = candidates.slice(0, RETIMED);
-	const samples: Samples[] = [];
+	const replays = new Map<number, Promise<{ old: StepResult[]; next: StepResult[] }[]>>();
+	const roundsOf = (journey: number) => {
+		if (!replays.has(journey))
+			replays.set(
+				journey,
+				(async () => {
+					const rounds: { old: StepResult[]; next: StepResult[] }[] = [];
+					for (let i = 0; i < RETIMES; i++) {
+						const old = await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []);
+						rounds.push({ old, next: await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []) });
+					}
+					return rounds;
+				})(),
+			);
+		return replays.get(journey)!;
+	};
 	const unconfirmed = new Set<Failure>();
-	for (const failure of tested) {
+	const sample = async (i: number): Promise<Samples> => {
+		const failure = candidates[i]!;
 		const { journey, step, views, cadence } = timedOnly.get(failure)!;
 		const first = olds.map((o) => o[journey]?.[step]).filter((r): r is StepResult => Boolean(r));
-		const rounds: { old?: StepResult; next?: StepResult }[] = [];
-		for (let i = 0; i < RETIMES; i++) {
-			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step];
-			const again = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
-			rounds.push({ old, next: again });
-		}
+		const rounds = (await roundsOf(journey)).map((r) => ({ old: r.old[step], next: r.next[step] }));
 		const mine = next[journey]?.[step];
 		if (views || cadence) {
 			const shows = (r: StepResult | undefined) => (r?.reaction?.views ? (cadence ? choppier(first, r) : interimViews(first, r)) !== undefined : undefined);
 			const o = rounds.map((r) => shows(r.old)), n = rounds.map((r) => shows(r.next));
 			if ([...o, ...n].some((x) => x === undefined)) unconfirmed.add(failure);
-			samples.push({ kind: 'shown', old: [...first.map(() => false), ...o.map(Boolean)], next: [true, ...n.map(Boolean)] });
-			continue;
+			return { kind: 'shown', old: [...first.map(() => false), ...o.map(Boolean)], next: [true, ...n.map(Boolean)] };
 		}
 		const o = rounds.map((r) => r.old?.reaction?.answeredMs), n = rounds.map((r) => r.next?.reaction?.answeredMs);
 		if ([...o, ...n].some((x) => x === undefined)) unconfirmed.add(failure);
-		samples.push({ kind: 'answer', old: [...first.map((r) => r.reaction?.answeredMs ?? 0), ...o.map((x) => x ?? 0)], next: [mine?.reaction?.answeredMs ?? 0, ...n.map((x) => x ?? 0)] });
-	}
-	const judged = judgeTiming(samples, floor);
+		return { kind: 'answer', old: [...first.map((r) => r.reaction?.answeredMs ?? 0), ...o.map((x) => x ?? 0)], next: [mine?.reaction?.answeredMs ?? 0, ...n.map((x) => x ?? 0)] };
+	};
+	const verdicts = await judgeInTurn(candidates.length, RETIMED, sample, (batch) => judgeTiming(batch, floor));
 	const stands = new Map<Failure, string>();
-	for (const [i, failure] of tested.entries()) {
-		const s = samples[i]!, v = judged[i]!;
+	for (const [i, { samples: s, judged: v, among }] of verdicts.entries()) {
+		const failure = candidates[i]!;
 		// A step that could not be timed again keeps its failure, unconfirmed, as before.
 		if (unconfirmed.has(failure)) stands.set(failure, '; it could not be timed again one side at a time');
-		else if (v.stands) stands.set(failure, s.kind === 'answer' ? `; timed again one side at a time: old ${s.old.join(', ')} ms, new ${s.next.join(', ')} ms (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the route's ${tested.length} needs; old runs differ by up to ${floor} ms here)` : `; timed again one side at a time: the new page showed it in ${s.next.filter(Boolean).length} of ${s.next.length} runs, the old in ${s.old.filter(Boolean).length} of ${s.old.length} (p = ${v.p.toFixed(3)})`);
+		else if (v.stands) stands.set(failure, s.kind === 'answer' ? `; timed again one side at a time: old ${s.old.join(', ')} ms, new ${s.next.join(', ')} ms (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${floor} ms here)` : `; timed again one side at a time: the new page showed it in ${s.next.filter(Boolean).length} of ${s.next.length} runs, the old in ${s.old.filter(Boolean).length} of ${s.old.length} (p = ${v.p.toFixed(3)})`);
 	}
 	return failures.filter((f) => !timedOnly.has(f) || stands.has(f)).map((f) => (stands.has(f) ? { ...f, actual: `${f.actual}${stands.get(f)}` } : f));
 }

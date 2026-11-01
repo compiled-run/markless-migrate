@@ -48,13 +48,9 @@ export interface Judged {
  * Each candidate's samples judged one-sided, the route's candidates sharing one significance: an answer stands when the new
  * median is later than the old by more than `floorMs` and 1.5 times, a view in between when the new page shows it more often.
  */
-export function judgeTiming(candidates: readonly Samples[], floorMs: number): Judged[] {
+export function judgeTiming(candidates: readonly Samples[], floorMs: number, beyond = (o: number, n: number) => n - o > floorMs && n > o * 1.5): Judged[] {
 	const ps = candidates.map((c) => (c.kind === 'answer' ? mannWhitneyGreater(c.old, c.next) : fisherGreater(c.old.filter(Boolean).length, c.old.length, c.next.filter(Boolean).length, c.next.length)));
-	const big = candidates.map((c) => {
-		if (c.kind === 'shown') return true;
-		const o = median(c.old), n = median(c.next);
-		return n - o > floorMs && n > o * 1.5;
-	});
+	const big = candidates.map((c) => c.kind === 'shown' || beyond(median(c.old), median(c.next)));
 	const order = ps.map((p, i) => ({ p, i })).sort((a, b) => a.p - b.p);
 	const out = new Array<Judged>(candidates.length);
 	let rejecting = true;
@@ -62,6 +58,23 @@ export function judgeTiming(candidates: readonly Samples[], floorMs: number): Ju
 		const alpha = SIGNIFICANCE / (order.length - rank);
 		rejecting &&= p < alpha;
 		out[i] = { p, alpha, stands: rejecting && big[i]! };
+	}
+	return out;
+}
+
+/**
+ * Candidates judged `size` at a time, the largest first, each batch sharing one significance: the next batch is sampled and
+ * judged only when every candidate of the one before stood (serial gatekeeping), so a route with more real slowdowns than one
+ * batch reports them all and a route of chance differences still stops at its first.
+ */
+export async function judgeInTurn(count: number, size: number, sample: (i: number) => Promise<Samples>, judge: (batch: readonly Samples[]) => Judged[]): Promise<{ readonly samples: Samples; readonly judged: Judged; readonly among: number }[]> {
+	const out: { samples: Samples; judged: Judged; among: number }[] = [];
+	for (let start = 0; start < count; start += size) {
+		const batch: Samples[] = [];
+		for (let i = start; i < Math.min(count, start + size); i++) batch.push(await sample(i));
+		const judged = judge(batch);
+		batch.forEach((samples, k) => out.push({ samples, judged: judged[k]!, among: batch.length }));
+		if (!judged.every((j) => j.stands)) break;
 	}
 	return out;
 }
