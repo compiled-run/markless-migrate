@@ -35,30 +35,109 @@ function markTrigger(trigger: HTMLElement, on: boolean): void {
 const tabbablesIn = (root: Element) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0);
 const rtl = (el: Element) => getComputedStyle(el).direction === 'rtl';
 
+// A switch keeps one popup on screen, as Base UI's single popup does: the new one starts where the old one stood, at its
+// size, and moves and resizes to its own place (0.35 s); the old one stays over it with its frame cleared while its
+// content leaves through data-ending-style and the new content enters through data-starting-style.
+let leaving: (() => void) | undefined;
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+function morph(from: Popup, to: Popup, origin: string, size: { w: number; h: number }, finish: () => void): void {
+	const a = from.positioner;
+	const b = to.positioner;
+	const reset: HTMLElement[] = [from.popup];
+	const done = () => {
+		if (leaving !== done) return;
+		leaving = undefined;
+		observer.disconnect();
+		for (const el of reset) for (const prop of ['transition', 'background', 'box-shadow', 'pointer-events']) el.style.removeProperty(prop);
+		finish();
+	};
+	leaving = done;
+	// The new positioner starts where the old one stands, before anything is measured; both popups start at the old size
+	// in pixels (from auto nothing transitions).
+	if (b && origin) b.style.transform = origin;
+	for (const popup of [from.popup, to.popup]) {
+		popup.style.setProperty('--popup-width', `${size.w}px`);
+		popup.style.setProperty('--popup-height', `${size.h}px`);
+	}
+	Object.assign(from.popup.style, { background: 'transparent', boxShadow: 'none', pointerEvents: 'none' });
+	for (const content of from.popup.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-content"]')) content.setAttribute('data-ending-style', '');
+	to.popup.removeAttribute('data-starting-style');
+	// The opening already styled the content: it takes its starting style at once, and transitions out of it from there.
+	for (const content of to.popup.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-content"]')) {
+		content.setAttribute('data-starting-style', '');
+		content.style.transition = 'none';
+		void getComputedStyle(content).opacity;
+		content.style.removeProperty('transition');
+	}
+	// Its natural size, measured without a transition that would start from it.
+	to.popup.style.transition = 'none';
+	to.popup.style.setProperty('--popup-width', 'auto');
+	to.popup.style.setProperty('--popup-height', 'auto');
+	const natural = { w: to.popup.offsetWidth, h: to.popup.offsetHeight };
+	to.popup.style.setProperty('--popup-width', `${size.w}px`);
+	to.popup.style.setProperty('--popup-height', `${size.h}px`);
+	void to.popup.offsetWidth;
+	to.popup.style.removeProperty('transition');
+	// After the frame the popup opened in, once its own transitions are back (transition.ts enter).
+	requestAnimationFrame(() => {
+		for (const popup of [to.popup, from.popup]) {
+			popup.style.setProperty('--popup-width', `${natural.w}px`);
+			popup.style.setProperty('--popup-height', `${natural.h}px`);
+		}
+		for (const content of to.popup.querySelectorAll('[data-slot="navigation-menu-content"]')) content.removeAttribute('data-starting-style');
+	});
+	// The positioner's transition on its place: the old one follows the new one there.
+	for (const el of [a, b]) {
+		if (!el) continue;
+		el.style.transition = `transform 0.35s ${EASE}`;
+		reset.push(el);
+	}
+	const follow = () => {
+		if (a && b && b.style.transform !== origin) a.style.transform = b.style.transform;
+	};
+	const observer = new MutationObserver(follow);
+	if (b) observer.observe(b, { attributes: true, attributeFilter: ['style'] });
+	follow();
+	setTimeout(done, 350);
+}
+
 function show(trigger: HTMLElement): void {
 	if (current?.trigger === trigger) return;
-	const from = current?.trigger;
-	if (current) hide(true);
+	const prev = current;
+	const from = prev?.trigger;
+	const origin = prev?.positioner?.style.transform ?? '';
+	const size = prev ? { w: prev.popup.offsetWidth, h: prev.popup.offsetHeight } : { w: 0, h: 0 };
+	let finish: (() => void) | undefined;
+	leaving?.();
+	if (prev) hide(true, (f) => (finish = f));
 	pressed = false;
 	const p = openPopup(trigger, { popupSelector: ':scope > [role="presentation"] > nav', key: keyOf(trigger), sideOffset: 8, fallbackAxisSide: 'none', onDismiss: () => dismiss() });
-	if (!p) return;
+	if (!p) {
+		finish?.();
+		return;
+	}
 	current = p;
 	markTrigger(trigger, true);
 	if (p.popup.id) trigger.setAttribute('aria-controls', p.popup.id);
 	mark(trigger, true);
+	const all = triggersOf(trigger);
+	const direction = from && (all.indexOf(trigger) > all.indexOf(from) ? 'right' : 'left');
+	for (const content of [...p.popup.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-content"]'), ...(prev ? prev.popup.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-content"]') : [])]) {
+		if (direction) content.setAttribute('data-activation-direction', direction);
+		else content.removeAttribute('data-activation-direction');
+	}
 	for (const content of p.popup.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-content"]')) {
 		content.setAttribute('data-open', '');
 		content.removeAttribute('data-closed');
-		if (from) {
-			const all = triggersOf(trigger);
-			content.setAttribute('data-activation-direction', all.indexOf(trigger) > all.indexOf(from) ? 'right' : 'left');
-		} else content.removeAttribute('data-activation-direction');
 	}
+	if (prev && finish) morph(prev, p, origin, size, finish);
 }
 
-function hide(switching: boolean): void {
+function hide(switching: boolean, handoff?: (finish: () => void) => void): void {
 	const p = current;
 	if (!p) return;
+	if (!switching) leaving?.();
 	current = undefined;
 	markTrigger(p.trigger, false);
 	if (!switching) mark(p.trigger, false);
@@ -66,8 +145,8 @@ function hide(switching: boolean): void {
 		content.removeAttribute('data-open');
 		content.setAttribute('data-closed', '');
 	}
-	closePopup(p, false);
-	if (switching) p.portal.hidden = true;
+	closePopup(p, false, false, {}, handoff);
+	if (switching && !handoff) p.portal.hidden = true;
 }
 
 // Escape: the unmount returns focus to the trigger when it was in the popup or nowhere (handleUnmount).
