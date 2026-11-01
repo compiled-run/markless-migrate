@@ -1893,7 +1893,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const otpBrowser = await chromium.launch();
 		try {
 			let fields = 0;
-			for (const [route, p] of otpRoutes) fields += otps.add((await captureOtps(otpBrowser, options.old, route, join(state, 'convert', 'toggles'))).fields, locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
+			for (const [route, p] of otpRoutes) fields += otps.add((await captureOtps(otpBrowser, options.old, route, join(state, 'convert', 'toggles'))).fields, locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element), p.root);
 			if (fields) log(`input-otp fields on Markless state: ${fields}`);
 		} finally {
 			await otpBrowser.close();

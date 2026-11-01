@@ -145,12 +145,19 @@ export class OtpPlan {
 		return this.bindings.get(el);
 	}
 
-	/** `locate` finds an element of the page by its signature; `caretMarkup` turns captured HTML into tsrx. */
-	add(fields: readonly OtpField[], locate: (sig: string, nth: number) => Markup | undefined, caretMarkup: (html: string) => string): number {
+	/**
+	 * `locate` finds an element of the page by its signature; `caretMarkup` turns captured HTML into tsrx. `root`, the
+	 * page: a field whose signature finds no container (an empty one's, counted among the page's empty elements, which
+	 * convert adds and drops) is the page's enabled container at its place among the captured fields, as both are in
+	 * document order.
+	 */
+	add(fields: readonly OtpField[], locate: (sig: string, nth: number) => Markup | undefined, caretMarkup: (html: string) => string, root?: Markup): number {
 		let count = 0;
-		for (const field of fields) {
-			const container = locate(field.sig, field.nth);
-			if (!container || attr(container, 'data-input-otp-container') === undefined) continue;
+		const enabled = root ? [...walk(root)].filter((el) => attr(el, 'data-input-otp-container') !== undefined && [...walk(el)].some((i) => i.tagName === 'input' && attr(i, 'data-input-otp') !== undefined && attr(i, 'disabled') === undefined)) : [];
+		for (const [k, field] of fields.entries()) {
+			const found = locate(field.sig, field.nth);
+			const container = found && attr(found, 'data-input-otp-container') !== undefined ? found : enabled.length === fields.length ? enabled[k] : undefined;
+			if (!container) continue;
 			const all = [...walk(container)];
 			const input = all.find((el) => el.tagName === 'input' && attr(el, 'data-input-otp') !== undefined);
 			const slots = all.filter((el) => attr(el, 'data-active') !== undefined);
