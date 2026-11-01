@@ -129,7 +129,7 @@ async function filesUnder(dir: string): Promise<string[]> {
  * url()s still resolve, and the page's link names it. `texts` is what else the page's markup holds (its <html> and <body>
  * attributes, its head). Returns the pages' head tags with the new hrefs.
  */
-export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; bytes: [number, number] }> {
+export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; written: string[]; bytes: [number, number] }> {
 	const publicDir = join(app, 'public');
 	const texts = new Map<string, Promise<string>>();
 	const read = (file: string) => {
@@ -215,5 +215,5 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 		}
 		out.set(route, tags);
 	}
-	return { heads: out, sheets: written.size, bytes };
+	return { heads: out, sheets: written.size, written: [...written.keys()], bytes };
 }

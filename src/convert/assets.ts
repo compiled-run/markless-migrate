@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { attr, walk, type Document } from './dom.ts';
+import { parse } from 'yuku-css';
+import { walk as walkCss } from 'yuku-css/ast';
+import { attr, walk, type Document, type Element } from './dom.ts';
 
 /** Attributes whose value is a URL the browser fetches as a resource of the page. */
 const URL_ATTRIBUTES: readonly (readonly [tag: string, name: string])[] = [
@@ -24,7 +26,7 @@ const SRCSET = new Set(['img', 'source']);
 const NOT_RESOURCES = new Set(['canonical', 'alternate', 'author', 'next', 'prev', 'search', 'help', 'license']);
 
 /** Same-origin resource paths a document loads (stylesheets, scripts it keeps, images, fonts it preloads, icons, the manifest). */
-export function resourcePaths(doc: Document, origin: string): string[] {
+export function resourcePaths(doc: Document | Element, origin: string): string[] {
 	const out = new Set<string>();
 	const add = (value: string | undefined) => {
 		if (!value) return;
@@ -56,6 +58,76 @@ export function stylesheetPaths(css: string, sheetPath: string, origin: string):
 		if (url && url.origin === base.origin) out.add(url.pathname);
 	}
 	return [...out];
+}
+
+/** The same-origin paths a stylesheet pulls in, from its parse: each `url()` and each `@import`, resolved against the sheet. */
+function sheetReferences(css: string, sheetPath: string, origin: string): string[] {
+	const base = new URL(sheetPath, origin);
+	const out = new Set<string>();
+	const add = (raw: string) => {
+		if (!raw || raw.startsWith('data:') || raw.startsWith('#')) return;
+		const url = URL.parse(raw, base);
+		if (url && url.origin === base.origin) out.add(url.pathname);
+	};
+	let ast: unknown;
+	try {
+		ast = parse(css).ast;
+	} catch {
+		return [];
+	}
+	walkCss(ast as never, {
+		enter(node: { type: string; value?: string; name?: string; prelude?: { children?: { type: string; value?: string }[] } | null }) {
+			if (node.type === 'Url') add(node.value ?? '');
+			else if (node.type === 'Atrule' && node.name?.toLowerCase() === 'import') for (const c of node.prelude?.children ?? []) if (c.type === 'String') add(c.value ?? '');
+		},
+	});
+	return [...out];
+}
+
+/**
+ * Every same-origin path the written app still references: the resources in its markup (the pages, their extras, their
+ * layers) and in its heads (`urls`), and, through each stylesheet among them that `publicDir` holds, what that sheet
+ * pulls in, the fonts its @font-face rules name included.
+ */
+export async function referencedAssets(origin: string, publicDir: string, from: { readonly markup: Iterable<Document | Element>; readonly urls: Iterable<string> }): Promise<Set<string>> {
+	const found = new Set<string>();
+	const queue: string[] = [];
+	const add = (path: string) => {
+		if (found.has(path)) return;
+		found.add(path);
+		queue.push(path);
+	};
+	for (const node of from.markup) for (const path of resourcePaths(node, origin)) add(path);
+	for (const raw of from.urls) {
+		const url = URL.parse(raw, origin);
+		if (url && url.origin === new URL(origin).origin) add(url.pathname);
+	}
+	while (queue.length) {
+		const path = queue.shift()!;
+		if (!path.endsWith('.css')) continue;
+		const css = await readFile(join(publicDir, decodeURIComponent(path)), 'utf8').catch(() => undefined);
+		if (css !== undefined) for (const next of sheetReferences(css, path, origin)) add(next);
+	}
+	return found;
+}
+
+/** Removes each copied asset `referenced` does not hold: what the old page loaded and the written app no longer uses. */
+export async function pruneUnreferenced(publicDir: string, copied: readonly Pick<CopiedAsset, 'path' | 'bytes'>[], referenced: ReadonlySet<string>): Promise<Pick<CopiedAsset, 'path' | 'bytes'>[]> {
+	const removed = copied.filter((c) => !referenced.has(c.path));
+	await Promise.all(removed.map((c) => rm(join(publicDir, decodeURIComponent(c.path)), { force: true })));
+	return removed;
+}
+
+/** The files a whole convert put in public/ (copied assets and cut sheets), kept so the next one removes those it no longer writes. */
+export const MANAGED_ASSETS = 'assets.json';
+
+export async function readManaged(file: string): Promise<string[]> {
+	return readFile(file, 'utf8').then((t) => (JSON.parse(t) as { managed?: string[] }).managed ?? [], () => []);
+}
+
+export async function writeManaged(file: string, managed: Iterable<string>): Promise<void> {
+	await mkdir(dirname(file), { recursive: true });
+	await writeFile(file, `${JSON.stringify({ managed: [...new Set(managed)].sort() }, null, '\t')}\n`);
 }
 
 export interface CopiedAsset {
