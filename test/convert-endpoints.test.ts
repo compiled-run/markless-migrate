@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { codeOnly, fileSignals } from '../src/cache/signals.ts';
-import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml, trailingPolicy } from '../src/convert/endpoints.ts';
+import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml, trailingPolicy, trailingRoutes } from '../src/convert/endpoints.ts';
 import { parseModule, walk, type N } from '../src/source/js.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 import { body, parseDocument } from '../src/convert/dom.ts';
@@ -100,6 +104,51 @@ test("the old site's trailing-slash answer is kept: from next.config, else from 
 	assert.equal(trailingPolicy(undefined, [{ route: '/old', status: 301, redirectsTo: '/new' }]), undefined);
 });
 
+test("a prerendered page's file does not answer the other trailing-slash form: Vercel's routes redirect it first, as the old site did", async () => {
+	const { viteConfig } = await import('../src/convert/index.ts');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-trailing-'));
+	await mkdir(join(dir, 'static', 'view', 'chart'), { recursive: true });
+	await writeFile(join(dir, 'static', 'view', 'chart', 'index.html'), '<p>chart</p>');
+	await mkdir(join(dir, 'static', 'docs', 'intro'), { recursive: true });
+	await writeFile(join(dir, 'static', 'docs', 'intro', 'index.html'), '<p>intro</p>');
+	await mkdir(join(dir, 'functions', '__server.func'), { recursive: true });
+	await writeFile(join(dir, 'functions', '__server.func', 'index.mjs'), "export default { fetch: () => new Response('function') };");
+	const serve = async (routes: readonly object[], run: (get: (path: string) => Promise<[number, string | null]>) => Promise<void>) => {
+		await writeFile(join(dir, 'config.json'), JSON.stringify({ version: 3, routes: [...routes, { handle: 'filesystem' }] }));
+		const port = await new Promise<number>((done) => {
+			const probe = createServer().listen(0, '127.0.0.1', () => {
+				const { port } = probe.address() as AddressInfo;
+				probe.close(() => done(port));
+			});
+		});
+		const server = spawn(process.execPath, [fileURLToPath(new URL('../deploy/shadcn-ui/serve-vercel-output.mjs', import.meta.url)), dir, String(port)], { stdio: ['ignore', 'pipe', 'inherit'] });
+		try {
+			await once(server.stdout!, 'data');
+			await run(async (path) => {
+				const r = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+				await r.arrayBuffer();
+				return [r.status, r.headers.get('location')];
+			});
+		} finally {
+			server.kill();
+		}
+	};
+	const next = trailingRoutes({ mode: 'strip', status: 308, pagesOnly: false }, ['/view/chart']);
+	assert.match(viteConfig([], next), new RegExp(`vercel: \\{ config: \\{ routes: ${JSON.stringify(next).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\} \\}`));
+	await serve(next, async (get) => {
+		assert.deepEqual(await get('/view/chart/'), [308, '/view/chart'], 'Next.js answers the slash form of every path with a 308 to the bare one');
+		assert.deepEqual(await get('/view/chart'), [200, null]);
+		assert.deepEqual(await get('/build/chunk/'), [200, null], "the app's own files are not redirected");
+	});
+	await serve(trailingRoutes({ mode: 'add', status: 307, pagesOnly: true }, ['/docs/intro/']), async (get) => {
+		assert.deepEqual(await get('/docs/intro'), [307, '/docs/intro/'], "a static host's redirect to a page's folder form");
+		assert.deepEqual(await get('/docs/intro/'), [200, null]);
+		assert.deepEqual(await get('/docs/other'), [200, null], 'only where a page with the slash exists');
+	});
+	assert.deepEqual(trailingRoutes(undefined, ['/a']), []);
+	assert.doesNotMatch(viteConfig([], []), /vercel:/);
+});
+
 test("the generated config keeps one of each Nitro handler and server asset directory, though the router hands Vite the app's nitro config again", async () => {
 	const { viteConfig } = await import('../src/convert/index.ts');
 	const config = viteConfig([]);
@@ -109,7 +158,11 @@ test("the generated config keeps one of each Nitro handler and server asset dire
 	const once = new Function(`return ${source}`)() as (options: Record<string, unknown>) => void;
 	const handler = { middleware: true, handler: '/app/server/routing.ts' };
 	const assets = { baseName: 'built', dir: '/app/server/built' };
-	const options: Record<string, unknown> = { handlers: [handler, { ...handler }, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { ...assets }, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'a', 'b'] };
+	const route = { src: '^(/a)/+$', status: 308, headers: { Location: '$1' } };
+	const options: Record<string, unknown> = { handlers: [handler, { ...handler }, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { ...assets }, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'a', 'b'], vercel: { config: { routes: [route, structuredClone(route)] } } };
 	once(options);
-	assert.deepEqual(options, { handlers: [handler, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'b'] });
+	assert.deepEqual(options, { handlers: [handler, { route: '/api', handler: '/app/api.ts' }], serverAssets: [assets, { baseName: 'server', dir: '/app/assets' }], traceDeps: ['a', 'b'], vercel: { config: { routes: [route] } } });
+	const bare: Record<string, unknown> = { handlers: [] };
+	once(bare);
+	assert.deepEqual(bare, { handlers: [] });
 });
