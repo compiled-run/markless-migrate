@@ -29,15 +29,17 @@ function highlight(p: Popup, option: HTMLElement | undefined, keyboard = false):
 }
 const selectedValue = new WeakMap<HTMLElement, string>();
 
+const popupBox = (p: Popup) => [...(p.positioner?.children ?? [])].find((c): c is HTMLElement => c instanceof HTMLElement && c.contains(p.popup)) ?? p.popup;
+
 // SelectPopup's alignItemWithTrigger: the selected item's text is laid over the trigger's value, the positioner given
 // the height left beneath the trigger and 10 px margins; near a viewport edge it falls back to placing below the trigger.
 function alignOver(trigger: HTMLElement, p: Popup): boolean {
 	const positioner = p.positioner;
 	if (!positioner || positioner.getAttribute('data-side') !== 'none') return true;
-	// The popup is the positioner's child; the listbox inside it is what scrolls.
-	const popup = (positioner.firstElementChild as HTMLElement | null) ?? p.popup;
+	// The popup is the positioner's child that holds the listbox (focus guards sit beside it); the listbox scrolls.
+	const popup = popupBox(p);
 	positioner.style.position = 'fixed';
-	for (const prop of ['transform', 'top', 'bottom', 'left', 'height', 'max-height']) positioner.style.removeProperty(prop);
+	for (const prop of ['transform', 'top', 'bottom', 'left', 'height', 'max-height', 'opacity', 'pointer-events']) positioner.style.removeProperty(prop);
 	const triggerRect = trigger.getBoundingClientRect();
 	positioner.style.left = `${triggerRect.left}px`;
 	positioner.style.top = `${triggerRect.top}px`;
@@ -116,10 +118,21 @@ function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): vo
 		input.setAttribute('value', value);
 	}
 }
+// SelectPositioner closed with alignItemWithTrigger: the floating styles of an unplaced popup (absolute at 0,0, hidden
+// and inert to the pointer) the moment it closes, its popup no longer stretched to it.
+function unplace(p: Popup): void {
+	const positioner = p.positioner;
+	if (!positioner || positioner.getAttribute('data-side') !== 'none') return;
+	for (const prop of ['bottom', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
+	Object.assign(positioner.style, { position: 'absolute', left: '0px', top: '0px', pointerEvents: 'none', opacity: '0' });
+	popupBox(p).style.removeProperty('height');
+}
+
 // Its highlight goes with activeIndex, reset as the popup's exit completes.
 function dismiss(p: Popup, focus?: FocusOptions): void {
 	highlight(p, undefined);
 	closePopup(p, true, true, focus);
+	unplace(p);
 }
 function choose(p: Popup, option: HTMLElement, pressed = false): void {
 	select(p.trigger, p.popup, option);
@@ -151,7 +164,7 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	}
 	if (!alignOver(trigger, p) && p.positioner) {
 		for (const prop of ['top', 'bottom', 'left', 'height', 'max-height', 'margin-top', 'margin-bottom']) p.positioner.style.removeProperty(prop);
-		(p.positioner.firstElementChild as HTMLElement | null)?.style.removeProperty('height');
+		popupBox(p).style.removeProperty('height');
 		// openPopup placed it off the listbox's own data-align (none: center) and keeps it there until stopped.
 		p.stop?.();
 		p.stop = place(trigger, p.positioner, p.popup, { side: 'bottom', align: 'start', sideOffset: 0, alignOffset: 0, positionMethod: 'fixed', fallbackAxisSide: 'none' });
