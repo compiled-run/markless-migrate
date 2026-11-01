@@ -290,6 +290,8 @@ jobs:
           REUSE: ${{ inputs.reuse != 'false' && '--reuse .migrate/reuse' || '' }}
           # Each route's time per part (explore, replays, probes, slow network) in check.txt, to tell a slow route's cause.
           MARKLESS_MIGRATE_PROFILE: '1'
+          # A shard of heavy shadcn routes outgrew Node's default ~4 GB heap after 95 min (run 41302519256, shard 39).
+          NODE_OPTIONS: --max-old-space-size=8192
         run: |
           set -uo pipefail
           cd "$APP"
