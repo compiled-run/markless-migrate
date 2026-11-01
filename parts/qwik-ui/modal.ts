@@ -77,7 +77,8 @@ export function close(dialog: HTMLDialogElement): void {
 		dialog.classList.remove('modal-closing');
 		dialog.close();
 		openDialogs.splice(openDialogs.indexOf(dialog), 1);
-		if (!openDialogs.length) lock(false);
+		// modal-panel.tsx: only a root modal restores page scroll; one nested in another's Root (level > 1) leaves it locked.
+		if (!openDialogs.length && !(Number(dialog.dataset.mmLevel) > 1)) lock(false);
 		const back = returnTo.get(dialog);
 		// After the pointer's own default focus, which a press on the backdrop that closed the dialog still runs.
 		if (back) setTimeout(() => back.isConnected && !dialog.open && back.focus());
