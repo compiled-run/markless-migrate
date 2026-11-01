@@ -28,13 +28,14 @@ import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { checkControlParity, type ControlParityOptions } from './control-parity.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { choppier, compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { choppier, compareJourneys, describeTarget, interimViews, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults, type StepResult } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
 import { selfUrlFailures } from './self-urls.ts';
 import { routeState } from './route-state.ts';
+import { answerFloor, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -417,7 +418,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 				return [{ route, dimension: 'behaviour', check: `journeys after arriving from ${explored.arrival!.entry} by ${describeTarget(explored.arrival!.link)}`, expected: 'the route\'s journeys compared after arriving in place', actual: `not compared: ${(error as Error).message.split('\n')[0]}`, hint: HINTS.coverage }];
 			})
 		: [];
-	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements));
+	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), olds, [...next, ...newRisky]);
 	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
 	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
 	return improvements.length ? { ...compared, improvements: [...(compared.improvements ?? []), ...improvements] } : compared;
@@ -448,7 +449,7 @@ async function checkArrived(browser: Browser, run: Run, route: string, viewport:
 	// A page the new app does not serve (a port of only some routes) has no link to arrive by: that page's own check reports it, not this route's journeys.
 	if (!(await servesPage(run.new, arrival.entry))) return [];
 	const [a, b, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
-	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements));
+	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next);
 }
 
 async function servesPage(env: SideEnv, path: string): Promise<boolean> {
@@ -461,40 +462,61 @@ async function servesPage(env: SideEnv, path: string): Promise<boolean> {
 	}
 }
 
-const RETIMED = 10;
-const RETIMES = 2;
+// The candidates a route confirms, the largest first, and the rounds of old and new each gets: five old and four new samples
+// in all, enough for a one-sided test to reach the share of 0.05 five candidates leave the first of them.
+const RETIMED = 5;
+const RETIMES = 3;
 
 /**
- * A step answered more slowly on the new page, or showing a view in between only there, is timed again one side at a time
- * (old, then new, twice), since a busy machine slows whichever side it happens to: it stands only when it happens every time.
+ * A step answered more slowly on the new page, or showing a view in between only there, is timed again one side at a time,
+ * old then new, since a busy machine slows whichever side it happens to. It stands only when the samples say so beyond chance,
+ * the route's candidates sharing one significance, and an answer only by more than the route's own old runs differ.
  */
-async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[]): Promise<Failure[]> {
-	const slow = failures.filter((f) => timedOnly.has(f)).slice(0, RETIMED);
-	if (!slow.length) return failures;
-	const dropped = new Set<Failure>();
-	const notes = new Map<Failure, string>();
-	for (const failure of slow) {
+async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[], olds: readonly RunResults[], next: RunResults): Promise<Failure[]> {
+	const floor = Math.max(100, answerFloor(olds));
+	const effect = (f: Failure) => {
+		const { journey, step, views, cadence } = timedOnly.get(f)!;
+		if (views || cadence) return Infinity;
+		const times = olds.map((o) => o[journey]?.[step]?.reaction?.answeredMs);
+		const mine = next[journey]?.[step]?.reaction?.answeredMs;
+		return mine === undefined || times.some((t) => t === undefined) ? Infinity : mine - Math.max(...(times as number[]));
+	};
+	const timed = failures.filter((f) => timedOnly.has(f));
+	// Within what the route's own old runs differ by is the machine, not the page.
+	const candidates = timed.filter((f) => effect(f) > floor).sort((a, b) => effect(b) - effect(a));
+	const tested = candidates.slice(0, RETIMED);
+	const samples: Samples[] = [];
+	const unconfirmed = new Set<Failure>();
+	for (const failure of tested) {
 		const { journey, step, views, cadence } = timedOnly.get(failure)!;
-		const times: { old?: number; next?: number }[] = [];
-		const shown: (string | undefined | null)[] = [];
+		const first = olds.map((o) => o[journey]?.[step]).filter((r): r is StepResult => Boolean(r));
+		const rounds: { old?: StepResult; next?: StepResult }[] = [];
 		for (let i = 0; i < RETIMES; i++) {
 			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step];
-			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
-			times.push({ old: old?.reaction?.answeredMs, next: next?.reaction?.answeredMs });
-			shown.push(old?.reaction?.views && next?.reaction?.views ? (cadence ? choppier([old], next) : interimViews([old], next)) : null);
+			const again = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step];
+			rounds.push({ old, next: again });
 		}
+		const mine = next[journey]?.[step];
 		if (views || cadence) {
-			if (shown.some((s) => s === null)) notes.set(failure, '; it could not be timed again one side at a time');
-			else if (shown.some((s) => s === undefined)) dropped.add(failure);
-			else notes.set(failure, `; timed again one side at a time, the new page showed it every time (${shown.join('; ')})`);
+			const shows = (r: StepResult | undefined) => (r?.reaction?.views ? (cadence ? choppier(first, r) : interimViews(first, r)) !== undefined : undefined);
+			const o = rounds.map((r) => shows(r.old)), n = rounds.map((r) => shows(r.next));
+			if ([...o, ...n].some((x) => x === undefined)) unconfirmed.add(failure);
+			samples.push({ kind: 'shown', old: [...first.map(() => false), ...o.map(Boolean)], next: [true, ...n.map(Boolean)] });
 			continue;
 		}
-		// Timed again only where both sides answered: a step that could not be timed again keeps its failure, unconfirmed.
-		if (times.some((t) => t.old === undefined || t.next === undefined)) notes.set(failure, '; it could not be timed again one side at a time');
-		else if (times.some((t) => t.next! - t.old! <= 100 || t.next! <= t.old! * 1.5)) dropped.add(failure);
-		else notes.set(failure, `; timed again one side at a time: old ${times.map((t) => t.old).join(' and ')} ms, new ${times.map((t) => t.next).join(' and ')} ms`);
+		const o = rounds.map((r) => r.old?.reaction?.answeredMs), n = rounds.map((r) => r.next?.reaction?.answeredMs);
+		if ([...o, ...n].some((x) => x === undefined)) unconfirmed.add(failure);
+		samples.push({ kind: 'answer', old: [...first.map((r) => r.reaction?.answeredMs ?? 0), ...o.map((x) => x ?? 0)], next: [mine?.reaction?.answeredMs ?? 0, ...n.map((x) => x ?? 0)] });
 	}
-	return failures.filter((f) => !dropped.has(f)).map((f) => (notes.has(f) ? { ...f, actual: `${f.actual}${notes.get(f)}` } : f));
+	const judged = judgeTiming(samples, floor);
+	const stands = new Map<Failure, string>();
+	for (const [i, failure] of tested.entries()) {
+		const s = samples[i]!, v = judged[i]!;
+		// A step that could not be timed again keeps its failure, unconfirmed, as before.
+		if (unconfirmed.has(failure)) stands.set(failure, '; it could not be timed again one side at a time');
+		else if (v.stands) stands.set(failure, s.kind === 'answer' ? `; timed again one side at a time: old ${s.old.join(', ')} ms, new ${s.next.join(', ')} ms (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the route's ${tested.length} needs; old runs differ by up to ${floor} ms here)` : `; timed again one side at a time: the new page showed it in ${s.next.filter(Boolean).length} of ${s.next.length} runs, the old in ${s.old.filter(Boolean).length} of ${s.old.length} (p = ${v.p.toFixed(3)})`);
+	}
+	return failures.filter((f) => !timedOnly.has(f) || stands.has(f)).map((f) => (stands.has(f) ? { ...f, actual: `${f.actual}${stands.get(f)}` } : f));
 }
 
 /** The parts of each route's check that have finished, the ones running and how many it was going to run: what a timed-out route reports. */
