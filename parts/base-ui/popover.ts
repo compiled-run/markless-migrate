@@ -42,7 +42,7 @@ export function click(target: Element): boolean {
 		p.cleanup.push(() => document.removeEventListener('keydown', onKey, true));
 		return true;
 	}
-	const close = target.closest('[data-slot="popover-close"]');
+	const close = target.closest('[data-slot="popover-close"], [data-mm-part="popover-close"]');
 	const p = close && popupOf(close);
 	if (!p) return false;
 	closePopup(p);

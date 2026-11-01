@@ -5,7 +5,7 @@ import { closestTrigger, layerKey } from '../reveal.ts';
 // (data-state "delayed-open", "instant-open" while another tooltip is open or closed within Radix's 300 ms skip
 // delay); keyboard focus shows it "instant-open". aria-describedby names its hidden role="tooltip" text; leaving,
 // blurring, a press on the trigger or Escape hides it. The content never takes focus.
-const TRIGGER = '[data-slot="tooltip-trigger"][data-state]';
+const TRIGGER = ':is([data-slot="tooltip-trigger"], [data-mm-part="tooltip-trigger"])[data-state]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][aria-controls], [data-state][id]', (slot) => /^tooltip-trigger$/.test(slot));
 const SKIP_DELAY = 300;

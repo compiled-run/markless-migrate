@@ -27,6 +27,7 @@ import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpeni
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
+import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
 import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
 import { formSources } from './form-schemas.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
@@ -756,6 +757,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
+	markCompositions(kept);
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -1135,6 +1137,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	currentDownloads = {};
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
+	markCompositions([body(doc)]);
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
 	const copyLabels = currentCopyLabels;
@@ -1626,7 +1629,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
 	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
-	useMarkupLibraries(hasLibraries ? ((JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[] }).libraries ?? []).map((l) => l.name) : []);
+	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[] }) : undefined;
+	useMarkupLibraries((libraries?.libraries ?? []).map((l) => l.name));
+	useCompositions(libraries?.compositions);
 	useDocSearch(hasUsage ? ((JSON.parse(await readFile(usagePath, 'utf8')) as { docsearch?: Parameters<typeof useDocSearch>[0] }).docsearch) : undefined);
 	useOrigin(new URL(options.old).origin);
 	placementResolver = resolver;

@@ -170,5 +170,29 @@ export interface LibrariesFile {
 	/** The @markless/ui version installed in the new app, whose families `available` was checked against. */
 	readonly markless_ui?: string;
 	readonly libraries: LibraryUsage[];
+	/** Library parts rendered through their child (Radix `asChild`, Base UI `render`): the page shows the child's element. */
+	readonly compositions?: Composition[];
 	readonly limits: string[];
+}
+
+/** One element of the source that renders a library part through its child, so the page's element may carry the child's data-slot. */
+export interface Composition {
+	readonly library: string;
+	readonly export: string;
+	/** The part's role, named as its slots are: `dialog-close`, `alert-dialog-cancel`, `popover-trigger`. */
+	readonly part: string;
+	readonly via: 'asChild' | 'render';
+	/** Every data-slot the rendered element can carry: the part's own (from its wrappers) and its child's. Which one wins depends on how the props merge. */
+	readonly slots: string[];
+	/** The text it shows, as the source writes it. */
+	readonly text?: string;
+	readonly label?: string;
+	/** The data-slot of the nearest element around it that the source names one for. */
+	readonly within?: string;
+	/** The texts of the elements in its parent, itself at `index` (null where the source computes one), when the source fixes that row. */
+	readonly siblings?: (string | null)[];
+	readonly index?: number;
+	readonly file: string;
+	readonly line: number;
+	readonly routes?: string[];
 }

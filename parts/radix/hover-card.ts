@@ -4,7 +4,7 @@ import { closestTrigger, layerKey } from '../reveal.ts';
 // Radix HoverCard: the pointer resting on the trigger (or focus) opens the content after openDelay; leaving both the
 // trigger and the content closes it after closeDelay (the delays the source gives HoverCard, written by the converter as
 // data-mm-open-delay and data-mm-close-delay; Radix's defaults are 700 and 300 ms). A touch never opens it.
-const TRIGGER = '[data-slot="hover-card-trigger"][data-state]';
+const TRIGGER = ':is([data-slot="hover-card-trigger"], [data-mm-part="hover-card-trigger"])[data-state]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][aria-controls], [data-state][id]', (slot) => /^hover-card-trigger$/.test(slot));
 const open = new Map<HTMLElement, Layer>();

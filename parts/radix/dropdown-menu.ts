@@ -14,7 +14,7 @@ import { closestTrigger, layerKey } from '../reveal.ts';
 // Radix Menubar's triggers are menu buttons too, their menus not modal: the arrows rove focus between the triggers
 // (a RovingFocusGroup, looping), the focused one highlighted; with one open, the pointer on another trigger opens that
 // one, and the side arrows in an open menu open the neighbouring menu of the bar with its content focused.
-const TRIGGER = '[aria-haspopup="menu"][data-slot$="menu-trigger"], [aria-haspopup="menu"][data-slot="menubar-trigger"][data-state]';
+const TRIGGER = '[aria-haspopup="menu"]:is([data-slot$="menu-trigger"], [data-mm-part="dropdown-menu-trigger"]), [aria-haspopup="menu"][data-slot="menubar-trigger"][data-state]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="menu"][data-state]', (slot) => /menu-trigger$/.test(slot));
 const BAR = '[role="menubar"]';

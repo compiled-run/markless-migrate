@@ -10,7 +10,8 @@ import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
 const TRIGGER = '[data-base-ui-click-trigger][aria-haspopup="dialog"]';
 // A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
-const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot="drawer-close"], [data-slot$="dialog-cancel"]';
+// data-mm-part: a Close the source renders through its child (render), which gives the element its own data-slot.
+const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot="drawer-close"], [data-slot$="dialog-cancel"], [data-mm-part$="dialog-close"], [data-mm-part="drawer-close"]';
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
 
 const undo = new WeakMap<Popup, () => void>();
