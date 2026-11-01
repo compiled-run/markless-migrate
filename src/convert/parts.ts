@@ -127,6 +127,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
+	{ module: 'textarea-autosize', library: 'react-textarea-autosize', exports: ['default'], events: ['input'], locate: (el) => el.tagName === 'textarea' },
 	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
 	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
 	// Base UI's toasts are Markless state (convert's NotifyPlan); the part runs the store, viewport and each root.
