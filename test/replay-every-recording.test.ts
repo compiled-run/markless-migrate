@@ -8,6 +8,7 @@ import { startCms, type Cms } from '../fixtures/cms/server.ts';
 import { defaultEnv, pushRecording, RECORDER_HEADER, recorderTag } from '../src/check/browser.ts';
 import { everyRecording, writeRecording } from '../src/check/data.ts';
 import { recorderEnv } from '../src/check/recorder.ts';
+import { servesPage } from '../src/check/run.ts';
 
 const APP = `
 import http from 'node:http';
@@ -54,4 +55,12 @@ test('a load tagged with its route\'s set and the shared one is answered from it
 	const mine = { ...defaultEnv(origin), replay: { set: 'mine', responses: [news('Its own')], shared } };
 	assert.equal(await pushRecording(mine), true);
 	assert.match(await (await fetch(origin, { headers: { [RECORDER_HEADER]: recorderTag(mine, 'two') } })).text(), /Its own/);
+});
+
+test('asking whether the new app serves the page a journey arrives from is a replayed load too, so on replay it never reaches the CMS', async () => {
+	const env = { ...defaultEnv(origin), replay: { set: 'served', responses: [news('Recorded')] } };
+	assert.equal(await pushRecording(env), true);
+	const asked = cms.requests.length;
+	assert.equal(await servesPage(env, '/'), true);
+	assert.deepEqual(cms.requests.slice(asked), []);
 });
