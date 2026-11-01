@@ -157,7 +157,7 @@ async function convert(old: string): Promise<void> {
 	const source = join(SRC, lib.source);
 	await sh(`${cli} plan --old ${old} --source ${source}`, APP);
 	await sh(`${cli} usage --old ${old} --source ${source}`, APP);
-	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2`, APP);
+	await sh(`${cli} convert --old ${old} --source ${source} --concurrency 2 --ledger report`, APP);
 }
 
 async function linkAndBuild(): Promise<void> {
@@ -202,6 +202,13 @@ async function consoleOf(origin: string): Promise<void> {
 				const context = (await opener.getAttribute('data-slot')) === 'context-menu-trigger';
 				await opener.click({ button: context ? 'right' : 'left', timeout: 2000 }).catch(() => {});
 				await page.waitForTimeout(500);
+				lines.push(
+					await page.evaluate(
+						(label) =>
+							`after opening ${label}: ${[...document.querySelectorAll<HTMLElement>('[data-mm-layer]')].map((l) => `${l.getAttribute('data-mm-layer')}${l.hidden ? ' hidden' : ' shown'}${l.querySelector('[data-testid]') ? ` [${[...l.querySelectorAll('[data-testid]')].map((t) => t.getAttribute('data-testid')).join(',')}]` : ''}`).join('; ') || 'no layers in the page'}; focus on ${document.activeElement?.outerHTML.slice(0, 80)}`,
+						(await opener.evaluate((el) => el.outerHTML.slice(0, 120))) ?? '',
+					),
+				);
 				lines.push(...(await page.evaluate(() => {
 					const seen = new Map<string, Element[]>();
 					for (const el of document.body.querySelectorAll('*')) {

@@ -87,9 +87,12 @@ const SIGNATURES: Readonly<Record<string, (el: Element) => boolean>> = {
 };
 
 /** The source's candidates an element can be: those of the library whose markup it carries, or, carrying none, of the libraries that write no signature. */
+// Libraries that render another's parts, and so carry its signature: vaul's Drawer is Radix Dialog.
+const BUILT_ON: Readonly<Record<string, string>> = { vaul: 'radix-ui' };
+
 function narrow(el: Element, candidates: readonly PartUsage[]): PartUsage[] {
 	const signed = Object.entries(SIGNATURES).filter(([, test]) => test(el)).map(([lib]) => lib);
-	return candidates.filter((c) => (signed.length ? signed.includes(c.library) : !(c.library in SIGNATURES)));
+	return candidates.filter((c) => (signed.length ? signed.includes(BUILT_ON[c.library] ?? c.library) : !((BUILT_ON[c.library] ?? c.library) in SIGNATURES)));
 }
 
 // @qwik-ui/headless writes no data-slot; each part is known by the markup Qwik UI renders for it (data-qui-*, its ids).
@@ -100,6 +103,7 @@ export const PORTS: readonly Port[] = [
 	// Radix Tabs are Markless state (convert's TabsPlan); the part is only the roving focus the triggers' keydown calls.
 	{ module: 'radix/roving', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content', 'ToggleGroup.Root', 'ToggleGroup.Item', 'RadioGroup.Root', 'RadioGroup.Item'], events: ['pointerdown', 'focusin', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'radix/dialog', library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'radix/dialog', library: 'vaul', needs: ['radix/dialog-engine'], exports: ['Drawer.Root', 'Drawer.Trigger', 'Drawer.Content', 'Drawer.Overlay', 'Drawer.Close', 'Drawer.Portal'], events: ['click'], locate: (el) => radix(el) },
 	{ module: 'cmdk', library: 'cmdk', exports: ['Command', 'Command.Input', 'Command.List', 'Command.Item', 'Command.Group', 'Command.Empty'], events: ['input', 'keydown', 'pointerover', 'click', 'focusout'], locate: () => true, needs: ['choices'] },
 	{ module: 'radix/popover', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },
 	{ module: 'radix/dropdown-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item', 'Menubar.Root', 'Menubar.Menu', 'Menubar.Trigger', 'Menubar.Content', 'Menubar.Item'], events: ['pointerdown', 'click', 'pointerover', 'pointerout', 'focusin', 'keydown'], locate: (el) => radix(el) },
