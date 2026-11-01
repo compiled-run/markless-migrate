@@ -242,6 +242,15 @@ $('cmd').addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('cmd')
 ${dead ? '' : `for (const id of ['cover', 'toc']) $(id).onclick = () => { $('dt').textContent = $(id).textContent; $('drawer').hidden = false; $('close').focus(); };`}
 $('close').onclick = () => { $('drawer').hidden = true; };`);
 
+/** Script files the micro-site serves beside its pages: the original framework's runtime, as Next.js ships it. */
+export const ASSETS: Record<string, string> = {
+	'/_next/static/chunks/webpack.js': '(self.webpackChunk_N_E = self.webpackChunk_N_E || []).push([[0], {}]); self.__next_f = self.__next_f || []; window.__next_set_public_path__ = () => {};',
+};
+const NEXT_SCRIPT = '<script src="/_next/static/chunks/webpack.js" async></script>';
+const MARKLESS_ROUTE = (file: string) => `<script type="@markless/core/route">${JSON.stringify({ file })}</script>`;
+/** The charts line page: the original, a Next.js page, and the port, a Markless page that (with the bug) still boots the original's runtime. */
+const lineChart = (port: boolean, runsNext: boolean) => page('Line Charts', `<p>Interactive line chart.</p><button id="series">Desktop</button><p id="shown">desktop</p>${port ? MARKLESS_ROUTE('pages/charts/line.tsrx') : ''}${runsNext ? NEXT_SCRIPT : ''}`, `$('series').onclick = () => { $('shown').textContent = $('shown').textContent === 'desktop' ? 'mobile' : 'desktop'; };`);
+
 export const CASES: Record<string, Case> = {
 	'create-get-started': { bug: "the create route's Get Started button did nothing", route: '/create', old: getStarted(false), mutant: getStarted(true), caught: /^(behaviour|a11y): .*Get Started/ },
 	'typeset-font': { bug: 'typeset: changing fonts did not work', route: '/typeset', old: typesetFont(false), mutant: typesetFont(true), caught: /^(behaviour|a11y): .*menuitemradio \"(Inter|Lora|Roboto|Manrope)\"/ },
@@ -272,6 +281,7 @@ export const CASES: Record<string, Case> = {
 	'date-arrows': { bug: "the date picker's keyboard navigation broke", route: '/docs/components/date-picker/keys', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'arrows'), caught: /^(behaviour|a11y): ([^|]*grid keys on grid[^|]*\(step [2-9]|[^|]*press Arrow(Left|Right|Up|Down) on gridcell|role model probe[^|]*press Arrow(Left|Right|Up|Down)[^|]*\|[^|]*focus: gridcell)/ },
 	'date-arrows-masked': { bug: "the date picker's keyboard navigation broke, behind a calendar that opens showing other text (on RrorpvSy it opens on another month)", route: '/docs/components/date-picker/masked', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'arrows', 'Choose a day'), caught: /^(behaviour|a11y): ([^|]*grid keys on grid[^|]*\(step [2-9]|[^|]*press Arrow(Left|Right|Up|Down) on gridcell|role model probe[^|]*press Arrow(Left|Right|Up|Down)[^|]*\|[^|]*focus: gridcell)/ },
 	'date-typed': { bug: 'typing "May 28, 2025" into the date input became May 1', route: '/docs/components/date-picker/input', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'parse'), caught: /^(behaviour|a11y): [^|]*(field input|typed|role model)[^|]*\|.*(May 28|\b01, \d{4})/ },
+	'original-runtime': { bug: "the charts line page loaded the original's Next.js chunks and booted its runtime", route: '/charts/line', old: lineChart(false, true), mutant: lineChart(true, true), caught: /^weight: runs the original's framework/ },
 	'dashboard-dead': { bug: "the dashboard's Cover page drawer did not open (dropped recordings)", route: '/examples/dashboard', old: dashboard(false), mutant: dashboard(true), caught: /^(behaviour|a11y): .*(Cover page|Table of contents)/ },
 };
 

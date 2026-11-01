@@ -19,7 +19,7 @@ import { DIMENSIONS } from './types.ts';
 import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
 import { samePath } from './svg-path.ts';
-import { residueFailures } from './residue.ts';
+import { originalRuntimeFailures, residueFailures } from './residue.ts';
 
 const LIMIT = 20;
 // lang and dir are compared as internationalisation, not SEO.
@@ -297,6 +297,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 
 	failures.push(...httpFailures(route, olds.map((o) => o.http), next.http, { olds: olds.flatMap((o) => Object.values(o.pages).map((p) => p.finalUrl)) }));
 	failures.push(...residueFailures(route, Object.values(next.pages)[0]));
+	failures.push(...originalRuntimeFailures(route, Object.values(oldA.pages)[0], Object.values(next.pages)[0]));
 
 	for (const [viewport, a] of Object.entries(oldA.pages)) {
 		const bs = others.map((o) => o.pages[viewport]!);
