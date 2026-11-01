@@ -153,6 +153,34 @@ test('the scene part plays a use at its recorded times and a second control from
 	}
 });
 
+test('the scene part starts a recorded script animation on the element as its frame shows it, once', async () => {
+	const part = ts.transpileModule(await readFile(join(ROOT, 'parts/scene.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/scene.js' ? route.fulfill({ contentType: 'text/javascript', body: part }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		const seen = await page.evaluate(async () => {
+			const { playScene } = (await import('/scene.js' as string)) as typeof import('../parts/scene.ts');
+			const fade = JSON.stringify([{ k: [{ opacity: '0' }, { opacity: '1' }], d: 300, e: 'linear', l: 0, f: 'none' }]);
+			const data = { listed: 'button', rest: [0, 2], edges: [[0, 'button||Send#0', 1, 2, [0, 100], 1]], entries: [[2, 'a', '.animate']], changes: { 1: [[0, fade]], 2: [] }, full: { 0: [[0, null]], 2: [[0, fade]] } };
+			document.body.innerHTML = '<div data-slot="preview"><p data-mm-k="2">Hi</p><button>Send</button></div>';
+			const region = document.querySelector('[data-slot="preview"]')!;
+			region.setAttribute('data-mm-scene', JSON.stringify(data));
+			region.addEventListener('click', (event) => playScene(event, () => {}));
+			const p = region.querySelector('p')!;
+			region.querySelector('button')!.click();
+			await new Promise((r) => setTimeout(r, 60));
+			const during = [p.getAnimations().length, Number(getComputedStyle(p).opacity) < 0.5];
+			await new Promise((r) => setTimeout(r, 120));
+			return { during, after: p.getAnimations().length };
+		});
+		assert.deepEqual(seen, { during: [1, true], after: 1 }, 'one animation, started once, though the next frame shows the same value');
+	} finally {
+		await browser.close();
+	}
+});
+
 test("a streamed use keeps its recorded gaps after the page stalls: frames come one gap apart, not all at once", async () => {
 	const at = (t: number, lines: string[]) => ({ t, tree: block([13, 14, 15], lines) });
 	const { data } = planned({ ...REPLAY, edges: [{ ...REPLAY.edges[0]!, frames: [at(10, []), at(60, ['a']), at(110, ['a', 'b']), at(160, ['a', 'b', 'c'])] }] });

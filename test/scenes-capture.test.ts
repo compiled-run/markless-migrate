@@ -147,3 +147,35 @@ test("the site's listing plays the AI Elements approval demos: Send message, the
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+// Send adds a row its script fades in with element.animate (as motion does): no DOM change marks the animation.
+const ANIMATED = `<!doctype html><html><body><main>
+<div data-slot="preview"><div role="log"></div><button data-slot="button" id="send">Send</button></div>
+<script>
+document.getElementById('send').addEventListener('click', () => {
+	const row = document.createElement('p');
+	row.textContent = 'Hi';
+	document.querySelector('[role=log]').append(row);
+	row.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'ease-out' });
+}, { once: true });
+</script></main></body></html>`;
+
+test('a row a script animates in (element.animate) carries the animation\'s keyframes and timing in the frame it appears in', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(ANIMATED));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 2, depth: 1, settle: 500, max: 3000 });
+		const send = scenes[0]!.edges.find((e) => e.control === 'button|button|Send#0')!;
+		const row = (n: SceneNode): SceneNode | undefined => ('tag' in n ? (n.tag === 'p' ? n : n.kids.map(row).find(Boolean)) : undefined);
+		const first = row(send.frames[0]!.tree) as Extract<SceneNode, { tag: string }>;
+		const animate = JSON.parse(first.attrs.find(([k]) => k === '.animate')?.[1] ?? '[]');
+		assert.deepEqual(animate.map((a: { k: { opacity: string }[]; d: number; e: string }) => [a.k.map((k) => k.opacity), a.d, a.e]), [[['0', '1'], 300, 'ease-out']]);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});

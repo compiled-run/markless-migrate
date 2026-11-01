@@ -9,7 +9,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
-import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
+import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
@@ -85,6 +85,7 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	const baseToastNames = ['baseToastAdd', 'baseToastViewport', 'BASE_TOAST_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (baseToastNames.length) out = out.replace('\n', `\nimport { ${baseToastNames.join(', ')} } from '${dir}/base-ui/toast.ts';\n`);
+	if (/\bscrollToMessage\(/.test(out)) out = out.replace('\n', `\nimport { scrollToMessage } from '${dir}/shadcn/message-scroller.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
 	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -780,7 +781,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
-	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies)));
+	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies) || scrollBinding(x, copies)));
 	const emit = (shell: boolean) =>
 		kept
 			.map((top) =>
@@ -788,7 +789,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const own = mergeBindings(mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies))), carriedBinding(x, announced, false, portedCall));
+						const own = mergeBindings(mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), mergeBindings(copyBinding(x, copies), scrollBinding(x, copies)))), carriedBinding(x, announced, false, portedCall));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
@@ -1610,7 +1611,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
 				if (!choosing.has(run)) {
 					const dir = await atFor(route, 'choices');
-					const chosen = timed(route, () => captureChoices(browser, options.old, route, reveal, dir, log, limit));
+					const chosen = timed(route, async () => captureChoices(browser, options.old, route, reveal, dir, log, limit, Boolean((await pending).scrollers?.length)));
 					chosen.catch(() => {});
 					choosing.set(run, chosen);
 				}
