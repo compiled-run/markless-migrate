@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { StepResult } from '../src/check/journeys.ts';
-import { answerFloor, fisherGreater, judgeTiming, type Samples } from '../src/check/timing-verdicts.ts';
+import { answerFloor, fisherGreater, judgeInTurn, judgeTiming, type Samples } from '../src/check/timing-verdicts.ts';
 
 const step = (answeredMs: number, requests: string[] = []) => ({ requests, reaction: { answeredMs } }) as unknown as StepResult;
 
@@ -44,4 +44,14 @@ test('a later answer the samples tell apart is still not red when it is within t
 	assert.equal(judgeTiming([consistent], 250)[0]!.stands, false, 'a route whose old runs differ by 250 ms tells no 215 ms from the machine');
 	const small: Samples = { kind: 'answer', old: [1000, 1001, 1002, 1003, 1004], next: [1200, 1201, 1202, 1203] };
 	assert.equal(judgeTiming([small], 100)[0]!.stands, false);
+});
+
+test('a route with more real slowdowns than one batch reports every one; a batch where one does not stand ends the judging', async () => {
+	const judge = (batch: readonly Samples[]) => judgeTiming(batch, 100);
+	const seven = await judgeInTurn(7, 5, async () => slow, judge);
+	assert.deepEqual(seven.map((v) => [v.judged.stands, v.among]), [...Array(5).fill([true, 5]), ...Array(2).fill([true, 2])]);
+	const sampled: number[] = [];
+	const mixed = await judgeInTurn(7, 5, async (i) => (sampled.push(i), i === 4 ? noise : slow), judge);
+	assert.deepEqual(sampled, [0, 1, 2, 3, 4], 'the second batch is not timed again');
+	assert.deepEqual(mixed.map((v) => v.judged.stands), [true, true, true, true, false]);
 });

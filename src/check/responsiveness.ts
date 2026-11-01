@@ -5,7 +5,7 @@ import { request as fetchApp } from './http.ts';
 import { describeStep, describeTarget, locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import type { Failure, ResponsivenessSummary, RouteResult, Slowest, Viewport } from './types.ts';
 import { loadPage } from './infrastructure.ts';
-import { mannWhitneyGreater, median, SIGNIFICANCE } from './load.ts';
+import { judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
 
 export type SpeedName = 'desktop' | 'throttled';
@@ -629,8 +629,8 @@ async function addVariance(controls: ControlTiming[], steps: readonly { step: St
 	}
 }
 
-// The slower candidates a route confirms, the largest first, each with old and new runs taken in turn until both have this many:
-// five a side let a one-sided test reach the share of 0.05 that five candidates leave the first.
+// The slower candidates a route confirms at a time, the largest first, each with old and new runs taken in turn until both have
+// this many: five a side let a one-sided test reach the share of 0.05 that five candidates leave the first.
 const CONFIRMED = 5;
 const CONFIRM_RUNS = 5;
 const SLOWER = 'slower than the old';
@@ -644,9 +644,10 @@ async function confirmSlower(controls: ControlTiming[], steps: readonly { step: 
 	const spreads = controls.flatMap((c) => c.speeds.flatMap((t) => (ms(t.old).length > 1 ? [Math.max(...ms(t.old)) - Math.min(...ms(t.old))] : []))).sort((a, b) => a - b);
 	const floor = spreads.length ? spreads[Math.min(spreads.length - 1, Math.floor(0.95 * spreads.length))]! : 0;
 	const candidates = controls.flatMap((c, i) => c.speeds.flatMap((t, at) => (t.problems.some((x) => x.startsWith(SLOWER)) ? [{ i, at, effect: (t.newMs ?? 0) - (t.oldMs ?? 0), oldMs: t.oldMs ?? 0 }] : [])));
-	const tested = candidates.filter((c) => c.effect > Math.max(SLACK_MS, c.oldMs * SLACK_RATIO, floor)).sort((a, b) => b.effect - a.effect).slice(0, CONFIRMED);
-	const samples: { olds: Sample[]; news: Sample[] }[] = [];
-	for (const c of tested) {
+	const tested = candidates.filter((c) => c.effect > Math.max(SLACK_MS, c.oldMs * SLACK_RATIO, floor)).sort((a, b) => b.effect - a.effect);
+	const runs: { olds: Sample[]; news: Sample[] }[] = [];
+	const sample = async (k: number): Promise<Samples> => {
+		const c = tested[k]!;
 		const t = controls[c.i]!.speeds[c.at]!;
 		const speed = all.find((x) => x.name === t.speed)!;
 		const olds = [...t.old], news = [...t.new];
@@ -655,25 +656,22 @@ async function confirmSlower(controls: ControlTiming[], steps: readonly { step: 
 			olds.push(again.o);
 			news.push(again.n);
 		}
-		samples.push({ olds, news });
-	}
-	const order = tested.map((_, k) => ({ k, p: mannWhitneyGreater(ms(samples[k]!.olds), ms(samples[k]!.news)) })).sort((a, b) => a.p - b.p);
+		runs[k] = { olds, news };
+		return { kind: 'answer', old: ms(olds), next: ms(news) };
+	};
+	const verdicts = await judgeInTurn(tested.length, CONFIRMED, sample, (batch) => judgeTiming(batch, floor, (o, n) => n - o > Math.max(SLACK_MS, o * SLACK_RATIO, floor)));
 	const stands = new Map<string, string>();
-	let rejecting = true;
-	for (const [rank, { k, p }] of order.entries()) {
-		const alpha = SIGNIFICANCE / (order.length - rank);
-		rejecting &&= p < alpha;
-		const o = ms(samples[k]!.olds), n = ms(samples[k]!.news);
-		if (rejecting && median(n) - median(o) > Math.max(SLACK_MS, median(o) * SLACK_RATIO, floor)) stands.set(`${tested[k]!.i}|${tested[k]!.at}`, `; runs again in turn: old ${o.map(msText).join(', ')}, new ${n.map(msText).join(', ')} (p = ${p.toFixed(3)}, under the ${alpha.toFixed(4)} its rank among the route's ${order.length} needs; old runs differ by up to ${msText(floor)} here)`);
+	for (const [k, { judged: v, among }] of verdicts.entries()) {
+		if (v.stands) stands.set(`${tested[k]!.i}|${tested[k]!.at}`, `; runs again in turn: old ${ms(runs[k]!.olds).map(msText).join(', ')}, new ${ms(runs[k]!.news).map(msText).join(', ')} (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${msText(floor)} here)`);
 	}
 	for (const c of candidates) {
 		const t = controls[c.i]!.speeds[c.at]!;
 		const k = tested.indexOf(c);
 		const note = stands.get(`${c.i}|${c.at}`);
 		const problems = note ? t.problems.map((x) => (x.startsWith(SLOWER) ? `${x}${note}` : x)) : t.problems.filter((x) => !x.startsWith(SLOWER));
-		const runs = k >= 0 ? { old: samples[k]!.olds, new: samples[k]!.news } : {};
+		const again = runs[k] ? { old: runs[k]!.olds, new: runs[k]!.news } : {};
 		const speeds = [...controls[c.i]!.speeds];
-		speeds[c.at] = { ...t, ...runs, problems, ok: problems.length === 0 };
+		speeds[c.at] = { ...t, ...again, problems, ok: problems.length === 0 };
 		controls[c.i] = { ...controls[c.i]!, speeds };
 	}
 }
