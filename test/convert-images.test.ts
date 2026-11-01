@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { attr, find, head, parseDocument, walk } from '../src/convert/dom.ts';
 import { frozenCacheControl } from '../src/convert/endpoints.ts';
-import { nextImageWidths, NEXT_WIDTHS, pairImages, planImages, sizesFor, type ImageFact, type ImageFacts } from '../src/convert/images.ts';
+import { framesAsServed, nextImageWidths, NEXT_WIDTHS, pairImages, planImages, sizesFor, type ImageFact, type ImageFacts } from '../src/convert/images.ts';
 
 const HERO = '/_next/image?url=%2Fimages%2Flight.png&amp;w=3840&amp;q=75';
 const DARK = '/_next/image?url=%2Fimages%2Fdark.png&amp;w=3840&amp;q=75';
@@ -213,4 +213,13 @@ test('check: image loading the port shares with the original is an improvement, 
 	const worse = imageLoading('/', lazy, below);
 	assert.equal(worse.failures.length, 1, 'the original loads it lazily and the port does not');
 	assert.deepEqual(imageLoading('/', below, lazy), { failures: [], improvements: [] });
+});
+
+test('an iframe a site part mounts keeps the class the server sent, where the old page changed it once the frame loaded', () => {
+	const frame = (src: string, opacity: string) => `<iframe src="${src}" class="w-full transition-opacity duration-300 ${opacity}" title="${src}"></iframe>`;
+	const served = parseDocument(`<body>${frame('/a', 'opacity-0')}${frame('/a', 'opacity-0')}${frame('/b', 'opacity-0')}<iframe src="/c" class="x"></iframe></body>`);
+	const settled = parseDocument(`<body>${frame('/a', 'opacity-100')}${frame('/a', 'opacity-100')}${frame('/b', 'opacity-100')}<iframe src="/c" class="x"></iframe><iframe src="/d" class="y"></iframe></body>`);
+	const frames = [...walk(settled)].filter((el) => el.tagName === 'iframe');
+	assert.equal(framesAsServed(settled, served, (el) => attr(el, 'src') !== '/b'), 2);
+	assert.deepEqual(frames.map((el) => attr(el, 'class')?.split(' ').at(-1)), ['opacity-0', 'opacity-0', 'opacity-100', 'x', 'y'], 'a frame no part mounts, or one the server sent alike or not at all, is left as captured');
 });
