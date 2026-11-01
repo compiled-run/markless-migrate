@@ -8,7 +8,9 @@ export function radioKeys(event: KeyboardEvent, choose: boolean): void {
 	const rtl = getComputedStyle(group).direction === 'rtl';
 	const step = { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1, ArrowDown: 1, ArrowUp: -1 }[event.key];
 	const at = radios.indexOf(radio);
-	const to = step ? radios[(at + step + radios.length) % radios.length] : event.key === 'Home' ? radios[0] : event.key === 'End' ? radios[radios.length - 1] : undefined;
+	// Base UI's RadioGroup has no Home or End: the key goes on to the page (scrolling it), the choice stays.
+	const ends = !/^base-ui-/.test(radio.id);
+	const to = step ? radios[(at + step + radios.length) % radios.length] : ends && event.key === 'Home' ? radios[0] : ends && event.key === 'End' ? radios[radios.length - 1] : undefined;
 	if (!to) return;
 	event.preventDefault();
 	to.focus();

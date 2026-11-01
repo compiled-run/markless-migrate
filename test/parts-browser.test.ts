@@ -2383,3 +2383,27 @@ test('shadcn-ui site: the drawer demo\'s goal steps by 10 between 200 and 400, i
 	void goal;
 	await page.close();
 });
+
+test("Base UI RadioGroup: Home and End neither move focus nor choose, and are not prevented (the page scrolls); a group of another library's radios still goes to its ends", async () => {
+	const group = (prefix: string) => `<div role="radiogroup">${['a', 'b', 'c'].map((v, i) => `<span role="radio" tabindex="${i === 1 ? 0 : -1}" id="${prefix}${v}" aria-checked="${i === 1}">${v}</span>`).join('')}</div>`;
+	const page = await open(`${group('base-ui-')}${group('other-')}<div style="height:3000px"></div>`, ['toggle']);
+	await page.evaluate(async () => {
+		const part = '/parts/toggle.ts';
+		const { radioKeys } = (await import(part)) as { radioKeys: (event: KeyboardEvent, choose: boolean) => void };
+		for (const g of document.querySelectorAll('[role=radiogroup]')) g.addEventListener('keydown', (e) => radioKeys(e as KeyboardEvent, true));
+		for (const r of document.querySelectorAll<HTMLElement>('[role=radio]')) r.addEventListener('click', () => { for (const o of r.parentElement!.children) o.setAttribute('aria-checked', String(o === r)); });
+	});
+	const state = () => page.evaluate(() => `${document.activeElement?.id} ${[...document.querySelectorAll('[role=radio][aria-checked=true]')].map((r) => r.id).join(',')}`);
+	await page.locator('#base-ui-b').focus();
+	await page.evaluate(() => window.addEventListener('keydown', (e) => ((window as unknown as { prevented: boolean }).prevented = e.defaultPrevented), { once: true }));
+	await page.keyboard.press('End');
+	await page.waitForTimeout(50);
+	assert.equal(await state(), 'base-ui-b base-ui-b,other-b');
+	assert.equal(await page.evaluate(() => (window as unknown as { prevented: boolean }).prevented), false, 'End is left to the page');
+	await page.keyboard.press('Home');
+	assert.equal(await state(), 'base-ui-b base-ui-b,other-b');
+	await page.locator('#other-b').focus();
+	await page.keyboard.press('End');
+	assert.equal(await state(), 'other-c base-ui-b,other-c');
+	await page.close();
+});
