@@ -61,13 +61,14 @@ export class RuntimeScripts {
 		this.#read = read;
 	}
 
-	/** The scripts and script preloads of a page's HTML that are a runtime, by absolute URL. */
+	/** The scripts and script preloads of a page's HTML that are a runtime, by absolute URL; a framework build's chunks are left to its path. */
 	async among(html: string): Promise<Set<string>> {
+		const builds = frameworkBuilds(html);
 		const urls = parseHtml(html).flatMap((el) => {
 			const rel = el.attrs.get('rel') ?? '';
 			const url = el.tag === 'script' ? el.attrs.get('src') : el.tag === 'link' && (/\bmodulepreload\b/.test(rel) || (/\bpreload\b/.test(rel) && el.attrs.get('as') === 'script')) ? el.attrs.get('href') : undefined;
 			const href = url ? URL.parse(url, this.#origin) : null;
-			return href && href.origin === this.#origin ? [href.href] : [];
+			return href && href.origin === this.#origin && !builds.some((b) => b.path.test(href.pathname)) ? [href.href] : [];
 		});
 		const found = new Set<string>();
 		for (const url of new Set(urls)) if (await this.#reaches(url)) found.add(url);
