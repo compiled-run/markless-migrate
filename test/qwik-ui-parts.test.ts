@@ -192,6 +192,38 @@ test("modal: a press on the backdrop closes it and focus goes back to its trigge
 	await p.close();
 });
 
+test("modal: Escape in an element whose Qwik keydown handler has not loaded closes the dialog at once, and Qwik UI's close listener then closes it at the end of its next opening", async () => {
+	const style = '<style>@keyframes enter{from{opacity:0}}dialog{animation-duration:200ms}dialog[data-open]{animation-name:enter}</style>';
+	const p = await open(style + MODAL.replace('<input id="name">', '<input id="name" data-mm-qwik="keydown:search.tsx_Search_component_onKeyDown">'), ['qwik-ui/modal']);
+	const state = () => p.evaluate(() => { const d = document.querySelector('dialog')!; return { open: d.open, closing: d.hasAttribute('data-closing'), expanded: document.querySelector('button')!.getAttribute('aria-expanded') }; });
+	await p.getByText('Open').click();
+	await p.waitForTimeout(300);
+	await p.keyboard.press('Escape');
+	await p.waitForTimeout(50);
+	assert.deepEqual(await state(), { open: false, closing: true, expanded: 'false' }, 'closed by the browser, with no exit animation');
+	await p.getByText('Open').click();
+	assert.equal((await state()).open, true);
+	await p.waitForTimeout(400);
+	assert.deepEqual(await state(), { open: false, closing: false, expanded: 'true' }, 'closed when its opening animation ended, the trigger still expanded');
+	await p.getByText('Open').click();
+	assert.deepEqual(await state(), { open: false, closing: true, expanded: 'false' }, 'the trigger toggles the signal off');
+	await p.getByText('Open').click();
+	await p.waitForTimeout(400);
+	await p.keyboard.press('Escape');
+	await p.close();
+});
+
+test('modal: once its keydown handler has loaded, Escape in that element closes the dialog through its exit animation', async () => {
+	const p = await open(MODAL.replace('<input id="name">', '<input id="name" data-mm-qwik="keydown:search.tsx_Search_component_onKeyDown">'), ['qwik-ui/modal']);
+	await p.getByText('Open').click();
+	await p.keyboard.press('a');
+	const cancelled = p.evaluate(() => new Promise<boolean>((done) => document.addEventListener('keydown', (e) => setTimeout(() => done(e.defaultPrevented)), { once: true })));
+	await p.keyboard.press('Escape');
+	assert.equal(await cancelled, true);
+	assert.equal(await p.getAttribute('dialog', 'data-state'), 'closed');
+	await p.close();
+});
+
 test("a Qwik UI modal's own props come from its context in the page's paused state: closeOnBackdropClick false and its nesting level are written on its dialog", () => {
 	const objs = Object.assign(new Array(100).fill(''), { 1: 'm2', 2: false, 3: '\u0001', 4: 'm1', 5: { localId: '4', closeOnBackdropClick: '3', alert: '3', level: '7' }, 6: { localId: '1', closeOnBackdropClick: '2', alert: '3', level: '8' }, 7: 1, 8: 2 });
 	const html = page(`<dialog id="m1-root" q:id="a"></dialog><dialog id="m2-root" q:id="b"></dialog><script type="qwik/json">${JSON.stringify({ refs: {}, ctx: {}, objs })}</script>`);

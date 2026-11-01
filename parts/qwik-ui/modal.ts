@@ -16,6 +16,11 @@ const triggerOfDialog = (dialog: Element) => dialog.parentElement?.querySelector
 const openDialogs: HTMLDialogElement[] = [];
 // focus-trap's returnFocusOnDeactivate: what had focus when the dialog opened gets it back once it has closed.
 const returnTo = new WeakMap<HTMLDialogElement, HTMLElement>();
+// @fluejs/noscroll counts per modal: one that locked the page and has not restored it does not lock (or measure) again.
+const locking = new Set<HTMLDialogElement>();
+// closeModal's end listeners, which outlive a close the browser already made and close the dialog after its next open.
+const ending = new Map<HTMLDialogElement, (readonly [string, EventListener])[]>();
+const loadedKeydowns = new Set<string>();
 
 function lockStyles(): void {
 	if (document.head.querySelector('style[data-noscroll-global-styles]')) return;
@@ -29,6 +34,8 @@ function lock(on: boolean): void {
 	const body = document.body;
 	if (on) {
 		lockStyles();
+		// noscroll measures the scrollbar with the page's lock lifted.
+		body.removeAttribute(SCROLL_DISABLED);
 		body.style.setProperty('--noscroll-target-scrollbar-width', `${window.innerWidth - document.documentElement.clientWidth}px`);
 		body.style.setProperty('--noscroll-target-padding-right', getComputedStyle(body).paddingRight);
 		body.setAttribute(ADJUSTED, '');
@@ -50,46 +57,102 @@ function markState(dialog: HTMLDialogElement, on: boolean): void {
 	triggerOfDialog(dialog)?.setAttribute('aria-expanded', String(on));
 }
 
+/** Whether the modal's `show` signal is on: the dialog itself can be closed while it is (see close). */
+export const isShown = (dialog: HTMLDialogElement): boolean => dialog.getAttribute('data-state') === 'open';
+
 /** Opens a Qwik UI modal as its trigger does; the site's own controls bound to its `show` signal call it too. */
 export function show(dialog: HTMLDialogElement): void {
-	if (dialog.open) return;
+	if (isShown(dialog)) return;
 	const before = document.activeElement;
 	if (before instanceof HTMLElement && before !== document.body) returnTo.set(dialog, before);
 	markState(dialog, true);
-	dialog.showModal();
-	if (!openDialogs.length) lock(true);
-	openDialogs.push(dialog);
+	if (!dialog.open) dialog.showModal();
+	if (!locking.has(dialog)) {
+		locking.add(dialog);
+		lock(true);
+	}
+	if (!openDialogs.includes(dialog)) openDialogs.push(dialog);
 	const auto = dialog.querySelector<HTMLElement>('[autofocus]');
 	(auto ?? focusables(dialog)[0])?.focus();
 }
 
-/** Closes a Qwik UI modal through its exit animation. */
+function release(dialog: HTMLDialogElement): void {
+	const at = openDialogs.indexOf(dialog);
+	if (at < 0) return;
+	openDialogs.splice(at, 1);
+	// modal-panel.tsx: only a root modal restores page scroll; one nested in another's Root (level > 1) leaves it locked.
+	if (Number(dialog.dataset.mmLevel) > 1) return;
+	locking.delete(dialog);
+	if (!openDialogs.length) lock(false);
+}
+
+/**
+ * Closes a Qwik UI modal as its `show` signal turning off does (supportClosingAnimation): it closes once its animation (else
+ * transition) ends, and when the browser closed it already, that listener closes it at the end of its next opening.
+ */
 export function close(dialog: HTMLDialogElement): void {
-	if (!dialog.open || dialog.hasAttribute('data-closing')) return;
+	if (!isShown(dialog)) return;
 	markState(dialog, false);
 	dialog.setAttribute('data-closing', '');
 	dialog.classList.add('modal-closing');
 	const s = getComputedStyle(dialog);
 	const animation = parseFloat(s.animationDuration) > 0;
 	const transition = !animation && parseFloat(s.transitionDuration) > 0;
+	const wasOpen = dialog.open;
+	if (!wasOpen) release(dialog);
 	const finish = () => {
 		dialog.removeAttribute('data-closing');
 		dialog.classList.remove('modal-closing');
+		const closing = dialog.open;
 		dialog.close();
-		openDialogs.splice(openDialogs.indexOf(dialog), 1);
-		// modal-panel.tsx: only a root modal restores page scroll; one nested in another's Root (level > 1) leaves it locked.
-		if (!openDialogs.length && !(Number(dialog.dataset.mmLevel) > 1)) lock(false);
+		if (isShown(dialog) || !closing || !wasOpen) return;
+		release(dialog);
 		const back = returnTo.get(dialog);
 		// After the pointer's own default focus, which a press on the backdrop that closed the dialog still runs.
 		if (back) setTimeout(() => back.isConnected && !dialog.open && back.focus());
 	};
 	if (!animation && !transition) return finish();
+	const type = animation ? 'animationend' : 'transitionend';
 	const done = (event: Event) => {
 		if (event.target !== dialog) return;
-		dialog.removeEventListener(animation ? 'animationend' : 'transitionend', done);
+		dialog.removeEventListener(type, done);
+		ending.set(dialog, (ending.get(dialog) ?? []).filter(([, l]) => l !== done));
 		finish();
 	};
-	dialog.addEventListener(animation ? 'animationend' : 'transitionend', done);
+	dialog.addEventListener(type, done);
+	ending.set(dialog, [...(ending.get(dialog) ?? []), [type, done]]);
+}
+
+/** What a page load starts afresh: every modal closed with nothing pending, the page unlocked, no handler loaded. */
+export function pageLoaded(): void {
+	for (const [dialog, listeners] of ending) for (const [type, listener] of listeners) dialog.removeEventListener(type, listener);
+	ending.clear();
+	loadedKeydowns.clear();
+	for (const dialog of document.querySelectorAll<HTMLDialogElement>(DIALOG)) {
+		if (dialog.open) continue;
+		dialog.removeAttribute('data-closing');
+		dialog.classList.remove('modal-closing');
+		if (isShown(dialog)) markState(dialog, false);
+		const at = openDialogs.indexOf(dialog);
+		if (at >= 0) openDialogs.splice(at, 1);
+		locking.delete(dialog);
+	}
+	if (!openDialogs.length) lock(false);
+}
+
+// qwikloader awaits each element's handlers on the way up: past a keydown handler whose code has not loaded yet, the
+// dialog's preventDefault of Escape comes too late and the browser closes it (data-mm-lazy-keydown: a library's handler).
+const lazyKeydowns = (el: Element): string[] => [...(el.getAttribute('data-mm-qwik') ?? '').split(' ').filter((h) => h.startsWith('keydown:')), ...(el.hasAttribute('data-mm-lazy-keydown') ? [`keydown:${el.getAttribute('data-mm-lazy-keydown')}`] : [])];
+function firstLoad(target: Element, dialog: HTMLDialogElement): boolean {
+	let first = false;
+	for (let el: Element | null = target; el && el !== dialog; el = el.parentElement) {
+		for (const handler of lazyKeydowns(el)) {
+			if (loadedKeydowns.has(handler)) continue;
+			loadedKeydowns.add(handler);
+			first = true;
+		}
+	}
+	return first;
 }
 
 const focusables = (root: Element) => [...root.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), summary')].filter((el) => el.offsetParent !== null || el === document.activeElement);
@@ -98,7 +161,7 @@ export function click(target: Element): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);
 	const dialog = trigger ? dialogOfTrigger(trigger) : null;
 	if (trigger && dialog) {
-		if (dialog.open) close(dialog);
+		if (isShown(dialog)) close(dialog);
 		else show(dialog);
 		return true;
 	}
@@ -123,10 +186,14 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const dialog = target.closest<HTMLDialogElement>(DIALOG);
 	if (!dialog?.open) return false;
+	const late = firstLoad(target, dialog);
 	if (event.key === 'Escape') {
-		event.preventDefault();
 		event.stopPropagation();
-		close(dialog);
+		if (late) dialog.addEventListener('close', () => close(dialog), { once: true });
+		else {
+			event.preventDefault();
+			close(dialog);
+		}
 		return true;
 	}
 	if ((event.key === ' ' || event.key === 'Enter') && target === dialog) {
