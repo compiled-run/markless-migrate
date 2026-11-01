@@ -300,7 +300,7 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
-	const selfUrls = await selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, run.new, { seo: Object.values(oldA.pages)[0]?.seo ?? {}, origin: oldOrigin });
+	const selfUrls = await selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, run.new);
 	const result = reached(route, withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew), ...selfUrls], { noise, writes: loadWrites }));
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = reached(route, await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads))));
