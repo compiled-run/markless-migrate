@@ -1,4 +1,4 @@
-import { computed, element, state } from '@markless/core';
+import { computed, element, shared, state } from '@markless/core';
 import { closeRendered, openRendered } from '../parts/base-ui/dialog.ts';
 import { hideRendered, showRendered } from '../parts/base-ui/tooltip.ts';
 import { COMMANDS, MANAGERS, loadView, readAddress, storeManager, storedManager, writePage, writeQuery, type Manager } from './directory.ts';
@@ -7,13 +7,16 @@ import { COMMANDS, MANAGERS, loadView, readAddress, storeManager, storedManager,
 // (?q=, the address following 250 ms after typing stops), its count and Clear, ten registries a page (?page=) and the
 // Add dialog (a drawer under 768 px) with its package manager tabs and Copy. The registries load at idle, so typing
 // never waits for them; each logo is its own file, drawn through <use> so the page's colours still reach it.
+const directoryAdd = shared(() => {
+	const add = state({ adding: '', manager: 'pnpm' as Manager, copied: false });
+	return { ...add };
+});
+
 export default function DirectoryList() @{
+	const a = directoryAdd();
 	let query = state('');
 	let page = state(1);
 	let health = state<{ readonly payload: unknown; readonly at: number } | undefined>(undefined);
-	let adding = state('');
-	let manager = state<Manager>('pnpm');
-	let copied = state(false);
 	const view = computed(async () => {
 		const q = query;
 		const p = page;
@@ -26,43 +29,6 @@ export default function DirectoryList() @{
 		const v = await loadView('/docs/directory', q, 1, h);
 		return { text: `${v.count} ${v.countLabel}` };
 	});
-	const tabsView = computed(() => MANAGERS.map((m) => ({ manager: m, active: m === manager, id: `directory-add-tab-${m}` })));
-	const managerIndex = computed(() => String(MANAGERS.indexOf(manager)));
-	const activeTabId = computed(() => `directory-add-tab-${manager}`);
-	const command = computed(() => (adding ? COMMANDS(adding)[manager] : ''));
-	const dialog = element<HTMLElement>();
-	const drawer = element<HTMLElement>();
-	const tipPortal = element<HTMLElement>();
-	const choose = (m: Manager) => {
-		manager = m;
-		storeManager(m);
-	};
-	const roveTabs = (event: KeyboardEvent, list: HTMLElement) => {
-		const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
-		const at = tabs.indexOf(document.activeElement as HTMLElement);
-		const to = event.key === 'ArrowRight' ? (at + 1) % tabs.length : event.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
-		if (to < 0 || at < 0) return;
-		event.preventDefault();
-		for (const [i, tab] of tabs.entries()) tab.tabIndex = i === to ? 0 : -1;
-		tabs[to]!.focus();
-	};
-	const copy = (button: HTMLElement) => {
-		void navigator.clipboard?.writeText(command).catch(() => {});
-		copied = true;
-		hideRendered(button);
-		setTimeout(() => (copied = false), 2000);
-	};
-	const tip = (button: HTMLElement, on: boolean, portal: HTMLElement | undefined) => {
-		if (!portal) return;
-		if (on) showRendered(button, portal);
-		else hideRendered(button);
-	};
-	const add = (trigger: HTMLElement, name: string, desktop: HTMLElement | undefined, mobile: HTMLElement | undefined) => {
-		adding = name;
-		manager = storedManager();
-		const portal = matchMedia('(max-width: 767px)').matches ? mobile : desktop;
-		if (portal) openRendered(trigger, portal);
-	};
 	const go = (event: MouseEvent, to: number, disabled: boolean) => {
 		if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 		event.preventDefault();
@@ -82,7 +48,7 @@ export default function DirectoryList() @{
 		onIdle={async () => {
 			fromAddress();
 			addEventListener('popstate', () => fromAddress());
-			manager = storedManager();
+			a.manager = storedManager();
 			await import('./directory-data.ts');
 			const response = await fetch('/r/registries.json', { signal: AbortSignal.timeout(5000) }).catch(() => undefined);
 			if (response?.ok) health = { payload: await response.json(), at: Date.now() };
@@ -151,9 +117,10 @@ export default function DirectoryList() @{
 						<div data-slot="item-actions" class="items-center gap-2 relative z-10 hidden self-start sm:flex">
 							<button type="button" tabindex="0" data-slot="button" class="group/button inline-flex shrink-0 items-center justify-center border bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5 relative z-10" onClick={(event) => {
 								const trigger = (event.target as Element).closest('button')!;
-								const desktop = dialog;
-								const mobile = drawer;
-								add(trigger, row.name, desktop, mobile);
+								a.adding = row.name;
+								a.manager = storedManager();
+								const portal = document.getElementById(matchMedia('(max-width: 767px)').matches ? 'directory-add-drawer' : 'directory-add-dialog');
+								if (portal) openRendered(trigger, portal);
 							}}>
 								Add <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-plus "><path d="M12 5l0 14"></path><path d="M5 12l14 0"></path></svg>
 							</button>
@@ -164,9 +131,10 @@ export default function DirectoryList() @{
 							</button>
 							<button type="button" tabindex="0" data-slot="button" class="group/button inline-flex shrink-0 items-center justify-center border bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5 relative z-10" onClick={(event) => {
 								const trigger = (event.target as Element).closest('button')!;
-								const desktop = dialog;
-								const mobile = drawer;
-								add(trigger, row.name, desktop, mobile);
+								a.adding = row.name;
+								a.manager = storedManager();
+								const portal = document.getElementById(matchMedia('(max-width: 767px)').matches ? 'directory-add-drawer' : 'directory-add-dialog');
+								if (portal) openRendered(trigger, portal);
 							}}>
 								Add <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-plus "><path d="M12 5l0 14"></path><path d="M5 12l14 0"></path></svg>
 							</button>
@@ -219,6 +187,37 @@ export default function DirectoryList() @{
 			</>
 		} @catch {
 		}
+	</div>
+}
+
+// Base UI portals the Add dialog, its drawer and the Copy tooltip to the end of the body; the page renders this there.
+export function Layers() @{
+	const a = directoryAdd();
+	const tabsView = computed(() => MANAGERS.map((m) => ({ manager: m, active: m === a.manager, id: `directory-add-tab-${m}` })));
+	const managerIndex = computed(() => String(MANAGERS.indexOf(a.manager)));
+	const activeTabId = computed(() => `directory-add-tab-${a.manager}`);
+	const command = computed(() => (a.adding ? COMMANDS(a.adding)[a.manager] : ''));
+	const adding = computed(() => a.adding);
+	const copied = computed(() => a.copied);
+	const dialog = element<HTMLElement>();
+	const drawer = element<HTMLElement>();
+	const tipPortal = element<HTMLElement>();
+	const roveTabs = (event: KeyboardEvent, list: HTMLElement) => {
+		const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
+		const at = tabs.indexOf(document.activeElement as HTMLElement);
+		const to = event.key === 'ArrowRight' ? (at + 1) % tabs.length : event.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+		if (to < 0 || at < 0) return;
+		event.preventDefault();
+		for (const [i, tab] of tabs.entries()) tab.tabIndex = i === to ? 0 : -1;
+		tabs[to]!.focus();
+	};
+	const tip = (button: HTMLElement, on: boolean, portal: HTMLElement | undefined) => {
+		if (!portal) return;
+		if (on) showRendered(button, portal);
+		else hideRendered(button);
+	};
+
+	<>
 		<div id="directory-add-dialog" data-base-ui-portal="" data-slot="dialog-portal" hidden el={dialog}>
 			<div role="presentation" data-base-ui-inert="" aria-hidden="true" style="position: fixed; inset: 0px; user-select: none;"></div>
 			<div data-open="" role="presentation" data-slot="dialog-overlay" class="fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" aria-hidden="true" data-base-ui-inert="" style="user-select: none;"></div>
@@ -232,10 +231,10 @@ export default function DirectoryList() @{
 						<div class="flex items-center gap-2 border-b p-1.5">
 							<div data-orientation="horizontal" data-activation-direction="none" role="tablist" data-slot="tabs-list" data-variant="default" class="group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none bg-muted h-auto *:data-[slot=tabs-trigger]:pt-0" onKeyDown={(event) => roveTabs(event, (event.target as Element).closest<HTMLElement>('[role="tablist"]')!)}>
 								@for (const tab of tabsView; key tab.manager) {
-									<button type="button" data-active={tab.active ? '' : undefined} data-orientation="horizontal" data-activation-direction="none" aria-disabled="false" tabindex={tab.active ? '0' : '-1'} role="tab" aria-selected={tab.active ? 'true' : 'false'} id={tab.id} data-composite-item-active={tab.active ? '' : undefined} data-slot="tabs-trigger" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100" aria-controls={tab.active ? 'd-directory-add-panel' : undefined} onClick={() => choose(tab.manager)}>{tab.manager}</button>
+									<button type="button" data-active={tab.active ? '' : undefined} data-orientation="horizontal" data-activation-direction="none" aria-disabled="false" tabindex={tab.active ? '0' : '-1'} role="tab" aria-selected={tab.active ? 'true' : 'false'} id={tab.id} data-composite-item-active={tab.active ? '' : undefined} data-slot="tabs-trigger" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100" aria-controls={tab.active ? 'd-directory-add-panel' : undefined} onClick={() => { a.manager = tab.manager; storeManager(tab.manager); }}>{tab.manager}</button>
 								}
 							</div>
-							<button type="button" tabindex="0" data-slot="tooltip-trigger" id="d-directory-add-copy" data-base-ui-tooltip-trigger="" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg ml-auto" onClick={(event) => { const button = (event.target as Element).closest('button')!; copy(button); }} onPointerEnter={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, true, portal); }} onPointerLeave={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }} onFocus={(event) => { const button = (event.target as Element).closest('button')!; const visible = button.matches(':focus-visible'); const portal = tipPortal; if (visible) tip(button, true, portal); }} onBlur={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }}>
+							<button type="button" tabindex="0" data-slot="tooltip-trigger" id="d-directory-add-copy" data-base-ui-tooltip-trigger="" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg ml-auto" onClick={(event) => { const button = (event.target as Element).closest('button')!; void navigator.clipboard?.writeText(command).catch(() => {}); a.copied = true; hideRendered(button); setTimeout(() => { a.copied = false; }, 2000); }} onPointerEnter={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, true, portal); }} onPointerLeave={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }} onFocus={(event) => { const button = (event.target as Element).closest('button')!; const visible = button.matches(':focus-visible'); const portal = tipPortal; if (visible) tip(button, true, portal); }} onBlur={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }}>
 								@if (copied) {
 									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-check "><path d="M5 12l5 5l10 -10"></path></svg>
 								} @else {
@@ -288,10 +287,10 @@ export default function DirectoryList() @{
 						<div class="flex items-center gap-2 border-b p-1.5">
 							<div data-orientation="horizontal" data-activation-direction="none" role="tablist" data-slot="tabs-list" data-variant="default" class="group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none bg-muted h-auto *:data-[slot=tabs-trigger]:pt-0" onKeyDown={(event) => roveTabs(event, (event.target as Element).closest<HTMLElement>('[role="tablist"]')!)}>
 								@for (const tab of tabsView; key tab.manager) {
-									<button type="button" data-active={tab.active ? '' : undefined} data-orientation="horizontal" data-activation-direction="none" aria-disabled="false" tabindex={tab.active ? '0' : '-1'} role="tab" aria-selected={tab.active ? 'true' : 'false'} id={tab.id} data-composite-item-active={tab.active ? '' : undefined} data-slot="tabs-trigger" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100" aria-controls={tab.active ? 'm-directory-add-panel' : undefined} onClick={() => choose(tab.manager)}>{tab.manager}</button>
+									<button type="button" data-active={tab.active ? '' : undefined} data-orientation="horizontal" data-activation-direction="none" aria-disabled="false" tabindex={tab.active ? '0' : '-1'} role="tab" aria-selected={tab.active ? 'true' : 'false'} id={tab.id} data-composite-item-active={tab.active ? '' : undefined} data-slot="tabs-trigger" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100" aria-controls={tab.active ? 'm-directory-add-panel' : undefined} onClick={() => { a.manager = tab.manager; storeManager(tab.manager); }}>{tab.manager}</button>
 								}
 							</div>
-							<button type="button" tabindex="0" data-slot="tooltip-trigger" id="m-directory-add-copy" data-base-ui-tooltip-trigger="" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg ml-auto" onClick={(event) => { const button = (event.target as Element).closest('button')!; copy(button); }} onPointerEnter={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, true, portal); }} onPointerLeave={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }} onFocus={(event) => { const button = (event.target as Element).closest('button')!; const visible = button.matches(':focus-visible'); const portal = tipPortal; if (visible) tip(button, true, portal); }} onBlur={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }}>
+							<button type="button" tabindex="0" data-slot="tooltip-trigger" id="m-directory-add-copy" data-base-ui-tooltip-trigger="" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg ml-auto" onClick={(event) => { const button = (event.target as Element).closest('button')!; void navigator.clipboard?.writeText(command).catch(() => {}); a.copied = true; hideRendered(button); setTimeout(() => { a.copied = false; }, 2000); }} onPointerEnter={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, true, portal); }} onPointerLeave={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }} onFocus={(event) => { const button = (event.target as Element).closest('button')!; const visible = button.matches(':focus-visible'); const portal = tipPortal; if (visible) tip(button, true, portal); }} onBlur={(event) => { const button = (event.target as Element).closest('button')!; const portal = tipPortal; tip(button, false, portal); }}>
 								@if (copied) {
 									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-check "><path d="M5 12l5 5l10 -10"></path></svg>
 								} @else {
@@ -330,5 +329,5 @@ export default function DirectoryList() @{
 				</div>
 			</div>
 		</div>
-	</div>
+	</>
 }

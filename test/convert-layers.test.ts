@@ -206,6 +206,13 @@ test('what a control inside a page site component opens is that component\'s; on
 	assert.equal(withSiteImports(tail, site, '..').split('\n').filter((l) => l.startsWith('import')).length, 1);
 });
 
+test('the shadcn registry directory\'s Add dialog renders at the end of the body through its Layers export, as Base UI portals it, so its modal hides main', async () => {
+	const site = await readSiteComponents(join(import.meta.dirname, '..', 'examples', 'shadcn-ui-markless'));
+	const directory = site.find((c) => c.component === 'directory-list.tsrx')!;
+	assert.equal(directory.layers, true);
+	assert.equal(componentImport(directory, '..'), "import DirectoryList, { Layers as DirectoryListLayers } from '../lib/site/directory-list.tsrx';");
+});
+
 test("the parts the site's own code imports are found, so the app gets their files", async () => {
 	const app = await mkdtemp(join(tmpdir(), 'site-parts-'));
 	try {
