@@ -983,6 +983,27 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 });
 
 
+test('react-resizable-panels: the resize cursor covers the page while a separator is pointed at or dragged, and goes once it is inactive', async () => {
+	const panels = (dir: string, size: string) => `<div data-group="" style="display:flex;flex-direction:${dir};${size}"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="${dir === 'row' ? 'width' : 'height'}:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div>`;
+	const page = await open(`<div style="padding:50px">${panels('row', 'width:400px;height:100px')}<p id="away">away</p>${panels('column', 'width:200px;height:300px')}</div>`, ['resizable']);
+	const cursor = () => page.evaluate(() => `${getComputedStyle(document.getElementById('away')!).cursor} ${document.adoptedStyleSheets.flatMap((s) => [...s.cssRules].map((r) => r.cssText)).join(' ').includes('touch-action: none') ? 'no-touch' : ''}`.trim());
+	for (const [n, want] of [[0, 'ew-resize'], [1, 'ns-resize']] as const) {
+		const box = (await page.locator('[role="separator"]').nth(n).boundingBox())!;
+		const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+		await page.mouse.move(x, y);
+		assert.equal(await cursor(), want, 'pointed at');
+		await page.mouse.down();
+		await page.mouse.move(x + 20, y + 20, { steps: 3 });
+		assert.equal(await cursor(), `${want} no-touch`, 'while dragged');
+		await page.mouse.up();
+		assert.equal(await cursor(), 'auto', 'released, it is inactive');
+		await page.mouse.move(x + 21, y + 21);
+		await page.mouse.move(5, 5);
+		assert.equal(await cursor(), 'auto', 'pointed away');
+	}
+	await page.close();
+});
+
 test('react-resizable-panels: a press within the separator\'s 10 px hit area drags it, though another element is on top there', async () => {
 	// The second panel is drawn over the separator, as a block viewer's panel is once a viewport button has resized it.
 	const page = await open(
