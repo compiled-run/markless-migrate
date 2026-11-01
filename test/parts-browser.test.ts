@@ -462,6 +462,23 @@ test('cmdk: as each mounted command scrolls its selected item into view, the pag
 	await page.close();
 });
 
+test('cmdk: the wheel turned over the list under a still pointer leaves the selection where the pointer last moved it', async () => {
+	const many = Array.from({ length: 30 }, (_, i) => commandItem(`i${i}`, `Item ${i}`, false, i === 0).replace('>Item', ' style="height:30px">Item')).join('');
+	const page = await open(`<div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" type="text" value=""><div cmdk-list="" role="listbox" style="height:150px;overflow:auto"><div cmdk-list-sizer=""><div cmdk-group="" role="presentation"><div cmdk-group-items="" role="group">${many}</div></div></div></div></div>`, ['cmdk']);
+	const chosen = () => page.evaluate(() => [...document.querySelectorAll('[cmdk-item][aria-selected="true"]')].map((i) => i.id).join(','));
+	await page.locator('[cmdk-list]').hover();
+	const pointed = await chosen();
+	assert.notEqual(pointed, 'i0', 'moving the pointer onto an item selects it');
+	await page.mouse.wheel(0, 240);
+	await page.waitForFunction(() => document.querySelector('[cmdk-list]')!.scrollTop > 0);
+	await page.waitForTimeout(300);
+	assert.equal(await chosen(), pointed, 'items scrolling under the pointer do not take the selection');
+	await page.mouse.move(10, 400);
+	await page.locator('[cmdk-list]').hover();
+	assert.notEqual(await chosen(), pointed, 'the next pointer move selects the item it is on');
+	await page.close();
+});
+
 test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
