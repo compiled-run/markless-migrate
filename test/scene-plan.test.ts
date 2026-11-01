@@ -358,6 +358,32 @@ test('a frame shown at rest keeps the hidden value an element has of its own whe
 	}
 });
 
+test('a click on the submit button of the form holding a listed field plays its enter use, as Enter does (the chat demo\'s Send)', async () => {
+	const { data } = planned(PROMPT, 'textarea');
+	const part = ts.transpileModule(await readFile(join(ROOT, 'parts/scene.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/scene.js' ? route.fulfill({ contentType: 'text/javascript', body: part }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		await page.evaluate(async ([data]) => {
+			const { playScene } = (await import('/scene.js' as string)) as typeof import('../parts/scene.ts');
+			document.body.innerHTML = '<div data-slot="preview"><p class="you" data-mm-k="2">-</p><p class="reply" data-mm-k="4">-</p><form><textarea placeholder="Ask" data-mm-k="6"></textarea><button type="submit" aria-label="Send" data-mm-k="7" disabled><svg></svg></button></form></div>';
+			const region = document.querySelector('[data-slot="preview"]')!;
+			region.setAttribute('data-mm-scene', JSON.stringify(data));
+			region.querySelector('form')!.addEventListener('submit', (event) => event.preventDefault());
+			for (const type of ['click', 'input', 'keydown']) region.addEventListener(type, (event) => playScene(event, () => {}));
+		}, [data] as const);
+		await page.locator('textarea').pressSequentially('hello there');
+		await page.locator('button').click();
+		await page.waitForTimeout(200);
+		const sent = await page.evaluate(() => ({ you: document.querySelector('.you')!.textContent, reply: document.querySelector('.reply')!.textContent, value: document.querySelector('textarea')!.value }));
+		assert.deepEqual(sent, { you: 'hello there', reply: 'Sure thing.', value: '' });
+	} finally {
+		await browser.close();
+	}
+});
+
 test('a panel whose size variable a frame takes from auto to 0px collapses from the size it has, as React Aria measures it first', async () => {
 	const data = {
 		listed: '[data-slot="preview"] button',
