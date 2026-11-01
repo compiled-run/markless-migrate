@@ -138,9 +138,8 @@ jobs:
         env:
           BUILD: ${{ inputs.build }}
         run: |
-          # Chromium's two routes at a time get three copies of the old server (one answering every cold load was what they waited
-          # on); WebKit's one route at a time gets one, as more servers took CPU its pages needed.
-          OLD_WORKERS=$([ "${{ matrix.engine }}" = webkit ] && echo 1 || echo 3) bash "deploy/$SITE/ci-serve.sh" old
+          # One route at a time is answered by one old server: more servers took CPU its pages needed.
+          bash "deploy/$SITE/ci-serve.sh" old
           bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
       # The routes are packed by what each cost the last run, so no runner is left with the slow pages.
       - name: The last run's per-route times
@@ -174,8 +173,7 @@ jobs:
             OLD_BUILD="$(sha256sum "deploy/$SITE/fetch-old.sh" | cut -d' ' -f1)"
             export REUSE="$RUNNER_TEMP/reuse" REUSE_OUT=out/.migrate/reuse OLD_BUILD
           fi
-          # One process per runner from one longest-first queue. Chromium probes two routes at a time, each with its own browser:
-          # a 4-vCPU runner is busy at two. WebKit probes one: at two it reported 10 to 50 differences the same routes alone do not.
+          # One route at a time: the probe keeps a 4-vCPU runner CPU-bound, so two or four at once saved little and added false findings.
           eval "$(node scripts/ci-flags.ts probe ${{ matrix.engine }})"
           COSTS="$RUNNER_TEMP/costs" ENGINE=${{ matrix.engine }} STRIPS=out/strips node scripts/probe/dead-controls.mjs "$TARGETS" out/${{ matrix.engine }}-${{ matrix.shard }}.jsonl ${{ matrix.shard }} 10 > out/log.txt 2>&1 || { tail -n 20 out/log.txt; exit 1; }
           tail -n 5 out/log.txt
