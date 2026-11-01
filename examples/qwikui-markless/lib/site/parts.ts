@@ -1,5 +1,5 @@
 import type { Part } from '../parts/index.ts';
-import { close, show } from '../parts/qwik-ui/modal.ts';
+import { close, isShown, pageLoaded, show } from '../parts/qwik-ui/modal.ts';
 import { DEMO_PARTS } from './demos.ts';
 import { startPagefind } from './pagefind-search.ts';
 
@@ -102,14 +102,8 @@ function onArrival(): void {
 	theme = '';
 	render();
 	colorSchemeAsOnLoad();
-	// A nested modal leaves the page scroll-locked when it closes (modal.ts); a page load ends that lock.
-	if (!document.querySelector('dialog[open]')) {
-		const body = document.body;
-		body.removeAttribute('data-noscroll-target-scroll-disabled');
-		body.removeAttribute('data-noscroll-target-scroll-scrollbar-width-adjustment');
-		body.style.removeProperty('--noscroll-target-scrollbar-width');
-		body.style.removeProperty('--noscroll-target-padding-right');
-	}
+	// A nested modal leaves the page scroll-locked when it closes, and a close the browser made leaves a listener (modal.ts).
+	pageLoaded();
 }
 let watchingArrivals = false;
 function watchArrivals(): void {
@@ -161,7 +155,7 @@ const mobileNav: Part = {
 		const open = target.closest(on('click', 'header.tsx_header_component_header_div_div_Button_onClick'));
 		if (open) {
 			const dialog = sidebarOf(open);
-			if (dialog) dialog.open ? close(dialog) : show(dialog);
+			if (dialog) isShown(dialog) ? close(dialog) : show(dialog);
 			return !!dialog;
 		}
 		const x = target.closest(on('click', 'header.tsx_header_component_button_onClick'));
@@ -298,7 +292,7 @@ const searchShortcut: Part = {
 		if (event.key !== 'k' || !event.metaKey) return;
 		const dialog = searchDialog();
 		if (!dialog) return;
-		if (dialog.open) close(dialog);
+		if (isShown(dialog)) close(dialog);
 		else {
 			startPagefind();
 			show(dialog);

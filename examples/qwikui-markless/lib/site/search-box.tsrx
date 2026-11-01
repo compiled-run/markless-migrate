@@ -27,6 +27,7 @@ export default function SearchBox() @{
 			autocomplete="off"
 			placeholder="Find anything"
 			data-id="search"
+			data-mm-qwik="keydown:search.tsx_Search_component_onKeyDown"
 			class="rounded-base flex border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 h-12 w-full rounded-b-none border-none focus-visible:ring-0 focus-visible:outline-hidden"
 			onInput={(event) => {
 				const typed = (event.currentTarget as HTMLInputElement).value;
@@ -47,10 +48,12 @@ export default function SearchBox() @{
 				if (event.key === 'Home') active = 0;
 				if (event.key === 'End' && count) active = count - 1;
 				if (event.key === 'Enter') {
+					// With nothing highlighted, the Combobox throws before search.tsx's own handler closes the dialog.
 					const link = highlightedLink(input);
+					if (!link) return;
 					const dialog = input.closest('dialog');
 					if (dialog) close(dialog);
-					if (link) location.href = link.href;
+					location.href = link.href;
 				}
 			}}
 		/>
