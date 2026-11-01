@@ -48,7 +48,8 @@ import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL,
 import { captureOtps, OtpPlan } from './otp.ts';
 import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
-import { queryVariants, variantValue, VARIANT_DECLARATIONS, VARIANT_PICK, VARIANT_TABLE, type QueryVariants } from './query-variants.ts';
+import { fragmentPath } from '../cache/apply.ts';
+import { queryVariants, variantValue, VARIANT_DECLARATIONS, variantPick, VARIANT_TABLE, type QueryVariants } from './query-variants.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -2100,6 +2101,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		return Boolean(b?.declare?.length || b?.extra?.some((e) => /^on[A-Z]/.test(e)));
 	};
 	for (const [route, extras] of pagesWiring(bodyParts.extras, wired)) if (!ownExtras.has(route)) ownExtras.set(route, extras);
+	const fragmentPrefix = await fragmentPath(app);
 	const fileOf = (route: string) => (route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(new URL(route, options.old).pathname, folders));
 	const variantPlans = new Map<string, { readonly base: string; readonly plan: QueryVariants; failed?: string; readonly used: Set<string>; readonly components: Set<SharedComponent> }>();
 	const byPage = new Map<string, string[]>();
@@ -2136,7 +2138,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					}
 					if (el !== p.root) return own;
 					if (planned && own?.replace !== undefined) planned.failed ??= 'the page root is a component';
-					return mergeBindings(own, { extra: [ROOT_HANDLERS, ...(planned ? [VARIANT_PICK] : [])] });
+					return mergeBindings(own, { extra: [ROOT_HANDLERS, ...(planned ? [variantPick(fragmentPrefix)] : [])] });
 				},
 				dropped: noteDropped,
 			});

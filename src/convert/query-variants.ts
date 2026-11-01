@@ -96,5 +96,12 @@ export const VARIANT_DECLARATIONS = [`let ${VARIANT_STATE} = state('');`, `const
 
 export const variantValue = (key: string): string => `${VARIANT_VALUES}.${key}`;
 
-/** The page's handler that picks its variant once it runs: a query no variant was captured for shows the base, as the old switch's default did. */
-export const VARIANT_PICK = `onVisible={() => { ${VARIANT_STATE} = Object.hasOwn(${VARIANT_TABLE}, location.search) ? location.search : ''; }}`;
+/**
+ * The page's handler that picks its variant once it runs, from the query it was opened with: the router's fragment
+ * request for an in-place navigation, else the document's own request. Page code may rewrite the address by then (a
+ * designer dropping its defaults). A query no variant was captured for shows the base, as the old switch's default did.
+ */
+export function variantPick(fragmentPrefix: string | undefined): string {
+	const fragment = fragmentPrefix ? `performance.getEntriesByType('resource').map((e) => new URL(e.name)).filter((u) => u.pathname === ${JSON.stringify(fragmentPrefix)} + location.pathname).at(-1) ?? ` : '';
+	return `onVisible={() => { const loaded = new URL(performance.getEntriesByType('navigation')[0]?.name ?? location.href); const opened = ${fragment}(loaded.pathname === location.pathname ? loaded : location); const search = opened.search; ${VARIANT_STATE} = Object.hasOwn(${VARIANT_TABLE}, search) ? search : ''; }}`;
+}
