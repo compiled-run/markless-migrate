@@ -677,3 +677,25 @@ test('an opening Base UI submenu is painted over its menu, as its portal mounts 
 	assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="menu"]')?.getAttribute('aria-labelledby'), [email.x + 5, email.y + 5]), 'sub1');
 	await page.close();
 });
+
+test('an item-aligned Base UI select that closes takes the unplaced positioner styles at once (absolute at 0,0, hidden, inert to the pointer, its popup no longer stretched), and is placed again when it reopens', async () => {
+	// The popup's captured style holds the stretch alignItemWithTrigger gives it; a focus guard comes before it.
+	const page = await open(select.replace('<div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed>', '<span aria-hidden="true" tabindex="0" data-base-ui-focus-guard></span><div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed style="height: 100%">'), ['base-ui/select']);
+	const read = () =>
+		page.evaluate(() => {
+			const positioner = document.querySelector<HTMLElement>('[data-mm-layer="base"] > [data-side="none"]')!;
+			const popup = positioner.querySelector<HTMLElement>('[data-slot="select-content"]')!;
+			return `${positioner.style.position} ${positioner.style.left} ${positioner.style.opacity || '-'} ${positioner.style.pointerEvents || '-'} popup:${popup.style.height || '-'}`;
+		});
+	await page.click('#base');
+	await settled(page);
+	assert.match(await read(), /^fixed \d+(\.\d+)?px - - popup:100%$/);
+	await page.getByRole('option', { name: 'Banana' }).click();
+	assert.equal(await read(), 'absolute 0px 0 none popup:-');
+	await page.click('#base');
+	await settled(page);
+	assert.match(await read(), /^fixed \d+(\.\d+)?px - - popup:100%$/);
+	await page.keyboard.press('Escape');
+	assert.equal(await read(), 'absolute 0px 0 none popup:-');
+	await page.close();
+});
