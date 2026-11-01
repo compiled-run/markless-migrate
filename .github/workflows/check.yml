@@ -46,6 +46,10 @@ on:
         description: Reuse each route's last result while it ships the same HTML and code ('false' checks every route)
         required: false
         default: 'true'
+      only:
+        description: A targets file in the repository to deal into shards instead of targets, which stays the whole site's (template groups)
+        required: false
+        default: ''
       max_parallel:
         description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI), or 24 with priority deploy
         required: false
@@ -181,7 +185,7 @@ jobs:
             if gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$RUNNER_TEMP/earlier" 2>/dev/null; then echo "route times from run $run"; break; fi
           done
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || inputs.only || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
