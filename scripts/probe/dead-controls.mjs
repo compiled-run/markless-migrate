@@ -210,7 +210,11 @@ function read(prefix) {
 	const affected = new Set();
 	// A style that differs only in animation or transition timing (Radix tabs drop animation-duration: 0s after mount) shows nothing new.
 	const motionless = (v) => (v ?? '').split(';').map((d) => d.trim()).filter((d) => d && !/^(animation|transition)/.test(d)).sort().join(';');
-	const attrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => (n === 'style' ? motionless(el.getAttribute(n)) !== motionless(v) : el.getAttribute(n) !== v))).map(([el]) => el));
+	// Qwik writes a component's bind:* props (Qwik UI's Modal.Root bind:show) as attributes for itself; one a stylesheet selects on can show, so it still counts.
+	let bindStyled;
+	const styledBy = (rules) => [...rules].some((r) => (r.selectorText ?? '').includes('bind\\:') || (r.cssRules ? styledBy(r.cssRules) : false));
+	const internal = (n) => n.startsWith('bind:') && !(bindStyled ??= [...document.styleSheets].some((sheet) => { try { return styledBy(sheet.cssRules); } catch { return true; } }));
+	const attrs = new Set([...st.was].filter(([el, m]) => [...m].some(([n, v]) => !internal(n) && (n === 'style' ? motionless(el.getAttribute(n)) !== motionless(v) : el.getAttribute(n) !== v))).map(([el]) => el));
 	for (const [e, before] of st.shown ?? []) {
 		if (!e.isConnected || e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) === before) continue;
 		if (skip.some((s) => s && (s === e || s.contains(e))) || e.closest('[data-dc-prefix]')) continue;
