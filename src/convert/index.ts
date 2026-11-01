@@ -44,7 +44,7 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort, type TrailingOutput } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, splitBody, type LayerTable } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, SERVED_LAYER_BYTES, splitBody, type LayerTable } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
@@ -1035,15 +1035,25 @@ function staticVariants(base: PageVariant, others: readonly PageVariant[], varia
 			if (a.layer) kept.push(a.layer);
 			continue;
 		}
-		const mine = a.layer ? layers.servedLayer(a.layer) : undefined;
-		const files = theirs.map((t) => (t.layer ? layers.servedLayer(t.layer) : undefined));
-		if (!mine || files.some((f) => f?.shell !== mine.shell)) return undefined;
-		const key = `l${i}`;
-		table['']![key] = mine.path;
-		others.forEach((v, k) => (table[v.search]![key] = files[k]!.path));
-		after.push({ markup: mine.markup(variantValue(key)) });
+		if (!a.layer || theirs.some((t) => !t.layer)) return undefined;
+		const mine = layers.servedLayer(a.layer);
+		const files = theirs.map((t) => layers.servedLayer(t.layer!));
+		if (mine && files.every((f) => f?.shell === mine.shell)) {
+			const key = `l${i}`;
+			table['']![key] = mine.path;
+			others.forEach((v, k) => (table[v.search]![key] = files[k]!.path));
+			after.push({ markup: mine.markup(variantValue(key)) });
+			continue;
+		}
+		// Hidden until their own key opens them, each variant's layer sits beside the others: the variant's trigger names its key.
+		const names = [...new Set([a.layer, ...theirs.map((t) => t.layer!)])];
+		const known = names.map((n) => layers.layerOf(n));
+		if (known.some((k) => !k || layers.servedLayer(names[known.indexOf(k)]!)) || new Set(known.map((k) => k!.key)).size !== names.length) return undefined;
+		if (known.slice(1).reduce((n, k) => n + k!.bytes, 0) > SERVED_LAYER_BYTES) return undefined;
+		after.push({ markup: names.map((n) => `<${n} />`).join('') });
+		kept.push(...names);
 	}
-	const differs = Object.values(table).some((row) => Object.keys(row).length > 0);
+	const differs = Object.values(table).some((row) => Object.keys(row).length > 0) || after.some((x, i) => x.markup !== base.after[i]!.markup);
 	return { markup: differs ? pageMarkup(base.planned, base.leading, after) : pageMarkup(base.root, base.leading, base.after), table, differs, layers: differs ? kept : base.after.flatMap((a) => (a.layer ? [a.layer] : [])) };
 }
 

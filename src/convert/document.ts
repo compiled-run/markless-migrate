@@ -161,6 +161,8 @@ export interface LayerTable {
 	own(route: string): readonly string[];
 	/** A served layer's file, and its markup with the file given as an expression: two whose `shell` is alike differ only in their file. */
 	servedLayer(name: string): { readonly path: string; readonly shell: string; readonly markup: (src: string) => string } | undefined;
+	/** The key a layer opens by, and the length of its markup. */
+	layerOf(name: string): { readonly key: string; readonly bytes: number } | undefined;
 }
 
 /**
@@ -179,11 +181,13 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 	const served: { path: string; html: string }[] = [];
 	const layerOf = new Map([...layers.values()].flat().map((l) => [l.markup, l]));
 	const servedBy = new Map<string, { path: string; shell: string; markup: (src: string) => string }>();
+	const info = new Map<string, { key: string; bytes: number }>();
 	const nameOf = (markup: string) => {
 		if (!ids.has(markup)) {
 			const n = ids.size;
 			ids.set(markup, n);
 			const layer = layerOf.get(markup);
+			if (layer) info.set(`Layer${n}`, { key: layer.key, bytes: markup.length });
 			// A layer that holds state (a date picker's calendar) declares it in its component; it is never served as a file.
 			let body = `${(layer?.declare ?? []).map((line) => `\t${line}\n`).join('')}\t<>${markup}</>\n`;
 			// A layer a site component stands in for is served whatever its size: the component renders the shell, and the file holds the rest.
@@ -212,7 +216,7 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 	const shared = new Set(everywhere);
 	const top = everywhere.map((m) => nameOf(m));
 	const own = new Map(routes.map((r) => [r, [...new Set((layers.get(r) ?? []).filter((l) => !shared.has(l.markup)).map((l) => nameOf(l.markup)))]]));
-	return { files, served, everywhere: top, own: (route) => own.get(route) ?? [], servedLayer: (name) => servedBy.get(name) };
+	return { files, served, everywhere: top, own: (route) => own.get(route) ?? [], servedLayer: (name) => servedBy.get(name), layerOf: (name) => info.get(name) };
 }
 
 /**
