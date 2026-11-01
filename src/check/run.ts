@@ -103,6 +103,8 @@ export interface CheckOptions {
 	readonly concurrency?: number;
 	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
 	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
+	/** A route's own journey budget (check-targets.json "journeys"), over `journeys` for that route only. */
+	readonly routeJourneys?: Readonly<Record<string, Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>>>;
 	/** Routes served by the new app (`.migrate/switched.json`): a journey on NEW that reaches any other page gets the old app's, as through the front door. */
 	readonly switched?: readonly string[];
 	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
@@ -710,6 +712,28 @@ export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: r
 /** What the embed step may add to a route's check: its embeds pictured in every state and scheme, then activated. */
 export const EMBED_STEP_BUDGET_MS = 600_000;
 
+/** A targets file's "journeys": each route's own --journey-budget (seconds) and --max-journeys, `{ "<route>": { "journey-budget": 9600, "max-journeys": 1200 } }`. */
+export function parseRouteJourneys(journeys: unknown): NonNullable<CheckOptions['routeJourneys']> {
+	if (journeys === undefined) return {};
+	if (!journeys || typeof journeys !== 'object' || Array.isArray(journeys)) throw new Error('"journeys" must map each route to its "journey-budget" and "max-journeys"');
+	const out: Record<string, NonNullable<CheckOptions['journeys']>> = {};
+	for (const [route, set] of Object.entries(journeys as Record<string, unknown>)) {
+		if (!set || typeof set !== 'object') throw new Error(`journeys["${route}"] must be an object`);
+		const { 'journey-budget': seconds, 'max-journeys': cap, ...extra } = set as Record<string, unknown>;
+		if (Object.keys(extra).length) throw new Error(`journeys["${route}"] takes "journey-budget" and "max-journeys", not ${Object.keys(extra).join(', ')}`);
+		if (seconds !== undefined && !(typeof seconds === 'number' && seconds > 0)) throw new Error(`journeys["${route}"]["journey-budget"] must be a number of seconds above 0`);
+		if (cap !== undefined && !(Number.isInteger(cap) && (cap as number) >= 1)) throw new Error(`journeys["${route}"]["max-journeys"] must be a whole number of at least 1`);
+		out[route] = { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap as number } : {}) };
+	}
+	return out;
+}
+
+/** The journey budget one route's check runs with: the run's, with the route's own on top. */
+export function routeJourneyBudget(options: Pick<CheckOptions, 'journeys' | 'routeJourneys'>, route: string): CheckOptions['journeys'] {
+	const own = options.routeJourneys?.[route];
+	return own ? { ...options.journeys, ...own } : options.journeys;
+}
+
 export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'embeds'>): number {
 	return options.timeoutMs ?? Math.max(1_800_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
 }
@@ -939,7 +963,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const full = pages.filter((route) => !light(route));
 			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
-			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
+			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, ...(options.routeJourneys ? { routeJourneys: options.routeJourneys } : {}), only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const earlier = await progress?.done(route, role);
 				if (earlier) {
@@ -947,7 +971,9 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					return earlier;
 				}
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, shared!) : { run: roleRun, failures: [] };
-				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
+				const own = options.routeJourneys?.[route];
+				const routed = own ? { ...run, journeys: { ...run.journeys, ...own } } : run;
+				const done = await withDeadline(route, routed, routeTimeout({ ...options, journeys: routeJourneyBudget(options, route) }), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
 				const old = oldCaptures.get(done);
 				oldCaptures.delete(done);
 				forgetFailures(done.failures);

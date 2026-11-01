@@ -25,7 +25,7 @@ import { readAuthFile } from './check/auth.ts';
 import { bypassOptions } from './check/blocked.ts';
 import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
-import { jsonReportParts, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
+import { jsonReportParts, parseRouteJourneys, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { partialLine, summarize } from './check/summary.ts';
 import { TEMPLATE_THRESHOLD } from './check/templates.ts';
@@ -170,6 +170,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
           --site-targets <targets.json> names every page of the site when this run checks a shard of it: groups,
           and page load, which runs on representatives too, are then made over the whole site, not the shard.
+          A targets file's "journeys" gives one route its own budget, over the flags for that route only:
+          { "<route>": { "max-journeys": <n>, "journey-budget": <seconds> } } (--targets and --site-targets).
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
           journeys are explored main content first (tables, forms), until each element is used or
@@ -466,6 +468,14 @@ const err = (text: string) => process.stderr.write(text);
 function fail(message: string): never {
 	err(`markless-migrate: ${message}\n`);
 	process.exit(2);
+}
+
+function routeJourneyOptions(path: string, journeys: unknown): NonNullable<CheckOptions['routeJourneys']> {
+	try {
+		return parseRouteJourneys(journeys);
+	} catch (error) {
+		fail(`${path}: ${(error as Error).message}`);
+	}
 }
 
 function journeyOptions(budget: string | undefined, max: string | undefined, depth?: string): NonNullable<CheckOptions['journeys']> {
@@ -982,14 +992,17 @@ async function main(argv: string[]): Promise<number> {
 			}
 			if (values['write-targets']) {
 				if (!values.all || !routes) fail('--write-targets writes what --all checks: pass --all');
-				await writeFile(resolve(values['write-targets']), `${JSON.stringify({ routes, endpoints: targets?.endpoints ?? [], redirects: targets?.redirects ?? [], unchecked: targets?.unchecked ?? [] }, null, '\t')}\n`);
+				const kept = (await readFile(resolve(values['write-targets']), 'utf8').then((t) => JSON.parse(t) as { journeys?: unknown }, () => undefined))?.journeys;
+				await writeFile(resolve(values['write-targets']), `${JSON.stringify({ routes, endpoints: targets?.endpoints ?? [], redirects: targets?.redirects ?? [], unchecked: targets?.unchecked ?? [], ...(kept !== undefined ? { journeys: kept } : {}) }, null, '\t')}\n`);
 				out(`Wrote ${values['write-targets']}: ${routes.length} pages, ${targets?.endpoints.length ?? 0} endpoints, ${targets?.redirects.length ?? 0} redirects.\n`);
 				return 0;
 			}
+			let routeJourneys: NonNullable<CheckOptions['routeJourneys']> = {};
 			if (values.targets) {
 				if (values.all || values.route?.length) fail('--targets names the routes itself: leave out --all and --route');
-				const file = JSON.parse(await readFile(resolve(values.targets), 'utf8')) as { routes: string[]; endpoints?: string[]; redirects?: string[]; unchecked?: CheckOptions['unchecked'] };
+				const file = JSON.parse(await readFile(resolve(values.targets), 'utf8')) as { routes: string[]; endpoints?: string[]; redirects?: string[]; unchecked?: CheckOptions['unchecked']; journeys?: unknown };
 				routes = file.routes;
+				routeJourneys = { ...routeJourneys, ...routeJourneyOptions(values.targets, file.journeys) };
 				targets = { endpoints: file.endpoints ?? [], redirects: file.redirects ?? [], unchecked: file.unchecked ?? [] };
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
@@ -1016,7 +1029,9 @@ async function main(argv: string[]): Promise<number> {
 			requireNetworkBrowsers(load, values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
-			const site = values['site-targets'] ? (JSON.parse(await readFile(resolve(values['site-targets']), 'utf8')) as { routes: string[] }).routes : undefined;
+			const siteFile = values['site-targets'] ? (JSON.parse(await readFile(resolve(values['site-targets']), 'utf8')) as { routes: string[]; journeys?: unknown }) : undefined;
+			const site = siteFile?.routes;
+			if (siteFile) routeJourneys = { ...routeJourneyOptions(values['site-targets']!, siteFile.journeys), ...routeJourneys };
 			const newDir = resolve(values['new-source'] ?? cwd);
 			const commit = await gitHead(newDir);
 			if (values.changed) {
@@ -1056,6 +1071,7 @@ async function main(argv: string[]): Promise<number> {
 				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR)).catch((error: Error) => fail(error.message))),
 				...(concurrency ? { concurrency } : {}),
 				journeys,
+				...(Object.keys(routeJourneys).length ? { routeJourneys } : {}),
 				...deadline,
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),

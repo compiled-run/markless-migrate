@@ -127,5 +127,11 @@
 		"/repro",
 		"/repro/"
 	],
-	"unchecked": []
+	"unchecked": [],
+	"journeys": {
+		"/docs/headless/accordion/": {
+			"max-journeys": 1200,
+			"journey-budget": 9600
+		}
+	}
 }
