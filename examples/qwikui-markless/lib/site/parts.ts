@@ -92,19 +92,16 @@ function colorSchemeAsOnLoad(): void {
 	if (stored === 'light' || stored === 'dark' || !stored) style.colorScheme = stored || 'light';
 	else style.removeProperty('color-scheme');
 }
-// qwikui.com redraws its sidebar per navigation (no link transitions, scroll at the top); here it stays, so both are imitated
-// (head-script.ts holds the transitions from the press on).
-const ARRIVING = 'data-mm-arriving';
-function release(): void {
-	document.documentElement.removeAttribute(ARRIVING);
-	document.head.querySelector(`style[${ARRIVING}]`)?.remove();
-}
+// qwikui.com follows its links with page loads; here a page arrives in place and the header and sidebar stay, so once the
+// router has drawn it (marklessrouterrendered) they are reset as a load would draw them. head-script.ts holds transitions
+// from the press until then, so none of this animates.
 function onArrival(): void {
 	for (const nav of document.querySelectorAll('nav.navigation-docs')) nav.scrollTop = 0;
-	// A page load drops focus and starts ThemeProvider's signal empty; the header stays here, so both are reset as one would.
 	if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
+	// ThemeProvider's signal starts empty on every load.
 	theme = '';
 	render();
+	colorSchemeAsOnLoad();
 	// A nested modal leaves the page scroll-locked when it closes (modal.ts); a page load ends that lock.
 	if (!document.querySelector('dialog[open]')) {
 		const body = document.body;
@@ -113,30 +110,13 @@ function onArrival(): void {
 		body.style.removeProperty('--noscroll-target-scrollbar-width');
 		body.style.removeProperty('--noscroll-target-padding-right');
 	}
-	requestAnimationFrame(() =>
-		requestAnimationFrame(() => {
-			colorSchemeAsOnLoad();
-			// Styles settle with transitions still off, so nothing set on arrival animates once they are back.
-			void getComputedStyle(document.documentElement).colorScheme;
-			void document.body.offsetWidth;
-			requestAnimationFrame(release);
-		}),
-	);
 }
 let watchingArrivals = false;
 function watchArrivals(): void {
 	if (watchingArrivals) return;
 	watchingArrivals = true;
-	for (const name of ['pushState', 'replaceState'] as const) {
-		const original = history[name].bind(history);
-		history[name] = (...args: Parameters<History['pushState']>) => {
-			const before = location.pathname;
-			original(...args);
-			if (location.pathname !== before) onArrival();
-		};
-	}
-	window.addEventListener('popstate', onArrival);
-	// Parts load on first use (loadOnUse), so a first navigation may have arrived before they were in.
+	document.addEventListener('marklessrouterrendered', onArrival);
+	// Parts load on first use (loadOnUse), so the first page may have arrived before they were in.
 	if (location.pathname !== (globalThis as { __mmLoadedPath?: string }).__mmLoadedPath) onArrival();
 }
 
