@@ -127,6 +127,10 @@ test('the generated plugin replaces the caching an app set for a path, keeps its
 	assert.deepEqual(config.nitro.routeRules['/_markless/fragment/'], { isr: { expiration: false, allowQuery: [] } });
 	assert.deepEqual(config.nitro.routeRules['/old/'], { proxy: { to: 'https://old.example/old/' } });
 	assert.deepEqual(config.nitro.vercel.config.routes, [{ src: '/x', dest: '/y' }], 'the app\'s own Vercel routes are left as they are');
+	assert.equal(config.nitro.prerender, undefined, 'Vercel keeps Nitro\'s folder layout');
+	const cloudflare: { options: Record<string, any> } = { options: { routeRules: {}, preset: 'cloudflare-module', prerender: { crawlLinks: false } } };
+	applyRules(cloudflare);
+	assert.deepEqual(cloudflare.options.prerender, { crawlLinks: false, autoSubfolderIndex: false }, 'on Cloudflare /guide is a file, guide.html: as guide/index.html, html_handling redirects /guide to /guide/');
 });
 
 test('with --prerender every cached page and its fragment URL are built ahead, so the first click after a deploy runs no function', () => {
