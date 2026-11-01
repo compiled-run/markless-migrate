@@ -518,6 +518,26 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.close();
 });
 
+test('cmdk: a list scrolled before its layer closed opens again at the top, so the pointer lands where it did the first time', async () => {
+	const many = Array.from({ length: 30 }, (_, i) => commandItem(`i${i}`, `Item ${i}`, false, i === 0).replace('>Item', ' style="height:30px">Item')).join('');
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k"><div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" type="text" value=""><div cmdk-list="" role="listbox" style="height:150px;overflow:auto"><div cmdk-list-sizer=""><div cmdk-group="" role="presentation"><div cmdk-group-items="" role="group">${many}</div></div></div></div></div></div>`, ['cmdk']);
+	const chosen = () => page.evaluate(() => [...document.querySelectorAll('[cmdk-item][aria-selected="true"]')].map((i) => i.id).join(','));
+	await page.locator('[cmdk-input]').focus();
+	await page.locator('[cmdk-list]').hover();
+	const pointed = await chosen();
+	await page.mouse.wheel(0, 240);
+	await page.waitForFunction(() => document.querySelector('[cmdk-list]')!.scrollTop > 0);
+	await page.locator('#trigger').focus();
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => !document.querySelector('[cmdk-item][aria-selected="true"]'));
+	await page.mouse.move(10, 400);
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
+	assert.equal(await page.evaluate(() => document.querySelector('[cmdk-list]')!.scrollTop), 0, 'cmdk mounts the list again, so it starts at the top');
+	await page.locator('[cmdk-list]').hover();
+	assert.equal(await chosen(), pointed, 'the pointer lands on the item it landed on the first time');
+	await page.close();
+});
+
 test('cmdk: items the page renders during a search are filtered and sorted by it; with nothing selected, or the selected item gone, the first is', async () => {
 	const page = await open(COMMAND, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
