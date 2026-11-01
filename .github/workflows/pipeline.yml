@@ -129,7 +129,7 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 concurrency:
-  group: pipeline-${{ inputs.site || github.ref }}
+  group: pipeline-${{ inputs.site || github.ref }}-${{ inputs.preset || 'vercel' }}
   cancel-in-progress: false
 
 jobs:
