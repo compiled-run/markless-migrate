@@ -97,13 +97,19 @@ function alignOver(trigger: HTMLElement, p: Popup): boolean {
 	return true;
 }
 
-function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): void {
-	for (const o of root.querySelectorAll<HTMLElement>(OPTION)) {
-		const on = o === option;
-		o.setAttribute('aria-selected', String(on));
-		if (on) o.setAttribute('data-selected', '');
-		else o.removeAttribute('data-selected');
+// An option's selected state, its indicator (Select.ItemIndicator, mounted only while selected: convert gave every other
+// option a hidden copy, data-mm-indicator) shown with it.
+function setSelected(o: HTMLElement, on: boolean): void {
+	o.setAttribute('aria-selected', String(on));
+	o.toggleAttribute('data-selected', on);
+	for (const indicator of o.querySelectorAll<HTMLElement>('[data-mm-indicator]')) {
+		indicator.toggleAttribute('hidden', !on);
+		indicator.toggleAttribute('data-selected', on);
 	}
+}
+
+function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): void {
+	for (const o of root.querySelectorAll<HTMLElement>(OPTION)) setSelected(o, o === option);
 	const label = ([...option.children].find((c) => c.tagName === 'DIV') ?? option).textContent ?? '';
 	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it. Select.Value shows
 	// the Root's items' label, which convert recorded where it is not the option's own text.
@@ -143,12 +149,7 @@ function openSelect(trigger: HTMLElement, key?: string): boolean {
 	}
 	endTyping(typingOf(trigger));
 	const label = selectedValue.get(trigger);
-	if (label !== undefined) for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) {
-		const on = (o.textContent ?? '').trim() === label.trim();
-		o.setAttribute('aria-selected', String(on));
-		if (on) o.setAttribute('data-selected', '');
-		else o.removeAttribute('data-selected');
-	}
+	if (label !== undefined) for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) setSelected(o, (o.textContent ?? '').trim() === label.trim());
 	if (!alignOver(trigger, p) && p.positioner) {
 		for (const prop of ['top', 'bottom', 'left', 'height', 'max-height', 'margin-top', 'margin-bottom']) p.positioner.style.removeProperty(prop);
 		(p.positioner.firstElementChild as HTMLElement | null)?.style.removeProperty('height');

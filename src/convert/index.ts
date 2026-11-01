@@ -446,26 +446,71 @@ const triggerKeys = new Map<Element, string>();
 // Content disclosures mounted inside the page on opening, by trigger: rendered by Markless in an arm where they went.
 const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; nodes?: readonly Element[]; panelId?: string; panelDepth?: number }[] = [];
 
-/**
- * Radix Select mounts the indicator only in the checked option: every other option of a captured listbox gets a hidden
- * copy where its own indicator would go (the option's empty first span), so choosing one only switches `hidden`.
- */
-function selectIndicators(top: Element): void {
-	for (const listbox of [top, ...walkAll(top)]) {
-		if (attr(listbox, 'role') !== 'listbox' || attr(listbox, 'data-slot') !== 'select-content') continue;
-		const optionsOf = walkAll(listbox).filter((o) => attr(o, 'role') === 'option');
-		const holder = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && !attr(c, 'id'));
-		const checked = optionsOf.find((o) => attr(o, 'data-state') === 'checked');
-		const indicator = checked && holder(checked) && elementChildren(holder(checked)!)[0];
-		if (!indicator) continue;
-		indicator.attrs = [...indicator.attrs, { name: 'data-mm-indicator', value: '' }];
+// A Radix select item's indicator from any captured list of the site, for a list captured with nothing chosen (a
+// placeholder): Radix renders SelectItemIndicator's content only in the checked item, inside a holder every item has.
+// Keyed by the item's class: a list takes the indicator of an item styled as its own (a style's check is its own size).
+let selectIndicatorFallback: ReadonlyMap<string, Element> | undefined;
+export function selectIndicatorIn(reveals: readonly Reveal[]): Map<string, Element> {
+	const out = new Map<string, Element>();
+	for (const reveal of reveals)
+		for (const added of reveal.added) {
+			if (!added.html.includes('data-state="checked"') || !added.html.includes('role="option"')) continue;
+			for (const o of walk(parseFragment(added.html) as unknown as Element)) {
+				if (attr(o, 'role') !== 'option' || attr(o, 'data-state') !== 'checked') continue;
+				const holder = elementChildren(o).find((c) => c.tagName === 'span' && !attr(c, 'id'));
+				const indicator = holder && elementChildren(holder)[0];
+				if (indicator && !out.has(attr(o, 'class') ?? '')) out.set(attr(o, 'class') ?? '', indicator);
+			}
+		}
+	return out;
+}
+
+export function selectIndicators(top: Element, fallbacks: ReadonlyMap<string, Element> | undefined = selectIndicatorFallback): void {
+	const chosenOf = (o: Element) => attr(o, 'data-state') === 'checked' || attr(o, 'aria-selected') === 'true';
+	for (const list of [top, ...walkAll(top)]) {
+		if (attr(list, 'role') !== 'listbox' || !/select/.test(attr(list, 'data-slot') ?? '') && !walkAll(list).some((o) => attr(o, 'data-slot') === 'select-item')) continue;
+		const optionsOf = walkAll(list).filter((o) => attr(o, 'role') === 'option');
+		const chosen = optionsOf.filter(chosenOf);
+		const other = optionsOf.find((o) => !chosenOf(o));
+		// A Radix list with nothing checked: every item's empty holder gets a hidden copy of the site's indicator.
+		const fallback = fallbacks?.get(attr(optionsOf[0] ?? list, 'class') ?? '') ?? fallbacks?.values().next().value;
+		if (!chosen.length && fallback && optionsOf.length && optionsOf.every((o) => attr(o, 'data-state') === 'unchecked')) {
+			for (const o of optionsOf) {
+				const holder = elementChildren(o).find((c) => c.tagName === 'span' && !attr(c, 'id'));
+				if (!holder || elementChildren(holder).length) continue;
+				const copy = parseFragment(outer(fallback)).childNodes[0] as unknown as Element;
+				copy.attrs = [...copy.attrs.filter((a) => a.name !== 'hidden' && a.name !== 'data-mm-indicator'), { name: 'data-mm-indicator', value: '' }, { name: 'hidden', value: '' }];
+				copy.parentNode = holder as never;
+				holder.childNodes.push(copy as never);
+			}
+			continue;
+		}
+		if (chosen.length !== 1 || !other) continue;
+		const extra = (mine: Element, theirs: Element): { el: Element; path: number[] } | undefined => {
+			const kids = elementChildren(mine);
+			const them = elementChildren(theirs);
+			for (const [i, k] of kids.entries()) {
+				const t = them[i];
+				if (!t || t.tagName !== k.tagName) return { el: k, path: [i] };
+				const deeper = extra(k, t);
+				if (deeper) return { el: deeper.el, path: [i, ...deeper.path] };
+			}
+			return undefined;
+		};
+		const found = extra(chosen[0]!, other);
+		if (!found) continue;
+		const indicator = found.el;
+		indicator.attrs = [...indicator.attrs.filter((a) => a.name !== 'data-mm-indicator'), { name: 'data-mm-indicator', value: '' }];
 		for (const o of optionsOf) {
-			const h = holder(o);
-			if (o === checked || !h || elementChildren(h).length) continue;
+			if (o === chosen[0]) continue;
+			let parent: Element | undefined = o;
+			for (const i of found.path.slice(0, -1)) parent = parent && elementChildren(parent)[i];
+			const at = found.path.at(-1)!;
+			if (!parent || elementChildren(parent).length !== at) continue;
 			const copy = parseFragment(outer(indicator)).childNodes[0] as unknown as Element;
-			copy.attrs = [...copy.attrs, { name: 'hidden', value: '' }];
-			copy.parentNode = h as never;
-			h.childNodes.push(copy as never);
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }];
+			copy.parentNode = parent as never;
+			parent.childNodes.push(copy as never);
 		}
 	}
 }
@@ -1628,6 +1673,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, captured] of tablesRead) tables.expect(route, captured);
 	layerTables = tables;
 	qwikHandlers = undefined;
+	selectIndicatorFallback = selectIndicatorIn([...revealed.values()].flat());
 	for (const ref of captures) {
 		if (ref.status !== 200 || qwikHandlers) continue;
 		if (!frameworkBuilds((await ref.load()).server).some((b) => b.framework === 'Qwik')) break;

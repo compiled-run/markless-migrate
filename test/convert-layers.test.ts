@@ -256,3 +256,21 @@ test("a Base UI combobox list captured with nothing selected gets the indicator 
 	assert.equal(marks.length, 2, 'every item has one');
 	assert.ok(marks.every((el) => attrOf(el, 'hidden') === '' && attrOf(el, 'data-selected') === undefined && attrOf(el, 'class') === 'check'));
 });
+
+test("a select's chosen-item indicator, which only the chosen item renders, is copied hidden into every other item, Radix's inside its holder and Base UI's beside the text", async () => {
+	const { selectIndicators } = await import('../src/convert/index.ts');
+	const { parseFragment } = await import('parse5');
+	const { attr: attrOf, walk: walkOf } = await import('../src/convert/dom.ts');
+	type El = import('../src/convert/dom.ts').Element;
+	const base = parseFragment('<div role="listbox"><div role="option" aria-selected="false" data-slot="select-item"><div>English</div></div><div role="option" aria-selected="true" data-slot="select-item"><div>Arabic</div><span data-selected="" aria-hidden="true"><svg></svg></span></div></div>').childNodes[0] as unknown as El;
+	selectIndicators(base);
+	const options = [...walkOf(base)].filter((e) => attrOf(e, 'role') === 'option');
+	assert.equal(outer(options[0]!), '<div role="option" aria-selected="false" data-slot="select-item"><div>English</div><span data-selected="" aria-hidden="true" data-mm-indicator="" hidden=""><svg></svg></span></div>');
+	assert.match(outer(options[1]!), /<span data-selected="" aria-hidden="true" data-mm-indicator=""><svg><\/svg><\/span>/);
+	const radix = parseFragment('<div role="listbox" data-slot="select-content"><div role="option" data-state="unchecked"><span></span><span>A</span></div><div role="option" data-state="checked"><span><svg class="check"></svg></span><span>B</span></div></div>').childNodes[0] as unknown as El;
+	selectIndicators(radix);
+	assert.match(outer(radix), /<div role="option" data-state="unchecked"><span><svg class="check" data-mm-indicator="" hidden=""><\/svg><\/span><span>A<\/span><\/div>/);
+	const placeholder = parseFragment('<div role="listbox" data-slot="select-content"><div role="option" data-state="unchecked"><span></span><span>A</span></div><div role="option" data-state="unchecked"><span></span><span>B</span></div></div>').childNodes[0] as unknown as El;
+	selectIndicators(placeholder, new Map([['', parseFragment('<svg class="check"></svg>').childNodes[0] as unknown as El]]));
+	assert.equal([...walkOf(placeholder)].filter((e) => attrOf(e, 'data-mm-indicator') !== undefined && attrOf(e, 'hidden') !== undefined).length, 2, 'a list with nothing checked gets the site\'s indicator, hidden, in every item');
+});
