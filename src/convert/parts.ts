@@ -127,6 +127,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
 	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
 	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
+	// Base UI's toasts are Markless state (convert's NotifyPlan); the part runs the store, viewport and each root.
+	{ module: 'base-ui/toast', library: '@base-ui/react', exports: ['Toast.Provider', 'Toast.Viewport', 'Toast.Root', 'Toast.Content', 'Toast.Title', 'Toast.Description', 'Toast.Action', 'Toast.Close'], events: [], locate: () => false },
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
 	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion', 'recharts-layout', 'clock'] },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).

@@ -80,6 +80,8 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (own.length) out = out.replace('\n', `\nimport { ${own.join(', ')} } from '${dir}/../site/parts.ts';\n`);
 	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
+	const baseToastNames = ['baseToastAdd', 'baseToastViewport', 'BASE_TOAST_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
+	if (baseToastNames.length) out = out.replace('\n', `\nimport { ${baseToastNames.join(', ')} } from '${dir}/base-ui/toast.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
 	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -1854,6 +1856,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) notifyCount += notifyPlan.add([...(notified.get(route) ?? []), ...(formLibsRead.get(route) ?? []).flatMap((f) => (f.toast ? [f.toast] : []))], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
 	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
 	if (notifyPlan.sonner) templatePorts.add('sonner');
+	if (notifyPlan.baseToast) templatePorts.add('base-ui/toast');
 	// The shared body children holding a live region a page shows its notifications in: that page renders them.
 	const ownAfter = new Map<string, number[]>();
 	for (const route of prepared.keys())
