@@ -2383,3 +2383,24 @@ test('shadcn-ui site: the drawer demo\'s goal steps by 10 between 200 and 400, i
 	void goal;
 	await page.close();
 });
+
+test('a Base UI select with alignItemWithTrigger captured on a fallback side opens over its trigger, its list scrolling within the height left', async () => {
+	const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+	const page = await open(
+		`${HIDDEN}<main style="padding-top:560px;padding-left:200px"><button type="button" id="base" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger" style="height:32px"><span data-slot="select-value">MM</span></button></main>
+	<div data-base-ui-portal hidden data-mm-layer="base"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="bottom" data-align="center" role="presentation" style="position:fixed" data-closed><span data-base-ui-focus-guard tabindex="0" style="position:fixed"></span><div data-side="bottom" tabindex="-1" role="presentation" data-slot="select-content" data-align-trigger="true" data-closed><div role="listbox">${['MM', ...months].map((m) => `<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item" style="height:32px"><div>${m}</div></div>`).join('')}</div></div></div></div>`,
+		['base-ui/select'],
+		'body',
+	);
+	await page.locator('[data-slot="select-trigger"]').click();
+	await settled(page);
+	const at = await page.evaluate(() => {
+		const value = document.querySelector('[data-slot="select-value"]')!.getBoundingClientRect();
+		const content = document.querySelector('[data-slot="select-content"]')!;
+		const list = document.querySelector('[role="listbox"]')!;
+		const first = list.querySelector('[role="option"] > div')!.getBoundingClientRect();
+		return { side: content.getAttribute('data-side'), aligned: Math.abs(first.top + first.height / 2 - (value.top + value.height / 2)) < 1, bottom: Math.round(content.getBoundingClientRect().bottom), scrolls: list.scrollHeight > list.clientHeight };
+	});
+	assert.deepEqual(at, { side: 'none', aligned: true, bottom: 790, scrolls: true });
+	await page.close();
+});

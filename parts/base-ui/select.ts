@@ -33,9 +33,15 @@ const selectedValue = new WeakMap<HTMLElement, string>();
 // the height left beneath the trigger and 10 px margins; near a viewport edge it falls back to placing below the trigger.
 function alignOver(trigger: HTMLElement, p: Popup): boolean {
 	const positioner = p.positioner;
-	if (!positioner || positioner.getAttribute('data-side') !== 'none') return true;
-	// The popup is the positioner's child; the listbox inside it is what scrolls.
-	const popup = (positioner.firstElementChild as HTMLElement | null) ?? p.popup;
+	if (!positioner) return true;
+	// The popup is the positioner's child holding the listbox, not always its first one (a focus guard can come first).
+	let popup: HTMLElement = p.popup;
+	while (popup.parentElement && popup.parentElement !== positioner) popup = popup.parentElement;
+	if (positioner.getAttribute('data-side') !== 'none') {
+		// alignItemWithTrigger: aligned on every open, whatever side the old page fell back to while captured.
+		if (positioner.querySelector('[data-align-trigger]')?.getAttribute('data-align-trigger') !== 'true') return true;
+		for (const el of [positioner, ...positioner.querySelectorAll('[data-side]')]) el.setAttribute('data-side', 'none');
+	}
 	positioner.style.position = 'fixed';
 	for (const prop of ['transform', 'top', 'bottom', 'left', 'height', 'max-height']) positioner.style.removeProperty(prop);
 	const triggerRect = trigger.getBoundingClientRect();
@@ -77,6 +83,9 @@ function alignOver(trigger: HTMLElement, p: Popup): boolean {
 	positioner.style.marginBottom = `${marginBottom}px`;
 	popup.style.height = '100%';
 	const scroller = p.popup;
+	scroller.style.position = 'relative';
+	scroller.style.maxHeight = '100%';
+	scroller.style.overflow = 'hidden auto';
 	const maxScrollTop = scroller.scrollHeight - scroller.clientHeight;
 	const isTop = scrollTop >= maxScrollTop - 1;
 	if (isTop) height = Math.min(viewportHeight, positionerRect.height) - (scrollTop - maxScrollTop);
