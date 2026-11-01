@@ -1,0 +1,5 @@
+// qwikui.com follows its links with page loads, so nothing of the old page moves while the next arrives. Here the header
+// and sidebar stay: from the press on a link (or Back), transitions hold until parts.ts's onArrival lets them go, or 3 s.
+// It runs before any part loads, so the first navigation holds too; __mmLoadedPath is the page the document loaded.
+const ARRIVING = 'data-mm-arriving';
+export default `{const A='${ARRIVING}';globalThis.__mmLoadedPath=location.pathname;const hold=()=>{if(!document.head.querySelector('style['+A+']')){const s=document.createElement('style');s.setAttribute(A,'');s.textContent='['+A+'] *, ['+A+'] *::before, ['+A+'] *::after { transition: none !important; }';document.head.appendChild(s)}document.documentElement.setAttribute(A,'');setTimeout(()=>{document.documentElement.removeAttribute(A);document.head.querySelector('style['+A+']')?.remove()},3000)};addEventListener('click',(e)=>{const l=e.target instanceof Element?e.target.closest('a[href]'):null;if(l&&l.origin===location.origin&&l.pathname!==location.pathname&&!l.target&&!e.defaultPrevented)hold()},true);addEventListener('popstate',hold)}`;

@@ -158,11 +158,16 @@ const isOpen = (root: Element) => root.hasAttribute('data-open');
 let made = 0;
 const freshId = () => `mm-demo-${++made}`;
 
-// collapsible programmatic.tsx, animation.tsx, csr.tsx; accordion programmatic.tsx, dynamic.tsx, csr.tsx.
+// collapsible programmatic.tsx, animation.tsx, csr.tsx; accordion programmatic.tsx, reactive.tsx, dynamic.tsx, csr.tsx.
 const collapsibleDemos: Part = {
 	idle() {
 		document.addEventListener('qui-collapsible-open', (event) => {
 			const root = event.target as Element;
+			// accordion reactive.tsx: bind:value takes the opened item's value (item-1, item-2, item-3) and keeps it when it closes.
+			const line = root.parentElement?.matches('[data-accordion]') ? root.parentElement.nextElementSibling : null;
+			if ((event as CustomEvent<boolean>).detail && line?.matches('p') && line.textContent?.startsWith('Current open item:')) {
+				line.textContent = `Current open item: item-${[...root.parentElement!.children].indexOf(root) + 1}`;
+			}
 			const box = root.parentElement?.querySelector<HTMLInputElement>(`:scope > input${on('input', 'programmatic.tsx_programmatic_component_Fragment_input_bind_checked')}`);
 			if (!box) return;
 			const open = (event as CustomEvent<boolean>).detail;

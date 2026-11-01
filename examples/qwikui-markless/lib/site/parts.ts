@@ -92,28 +92,34 @@ function colorSchemeAsOnLoad(): void {
 	if (stored === 'light' || stored === 'dark' || !stored) style.colorScheme = stored || 'light';
 	else style.removeProperty('color-scheme');
 }
-// qwikui.com redraws its sidebar per navigation (no link transitions, scroll at the top); here it stays, so both are imitated.
+// qwikui.com redraws its sidebar per navigation (no link transitions, scroll at the top); here it stays, so both are imitated
+// (head-script.ts holds the transitions from the press on).
 const ARRIVING = 'data-mm-arriving';
 function release(): void {
 	document.documentElement.removeAttribute(ARRIVING);
 	document.head.querySelector(`style[${ARRIVING}]`)?.remove();
 }
-function holdTransitions(): void {
-	if (!document.head.querySelector(`style[${ARRIVING}]`)) {
-		const style = document.createElement('style');
-		style.setAttribute(ARRIVING, '');
-		style.append(document.createTextNode(`[${ARRIVING}] *, [${ARRIVING}] *::before, [${ARRIVING}] *::after { transition: none !important; }`));
-		document.head.appendChild(style);
-	}
-	document.documentElement.setAttribute(ARRIVING, '');
-	setTimeout(release, 3000);
-}
 function onArrival(): void {
 	for (const nav of document.querySelectorAll('nav.navigation-docs')) nav.scrollTop = 0;
+	// A page load drops focus and starts ThemeProvider's signal empty; the header stays here, so both are reset as one would.
+	if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
+	theme = '';
+	render();
+	// A nested modal leaves the page scroll-locked when it closes (modal.ts); a page load ends that lock.
+	if (!document.querySelector('dialog[open]')) {
+		const body = document.body;
+		body.removeAttribute('data-noscroll-target-scroll-disabled');
+		body.removeAttribute('data-noscroll-target-scroll-scrollbar-width-adjustment');
+		body.style.removeProperty('--noscroll-target-scrollbar-width');
+		body.style.removeProperty('--noscroll-target-padding-right');
+	}
 	requestAnimationFrame(() =>
 		requestAnimationFrame(() => {
 			colorSchemeAsOnLoad();
-			release();
+			// Styles settle with transitions still off, so nothing set on arrival animates once they are back.
+			void getComputedStyle(document.documentElement).colorScheme;
+			void document.body.offsetWidth;
+			requestAnimationFrame(release);
 		}),
 	);
 }
@@ -129,18 +135,9 @@ function watchArrivals(): void {
 			if (location.pathname !== before) onArrival();
 		};
 	}
-	window.addEventListener('popstate', () => {
-		holdTransitions();
-		onArrival();
-	});
-	document.addEventListener(
-		'click',
-		(event) => {
-			const link = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-			if (link && link.origin === location.origin && link.pathname !== location.pathname && !link.target && !event.defaultPrevented) holdTransitions();
-		},
-		true,
-	);
+	window.addEventListener('popstate', onArrival);
+	// Parts load on first use (loadOnUse), so a first navigation may have arrived before they were in.
+	if (location.pathname !== (globalThis as { __mmLoadedPath?: string }).__mmLoadedPath) onArrival();
 }
 
 const themeControls: Part = {
