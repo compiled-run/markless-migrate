@@ -117,6 +117,8 @@ function arm(control) {
 	const floating = (p) => { for (let at = p; at && at !== document.body; at = at.parentElement) if (/fixed|absolute/.test(getComputedStyle(at).position) || at.hasAttribute('popover')) return true; return false; };
 	const openBefore = new Set([...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [role=tooltip]')].filter((p) => p.checkVisibility() && floating(p)));
 	const touched = new Set();
+	const moves = [];
+	const styleOnly = (rec) => rec.type === 'childList' && rec.addedNodes.length + rec.removedNodes.length > 0 && [...rec.addedNodes, ...rec.removedNodes].every((n) => n.nodeName === 'STYLE');
 	// First value of each attribute the use changed: one set again to what it was (a framework re-render, a screenshot's empty style) is no change.
 	const was = new Map();
 	const observer = new MutationObserver((records) => {
@@ -127,6 +129,10 @@ function arm(control) {
 				if (rec.target instanceof HTMLInputElement && (rec.attributeName === 'checked' || rec.attributeName === 'value')) continue;
 				const m = was.get(rec.target) ?? was.set(rec.target, new Map()).get(rec.target);
 				if (!m.has(rec.attributeName)) m.set(rec.attributeName, rec.oldValue);
+				continue;
+			}
+			if (styleOnly(rec)) {
+				moves.push(rec);
 				continue;
 			}
 			touched.add(rec.target);
@@ -157,7 +163,7 @@ function arm(control) {
 	const checks = new Map([...document.querySelectorAll('input[type=checkbox], input[type=radio]')].map((i) => [i, i.checked]));
 	// What is shown, element by element: a node hidden or shown by a style, a class or a selector is a change as much as one added.
 	const shown = new Map([...document.body.querySelectorAll('*')].slice(0, 30000).map((e) => [e, e.checkVisibility({ opacityProperty: true, visibilityProperty: true })]));
-	globalThis.__dc = { observer, touched, was, frames, url, openBefore, el, floating, checks, shown };
+	globalThis.__dc = { observer, touched, moves, was, frames, url, openBefore, el, floating, checks, shown };
 	return { hit, hits, x: cx, y: cy };
 }
 
@@ -211,6 +217,13 @@ function read(prefix) {
 		affected.add(regionOf(host));
 	}
 	for (const [i, before] of st.checks ?? []) if (i.isConnected && i.checked !== before && !(st.el === i.parentElement || st.el.contains(i))) affected.add(regionOf(i.parentElement ?? i));
+	// A <style> moved within the document (Qwik hoists a component's styles into <head> as it first renders) shows nothing new.
+	const removed = new Set((st.moves ?? []).flatMap((rec) => [...rec.removedNodes]));
+	for (const rec of st.moves ?? []) {
+		if ([...rec.removedNodes].every((n) => n.isConnected) && [...rec.addedNodes].every((n) => removed.has(n))) continue;
+		st.touched.add(rec.target);
+		for (const n of rec.addedNodes) st.touched.add(n);
+	}
 	for (const node of [...st.touched, ...attrs]) {
 		const doc = node.ownerDocument ?? node;
 		if (doc !== document) {
@@ -829,7 +842,7 @@ async function measureAmbient(side, route) {
 	await p.evaluate(arm, { role: '__none__', name: '', nth: 0 }).catch(() => null);
 	await p.evaluate(() => {
 		const o = new MutationObserver(() => {});
-		globalThis.__dc = { observer: o, touched: new Set(), was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(), el: document.body, shown: new Map([...document.body.querySelectorAll('*')].slice(0, 30000).map((e) => [e, e.checkVisibility({ opacityProperty: true, visibilityProperty: true })])) };
+		globalThis.__dc = { observer: o, touched: new Set(), moves: [], was: new Map(), frames: [], url: location.pathname + location.search, openBefore: new Set(), el: document.body, shown: new Map([...document.body.querySelectorAll('*')].slice(0, 30000).map((e) => [e, e.checkVisibility({ opacityProperty: true, visibilityProperty: true })])) };
 	});
 	await p.evaluate(armQuiet);
 	await p.waitForTimeout(1500);
@@ -840,12 +853,17 @@ async function measureAmbient(side, route) {
 // In the page: the observers of arm() with nothing used, to learn what changes on its own.
 function armQuiet() {
 	const st = globalThis.__dc;
+	const styleOnly = (rec) => rec.type === 'childList' && rec.addedNodes.length + rec.removedNodes.length > 0 && [...rec.addedNodes, ...rec.removedNodes].every((n) => n.nodeName === 'STYLE');
 	const observe = (doc) => st.observer.observe(doc, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
 	st.observer = new MutationObserver((records) => {
 		for (const rec of records) {
 			if (rec.type === 'attributes') {
 				const m = st.was.get(rec.target) ?? st.was.set(rec.target, new Map()).get(rec.target);
 				if (!m.has(rec.attributeName)) m.set(rec.attributeName, rec.oldValue);
+				continue;
+			}
+			if (styleOnly(rec)) {
+				st.moves.push(rec);
 				continue;
 			}
 			st.touched.add(rec.target);
