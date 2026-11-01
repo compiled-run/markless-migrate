@@ -226,6 +226,13 @@ export function pageBody(root: string, after: readonly { readonly markup: string
 	return `<>@if (${shown}) { ${root} }${runs.map((r) => (r.toaster ? r.markup : `@if (${shown}) { <>${r.markup}</> }`)).join('')}</>`;
 }
 
+/** The page's own elements before its root, then its body (pageBody's): one flat fragment, since Markless renders a fragment root's children only when none is itself a fragment. */
+export function withLeading(leading: string, root: string, body: string, shown: string): string {
+	if (!leading) return body;
+	const rest = body === root ? `@if (${shown}) { ${root} }` : body.slice('<>'.length, -'</>'.length);
+	return `<>@if (${shown}) { <>${leading}</> }${rest}</>`;
+}
+
 /**
  * The body children every page has after its own content (the toast regions), as one component each page renders
  * after its root and before the layers it portals: what a page opens lands after them, as a portal at the end of the
