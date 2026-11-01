@@ -981,6 +981,24 @@ test('a Base UI vertical slider steps up with ArrowUp and follows the pointer fr
 	await page.close();
 });
 
+test('react-textarea-autosize: an autosize textarea grows with each line typed and shrinks back, from its inline important height; a plain one is left alone', async () => {
+	const css = 'box-sizing:border-box;width:300px;padding:10px 12px;border:1px solid;font:16px/24px sans-serif;resize:none';
+	const page = await open(`<textarea id="auto" placeholder="Autoresize textarea..." style="${css};height: 40px !important;"></textarea><textarea id="plain" style="${css};height:40px"></textarea>`, ['textarea-autosize']);
+	const height = (id: string) => page.evaluate((id) => Math.round(document.getElementById(id)!.getBoundingClientRect().height), id);
+	await page.waitForFunction(() => document.getElementById('auto')!.style.height !== '40px');
+	assert.equal(await height('auto'), 46, 'mounted: one row (24) plus padding (20) and border (2)');
+	await page.locator('#auto').fill('');
+	await page.locator('#auto').pressSequentially('one\ntwo\nthree');
+	assert.equal(await height('auto'), 94, 'three rows');
+	assert.equal(await page.locator('#auto').evaluate((t: HTMLTextAreaElement) => t.style.getPropertyPriority('height')), 'important');
+	await page.keyboard.press('Backspace');
+	for (let i = 0; i < 10; i++) await page.keyboard.press('Backspace');
+	assert.equal(await height('auto'), 46, 'back to one row');
+	await page.locator('#plain').pressSequentially('one\ntwo\nthree');
+	assert.equal(await height('plain'), 40);
+	await page.close();
+});
+
 test('react-resizable-panels: a press on a separator focuses it; once released it is inactive until the pointer moves again', async () => {
 	const page = await open(
 		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div><button>after</button></div>`,
