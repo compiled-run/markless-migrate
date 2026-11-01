@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yuku-css';
+import { CONVERTED_STYLES } from './paths.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: css-tree's AST, walked generically
 type Node = any;
@@ -162,7 +163,7 @@ export async function declareLayerOrder<T extends Tag>(publicDir: string, heads:
 		for (const sheet of sheets) for (const name of await of(sheet.attrs.href!)) if (!order.includes(name)) order.push(name);
 		if (order.length < 2) continue;
 		const css = `@layer ${order.join(', ')};\n`;
-		const path = `/_converted/styles/layers-${createHash('sha256').update(css).digest('hex').slice(0, 12)}.css`;
+		const path = `${CONVERTED_STYLES}layers-${createHash('sha256').update(css).digest('hex').slice(0, 12)}.css`;
 		if (!written.has(path)) await writeFile(join(publicDir, path), css);
 		written.add(path);
 		head.splice(head.indexOf(sheets[0]!), 0, link(path));

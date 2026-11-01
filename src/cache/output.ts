@@ -22,13 +22,15 @@ export async function missingIsrFunctions(outputDir: string, routeRules: Readonl
 }
 
 /** Workers static assets limits on the paid plan (developers.cloudflare.com/workers/platform/limits, 2026-10-30). */
-export const CLOUDFLARE_LIMITS = { files: 100_000, fileBytes: 25 * 1024 * 1024, workerBytes: 64 * 1024 * 1024 };
+export const CLOUDFLARE_LIMITS = { files: 100_000, fileBytes: 25 * 1024 * 1024, workerBytes: 64 * 1024 * 1024, headerRules: 100 };
 
 export interface CloudflareOutputReport {
 	readonly missing: string[];
 	readonly files: number;
 	readonly tooLarge: string[];
 	readonly workerBytes: number;
+	/** URL patterns in `_headers`: a version upload with more than 100 is refused. */
+	readonly headerRules: number;
 	readonly compressedCopies: string[];
 	/** Files `assets.run_worker_first` sends to the Worker though they are uploaded: each request for them is a Worker request. */
 	readonly workerFirst: string[];
@@ -67,6 +69,7 @@ export async function checkCloudflareOutput(outputDir: string, routeRules: Reado
 		missing,
 		files: uploaded.length,
 		tooLarge: uploaded.filter((a) => a.size > CLOUDFLARE_LIMITS.fileBytes).map((a) => a.path),
+		headerRules: (await readFile(join(publicDir, '_headers'), 'utf8').catch(() => '')).split('\n').filter((l) => l.trim() && !/^\s/.test(l) && !l.startsWith('#')).length,
 		workerBytes: server.filter((f) => /\.(?:m?js|wasm)$/.test(f.path)).reduce((sum, f) => sum + f.size, 0),
 		compressedCopies: uploaded.filter((a) => /\.(?:br|gz|zst)$/.test(a.path)).map((a) => a.path),
 		workerFirst: uploaded.map((a) => urlOf(a.path)).filter((url) => patterns.some((p) => p.test(url))),

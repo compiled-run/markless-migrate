@@ -113,6 +113,7 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 			const fails = [
 				...(report.missing.length ? [`${report.missing.length} of ${prerendered} cached paths are not a file Cloudflare serves at that URL, so every request for them runs the Worker:\n${report.missing.slice(0, 20).map((p) => `  ${p}\n`).join('')}${report.missing.length > 20 ? `  and ${report.missing.length - 20} more\n` : ''}`] : []),
 				...(report.files > CLOUDFLARE_LIMITS.files ? [`${report.files} files to upload, over Workers' ${CLOUDFLARE_LIMITS.files} per version\n`] : []),
+				...(report.headerRules > CLOUDFLARE_LIMITS.headerRules ? [`_headers has ${report.headerRules} rules, over the ${CLOUDFLARE_LIMITS.headerRules} a version upload accepts\n`] : []),
 				...(report.tooLarge.length ? [`files over 25 MiB, which Workers static assets refuse: ${report.tooLarge.join(', ')}\n`] : []),
 				...(report.workerBytes > CLOUDFLARE_LIMITS.workerBytes ? [`the Worker is ${report.workerBytes} bytes, over the 64 MiB limit\n`] : []),
 				...(report.compressedCopies.length ? [`${report.compressedCopies.length} compressed copies Cloudflare never serves (Nitro's compressPublicAssets), e.g. ${report.compressedCopies.slice(0, 3).join(', ')}\n`] : []),

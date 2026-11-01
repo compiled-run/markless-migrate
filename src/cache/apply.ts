@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { classify, type RouteCaching } from './classify.ts';
+import { CONVERTED_STYLES } from '../convert/paths.ts';
 import { isContentHashed } from './headers.ts';
 import type { CachingPlan } from './plan.ts';
 import { cacheRules, cloudflareRules, type CacheRules } from './rules.ts';
@@ -82,7 +83,8 @@ const COVERED = /^\/(build|assets)\//;
 export async function publicHashedAssets(app: string, plan: Pick<CachingPlan, 'hashedAssets'>): Promise<string[]> {
 	const all = (await walk(join(app, 'public'))).filter((p) => !COVERED.test(p) && !/\.(br|gz|zst)$/.test(p));
 	const oldShort = new Set(plan.hashedAssets.filter((a) => !a.longLived).map((a) => a.path));
-	const hashed = all.filter((p) => isContentHashed(p) && !oldShort.has(p));
+	// A converted stylesheet's name is its content hash even when no letter shows it (078213568064.css).
+	const hashed = all.filter((p) => (p.startsWith(CONVERTED_STYLES) || isContentHashed(p)) && !oldShort.has(p));
 	const dirOf = (p: string) => p.split('/').slice(0, -1).join('/');
 	const whole = new Set([...new Set(hashed.map(dirOf))].filter((dir) => dir && all.every((p) => dirOf(p) !== dir || hashed.includes(p))));
 	return [...new Set(hashed.map((p) => (whole.has(dirOf(p)) ? `${dirOf(p)}/**` : p)))].sort();

@@ -38,6 +38,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
+import { CONVERTED_STYLES } from './paths.ts';
 import { declareLayerOrder, usedStylesheets } from './used-css.ts';
 import { importStylesheets } from './stylesheet-imports.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
@@ -999,7 +1000,7 @@ export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>
 		const extra = page.bodyCss.join('\n');
 		if (at === -1) {
 			// No sheet of its own to extend: the CSS goes in a file linked at the end of the head.
-			const path = `/_converted/styles/${hash(extra)}.css`;
+			const path = `${CONVERTED_STYLES}${hash(extra)}.css`;
 			await mkdir(dirname(join(publicDir, path)), { recursive: true });
 			await writeFile(join(publicDir, path), extra);
 			page.head.push({ tag: 'link', attrs: { rel: 'stylesheet', href: path } });
@@ -1025,7 +1026,7 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 			const css = childrenOf(node)
 				.map((n) => ('value' in n ? (n as { value: string }).value : ''))
 				.join('');
-			const path = `/_converted/styles/${hash(css)}.css`;
+			const path = `${CONVERTED_STYLES}${hash(css)}.css`;
 			styles.set(path, css);
 			const link: Element = { nodeName: 'link', tagName: 'link', attrs: [{ name: 'rel', value: 'stylesheet' }, { name: 'href', value: path }, ...node.attrs.filter((a) => a.name === 'media')], namespaceURI: node.namespaceURI, childNodes: [], parentNode: parent } as unknown as Element;
 			list[i] = link;

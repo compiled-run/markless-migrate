@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { cacheModule } from '../src/cache/apply.ts';
+import { cacheModule, publicHashedAssets } from '../src/cache/apply.ts';
 import { classify } from '../src/cache/classify.ts';
 import { checkCloudflareLive } from '../src/cache/cloudflare-live.ts';
 import type { ResponseFacts, RouteEvidence } from '../src/cache/evidence.ts';
@@ -72,7 +72,7 @@ test('the Cloudflare build check names each cached path that is not a file, and 
 	await write('public/build/app.js.br');
 	await write('public/docs/index.html.gz');
 	await write('server/wrangler.json', JSON.stringify({ assets: { run_worker_first: ['/build/*', '!/build/keep/*'] } }));
-	await write('public/_headers');
+	await write('public/_headers', '# comment\n/build/*\n  Cache-Control: immutable\n\n/docs/*\n  Cache-Control: max-age=600\n');
 	await write('server/index.mjs', 'export default {}');
 	const rules = cloudflareRules([docs, news], { fragmentPath: '/_markless/fragment' }).routeRules;
 	const report = await checkCloudflareOutput(out, rules);
@@ -81,6 +81,7 @@ test('the Cloudflare build check names each cached path that is not a file, and 
 	assert.deepEqual(report.workerFirst.sort(), ['/build/app.js', '/build/app.js.br']);
 	assert.equal(report.files, 6);
 	assert.equal(report.workerBytes, 'export default {}'.length);
+	assert.equal(report.headerRules, 2, 'a version upload refuses more than 100 _headers rules: each URL pattern counts');
 });
 
 test('the live check passes files served by Cloudflare and names a page the Worker rendered, a redirect and a chunk not sent as brotli', async () => {
@@ -109,4 +110,16 @@ test('the live check passes files served by Cloudflare and names a page the Work
 	} finally {
 		server.close();
 	}
+});
+
+test("a folder of converted stylesheets is one immutable rule, though a hash may be all digits", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'mm-hashed-'));
+	for (const name of ['078213568064.css', '04da96088eaf.used-753593199439.css', 'layers-fa829db6fee8.css']) {
+		await mkdir(join(app, 'public/_converted/styles'), { recursive: true });
+		await writeFile(join(app, 'public/_converted/styles', name), 'x');
+	}
+	await mkdir(join(app, 'public/media'), { recursive: true });
+	await writeFile(join(app, 'public/media/202410011230.png'), 'x');
+	await writeFile(join(app, 'public/media/a1b2c3d4e5f6.png'), 'x');
+	assert.deepEqual(await publicHashedAssets(app, { hashedAssets: [] }), ['/_converted/styles/**', '/media/a1b2c3d4e5f6.png']);
 });
