@@ -320,3 +320,78 @@ test("a Replay that remounts a collapsible another plan owns keeps that plan's e
 	for (const rest of data.rest) assert.ok(new RegExp(`sc0 === ${rest}\\b|sc0 >= \\d+ && sc0 <= \\d+`).test(own), `rest frame ${rest} shows the page's own markup: ${own}`);
 	assert.match(out, /<p[^>]*>one<\/p>/, 'the streamed steps are in the captured arm');
 });
+
+test('a frame shown at rest keeps the hidden value an element has of its own where the scene also shows and hides it (React Aria\'s closed panel)', async () => {
+	const data = {
+		listed: '[data-slot="preview"] button',
+		rest: [0, 2],
+		edges: [[0, 'button||Replay#0', 1, 2, [0, 10], 1]],
+		entries: [[1, 'a', 'hidden'], [1, 'h', ''], [2, 'h', '']],
+		changes: { 1: [[0, null], [2, 1]], 2: [[0, 'until-found'], [2, 0]] },
+		full: { 0: [[0, 'until-found'], [1, 0], [2, 0]], 2: [[0, 'until-found'], [1, 0], [2, 0]] },
+	};
+	const part = ts.transpileModule(await readFile(join(ROOT, 'parts/scene.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/scene.js' ? route.fulfill({ contentType: 'text/javascript', body: part }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		const seen = await page.evaluate(
+			async ([data]) => {
+				const { playScene } = (await import('/scene.js' as string)) as typeof import('../parts/scene.ts');
+				document.body.innerHTML = '<div data-slot="preview"><div data-mm-k="1" hidden="until-found">Thinking</div><div data-mm-k="2" hidden="until-found">Output</div><button>Replay</button></div>';
+				const region = document.querySelector('[data-slot="preview"]')!;
+				region.setAttribute('data-mm-scene', JSON.stringify(data));
+				region.addEventListener('click', (event) => playScene(event, () => {}));
+				const panel = region.querySelector('[data-mm-k]')!;
+				const output = region.querySelector("[data-mm-k=\"2\"]")!;
+				region.querySelector('button')!.click();
+				const open = [panel.getAttribute('hidden'), output.getAttribute('hidden')];
+				await new Promise((r) => setTimeout(r, 100));
+				return { open, closed: [panel.getAttribute('hidden'), output.getAttribute('hidden')] };
+			},
+			[data] as const,
+		);
+		assert.deepEqual(seen, { open: [null, 'until-found'], closed: ['until-found', 'until-found'] }, 'a closed panel whose hidden="until-found" never changed stays closed when its arm shows');
+	} finally {
+		await browser.close();
+	}
+});
+
+test('a panel whose size variable a frame takes from auto to 0px collapses from the size it has, as React Aria measures it first', async () => {
+	const data = {
+		listed: '[data-slot="preview"] button',
+		rest: [0, 1],
+		edges: [[0, 'button||Replay#0', 1, 1, [0], 1]],
+		entries: [[1, 'a', 'style']],
+		changes: { 1: [[0, '--disclosure-panel-height: 0px;']] },
+		full: { 0: [[0, '--disclosure-panel-height: auto;']], 1: [[0, '--disclosure-panel-height: 0px;']] },
+	};
+	const part = ts.transpileModule(await readFile(join(ROOT, 'parts/scene.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', (route) => (new URL(route.request().url()).pathname === '/scene.js' ? route.fulfill({ contentType: 'text/javascript', body: part }) : route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' })));
+		await page.goto('http://app.test/');
+		const heights = await page.evaluate(
+			async ([data]) => {
+				const { playScene } = (await import('/scene.js' as string)) as typeof import('../parts/scene.ts');
+				document.body.innerHTML = '<style>.panel { height: var(--disclosure-panel-height); overflow: hidden; transition: height 300ms linear; }</style><div data-slot="preview"><div class="panel" data-mm-k="1" style="--disclosure-panel-height: auto;"><p style="height: 100px; margin: 0">Thinking</p></div><button>Replay</button></div>';
+				const region = document.querySelector('[data-slot="preview"]')!;
+				region.setAttribute('data-mm-scene', JSON.stringify(data));
+				region.addEventListener('click', (event) => playScene(event, () => {}));
+				const panel = region.querySelector<HTMLElement>('.panel')!;
+				region.querySelector('button')!.click();
+				await new Promise((r) => setTimeout(r, 120));
+				const mid = panel.getBoundingClientRect().height;
+				await new Promise((r) => setTimeout(r, 400));
+				return { mid, end: panel.getBoundingClientRect().height };
+			},
+			[data] as const,
+		);
+		assert.ok(heights.mid > 20 && heights.mid < 90, `half-way through the collapse: ${heights.mid}px`);
+		assert.equal(heights.end, 0);
+	} finally {
+		await browser.close();
+	}
+});
