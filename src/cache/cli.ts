@@ -5,8 +5,8 @@ import { parseArgs } from 'node:util';
 import { bypassOptions } from '../check/blocked.ts';
 import type { Inventory } from '../plan/inventory.ts';
 import { applyCaching, fragmentEndMarkers, fragmentHeader, fragmentPath, nitroPassesQuery, nitroVersion, requireInstalled, type ApplyResult } from './apply.ts';
-import { checkCloudflareLive } from './cloudflare-live.ts';
-import { checkCloudflareOutput, CLOUDFLARE_LIMITS, missingIsrFunctions } from './output.ts';
+import { checkCloudflareLive, workerRequestsOnLoad } from './cloudflare-live.ts';
+import { checkCloudflareOutput, CLOUDFLARE_HEADER_RULES, CLOUDFLARE_LIMITS, compactCloudflareHeaders, missingIsrFunctions, workerLoads } from './output.ts';
 import { cacheRules, cloudflareRules } from './rules.ts';
 import { pageFilesByConvention, pageFilesFromOrigin } from './pages.ts';
 import { planCaching, readCachingPlan, summarizeCachingPlan, writeCachingPlan, type CachingPlan } from './plan.ts';
@@ -25,16 +25,17 @@ export const CACHE_USAGE = `  cache plan [--old <origin>] [--route <path>]... [-
           Write the plan into the Markless app as migrate-cache.ts (Nitro routeRules) and
           add migrateCache() to its vite.config.ts. A page the app reads cookies or the session in is never
           cached. run applies it before every build.
-  cache output [--app <dir>] [--vercel <dir> | --cloudflare [<dir>]]
+  cache output [--app <dir>] [--vercel <dir> | --cloudflare [<dir>] [--allow-worker <path>]...]
           Read the app's Vercel build (default .vercel/output) before it is deployed: exits 1 when a page the plan
           caches, or its fragment URL, has no ISR function or static file there, so every request for it would run
           the server function. deploy runs it before uploading. With --cloudflare, reads a Nitro cloudflare-module
           build (default .output) instead: exits 1 when a page the plan caches, or its fragment URL, is not a file
           Cloudflare serves at that exact URL, or the upload exceeds the Workers limits (files, file size, Worker size).
-  cache check --new <origin> --cloudflare --route <path>... [--app <dir>]
+  cache check --new <origin> --cloudflare --route <path>... [--allow-worker <path>]... [--app <dir>]
           Read a Cloudflare deployment: each page and its fragment URL must come from the uploaded files at its own URL
-          (no redirect, not the Worker), be the document or the fragment asked for, and a client chunk arrive as brotli,
-          kept for a year. Exits 1 on any finding.
+          (no redirect, not the Worker), be the document or the fragment asked for, a client chunk come from the files,
+          kept for a year, and loading each page in Chromium make no same-origin request that runs the Worker. Exits 1
+          on any finding.
   cache check --new <origin> [--app <dir>] [--header <name:value>]... [--passes <n>] [--expiry-wait <s>] [--json] [--no-psi] [--psi-key <key>]
           Read the deployment's caching (x-vercel-cache MISS then HIT, Age, Cache-Control, Vary) route by route
           into .migrate/caching-report.json, then the homepage's load on PageSpeed Insights, old against new
@@ -98,7 +99,8 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		const cloudflareAt = rest.indexOf('--cloudflare');
 		const cloudflare = cloudflareAt >= 0 ? (rest[cloudflareAt + 1] && !rest[cloudflareAt + 1]!.startsWith('--') ? rest[cloudflareAt + 1]! : '.output') : undefined;
 		const own = cloudflareAt >= 0 ? rest.filter((_, i) => i !== cloudflareAt && !(i === cloudflareAt + 1 && rest[i] === cloudflare)) : rest;
-		const { values } = parseArgs({ args: own, options: { app: { type: 'string' }, vercel: { type: 'string' } } });
+		const { values } = parseArgs({ args: own, options: { app: { type: 'string' }, vercel: { type: 'string' }, 'allow-worker': { type: 'string', multiple: true } } });
+		const allowed = (url: string) => (values['allow-worker'] ?? []).some((prefix) => url === prefix || url.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`) || url.startsWith(`${prefix}?`));
 		const app = resolve(cwd, values.app ?? '.');
 		await requireInstalled(app);
 		const plan = await readCachingPlan(join(cwd, STATE_DIR));
@@ -108,9 +110,11 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		if (cloudflare !== undefined) {
 			const output = resolve(app, cloudflare);
 			const expected = cloudflareRules(plan.applied, prefix ? { fragmentPath: prefix } : {});
+			const headerRules = await compactCloudflareHeaders(join(output, 'public'));
+			if (headerRules.after !== headerRules.before) out(`_headers: ${headerRules.before} rules folded to ${headerRules.after} (/_next/static/* immutable, as Next serves it)\n`);
 			const report = await checkCloudflareOutput(output, expected.routeRules);
 			const prerendered = Object.values(expected.routeRules).filter((r) => r.prerender).length;
-			const fails = [
+			const fails: string[] = [
 				...(report.missing.length ? [`${report.missing.length} of ${prerendered} cached paths are not a file Cloudflare serves at that URL, so every request for them runs the Worker:\n${report.missing.slice(0, 20).map((p) => `  ${p}\n`).join('')}${report.missing.length > 20 ? `  and ${report.missing.length - 20} more\n` : ''}`] : []),
 				...(report.files > CLOUDFLARE_LIMITS.files ? [`${report.files} files to upload, over Workers' ${CLOUDFLARE_LIMITS.files} per version\n`] : []),
 				...(report.tooLarge.length ? [`files over 25 MiB, which Workers static assets refuse: ${report.tooLarge.join(', ')}\n`] : []),
@@ -118,6 +122,9 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 				...(report.compressedCopies.length ? [`${report.compressedCopies.length} compressed copies Cloudflare never serves (Nitro's compressPublicAssets), e.g. ${report.compressedCopies.slice(0, 3).join(', ')}\n`] : []),
 				...(report.workerFirst.length ? [`assets.run_worker_first sends ${report.workerFirst.length} uploaded files to the Worker, each request a billed Worker request, e.g. ${report.workerFirst.slice(0, 3).join(', ')}\n`] : []),
 			];
+			if (headerRules.after > CLOUDFLARE_HEADER_RULES) fails.push(`_headers has ${headerRules.after} rules, over Cloudflare's ${CLOUDFLARE_HEADER_RULES}\n`);
+			const loads = (await workerLoads(output)).filter((load) => !allowed(load.url));
+			if (loads.length) fails.push(`${loads.length} same-origin URLs the pages load as they open are not uploaded files, so each page view runs the Worker for them:\n${loads.slice(0, 20).map((l) => `  ${l.url} (${l.pages} pages, e.g. ${l.page})\n`).join('')}${loads.length > 20 ? `  and ${loads.length - 20} more\n` : ''}`);
 			const rendered = plan.applied.filter((r) => r.status === 200 && !expected.routeRules[r.route.split(/[?#]/)[0]!]?.prerender).map((r) => r.route);
 			out(`${output}: ${prerendered - report.missing.length} of ${prerendered} cached paths are files${prefix ? `, each page's ${prefix}/ fragment included` : ''}; ${report.files} files to upload; Worker ${(report.workerBytes / 1024 / 1024).toFixed(1)} MiB\n`);
 			out(`The Worker runs for ${rendered.length} of the plan's pages${rendered.length ? ` (${rendered.slice(0, 10).join(', ')}${rendered.length > 10 ? `, and ${rendered.length - 10} more` : ''})` : ''}${prefix && rendered.length ? ' and their fragment URLs' : ''}, and for any URL that is not an uploaded file.\n`);
@@ -136,14 +143,18 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		return 1;
 	}
 	if (sub === 'check') {
-		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, cloudflare: { type: 'boolean' }, previous: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, header: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
+		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, cloudflare: { type: 'boolean' }, 'allow-worker': { type: 'string', multiple: true }, previous: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, header: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
 		if (!values.new) throw new Error('cache check needs --new <origin>');
 		if (values.cloudflare) {
 			const app = resolve(cwd, values.app ?? '.');
 			const prefix = await fragmentPath(app);
 			const routes = values.route ?? [];
 			if (!routes.length) throw new Error('cache check --cloudflare needs --route <path> for each page to read');
-			const findings = await checkCloudflareLive(values.new, routes, { ...(prefix ? { fragmentPath: prefix } : {}), fragmentMarkers: await fragmentEndMarkers(app), ...(values.header?.length ? { headers: bypassOptions(values.header).headers ?? {} } : {}) });
+			const headers = values.header?.length ? { headers: bypassOptions(values.header).headers ?? {} } : {};
+			const findings = [
+				...(await checkCloudflareLive(values.new, routes, { ...(prefix ? { fragmentPath: prefix } : {}), fragmentMarkers: await fragmentEndMarkers(app), ...headers })),
+				...(await workerRequestsOnLoad(values.new, routes, headers)).filter((f) => !(values['allow-worker'] ?? []).some((prefix) => f.problem.includes(` ${prefix}`))),
+			];
 			out(`${values.new}: ${routes.length} pages and their fragment URLs read${findings.length ? '' : ', all from the uploaded files'}\n${findings.map((f) => `  FAIL ${f.url} ${f.problem}\n`).join('')}`);
 			return findings.length ? 1 : 0;
 		}

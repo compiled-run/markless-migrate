@@ -70,8 +70,13 @@ export function cloudflareRules(routes: readonly RouteCaching[], options: Pick<R
 		const path = r.route.split(/[?#]/)[0]!;
 		const fragment = options.fragmentPath && r.html ? `${options.fragmentPath}${path}` : undefined;
 		const keys = r.allowQuery ?? [];
+		// A page that reads the query renders in the Worker; the router's edge cache keeps it for its s-maxage, as Vercel's ISR would.
 		const rule: NitroRule =
-			r.class === 'no-cache' ? { headers: { 'cache-control': r.sensitive ? NEVER_STORED : NEVER_SHARED } } : r.html && !keys.length ? { prerender: true } : {};
+			r.class === 'no-cache'
+				? { headers: { 'cache-control': r.sensitive ? NEVER_STORED : NEVER_SHARED } }
+				: r.html && !keys.length
+					? { prerender: true }
+					: { headers: { 'cache-control': cdnCacheControl(r.class === 'isr' ? (r.revalidate ?? 60) : false) } };
 		if (!Object.keys(rule).length) continue;
 		routeRules[path] = rule;
 		if (fragment) routeRules[fragment] = structuredClone(rule);

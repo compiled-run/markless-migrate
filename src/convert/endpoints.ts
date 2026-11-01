@@ -622,7 +622,8 @@ export async function keepRouting(app: string, pages: readonly string[]): Promis
 	const file = join(app, 'server', 'routing.ts');
 	const text = await readFile(file, 'utf8').catch(() => undefined);
 	const line = /^const PAGES = new Set<string>\(.*\);$/m;
-	if (!text || !line.test(text)) return false;
+	// A routing file that imports its handlers as it loads is written again, so each is imported on its first request.
+	if (!text || !line.test(text) || /^import \* as handler\d+ from /m.test(text)) return false;
 	const next = text.replace(line, () => `const PAGES = new Set<string>(${JSON.stringify(pages)});`);
 	if (next !== text) await writeFile(file, next);
 	return true;
@@ -787,11 +788,12 @@ import { useStorage } from 'nitro/storage';
 import { compile, match } from 'path-to-regexp';
 import { nextRequest } from './handlers/__next-server.ts';
 import { NavigationThrow } from './handlers/__next-navigation.ts';
-${handlers.map((h, i) => `import * as handler${i} from ${JSON.stringify(h.module)};`).join('\n')}
+// Each handler is imported on its first request: a Worker that imported them all would load every one as it starts.
+${handlers.map((h, i) => `const handler${i} = () => import(${JSON.stringify(h.module)});`).join('\n')}
 
 const REDIRECTS: readonly { from: string; to: string; permanent: boolean }[] = ${JSON.stringify(redirects.map((r) => ({ from: r.from, to: r.to, permanent: r.permanent ?? false })))};
 const REWRITES: readonly { from: string; to: string }[] = ${JSON.stringify(rewrites.map((r) => ({ from: r.from, to: r.to })))};
-const HANDLERS: readonly { pattern: string; module: Record<string, unknown> }[] = [${handlers.map((h, i) => `{ pattern: ${JSON.stringify(h.pattern)}, module: handler${i} }`).join(', ')}];
+const HANDLERS: readonly { pattern: string; load: () => Promise<Record<string, unknown>> }[] = [${handlers.map((h, i) => `{ pattern: ${JSON.stringify(h.pattern)}, load: handler${i} }`).join(', ')}];
 const BUILT: Readonly<Record<string, { file: string; type: string; headers?: Record<string, string> }>> = ${JSON.stringify(built)};
 const PAGES = new Set<string>(${JSON.stringify(input.pages)});
 const TRAILING: { mode: 'add' | 'strip'; status: number; pagesOnly: boolean } | undefined = ${JSON.stringify(trailing)};
@@ -822,7 +824,7 @@ async function answer(request: Request, pathname: string, search: string): Promi
 	}
 	for (const h of HANDLERS) {
 		const m = matcher(h.pattern)(pathname);
-		const run = m && (h.module[request.method] as ((request: Request, context: { params: Promise<object> }) => Promise<Response> | Response) | undefined);
+		const run = m && ((await h.load())[request.method] as ((request: Request, context: { params: Promise<object> }) => Promise<Response> | Response) | undefined);
 		if (!run) continue;
 		try {
 			return await run(nextRequest(request), { params: Promise.resolve(m.params) });
