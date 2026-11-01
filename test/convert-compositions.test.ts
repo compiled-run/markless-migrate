@@ -24,7 +24,7 @@ const marks = (html: string, facts = FACTS) => {
 };
 
 test('a part the source renders through its child is marked with its role where the page shows its element', () => {
-	assert.deepEqual(marks(SHEET), ['button Open dialog-trigger', 'button Close dialog-close', 'sheet-close Close dialog-close']);
+	assert.deepEqual(marks(SHEET), ['button Close dialog-close', 'sheet-close Close dialog-close']);
 });
 
 test('a site is not marked outside the element the source puts it in, or out of the row the source fixes', () => {
@@ -38,4 +38,22 @@ test('a site is not marked outside the element the source puts it in, or out of 
 test('a site with neither text nor label the source fixes is never marked by its slot alone', () => {
 	assert.deepEqual(marks('<div data-slot="sheet-footer"><button data-slot="button">Close</button></div>', [{ part: 'dialog-close', slots: ['button'] }]), []);
 	assert.deepEqual(marks('<div data-slot="popover-content"><button aria-label="Dismiss"></button></div>', [{ part: 'popover-close', slots: [], label: 'Dismiss', within: 'popover-content' }]), ['undefined  popover-close']);
+});
+
+test('a site whose surroundings the page never shows marks nothing, and a site in its row outranks one only in its element', () => {
+	const drawer: CompositionFact = { part: 'drawer-close', slots: ['drawer-close', 'button'], text: 'Cancel', within: 'drawer-footer' };
+	const sheet: CompositionFact = { part: 'dialog-close', slots: ['sheet-close', 'button'], text: 'Cancel', within: 'sheet-footer', siblings: ['Save changes', 'Cancel'], index: 1 };
+	const loose: CompositionFact = { part: 'alert-dialog-cancel', slots: ['button'], text: 'Cancel', within: 'sheet-footer' };
+	const html = '<div data-slot="sheet-footer"><button data-slot="button">Save changes</button><button data-slot="button">Cancel</button></div>';
+	assert.deepEqual(marks(html, [drawer]), []);
+	assert.deepEqual(marks(html, [drawer, loose, sheet]), ['button Cancel dialog-close']);
+	assert.deepEqual(marks('<main><button data-slot="button">Open</button></main>', [FACTS[3]!]), []);
+});
+
+test('an element two parts\' sites fit equally well is left unmarked', () => {
+	const sheet: CompositionFact = { part: 'dialog-trigger', slots: ['button'], text: 'Open', within: 'field' };
+	const menu: CompositionFact = { part: 'menu-trigger', slots: ['button'], text: 'Open', within: 'field' };
+	const html = '<div data-slot="field"><button data-slot="button">Open</button></div>';
+	assert.deepEqual(marks(html, [sheet, menu]), []);
+	assert.deepEqual(marks(html, [sheet, { ...sheet, text: 'Open' }]), ['button Open dialog-trigger']);
 });

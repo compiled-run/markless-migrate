@@ -50,10 +50,26 @@ const nearestSlot = (el: Element): string | undefined => {
 };
 
 /**
+ * How well an element answers a site: 0 not at all, 1 inside the element the source puts it in, 2 in its row there too.
+ * A site whose surroundings the page never shows (a trigger whose parent is a Root, which renders no element) locates
+ * nothing: its part finds such an element by the ARIA and layer it carries.
+ */
+function fits(el: Element, c: CompositionFact, shown: ReadonlySet<string>): number {
+	if (c.text !== undefined && !sameText(textContent(el), c.text)) return 0;
+	if (c.label !== undefined && attr(el, 'aria-label') !== c.label) return 0;
+	if (c.within === undefined || !shown.has(c.within) || nearestSlot(el) !== c.within) return 0;
+	if (!c.siblings || c.index === undefined) return c.text !== undefined || c.label !== undefined ? 1 : 0;
+	const row = el.parentNode && isElement(el.parentNode as Element) ? elementChildren(el.parentNode as Element) : [];
+	if (row.length !== c.siblings.length || row[c.index] !== el) return 0;
+	if (c.text === undefined && c.label === undefined && c.siblings.every((t) => t === null)) return 0;
+	return c.siblings.every((t, i) => t === null || sameText(textContent(row[i]!), t)) ? 2 : 0;
+}
+
+/**
  * Writes the part's role on each element of `roots` that the source renders as a library part through its child (Radix
  * asChild, Base UI render), so the part's port knows it though its data-slot is the child's. An element is that site's
- * when it carries one of its slots and its text or label, sits in the element the source puts it in (when the page
- * shows that slot at all) and, where the source fixes the row it stands in, stands at its place in that row.
+ * when it carries one of its slots and its text or label, its nearest slotted ancestor is the element the source puts it
+ * in and, where the source fixes the row it stands in, it stands at its place in that row.
  */
 export function markCompositions(roots: readonly Element[], facts: readonly CompositionFact[] | Indexed = current): number {
 	const { bySlot, labelled } = Array.isArray(facts) ? index(facts) : (facts as Indexed);
@@ -69,21 +85,16 @@ export function markCompositions(roots: readonly Element[], facts: readonly Comp
 		if (attr(el, PART_MARK)) continue;
 		const slot = attr(el, 'data-slot');
 		const candidates = slot ? (bySlot.get(slot) ?? []) : attr(el, 'aria-label') !== undefined ? labelled : [];
-		const hit = candidates.find((c) => {
-			if (c.text !== undefined && !sameText(textContent(el), c.text)) return false;
-			if (c.label !== undefined && attr(el, 'aria-label') !== c.label) return false;
-			const placed = c.within !== undefined && shown.has(c.within);
-			if (placed && nearestSlot(el) !== c.within) return false;
-			if (placed && c.siblings && c.index !== undefined) {
-				const row = el.parentNode && isElement(el.parentNode as Element) ? elementChildren(el.parentNode as Element) : [];
-				if (row.length !== c.siblings.length || row[c.index] !== el) return false;
-				if (c.siblings.some((t, i) => t !== null && !sameText(textContent(row[i]!), t))) return false;
-				return true;
-			}
-			return c.text !== undefined || c.label !== undefined;
-		});
-		if (!hit) continue;
-		setAttr(el, PART_MARK, hit.part);
+		// Sites of different parts that fit equally well leave it unmarked.
+		let parts = new Set<string>();
+		let best = 0;
+		for (const c of candidates) {
+			const score = fits(el, c, shown);
+			if (score > best) [parts, best] = [new Set([c.part]), score];
+			else if (score && score === best) parts.add(c.part);
+		}
+		if (parts.size !== 1) continue;
+		setAttr(el, PART_MARK, [...parts][0]!);
 		marked++;
 	}
 	return marked;
