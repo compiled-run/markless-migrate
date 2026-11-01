@@ -13,6 +13,7 @@ import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice 
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
+import { RuntimeScripts } from '../client/builds.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
@@ -1119,6 +1120,7 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 
 // The old Qwik build's handler symbols, from its q-manifest.json, while its pages are prepared.
 let qwikHandlers: QwikHandlers | undefined;
+let runtimeScripts: ReadonlySet<string> = new Set();
 
 /** A Qwik build's symbols by name, with each one's source file and handler name, from the manifest it serves. */
 async function readQwikSymbols(origin: string): Promise<QwikHandlers['symbols'] | undefined> {
@@ -1130,7 +1132,7 @@ async function readQwikSymbols(origin: string): Promise<QwikHandlers['symbols'] 
 function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
 	currentRoute = capture.route;
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
-	const ctx = { builds, frameworkScripts: new Set<string>(), origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
+	const ctx = { builds, frameworkScripts: runtimeScripts, origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
 	const servedDoc = parseDocument(capture.server);
 	framesAsServed(doc, servedDoc, (el) => bindMount(el) !== undefined);
@@ -1678,6 +1680,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		break;
 	}
 	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : []), ...([...clockMarks.values()].some((m) => m.length) ? ['data-mm-clock'] : [])]);
+	const runtimes = new RuntimeScripts(options.old);
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -1685,7 +1688,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		racLayer.route = ref.route;
 		templatePorts.routes = [ref.route];
-		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
+		const capture = await ref.load();
+		runtimeScripts = await runtimes.among(capture.server);
+		prepared.set(ref.route, prepare(capture, revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 		for (const e of racPageEmpties.get(ref.route) ?? []) {
 			const p = prepared.get(ref.route)!;
 			const input = locator(p.root.parentNode as Element)(e.sig, e.nth);
