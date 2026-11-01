@@ -12,7 +12,7 @@ import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNest
 import { captureChoices, copyBinding, markChosenHref, optionsShown, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
-import { cleanDocument, frameworkBuilds, lateHead, type Dropped, type QwikHandlers } from './clean.ts';
+import { cleanDocument, frameworkBuilds, lateHead, servedScrollState, type Dropped, type QwikHandlers } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
@@ -1048,6 +1048,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin, ...(qwikHandlers ? { qwik: qwikHandlers } : {}) };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
+	if (qwikHandlers) servedScrollState(doc, parseDocument(capture.server));
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
-import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
+import { cleanDocument, frameworkBuilds, servedScrollState } from '../src/convert/clean.ts';
 import { attr, body, find, parseDocument, walk } from '../src/convert/dom.ts';
 import { markupPorts, QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, registryModule, useMarkupLibraries } from '../src/convert/parts.ts';
 import { SelectPlan } from '../src/convert/stateful.ts';
@@ -245,6 +245,20 @@ test('modal: one nested in another modal\'s Root (level 2) leaves the page locke
 	assert.equal(await p.locator('dialog').evaluate((d) => (d as HTMLDialogElement).open), false);
 	assert.equal(await locked(), true, 'still locked after Escape');
 	await p.close();
+});
+
+test("what reads the state a Qwik scroll handler captured is converted as served, not as capture's scroll-through left it", () => {
+	const objs = ['', '\u00122', 'intro'];
+	const subs = [null, ['0 #h1', '0 #h2'], null];
+	const toc = (active: string) => `<script hidden q:id="s1" on-window:scroll="q-a.js#s_toc[0]"></script><!--qv q:id=h1 q:key=a--><a q:id="a1" href="#intro" class="${active}">Intro</a><!--/qv--><!--qv q:id=h2 q:key=b--><a q:id="a2" href="#api" class="muted">API</a><!--/qv--><p q:id="p1" class="lede">Kept</p>`;
+	const json = `<script type="qwik/json">${JSON.stringify({ refs: { s1: '1' }, ctx: {}, objs, subs })}</script>`;
+	const settled = parseDocument(page(toc('active').replace('class="lede"', 'class="lede seen"') + json));
+	const restored = servedScrollState(settled, parseDocument(page(toc('muted') + json)));
+	assert.equal(restored, 1);
+	const [a1, a2] = [...walk(settled)].filter((el) => el.tagName === 'a');
+	assert.equal(attr(a1!, 'class'), 'muted');
+	assert.equal(attr(a2!, 'class'), 'muted');
+	assert.equal(attr(find(settled, (el) => el.tagName === 'p')!, 'class'), 'lede seen', 'what no scroll handler state reaches keeps its settled value');
 });
 
 test("Qwik's manifest names each handler's source: a library handler a port needs marks its element, the site's own are named", () => {

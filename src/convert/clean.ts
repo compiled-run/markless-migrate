@@ -155,6 +155,8 @@ const SYMBOL = /#(\w+)/;
 interface PausedState {
 	readonly refs: Readonly<Record<string, string>>;
 	readonly objs: readonly unknown[];
+	/** Who reads each object, by its index in objs: `0 #<host>` a component that renders from it, else the element it writes to. */
+	readonly subs?: readonly (readonly string[] | null)[];
 }
 
 /** A paused Qwik container's state (`<script type="qwik/json">`): each element's captured objects by its q:id. */
@@ -163,12 +165,68 @@ function pausedState(doc: Document): PausedState | undefined {
 		if (el.tagName !== 'script' || attr(el, 'type') !== 'qwik/json') continue;
 		try {
 			const state = JSON.parse(childrenOf(el).map((n) => ('value' in n ? (n as { value: string }).value : '')).join('')) as Partial<PausedState>;
-			return state.refs && state.objs ? { refs: state.refs, objs: state.objs } : undefined;
+			return state.refs && state.objs ? { refs: state.refs, objs: state.objs, ...(state.subs ? { subs: state.subs } : {}) } : undefined;
 		} catch {
 			return undefined;
 		}
 	}
 	return undefined;
+}
+
+/**
+ * A Qwik window or document scroll handler runs only once the page scrolls, and capture scrolls through the page before
+ * it reads it: what reads the state such a handler captured (a table of contents' active link) is restored as served.
+ */
+export function servedScrollState(doc: Document, served: Document): number {
+	const paused = pausedState(doc);
+	if (!paused?.subs) return 0;
+	const readers = new Set<string>();
+	for (const el of walk(doc)) {
+		if (!el.attrs.some((a) => /^on-(?:window|document):scroll$/.test(a.name))) continue;
+		for (const ref of (paused.refs[attr(el, 'q:id') ?? ''] ?? '').split(/\s+/).filter(Boolean)) {
+			for (const sub of paused.subs[parseInt(ref.replace(/!$/, ''), 36)] ?? []) for (const id of sub.matchAll(/#(\w+)/g)) readers.add(id[1]!);
+		}
+	}
+	if (!readers.size) return 0;
+	const byId = new Map<string, Element>();
+	for (const el of walk(served)) {
+		const id = attr(el, 'q:id');
+		if (id) byId.set(id, el);
+	}
+	let restored = 0;
+	const restore = (root: Element) => {
+		for (const el of walk(root)) {
+			const was = byId.get(attr(el, 'q:id') ?? '');
+			if (!was) continue;
+			const before = el.attrs.map((a) => `${a.name}=${a.value}`).join(' ');
+			el.attrs = [...was.attrs.map((a) => ({ ...a })), ...el.attrs.filter((a) => a.name.startsWith('data-mm-') && !was.attrs.some((w) => w.name === a.name))];
+			if (el.attrs.map((a) => `${a.name}=${a.value}`).join(' ') !== before) restored++;
+		}
+	};
+	const visit = (parent: ParentNode) => {
+		const nodes = childrenOf(parent);
+		for (let i = 0; i < nodes.length; i++) {
+			const node = nodes[i]!;
+			if (isElement(node)) {
+				if (readers.has(attr(node, 'q:id') ?? '')) restore(node);
+				else visit(node);
+				continue;
+			}
+			const host = node.nodeName === '#comment' ? /^qv\s.*\bq:id=(\w+)/.exec((node as { data: string }).data)?.[1] : undefined;
+			if (!host || !readers.has(host)) continue;
+			// A component's elements lie between its virtual node's comments.
+			for (let depth = 1, j = i + 1; j < nodes.length && depth > 0; j++) {
+				const next = nodes[j]!;
+				if (next.nodeName === '#comment') {
+					const data = (next as { data: string }).data;
+					if (/^qv\s/.test(data)) depth++;
+					else if (/^\/qv/.test(data)) depth--;
+				} else if (isElement(next)) restore(next);
+			}
+		}
+	};
+	visit(doc);
+	return restored;
 }
 
 // Qwik writes a value of another kind (a signal, a QRL, a store) as a string led by a control character.
