@@ -21,7 +21,7 @@ import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclos
 import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
-import { captureScenes, type Scene } from './scenes.ts';
+import { captureScenes, SCENE_LIMITS, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
@@ -837,6 +837,24 @@ function chartRegion(wrapper: Element | undefined): Element | undefined {
 	return wrapper?.parentNode && isElement(wrapper.parentNode as Element) ? (wrapper.parentNode as Element) : undefined;
 }
 
+/**
+ * The layer a menu trigger a demo's use adds opens: that of the page's trigger like it in the same table column (a row's
+ * actions menu, the same in every row), which the old page rendered for the rows it loaded with.
+ */
+function rowMenuLayer(p: Prepared): (trigger: Element) => string | undefined {
+	const keys = new Set(p.layers.map((l) => l.key));
+	const keyOf = (t: Element) => [attr(t, 'aria-controls'), triggerKeys.get(t), attr(t, 'id')].find((k): k is string => k !== undefined && keys.has(k));
+	const columnOf = (el: Element): string | undefined => {
+		for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (n.tagName === 'td') return `${childrenOf(n.parentNode as Element).filter(isElement).indexOf(n)}`;
+		return undefined;
+	};
+	const triggers = [...walk(p.root)].filter((t) => attr(t, 'aria-haspopup') !== undefined && columnOf(t) !== undefined && keyOf(t));
+	return (c) => {
+		const like = triggers.filter((t) => t.tagName === c.tagName && attr(t, 'data-slot') === attr(c, 'data-slot') && attr(t, 'aria-haspopup') === attr(c, 'aria-haspopup') && columnOf(t) === columnOf(c));
+		return like.length && !keyOf(c) ? keyOf(like.at(-1)!) : undefined;
+	};
+}
+
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
 	const asLoaded = new Map<string, Element[]>();
@@ -1290,7 +1308,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		};
 		const reveal = options.reveal !== false;
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string; text?: string; template?: string }[], () => []);
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string; text?: string; template?: string; region?: string; settle?: number }[], () => []);
 		siteFunctions = listed.flatMap((c) => (c.template ? [c.template] : []));
 		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' || c.action === 'theme' ? [] : [[c.selector, c.action, c.routes] as const]));
 		// Controls the site lists as opening a layer no ARIA marks (a button whose click sets a dialog's open state).
@@ -1315,8 +1333,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}),
 		);
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
-		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
-		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text)).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...got[i]!.scenes.map((scene) => ({ scene, listed: selector }))])));
+		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? '', c.region, c.settle] as const));
+		// A demo whose use waits on a timer before it shows what it does (a "Load more" that takes 2 s) names how long its quiet may last.
+		const scenesRead = eachLimited(limit, plays, async ([selector, r, text, region, settle]) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, settle ? { ...SCENE_LIMITS, settle } : undefined, text, region)).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...got[i]!.scenes.map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
 		const notifies = listed.filter((x) => x.action === 'notify').flatMap((c) => routes.filter((r) => !c.routes || new RegExp(c.routes).test(r)).map((r) => [c.selector, r, c.template] as const));
@@ -1913,9 +1932,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) {
 		const list = scenes.get(route) ?? [];
 		const locate = list.length ? locator(p.root.parentNode as Element) : undefined;
+		const layerOf = list.length ? rowMenuLayer(p) : undefined;
 		for (const { scene, listed } of list) {
 			const region = locate!(scene.sig, scene.nth);
-			if (region && scenePlan.add(scene, region, listed)) sceneCount++;
+			if (region && scenePlan.add(scene, region, listed, layerOf)) sceneCount++;
 			else if (!region) log(`  recorded uses not played: ${scene.sig}#${scene.nth} is not on the converted page`);
 		}
 	}

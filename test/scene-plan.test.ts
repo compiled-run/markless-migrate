@@ -320,3 +320,15 @@ test("a Replay that remounts a collapsible another plan owns keeps that plan's e
 	for (const rest of data.rest) assert.ok(new RegExp(`sc0 === ${rest}\\b|sc0 >= \\d+ && sc0 <= \\d+`).test(own), `rest frame ${rest} shows the page's own markup: ${own}`);
 	assert.match(out, /<p[^>]*>one<\/p>/, 'the streamed steps are in the captured arm');
 });
+
+// Load more: rows the use adds hold a row-actions menu trigger the page never rendered.
+const rows = (n: number) => el(1, 'div', { 'data-slot': 'card' }, el(2, 'table', {}, el(3, 'tbody', {}, ...Array.from({ length: n }, (_, i) => el(10 + i, 'tr', {}, el(20 + i, 'td', {}, el(30 + i, 'button', { 'aria-haspopup': 'menu', id: `base-ui-${i}` }, text(40 + i, '…'))))))), el(9, 'button', {}, text(90, 'Load more')));
+const MORE: Scene = { sig: 'div|card|', nth: 0, states: [rows(1), rows(2)], edges: [{ from: 0, control: 'button||Load more#0', to: 1, frames: [{ t: 2000, tree: rows(2) }] }], skipped: [] };
+
+test("a menu trigger only a use adds opens the layer the page's trigger like it has", () => {
+	const region = parseFragment(html(MORE.states[0]!)).childNodes[0] as unknown as Element;
+	const plan = new ScenePlan();
+	assert.ok(plan.add(MORE, region, 'button', (t) => (attr(t, 'id') === 'base-ui-1' ? 'base-ui-0' : undefined)), plan.refused.join('\n'));
+	const out = emitElement(region, { bind: (e) => plan.bind(e) });
+	assert.match(out, /<button aria-haspopup="menu" id="base-ui-1"[^>]*data-mm-key="base-ui-0"/);
+});
