@@ -1,6 +1,6 @@
 import { state } from '@markless/core';
 import { close } from '../parts/qwik-ui/modal.ts';
-import { highlightedLink, latestSearch, type Hit } from './pagefind-search.ts';
+import { highlightedLink, latestSearch, markTyped, wasTyped, type Hit } from './pagefind-search.ts';
 
 // search.tsx's Search: an inline Qwik UI Combobox (filter off) in the header's search dialog. Each input searches
 // Pagefind; the list shows "Headless" and up to 8 results, each a link to its best heading, or "No results found" when
@@ -30,6 +30,7 @@ export default function SearchBox() @{
 			data-mm-qwik="keydown:search.tsx_Search_component_onKeyDown"
 			class="rounded-base flex border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 h-12 w-full rounded-b-none border-none focus-visible:ring-0 focus-visible:outline-hidden"
 			onInput={(event) => {
+				markTyped();
 				const typed = (event.currentTarget as HTMLInputElement).value;
 				term = typed;
 				active = 0;
@@ -48,12 +49,11 @@ export default function SearchBox() @{
 				if (event.key === 'Home') active = 0;
 				if (event.key === 'End' && count) active = count - 1;
 				if (event.key === 'Enter') {
-					// With nothing highlighted, the Combobox throws before search.tsx's own handler closes the dialog.
 					const link = highlightedLink(input);
-					if (!link) return;
+					if (!link && wasTyped()) return;
 					const dialog = input.closest('dialog');
 					if (dialog) close(dialog);
-					location.href = link.href;
+					if (link) location.href = link.href;
 				}
 			}}
 		/>

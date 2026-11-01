@@ -1,7 +1,7 @@
 import type { Part } from '../parts/index.ts';
 import { close, isShown, pageLoaded, show } from '../parts/qwik-ui/modal.ts';
 import { DEMO_PARTS } from './demos.ts';
-import { startPagefind } from './pagefind-search.ts';
+import { resetTyped, startPagefind } from './pagefind-search.ts';
 
 // qwikui.com's own client components (apps/website/src/components) on Markless. Each control is found by the handler it
 // ran on the old page (data-mm-qwik, from the old build's q-manifest.json) and what that handler closed over
@@ -104,6 +104,7 @@ function onArrival(): void {
 	colorSchemeAsOnLoad();
 	// A nested modal leaves the page scroll-locked when it closes, and a close the browser made leaves a listener (modal.ts).
 	pageLoaded();
+	resetTyped();
 }
 let watchingArrivals = false;
 function watchArrivals(): void {

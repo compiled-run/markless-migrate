@@ -36,14 +36,13 @@ export function startPagefind(): void {
 	window.dispatchEvent(new CustomEvent('initPagefind'));
 }
 
-async function ready(): Promise<Pagefind> {
-	startPagefind();
-	for (;;) {
-		const found = pagefind();
-		if (found) return found;
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	}
-}
+// Once the input has had an input event, Qwik has resumed it: an Enter with no result highlighted then throws in the
+// Combobox before search.tsx's own handler closes the dialog. Before that, the handlers run apart and the dialog closes.
+let typed = false;
+export const markTyped = (): void => void (typed = true);
+export const wasTyped = (): boolean => typed;
+/** A page load starts with the input not yet resumed. */
+export const resetTyped = (): void => void (typed = false);
 
 const ENTITIES: Readonly<Record<string, string>> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'", nbsp: ' ' };
 const decode = (s: string) => s.replace(/&(#\d+|#x[0-9a-f]+|\w+);/gi, (m, e: string) => ENTITIES[e.toLowerCase()] ?? (e.startsWith('#x') ? String.fromCodePoint(parseInt(e.slice(2), 16)) : e.startsWith('#') ? String.fromCodePoint(Number(e.slice(1))) : m));
@@ -68,8 +67,7 @@ function best(headings: readonly Anchor[], term: string): Anchor | undefined {
 }
 
 /** What the dialog lists for `term`, and whether Pagefind answered with no results at all. */
-export async function searchSite(term: string): Promise<{ readonly hits: readonly Hit[]; readonly none: boolean }> {
-	const engine = await ready();
+async function searchSite(engine: Pagefind, term: string): Promise<{ readonly hits: readonly Hit[]; readonly none: boolean }> {
 	await engine.preload(term);
 	const search = await engine.search(term);
 	if (!search) return { hits: [], none: true };
@@ -95,6 +93,9 @@ let asked = 0;
 /** What `term` shows, or undefined when a later search was asked before this one answered (search.tsx keeps the last one). */
 export async function latestSearch(term: string): Promise<{ readonly hits: readonly Hit[]; readonly none: boolean } | undefined> {
 	const mine = ++asked;
-	const found = term ? await searchSite(term) : { hits: [], none: false };
+	// search.tsx reads window.pagefind as each input comes: typed before Pagefind has loaded, the input finds nothing.
+	const engine = pagefind();
+	if (!engine) return undefined;
+	const found = term ? await searchSite(engine, term) : { hits: [], none: false };
 	return mine === asked ? found : undefined;
 }
