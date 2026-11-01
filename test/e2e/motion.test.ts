@@ -169,7 +169,7 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		const lateCanvas = late.routes[0]!.motion?.canvases?.[0];
 		assert.ok(lateCanvas, JSON.stringify(late.routes[0]!.motion));
 		assert.equal(lateCanvas.verdict, 'same', JSON.stringify(lateCanvas));
-		assert.ok(lateCanvas.gap.ms >= 250 && lateCanvas.gap.ms <= 550, `the drawing starts about 400 ms later: ${JSON.stringify(lateCanvas)}`);
+		assert.ok(Math.abs(lateCanvas.gap.ms - 400) <= 50, `the drawing runs 400 ms behind, to within the recorder's frame steps: ${JSON.stringify(lateCanvas)}`);
 		assert.ok(!motion(late).some((f) => f.check.startsWith('canvas frames from load')), motion(late).map((f) => f.check).join('\n'));
 		const failure = motion(low).find((f) => f.check.startsWith('canvas frames from load: '));
 		assert.ok(failure, JSON.stringify(low.routes[0]!.motion?.canvases));
