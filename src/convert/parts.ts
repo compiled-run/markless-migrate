@@ -30,6 +30,8 @@ export interface Port {
 	/** The exports it implements, as the source names them off the package. */
 	readonly exports: readonly string[];
 	readonly events: readonly PartEvent[];
+	/** Its idle() must run once the page has loaded, before any use (an autoplay timer, a dialog open on load). */
+	readonly atLoad?: true;
 	/**
 	 * Among the parts the source renders with an element's `data-slot`, whether this element is this library's: the markup
 	 * contract tells Radix's tab from Base UI's when a site renders both. The source decides the part; this only places it.
@@ -99,8 +101,8 @@ const QWIK_UI = '@qwik-ui/headless';
 export const PORTS: readonly Port[] = [
 	// Radix Tabs are Markless state (convert's TabsPlan); the part is only the roving focus the triggers' keydown calls.
 	{ module: 'radix/roving', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content', 'ToggleGroup.Root', 'ToggleGroup.Item', 'RadioGroup.Root', 'RadioGroup.Item'], events: ['pointerdown', 'focusin', 'keydown'], locate: (el) => radix(el) },
-	{ module: 'radix/dialog', library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
-	{ module: 'cmdk', library: 'cmdk', exports: ['Command', 'Command.Input', 'Command.List', 'Command.Item', 'Command.Group', 'Command.Empty'], events: ['input', 'keydown', 'pointerover', 'click', 'focusout'], locate: () => true, needs: ['choices'] },
+	{ module: 'radix/dialog', atLoad: true, library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'cmdk', atLoad: true, library: 'cmdk', exports: ['Command', 'Command.Input', 'Command.List', 'Command.Item', 'Command.Group', 'Command.Empty'], events: ['input', 'keydown', 'pointerover', 'click', 'focusout'], locate: () => true, needs: ['choices'] },
 	{ module: 'radix/popover', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },
 	{ module: 'radix/dropdown-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item', 'Menubar.Root', 'Menubar.Menu', 'Menubar.Trigger', 'Menubar.Content', 'Menubar.Item'], events: ['pointerdown', 'click', 'pointerover', 'pointerout', 'focusin', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'base-ui/popover', library: '@base-ui/react', exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Popup', 'Popover.Positioner', 'Popover.Portal', 'Popover.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
@@ -119,22 +121,22 @@ export const PORTS: readonly Port[] = [
 	{ module: 'base-ui/navigation-menu', library: '@base-ui/react', exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Portal', 'NavigationMenu.Positioner', 'NavigationMenu.Popup', 'NavigationMenu.Viewport'], events: ['pointerover', 'pointerout', 'click', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/preview-card', library: '@base-ui/react', exports: ['PreviewCard.Root', 'PreviewCard.Trigger', 'PreviewCard.Popup', 'PreviewCard.Positioner', 'PreviewCard.Portal'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/context-menu', library: '@base-ui/react', exports: ['ContextMenu.Root', 'ContextMenu.Trigger', 'ContextMenu.Popup', 'ContextMenu.Positioner', 'ContextMenu.Portal', 'ContextMenu.Item'], events: ['contextmenu', 'click'], locate: (el) => base(el) || attr(el, 'data-slot') === 'context-menu-trigger', needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'base-ui/menu'] },
-	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
+	{ module: 'base-ui/dialog', atLoad: true, library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
 	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	// shadcn's Carousel drives Embla through useEmblaCarousel: the slots its file writes are the call's (usage.ts).
-	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
+	{ module: 'carousel', atLoad: true, library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
 	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
 	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
-	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion', 'recharts-layout', 'clock'] },
+	{ module: 'recharts', atLoad: true, library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion', 'recharts-layout', 'clock'] },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).
 	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown', 'focusin'], locate: (el) => radix(el) },
 	// Radix ScrollArea: the scrollbars it mounts on hover are rendered hidden in the area (convert's companions).
 	{ module: 'radix/scroll-area', library: 'radix-ui', needs: [], exports: ['ScrollArea.Root', 'ScrollArea.Viewport', 'ScrollArea.Scrollbar', 'ScrollArea.ScrollAreaScrollbar', 'ScrollArea.Thumb', 'ScrollArea.ScrollAreaThumb', 'ScrollArea.Corner'], events: ['pointerover'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'scroll-area' },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
-	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
+	{ module: 'radix/disclosure-motion', atLoad: true, library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 	// react-day-picker calendars are Markless state with handlers on their root (day-picker.ts DayPickerPlan places the
 	// module); the part only prevents the keys DayPicker handles on a day.
 	{ module: 'day-picker', library: 'react-day-picker', exports: ['DayPicker'], events: ['keydown'], locate: () => false },
@@ -354,11 +356,17 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 }
 
 /** The page root's event attributes, one per event a used port listens to, and the document listeners installed when idle. */
-export function bodyHandlers(modules: ReadonlySet<string>, hasSite: boolean): string[] {
+/**
+ * The root's handlers: one per event the page's parts claim, and listen() once the page is idle. With `onUse` (an app's
+ * "loadOnUse"), a page none of whose ports must run at load loads its parts on first use instead, as a Qwik page does:
+ * its first scroll and a key pressed outside its root wake them (wake.ts), and nothing of theirs runs at load.
+ */
+export function bodyHandlers(modules: ReadonlySet<string>, hasSite: boolean, onUse = false): string[] {
 	const events = new Set<PartEvent>(hasSite ? ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'] : []);
 	for (const port of PORTS) if (modules.has(port.module)) for (const e of port.events) events.add(e);
 	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input', submit: 'Submit' }[e]}`;
-	return [...[...events].map((e) => `${prop(e)}={(event) => behave(event)}`), 'onIdle={() => listen()}'];
+	const idle = !onUse || PORTS.some((p) => p.atLoad && modules.has(p.module));
+	return [...[...events].map((e) => `${prop(e)}={(event) => behave(event)}`), ...(idle ? ['onIdle={() => listen()}'] : ['onMmwake={(event) => behave(event)}', 'data-mm-wake=""'])];
 }
 
 async function exists(path: string): Promise<boolean> {

@@ -1140,10 +1140,14 @@ export function pageRoot(kids: readonly Element[]): Element {
 // A dialog open on load is a layer the page portaled to the body, not the page.
 const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
-/** The app opts in with `"markless-migrate": { "stylesheetImports": true }` in its package.json: it needs a Markless whose build carries imported CSS (compiled-run/markless#391). */
-async function wantsStylesheetImports(app: string): Promise<boolean> {
-	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8').catch(() => '{}')) as { 'markless-migrate'?: { stylesheetImports?: boolean } };
-	return manifest['markless-migrate']?.stylesheetImports === true;
+/**
+ * What the app opts into in its package.json's "markless-migrate": stylesheetImports (needs a Markless whose build carries
+ * imported CSS, compiled-run/markless#391), loadOnUse (parts load on first use, not at idle: see bodyHandlers).
+ */
+async function siteOptions(app: string): Promise<{ readonly stylesheetImports: boolean; readonly loadOnUse: boolean }> {
+	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8').catch(() => '{}')) as { 'markless-migrate'?: { stylesheetImports?: boolean; loadOnUse?: boolean } };
+	const own = manifest['markless-migrate'] ?? {};
+	return { stylesheetImports: own.stylesheetImports === true, loadOnUse: own.loadOnUse === true };
 }
 
 function headModule(byRoute: Map<string, Prepared>): string {
@@ -1956,6 +1960,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	usedPorts.routes = undefined;
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
+	const site = await siteOptions(app);
 	const written = new Map<string, string>();
 	const out: ConvertedRoute[] = [];
 	const byFile = new Map<string, { route: string; search: string; markup: string; parts: PartUse[]; declarations: string[]; layers: readonly string[] }[]>();
@@ -2073,7 +2078,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const shared: Registries = { behave: () => registry(new Set(usedPorts)), mount: () => registry(new Set(mountingPorts(usedPorts))) };
 	for (const [file, source] of written) {
 		const ports = usedPorts.of(byFile.get(file)!.map((v) => v.route));
-		const handlers = bodyHandlers(ports, siteParts).join(' ');
+		const handlers = bodyHandlers(ports, siteParts, site.loadOnUse).join(' ');
 		written.set(file, withSiteImports(withPartImports(source.replaceAll(ROOT_HANDLERS, handlers), partsDir(file), { ...shared, behave: () => registry(ports) }), siteComponents, appDir(file)));
 	}
 	if (!options.only?.length) await rm(join(app, 'pages'), { recursive: true, force: true });
@@ -2109,9 +2114,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		documentParts.push({ part: 'next-themes', import: (dir) => `import { earlyThemeScript } from '${dir}/next-themes.ts';` });
 		log(`theme toggle "${toggle.name}" answers from the first paint (next-themes ${themeOptions.attribute}, key ${themeOptions.storageKey})`);
 	}
+	if (site.loadOnUse) {
+		documentParts.push({ part: 'wake', import: (dir) => `import { WAKE_SCRIPT } from '${dir}/wake.ts';` });
+		headScripts.push('WAKE_SCRIPT');
+	}
+	// The site's own script for the head (lib/site/head-script.ts, its default export): what the old page ran before any part loads.
+	if (await stat(join(app, 'lib', 'site', 'head-script.ts')).then(() => true, () => false)) {
+		documentParts.push({ part: 'site-head-script', import: () => "import SITE_HEAD_SCRIPT from './lib/site/head-script.ts';" });
+		headScripts.push('SITE_HEAD_SCRIPT');
+	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : []), ...(await siteImportedParts(app))], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
+	await writeParts(app, usedPorts, choices, [...(site.loadOnUse ? ['wake'] : []), ...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : []), ...(await siteImportedParts(app))], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
 	for (const [file, source] of formLibs.files()) {
 		await mkdir(dirname(join(app, 'lib', 'parts', file)), { recursive: true });
@@ -2176,7 +2190,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const folded = await appendBodyCss(publicDir, prepared.values());
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
-	if (await wantsStylesheetImports(app)) {
+	if (site.stylesheetImports) {
 		const pagesOf = new Map<string, string[]>();
 		for (const r of out) pagesOf.set(r.page, [...(pagesOf.get(r.page) ?? []), r.route]);
 		const imported = await importStylesheets(app, publicDir, pagesOf, new Map([...prepared].map(([route, p]) => [route, p.head])), Boolean(options.only?.length));
