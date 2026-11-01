@@ -156,7 +156,7 @@ function rendered(root: HTMLElement): void {
 	const c = commands.get(root);
 	if (!c || !track(c, root)) return;
 	apply(root, c.search);
-	if (selected(root)) return;
+	if (selected(root) || root.closest<HTMLElement>('[data-mm-layer]')?.hidden) return;
 	const first = items(root)[0];
 	if (first) select(root, first, 'search');
 	else setDescendant(root, undefined);
@@ -367,8 +367,17 @@ export function click(target: Element): boolean {
 	return true;
 }
 
+// A Command in a layer mounts as its layer opens (focus moves in), and selects its first item then.
+export function focusin(target: Element): boolean {
+	const root = rootOf(target);
+	if (!root?.closest('[data-mm-layer]') || selected(root)) return false;
+	const first = items(root)[0];
+	if (first) select(root, first, 'search');
+	return false;
+}
+
 // A Command inside a layer is unmounted when its layer closes: once focus has left it and the layer is hidden (its exit
-// animation shows it as it was), it opens again with no search, its first item selected and nothing active.
+// animation shows it as it was), it opens again with no search and nothing selected or active.
 const awaiting = new WeakSet<Element>();
 export function focusout(target: Element, event: FocusEvent): boolean {
 	const root = rootOf(target);
@@ -395,14 +404,11 @@ function reset(root: HTMLElement): void {
 	if (field) field.value = '';
 	const c = commandOf(root);
 	for (const [container, order] of c.original) c.order.set(container, [...order]);
-	search(root, '');
-	const first = shownOrder(root).find(enabled);
+	apply(root, '');
 	for (const i of root.querySelectorAll(`${ITEM}[aria-selected="true"]`)) {
 		i.setAttribute('aria-selected', 'false');
 		i.setAttribute('data-selected', 'false');
 	}
-	first?.setAttribute('aria-selected', 'true');
-	first?.setAttribute('data-selected', 'true');
 	setDescendant(root, undefined);
 	const scroller = root.querySelector<HTMLElement>('[cmdk-list]');
 	if (scroller) scroller.scrollTop = 0;
