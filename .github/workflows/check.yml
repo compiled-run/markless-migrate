@@ -50,6 +50,10 @@ on:
         description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI), or 24 with priority deploy
         required: false
         default: '10'
+      preset:
+        description: The Nitro preset the build was made with (cloudflare-module to check the exact build a Cloudflare deploy uploads); empty serves whatever the archive holds
+        required: false
+        default: ''
   # The pipeline workflow's check stage: its build artifact, and the routes its selection left to check.
   workflow_call:
     inputs:
@@ -78,6 +82,7 @@ on:
         default: 'true'
       max_parallel: { type: string, required: false, default: '10' }
       priority: { type: string, required: false, default: '' }
+      preset: { type: string, required: false, default: '' }
   # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
@@ -239,6 +244,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD: ${{ needs.plan.outputs.build }}
+          PRESET: ${{ inputs.preset }}
         run: |
           set -euo pipefail
           if [ -n "${{ inputs.build-artifact }}" ]; then
