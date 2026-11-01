@@ -2045,7 +2045,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const outOfTime = () => Date.now() - started > budget && (timedOut = true);
 	const outOfBudget = () => journeys.length >= cap || outOfTime();
 
+	const opened = Date.now();
 	const start = await openSession(browser, env, route, viewport);
+	const loadMs = Date.now() - opened;
 	let wave: Item[];
 	let navLink: Target | undefined;
 	let entries: string[] = [];
@@ -2085,7 +2087,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused; exploring ends sooner when its journeys run out.
 		const sized = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS) + keys.length * PATTERN_BUDGET_MS);
 		if (options.maxJourneys === undefined) cap = Math.round(sized / NOMINAL_JOURNEY_MS);
-		if (options.budgetMs === undefined) budget = sized * TIME_CAP_FACTOR;
+		// Each journey loads the page afresh: a page that takes 15 s to load (ten chart frames) needs that much more per journey.
+		if (options.budgetMs === undefined) budget = Math.max(sized, cap * (NOMINAL_JOURNEY_MS + loadMs)) * TIME_CAP_FACTOR;
 		// The keyboard patterns of the page's widgets run first: they are few, and a page whose other controls spend the budget must not leave them out.
 		wave = [...keys, ...first.primary, ...batches(1), ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
 		later.push(...first.keyboard);
