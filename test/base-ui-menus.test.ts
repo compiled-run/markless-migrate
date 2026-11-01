@@ -287,11 +287,15 @@ test('switching between open Base UI menubar menus is instant (data-instant="gro
 	// tw-animate's enter and exit as shadcn's menubar content uses them (duration-100).
 	const css = '<style>@keyframes enter{from{opacity:0;transform:scale(.95)}}@keyframes exit{to{opacity:0;transform:scale(.95)}}[role=menu][data-open]{animation:enter 100ms}[role=menu][data-closed]{animation:exit 100ms}</style>';
 	const page = await open(`${css}<main style="padding:100px"><div role="menubar" data-slot="menubar">${bar('m1', 'File')}${bar('m2', 'Edit')}</div></main>${layer('m1', ['New Tab', 'Print'])}${layer('m2', ['Undo', 'Redo'])}`, ['base-ui/menu']);
+	// The animation clock stands still, so a fade reads its first frame however late the read comes; only the part's own finish() moves it.
+	const cdp = await page.context().newCDPSession(page);
+	await cdp.send('Animation.enable');
+	await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
 	const frame = () =>
 		page.evaluate(() => new Promise<string[]>((done) => requestAnimationFrame(() => done([...document.querySelectorAll<HTMLElement>('[role=menu]')].filter((m) => m.getClientRects().length).map((m) => `${m.getAttribute('aria-labelledby')} ${Number(getComputedStyle(m).opacity).toFixed(2)} ${m.getAttribute('data-instant') ?? '-'}`)))));
 	await page.locator('#m1').click();
 	assert.deepEqual(await frame(), ['m1 0.00 -'], 'a first open fades in');
-	await page.waitForTimeout(200);
+	await page.evaluate(() => document.querySelector('[role=menu][aria-labelledby=m1]')!.getAnimations().forEach((a) => a.finish()));
 	await page.locator('#m2').hover();
 	assert.deepEqual(await frame(), ['m2 1.00 group'], 'no fade either way on a switch');
 	assert.equal(await page.evaluate(() => document.querySelector('[role=menu][aria-labelledby=m1]')!.getAttribute('data-instant')), 'group');
