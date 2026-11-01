@@ -218,7 +218,8 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	const pressable = options.pressable ?? (options.anchored !== false && (popup.matches('[role="menu"], [role="listbox"], [role="dialog"], nav') || Boolean(popup.querySelector('[role="listbox"]'))));
 	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, around, pressable, openedAt: performance.now(), dismiss: (reason) => options.onDismiss(p, reason), cleanup: [] };
 	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
-	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
+	// A select aligned with its trigger (alignItemWithTrigger) is placed by its own part.
+	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none' && positioner.querySelector('[data-align-trigger]')?.getAttribute('data-align-trigger') !== 'true') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
 		const opts: BaseOptions = { side: positioner.getAttribute('data-mm-side') ?? popup.getAttribute('data-side') ?? 'bottom', align: positioner.getAttribute('data-mm-align') ?? popup.getAttribute('data-align') ?? positioner.getAttribute('data-align') ?? 'center', sideOffset: Number(popup.dataset.mmSideOffset ?? portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(popup.dataset.mmAlignOffset ?? portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute', ...(options.fallbackAxisSide ? { fallbackAxisSide: options.fallbackAxisSide } : {}) };
 		// A Positioner given another anchor than its trigger (an element ref): the portal names that element.
