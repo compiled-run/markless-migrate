@@ -41,6 +41,20 @@ function pairAt(target: Element, x: number, y: number): Pair | undefined {
 	return undefined;
 }
 
+// While a separator is pointed at or dragged the library adopts a sheet putting its resize cursor on everything.
+let cursorSheet: CSSStyleSheet | undefined;
+function setState(p: Pair, state: 'inactive' | 'hover' | 'active'): void {
+	p.separator.setAttribute('data-separator', state);
+	cursorSheet ??= new CSSStyleSheet();
+	const adopted = document.adoptedStyleSheets.filter((s) => s !== cursorSheet);
+	if (state === 'inactive') {
+		document.adoptedStyleSheets = adopted;
+		return;
+	}
+	cursorSheet.replaceSync(`*, :hover { cursor: ${p.row ? 'ew-resize' : 'ns-resize'} !important;${state === 'active' ? ' touch-action: none;' : ''} }`);
+	document.adoptedStyleSheets = [...adopted, cursorSheet];
+}
+
 const sizeOf = (panel: HTMLElement) => parseFloat(panel.style.flexGrow || getComputedStyle(panel).flexGrow) || 0;
 const limit = (panel: HTMLElement, name: 'min' | 'max', fallback: number) => {
 	const v = parseFloat(panel.dataset[name === 'min' ? 'mmMinSize' : 'mmMaxSize'] ?? '');
@@ -80,13 +94,13 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	const total = sizeOf(p.before) + sizeOf(p.after);
 	const start = p.row ? event.clientX : event.clientY;
 	const from = sizeOf(p.before);
-	p.separator.setAttribute('data-separator', 'active');
+	setState(p, 'active');
 	p.separator.focus();
 	p.separator.setPointerCapture?.(event.pointerId);
 	const move = (e: PointerEvent) => resize(p, from + (((p.row ? e.clientX : e.clientY) - start) / (length || 1)) * (total || 100));
 	const up = () => {
-		p.separator.setAttribute('data-separator', 'inactive');
-		p.separator.addEventListener('pointermove', () => p.separator.getAttribute('data-separator') === 'inactive' && p.separator.setAttribute('data-separator', 'hover'), { once: true });
+		setState(p, 'inactive');
+		p.separator.addEventListener('pointermove', () => p.separator.getAttribute('data-separator') === 'inactive' && setState(p, 'hover'), { once: true });
 		p.separator.removeEventListener('pointermove', move);
 		p.separator.removeEventListener('pointerup', up);
 		p.separator.removeEventListener('pointercancel', up);
@@ -100,13 +114,13 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 export function pointerover(target: Element): boolean {
 	const p = pairOf(target);
 	if (!p || p.separator.getAttribute('data-separator') === 'active') return false;
-	p.separator.setAttribute('data-separator', 'hover');
+	setState(p, 'hover');
 	return false;
 }
 
 export function pointerout(target: Element, event: PointerEvent): boolean {
 	const p = pairOf(target);
 	if (!p || p.separator.getAttribute('data-separator') === 'active' || (event.relatedTarget instanceof Node && p.separator.contains(event.relatedTarget))) return false;
-	p.separator.setAttribute('data-separator', 'inactive');
+	setState(p, 'inactive');
 	return false;
 }
