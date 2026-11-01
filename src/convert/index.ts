@@ -25,9 +25,10 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, announced, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
+import { carriedBinding, carriesCall, markHandlers, notCarried, useHandlers, type HandlerFact, type PortedCall } from './handlers.ts';
 import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
 import { formSources } from './form-schemas.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
@@ -78,7 +79,7 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	if (toggleNames.length) out = out.replace('\n', `\nimport { ${toggleNames.join(', ')} } from '${dir}/toggle.ts';\n`);
 	const own = siteFunctions.filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	if (own.length) out = out.replace('\n', `\nimport { ${own.join(', ')} } from '${dir}/../site/parts.ts';\n`);
-	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
+	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY', 'sonnerToast'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	const baseToastNames = ['baseToastAdd', 'baseToastViewport', 'BASE_TOAST_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (baseToastNames.length) out = out.replace('\n', `\nimport { ${baseToastNames.join(', ')} } from '${dir}/base-ui/toast.ts';\n`);
@@ -439,6 +440,8 @@ const insertedContent = new Set<Element>();
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
 let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[]; imports?: readonly string[] }[] = [];
 let siteComponents: readonly SiteComponent[] = [];
+// What a carried handler's library calls become on the page being emitted (set once the notification plan has placed its toasters).
+let portedCall: (el: Element, port: string) => PortedCall | undefined = () => undefined;
 let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The TanStack tables whose visibility menus are layers (convert's TablePlan): their items bind the table's shared state.
@@ -760,6 +763,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
 	markCompositions(kept);
+	markHandlers(kept);
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -797,7 +801,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies)));
+						const own = mergeBindings(mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies))), carriedBinding(x, announced, false, portedCall));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
@@ -1142,6 +1146,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	markCompositions([body(doc)]);
+	markHandlers([body(doc)]);
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
 	const copyLabels = currentCopyLabels;
@@ -1633,9 +1638,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
 	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
-	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[] }) : undefined;
+	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[]; handlers?: HandlerFact[] }) : undefined;
 	useMarkupLibraries((libraries?.libraries ?? []).map((l) => l.name));
 	useCompositions(libraries?.compositions);
+	useHandlers(libraries?.handlers);
+	const uncarried = (libraries?.handlers ?? []).filter((h) => notCarried(h)).length;
+	if (libraries?.handlers?.length) log(`app submit handlers carried from the source: ${libraries.handlers.length - uncarried} (${uncarried} not: React state, props, hooks or an unported call)`);
 	useDocSearch(hasUsage ? ((JSON.parse(await readFile(usagePath, 'utf8')) as { docsearch?: Parameters<typeof useDocSearch>[0] }).docsearch) : undefined);
 	useOrigin(new URL(options.old).origin);
 	placementResolver = resolver;
@@ -1851,8 +1859,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	const formBinding: Binding = { extra: ['data-mm-form=""', 'onSubmit={(event) => event.preventDefault()}'] };
+	// A handled form given a carried submit handler prevents the submit in that handler's listener.
+	const formOf = (el: Element): Binding | undefined => {
+		const carried = carriedBinding(el, announced, handledForms.has(el), portedCall);
+		if (!handledForms.has(el)) return carried;
+		templatePorts.add('form');
+		return carried && carried.extra?.some((x) => x.startsWith('onSubmit=')) ? mergeBindings({ extra: ['data-mm-form=""'] }, carried) : mergeBindings(formBinding, carried);
+	};
 	if (handledForms.size) templatePorts.plan('form');
 	const notifyPlan = new NotifyPlan();
+	notifyPlan.programmatic = carriesCall('sonnerToast');
+	portedCall = (el, port) => (port === 'sonnerToast' ? notifyPlan.programFor(el) : undefined);
 	let notifyCount = 0;
 	// A form-library form's toast on a passing submit is a notification too, shown by its form's region.
 	for (const [route, p] of prepared) notifyCount += notifyPlan.add([...(notified.get(route) ?? []), ...(formLibsRead.get(route) ?? []).flatMap((f) => (f.toast ? [f.toast] : []))], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
@@ -1999,7 +2016,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(tables.bind(el), binding);
 		binding = mergeBindings(needs(formLibs.bind(el), 'form-library'), binding);
 		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
-		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? needs(formBinding, 'form') : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
+		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), formOf(el))), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;

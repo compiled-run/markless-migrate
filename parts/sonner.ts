@@ -262,6 +262,12 @@ export function sonnerAdd(props: SonnerToaster, toast: SonnerToast, commit: Comm
 	}, 0);
 }
 
+/** sonner's `toast(message, { description })`, called by a handler carried over from the source, shown in the toast markup convert gives such calls. */
+export function sonnerToast(props: SonnerToaster, toast: SonnerToast, commit: Commit, message: unknown, options: { readonly description?: unknown } = {}): void {
+	const text = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+	sonnerAdd(props, toast, commit, { title: text(message), description: text(options.description) });
+}
+
 /**
  * An event on a toaster's list for `position`, and on the toast it happened in: a list's handlers take its toasts' events
  * too, the toast's own first and the list's after (React's order).

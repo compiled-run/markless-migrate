@@ -156,3 +156,8 @@ test("a select that only keeps its own label is not the page's handler for the v
 	assert.deepEqual(label.elements[0]!.handlers, []);
 	assert.deepEqual(acts.elements[0]!.handlers, ['mm']);
 });
+
+test("a carried submit handler on the event its part announces after the library's checks answers the form's submit", () => {
+	const port = readPortFile('q.tsrx', `export default function P() @{\n\t<><form data-slot="questionnaire" onMmsubmit={(mmEvent) => { ((toast) => (event) => toast("Saved"))((m) => m)(mmEvent); }}></form></>\n}\n`);
+	assert.deepEqual(port.elements[0]!.handlers, ['submit']);
+});
