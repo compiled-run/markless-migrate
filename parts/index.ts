@@ -52,6 +52,7 @@ export function behave(event: Event): void {
 	const kind = event.type as Kind;
 	// The document listeners also cover what the first interaction opens at the end of the body.
 	listen();
+	if ((event.type as string) === 'mmwake') return replay((event as CustomEvent<Wake>).detail);
 	// A control that takes itself away swaps its container's content; a part may still port the rest of its handler.
 	if (kind === 'click') {
 		const control = target.closest('[data-mm-replace]');
@@ -65,6 +66,17 @@ export function behave(event: Event): void {
 	if (kind === 'pointerout' || kind === 'focusout' || !layersPending()) return;
 	const loaded = loadLayers();
 	if (kind === 'click' || kind === 'keydown' || kind === 'contextmenu') void loaded.then(() => run(kind, target, event));
+}
+
+interface Wake {
+	readonly type: 'scroll' | 'keydown';
+	readonly init?: KeyboardEventInit;
+}
+
+/** The window event that woke the parts (wake.ts), again, for the listeners listen() just added. */
+function replay(wake: Wake): void {
+	if (wake.type === 'scroll') dispatchEvent(new Event('scroll'));
+	else (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { ...wake.init, bubbles: true, cancelable: true }));
 }
 
 function run(kind: Kind, target: Element, event: Event): boolean {
@@ -83,6 +95,7 @@ export function listen(): void {
 	void loadLayers();
 	if (!listening) {
 		listening = true;
+		(globalThis as { __mmAwake?: boolean }).__mmAwake = true;
 		for (const type of EVENTS) document.addEventListener(type, behave);
 	}
 	for (const part of PARTS) {
