@@ -320,6 +320,25 @@ async function launch(name: NetworkBrowser, throttle: Throttle): Promise<Browser
 	return TYPES[name].launch({ proxy });
 }
 
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/** Where a run loads `url` from, and the proxy's host map that gets it there: WebKit sends loopback origins past any proxy, with no setting to stop it, so a loopback page is loaded by a name the throttle maps back. */
+export function throttledAddress(url: string, name: NetworkBrowser): { url: string; hosts: Readonly<Record<string, string>>; original: (seen: string) => string } {
+	const at = new URL(url);
+	if (name !== 'webkit' || !LOOPBACK.has(at.hostname)) return { url, hosts: {}, original: (seen) => seen };
+	const real = at.host;
+	const alias = `loopback-${at.port || (at.protocol === 'https:' ? '443' : '80')}.throttle.test`;
+	at.hostname = alias;
+	const host = at.host;
+	const original = (seen: string) => {
+		const u = URL.canParse(seen) ? new URL(seen) : undefined;
+		if (!u || u.host !== host) return seen;
+		u.host = real;
+		return u.href;
+	};
+	return { url: at.href, hosts: { [alias]: real }, original };
+}
+
 /** One cold load of `url` over `profile` in a fresh `browser`, clicking the control every 250 ms from when it is on screen until it answers. */
 export async function networkRun(url: string, profile: NetworkProfile, name: NetworkBrowser, options: NetworkRunOptions = {}): Promise<NetworkRun> {
 	const watch = stallWatch();
@@ -334,7 +353,8 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 	if (profile.devtools && name !== 'chromium') return { clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], error: `${profile.name} is DevTools throttling, which only Chromium has` };
 	// DevTools throttling happens in the browser; the proxy then only counts the bytes.
 	const link = profile.devtools ? { ...profile, downBytesPerSecond: Infinity, upBytesPerSecond: Infinity, rttMs: 0 } : profile;
-	const throttle = await startThrottle(link, options.hosts ? { hosts: options.hosts } : {});
+	const address = throttledAddress(url, name);
+	const throttle = await startThrottle(link, { hosts: { ...address.hosts, ...options.hosts } });
 	let browser: Browser | undefined;
 	try {
 		browser = await launch(name, throttle);
@@ -365,7 +385,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 		const navigated = Date.now();
 		let loaded = false;
 		page.once('load', () => (loaded = true));
-		await page.goto(url, { waitUntil: 'commit', timeout: timeoutMs });
+		await page.goto(address.url, { waitUntil: 'commit', timeout: timeoutMs });
 		let clicks = 0;
 		let done = false;
 		let seen = false;
@@ -419,7 +439,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			const timing = got.request.timing();
 			const start = Math.round(own ? own.start : timing.startTime - timings.origin);
 			const end = Math.round(own ? own.end : timing.startTime - timings.origin + Math.max(timing.responseEnd, 0));
-			const request = { url: got.request.url(), type: got.request.resourceType(), start, end, bytes: got.bytes };
+			const request = { url: address.original(got.request.url()), type: got.request.resourceType(), start, end, bytes: got.bytes };
 			requests.push(request);
 			if (got.text !== undefined && got.script) scripts.push({ ...request, text: got.text });
 			if (got.text !== undefined && request.type === 'document' && !document) document = { url: request.url, text: got.text };
