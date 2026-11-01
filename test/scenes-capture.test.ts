@@ -1,7 +1,7 @@
 // What a demo's own controls did on the old page, recorded frame by frame (src/convert/scenes.ts), on a page whose Send
 // shows a typing row, then streams a reply in, and whose Reset clears it.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -102,6 +102,45 @@ test('a listing that names its controls by text uses only those (Replay), leavin
 		assert.deepEqual([...new Set(scenes[0]!.edges.map((e) => e.control))], ['button|button|Send#0']);
 		const none = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 400, max: 5000 }, '^Replay$');
 		assert.equal(none.scenes.length, 0, 'a demo with no such control is not captured');
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+// The AI Elements approval demos (confirmation, tool): Send message asks for approval, Approve or Deny answers, Reset starts over.
+const APPROVAL = `<!doctype html><html><body><main>
+<div data-slot="preview"><div id="log"></div><button data-slot="button" id="next">Send message</button></div>
+<script>
+const log = document.getElementById('log'), next = document.getElementById('next');
+const answer = (text) => () => { log.lastElementChild.remove(); log.insertAdjacentHTML('beforeend', '<p>' + text + '</p>'); next.textContent = 'Reset'; next.hidden = false; };
+next.addEventListener('click', () => {
+	if (next.textContent === 'Reset') { log.replaceChildren(); next.textContent = 'Send message'; return; }
+	next.hidden = true;
+	log.insertAdjacentHTML('beforeend', '<p>Clean up the build folder.</p><div><button data-slot="button">Deny</button><button data-slot="button">Approve</button></div>');
+	const [deny, approve] = log.querySelectorAll('button');
+	deny.addEventListener('click', answer('Okay, I left the dist folder in place.'));
+	approve.addEventListener('click', answer('Removed the dist folder.'));
+});
+</script></main></body></html>`;
+
+test("the site's listing plays the AI Elements approval demos: Send message, then Approve or Deny, then Reset", async () => {
+	const listed = (JSON.parse(await readFile(join(import.meta.dirname, '..', 'examples', 'shadcn-ui-markless', 'lib', 'site', 'controls.json'), 'utf8')) as { selector?: string; action: string; routes?: string; text?: string }[]).filter((c) => c.action === 'play');
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(APPROVAL));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		for (const route of ['/docs/ai-elements/aria/confirmation', '/docs/ai-elements/base/tool']) {
+			const used = new Set<string>();
+			for (const c of listed.filter((c) => c.selector && (!c.routes || new RegExp(c.routes).test(route)))) {
+				const { scenes } = await captureScenes(browser, origin, route, dir, c.selector!, { states: 6, depth: 3, settle: 300, max: 5000 }, c.text);
+				for (const e of scenes.flatMap((s) => s.edges)) used.add(e.control.replace(/^button\|button\|/, '').replace(/#\d+$/, ''));
+			}
+			assert.deepEqual([...used].sort(), ['Approve', 'Deny', 'Reset', 'Send message'], route);
+		}
 	} finally {
 		await browser.close();
 		server.close();
