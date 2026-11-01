@@ -325,6 +325,30 @@ test('a sonner toaster renders its lists and toasts from one state, each control
 	assert.ok(plan.hosts(region));
 });
 
+test('a Base UI toast viewport renders a root per toast from one state, with the viewport and content state bound and each phase shown in its turn', async () => {
+	const { NotifyPlan } = await import('../src/convert/stateful.ts');
+	const { emitChildren } = await import('../src/convert/tsrx.ts');
+	const { parseFragment } = await import('parse5');
+	const doc = parseDocument('<body><main><button data-slot="button">Show</button><button data-slot="button">Create</button></main><div role="region" aria-live="polite" data-slot="toast-viewport" class="fixed"></div></body>');
+	const [show, create] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element];
+	const region = find(body(doc), (el) => attr(el, 'data-slot') === 'toast-viewport')!;
+	const root = (type?: string): [string, string][] => [['role', 'dialog'], ['tabindex', '0'], ['aria-modal', 'false'], ...(type ? [['data-type', type] as [string, string]] : []), ['data-slot', 'toast'], ['class', 'group/toast'], ['style', '--toast-swipe-movement-x: 0px; --toast-index: 0; --toast-offset-y: 0px; --toast-height: 78px;']];
+	const content = (text: string) => `<div data-slot="toast-content" class="flex" data-expanded=""><div data-slot="toast-title">${text}</div><button data-slot="toast-close" aria-label="Close toast"></button></div>`;
+	const provider = { timeout: 5000, limit: 3 };
+	const note = (sig: string, base: object) => ({ sig, nth: 0, into: { sig: 'r', nth: 0 }, html: '', ms: 5600, base: { provider, ...base } as never });
+	const plan = new NotifyPlan();
+	plan.add([note('s', { priority: 'high', phases: [{ at: 0, attrs: root(), inner: content('Event created') }] }), note('p', { phases: [{ at: 0, type: 'loading', attrs: root('loading'), inner: content('Creating') }, { at: 2000, type: 'success', attrs: root('success'), inner: content('Created') }] })], (sig) => ({ s: show, p: create, r: region })[sig as 's' | 'p' | 'r'], (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	assert.ok(plan.baseToast);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div role="region" aria-live="polite" data-slot="toast-viewport" class="fixed" data-mm-base-toaster="btst0" style=\{btst0\.style\} data-expanded=\{btst0\.expanded\} onMouseEnter=\{\(event\) => baseToastViewport\(\{"id":"btst0","timeout":5000,"limit":3\}, event, \(v\) => \(btst0 = v\)\)\}/);
+	assert.match(out, /@for \(const item of btst0\.items; key item\.id\) \{ <div role=\{item\.a\["role"\]\} tabindex=\{item\.a\["tabindex"\]\} aria-modal=\{item\.a\["aria-modal"\]\} data-type=\{item\.a\["data-type"\]\} data-slot=\{item\.a\["data-slot"\]\} class=\{item\.a\["class"\]\}[^>]* data-starting-style=\{item\.a\["data-starting-style"\]\}[^>]* style=\{item\.a\.style\}>/);
+	assert.match(out, /@if \(item\.view === "1\.0"\) \{ <><div data-slot="toast-content" class="flex" data-expanded=\{item\.c\.expanded\} data-behind=\{item\.c\.behind\}><div data-slot="toast-title">Creating<\/div>/, 'only its own phase is in the root (a hidden one would be announced), its content carrying the toast state');
+	assert.match(out, /<button data-slot="button" onClick=\{\(\) => baseToastAdd\(\{"id":"btst0","timeout":5000,"limit":3\}, \{"view":1,"phases":\[\{"at":0,"type":"loading","attrs":\{"role":"dialog","tabindex":"0","aria-modal":"false","data-type":"loading","data-slot":"toast","class":"group\/toast"\}\}/);
+	assert.deepEqual(plan.bind(show)?.declare, ['let btst0 = state(BASE_TOAST_EMPTY);']);
+	assert.doesNotMatch(out, /@if \(nt\d/, 'not the generic notification arm');
+	assert.match(out, /<\/div><div style="clip-path: inset\(50%\);[^"]*">@for \(const a of btst0\.alerts; key a\.id\) \{ <div role="alert" aria-atomic="true">@if \(a\.view === "0\.0"\) \{ <><div>Event created<\/div><div><\/div><\/> \}<\/div> \}<\/div><\/body>/, 'a high-priority toast is announced by a hidden alert after the viewport');
+});
+
 test("a toast template's controls all add its toast, each naming what the site's function made of the control clicked", async () => {
 	const { NotifyPlan } = await import('../src/convert/stateful.ts');
 	const { emitChildren } = await import('../src/convert/tsrx.ts');
