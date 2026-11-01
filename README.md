@@ -45,30 +45,22 @@ markless-migrate switch /pricing                                            # on
 
 ## How it works
 
-```mermaid
-flowchart LR
-  plan[1. Plan] --> record[2. Record the old site]
-  record --> convert[3. Convert]
-  convert --> build[4. Build]
-  build --> check[5. Check]
-  check -- differences --> fix[6. Fix]
-  fix --> build
-  check -- matches --> switch[7. Switch]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+  <img src="docs/assets/how-it-works-light.svg" alt="A stack of old-site pages: one page is lifted out, recorded and redrawn as a Markless page, checked side by side against the original under a magnifying glass, sent back to be fixed where they differ, and switched live only once they match, while the rest of the site stays on the old app." width="860">
+</picture>
 
 **1. Plan: list what the old app has.** `plan` finds every page of the old site, from its sitemap, its links and, if you give it the code, its routes. For each page it notes the title and meta tags, the files it loads and what it uses in the browser, like a dark-mode toggle or a Radix dialog, with the file and line it comes from. It all goes into `.migrate/` as JSON your agent can read.
 
 **2. Record the old site.** Each old page is opened in a real browser and saved: how it looks once it has loaded, and what each button, menu and tab opens. A page is only recorded again when the page itself changes.
 
-**3. Convert: write the Markless version.** `convert` turns each recorded page into a Markless page. It reads the old code, not just the screen, to know what each element is. Things several pages share, like a header or a sidebar, are written once. Images, fonts and CSS are copied as they are. Widgets from UI libraries like Radix, Base UI and React Aria are handled by **parts**: small Markless versions of each widget, written once and reused on every site. Your agent writes whatever is left: the site's own code.
+**3. Convert and build: write the Markless version.** `convert` turns each recorded page into a Markless page. It reads the old code, not just the screen, to know what each element is. Things several pages share, like a header or a sidebar, are written once. Images, fonts and CSS are copied as they are. Widgets from UI libraries like Radix, Base UI and React Aria are handled by **parts**: small Markless versions of each widget, written once and reused on every site. Your agent writes whatever is left: the site's own code. Then the new app is built like any Markless app.
 
-**4. Build.** The new app is built like any Markless app.
+**4. Check: compare old and new side by side.** `check` opens each page on both apps in a real browser and compares them. The clock, random numbers and the page's data are the same on both sides, so any difference is a real one. Each difference says what each side showed and, when it can, the file and line on each side. You get `.migrate/report.json` for your agent and `.migrate/report.html` with screenshots for you.
 
-**5. Check: compare old and new side by side.** `check` opens each page on both apps in a real browser and compares them. The clock, random numbers and the page's data are the same on both sides, so any difference is a real one. Each difference says what each side showed and, when it can, the file and line on each side. You get `.migrate/report.json` for your agent and `.migrate/report.html` with screenshots for you.
+**5. Fix, one page at a time.** Your agent reads the report, fixes the page and checks again. `run` does this on its own for every page, using your agent's command line. `fix` does it for the pages you name.
 
-**6. Fix, one page at a time.** Your agent reads the report, fixes the page and checks again. `run` does this on its own for every page, using your agent's command line. `fix` does it for the pages you name.
-
-**7. Switch, page by page.** `switch` sends a page to the new app only once its check matches. Every other page keeps going to the old app, through a local proxy or generated Vercel or Nitro routing, so you can ship before the whole app is moved.
+**6. Switch, page by page.** `switch` sends a page to the new app only once its check matches. Every other page keeps going to the old app, through a local proxy or generated Vercel or Nitro routing, so you can ship before the whole app is moved.
 
 **Only what changed runs again.** Each step saves its results under a fingerprint of its inputs. If a page's code and the old page it's compared with haven't changed, its last result is reused, so after a small fix only the affected pages are checked again.
 
