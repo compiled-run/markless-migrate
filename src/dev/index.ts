@@ -12,7 +12,7 @@ import { inventoryPages, moduleOf, readPortMap, routesUsing, selectRoutes, write
 import { PROBE_ENGINES, shardCheckArgs, type ProbeEngine } from '../check/ci-settings.ts';
 import { CONVERT_INPUTS, type ConvertInputs } from '../convert/inputs.ts';
 import { formatVerdicts, routeVerdict, type CheckedRoute, type RouteVerdict } from './verdict.ts';
-import { recordingProxy } from './proxy.ts';
+import { pageOf, recordingProxy } from './proxy.ts';
 import { fragmentPath } from '../cache/apply.ts';
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
@@ -252,9 +252,10 @@ export async function dev(options: DevOptions): Promise<number> {
 
 	const publicPort = options.port ?? (await freePort());
 	const server = new AppServer(devApp, options.verdict ? await freePort() : publicPort, options.build === true || options.verdict === true, log);
-	const pageSet = new Set(inventory.pages);
+	// The proxy names a page without its trailing slash; the inventory as the site links it (/docs/install/).
+	const inventoryPage = new Map(inventory.pages.map((p) => [pageOf(p, undefined), p]));
 	const reached = new Set<string>();
-	const proxy = options.verdict ? await recordingProxy(server.port, publicPort, (page) => pageSet.has(page) && !built.has(page), await fragmentPath(app), reached) : undefined;
+	const proxy = options.verdict ? await recordingProxy(server.port, publicPort, (page) => inventoryPage.has(page) && !built.has(inventoryPage.get(page)!), await fragmentPath(app), reached) : undefined;
 	const origin = proxy ? `http://127.0.0.1:${publicPort}` : server.origin;
 	const stop = () => {
 		server.stop();
@@ -358,7 +359,7 @@ export async function dev(options: DevOptions): Promise<number> {
 			for (let round = 1; ; round++) {
 				reached.clear();
 				const verdicts = await verdictOn(routes);
-				const more = [...reached].filter((p) => !built.has(p)).slice(0, MAX_DESTINATIONS);
+				const more = [...reached].map((p) => inventoryPage.get(p) ?? p).filter((p) => !built.has(p)).slice(0, MAX_DESTINATIONS);
 				if (!more.length) return verdicts;
 				for (const r of routes) destinations[r] = [...new Set([...(destinations[r] ?? []), ...more])];
 				await writeFile(destinationsFile, JSON.stringify(destinations, null, '\t'));
