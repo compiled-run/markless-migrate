@@ -242,6 +242,102 @@ $('cmd').addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('cmd')
 ${dead ? '' : `for (const id of ['cover', 'toc']) $(id).onclick = () => { $('dt').textContent = $(id).textContent; $('drawer').hidden = false; $('close').focus(); };`}
 $('close').onclick = () => { $('drawer').hidden = true; };`);
 
+// Batch 2: what the owner found on the c98336cd preview.
+const CHECK = '<svg class="ind" aria-hidden="true" viewBox="0 0 16 16" width="14" height="14"><path d="M2 8l4 4 8-8" stroke="currentColor" fill="none"/></svg>';
+const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
+// A Radix Select's item indicator: an aria-hidden check on the chosen item. `stale`: it stays on the first chosen item.
+const selectCheck = (stale: boolean) =>
+	page('Select', `<button id="fr" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="frl"><span id="frv">Apple</span></button><div class="pop" role="listbox" id="frl" hidden>${FRUITS.map((f, i) => `<div role="option" id="fo-${i}" aria-selected="${i === 0}"${i === 0 ? ' data-mark' : ''}>${CHECK}${f}</div>`).join('')}</div>`,
+		selectScript('fr', 'frl', `(o) => { $('frv').textContent = o.textContent;${stale ? '' : " for (const x of $('frl').children) x.toggleAttribute('data-mark', x === o);"} }`),
+		'.ind { visibility: hidden } [data-mark] > .ind { visibility: visible }');
+
+// Radix Select's item-aligned position: the chosen item sits over the trigger (the first item when none is chosen). `first`: always the first.
+const itemAligned = (first: boolean) =>
+	page('Field', `<label id="dl">Department</label> <button id="dep" role="combobox" aria-labelledby="dl" aria-haspopup="listbox" aria-expanded="false" style="width: 220px; margin-top: 200px"><span id="depv">Choose department</span></button><div class="pop" role="listbox" id="depl" hidden style="padding: 0">${['Engineering', 'Design', 'Marketing', 'Sales', 'Customer Support', 'Finance'].map((v, i) => `<div role="option" id="dp-${i}" aria-selected="false" style="height: 28px">${v}</div>`).join('')}</div>`,
+		`(() => { const t = $('dep'), l = $('depl'); const opts = () => [...l.children];
+const show = (open) => { l.hidden = !open; t.setAttribute('aria-expanded', String(open)); if (!open) return; const r = t.getBoundingClientRect(); const at = ${first ? '0' : "Math.max(0, opts().findIndex((o) => o.getAttribute('aria-selected') === 'true'))"}; l.style.left = r.left + scrollX + 'px'; l.style.top = r.top + scrollY - at * 28 + 'px'; l.style.width = r.width + 'px'; };
+t.addEventListener('click', () => show(l.hidden));
+for (const o of opts()) o.addEventListener('click', () => { for (const x of opts()) x.setAttribute('aria-selected', String(x === o)); $('depv').textContent = o.textContent; show(false); t.focus(); });
+t.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
+document.addEventListener('pointerdown', (e) => { if (!l.hidden && !l.contains(e.target) && !t.contains(e.target)) show(false); });
+})();`);
+
+// input-otp: a transparent input over six slots that show its value and where the caret is. `dead`: the slots never follow.
+const otp = (dead: boolean) =>
+	page('Input OTP', `<div id="otpw" style="position: relative; display: inline-flex; gap: 4px"><input id="otp" aria-label="One-time code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="^\\d+$" style="position: absolute; inset: 0; opacity: 0; width: 100%"><div id="slots" style="display: flex; gap: 4px">${Array.from({ length: 6 }, (_, i) => `<div class="slot" data-i="${i}" style="width: 32px; height: 36px; border: 1px solid #999; display: grid; place-items: center"></div>`).join('')}</div></div>`,
+		`const i = $('otp'), slots = [...document.querySelectorAll('.slot')];
+const paint = () => { ${dead ? '' : "const v = i.value; const at = document.activeElement === i ? Math.min(i.selectionStart ?? v.length, 5) : -1; slots.forEach((s, k) => { s.textContent = v[k] ?? ''; s.toggleAttribute('data-active', k === at); s.style.outline = k === at ? '2px solid #2563eb' : ''; });"} };
+i.addEventListener('input', () => { i.value = i.value.replace(/\\D/g, '').slice(0, 6); paint(); });
+for (const t of ['focus', 'blur', 'keyup', 'select', 'click']) i.addEventListener(t, paint);
+document.addEventListener('selectionchange', paint);`);
+
+// A menubar: switching to another menu while one is open shows it at once (Base UI skips the open animation); `animates`: every switch fades in.
+const menubar = (animates: boolean) =>
+	page('Menubar', `<div role="menubar" aria-label="App" style="display: flex; gap: 4px">${['File', 'Edit', 'View'].map((m) => `<button role="menuitem" aria-haspopup="menu" aria-expanded="false" id="mb-${m}" tabindex="${m === 'File' ? 0 : -1}">${m}</button>`).join('')}</div>${['File', 'Edit', 'View'].map((m) => `<div class="pop mbm" role="menu" id="mm-${m}" aria-label="${m}" hidden><div role="menuitem" tabindex="-1">${m} one</div><div role="menuitem" tabindex="-1">${m} two</div></div>`).join('')}`,
+		`const names = ['File', 'Edit', 'View']; let open = null;
+const show = (m, switching) => { for (const n of names) { const pop = $('mm-' + n); const on = n === m; pop.hidden = !on; $('mb-' + n).setAttribute('aria-expanded', String(on)); if (on) { place(pop, $('mb-' + n)); pop.toggleAttribute('data-instant', ${animates ? 'false' : 'switching'}); pop.dataset.state = 'open'; } } open = m; };
+const close = () => { for (const n of names) { $('mm-' + n).hidden = true; $('mb-' + n).setAttribute('aria-expanded', 'false'); } open = null; };
+for (const n of names) { const b = $('mb-' + n); b.addEventListener('click', () => (open === n ? close() : show(n, open !== null))); b.addEventListener('pointerenter', () => { if (open && open !== n) show(n, true); });
+	b.addEventListener('keydown', (e) => { const k = names.indexOf(n); if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); const next = names[(k + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; $('mb-' + next).focus(); if (open) show(next, true); } if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); show(n, false); } if (e.key === 'Escape') close(); }); }
+document.addEventListener('pointerdown', (e) => { if (open && !e.target.closest('.mbm, [role=menubar]')) close(); });`,
+		'.mbm[data-state=open] { animation: mbin 200ms ease } .mbm[data-instant] { animation: none } @keyframes mbin { from { opacity: 0; transform: scale(.95) } }');
+
+// A navigation menu: one viewport that resizes and slides its content between triggers; `jumps`: it swaps at once.
+const navMenu = (jumps: boolean) =>
+	page('Navigation Menu', `<nav aria-label="Main"><ul style="display: flex; gap: 8px; list-style: none; padding: 0">${['Getting started', 'Components', 'Docs'].map((m, i) => `<li><button id="nm-${i}" aria-expanded="false" aria-controls="nmv">${m}</button></li>`).join('')}</ul><div id="nmv" class="pop" hidden style="overflow: hidden; ${jumps ? '' : 'transition: width 250ms ease, height 250ms ease;'}"><div id="nmc"></div></div></nav>`,
+		`const SIZES = [[420, 160], [560, 240], [300, 120]]; let at = -1;
+const show = (i) => { const v = $('nmv'); const from = at; at = i; v.hidden = false; for (let k = 0; k < 3; k++) $('nm-' + k).setAttribute('aria-expanded', String(k === i)); place(v, $('nm-0')); v.style.width = SIZES[i][0] + 'px'; v.style.height = SIZES[i][1] + 'px'; const c = $('nmc'); c.textContent = $('nm-' + i).textContent + ' links'; ${jumps ? '' : "if (from >= 0) c.animate([{ transform: 'translateX(' + (i > from ? 60 : -60) + 'px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 250, easing: 'ease' }); c.dataset.motion = i > from ? 'from-end' : 'from-start';"} };
+const hide = () => { $('nmv').hidden = true; at = -1; for (let k = 0; k < 3; k++) $('nm-' + k).setAttribute('aria-expanded', 'false'); };
+for (let k = 0; k < 3; k++) { const b = $('nm-' + k); b.addEventListener('pointerenter', () => show(k)); b.addEventListener('click', () => (at === k ? hide() : show(k))); }
+document.querySelector('nav').addEventListener('pointerleave', hide);`);
+
+// A message list that scrolls to its newest message: smoothly on the original, at once on the port.
+const scroller = (instant: boolean) =>
+	page('Message Scroller', `<div id="ms" role="log" aria-label="Messages" style="height: 160px; overflow-y: auto; border: 1px solid #ccc">${Array.from({ length: 12 }, (_, i) => `<p style="margin: 8px">Message ${i + 1}</p>`).join('')}</div><button id="send">Send</button>`,
+		`let n = 12; $('send').onclick = () => { const p = document.createElement('p'); p.style.margin = '8px'; p.textContent = 'Message ' + ++n; $('ms').append(p); $('ms').scrollTo({ top: $('ms').scrollHeight, behavior: '${instant ? 'instant' : 'smooth'}' }); };`);
+
+// A questionnaire of three questions: finishing it shows a toast; `silent`: it does not.
+const questionnaire = (silent: boolean) =>
+	page('Questionnaire', `<form id="qf"><input type="hidden" name="action" value="submit-answers">${['How often do you deploy?', 'How big is your team?', 'Which framework?'].map((q, i) => `<fieldset id="q${i}" ${i ? 'hidden' : ''}><legend>${q}</legend>${['A', 'B', 'C'].map((a) => `<label><input type="radio" name="q${i}" value="${a}"> ${a}</label>`).join(' ')} <button type="button" class="next" disabled>${i < 2 ? 'Next' : 'Finish'}</button></fieldset>`).join('')}</form><section aria-label="Notifications"><ol id="toasts"></ol></section>`,
+		`document.querySelectorAll('fieldset').forEach((f, i) => { const next = f.querySelector('.next'); f.addEventListener('change', () => (next.disabled = false)); next.onclick = () => { f.hidden = true; if (i < 2) { $('q' + (i + 1)).hidden = false; $('q' + (i + 1)).querySelector('input').focus(); } else { ${silent ? '' : "const li = document.createElement('li'); li.setAttribute('role', 'status'); li.textContent = 'Thanks! Your answers were saved.'; $('toasts').append(li);"} $('qf').insertAdjacentHTML('beforeend', '<p>Done.</p>'); } }; });`);
+
+// A Base UI radio group: arrows move and select; Home and End do nothing on the original. `homeEnd`: the port selects with them.
+const radios = (homeEnd: boolean) =>
+	page('Radio Group', `<div role="radiogroup" aria-label="Plan" id="rg">${['Starter', 'Pro', 'Team', 'Enterprise'].map((v, i) => `<button role="radio" aria-checked="${i === 1}" tabindex="${i === 1 ? 0 : -1}">${v}</button>`).join('')}</div>`,
+		`const rs = [...$('rg').children]; const pick = (r) => { for (const x of rs) { x.setAttribute('aria-checked', String(x === r)); x.tabIndex = x === r ? 0 : -1; } r.focus(); };
+$('rg').addEventListener('keydown', (e) => { const k = rs.indexOf(document.activeElement); if (k < 0) return; const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key]; if (step) { e.preventDefault(); pick(rs[(k + step + rs.length) % rs.length]); } ${homeEnd ? "if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); pick(rs[e.key === 'Home' ? 0 : rs.length - 1]); }" : ''} });
+for (const r of rs) r.onclick = () => pick(r);`);
+
+// A resizable panel group: the handle shows col-resize under the pointer, and the page keeps it while dragging. `plain`: no cursor anywhere.
+const resizable = (plain: boolean) =>
+	page('Resizable', `<div id="rp" style="display: flex; width: 600px; height: 160px; border: 1px solid #ccc"><div id="left" style="width: 50%; background: #eef">One</div><div role="separator" aria-orientation="vertical" aria-valuenow="50" aria-label="Resize" tabindex="0" id="h" style="width: 8px; background: #999"></div><div style="flex: 1">Two</div></div>`,
+		`const h = $('h'); const cursor = document.createElement('style'); document.head.append(cursor); const set = (on) => { ${plain ? '' : "cursor.textContent = on ? '* { cursor: col-resize !important }' : '';"} };
+h.addEventListener('pointerenter', () => { h.dataset.resizeHandleState = 'hover'; set(true); }); h.addEventListener('pointerleave', () => { if (h.dataset.resizeHandleState !== 'drag') { h.dataset.resizeHandleState = 'inactive'; set(false); } });
+h.addEventListener('pointerdown', (e) => { h.setPointerCapture(e.pointerId); h.dataset.resizeHandleState = 'drag'; set(true); const box = $('rp').getBoundingClientRect(); const move = (m) => { const v = Math.max(10, Math.min(90, Math.round(((m.clientX - box.left) / box.width) * 100))); $('left').style.width = v + '%'; h.setAttribute('aria-valuenow', String(v)); }; h.addEventListener('pointermove', move); h.addEventListener('pointerup', () => { h.removeEventListener('pointermove', move); h.dataset.resizeHandleState = 'hover'; }, { once: true }); });`);
+
+// A ScrollArea: the native scrollbar hidden, a drawn thumb that follows the scroll and can be dragged. `stuck`: the thumb never moves.
+const scrollArea = (stuck: boolean) =>
+	page('Scroll Area', `<div id="sa" style="position: relative; width: 240px; height: 180px; border: 1px solid #ccc"><div id="sav" data-slot="scroll-area-viewport" style="height: 100%; overflow-y: scroll; scrollbar-width: none">${Array.from({ length: 40 }, (_, i) => `<div style="padding: 4px 8px">Tag ${i + 1}</div>`).join('')}</div><div data-slot="scroll-area-scrollbar" data-orientation="vertical" style="position: absolute; top: 0; right: 0; width: 8px; height: 100%"><div id="thumb" data-slot="scroll-area-thumb" style="position: absolute; left: 0; width: 8px; background: #888; border-radius: 4px"></div></div></div>`,
+		`const v = $('sav'), th = $('thumb'); const fit = () => { const ratio = v.clientHeight / v.scrollHeight; th.style.height = Math.round(v.clientHeight * ratio) + 'px'; th.style.transform = 'translateY(' + Math.round(${stuck ? '0' : 'v.scrollTop'} * ratio) + 'px)'; }; v.addEventListener('scroll', fit); fit();
+th.addEventListener('pointerdown', (e) => { th.setPointerCapture(e.pointerId); const y0 = e.clientY, s0 = v.scrollTop; const move = (m) => { v.scrollTop = s0 + (m.clientY - y0) * (v.scrollHeight / v.clientHeight); }; th.addEventListener('pointermove', move); th.addEventListener('pointerup', () => th.removeEventListener('pointermove', move), { once: true }); });`);
+
+// A Sheet: its X close button closes it; `dead`: the button does nothing (Escape and a click outside still close it).
+const sheet = (dead: boolean) =>
+	page('Sheet', `<button id="so" aria-haspopup="dialog" aria-expanded="false" aria-controls="sh">Open</button><div id="bd2" hidden style="position: fixed; inset: 0; background: rgba(0,0,0,.4)"></div><div role="dialog" aria-modal="true" aria-labelledby="sht" id="sh" hidden style="position: fixed; top: 0; right: 0; bottom: 0; width: 320px; background: white; padding: 16px"><h2 id="sht">Edit profile</h2><label>Name <input value="Pedro Duarte"></label><button id="sx" aria-label="Close" style="position: absolute; top: 8px; right: 8px">×</button></div>`,
+		`const sh = $('sh'), so = $('so'); const shut = () => { sh.hidden = true; $('bd2').hidden = true; so.setAttribute('aria-expanded', 'false'); so.focus(); };
+so.onclick = () => { sh.hidden = false; $('bd2').hidden = false; so.setAttribute('aria-expanded', 'true'); sh.querySelector('input').focus(); };
+${dead ? '' : "$('sx').onclick = shut;"} sh.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut(); }); $('bd2').addEventListener('pointerdown', shut);`);
+
+// A Textarea that grows with its text (field-sizing: content, as shadcn's does); `fixed`: it keeps its height and scrolls.
+const textarea = (fixed: boolean) =>
+	page('Textarea', `<label for="ta">Your message</label><br><textarea id="ta" placeholder="Type your message here." style="width: 320px; min-height: 64px; max-height: 240px; ${fixed ? 'height: 64px; overflow: auto' : 'field-sizing: content'}"></textarea>`);
+
+// Sonner: each toast slides in from below, the newest in front and the older ones stacked behind it; `plain`: a static toast appears.
+const toasts = (plain: boolean) =>
+	page('Sonner', `<button id="tb">Show Toast</button><section aria-label="Notifications alt+T"><ol id="tl" style="position: fixed; right: 24px; bottom: 24px; width: 320px; list-style: none; margin: 0; padding: 0"></ol></section>`,
+		`let n = 0; $('tb').onclick = () => { n++; const li = document.createElement('li'); li.setAttribute('role', 'status'); li.textContent = 'Event ' + n + ' has been created'; li.style.cssText = 'position: absolute; bottom: 0; left: 0; right: 0; background: white; border: 1px solid #ccc; padding: 12px';
+${plain ? "$('tl').replaceChildren(li);" : "li.setAttribute('data-sonner-toast', ''); $('tl').append(li); const all = [...$('tl').children].reverse(); all.forEach((t, i) => { t.setAttribute('data-front', String(i === 0)); t.setAttribute('data-index', String(i)); t.style.transform = 'translateY(' + -i * 14 + 'px) scale(' + (1 - i * 0.05) + ')'; t.style.zIndex = String(10 - i); }); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) li.animate([{ transform: 'translateY(100%)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 400, easing: 'ease' });"} };`);
+
 export const CASES: Record<string, Case> = {
 	'create-get-started': { bug: "the create route's Get Started button did nothing", route: '/create', old: getStarted(false), mutant: getStarted(true), caught: /^(behaviour|a11y): .*Get Started/ },
 	'typeset-font': { bug: 'typeset: changing fonts did not work', route: '/typeset', old: typesetFont(false), mutant: typesetFont(true), caught: /^(behaviour|a11y): .*menuitemradio \"(Inter|Lora|Roboto|Manrope)\"/ },
@@ -273,6 +369,19 @@ export const CASES: Record<string, Case> = {
 	'date-arrows-masked': { bug: "the date picker's keyboard navigation broke, behind a calendar that opens showing other text (on RrorpvSy it opens on another month)", route: '/docs/components/date-picker/masked', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'arrows', 'Choose a day'), caught: /^(behaviour|a11y): ([^|]*grid keys on grid[^|]*\(step [2-9]|[^|]*press Arrow(Left|Right|Up|Down) on gridcell|role model probe[^|]*press Arrow(Left|Right|Up|Down)[^|]*\|[^|]*focus: gridcell)/ },
 	'date-typed': { bug: 'typing "May 28, 2025" into the date input became May 1', route: '/docs/components/date-picker/input', old: datePicker('Date Picker', ''), mutant: datePicker('Date Picker', 'parse'), caught: /^(behaviour|a11y): [^|]*(field input|typed|role model)[^|]*\|.*(May 28|\b01, \d{4})/ },
 	'dashboard-dead': { bug: "the dashboard's Cover page drawer did not open (dropped recordings)", route: '/examples/dashboard', old: dashboard(false), mutant: dashboard(true), caught: /^(behaviour|a11y): .*(Cover page|Table of contents)/ },
+	'select-check': { bug: "a select's check mark stays on the first choice (the RTL language select, the Select component)", route: '/docs/components/select', old: selectCheck(false), mutant: selectCheck(true), caught: /^(behaviour|a11y): [^|]*\|.*marked: / },
+	'select-item-aligned': { bug: "a Field select is not item-aligned: reopened, its chosen item does not sit over the trigger", route: '/docs/components/field', old: itemAligned(false), mutant: itemAligned(true), caught: /^behaviour: [^|]*(pop-up place|combobox "Department")/ },
+	'otp-slots': { bug: "the OTP input's slots never show what is typed, nor the caret", route: '/docs/components/input-otp', old: otp(false), mutant: otp(true), caught: /^(behaviour|a11y): [^|]*(otp probe of textbox "One-time code"|into textbox "One-time code")/ },
+	'menubar-switch': { bug: 'moving between open menubar menus animates each one on the port, at once on the original', route: '/docs/components/menubar', old: menubar(false), mutant: menubar(true), caught: /^motion: switch probe[^|]*\|.*moving since/ },
+	'nav-menu-morph': { bug: "the navigation menu's viewport does not resize and slide between triggers", route: '/docs/components/navigation-menu', old: navMenu(false), mutant: navMenu(true), caught: /^motion: switch probe[^|]*\|.*moving since/ },
+	'scroller-smooth': { bug: 'the message scroller jumps to the newest message where the original scrolls smoothly', route: '/docs/components/message-scroller', old: scroller(false), mutant: scroller(true), caught: /^(a11y|behaviour): [^|]*"Send"[^|]*\|.*scrolled since: log "Messages" over several frames/ },
+	'questionnaire-toast': { bug: "the questionnaire's finish toast is missing (its form has a field named action, which stopped check)", route: '/docs/ai-elements/questionnaire', old: questionnaire(false), mutant: questionnaire(true), caught: /^(behaviour|a11y): [^|]*Finish[^|]*\|.*Thanks/ },
+	'radio-home-end': { bug: 'Home and End select a radio on the port but not on the original', route: '/docs/components/radio-group', old: radios(false), mutant: radios(true), caught: /^(behaviour|a11y): [^|]*\|[^|]*(then (Home|End)|press (Home|End))/ },
+	'resizable-cursor': { bug: "the resizable handle's cursor never changes on the port", route: '/docs/components/resizable', old: resizable(false), mutant: resizable(true), caught: /^(behaviour|css): [^|]*\|.*cursor: col-resize/ },
+	'scroll-area-thumb': { bug: "the ScrollArea's drawn scrollbar thumb never moves on the port", route: '/docs/components/scroll-area', old: scrollArea(false), mutant: scrollArea(true), caught: /^behaviour: scroll probe[^|]*\|.*thumbs: / },
+	'sheet-close': { bug: "the Sheet's close button is dead on the port", route: '/docs/components/sheet', old: sheet(false), mutant: sheet(true), caught: /^(behaviour|a11y): [^|]*button "Close"/ },
+	'textarea-grows': { bug: 'the textarea shows a scrollbar after several lines where the original grows', route: '/docs/components/textarea', old: textarea(false), mutant: textarea(true), caught: /^(behaviour: multiline probe[^|]*\|.*(px tall|scrolls)|css: computed style of textbox "Your message"[^|]*\| field-sizing)/ },
+	'sonner-toasts': { bug: "toasts pop up static on the port where sonner slides them in and stacks them", route: '/docs/components/sonner', old: toasts(false), mutant: toasts(true), caught: /^(a11y|behaviour): [^|]*"Show Toast"[^|]*\|.*toasts: / },
 };
 
 /** Every route of the micro-site, as the original serves it. */

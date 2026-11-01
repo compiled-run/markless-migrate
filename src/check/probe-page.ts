@@ -40,12 +40,32 @@ export function installProbe(): void {
 	};
 	const control = () => document.querySelector(`[${MARK}]`);
 	// Every element that scrolled since the last reading, its name taken as it scrolled: a list that jumps while its pop-up fades out is gone by the reading.
-	const g = globalThis as { __markless_migrate_probe_scrolled__?: Set<string> };
+	// Counted per frame: a smooth scroll moves over many frames, an instant one in one.
+	const g = globalThis as { __markless_migrate_probe_scrolled__?: Map<string, Set<number>>; __markless_migrate_probe_moving__?: Set<string>; __markless_migrate_probe_frame__?: number; __markless_migrate_probe_drag_cursor__?: string };
 	if (!g.__markless_migrate_probe_scrolled__) {
-		const scrolled = (g.__markless_migrate_probe_scrolled__ = new Set<string>());
+		const scrolled = (g.__markless_migrate_probe_scrolled__ = new Map<string, Set<number>>());
+		g.__markless_migrate_probe_frame__ = 0;
+		const tick = () => {
+			g.__markless_migrate_probe_frame__! += 1;
+			requestAnimationFrame(tick);
+		};
+		requestAnimationFrame(tick);
 		addEventListener('scroll', (e) => {
-			if (e.target instanceof Element && e.target !== document.scrollingElement && scrolled.size < 20) scrolled.add(describe(e.target));
+			if (!(e.target instanceof Element) || e.target === document.scrollingElement) return;
+			const name = describe(e.target);
+			if (scrolled.size < 20 || scrolled.has(name)) (scrolled.get(name) ?? scrolled.set(name, new Set()).get(name)!).add(g.__markless_migrate_probe_frame__!);
 		}, { capture: true, passive: true });
+		// What starts moving between two readings, by the part it moves (a menu, a viewport, a toast) and how: a switch that the original shows at once and the port animates.
+		const moving = (g.__markless_migrate_probe_moving__ = new Set<string>());
+		const MOVES = /^(width|height|transform|translate|scale|opacity|top|left|right|bottom)$/;
+		const part = (t: EventTarget | null) => (t instanceof Element ? describe(t.closest('[role], [data-slot], [aria-label]') ?? t) : 'the page');
+		addEventListener('animationstart', (e) => moving.size < 20 && moving.add(`${part(e.target)}: animation`), true);
+		addEventListener('transitionrun', (e) => MOVES.test((e as TransitionEvent).propertyName) && moving.size < 20 && moving.add(`${part(e.target)}: transition ${(e as TransitionEvent).propertyName}`), true);
+		const animate = Element.prototype.animate;
+		Element.prototype.animate = function (this: Element, ...args: Parameters<Element['animate']>) {
+			if (moving.size < 20) moving.add(`${part(this)}: script animation`);
+			return animate.apply(this, args);
+		};
 	}
 	const AROUND = 'section, article, figure, form, fieldset, [role="region"], [role="group"], [role="tabpanel"]';
 	const items = () => {
@@ -88,9 +108,14 @@ export function installProbe(): void {
 			const active = items.filter((i) => i === document.activeElement || i.hasAttribute('data-highlighted') || i.hasAttribute('data-focused') || i.id === document.activeElement?.getAttribute('aria-activedescendant')).map((i) => text(i, 20));
 			const chosen = items.filter((i) => i.getAttribute('aria-selected') === 'true' || i.getAttribute('aria-checked') === 'true').map((i) => text(i, 20));
 			const state = p.getAttribute('data-state');
+			// A chosen item's mark (a check icon) is hidden from assistive tech, so it is read from what is drawn.
+			const marked = items.filter((i) => [...i.querySelectorAll('svg, [data-slot$="indicator"]')].some((m) => shown(m) && !m.textContent?.trim())).map((i) => text(i, 20));
+			const el = control();
+			const chosenItem = items.find((i) => i.getAttribute('aria-selected') === 'true' || i.getAttribute('aria-checked') === 'true');
+			const over = el && chosenItem ? (() => { const a = chosenItem.getBoundingClientRect(), b = el.getBoundingClientRect(); return a.top < b.bottom && a.bottom > b.top ? ', chosen item over the control' : ''; })() : '';
 			// Its line count: a port that renders a layer's content twice (a date picker's month) shows it twice as long.
 			const rows = (p instanceof HTMLElement ? p.innerText : '').split('\n').filter((l) => l.trim()).length;
-			return `${roleOf(p)}${items.length ? ` (${items.length} items, highlighted: ${active.join('|') || 'none'}, chosen: ${chosen.join('|') || 'none'})` : ` "${text(p, 30)}"`}, ${rows} lines${state ? ` state=${state}` : ''}`;
+			return `${roleOf(p)}${items.length ? ` (${items.length} items, highlighted: ${active.join('|') || 'none'}, chosen: ${chosen.join('|') || 'none'}, marked: ${marked.join('|') || 'none'}${over})` : ` "${text(p, 30)}"`}, ${rows} lines${state ? ` state=${state}` : ''}`;
 		}).sort();
 	};
 	const toasts = () => {
@@ -188,8 +213,20 @@ export function installProbe(): void {
 			const form = el.closest('form');
 			if (form) out.form = [...new FormData(form)].map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 40) : '(file)'}`);
 			out.scroll = String(Math.round(scrollY / 40) * 40);
-			out['scrolled since'] = [...(g.__markless_migrate_probe_scrolled__ ?? [])].sort();
+			out['scrolled since'] = [...(g.__markless_migrate_probe_scrolled__ ?? [])].map(([name, frames]) => `${name} ${frames.size > 2 ? 'over several frames' : 'at once'}`).sort();
 			g.__markless_migrate_probe_scrolled__?.clear();
+			out['moving since'] = [...(g.__markless_migrate_probe_moving__ ?? [])].sort();
+			g.__markless_migrate_probe_moving__?.clear();
+			// What the pointer shows over the control or the page, and what the page showed while dragging.
+			const under = [...document.querySelectorAll(':hover')].pop();
+			out.cursor = `${under ? getComputedStyle(under).cursor : 'auto'}${g.__markless_migrate_probe_drag_cursor__ ? `; while dragging ${g.__markless_migrate_probe_drag_cursor__}` : ''}`;
+			delete g.__markless_migrate_probe_drag_cursor__;
+			// A text area grows with its text or scrolls it; a drawn scrollbar's thumb follows the scroll.
+			if (el instanceof HTMLTextAreaElement) out.field = `${Math.round(el.getBoundingClientRect().height / 8) * 8} px tall, ${el.scrollHeight > el.clientHeight + 1 ? 'scrolls' : 'shows every line'}`;
+			let host: Element | null = el;
+			for (let n = 0; host && n < 4 && !host.querySelector('[data-slot="scroll-area-thumb"], [data-radix-scroll-area-thumb]'); n++) host = host.parentElement;
+			const thumbs = [...(host ?? scope).querySelectorAll('[data-slot="scroll-area-thumb"], [data-radix-scroll-area-thumb], [class*="thumb" i]')].filter(shown);
+			if (thumbs.length) out.thumbs = thumbs.slice(0, 2).map((t) => { const r = t.getBoundingClientRect(), o = (t.parentElement ?? t).getBoundingClientRect(); return `${Math.round((r.top - o.top) / 8) * 8},${Math.round((r.left - o.left) / 8) * 8} ${Math.round(r.height / 8) * 8}x${Math.round(r.width / 8) * 8}`; });
 			return out;
 		},
 		/** A point that holds no control and is outside the control and everything open, for a click outside. */
@@ -220,7 +257,7 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | 'submenu' | 'scroller' | `item ${number}`): boolean {
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | 'submenu' | 'scroller' | 'next trigger' | 'scroll thumb' | `item ${number}`): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -230,6 +267,15 @@ export function installProbe(): void {
 				found = top && [...top.querySelectorAll('button, [role="button"]')].filter(shown).find((b) => /\b(close|cancel|dismiss|done)\b/i.test(`${b.getAttribute('aria-label') ?? ''} ${text(b)}`));
 			} else if (what.startsWith('item ')) found = items()[Number(what.slice(5))];
 			else if (what === 'scroller') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [p, ...p.querySelectorAll('*')]).find((e) => shown(e) && e.scrollHeight > e.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(e).overflowY));
+			else if (what === 'next trigger' && el) {
+				const bar = el.closest('[role="menubar"], nav, [role="navigation"]');
+				const triggers = bar ? [...bar.querySelectorAll('[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded][aria-controls]')].filter((t) => shown(t) && !t.closest('[role="menu"]')) : [];
+				found = triggers[triggers.indexOf(el) + 1];
+			} else if (what === 'scroll thumb' && el) {
+				let host: Element | null = el;
+				for (let n = 0; host && n < 4 && !host.querySelector('[data-slot="scroll-area-thumb"], [data-radix-scroll-area-thumb]'); n++) host = host.parentElement;
+				found = [...(host?.querySelectorAll('[data-slot="scroll-area-thumb"], [data-radix-scroll-area-thumb]') ?? [])].find(shown);
+			}
 			else if (what === 'submenu') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [...p.querySelectorAll(ITEM)]).find((i) => shown(i) && /^(true|menu)$/.test(i.getAttribute('aria-haspopup') ?? ''));
 			else if (what === 'popup') found = [...document.querySelectorAll(POPUP)].filter(shown).pop();
 			else if (what === 'toaster') found = [...document.querySelectorAll('[data-sonner-toaster], [aria-live]:not([aria-live="off"]), [role="region"][aria-label*="otification" i]')].find((t) => t.querySelector('*') && shown(t.querySelector('[data-sonner-toast], li, [role="status"]') ?? t));
@@ -288,6 +334,7 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 		return (label || own || e.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
 	};
 	const COMPOSITE = '[role="tablist"], [role="radiogroup"], [role="toolbar"], [role="menubar"], [role="grid"], [role="treegrid"], [role="tree"], [role="group"]';
+	const POPUP_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="tooltip"], [popover]';
 	const ITEMS = '[role="tab"], [role="radio"], input[type="radio"], [aria-pressed], [role="checkbox"], [role="menuitem"], [role="gridcell"], [role="row"], [role="treeitem"], button';
 	const out: ProbeControl[] = [];
 	const seen = new Map<string, number>();
@@ -329,6 +376,9 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 			const label = accessibleName(e);
 			if (label && label.length <= 80 && ![...e.children].some((c) => accessibleName(c) === label)) role = 'area';
 		}
+		// A scroll container with no role of its own (a ScrollArea's viewport) is driven as one.
+		const scrolls = e instanceof HTMLElement && e.scrollHeight > e.clientHeight + 40 && e.clientHeight > 40 && /auto|scroll/.test(getComputedStyle(e).overflowY) && !e.closest(POPUP_SELECTOR);
+		if (!role && scrolls) role = 'scroller';
 		if (!role) continue;
 		const classes: string[] = [];
 		const focusable = e instanceof HTMLElement && e.tabIndex >= 0;
@@ -342,6 +392,13 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 		if (menu) classes.push('context menu');
 		if (/^(checkbox|switch)$/.test(role) || (role === 'button' && e.hasAttribute('aria-pressed'))) classes.push('toggle');
 		if (role === 'button' && notify.includes(accessibleName(e))) classes.push('repeat');
+		if (scrolls) classes.push('scroll');
+		if (e instanceof HTMLTextAreaElement) classes.push('multiline');
+		if (e instanceof HTMLInputElement && (e.autocomplete === 'one-time-code' || e.hasAttribute('data-input-otp'))) classes.push('otp');
+		// The first trigger of a menubar or a navigation menu: moving from its open menu to the next one is a step of its own.
+		const bar = e.closest('[role="menubar"], nav, [role="navigation"]');
+		const triggers = bar && (popup ? popup !== 'false' : e.hasAttribute('aria-expanded') && e.hasAttribute('aria-controls')) ? [...bar.querySelectorAll('[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded][aria-controls]')].filter((t) => !t.closest('[role="menu"]')) : [];
+		if (triggers.length >= 2 && triggers[0] === e) classes.push('switch');
 		if (/^(tablist|radiogroup|toolbar|menubar|grid|treegrid|tree)$/.test(role) || (role === 'group' && e.querySelectorAll(ITEMS).length >= 2 && [...e.querySelectorAll('[aria-pressed], [role="radio"], [role="checkbox"]')].length >= 2)) {
 			if (!e.parentElement?.closest(COMPOSITE) || /^(tablist|radiogroup|toolbar|menubar)$/.test(role)) classes.push('tab stops');
 		}

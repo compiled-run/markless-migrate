@@ -15,7 +15,7 @@ import { armStateReader, compareStates, firstDiffs, readState, stateHint, stateS
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle';
+export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle' | 'switch' | 'scroll' | 'multiline' | 'otp';
 
 export type Op =
 	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
@@ -25,6 +25,14 @@ export type Op =
 	| { readonly op: 'submenu'; readonly how: 'hover' | 'key' }
 	/** The wheel turned over the first scrolling list of what is open. */
 	| { readonly op: 'scroll' }
+	/** The wheel turned over the control itself. */
+	| { readonly op: 'scroll here'; readonly dy: number }
+	/** The next trigger of the control's menubar or navigation menu: pointed at. */
+	| { readonly op: 'next trigger' }
+	/** A drawn scrollbar's thumb beside the control, dragged down. */
+	| { readonly op: 'drag thumb'; readonly dy: number }
+	/** Text put on the clipboard and pasted. */
+	| { readonly op: 'paste'; readonly text: string }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
 	| { readonly op: 'typeahead'; readonly n: number }
 	| { readonly op: 'key'; readonly key: string }
@@ -59,6 +67,8 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 		case 'popup':
 			return [
 				s('open by pointer, point along its items and away, close by a click outside, reopen, choose by pointer, reopen, close by Escape and its close button', [{ op: 'click' }, item(0, 'hover'), item(1, 'hover'), { op: 'leave' }, { op: 'outside' }, { op: 'click' }, item(0, 'click'), { op: 'click' }, key('Escape'), { op: 'click' }, { op: 'close' }, key('Escape')]),
+				// A choice other than the one shown at load, then the list reopened: its mark and where it opens follow the choice.
+				...(/^(listbox|true|combobox)$/.test(control.popup ?? (control.role === 'combobox' ? 'combobox' : '')) ? [s('open by pointer, choose its second item, reopen, Escape', [{ op: 'click' }, item(1, 'click'), { op: 'click' }, key('Escape')])] : []),
 				// What it shows stays put while it closes, after its list was scrolled: a list that jumps back as the pop-up fades out is seen.
 				s('open by pointer, scroll its list, close by a click outside, reopen, scroll, close by Escape', [{ op: 'click' }, { op: 'scroll' }, { op: 'outside' }, { op: 'click' }, { op: 'scroll' }, key('Escape')]),
 				// A list (menu, listbox) is typed into; anything else it opens (a dialog, a popover) is tabbed through.
@@ -90,7 +100,19 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 		case 'repeat':
 			return [s('used three times in a row, then the pointer resting on what it showed', [{ op: 'click' }, { op: 'click' }, { op: 'click' }, { op: 'point at toasts' }, { op: 'leave' }])];
 		case 'tab stops':
-			return [s('Tab in, arrows each way, Space, Tab out and back', [{ op: 'tab in' }, key('ArrowRight'), key('ArrowDown'), key('Space'), key('Tab'), key('Shift+Tab'), key('ArrowLeft'), key('ArrowUp')])];
+			return [
+				s('Tab in, arrows each way, Space, Tab out and back', [{ op: 'tab in' }, key('ArrowRight'), key('ArrowDown'), key('Space'), key('Tab'), key('Shift+Tab'), key('ArrowLeft'), key('ArrowUp')]),
+				// What Home and End do is the original's to say: a library may move, choose, or do nothing.
+				s('Tab in, End, Home, Tab out', [{ op: 'tab in' }, key('End'), key('Home'), key('Tab')]),
+			];
+		case 'switch':
+			return [s('open it, point at the next trigger, ArrowRight to the one after, Escape', [{ op: 'click' }, { op: 'next trigger' }, key('ArrowRight'), key('Escape')])];
+		case 'scroll':
+			return [s('scrolled by the wheel twice, then its drawn thumb dragged', [{ op: 'scroll here', dy: 240 }, { op: 'scroll here', dy: 240 }, { op: 'drag thumb', dy: 40 }])];
+		case 'multiline':
+			return [s('five lines typed, each ended by Enter', [{ op: 'click' }, ...['one', 'two', 'three', 'four', 'five'].flatMap((w): Op[] => [{ op: 'type', text: `line ${w}` }, key('Enter')])])];
+		case 'otp':
+			return [s('filled, a step back, Backspace, typed over, then a code pasted', [{ op: 'click' }, { op: 'type', text: '123456' }, key('ArrowLeft'), key('Backspace'), { op: 'type', text: '9' }, key('ControlOrMeta+A'), { op: 'paste', text: '246810' }])];
 	}
 }
 
@@ -106,6 +128,14 @@ export function describeOp(op: Op): string {
 			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1} of what is open`;
 		case 'scroll':
 			return 'turn the wheel over the list of what is open';
+		case 'scroll here':
+			return `turn the wheel ${op.dy} px over it`;
+		case 'next trigger':
+			return 'point at the next trigger';
+		case 'drag thumb':
+			return `drag its scrollbar thumb ${op.dy} px down`;
+		case 'paste':
+			return `paste "${op.text}"`;
 		case 'submenu':
 			return op.how === 'hover' ? 'point at the first item of what is open that opens a submenu' : 'focus the first item of what is open that opens a submenu and press ArrowRight';
 		case 'typeahead':
@@ -131,7 +161,7 @@ export function describeOp(op: Op): string {
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y', switch: 'motion', scroll: 'behaviour', multiline: 'behaviour', otp: 'behaviour' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
@@ -141,6 +171,10 @@ export const PROBE_HINTS: Record<ProbeClass, string> = {
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 	drag: 'A pointer drag moves this control on the old page: follow the pointer (pointerdown, pointermove, pointerup), move the value, panel or slide by the same amount, take focus as the old one does, and leave the same state attributes after release.',
 	repeat: 'Each use of this control adds what the old page adds (a toast, a notification): the next use stacks on top rather than replacing it, the front one is marked as such, and pointing at the stack expands it as on the old page.',
+	switch: 'Moving from one open menu of a menubar or navigation menu to the next answers as on the old page: at once where the original swaps them at once, and with the same resize and slide where it animates the move (a shared viewport).',
+	scroll: 'Scrolling this container answers as on the old page: a drawn scrollbar thumb follows the scroll at the same place and size and can be dragged, and a scroll the page starts moves as smoothly (or at once) as there.',
+	multiline: 'This text area takes several lines as on the old page: it grows with its text (field-sizing: content) up to the same height, or scrolls where the original scrolls.',
+	otp: 'This one-time code field answers each key as on the old page: every slot shows its digit, the caret slot follows the selection, and Backspace, the arrows and a paste fill and empty the slots as there.',
 	'tab stops': 'This widget is one tab stop on the old page with arrows moving inside it (roving tabindex): keep exactly the same tab stops, move with the arrows of its orientation only, remember the last item when Tab leaves and comes back, and leave disabled items out.',
 };
 
@@ -226,6 +260,31 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			if (DESTRUCTIVE.test((await found.textContent({ timeout: STEP_TIMEOUT }).catch(() => '')) ?? '')) throw new Error('left alone: it ends the session or deletes');
 			return clickOnce(found, { timeout: STEP_TIMEOUT });
 		}
+		case 'scroll here': {
+			const box = await target.boundingBox({ timeout: STEP_TIMEOUT });
+			if (!box) throw new Error('it has no box');
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+			return page.mouse.wheel(0, op.dy);
+		}
+		case 'next trigger': {
+			const found = await aim('next trigger');
+			if (!found) throw new Error('no next trigger');
+			return found.hover({ timeout: STEP_TIMEOUT });
+		}
+		case 'drag thumb': {
+			const found = await aim('scroll thumb');
+			if (!found) throw new Error('no drawn scrollbar thumb');
+			const box = await found.boundingBox({ timeout: STEP_TIMEOUT });
+			if (!box) throw new Error('the thumb has no box');
+			const x = box.x + box.width / 2, y = box.y + box.height / 2;
+			await page.mouse.move(x, y);
+			await page.mouse.down();
+			await page.mouse.move(x, y + op.dy, { steps: 4 });
+			return page.mouse.up();
+		}
+		case 'paste':
+			await page.evaluate((t) => navigator.clipboard.writeText(t), op.text);
+			return page.keyboard.press('ControlOrMeta+V', { delay: HOLD_MS });
 		case 'scroll': {
 			const found = await aim('scroller');
 			if (!found) throw new Error('nothing open has a list that scrolls');
@@ -285,6 +344,7 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			await page.mouse.down();
 			await page.mouse.move(x + op.dx / 2, y + op.dy / 2, { steps: 4 });
 			await page.mouse.move(x + op.dx, y + op.dy, { steps: 4 });
+			await page.evaluate(([px, py]) => { const at = document.elementFromPoint(px!, py!); (globalThis as { __markless_migrate_probe_drag_cursor__?: string }).__markless_migrate_probe_drag_cursor__ = at ? getComputedStyle(at).cursor : 'auto'; }, [x + op.dx, y + op.dy]).catch(() => {});
 			return page.mouse.up();
 		}
 	}

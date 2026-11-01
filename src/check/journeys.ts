@@ -560,7 +560,8 @@ async function forms(page: Page, origin: string, found: readonly Candidate[]): P
 	const steps: Step[] = [];
 	const all = await page.locator('form').all();
 	for (const form of all) {
-		const action = await form.evaluate((f: HTMLFormElement) => f.action).catch(() => '');
+		// Read from the attribute: a field named "action" takes the form's own action property (the questionnaire's did, and check stopped).
+		const action = await form.evaluate((f: HTMLFormElement) => new URL(f.getAttribute('action') ?? '', document.baseURI).href).catch(() => '');
 		if (action && new URL(action).origin !== origin) continue;
 		const fields: { target: Target; value: string; check?: boolean }[] = [];
 		let submit: Target | undefined;
@@ -2265,12 +2266,15 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			}
 			if (!r.revealed.length) continue;
 			const fresh = track(r.revealed, item.journey.steps, item.element);
-			if (depth >= maxDepth) {
+			// Answering a question (a radio, a checkbox, an option) only lets the form go on: a step through a multi-step form costs no depth, so its last step is reached.
+			const answered = ['radio', 'checkbox', 'option', 'menuitemradio', 'menuitemcheckbox'].includes(item.journey.steps.at(-1)!.target.role);
+			const deeper = answered ? depth : depth + 1;
+			if (deeper > maxDepth) {
 				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${maxDepth} steps, deeper than check explores: raise --journey-depth`;
 				continue;
 			}
-			const items = itemsFor(fresh, depth + 1);
-			next.push(...items.primary, ...batches(depth + 1));
+			const items = itemsFor(fresh, deeper);
+			next.push(...items.primary, ...batches(deeper));
 			later.push(...items.keyboard);
 		}
 		wave = next;
