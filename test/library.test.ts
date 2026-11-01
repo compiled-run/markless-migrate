@@ -594,3 +594,65 @@ test('a kit wrapper rendered with asChild is a composition of the part it wraps'
 		['Close', 'dialog-close', ['dialog-close', 'button'], 'Cancel', ['/account']],
 	]);
 });
+
+test('an app submit handler is carried from the source with what it reads, its library calls named, and refused where it reads React', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-carry-'));
+	const put = async (rel: string, text: string) => {
+		await mkdir(join(dir, rel, '..'), { recursive: true });
+		await writeFile(join(dir, rel), text);
+	};
+	await put('package.json', JSON.stringify({ name: 'carry', dependencies: { next: '16.0.0', react: '19.0.0', sonner: '2.0.0' } }));
+	await put('lib/format.ts', 'export function list(values: string[]): string {\n\treturn values.join(", ") || "None"\n}\n');
+	await put('app/page.tsx', [
+		'import * as React from "react"',
+		'import { toast } from "sonner"',
+		'import { list } from "../lib/format"',
+		'const TITLE = "Plan saved"',
+		'const labelOf = (v: FormDataEntryValue | null) => String(v ?? "None")',
+		'export default function Page({ onDone }: { onDone: () => void }) {',
+		'\tconst [count, setCount] = React.useState(0)',
+		'\tconst prefix = "Direction: "',
+		'\tfunction handleSubmit(event: React.FormEvent<HTMLFormElement>) {',
+		'\t\tevent.preventDefault()',
+		'\t\tconst data = new FormData(event.currentTarget)',
+		'\t\ttoast(TITLE, { description: `${prefix}${labelOf(data.get("direction"))} · ${list(data.getAll("signals") as string[])}` })',
+		'\t}',
+		'\treturn (',
+		'\t\t<div>',
+		'\t\t\t<form data-slot="plan" onSubmit={handleSubmit}><p>Choose a direction for the agent</p></form>',
+		'\t\t\t<form data-slot="counter" onSubmit={() => setCount(count + 1)}><p>Count the submits made</p></form>',
+		'\t\t\t<form data-slot="done" onSubmit={(e) => { onDone() }}><p>Tell the caller it is done</p></form>',
+		'\t\t\t<form data-slot="maybe" onSubmit={(e) => { if (count) e.preventDefault() }}><p>Cancel only sometimes here</p></form>',
+		'\t\t</div>',
+		'\t)',
+		'}',
+		'',
+	].join('\n'));
+	const file = await scanLibraries(dir);
+	const handlers = file.handlers ?? [];
+	assert.deepEqual(handlers.map((h) => [h.slots, h.refused ?? null, h.cancels ?? false]), [
+		[['plan'], null, true],
+		[['counter'], 'reads count, setCount, which React state or a hook keeps', false],
+		[['done'], "reads the component's prop onDone", false],
+		[['maybe'], 'cancels its event where only it knows when, which a page applies as the event dispatches', false],
+	]);
+	const plan = handlers[0]!;
+	assert.deepEqual(plan.calls, { toast: { from: 'sonner', imported: 'toast' } });
+	assert.deepEqual(plan.words, ['Choose a direction for the agent']);
+	assert.doesNotMatch(plan.code!, /FormEvent|: string|preventDefault/);
+	// The carried code runs as the source's handler did, given what stands in for the library's toast.
+	const shown: unknown[] = [];
+	const form = { currentTarget: 'the form' };
+	const FormDataStub = class {
+		get() {
+			return 'tool-calls';
+		}
+		getAll() {
+			return ['progress', 'risks'];
+		}
+	};
+	const handler = new Function('FormData', `return (${plan.code})`)(FormDataStub)((...args: unknown[]) => shown.push(args));
+	handler(form);
+	assert.deepEqual(shown, [['Plan saved', { description: 'Direction: tool-calls · progress, risks' }]]);
+	await rm(dir, { recursive: true, force: true });
+});

@@ -172,7 +172,34 @@ export interface LibrariesFile {
 	readonly libraries: LibraryUsage[];
 	/** Library parts rendered through their child (Radix `asChild`, Base UI `render`): the page shows the child's element. */
 	readonly compositions?: Composition[];
+	/** The app's own submit handlers, carried over from the source as code, or refused with the reason. */
+	readonly handlers?: CarriedHandler[];
 	readonly limits: string[];
+}
+
+/** One app handler of the source: the element it is given to, found in the page as a composition's is, and its code. */
+export interface CarriedHandler {
+	readonly file: string;
+	readonly line: number;
+	readonly element: string;
+	/** The DOM event it answers (`submit`). */
+	readonly event: string;
+	/** Every data-slot its element can render with. */
+	readonly slots: string[];
+	/** Text the source fixes for the element and what it renders (its JSX text, the strings of the module data it shows). */
+	readonly words: string[];
+	/**
+	 * A function taking the library functions it calls (`calls`, in order) and returning the handler: every declaration
+	 * it reads is inside, its TypeScript taken out.
+	 */
+	readonly code?: string;
+	/** Each library function it calls, by the name it calls it under. */
+	readonly calls?: Readonly<Record<string, { readonly from: string; readonly imported: string }>>;
+	/** It cancels its event first (`event.preventDefault()`, left out of `code`): the page cancels it as it dispatches. */
+	readonly cancels?: boolean;
+	/** Why it is not carried: it reads the component's props, React state, a hook, or a value the page has none of. */
+	readonly refused?: string;
+	readonly routes?: string[];
 }
 
 /** One element of the source that renders a library part through its child, so the page's element may carry the child's data-slot. */
