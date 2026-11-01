@@ -180,6 +180,23 @@ test('a route still in a part that sends no request at --timeout, after both app
 	assert.match(route.failures[0]!.actual, /^incomplete: timed out after 2 s, steps done 1 of 2 \(load both sides; running: journeys\)/);
 });
 
+test('a route stopped at --timeout keeps what its finished steps found, the stop beside it', async () => {
+	const { withDeadline, profiled, reached } = await import('../src/check/run.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const run = { old: defaultEnv(origin(good)), new: defaultEnv(origin(good)), frozen: false };
+	// The menubar route of deploy check 41251145993: motion had found what it found, then responsiveness ran past the deadline.
+	const route = await withDeadline('/menubar', run, 2_000, async (scoped) => {
+		const context = await browser.newContext();
+		scoped.old.scope!.track(context);
+		const page = await context.newPage();
+		await profiled('/menubar', 'load both sides', () => page.goto(origin(good)));
+		reached('/menubar', { route: '/menubar', ok: false, dimensions: {} as never, failures: [{ route: '/menubar', dimension: 'motion', check: 'click menuitem "Edit"', expected: 'opens with a fade', actual: 'opens at once', hint: '' }], weight: {} as never, visualDiffs: [], shots: [] });
+		return profiled('/menubar', 'responsiveness', () => new Promise<never>(() => {}));
+	});
+	assert.deepEqual(route.failures.map((f) => f.check), ['click menuitem "Edit"', 'the check of this route']);
+	assert.equal(route.ok, false);
+});
+
 test('a request its page dropped by navigating away or closing does not make a route that ran out of time an infrastructure failure', async () => {
 	const { withDeadline } = await import('../src/check/run.ts');
 	const { defaultEnv } = await import('../src/check/browser.ts');

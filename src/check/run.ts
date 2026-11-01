@@ -300,14 +300,14 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const selfUrls = await selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, run.new, { seo: Object.values(oldA.pages)[0]?.seo ?? {}, origin: oldOrigin });
-	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew), ...selfUrls], { noise, writes: loadWrites });
+	const result = reached(route, withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew), ...selfUrls], { noise, writes: loadWrites }));
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
-	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed;
+	const journeyed = reached(route, await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads))));
+	const explored = reached(route, run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed);
 	const busy = run.busyCpu ? await profiled(route, 'busy CPU', () => checkBusyCpu(run.busyCpu!.browsers, { old: run.old, new: run.new }, route, viewports[0]!, run.busyCpu)) : undefined;
-	const lane = busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored;
-	const moved = run.motion && lane.journeys?.length ? await profiled(route, 'motion', () => checkMoves(browser, run, route, viewports[0]!, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane;
-	const timed = run.responsiveness && moved.journeys?.length ? await profiled(route, 'responsiveness', () => checkTimings(browser, run, route, moved)) : moved;
+	const lane = reached(route, busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored);
+	const moved = reached(route, run.motion && lane.journeys?.length ? await profiled(route, 'motion', () => checkMoves(browser, run, route, viewports[0]!, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane);
+	const timed = reached(route, run.responsiveness && moved.journeys?.length ? await profiled(route, 'responsiveness', () => checkTimings(browser, run, route, moved)) : moved);
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
 	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
 	const checked = run.embeds && embedded ? await profiled(route, 'embeds', () => checkRouteEmbeds(browser, run, route, viewports, timed)) : timed;
@@ -360,7 +360,8 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 	const checked = withFailures({ ...compared, visualDiffs: [], shots: [] }, kept, { noise: noiseReport(olds, run.frozen, run.source?.nondeterminism) });
 	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const journeyed = await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads);
+	reached(route, skipped);
+	const journeyed = reached(route, await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads));
 	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
 	const oneEngine = run.controls?.webkit ? { ...run, controls: { ...run.controls, webkit: undefined } } : run;
 	const probed = run.probes ? await probeRoute(browser, oneEngine, route, first[0]!, journeyed) : journeyed;
@@ -497,7 +498,7 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 }
 
 /** The parts of each route's check that have finished, the ones running and how many it was going to run: what a timed-out route reports. */
-const routeSteps = new Map<string, { readonly done: { readonly name: string; readonly ms: number }[]; readonly running: Set<string>; total: number }>();
+const routeSteps = new Map<string, { readonly done: { readonly name: string; readonly ms: number }[]; readonly running: Set<string>; total: number; latest?: RouteResult }>();
 const stepsOf = (route: string) => routeSteps.get(route) ?? routeSteps.set(route, { done: [], running: new Set(), total: 0 }).get(route)!;
 
 /** How far a route's check got: "steps done 2 of 6 (load both sides, forced states; running: journeys)". */
@@ -505,6 +506,12 @@ export function stepsDone(route: string): string {
 	const s = stepsOf(route);
 	const running = [...s.running];
 	return `steps done ${s.done.length} of ${Math.max(s.total, s.done.length + running.length)}${s.done.length || running.length ? ` (${s.done.map((d) => d.name).join(', ')}${running.length ? `${s.done.length ? '; ' : ''}running: ${running.join(', ')}` : ''})` : ''}`;
+}
+
+/** The route's result as far as its check has got: what a route stopped at --timeout still reports. */
+export function reached(route: string, result: RouteResult): RouteResult {
+	stepsOf(route).latest = result;
+	return result;
 }
 
 // MARKLESS_MIGRATE_PROFILE=1 prints how long each part of a route's check took, on stderr.
@@ -734,6 +741,7 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 		const first = await Promise.race([task, late]);
 		if (first !== 'late') {
 			const timed = { ...first, timing: { ms: Date.now() - began, steps: [...stepsOf(route).done] } };
+			routeSteps.delete(route);
 			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
 			return timed;
 		}
@@ -747,12 +755,16 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	const lastAnswer = answers.every((a) => a !== undefined) ? Math.max(...(answers as number[])) : undefined;
 	const failedLately = scope.failed > 0 && Date.now() - scope.failed < window;
 	const steps = stepsDone(route);
+	// What the finished steps found stands: a route stopped part way is reported with them, the stop beside them.
+	const found = stepsOf(route).latest?.failures ?? [];
+	routeSteps.delete(route);
+	const so = (r: RouteResult) => (found.length ? withFailures(r, [...found, ...r.failures]) : r);
 	await scope.close();
 	await Promise.race([task.catch(() => {}), new Promise((done) => setTimeout(done, 10_000))]);
 	// A request left waiting, one failing, or an app that never answered is the servers' doing; a long part that sends no request (journeys deciding, a busy-CPU lane) is the check's own time.
-	if (stalled || failedLately || lastAnswer === undefined) return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` });
+	if (stalled || failedLately || lastAnswer === undefined) return so(partialResult(route, [], [], undefined, { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` }));
 	const answering = lastAnswer < window ? `both apps were still answering (each answered within ${(lastAnswer / 1000).toFixed(1)} s of it stopping)` : `both apps had answered and no request was waiting or had failed (the last answer ${Math.round(lastAnswer / 1000)} s before it stopped)`;
-	return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime }], []);
+	return so(partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime }], []));
 }
 
 function asRole(result: RouteResult, role: string | undefined): RouteResult {
