@@ -411,5 +411,20 @@ function reset(root: HTMLElement): void {
 	}
 	setDescendant(root, undefined);
 	const scroller = root.querySelector<HTMLElement>('[cmdk-list]');
-	if (scroller) scroller.scrollTop = 0;
+	const layer = root.closest<HTMLElement>('[data-mm-layer]');
+	if (scroller && layer) toTopOnShow(scroller, layer);
+}
+
+// A display:none list ignores a scrollTop write and shows its old offset again, where cmdk's remounted list starts at the top.
+const rewinding = new WeakSet<Element>();
+function toTopOnShow(scroller: HTMLElement, layer: HTMLElement): void {
+	if (rewinding.has(scroller)) return;
+	rewinding.add(scroller);
+	const watch = new MutationObserver(() => {
+		if (layer.hidden) return;
+		watch.disconnect();
+		rewinding.delete(scroller);
+		scroller.scrollTop = 0;
+	});
+	watch.observe(layer, { attributes: true, attributeFilter: ['hidden'] });
 }
