@@ -780,15 +780,17 @@ function liveRegions() {
 }
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
-function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
+export function watchReaction(): void {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
 	g.__markless_migrate_reaction__?.stop();
 	const changed = new Map<Element, Map<string, string | null>>();
-	const inserted = new Set<Node>();
-	const touched = new Set<Node>();
+	const lists: MutationRecord[] = [];
+	const detached = new Set<Node>();
+	const edited = new Set<Node>();
+	const spilled = new Set<Node>();
 	const timing = { started: performance.now(), first: undefined as number | undefined, input: undefined as number | undefined };
 	// Timed from the input the page received, not from when the checker asked for it: how fast the checker's own clicks land is no page's.
 	const input = (event: Event) => {
@@ -826,9 +828,15 @@ function watchReaction(): void {
 		dirty = true;
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
-			if (r.type === 'childList') for (const n of r.addedNodes) inserted.add(n);
-			if (r.type !== 'attributes') touched.add(r.target);
-			if (r.type === 'childList') for (const n of r.addedNodes) touched.add(n);
+			if (r.type === 'characterData') edited.add(r.target);
+			if (r.type === 'childList' && lists.length >= 20_000) {
+				spilled.add(r.target);
+				for (const n of r.addedNodes) spilled.add(n);
+			} else if (r.type === 'childList') {
+				lists.push(r);
+				// Past this delivery the observer no longer sees inside a removed subtree.
+				for (const n of r.removedNodes) if (!n.isConnected) detached.add(n);
+			}
 			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
 			if (r.target instanceof SVGElement && GEOMETRY.has(r.attributeName) && tweens.size < 200) {
 				const now = performance.now();
@@ -867,12 +875,12 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, inserted, touched, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, lists, detached, edited, spilled, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[]; spanMs: number; longestGapMs: number }; tweened: string[] } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
+export function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[]; spanMs: number; longestGapMs: number }; tweened: string[] } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
 	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [], tweened: [] };
@@ -925,9 +933,47 @@ function readReaction(): { changes: string[]; affected: string[]; scrolled: bool
 		return [s.transform, s.translate, s.left, s.top, s.right, s.bottom, s.marginLeft, s.marginTop, s.scale, s.rotate].join('|');
 	};
 	const out = new Set<string>();
+	// A list whose children end the step as the same nodes in the same order (cmdk re-appending every item to sort) shows and reads as it did.
+	const settled = new Set<Node>();
+	const byTarget = new Map<Node, MutationRecord[]>();
+	for (const r of watch.lists) (byTarget.get(r.target) ?? byTarget.set(r.target, []).get(r.target)!).push(r);
+	const shown = (n: Node) => (n instanceof Element ? n.checkVisibility() || getComputedStyle(n).display === 'contents' : n.nodeType === Node.TEXT_NODE && !!n.textContent?.trim());
+	for (const [target, records] of byTarget) {
+		if (!target.isConnected) continue;
+		let gap = false;
+		for (let at: Node | null = target; at && !gap; at = at.parentNode) gap = watch.detached.has(at);
+		if (gap) continue;
+		const now: Node[] = [...target.childNodes];
+		const was = [...now];
+		let known = true;
+		for (const r of [...records].reverse()) {
+			for (const n of r.addedNodes) {
+				const i = was.indexOf(n);
+				if (i < 0) known = false;
+				else was.splice(i, 1);
+			}
+			const at = r.previousSibling ? was.indexOf(r.previousSibling) + 1 : r.nextSibling ? was.indexOf(r.nextSibling) : 0;
+			if ((r.previousSibling || r.nextSibling) && at < (r.previousSibling ? 1 : 0)) known = false;
+			was.splice(at, 0, ...r.removedNodes);
+		}
+		if (watch.spilled.has(target) || records.some((r) => [...r.addedNodes].some((n) => watch.detached.has(n))) || !known || was.length !== now.length || new Set(was).size !== was.length || was.some((n) => n.parentNode !== target)) continue;
+		const order = (nodes: Node[]) => nodes.filter(shown);
+		const [before, after] = [order(was), order(now)];
+		if (before.length === after.length && before.every((n, i) => n === after[i])) settled.add(target);
+	}
+	const inserted = new Set<Node>(watch.spilled);
+	const touched = new Set<Node>([...watch.edited, ...watch.spilled]);
+	for (const r of watch.lists) {
+		if (settled.has(r.target)) continue;
+		touched.add(r.target);
+		for (const n of r.addedNodes) {
+			inserted.add(n);
+			touched.add(n);
+		}
+	}
 	// A pop-up put in during the step is placed as it goes in; that it appeared is the step's added lines, not a move.
 	const fresh = (el: Element) => {
-		for (let at: Node | null = el; at; at = at.parentNode) if (watch.inserted.has(at)) return true;
+		for (let at: Node | null = el; at; at = at.parentNode) if (inserted.has(at)) return true;
 		return false;
 	};
 	for (const [el, attrs] of watch.changed) {
@@ -967,7 +1013,7 @@ function readReaction(): { changes: string[]; affected: string[]; scrolled: bool
 	const affected = new Set<string>();
 	// An attribute counts only when it ends the step with another value: a framework setting it again (or a screenshot's empty style) is no change.
 	const retouched = [...watch.changed].filter(([el, attrs]) => [...attrs].some(([name, was]) => (name === 'style' ? (el.getAttribute(name) ?? '') !== (was ?? '') : el.getAttribute(name) !== was)));
-	for (const node of [...watch.touched, ...retouched.map(([el]) => el)]) {
+	for (const node of [...touched, ...retouched.map(([el]) => el)]) {
 		const el = node instanceof Element ? node : node.parentElement;
 		if (!el?.isConnected || used?.contains(el)) continue;
 		if (!el.checkVisibility() && !el.parentElement?.checkVisibility()) continue;
