@@ -81,6 +81,22 @@ document.addEventListener('click', async (e) => {
 	return (path: string) => (path === '/badge' ? page('Badge', 'outline') : path === '/' ? page('Home', 'primary') : undefined);
 };
 
+// A nav link that fades in a background on hover; `router` keeps the nav and swaps <main>, holding transitions from the press as a port does while a page arrives.
+const hovered = (router: boolean, hold = true) => {
+	const script = router ? `<script>
+addEventListener('click', async (e) => {
+	const a = e.target.closest('a[data-nav]'); if (!a) return; e.preventDefault();
+	${hold ? "document.documentElement.setAttribute('data-arriving', '');" : ''}
+	const next = new DOMParser().parseFromString(await (await fetch(a.href)).text(), 'text/html');
+	document.querySelector('main').innerHTML = next.querySelector('main').innerHTML;
+	history.pushState(null, '', a.href);
+	requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.removeAttribute('data-arriving')));
+}, true);
+</script>` : '';
+	const page = (title: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Docs</title><style>nav a { display: inline-block; padding: 8px; transition: background-color 300ms } nav a:hover { background: rgb(230, 230, 230) } [data-arriving] * { transition: none !important }</style></head><body><nav><a data-nav href="/">Home</a> <a data-nav href="/guide">Guide</a></nav><main><h1>${title}</h1></main>${script}</body></html>`;
+	return (path: string) => (path === '/guide' ? page('Guide') : path === '/' ? page('Home') : undefined);
+};
+
 let browser: Browser;
 const servers: Server[] = [];
 before(async () => {
@@ -187,6 +203,13 @@ test("content that morphs from the previous page's look while the router changes
 	const nav = morphing.find((f) => /^click link "Badge"/.test(f.check));
 	assert.ok(nav, JSON.stringify(morphing.map((f) => f.check)));
 	assert.match(nav!.actual, /moves while the page changes: .*background-color/);
+});
+
+test("a hover's transition on a link the router keeps, cut short by the press before it paints, is no motion while the page changes", async () => {
+	const kept = open(await check(hovered(false), hovered(true)));
+	assert.deepEqual(kept.filter((f) => /moves while the page changes/.test(f.actual)).map((f) => `${f.check}: ${f.actual}`), []);
+	const running = open(await check(hovered(false), hovered(true, false)));
+	assert.ok(running.some((f) => /moves while the page changes: .*background-color/.test(f.actual)), JSON.stringify(running.map((f) => `${f.check}: ${f.actual}`)));
 });
 
 test('a page that changes on its own every 3 s (a demo toggling a loading state) is the same page whatever phase each step lands on', async () => {

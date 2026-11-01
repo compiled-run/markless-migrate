@@ -793,7 +793,11 @@ function watchReaction(): void {
 	// Transitions that start while the step runs: a router that reuses the previous page's nodes makes them morph (an animation starting on the new page is the motion check's).
 	const runs: { el: Element; what: string }[] = [];
 	const ran = (event: Event) => {
-		if (runs.length < 200 && event.target instanceof Element) runs.push({ el: event.target, what: (event as TransitionEvent).propertyName });
+		if (runs.length >= 200 || !(event.target instanceof Element)) return;
+		const { propertyName, pseudoElement } = event as TransitionEvent;
+		// A transition cancelled before the frame that would paint it (a hover's, cut short by the press) moves nothing.
+		const alive = event.target.getAnimations({ subtree: true }).some((a) => a instanceof CSSTransition && a.transitionProperty === propertyName && a.effect instanceof KeyframeEffect && a.effect.target === event.target && (a.effect.pseudoElement ?? '') === pseudoElement);
+		if (alive) runs.push({ el: event.target, what: propertyName });
 	};
 	addEventListener('transitionrun', ran, { capture: true });
 	// The text a visitor sees, read once a frame after something changed: a state that lasts less than a frame is never painted.
