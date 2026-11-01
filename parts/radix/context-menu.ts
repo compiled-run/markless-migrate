@@ -5,7 +5,7 @@ import { clearHighlight, closeSubs, menuRoot, trackMenu } from './dropdown-menu.
 // Radix ContextMenu: a right press (or a long touch) on the trigger area opens the menu at the pointer, modal, with
 // its content focused; the dropdown-menu port's item rules (arrows, typeahead, choosing closes) apply to it as to any
 // Radix menu. The trigger area carries data-state.
-const TRIGGER = '[data-slot="context-menu-trigger"][data-state]';
+const TRIGGER = ':is([data-slot="context-menu-trigger"], [data-mm-part="context-menu-trigger"])[data-state]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][id]', (slot) => /^context-menu-trigger$/.test(slot));
 const keyOf = (t: HTMLElement) => layerKey(t);

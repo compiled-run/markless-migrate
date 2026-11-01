@@ -6,7 +6,7 @@ import { closestTrigger, layerKey } from '../reveal.ts';
 // outside or focus leaving closes it, and focus goes back to the trigger unless the press outside landed on something
 // that takes focus.
 
-const TRIGGER = '[data-slot="popover-trigger"][aria-haspopup="dialog"][aria-controls]';
+const TRIGGER = ':is([data-slot="popover-trigger"], [data-mm-part="popover-trigger"])[aria-haspopup="dialog"][aria-controls]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls]', (slot) => /^popover-trigger$/.test(slot));
 
@@ -35,7 +35,7 @@ export function click(target: Element): boolean {
 		focusFirst(layer.content);
 		return true;
 	}
-	const closer = target.closest<HTMLElement>('[data-slot="popover-close"]');
+	const closer = target.closest<HTMLElement>('[data-slot="popover-close"], [data-mm-part="popover-close"]');
 	const layer = closer && layerOf(closer);
 	if (layer) {
 		close(layer);

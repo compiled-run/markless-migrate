@@ -3,7 +3,7 @@ import { closesOnClick } from './menu.ts';
 
 // Base UI ContextMenu: a right press on the trigger area opens the menu at the pointer, focused; the menu port's item
 // rules (highlight, arrows, choosing closes) apply, and Escape or a press outside closes it.
-const TRIGGER = '[data-slot="context-menu-trigger"]:not([data-state])';
+const TRIGGER = ':is([data-slot="context-menu-trigger"], [data-mm-part="context-menu-trigger"]):not([data-state])';
 let current: Popup | undefined;
 
 const keyOf = (t: HTMLElement) => t.dataset.mmKey || t.id;
