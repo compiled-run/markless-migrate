@@ -169,8 +169,9 @@ interface Side {
 	readonly inflight: () => number;
 }
 
+// The state probe compares the motion a visitor sees: under prefers-reduced-motion a library skips its tween (Recharts does), and both sides would read the same jump.
 async function openSide(browser: Browser, env: SideEnv, viewport: Viewport): Promise<Side> {
-	const { context, page } = await openPage(browser, env, viewport, { sameOriginOnly: true });
+	const { context, page } = await openPage(browser, { ...env, reducedMotion: 'no-preference' }, viewport, { sameOriginOnly: true });
 	const pending = new Set<unknown>();
 	page.on('request', (r) => pending.add(r));
 	page.on('requestfinished', (r) => pending.delete(r));
