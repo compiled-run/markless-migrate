@@ -146,7 +146,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
-          [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
+          [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--prune-journeys] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
@@ -179,7 +179,9 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --max-journeys are run (default 1.5 per control the page shows, at least 60, at most 450, plus two per
           keyboard pattern), so one build gets the same journeys on every run. --journey-budget (default
           8 s per journey) only stops a run far slower than that: the route is then not checked
-          (incomplete), never compared on fewer journeys. --journey-depth (default 4) is how many steps deep a journey goes (nested menus, sidebars). A
+          (incomplete), never compared on fewer journeys. --prune-journeys leaves out journeys that run no new
+          code of the original (V8 block coverage): each element keeps its first, and later ones adding under 16
+          blocks are not replayed. --journey-depth (default 4) is how many steps deep a journey goes (nested menus, sidebars). A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
           run that has it, and the others carry its result. Each step is compared by what the page
           shows and keeps after it, and by how it answered: the viewport's pixels before and after it
@@ -910,6 +912,7 @@ async function main(argv: string[]): Promise<number> {
 					concurrency: { type: 'string' },
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
+					'prune-journeys': { type: 'boolean' },
 					'max-journeys': { type: 'string' },
 					'journey-depth': { type: 'string' },
 					timeout: { type: 'string' },
@@ -932,7 +935,7 @@ async function main(argv: string[]): Promise<number> {
 			const embedsOnly = values.only === 'embeds';
 			const probesOnly = values.only === 'probes';
 			if (loadOnly && values['no-load']) fail('--only load and --no-load leave nothing to check');
-			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
+			const journeys = { ...journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']), ...(values['prune-journeys'] ? { prune: true } : {}) };
 			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
 			try {
