@@ -47,89 +47,81 @@ markless-migrate switch /pricing                                            # on
 
 ```mermaid
 flowchart LR
-  plan[1. Plan] --> record[2. Record the original]
+  plan[1. Plan] --> record[2. Record the old site]
   record --> convert[3. Convert]
   convert --> build[4. Build]
   build --> check[5. Check]
-  check -- red --> fix[6. Fix]
+  check -- differences --> fix[6. Fix]
   fix --> build
-  check -- green --> switch[7. Switch]
+  check -- matches --> switch[7. Switch]
 ```
 
-**1. Plan: take stock of the old app.** `plan` lists the old site's routes from its sitemaps, `robots.txt`, feeds, a crawl of its links and, when you pass `--source`, its own source code. For each route it notes the SEO tags, assets, locales and caching. It also writes a usage inventory: what each page actually uses in the browser, such as an htmx attribute, a theme toggle, or a Radix dialog and the props it is given, with the file and line where it lives. These files land in `.migrate/` as JSON your agent can read.
+**1. Plan: list what the old app has.** `plan` finds every page of the old site, from its sitemap, its links and, if you give it the code, its routes. For each page it notes the title and meta tags, the files it loads and what it uses in the browser, like a dark-mode toggle or a Radix dialog, with the file and line it comes from. It all goes into `.migrate/` as JSON your agent can read.
 
-**2. Record the original.** The old pages are loaded in a real browser and recorded: the settled page and what each control reveals (menus, dialogs, tab panels). Each recording is stored under a key made from the old page's HTML and the recorder's own code, so a page is recorded again only when it or the recorder changes. `check --data record` also saves the responses each old page fetched, so they can be replayed later.
+**2. Record the old site.** Each old page is opened in a real browser and saved: how it looks once it has loaded, and what each button, menu and tab opens. A page is only recorded again when the page itself changes.
 
-**3. Convert: write the Markless app.** `convert` turns each recorded page into a Markless `.tsrx` page. It leaves the old framework's code out, writes regions several pages share (a header, a sidebar) once as components, and copies static assets byte for byte. To know what each element is, it reads the old source, not just the markup: JavaScript and TypeScript are parsed with [yuku](https://www.npmjs.com/package/yuku), CSS with [yuku-css](https://github.com/thejackshelton/yuku-css). Widgets from UI libraries (Radix, Base UI, React Aria and others) are driven by **parts**: small Markless ports of each library's behaviour, written once and reused across sites. What is left, the site's own client code, is the part your agent writes.
+**3. Convert: write the Markless version.** `convert` turns each recorded page into a Markless page. It reads the old code, not just the screen, to know what each element is. Things several pages share, like a header or a sidebar, are written once. Images, fonts and CSS are copied as they are. Widgets from UI libraries like Radix, Base UI and React Aria are handled by **parts**: small Markless versions of each widget, written once and reused on every site. Your agent writes whatever is left: the site's own code.
 
-**4. Build.** The port is built for production like any Markless app.
+**4. Build.** The new app is built like any Markless app.
 
-**5. Check: compare old and new side by side.** `check` opens each route on both apps in a real browser and compares what people see, what screen readers get, what search engines get, how fast the page loads and how each control behaves when it is used. The clock, randomness, timezone and locale are frozen. Data a page fetches from other sites is fetched once and given to both sides, and with `--data replay` the old app's recorded responses are served to both apps, so both pages show the same content. Every difference is reported with what each side showed and, when the source is known, the file and line on each side. Results go to `.migrate/report.json` and a visual `.migrate/report.html`.
+**5. Check: compare old and new side by side.** `check` opens each page on both apps in a real browser and compares them. The clock, random numbers and the page's data are the same on both sides, so any difference is a real one. Each difference says what each side showed and, when it can, the file and line on each side. You get `.migrate/report.json` for your agent and `.migrate/report.html` with screenshots for you.
 
-**6. Fix, one route at a time.** Your agent reads the report, fixes the route and checks it again. `run` does this unattended: it drives your agent's own command line (Claude Code, Codex, Gemini CLI, Cursor, GitHub Copilot CLI or opencode) on the login it already has, route by route, and moves on when a route is still red after its attempts. `fix` is the same loop for a person: it converts, builds and checks only the routes you name.
+**6. Fix, one page at a time.** Your agent reads the report, fixes the page and checks again. `run` does this on its own for every page, using your agent's command line. `fix` does it for the pages you name.
 
-**7. Switch, route by route.** `switch` moves a route to Markless only when its last check is green. While you migrate, a proxy (local) or generated Vercel or Nitro routing (production) sends switched routes to the new app and every other route to the old one, so the port can ship before it is finished.
+**7. Switch, page by page.** `switch` sends a page to the new app only once its check matches. Every other page keeps going to the old app, through a local proxy or generated Vercel or Nitro routing, so you can ship before the whole app is moved.
 
-**Only what changed runs again.** Each stage keys its work by content. With `check --reuse`, a route's result is kept under a key of what that route ships: its HTML, the code of every module it can run, the files its HTML names, the old page it was compared with, and the checker's own version. When none of those changed, the result is reused. The CI pipeline (`.github/workflows/pipeline.yml`) keys plan, recording, convert and build the same way, so a stage whose inputs did not change is read back from the run that made it, and only routes whose shipped code changed are checked again.
+**Only what changed runs again.** Each step saves its results under a fingerprint of its inputs. If a page's code and the old page it's compared with haven't changed, its last result is reused, so after a small fix only the affected pages are checked again.
 
 ## What check compares
 
-| Dimension | In plain words |
+| What | In plain words |
 | --- | --- |
-| `http`, `auth` | Status codes, redirects, and which signed-in roles may see the page |
-| `rendered`, `visual` | The accessibility tree, the visible text, and full-page screenshots, including hover, focus and other states |
-| `css`, `assets` | Computed styles of each visible element, traced back to the old CSS rule; images and the exact font files used |
-| `seo`, `i18n`, `data` | Meta tags and structured data; language, text direction and date formats; feeds, sitemaps and JSON endpoints |
-| `a11y` | axe-core results, landmarks, focus order and keyboard paths through menus, dialogs, tabs and other widgets |
-| `behaviour` | Interactions explored on the old page and replayed on the new one: what appears, what is stored, what is requested |
-| `network` | Each request the page makes, in the browser and while the server renders it |
-| `weight`, `load` | JavaScript run at load, and page load as PageSpeed Insights measures it |
-| `responsiveness` | How soon each control answers its first use and each link shows the next page, on a desktop and on a phone with the CPU slowed 4x |
-| `motion`, `navigation` | Transitions and animations; and whether a page reached by clicking a link inside the app matches a fresh load of it |
+| `http`, `auth` | Status codes, redirects, and who has to be signed in to see the page |
+| `rendered`, `visual` | What screen readers get, the visible text, and screenshots, including hover and focus |
+| `css`, `assets` | The styles on each visible element, and the exact images and font files |
+| `seo`, `i18n`, `data` | Meta tags for search engines; language, text direction and date formats; feeds and sitemaps |
+| `a11y` | Accessibility checks, focus order, and using menus, dialogs and tabs with the keyboard |
+| `behaviour` | Using each control on the old page and doing the same on the new one: what appears, what's saved, what's requested |
+| `network` | Every request the page makes |
+| `weight`, `load` | How much JavaScript runs when the page loads, and how fast it loads |
+| `responsiveness` | How fast each button answers its first click and each link shows the next page, on a desktop and on a slowed-down phone |
+| `motion`, `navigation` | Animations, and whether a page reached by clicking a link looks the same as loading it directly |
 
-Every report leads with the slowest first interaction on each side, for example `First interaction: old 40 ms → new 230 ms (4x CPU)`. The full rules are in [docs/check.md](docs/check.md).
+**How controls get tested.** Check clicks, types and presses keys through the old page, saves those steps, and does exactly the same on the new page. Every control on the old page has to be used at least once, or the page doesn't pass. The full rules are in [docs/check.md](docs/check.md).
 
-**Journeys and probes.** Check explores the old page by using its controls, records those steps as journeys, and replays them on the new page. Every interactive element of the old page must be used by at least one journey, or the route stays red. Widget probes then drive one control of each kind through a fixed sequence (open, point, choose, Escape, Tab, drag) on both pages at once, comparing focus, state attributes and what is open after every step.
+## How the code is organised
 
-## Architecture
+The code is in `src/`, with the library parts in `parts/`:
 
-The code is in `src/`, with library parts in `parts/`. Each folder does one job:
-
-| Module | What it does |
+| Folder | What it does |
 | --- | --- |
-| `plan/` | Builds the inventory: each route it finds, where it was found, and the order to migrate in |
-| `source/` | Reads the old app's code: its framework, routes (from Next.js, Remix, SvelteKit and others, plus Django, Rails, Laravel and WordPress), auth guards, API clients and which handlers write |
-| `usage/` | The usage inventory, and the checks each used behaviour must pass (`.migrate/obligations.json`) |
-| `library/` | Finds each library the old app imports, decides whether to port the parts it uses or keep the library as it is, and holds certified ports tested against the real library |
-| `convert/` | Records the old pages and writes the Markless app; `record-key.ts` makes the content keys recordings are kept under |
-| `parts/` | Markless ports of widget behaviour from Radix, Base UI, React Aria, Qwik UI and others, shared across sites |
-| `ledger/` | Maps each element the old source wires to a handler (an `onClick`, a library's Close) to what answers it in the port, and fails when nothing does |
-| `check/` | The comparison engine: loading, freezing, journeys, probes, timing, recorded data and the reports |
-| `client/` | The guards that keep other frameworks' runtimes out of the port |
-| `cache/` | Plans CDN caching for each route from the old site's evidence, writes it into the app, and checks the deployment |
-| `switch/` | The list of switched routes, the local proxy, and the Vercel and Nitro routing |
-| `run/`, `agents/`, `mcp/` | Drives your agent's command line, installs the migration skill, and serves the MCP tools your agent calls |
-| `embed/`, `upgrade/`, `dev/` | Third-party embeds; measurements after the migration; the quick fix loop |
+| `plan/` | Finds the old site's pages and the order to move them in |
+| `source/` | Reads the old app's code: its framework, routes, sign-in rules, and which handlers change data |
+| `usage/` | Lists what each page uses in the browser, and what has to be tested for each |
+| `library/` | Finds the libraries the old app uses, and decides whether to rebuild the parts it uses or keep the library |
+| `convert/` | Records the old pages and writes the Markless app |
+| `parts/` | Markless versions of widgets from Radix, Base UI, React Aria, Qwik UI and others |
+| `ledger/` | Checks that everything the old code made clickable still does something in the new app |
+| `check/` | Compares old and new and writes the reports |
+| `client/` | Makes sure no other framework's code ships in the new app |
+| `cache/` | Sets up CDN caching for each page, based on how the old site caches it |
+| `switch/` | Tracks which pages have moved, and the proxy and routing that send visitors to the right app |
+| `run/`, `agents/`, `mcp/` | Runs your agent, installs its migration instructions, and gives it tools to call |
+| `embed/`, `upgrade/`, `dev/` | YouTube videos, tweets and other embeds; measurements after the move; the quick fix loop |
 
-`scripts/pipeline.ts` computes the stage keys for the CI pipeline. `status.ts` tracks each route's progress.
+## What it promises, and what it doesn't
 
-This tool never calls a model or holds an API key. The only model involved is your own agent, signed in with its own login.
+**None of the old framework ships.** The new app can't include React, Vue, Svelte, Qwik, htmx, Alpine, jQuery or other framework code. The build fails if it does. Plain JavaScript libraries like Chart.js or Leaflet can stay, and each one that stays is listed.
 
-## What it guarantees, and what it doesn't
+**Images, fonts and CSS are the exact same files.** A page fails if anything it loads is missing or different.
 
-**No other framework's runtime ships.** The port must not ship React, Vue, Svelte, Qwik, htmx, Alpine, jQuery or the other runtimes the guard knows. `guard build` reads the build's scripts and fails when one defines another framework's runtime, and `guard page` fails when a new page runs one. It recognises a runtime by what its code defines, so a page that only mentions htmx in its text passes. What the old pages used of that framework is implemented in Markless instead. Libraries that only need JavaScript (Chart.js, Leaflet, Monaco) may be kept as they are, and each one kept is listed.
+**What counts as passing.** A page passes when everything check compares matches, or a person has accepted the difference with a reason. A page that couldn't be fully checked, for example because a bot blocker got in the way, doesn't pass. Your agent can't accept differences, only you can.
 
-**Static assets are the same bytes.** CSS, fonts, images, SVG and media are copied byte for byte. `guard page` loads each old page and fails when an asset it loads is missing on the new page or has other bytes. `run` applies both guards to every route it checks.
-
-**What counts as green.** A route is green when each dimension check compared matches, or the difference is accepted. A partial run (`--route`, `--changed`) is never reported as an overall green. A route that could not be fully compared, for example because a bot wall blocked it, stays red. The migration is done only when every planned route is green and switched without force.
-
-**Accepted differences.** Some differences are accepted automatically because the check has evidence no visitor can see them. One example is the old framework's own route announcer missing while the rest of the accessibility tree matches. Each is labelled with its rule and evidence. Anything else stays red until it is fixed or a person accepts it with `accept <id> --reason ...`. Agents cannot accept: the skill tells them not to, the MCP server has no accept tool, and `run` refuses it.
-
-**What it doesn't catch yet.** The clock is frozen in the browser. On the server it is frozen only with `--server-clock` and the request recorder. Server requests are recorded only for Node servers. Writes (form posts and other non-GET requests) are held back and compared unsent unless both apps run on your machine or are marked as staging, but writes the server makes on its own while handling a request cannot be held back. The lab page-load numbers can differ from PageSpeed Insights by 10 points or more. The known gaps are listed in [docs/plan.md](docs/plan.md).
+**Not covered yet.** Some server-side things can't be frozen everywhere yet, like the server's clock, and requests the server makes while it builds the page are only recorded for Node servers. Load-speed numbers from a local run can be 10 or more points off from Google's PageSpeed Insights. The full list is in [docs/plan.md](docs/plan.md).
 
 ## Quick start
 
-You need Node 24.11 or newer and [pnpm](https://pnpm.io). The package is not on npm yet, so run it from a clone:
+You need Node 24.11 or newer and [pnpm](https://pnpm.io). It's not on npm yet, so run it from a clone:
 
 ```bash
 git clone https://github.com/compiled-run/markless-migrate && cd markless-migrate
@@ -137,32 +129,32 @@ pnpm install && pnpm browsers
 alias markless-migrate="node $PWD/src/cli.ts"
 ```
 
-Create a Markless app with `npm create markless@latest`. Start both apps (below, the old one on port 3000 and the new one on 5173; use your own ports). Then, from the new app's folder, where Markless Migrate keeps its state in `.migrate/`:
+Make a new Markless app with `npm create markless@latest`, start both apps (here the old one is on port 3000 and the new one on 5173), and from the new app's folder run:
 
 ```bash
-markless-migrate setup                                                  # add the migration skill and MCP server to your agent
-markless-migrate plan --old http://localhost:3000 --source ../old-app   # inventory the old app
+markless-migrate setup                                                  # teach your agent how to migrate
+markless-migrate plan --old http://localhost:3000 --source ../old-app   # list what the old app has
 markless-migrate convert --old http://localhost:3000 --source ../old-app
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 --open
 markless-migrate run --agent claude --old http://localhost:3000 --new http://localhost:5173 --all
 markless-migrate switch /about && markless-migrate status
 ```
 
-`setup --undo` puts back every file `setup` changed. `markless-migrate help` lists the commands and their options.
+`setup --undo` puts back everything `setup` changed. `markless-migrate help` lists every command.
 
 ## Ports so far
 
-These are work-in-progress ports of public sites and open-source apps, made to test the tool. They are not official ports and are not endorsed by those projects. Each port's log records every attempt and what is still red.
+Unofficial, work-in-progress ports of public sites and open-source apps, made to test the tool. Each one has a log of every attempt and what still differs.
 
 | Port | Original | What it tests |
 | --- | --- | --- |
 | [shadcn-ui](examples/shadcn-ui-LOG.md) | ui.shadcn.com (Next.js 16, React 19) | The full pipeline: pages are written by `convert`, not by hand |
 | [docusaurus](examples/docusaurus-markless-LOG.md) | docusaurus.io, three pages | A docs site, with the other routes left on the original |
-| [vite-dev](examples/VITE-DEV-LOG.md) | vite.dev homepage (VitePress) | One route switched behind a front door |
+| [vite-dev](examples/VITE-DEV-LOG.md) | vite.dev homepage (VitePress) | One page moved while the rest stays on the old site |
 | [htmx-org](examples/htmx-org-LOG.md), [alpinejs-dev](examples/alpinejs-dev-LOG.md) | htmx.org, alpinejs.dev | Porting from the live site alone, without its source |
 | [next-dashboard](examples/next-dashboard-LOG.md) | Next.js Learn dashboard | Sign-in, a Postgres database, create, edit and delete |
 | [remix-notes](examples/remix-notes-LOG.md) | Remix Indie Stack | Cookie sessions and a SQLite database |
-| [realworld](examples/realworld-markless-LOG.md) | RealWorld "Conduit" (Angular) | Request-for-request network contracts against one backend |
+| [realworld](examples/realworld-markless-LOG.md) | RealWorld "Conduit" (Angular) | Both apps making the same requests to one backend |
 | [hn-graphql](examples/hn-graphql-LOG.md), [hn-rsc](examples/hn-rsc-LOG.md), [react-hn](examples/react-hn-LOG.md) | Three Hacker News clones | GraphQL, React Server Components, and live Firebase data |
 | [tanstack-query](examples/tanstack-query-LOG.md) | TanStack Router kitchen sink | Dependent queries, prefetching and clicks faster than the network |
 | [shadcn-admin](examples/shadcn-admin-LOG.md), [ag-grid](examples/ag-grid-LOG.md) | shadcn-admin, Devtron's AG Grid panel | Porting the library parts an app uses |
