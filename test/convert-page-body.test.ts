@@ -2,7 +2,7 @@
 // repeat), so the children around it are branches of their own on each side of it, never all moved before it.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { pageBody } from '../src/convert/document.ts';
+import { pageBody, withLeading } from '../src/convert/document.ts';
 
 test('a page with a toaster between the body children after its root keeps them in the old order', () => {
 	assert.equal(
@@ -20,4 +20,11 @@ test('a toaster between two branches of a page compiles', async () => {
 	const source = `import { state } from '@markless/core';\nfunction Portal() @{ <div role="region" aria-label="Notifications"></div> }\nconst PAGE_SHOWN = true;\nexport default function Page() @{\n\tlet lists = state([{ position: 'top', toasts: [{ id: 1, text: 'a' }] }]);\n\t${body}\n}\n`;
 	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
+});
+
+test("a page's own elements before its root and its body are one flat fragment, which Markless renders as a page root", () => {
+	const body = pageBody('<main />', [{ markup: '<BodyAfter0 />' }], 'SHOWN');
+	assert.equal(withLeading('<header />', '<main />', body, 'SHOWN'), '<>@if (SHOWN) { <><header /></> }@if (SHOWN) { <main /> }@if (SHOWN) { <><BodyAfter0 /></> }</>');
+	assert.equal(withLeading('<header />', '<main />', '<main />', 'SHOWN'), '<>@if (SHOWN) { <><header /></> }@if (SHOWN) { <main /> }</>');
+	assert.equal(withLeading('', '<main />', body, 'SHOWN'), body);
 });

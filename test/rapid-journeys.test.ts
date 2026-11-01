@@ -81,7 +81,7 @@ function serve(body: string | ((path: string) => string | undefined)): Promise<s
 
 async function check(old: string | ((path: string) => string | undefined), next: string | ((path: string) => string | undefined)): Promise<Report> {
 	const [a, b] = await Promise.all([serve(old), serve(next)]);
-	return runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 90_000 } });
+	return runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 }
 
 const failures = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f) => !f.accepted && f.dimension === 'behaviour');
@@ -117,7 +117,7 @@ test('where a race ends is compared with a fresh load of the same app, not with 
 	// The new app's people pages carry a footer the old one lacks; only `/` is switched, so the front door would load /grace from the old app.
 	const port = (path: string) => people(true)(path)?.replace('</main>', path === '/' ? '</main>' : '<footer>Ported</footer></main>');
 	const [a, b] = await Promise.all([serve(people(true)), serve(port)]);
-	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 90_000 }, switched: ['/'] });
+	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, switched: ['/'] });
 	assert.deepEqual(failures(report).filter((f) => /against a fresh load/.test(f.actual)).map((f) => [f.check, f.actual]), []);
 });
 

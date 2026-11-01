@@ -38,7 +38,7 @@ function serve(handler: (path: string) => { type?: string; body: string } | 'han
 
 const html = (body: string, head = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page</title>${head}</head><body><main><h1>Page</h1>${body}</main></body></html>`;
 const desktop = [VIEWPORTS[0]!];
-const check = (oldOrigin: string, newOrigin: string, more: Partial<CheckOptions> = {}) => runCheck({ oldOrigin, newOrigin, routes: ['/'], viewports: desktop, browser, journeys: { budgetMs: 20_000 }, ...more });
+const check = (oldOrigin: string, newOrigin: string, more: Partial<CheckOptions> = {}) => runCheck({ oldOrigin, newOrigin, routes: ['/'], viewports: desktop, browser, journeys: { maxJourneys: 20 }, ...more });
 const open = (failures: readonly Failure[]) => failures.filter((f) => !f.accepted).map((f) => `${f.dimension}: ${f.check}: ${f.actual}`);
 
 test('a name with a colon, which the aria snapshot quotes as YAML, is read back, so the control is found and used on the old page', async () => {
@@ -190,7 +190,7 @@ test('a fade the page load starts after its own short timers is waited out befor
 test('a page that keeps navigating while it is captured fails only its own route; the run goes on', async () => {
 	// It reloads itself every 250 ms, and its lazy image never arrives, so a capture waiting on the image is cut off by a navigation.
 	const site = await serve((path) => (path === '/jumpy' ? { body: `${html('<p style="height: 2000px">Jumpy</p><img src="/never.png" loading="lazy" width="10" height="10" alt="">')}<script>setTimeout(() => location.replace('/jumpy?n=' + Math.random()), 250)</script>` } : path === '/fine' ? { body: html('<p>Fine</p>') } : path === '/never.png' ? 'hang' : undefined));
-	const report = await runCheck({ oldOrigin: site, newOrigin: site, routes: ['/jumpy', '/fine'], viewports: desktop, browser, journeys: { budgetMs: 5_000 } });
+	const report = await runCheck({ oldOrigin: site, newOrigin: site, routes: ['/jumpy', '/fine'], viewports: desktop, browser, journeys: { maxJourneys: 10 } });
 	const [jumpy, fine] = report.routes;
 	assert.equal(fine!.ok, true, open(fine!.failures).join('\n'));
 	assert.equal(jumpy!.ok, false);
@@ -299,10 +299,10 @@ test('a poll is held at the same phase on both sides before an interaction is re
 test('a poll at another phase on the new page moves nothing during an interaction, and the interaction\'s own different fade stays red', async () => {
 	const old = await serve(() => ({ body: polling(0) }));
 	const late = await serve(() => ({ body: polling(900) }));
-	const same = await check(old, late, { motion: { maxHovers: 0, maxInteractions: 3 }, journeys: { budgetMs: 8_000 } });
+	const same = await check(old, late, { motion: { maxHovers: 0, maxInteractions: 3 }, journeys: { maxJourneys: 20 } });
 	assert.deepEqual(open(same.routes[0]!.failures).filter((f) => f.startsWith('motion')), []);
 	const quicker = await serve(() => ({ body: polling(900, 500) }));
-	const red = open((await check(old, quicker, { motion: { maxHovers: 0, maxInteractions: 3 }, journeys: { budgetMs: 8_000 } })).routes[0]!.failures);
+	const red = open((await check(old, quicker, { motion: { maxHovers: 0, maxInteractions: 3 }, journeys: { maxJourneys: 20 } })).routes[0]!.failures);
 	assert.ok(red.some((f) => /^motion: click button "Go".*opacity/.test(f)), red.join('\n'));
 });
 

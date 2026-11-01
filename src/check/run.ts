@@ -33,6 +33,7 @@ import { storageOwner, unreachableCandidate, type StorageOwner } from './automat
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
+import { selfUrlFailures } from './self-urls.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -297,7 +298,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
-	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
+	const selfUrls = await selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, run.new, { seo: Object.values(oldA.pages)[0]?.seo ?? {}, origin: oldOrigin });
+	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew), ...selfUrls], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
 	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed;
@@ -358,7 +360,9 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads);
-	const probed = run.probes ? await probeRoute(browser, run, route, first[0]!, journeyed) : journeyed;
+	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
+	const oneEngine = run.controls?.webkit ? { ...run, controls: { ...run.controls, webkit: undefined } } : run;
+	const probed = run.probes ? await probeRoute(browser, oneEngine, route, first[0]!, journeyed) : journeyed;
 	const located = await locateFailures(probed, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
@@ -371,6 +375,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
+	if (explored.incomplete) throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the machine ran far slower than the journeys need, so ${route} is not checked rather than compared on fewer of them` });
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
 	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
@@ -561,8 +566,8 @@ async function checkTimings(browser: Browser, run: Run, route: string, result: R
 export function leftOut(route: string, explored: Pick<Exploration, 'skipped' | 'sequencesSkipped'>): Failure[] {
 	const out: Failure[] = [];
 	const n = (k: number, what: string) => `${k} ${what}${k === 1 ? '' : 's'}`;
-	if (explored.skipped) out.push(notExercised(route, n(explored.skipped, 'keyboard journey'), `left out when the journey budget ran out; raise --journey-budget until they run`));
-	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --journey-budget until they run`));
+	if (explored.skipped) out.push(notExercised(route, n(explored.skipped, 'keyboard journey'), `left out when the journey budget ran out; raise --max-journeys until they run`));
+	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --max-journeys until they run`));
 	return out;
 }
 
@@ -808,7 +813,8 @@ const ROUTE_ROOM = 40;
 
 async function layoutOwners(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<Map<string, string>> {
 	const viewport = (options.viewports ?? VIEWPORTS)[0]!;
-	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => ({ layout: [] as string[], own: 0 })));
+	// A survey that fails once is tried again: an empty survey hands its route's shared controls to another route.
+	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => survey(browser, run.old, route, viewport)).catch(() => ({ layout: [] as string[], own: 0 })));
 	// The first route with room exercises a shared control, so one page full of its own controls does not leave
 	// every shared one to run out of its budget; past every route's room, the least loaded takes it.
 	const load = found.map((f) => f.own);
