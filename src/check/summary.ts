@@ -3,6 +3,7 @@ import { coverageLines } from './coverage.ts';
 import { headlines, worstLine } from './responsiveness.ts';
 import { loadLine, psiLines } from './load.ts';
 import { PSI_NOTICE } from './psi.ts';
+import { routeState } from './route-state.ts';
 import { networkLines } from './slow-network-verdicts.ts';
 import { wasteLines, wasteSummaryLines } from './waste.ts';
 import { notCompared, type Coverage, type Failure, type LoginResult, type Report, type RouteResult } from './types.ts';
@@ -58,7 +59,8 @@ export function summarize(report: Report): string {
 		const w = route.weight;
 		const stopped = notCompared(route);
 		const js = route.only === 'embeds' ? 'only the embeds compared (--only embeds)' : route.only === 'probes' ? 'only the widget probes compared (--only probes)' : route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
-		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
+		const state = routeState(route);
+		lines.push(`${state === 'pass' ? 'pass' : state === 'differs' ? 'FAIL' : 'INCOMPLETE'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
 		if (route.probes) lines.push(`      ${probesLine(route.probes)}`);
@@ -83,7 +85,8 @@ export function summarize(report: Report): string {
 	const green = report.routes.filter((r) => r.ok).length;
 	const blocked = report.routes.filter((r) => r.blocked).length;
 	const network = report.routes.filter((r) => r.infrastructure).length;
-	const red = report.routes.length - green - blocked - network;
+	const unverified = report.routes.filter((r) => !r.ok && !r.blocked && !r.infrastructure && routeState(r) === 'incomplete').length;
+	const red = report.routes.length - green - blocked - network - unverified;
 	if (report.cache && Object.values(report.cache).some(Boolean)) {
 		const c = report.cache;
 		lines.push('', `Old side from the cache (.migrate/cache): ${c.hit} reused because nothing the old page loads changed${c.changed ? `, ${c.changed} loaded again because a response changed` : ''}${c['stale-checker'] ? `, ${c['stale-checker']} loaded again for a new checker version` : ''}${c.miss ? `, ${c.miss} not cached yet` : ''}. Pass --no-cache to load every old page again.`);
@@ -101,7 +104,7 @@ export function summarize(report: Report): string {
 	if (wasteSummary.length) lines.push('', ...wasteSummary);
 	if (report.coverage) lines.push('', ...coverageLines(report.coverage));
 	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
-	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
+	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${unverified ? `, ${unverified} incomplete (no difference found, but some of it not verified)` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
 	if (report.partial) lines.push(partialLine(report.partial));
 	return `${lines.join('\n')}\n`;
 }

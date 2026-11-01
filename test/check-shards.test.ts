@@ -163,3 +163,14 @@ test("a shard stopped before writing its report still gives each route it finish
 	const got = (await reports(root)).flatMap((r) => r.routes.map((x) => `${/check-(\d+)/.exec(r.path)![1]} ${x.route}`)).sort();
 	assert.deepEqual(got, ['3 /a', '3 /b', '4 /c'], 'a shard with a report is read from it alone');
 });
+
+test('a route whose only failures say what was not verified is incomplete, never red, and a route with one real difference is red', () => {
+	const text = summary([
+		{ route: '/calendar', ok: false, failures: [{ dimension: 'behaviour', check: 'not exercised: button "October 31"' }, { dimension: 'behaviour', check: 'not exercised: button "October 30"' }] },
+		{ route: '/stopped', ok: false, failures: [{ dimension: 'http', check: 'the check of this route' }] },
+		{ route: '/menu', ok: false, failures: [{ dimension: 'behaviour', check: 'not exercised: button "More"' }, { dimension: 'behaviour', check: 'click button "Open"' }] },
+	]);
+	assert.match(text, /^1 red, 2 incomplete, of 3/);
+	assert.match(text, /\| `\/calendar` \| incomplete \|/);
+	assert.match(text, /\| `\/menu` \| red \|/);
+});

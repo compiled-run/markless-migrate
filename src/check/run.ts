@@ -34,6 +34,7 @@ import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOption
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
 import { selfUrlFailures } from './self-urls.ts';
+import { routeState } from './route-state.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -1042,7 +1043,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 }
 
 export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
-	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, storedJourneys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? storedJourneys?.names.length ?? 0 })) };
+	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, storedJourneys, ...route }) => ({ ...route, state: routeState(route), visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? storedJourneys?.names.length ?? 0 })) };
 }
 
 export async function writeReport(report: Report, dir: string, status?: Status): Promise<string> {
