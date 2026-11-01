@@ -635,7 +635,7 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 	await rm(out, { recursive: true, force: true });
 	await mkdir(out, { recursive: true });
 	await writeFile(join(out, '__next-server.ts'), NEXT_SERVER);
-	const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+	const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8').catch(() => '{}')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
 	const versions = { ...manifest.devDependencies, ...manifest.dependencies };
 	const packages: Record<string, string> = { 'path-to-regexp': '6.3.0' };
 	const ports: EndpointPort[] = [];
