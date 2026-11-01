@@ -5,7 +5,7 @@
 // Writes <work>/<library>/result.json and prints a summary (to $GITHUB_STEP_SUMMARY too). Exits 1 when an admitted test
 // fails that test/upstream/known.json does not list, or a listed one passes (unless its entry says why a pass is a race).
 // known.json classes: part (a bug in parts/), convert (the converter), shape (the port's DOM differs where nothing
-// visible does), adapter (this harness).
+// visible does), adapter (this harness). An entry with `expires` (docs/ci-process.md quarantine) fails the run on that date.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -173,7 +173,7 @@ async function linkAndBuild(): Promise<void> {
 }
 
 interface Known {
-	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'shape' | 'adapter'; readonly why: string; readonly racy?: string }>>;
+	readonly [library: string]: Readonly<Record<string, { readonly class: 'part' | 'convert' | 'shape' | 'adapter'; readonly why: string; readonly racy?: string; readonly owner?: string; readonly expires?: string }>>;
 }
 
 // What each converted page logs as it loads: an error here explains a suite that finds nothing working.
@@ -278,6 +278,8 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 	const unexpected = failing.filter((o) => !listed[o.id]);
 	const fixed = admitted.filter((o) => listed[o.id] && !listed[o.id]!.racy && passed(port.get(o.id)));
 	const stale = Object.keys(listed).filter((id) => !admitted.some((o) => o.id === id));
+	const today = new Date().toISOString().slice(0, 10);
+	const expired = Object.entries(listed).filter(([, e]) => e.expires && e.expires <= today).map(([id]) => id);
 	const result = {
 		library: lib.name,
 		ref: lib.ref,
@@ -289,6 +291,7 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 		unexpected: unexpected.map((o) => o.id),
 		fixed: fixed.map((o) => o.id),
 		stale,
+		expired,
 		seconds: timings,
 	};
 	await writeFile(join(WORK, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
@@ -301,11 +304,12 @@ async function report(old: Map<string, Outcome>, port: Map<string, Outcome>): Pr
 		...failing.map((o) => `- ${listed[o.id] ? `known (${listed[o.id]!.class})` : '**new**'}: ${o.title}${port.get(o.id)?.error ? `\n  \`${port.get(o.id)!.error!.split('\n')[0]!.slice(0, 200)}\`` : ''}`),
 		...fixed.map((o) => `- **passes now, take it off known.json**: ${o.title}`),
 		...stale.map((id) => `- **listed in known.json but not admitted**: ${id}`),
+		...expired.map((id) => `- **known.json entry expired ${listed[id]!.expires} (owner ${listed[id]!.owner}): fix it or review and renew it**: ${id}`),
 		'',
 	];
 	process.stdout.write(`${lines.join('\n')}\n`);
 	if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
-	if (unexpected.length || fixed.length || stale.length) process.exitCode = 1;
+	if (unexpected.length || fixed.length || stale.length || expired.length) process.exitCode = 1;
 }
 
 await main();
