@@ -102,7 +102,14 @@ export function usedCss(css: string, tokens: { has(token: string): boolean }, la
 	return out + css.slice(at);
 }
 
-/** Every cascade layer `css` names, in the order of first mention (a nested one as `outer.inner`): the order the cascade ranks them in. */
+const CONDITIONAL = new Set(['media', 'supports', 'container']);
+
+/**
+ * The cascade layers `css` names, in the order the cascade ranks them (a nested one as `outer.inner`). A layer is ranked
+ * where it is first named outside any @media, @supports or @container, since a mention inside one registers only when its
+ * condition holds (Tailwind names `base` first inside an @supports fallback that current browsers fail, then `theme`, then
+ * `base`); a layer named only inside them keeps its place among the ones before it.
+ */
 export function layerNames(css: string): string[] {
 	let ast: Node;
 	try {
@@ -110,21 +117,31 @@ export function layerNames(css: string): string[] {
 	} catch {
 		return [];
 	}
-	const names: string[] = [];
-	const walk = (nodes: readonly Node[], within: string) => {
+	const ranked: string[] = [];
+	const conditionalOnly: { name: string; after: number }[] = [];
+	const name = (layer: string, conditional: boolean) => {
+		if (ranked.includes(layer)) return;
+		if (!conditional) {
+			ranked.push(layer);
+			const at = conditionalOnly.findIndex((c) => c.name === layer);
+			if (at >= 0) conditionalOnly.splice(at, 1);
+		} else if (!conditionalOnly.some((c) => c.name === layer)) conditionalOnly.push({ name: layer, after: ranked.length });
+	};
+	const walk = (nodes: readonly Node[], within: string, conditional: boolean) => {
 		for (const node of nodes) {
 			if (node.type !== 'Atrule') continue;
-			const listed = node.name.toLowerCase() === 'layer' ? ((node.prelude?.children?.[0]?.children ?? []) as Node[]).map((l) => `${within}${l.name}`) : [];
-			for (const name of listed) if (!names.includes(name)) names.push(name);
+			const at = node.name.toLowerCase();
+			const listed = at === 'layer' ? ((node.prelude?.children?.[0]?.children ?? []) as Node[]).map((l) => `${within}${l.name}`) : [];
+			for (const layer of listed) name(layer, conditional);
 			// An anonymous layer's own layers can never be named again, so their order is its own.
-			if (node.block) {
-				if (node.name.toLowerCase() === 'layer' && !listed.length) continue;
-				walk(node.block.children, listed.length === 1 ? `${listed[0]}.` : within);
-			}
+			if (!node.block || (at === 'layer' && !listed.length)) continue;
+			walk(node.block.children, listed.length === 1 ? `${listed[0]}.` : within, conditional || CONDITIONAL.has(at));
 		}
 	};
-	walk(ast.children, '');
-	return names;
+	walk(ast.children, '', false);
+	const order = [...ranked];
+	for (const { name: layer, after } of [...conditionalOnly].reverse()) order.splice(after, 0, layer);
+	return order;
 }
 
 const isLocalSheet = (t: Tag) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? '') && t.attrs.integrity === undefined && /^\/(?!\/)[^?#]*\.css$/.test(t.attrs.href ?? '');
