@@ -179,3 +179,31 @@ test('a row a script animates in (element.animate) carries the animation\'s keyf
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+// The AI Elements queue demo's stream: each step, then a pause longer than the quiet that ends a use, then the next.
+const PAUSING = `<!doctype html><html><body><main>
+<div data-slot="preview"><p id="step">0 of 3 done</p><button data-slot="button" id="replay">Replay</button></div>
+<script>
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+document.getElementById('replay').addEventListener('click', async () => {
+	for (let n = 1; n <= 3; n++) { await sleep(n === 1 ? 50 : 700); document.getElementById('step').textContent = n + ' of 3 done'; }
+});
+</script></main></body></html>`;
+
+test('a use whose demo pauses on a timer of its own for longer than the quiet that ends a use is recorded to its end', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAUSING));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 1, settle: 400, max: 5000 });
+		const replay = scenes[0]!.edges.find((e) => e.from === 0)!;
+		const step = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
+		assert.deepEqual(replay.frames.map((f) => step(f.tree)), ['1 of 3 done', '2 of 3 done', '3 of 3 done']);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
