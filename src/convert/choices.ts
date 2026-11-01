@@ -22,6 +22,8 @@ export interface Choice {
 	readonly copied?: string;
 	readonly value?: string;
 	readonly shown?: string;
+	/** What a menu item's trigger showed after it was chosen, when choosing changed only that (a version or team switcher). */
+	readonly trigger?: TriggerShown;
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
@@ -115,6 +117,7 @@ async function openTrigger(page: Page, path: readonly number[]): Promise<boolean
 	}, path);
 	const el = trigger.asElement();
 	if (!el) return false;
+	await el.evaluate((e) => ((window as unknown as { __mmTrigger?: Element }).__mmTrigger = e)).catch(() => {});
 	await el.click({ timeout: 2000 }).catch(() => {});
 	// A loaded page slow to answer its trigger shows its options later than 400 ms: they are waited for, a while.
 	const clicked = Date.now();
@@ -192,6 +195,24 @@ const chosenOf = (page: Page, path: readonly number[]) =>
 		return { ...(value !== undefined ? { value } : {}), ...(shown ? { shown } : {}) };
 	}, path);
 
+// What a menu's trigger shows: each element's own text (outside SVG, by its place among the trigger's elements, the
+// trigger 0) and each outermost SVG's markup. The trigger is the element openTrigger clicked (Radix's focus guards go
+// in front of the body's children once a menu opens, so a path no longer finds it).
+const triggerShown = (page: Page, inMenu = false) =>
+	page
+		.evaluate((inMenu) => {
+			const el = (window as unknown as { __mmTrigger?: Element }).__mmTrigger;
+			if (!el?.isConnected || (inMenu && !document.querySelector('[role="menu"]'))) return undefined;
+			const elements = [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('svg'));
+			const text = elements.flatMap((e, i) => {
+				const own = [...e.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.nodeValue ?? '').join('');
+				return own.trim() ? [[i, own] as [number, string]] : [];
+			});
+			const svg = [...el.querySelectorAll('svg')].filter((v) => !v.parentElement?.closest('svg')).map((v) => v.outerHTML);
+			return { text, svg };
+		}, inMenu)
+		.catch(() => undefined);
+
 // Options past this many are chosen on further pages at once, each page starting from the control opened afresh.
 const OPTIONS_PER_PAGE = 20;
 
@@ -201,11 +222,14 @@ const OPTIONS_PER_PAGE = 20;
  */
 export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task()): Promise<Record<string, Choice>> {
 	const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown`}.json`);
+	// shown5: menu choices also record the text and SVGs their trigger shows after.
+	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown5`}.json`);
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
 	const viewport = VIEWPORTS.find((v) => v.name === reveal.viewport) ?? VIEWPORTS[0]!;
 	let failure: string | undefined;
+	// What an option left its menu's trigger showing when that was what it showed already (the switcher's current item).
+	const kept = new Map<string, TriggerShown>();
 	const choose = async (page: Page, keys: readonly string[]): Promise<Record<string, Choice>> => {
 		const out: Record<string, Choice> = {};
 		const requests = requestsOf(page);
@@ -216,6 +240,12 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const byValue = page.locator(`[cmdk-item][data-value="${key.replace(/["\\]/g, '\\$&')}"]`).first();
 				const target = (await byValue.count()) ? byValue : page.locator(OPTION).filter({ hasText: key }).first();
 				const earlier = new Set(requests.open);
+				const triggerBefore = listbox ? undefined : await triggerShown(page, true);
+				const ownLabel = triggerBefore === undefined ? '' : await target.evaluate((e) => {
+					const copy = e.cloneNode(true) as Element;
+					for (const k of copy.querySelectorAll('kbd, [data-slot$="shortcut"]')) k.remove();
+					return (copy.textContent ?? '').trim();
+				}).catch(() => '');
 				requests.ended = 0;
 				await page.evaluate(() => {
 					const w = window as unknown as { __mmCopied?: string[]; __mmWent?: string[] };
@@ -234,8 +264,12 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const after = page.url();
 				const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
 				const moved = after !== before || went === before;
-				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
-				if (moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
+				const triggerAfter = moved || copied !== undefined || triggerBefore === undefined ? undefined : await triggerShown(page);
+				const triggerChanged = triggerAfter !== undefined && JSON.stringify(triggerAfter) !== JSON.stringify(triggerBefore);
+				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : triggerChanged ? { trigger: triggerAfter } : chosen;
+				// Only the item the trigger names is the current one; another that changes nothing (Add team) is not.
+				if (triggerAfter !== undefined && !triggerChanged && ownLabel !== '' && triggerAfter.text.map(([, t]) => t).join(' ').includes(ownLabel)) kept.set(key, triggerAfter);
+				if (triggerChanged || moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
 			}
 		} catch (error) {
 			failure ??= (error as Error).message.split('\n')[0];
@@ -277,10 +311,18 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	const [own, ...more] = await Promise.all([first, ...rest.map((chunk) => limit(() => session(async (page) => ((await openOn(page, origin, route, reveal.path).catch(() => false)) ? choose(page, chunk) : {}))))]);
 	if (!keys) return {};
 	const out: Record<string, Choice> = Object.assign({}, own, ...more);
+	// An item that showed what the trigger shows on load shows it again once another item was chosen.
+	if (Object.values(out).some((c) => c.trigger !== undefined)) for (const [key, html] of kept) if (!Object.keys(out[key] ?? {}).length) out[key] = { trigger: html };
 	log(failure === undefined ? `choices of ${reveal.key} on ${route}: ${Object.keys(out).length} options` : `choices of ${reveal.key} on ${route}: not recorded (${failure})`);
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(out));
 	return out;
+}
+
+/** A trigger's text as [element, text] pairs (elements outside SVG by their place, the trigger 0), and its SVGs' markup. */
+export interface TriggerShown {
+	readonly text: readonly (readonly [number, string])[];
+	readonly svg: readonly string[];
 }
 
 /**

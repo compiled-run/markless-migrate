@@ -684,7 +684,58 @@ function hollowOf(kept: readonly Element[]): Element | undefined {
  * A layer as tsrx; its shell (the same with its largest content emptied and marked with LAYER_FILL); and that content as
  * HTML, for a layer served as a file: the shell renders at once on use, the content when the file lands.
  */
-function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[]; site?: SiteComponent } {
+/**
+ * A switcher menu (its items recorded as changing their trigger): what each choice shows that is not text, as markup
+ * the page already holds, hidden until chosen. The trigger's SVGs that differ between choices (a team's logo) get each
+ * variant after them, and each item names the variants it shows; the check mark only the current item has is put in
+ * every item, hidden but on that one. The menu part shows and hides them; Markless's nodes stay where it rendered them.
+ */
+function switcherVariants(menu: Element, values: Readonly<Record<string, Choice>> | undefined, trigger: Element | undefined): void {
+	const items = [menu, ...walkAll(menu)].filter((el) => attr(el, 'role') === 'menuitem' && values?.[textContent(el).trim()]?.trigger);
+	if (items.length < 2) return;
+	const shown = items.map((el) => values![textContent(el).trim()]!.trigger!);
+	const marks = items.map((el) => childrenOf(el).filter(isElement).filter((c) => c.tagName === 'svg'));
+	const marked = marks.map((m) => m.length).filter((n, _, all) => n > Math.min(...all));
+	if (marked.length === 1) {
+		const at = marks.findIndex((m) => m.length > Math.min(...marks.map((x) => x.length)));
+		const mark = marks[at]!.at(-1)!;
+		mark.attrs = [...mark.attrs, { name: 'data-mm-chosen-mark', value: '' }];
+		items.forEach((item, i) => {
+			if (i === at) return;
+			const copy = (childrenOf(parseFragment(outer(mark)) as unknown as Element).filter(isElement)[0])!;
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }];
+			copy.parentNode = item as never;
+			item.childNodes.push(copy as never);
+		});
+	}
+	const inSvg = (e: Element) => {
+		for (let p = e.parentNode as Element | null; p && 'tagName' in p; p = p.parentNode as Element | null) if (p.tagName === 'svg') return true;
+		return false;
+	};
+	const own = trigger ? [...walk(trigger)].filter((e) => e.tagName === 'svg' && !inSvg(e)) : [];
+	if (!trigger || shown.some((t) => t.svg.length !== own.length)) return;
+	const picks = items.map(() => [] as [number, number][]);
+	own.forEach((svg, i) => {
+		const variants = [...new Set(shown.map((t) => t.svg[i]!))];
+		if (variants.length < 2) return;
+		svg.attrs = [...svg.attrs, { name: 'data-mm-variant-of', value: String(i) }, { name: 'data-mm-variant', value: 'own' }];
+		const parent = svg.parentNode as Element;
+		const at = parent.childNodes.indexOf(svg as never) + 1;
+		const nodes = variants.map((markup, n) => {
+			const el = (childrenOf(parseFragment(markup) as unknown as Element).filter(isElement)[0])!;
+			el.attrs = [...el.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-variant-of', value: String(i) }, { name: 'data-mm-variant', value: String(n) }];
+			el.parentNode = parent as never;
+			return el;
+		});
+		parent.childNodes.splice(at, 0, ...(nodes as never[]));
+		shown.forEach((t, k) => picks[k]!.push([i, variants.indexOf(t.svg[i]!)]));
+	});
+	items.forEach((item, k) => {
+		if (picks[k]!.length) item.attrs = [...item.attrs, { name: 'data-mm-trigger-svg', value: JSON.stringify(picks[k]) }];
+	});
+}
+
+function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added), trigger?: Element): { markup: string; shell: string; fill: string; declare: string[]; site?: SiteComponent } {
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
@@ -700,8 +751,11 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			const chosen = values && text !== undefined ? values[text] : undefined;
 			if (chosen?.value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value: chosen.value }];
 			if (chosen?.shown !== undefined && chosen.shown !== text) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-text'), { name: 'data-mm-text', value: chosen.shown }];
+			const shows = values && attr(el, 'role') === 'menuitem' ? values[textContent(el).trim()]?.trigger : undefined;
+			if (shows !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-trigger-text'), { name: 'data-mm-trigger-text', value: JSON.stringify(shows.text) }];
 			markChosenHref(el, values);
 		}
+		switcherVariants(top, values, trigger);
 		selectIndicators(top);
 		comboboxIndicators(top);
 		racIndicators(top);
@@ -941,7 +995,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	comboboxIndicatorFallback = comboboxIndicatorIn(pendingLayers.flatMap((l) => l.kept)) ?? comboboxIndicatorFallback;
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
-		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
+		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept, l.trigger);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
 		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}), ...(site ? { imports: [componentImport(site, '../../..')] } : {}) });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
@@ -1518,7 +1572,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);
 			if (copied.length && !choices[reveal.key]) choices[reveal.key] = Object.fromEntries(copied);
 			// Where an option went is its page's (written on the option), as is what it gave a form.
-			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined);
+			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined || c.trigger !== undefined);
 			if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
