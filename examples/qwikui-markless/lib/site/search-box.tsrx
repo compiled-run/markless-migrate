@@ -42,6 +42,9 @@ export default function SearchBox() @{
 			}}
 			onKeyDown={(event) => {
 				const input = event.currentTarget as HTMLInputElement;
+				// A first key loads search.tsx's handler and the Combobox's; from then on Enter with nothing highlighted throws in the Combobox and the dialog stays.
+				const resumed = wasTyped();
+				markTyped();
 				const count = document.querySelectorAll(`[id^="${ITEM}-"][role="option"]`).length;
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 				if (event.key === 'ArrowDown' && active < count - 1) active = active + 1;
@@ -50,7 +53,7 @@ export default function SearchBox() @{
 				if (event.key === 'End' && count) active = count - 1;
 				if (event.key === 'Enter') {
 					const link = highlightedLink(input);
-					if (!link && wasTyped()) return;
+					if (!link && resumed) return;
 					const dialog = input.closest('dialog');
 					if (dialog) close(dialog);
 					if (link) location.href = link.href;
