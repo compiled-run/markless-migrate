@@ -120,7 +120,9 @@ export function installProbe(): void {
 	};
 	const toasts = () => {
 		const list = [...document.querySelectorAll('[data-sonner-toast], [role="status"][data-state], li[role="status"], [data-toast], [role="alert"][data-state]')].filter(shown);
-		return list.map((t) => `"${text(t, 30)}"${['data-front', 'data-expanded', 'data-index', 'data-visible'].map((a) => (t.hasAttribute(a) ? ` ${a.slice(5)}=${t.getAttribute(a)}` : '')).join('')}`);
+		// Where each toast sits against the newest: a stack fans the older ones out behind it, a plain list does not.
+		const front = list.map((t) => t.getBoundingClientRect()).sort((a, b) => b.bottom - a.bottom)[0];
+		return list.map((t) => { const r = t.getBoundingClientRect(); const at = front ? ` ${Math.round((r.top - front.top) / 8) * 8}px above the front one, ${Math.round((r.width / (front.width || 1)) * 20) * 5}% as wide` : ''; return `"${text(t, 30)}"${['data-front', 'data-expanded', 'data-index', 'data-visible'].map((a) => (t.hasAttribute(a) ? ` ${a.slice(5)}=${t.getAttribute(a)}` : '')).join('')}${at}`; });
 	};
 	// Whether the page behind what is open is hidden from assistive tech or made inert, read on the main content and the control.
 	const behind = (el: Element) => {
