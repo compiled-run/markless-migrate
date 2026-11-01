@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { serve, type Variant } from '../../fixtures/page-load/server.ts';
 import { renderHtml } from '../../src/check/html.ts';
+import { measureLoad } from '../../src/check/load.ts';
 import { runCheck } from '../../src/check/run.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { serve as serveFont } from '../../fixtures/late-font/server.ts';
@@ -58,6 +62,16 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		const route = report.routes[0]!;
 		assert.equal(route.dimensions.load, 'pass', JSON.stringify(route.load?.verdicts));
 		assert.equal(route.load?.new.detail?.filmstrip, undefined);
+	});
+
+	// In the check's own thread every run's parsed trace stayed in that cache, about 400 MB a run on a docs page, until the heap ran out.
+	test("Lighthouse's trace engine keeps no trace in the check's thread: a page whose script forces layout as it loads", async () => {
+		const origin = await app('reflow');
+		const load = (await measureLoad({ old: origin, new: origin }, ['/'], { runs: 1 })).get('/')!;
+		assert.ok(load.old.median && load.new.median, JSON.stringify(load));
+		const engine = createRequire(createRequire(import.meta.url).resolve('lighthouse/package.json')).resolve('@paulirish/trace_engine/package.json');
+		const { stackTraceForEventInTrace } = (await import(pathToFileURL(join(dirname(engine), 'models/trace/extras/StackTraceForEvent.js')).href)) as { stackTraceForEventInTrace: Map<unknown, unknown> };
+		assert.equal(stackTraceForEventInTrace.size, 0);
 	});
 
 	// Simulated, this preload paints the heading sooner; applied for real it does not, since the font's bytes delay the stylesheet the
