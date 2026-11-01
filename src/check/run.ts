@@ -402,7 +402,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const reachable = await profiled(route, 'unreachable on new', () => unreachableOnBoth(browser, front, route, viewport, elements));
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
 	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped, ...(explored.sequencesSkipped ? { sequencesSkipped: explored.sequencesSkipped } : {}) };
-	const unexercised = [...elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature))), ...leftOut(route, explored)];
+	const unexercised = [...elements.filter((e) => !e.by && !e.shared && !notAControl(e.reason)).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature))), ...leftOut(route, explored)];
 	const doorErrors = await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]);
 	// A theme toggle starts from the OS colour scheme: its cycles run again with the OS in dark mode, twice on old (what varies there may vary) and once on new.
 	const dark = themed(plain);
@@ -583,6 +583,12 @@ export function leftOut(route: string, explored: Pick<Exploration, 'skipped' | '
 	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --max-journeys until they run`));
 	return out;
 }
+
+/**
+ * What the original's page lists as clickable but no visitor can use as such: a box of no size at rest, and one covered by a
+ * link or button over it (a card's stretched link), where the cover is the control.
+ */
+export const notAControl = (reason: string | undefined): boolean => /could not be used: hidden: it has no size|could not be used: occluded: covered by (a|button)\b/.test(reason ?? '');
 
 export function notExercised(route: string, element: string, reason: string, automatic?: Failure['automatic']): Failure {
 	return { route, dimension: 'behaviour', check: `${NOT_EXERCISED}${element}`, expected: 'a journey that uses it on the old page, replayed on the new one', actual: reason, hint: HINTS.coverage, ...(automatic ? { automatic } : {}) };
