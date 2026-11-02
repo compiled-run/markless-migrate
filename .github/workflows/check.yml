@@ -78,6 +78,11 @@ on:
         default: 'true'
       max_parallel: { type: string, required: false, default: '10' }
       priority: { type: string, required: false, default: '' }
+      original:
+        description: The originalId every shard serves (.github/actions/old-site); empty names the one published for this recipe, publishing it first when there is none
+        type: string
+        required: false
+        default: ''
   # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
@@ -132,7 +137,7 @@ jobs:
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
       build: ${{ steps.build.outputs.build }}
@@ -178,28 +183,84 @@ jobs:
         with:
           name: ${{ inputs.only-artifact }}
           path: ${{ runner.temp }}/only
-      # Each route's time in the last finished check packs the shards, longest first (split ignores a report of another site's routes).
-      - name: The last check's route times
+      # Each route's newest time in the last 10 checks that timed any route, however they ended (most full runs are cancelled or
+      # stop at the step cap), packs the shards, longest first: each shard's route times, or the merged report of a run before them.
+      - name: Earlier checks' route times
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for run in $(gh run list -R "$GITHUB_REPOSITORY" --workflow check.yml --status success -L 10 --json databaseId --jq '.[].databaseId'); do
-            if gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$RUNNER_TEMP/earlier" 2>/dev/null; then echo "route times from run $run"; break; fi
+          i=0
+          runs=$( { for wf in check.yml pipeline.yml; do gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" -L 30 --json databaseId,createdAt,status --jq '.[] | select(.status == "completed") | "\(.createdAt) \(.databaseId)"'; done; } | sort -r | cut -d' ' -f2)
+          for run in $runs; do
+            dir="$RUNNER_TEMP/earlier/$i"
+            if gh run download "$run" -R "$GITHUB_REPOSITORY" -p 'check-times-*' -D "$dir" 2>/dev/null && [ -n "$(find "$dir" -name route-times.json)" ]; then
+              # shellcheck disable=SC2046
+              node -e 'const fs=require("fs");const [out,...files]=process.argv.slice(1);fs.writeFileSync(out,JSON.stringify({routes:files.flatMap(f=>JSON.parse(fs.readFileSync(f,"utf8")).routes)}))' "$dir/report.json" $(find "$dir" -name route-times.json)
+            elif ! gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$dir" 2>/dev/null; then rm -rf "$dir"; continue; fi
+            echo "route times from run $run"
+            i=$((i + 1))
+            [ "$i" -lt 10 ] || break
           done
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
+        run: |
+          # shellcheck disable=SC2046
+          echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards $(for d in $(seq 0 9); do [ ! -f "$RUNNER_TEMP/earlier/$d/report.json" ] || echo "$RUNNER_TEMP/earlier/$d/report.json"; done))" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
           path: shards
           retention-days: 3
 
-  check:
-    needs: plan
-    # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+  # The original every shard serves, by id: published once (.github/actions/old-site), so no shard or branch builds its own.
+  original:
+    needs: gate
+    if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
     runs-on: ubuntu-latest
-    # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ inputs.original || steps.resolve.outputs.id || steps.publish.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: resolve
+        if: inputs.original == ''
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: resolve
+          token: ${{ github.token }}
+      - if: inputs.original == '' && steps.resolve.outputs.id == ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - if: inputs.original == '' && steps.resolve.outputs.id == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: inputs.original == '' && steps.resolve.outputs.id == ''
+        uses: oven-sh/setup-bun@v2
+      - name: Build the old site
+        if: inputs.original == '' && steps.resolve.outputs.id == ''
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - id: publish
+        if: inputs.original == '' && steps.resolve.outputs.id == ''
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: publish
+          token: ${{ github.token }}
+      - env:
+          ID: ${{ inputs.original || steps.resolve.outputs.id || steps.publish.outputs.id }}
+        run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
+
+  check:
+    needs: [plan, original]
+    # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -221,26 +282,17 @@ jobs:
         with:
           name: check-shards
           path: ${{ runner.temp }}/shards
-      # The old site as an earlier job built it: a Next.js build differs from the last in every file name, so without this each
-      # shard serves a different deploy and nothing check keeps of the old side survives to the next run.
-      - name: Restore the old site's build
-        id: old-build
-        uses: actions/cache/restore@v4
+      # The original the original job named: a Next.js build differs from the last in every file name, so one published build is
+      # what keeps every shard serving the same original.
+      - name: The original
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Serve the port
         env:
           GH_TOKEN: ${{ github.token }}
@@ -267,6 +319,8 @@ jobs:
           if [ -d old-joined/cache/old ]; then cp -R old-joined/cache/old/. "$APP/.migrate/cache/old/"; fi
           if [ -d old-joined/slow-network ]; then cp -R old-joined/slow-network/. "$APP/.migrate/slow-network/"; fi
           rm -rf old-joined
+          # Entries written after this are what the shard recorded; the merge joins them with the restored ones.
+          touch "$RUNNER_TEMP/old-placed" && sleep 1
       # Results of earlier runs, by what each route ships: its served HTML and the code hash of every module it can run.
       - name: Restore results from earlier runs
         if: inputs.reuse != 'false'
@@ -301,6 +355,24 @@ jobs:
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+      # A few kB a later run's plan reads to pack its shards, kept apart from the shard's artifact so the plan downloads only this.
+      - name: Route times
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/times"
+          node scripts/check-shards.ts times "$APP/.migrate" "$RUNNER_TEMP/times/route-times.json" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-times-${{ matrix.shard }}
+          path: ${{ runner.temp }}/times
+          if-no-files-found: ignore
+          retention-days: 30
+      # The restored old-side entries are already in the joined cache the merge restores: uploading them again from every shard
+      # was about 400 MB a shard (run 41318531000).
+      - name: Keep only the old side this shard recorded
+        if: always()
+        run: find "$APP/.migrate/cache/old" "$APP/.migrate/slow-network" -type f ! -newer "$RUNNER_TEMP/old-placed" -delete 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -320,7 +392,7 @@ jobs:
           retention-days: 14
 
   merge:
-    needs: [plan, check]
+    needs: [plan, original, check]
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -343,10 +415,11 @@ jobs:
       - name: Merge
         env:
           BUILD: ${{ needs.plan.outputs.build || format('artifact {0}', inputs.build-artifact) }}
+          ORIGINAL: ${{ needs.original.outputs.id }}
         run: |
           set -euo pipefail
           # A shard that wrote no report has each of its routes listed as not checked.
-          node scripts/check-shards.ts merge shards merged shards/check-shards
+          node scripts/check-shards.ts merge shards merged shards/check-shards --original "$ORIGINAL"
           reported=$(find shards -name report.json | wc -l)
           { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
       # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.

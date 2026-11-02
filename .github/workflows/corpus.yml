@@ -45,8 +45,50 @@ jobs:
       - id: plan
         run: echo "matrix=$(node scripts/corpus.ts matrix deploy/shadcn-ui/corpus/bugs.json)" >> "$GITHUB_OUTPUT"
 
+  # The original every runner serves, by id (.github/actions/old-site), published first when there is none.
+  original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: resolve
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: resolve
+          token: ${{ github.token }}
+      - if: steps.resolve.outputs.id == ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - if: steps.resolve.outputs.id == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: steps.resolve.outputs.id == ''
+        uses: oven-sh/setup-bun@v2
+      - name: Build the old site
+        if: steps.resolve.outputs.id == ''
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - id: publish
+        if: steps.resolve.outputs.id == ''
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: publish
+          token: ${{ github.token }}
+      - env:
+          ID: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
+        run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
+
   check:
-    needs: plan
+    needs: [plan, original]
     name: ${{ matrix.build }} ${{ matrix.route }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
@@ -63,14 +105,13 @@ jobs:
         with:
           browsers: chromium firefox webkit
       - uses: oven-sh/setup-bun@v2
-      - name: Restore the old site's build
-        id: old-build
-        uses: actions/cache/restore@v4
+      - name: The original
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Serve the port build that has the bug

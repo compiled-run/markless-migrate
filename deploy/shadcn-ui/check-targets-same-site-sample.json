@@ -1,0 +1,27 @@
+{
+	"routes": [
+		"/docs/components/aria/accordion",
+		"/docs/components/aria/carousel",
+		"/docs/components/aria/context-menu",
+		"/docs/components/aria/drawer",
+		"/docs/components/aria/pagination",
+		"/docs/components/aria/sidebar",
+		"/docs/components/aria/toggle",
+		"/docs/components/base/avatar",
+		"/docs/components/base/carousel",
+		"/docs/components/base/checkbox",
+		"/docs/components/base/drawer",
+		"/docs/components/base/questionnaire",
+		"/docs/components/base/typography",
+		"/docs/components/radix/button",
+		"/docs/components/radix/carousel",
+		"/docs/components/radix/command",
+		"/docs/components/radix/drawer",
+		"/docs/components/radix/hover-card",
+		"/docs/components/radix/select",
+		"/docs/components/radix/tabs"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
