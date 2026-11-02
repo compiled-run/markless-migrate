@@ -115,10 +115,10 @@ test("a page's appended <style> text stays with its page, after its cut", async 
 	await rm(dir, { recursive: true, force: true });
 });
 
-test("routes of one page whose own <style> text differs still share; each keeps its own text as a file of its own, after its cut", async () => {
+test("routes of one page whose own <style> text differs still share; the text they all start with is one file, each one's rest another", async () => {
 	const css = '.a{color:red}.b{color:blue}.c{margin:1px}';
 	const { dir, cuts, heads } = await site({ '/s.css': css }, { '/d': { markup: 'a b c' }, '/d?page=2': { markup: 'a b c' }, '/e': { markup: 'a b' } });
-	for (const [route, extra] of [['/d', '.cls-1{fill:none}'], ['/d?page=2', '.cls-1{fill:#0f537c}']] as const) {
+	for (const [route, extra] of [['/d', '@font-face{font-family:f;src:local(Arial)}\n.cls-1{fill:none}'], ['/d?page=2', '@font-face{font-family:f;src:local(Arial)}\n.cls-1{fill:#0f537c}']] as const) {
 		const own = heads.get(route)![0]!.attrs.href!;
 		const path = `/s.used-x${route.length}.css`;
 		await writeFile(join(dir, path), `${await read(dir, own)}\n${extra}`);
@@ -126,7 +126,7 @@ test("routes of one page whose own <style> text differs still share; each keeps 
 	}
 	const appended = new Map(
 		await Promise.all(
-			(['/d', '/d?page=2'] as const).map(async (route, i) => [heads.get(route)![0]!.attrs.href!, { from: `/s.used-${route.replace(/\W/g, '')}.css`, extra: ['.cls-1{fill:none}', '.cls-1{fill:#0f537c}'][i]! }] as const),
+			(['/d', '/d?page=2'] as const).map(async (route, i) => [heads.get(route)![0]!.attrs.href!, { from: `/s.used-${route.replace(/\W/g, '')}.css`, extra: ['@font-face{font-family:f;src:local(Arial)}\n.cls-1{fill:none}', '@font-face{font-family:f;src:local(Arial)}\n.cls-1{fill:#0f537c}'][i]! }] as const),
 		),
 	);
 	const pages = new Map([['pages/d.tsrx', ['/d', '/d?page=2']], ['pages/e.tsrx', ['/e']]]);
@@ -134,8 +134,9 @@ test("routes of one page whose own <style> text differs still share; each keeps 
 	assert.ok(!('skipped' in out), JSON.stringify(out));
 	assert.equal(await read(dir, out.shared[0]!), css);
 	const texts = async (route: string) => Promise.all(out.heads.get(route)!.map((t) => read(dir, t.attrs.href)));
-	assert.deepEqual(await texts('/d'), ['.cls-1{fill:none}']);
-	assert.deepEqual(await texts('/d?page=2'), ['.cls-1{fill:#0f537c}']);
+	// The text both routes start with is one file the page imports; each route's rest is a file of its own after it.
+	assert.deepEqual(await texts('/d'), ['@font-face{font-family:f;src:local(Arial)}', '\n.cls-1{fill:none}']);
+	assert.deepEqual(await texts('/d?page=2'), ['@font-face{font-family:f;src:local(Arial)}', '\n.cls-1{fill:#0f537c}']);
 	assert.deepEqual(await texts('/e'), []);
 	await rm(dir, { recursive: true, force: true });
 });

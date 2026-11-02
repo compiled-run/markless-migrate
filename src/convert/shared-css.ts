@@ -213,6 +213,19 @@ function layerOrder(css: string, ast: Node, into: string[]): void {
 	visit(ast.children, '');
 }
 
+/** How many leading characters the texts share, ending after a whole top-level rule: none when one is empty. */
+export function commonRules(texts: readonly string[]): number {
+	if (texts.length < 2 || texts.some((t) => !t)) return 0;
+	const ends = texts.map((t) => new Set<number>(parse(t).ast.children.map((n: Node) => n.end as number)));
+	let common = 0;
+	for (const end of [...ends[0]!].sort((a, b) => a - b)) {
+		const head = texts[0]!.slice(0, end);
+		if (!texts.every((t, i) => ends[i]!.has(end) && t.startsWith(head))) break;
+		common = end;
+	}
+	return common;
+}
+
 /** The leaf set a sheet's text keeps, from the shared choice, as recorded for a later partial convert. */
 export interface SharedRecord {
 	readonly sheets: readonly { readonly href: string; readonly sha: string; readonly keep: readonly number[] }[];
@@ -359,6 +372,22 @@ export async function shareStylesheets<T extends Tag>(input: {
 		if (!unchanged.has(href)) unchanged.set(href, read(href).then((css) => (css === undefined ? undefined : { order: orderOf(css), size: css.length, keys: keysOf(css) })));
 		return unchanged.get(href)!;
 	};
+	// A page's routes' own <style> texts after one sheet: the leading rules all of them have, imported by the page, and each one's rest.
+	const extraParts = new Map<string, readonly string[]>();
+	for (const pageRoutes of input.pages.values()) {
+		const bySheet = new Map<string, Map<string, string>>();
+		for (const r of pageRoutes)
+			for (const href of lists.get(r) ?? []) {
+				const link = links.get(href)!;
+				if (!bySheet.has(link.href)) bySheet.set(link.href, new Map());
+				bySheet.get(link.href)!.set(r, link.extra);
+			}
+		for (const extras of bySheet.values()) {
+			const texts = pageRoutes.map((r) => extras.get(r) ?? '');
+			const common = commonRules(texts);
+			for (const [r, extra] of extras) if (extra) extraParts.set(`${r}\0${extra}`, [extra.slice(0, common), extra.slice(common)].filter((t) => t.trim()));
+		}
+	}
 	const out = new Map<string, T[]>();
 	const bytes = { shared: sharedTexts.reduce((n, t) => n + t.length, 0), pages: 0, before: 0 };
 	for (const route of routes) {
@@ -406,7 +435,7 @@ export async function shareStylesheets<T extends Tag>(input: {
 				now.push(order);
 				bytes.before += link.extra.length + 1;
 				bytes.pages += link.extra.length;
-				own.push(await write(link.href.replace(/\.css$/, `.used-${sha(link.extra)}.css`), link.extra));
+				for (const part of extraParts.get(`${route}\0${link.extra}`) ?? [link.extra]) own.push(await write(link.href.replace(/\.css$/, `.used-${sha(part)}.css`), part));
 			}
 		}
 		const before = [...new Set(was.flat())];
