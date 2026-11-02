@@ -738,7 +738,7 @@ function liveRegions() {
 }
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
-function watchReaction(): void {
+export function watchReaction(): void {
 	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
@@ -801,12 +801,12 @@ function watchReaction(): void {
 		}
 	});
 	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
-	// Every layout shift while the step runs, those right after the input too: a page that jumps when a dialog closes is no answer the old page gave.
+	// The score is CLS's, without shifts within 500 ms of a discrete input (hadRecentInput); the jump counts every shift: a page that jumps when a dialog closes is no answer the old page gave.
 	let shifts: PerformanceObserver | undefined;
 	try {
 		shifts = new PerformanceObserver((list) => {
-			for (const entry of list.getEntries() as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
-				shift.score += entry.value;
+			for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
+				if (!entry.hadRecentInput) shift.score += entry.value;
 				// Only a large part of the page moving counts as the page jumping; a word reflowing beside a changed number does not.
 				for (const source of entry.sources ?? []) {
 					if (source.currentRect.width * source.currentRect.height < innerWidth * innerHeight * 0.25) continue;
@@ -829,13 +829,13 @@ function watchReaction(): void {
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[]; spanMs: number; longestGapMs: number }; tweened: string[] } {
+export function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[]; spanMs: number; longestGapMs: number }; tweened: string[] } {
 	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; touched: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
 	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [], tweened: [] };
-	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
-		watch.shift.score += entry.value;
+	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
+		if (!entry.hadRecentInput) watch.shift.score += entry.value;
 		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
 	}
 	watch.shifts?.disconnect();
