@@ -86,7 +86,7 @@ export interface TableCapture {
 	readonly route: string;
 	readonly tables: readonly CapturedTable[];
 	readonly skipped: readonly string[];
-	/** Why no table was read: the tables the settled page showed were not taken over by React in time. Not cached. */
+	/** The settled page's tables React had not taken over in time, so a TanStack table among them was not read. Not cached. */
 	readonly notFound?: string;
 }
 
@@ -543,22 +543,22 @@ function takenOver(): number {
 	return [...document.querySelectorAll('table')].filter((el) => !el.closest('template') && Object.keys(el).some((k) => k.startsWith('__reactFiber$'))).length;
 }
 
-/** In the page: whether there are at least `want` tables and React has taken over each one. */
-function allTakenOver(want: number): boolean {
-	const tables = [...document.querySelectorAll('table')].filter((el) => !el.closest('template'));
-	return tables.length >= want && tables.every((el) => Object.keys(el).some((k) => k.startsWith('__reactFiber$')));
+/** In the page: whether React has taken over at least `want` tables. */
+function wantTakenOver(want: number): boolean {
+	return [...document.querySelectorAll('table')].filter((el) => !el.closest('template') && Object.keys(el).some((k) => k.startsWith('__reactFiber$'))).length >= want;
 }
 
 type Ready = Pick<Page, 'evaluate' | 'waitForFunction'>;
 
-/** The page's tables, read once React has taken over the `want` tables it should show (at most READY_MS); `ready` false when it had not. */
+// A TanStack table is only known by its instance, which React gives it on taking it over: plain tables are waited for too.
+/** The page's tables, read once React has taken over `want` of them (at most READY_MS); `ready` false when it had not. */
 async function findWhenReady(page: Ready, want: number): Promise<{ readonly found: Found[]; readonly ready: boolean }> {
-	const ready = await page.waitForFunction(allTakenOver, want, { timeout: READY_MS }).then(() => true, () => false);
+	const ready = await page.waitForFunction(wantTakenOver, want, { timeout: READY_MS }).then(() => true, () => false);
 	if (ready) await page.evaluate(framesInPage).catch(() => {});
 	return { found: await page.evaluate(findTables), ready };
 }
 
-/** What a page's first load showed: its table elements, and how many of them were TanStack tables read. */
+/** What a page's first load showed: the tables React had taken over, and how many of them were TanStack tables read. */
 export interface Expected {
 	readonly tables: number;
 	readonly specs: number;
@@ -1033,12 +1033,14 @@ export async function captureTables(browser: Browser, origin: string, route: str
 	if (cached && cached.route === route) return cached;
 	const tables: CapturedTable[] = [];
 	const skipped: string[] = [];
+	let notFound: string | undefined;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		const { found, ready } = await findWhenReady(page, expected);
-		if (!ready) return { route, tables: [], skipped, notFound: `${await page.evaluate(takenOver)} of the ${expected} tables the settled page showed were taken over by React within ${READY_MS / 1000} s` };
-		expectedOn.set(page, { tables: expected, specs: found.filter((f) => f.spec).length });
+		const taken = ready ? expected : await page.evaluate(takenOver);
+		if (!ready) notFound = `${taken} of the ${expected} tables the settled page showed were taken over by React within ${READY_MS / 1000} s; a TanStack table among the rest was not read`;
+		expectedOn.set(page, { tables: taken, specs: found.filter((f) => f.spec).length });
 		let index = 0;
 		for (const f of found) {
 			if (!f.spec || !f.region) {
@@ -1053,6 +1055,7 @@ export async function captureTables(browser: Browser, origin: string, route: str
 	} finally {
 		await context.close().catch(() => {});
 	}
+	if (notFound) return { route, tables, skipped, notFound };
 	const capture: TableCapture = { route, tables, skipped };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
