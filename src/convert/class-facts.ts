@@ -8,8 +8,8 @@ import { classTokens } from './used-css.ts';
 type Node = any;
 
 interface ModuleFacts {
-	/** Every string the module's code holds, outside a host element's literal class attribute. */
-	readonly strings: readonly string[];
+	/** The class tokens of every string the module's code holds, outside a host element's literal class attribute. */
+	readonly tokens: ReadonlySet<string>;
 	/** Each host element's literal class attribute. */
 	readonly elements: readonly string[];
 	/** The app modules it imports, statically or dynamically. */
@@ -28,7 +28,7 @@ function factsOf(file: string, text: string): ModuleFacts {
 	try {
 		program = file.endsWith('.tsrx') ? parseTsrx(text, { lang: 'tsx' }).program : parse(text, { path: file, sourceType: 'module' }).program;
 	} catch {
-		return { strings: [text], elements: [], imports: [] };
+		return { tokens: classTokens([text]), elements: [], imports: [] };
 	}
 	const markup = new Set<Node>();
 	const strings: string[] = [];
@@ -54,7 +54,7 @@ function factsOf(file: string, text: string): ModuleFacts {
 		for (const key of Object.keys(node)) if (key !== 'parent' && typeof node[key] === 'object') visit(node[key]);
 	};
 	visit(program);
-	return { strings, elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
+	return { tokens: classTokens(strings), elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
 }
 
 /**
@@ -62,7 +62,7 @@ function factsOf(file: string, text: string): ModuleFacts {
  * class attribute (only that element carries it), and `floating`, the tokens of every other string, which code can put on
  * any element. A class built by joining strings is not seen, as usedCss does not see it either.
  */
-export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: Set<string> }> {
+export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: { has(token: string): boolean } }> {
 	// Modules other modules import are read once; an entry (a page, often megabytes) is read for its own call and let go.
 	const modules = new Map<string, Promise<ModuleFacts | undefined>>();
 	const load = (file: string) => read(file).then((found) => found && factsOf(found.file, found.text));
@@ -83,7 +83,7 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 		const seen = new Set<string>();
 		const roots = new Set(entries.map((e) => resolve(app, e)));
 		const queue = [...roots];
-		const strings: string[] = [];
+		const tokens: ReadonlySet<string>[] = [];
 		const elements: string[][] = [];
 		while (queue.length) {
 			const file = queue.pop()!;
@@ -91,11 +91,11 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 			seen.add(file);
 			const f = await facts(file, roots.has(file));
 			if (!f) continue;
-			strings.push(...f.strings);
+			if (f.tokens.size) tokens.push(f.tokens);
 			for (const c of f.elements) elements.push(c.split(/\s+/).filter(Boolean));
 			queue.push(...f.imports);
 		}
-		return { elements, floating: classTokens(strings) };
+		return { elements, floating: { has: (token) => tokens.some((t) => t.has(token)) } };
 	};
 }
 
