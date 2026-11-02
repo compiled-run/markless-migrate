@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
-import { compareJourneys, explore, replayAll, timedOnly, type RecordedJourney } from '../src/check/journeys.ts';
+import { explore, replayAll, type RecordedJourney } from '../src/check/journeys.ts';
+import { compareJourneys, timedOnly } from '../src/check/journeys-compare.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
 // A step that only answered later is timed again one side at a time before it stands (run.ts retime); these tests compare what the steps did, so a busy machine's late answer is left to that.

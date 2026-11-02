@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { choppier, lostRegions, lostTweens, type StepResult } from '../src/check/journeys.ts';
+import { type StepResult } from '../src/check/journeys.ts';
+import { choppier, lostRegions, lostTweens } from '../src/check/journeys-compare.ts';
 
 const step = (reaction: StepResult['reaction']): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...(reaction ? { reaction } : {}) });
 const views = (swaps: number, spanMs: number, longestGapMs: number) => step({ regions: [], changes: [], views: { swaps, interimMs: spanMs, interim: [], spanMs, longestGapMs } });

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { blockedPatterns, clusters, judgeLoad, loadFailures, loadLine, mannWhitneyGreater, measureLoad, readRun, routeLoad, unmeasured, type LoadRun, type Metrics } from '../src/check/load.ts';
+import { blockedPatterns, clusters, judgeLoad, loadFailures, loadLine, measureLoad, readRun, routeLoad, unmeasured, type LoadRun, type Metrics } from '../src/check/load.ts';
+import { mannWhitneyGreater } from '../src/check/stats.ts';
 
 const runs = (lcps: readonly number[], over: Partial<Metrics> = {}): Metrics[] => lcps.map((lcp) => ({ score: 80, fcp: 1800, lcp, si: 1900, tbt: 50, cls: 0.001, ...over }));
 const verdict = (old: Metrics[], next: Metrics[], metric: keyof Metrics) => judgeLoad(old, next).find((v) => v.metric === metric)!;

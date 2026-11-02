@@ -37,4 +37,3 @@ export function registerStructure(): Promise<void> {
 	return registered;
 }
 
-export const describeStructure = (s: Structure) => `<${s.tag}> #${s.index + 1}${s.scope ? ` in ${s.scope}` : ''}`;
