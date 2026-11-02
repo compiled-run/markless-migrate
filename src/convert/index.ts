@@ -1308,10 +1308,10 @@ async function wantsStylesheetImports(app: string): Promise<boolean> {
 	return manifest['markless-migrate']?.stylesheetImports === true;
 }
 
-function headModule(byRoute: Map<string, Prepared>): string {
+function headModule(byRoute: Map<string, Prepared>, bodySheets: ReadonlyMap<string, readonly string[]> = new Map()): string {
 	const table: HeadTag[] = [];
 	const index = new Map<string, number>();
-	const routes: Record<string, { tags: number[]; html: Record<string, string>; body: Record<string, string>; late: readonly string[] }> = {};
+	const routes: Record<string, { tags: number[]; html: Record<string, string>; body: Record<string, string>; late: readonly string[]; sheets?: readonly string[] }> = {};
 	for (const [route, p] of byRoute) {
 		const ids = p.head.map((t) => {
 			const key = JSON.stringify(t);
@@ -1321,7 +1321,8 @@ function headModule(byRoute: Map<string, Prepared>): string {
 			}
 			return index.get(key)!;
 		});
-		routes[route] = { tags: ids, html: p.htmlAttrs, body: p.bodyAttrs, late: p.late };
+		const sheets = bodySheets.get(route);
+		routes[route] = { tags: ids, html: p.htmlAttrs, body: p.bodyAttrs, late: p.late, ...(sheets?.length ? { sheets } : {}) };
 	}
 	return `${GENERATED}
 export interface HeadTag {
@@ -1333,7 +1334,7 @@ export interface HeadTag {
 
 export const TAGS: readonly HeadTag[] = ${JSON.stringify(table)};
 
-export const ROUTES: Readonly<Record<string, { readonly tags: readonly number[]; readonly html: Readonly<Record<string, string>>; readonly body: Readonly<Record<string, string>>; readonly late: readonly string[] }>> = ${JSON.stringify(routes)};
+export const ROUTES: Readonly<Record<string, { readonly tags: readonly number[]; readonly html: Readonly<Record<string, string>>; readonly body: Readonly<Record<string, string>>; readonly late: readonly string[]; readonly sheets?: readonly string[] }>> = ${JSON.stringify(routes)};
 `;
 }
 
@@ -2462,6 +2463,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	const importedUrls: string[] = [];
+	// A route's own stylesheets its page module could not import with its other routes': linked first in the body.
+	let bodySheets = new Map<string, string[]>();
 	const sharedFile = join(state, 'convert', SHARED_CSS);
 	if (await wantsStylesheetImports(app)) {
 		const pagesOf = new Map<string, string[]>();
@@ -2473,13 +2476,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const markup = [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)];
 			return [p.htmlAttrs.class, p.bodyAttrs.class, ...markup.flatMap((root) => [...walk(root)].map((el) => attr(el, 'class')))].flatMap((c) => (c ? [c.split(/\s+/).filter(Boolean)] : []));
 		};
-		const together = new Map<string, Together>();
+		// Asked route by route in page order: one page module's facts are held at a time.
 		const codeOf = codeClasses(app);
-		for (const [page, routes] of pagesOf) {
-			const code = await codeOf([page, 'document.tsrx']);
-			const oracle = togetherIn([...routes.flatMap((r) => (prepared.has(r) ? elementClasses(prepared.get(r)!) : [])), ...code.elements], code.floating);
-			for (const r of routes) together.set(r, oracle);
-		}
+		const pageOfRoute = new Map([...pagesOf].flatMap(([page, routes]) => routes.map((r) => [r, page] as const)));
+		let current: { page: string; oracle: Promise<Together> } | undefined;
+		const together = (route: string) => {
+			const page = pageOfRoute.get(route)!;
+			if (current?.page !== page) {
+				const routes = pagesOf.get(page)!;
+				current = { page, oracle: codeOf([page, 'document.tsrx']).then((code) => togetherIn([...routes.flatMap((r) => (prepared.has(r) ? elementClasses(prepared.get(r)!) : [])), ...code.elements], code.floating)) };
+			}
+			return current.oracle;
+		};
 		const shared = await shareStylesheets({ publicDir, pages: pagesOf, heads, cuts: used.cuts, appended: bodyCssAppended, together, ...(previous ? { previous } : {}) });
 		if ('skipped' in shared) log(`stylesheets: no sheet shared by the document: ${shared.skipped}${previous ? '; the pages this partial convert did not write still expect the earlier shared sheets, so convert every page again' : ''}`);
 		else {
@@ -2489,6 +2497,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		const imported = await importStylesheets(app, publicDir, pagesOf, heads, Boolean(options.only?.length));
 		importedUrls.push(...imported.urls);
+		bodySheets = imported.body;
+		if (bodySheets.size) log(`stylesheets: ${bodySheets.size} routes link the sheets their page module's other routes do not have first in the body, after every sheet the head carries`);
 		log(`stylesheets: ${imported.moved} of ${pagesOf.size} page modules import their stylesheets, so the build carries them in the HTML`);
 		for (const d of imported.dropped) log(`stylesheets: ${d.href} drops ${d.rule} from its copy, as a browser does (${d.reason})`);
 		if (!('skipped' in shared)) {
@@ -2503,12 +2513,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			await writeFile(sharedFile, JSON.stringify(shared.record));
 		}
 	}
-	await writeFile(join(app, 'heads.ts'), headModule(prepared));
+	await writeFile(join(app, 'heads.ts'), headModule(prepared, bodySheets));
 	// What the old pages loaded and the written app no longer names (the old framework's scripts, a sheet a cut sheet
 	// replaced, a font no kept rule draws) is not shipped; the source's own public/ files stay as they are.
 	const referenced = await referencedAssets(options.old, publicDir, {
 		markup: [...prepared.values()].flatMap((p) => [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)]),
-		urls: [...[...prepared.values()].flatMap((p) => [...p.head.flatMap((t) => Object.values(t.attrs).flatMap((v) => v.split(',').map((c) => c.trim().split(/\s+/)[0]!))), ...p.late, ...p.lateFontPaths]), ...importedUrls],
+		urls: [...[...prepared.values()].flatMap((p) => [...p.head.flatMap((t) => Object.values(t.attrs).flatMap((v) => v.split(',').map((c) => c.trim().split(/\s+/)[0]!))), ...p.late, ...p.lateFontPaths]), ...importedUrls, ...[...bodySheets.values()].flat()],
 	});
 	// A whole convert also removes what an earlier one copied or cut and this one no longer references; one of some
 	// routes (--only) leaves every other page's files alone.

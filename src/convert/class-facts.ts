@@ -63,9 +63,12 @@ function factsOf(file: string, text: string): ModuleFacts {
  * any element. A class built by joining strings is not seen, as usedCss does not see it either.
  */
 export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: Set<string> }> {
+	// Modules other modules import are read once; an entry (a page, often megabytes) is read for its own call and let go.
 	const modules = new Map<string, Promise<ModuleFacts | undefined>>();
-	const facts = (file: string) => {
-		if (!modules.has(file)) modules.set(file, read(file).then((found) => found && factsOf(found.file, found.text)));
+	const load = (file: string) => read(file).then((found) => found && factsOf(found.file, found.text));
+	const facts = (file: string, entry: boolean) => {
+		if (entry && !modules.has(file)) return load(file);
+		if (!modules.has(file)) modules.set(file, load(file));
 		return modules.get(file)!;
 	};
 	// An import may leave out the extension or name a folder.
@@ -78,14 +81,15 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 	};
 	return async (entries) => {
 		const seen = new Set<string>();
-		const queue = entries.map((e) => resolve(app, e));
+		const roots = new Set(entries.map((e) => resolve(app, e)));
+		const queue = [...roots];
 		const strings: string[] = [];
 		const elements: string[][] = [];
 		while (queue.length) {
 			const file = queue.pop()!;
 			if (seen.has(file) || !file.startsWith(`${app}/`)) continue;
 			seen.add(file);
-			const f = await facts(file);
+			const f = await facts(file, roots.has(file));
 			if (!f) continue;
 			strings.push(...f.strings);
 			for (const c of f.elements) elements.push(c.split(/\s+/).filter(Boolean));
