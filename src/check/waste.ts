@@ -3,7 +3,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { brotliCompressSync, constants } from 'node:zlib';
-import { APP_PARTS_DIR, PARTS_REGISTRIES } from '../convert/parts.ts';
+import { APP_PARTS_DIR, PARTS_REGISTRIES } from '../convert/app-parts.ts';
 import { mapFor } from './sourcemap.ts';
 import { networkRun, type CoverageEntry, type NetworkRun, type NetworkRunOptions, type RunCapture } from './slow-network.ts';
 import { NETWORK_PROFILES } from './throttle.ts';

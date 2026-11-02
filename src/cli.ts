@@ -45,7 +45,7 @@ import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
-import { changedSince, git, gitHead, selectChanged } from './check/changed.ts';
+import { changedSince, gitHead, selectChanged } from './check/changed.ts';
 import { keepChecked, readClosures, selectReusable, shipVersions, type ReuseSelection } from './check/ship-key.ts';
 import { VERSION } from './version.ts';
 import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
@@ -309,8 +309,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --reuse <dir> keeps each route's result there under a key of what it ships: the HTML NEW
           serves (pack file names aside), the code hash of every module the route can run (the Markless
           build's interaction-closures.json, --closures, else .vercel/output/.markless/static/), the
-          bytes of every other file its HTML names, OLD's HTML, and the git trees of this checker and
-          the Markless packages the port names. A route whose key has a kept result, and whose load-time
+          bytes of every other file its HTML names, OLD's HTML, the code the check command runs (its
+          module graph, read from the source) and the Markless packages the port names. A route whose key has a kept result, and whose load-time
           responses fetch the same again, is not checked: its result is reported marked reused. A route
           with no key (no Markless route script, a module without a hash) is always checked.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
@@ -974,11 +974,10 @@ async function main(argv: string[]): Promise<number> {
 			let reuse: ReuseSelection | undefined;
 			if (values.reuse) {
 				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
-				const migrateDir = fileURLToPath(new URL('..', import.meta.url));
-				const versions = await shipVersions(cwd, (args) => git(migrateDir, args));
+				const versions = await shipVersions(cwd);
 				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
 				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
-				if (!versions) out('--reuse: nothing reused, the checker has uncommitted changes or the port names no Markless packages.\n');
+				if (!versions) out('--reuse: nothing reused, the port names no Markless packages.\n');
 				else if (!closures) out(`--reuse: nothing reused, no closures at ${closuresFile}.\n`);
 				else {
 					reuse = await selectReusable({ routes: routes ?? [], newOrigin: values.new, oldOrigin: values.old, ...(bypass.headers ? { headers: bypass.headers } : {}), closures, versions, dir: resolve(values.reuse) });
