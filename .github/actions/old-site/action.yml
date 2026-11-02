@@ -1,0 +1,65 @@
+name: The original
+description: >-
+  The old site's build published once as the release original-<site>-<originalId12>, where originalId is the sha256 of its
+  archive's digest and old-fixtures.json's: the one frozen original every job serves, read by id. `resolve` names the
+  original published for this recipe (fetch-old.sh and old-fixtures.json), empty when there is none; `publish` uploads the
+  build this job made and names the original every run serves (the first published, if another job finished one first);
+  `restore` unpacks the original `id` names and fails when it is missing or its bytes differ.
+inputs:
+  site:
+    description: The deploy/<site> folder
+    required: true
+  step:
+    description: resolve, publish or restore
+    required: true
+  id:
+    description: The originalId to restore
+    required: false
+    default: ''
+  token:
+    description: A token that reads releases (resolve, restore) or writes them (publish)
+    required: true
+outputs:
+  id:
+    description: The originalId (64 hex); empty from resolve when none is published
+    value: ${{ steps.resolve.outputs.id || steps.publish.outputs.id || steps.restore.outputs.id }}
+runs:
+  using: composite
+  steps:
+    - id: recipe
+      shell: bash
+      env:
+        SITE: ${{ inputs.site }}
+      run: |
+        set -euo pipefail
+        files="deploy/$SITE/fetch-old.sh"
+        fixtures=none
+        if [ -f "deploy/$SITE/old-fixtures.json" ]; then files="$files deploy/$SITE/old-fixtures.json"; fixtures=$(sha256sum "deploy/$SITE/old-fixtures.json" | cut -c1-64); fi
+        # shellcheck disable=SC2086
+        { echo "recipe=$(cat $files | sha256sum | cut -c1-16)"; echo "fixtures=$fixtures"; } >> "$GITHUB_OUTPUT"
+    - id: resolve
+      if: inputs.step == 'resolve'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SITE: ${{ inputs.site }}
+        RECIPE: ${{ steps.recipe.outputs.recipe }}
+      run: bash "$GITHUB_ACTION_PATH/original.sh" resolve
+    - id: publish
+      if: inputs.step == 'publish'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SITE: ${{ inputs.site }}
+        RECIPE: ${{ steps.recipe.outputs.recipe }}
+        FIXTURES: ${{ steps.recipe.outputs.fixtures }}
+      run: bash "$GITHUB_ACTION_PATH/original.sh" publish
+    - id: restore
+      if: inputs.step == 'restore'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SITE: ${{ inputs.site }}
+        ID: ${{ inputs.id }}
+        FIXTURES: ${{ steps.recipe.outputs.fixtures }}
+      run: bash "$GITHUB_ACTION_PATH/original.sh" restore

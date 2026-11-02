@@ -163,9 +163,52 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/full-site-gate.ts wait
 
+  # The original every job serves, by id: published once (.github/actions/old-site), so no job or branch builds its own.
+  original:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: resolve
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: resolve
+          token: ${{ github.token }}
+      - if: steps.resolve.outputs.id == ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - if: steps.resolve.outputs.id == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: steps.resolve.outputs.id == ''
+        uses: oven-sh/setup-bun@v2
+      - name: Build the old site
+        if: steps.resolve.outputs.id == ''
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - id: publish
+        if: steps.resolve.outputs.id == ''
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: publish
+          token: ${{ github.token }}
+      - env:
+          ID: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
+        run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
+
   # A build made elsewhere (build-url) is the converted app already built: the run starts at the check.
   prepare:
-    needs: gate
+    needs: [gate, original]
     if: inputs.build-url == '' && inputs.converted-from == ''
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -200,24 +243,15 @@ jobs:
           run-id: ${{ steps.plan.outputs.run }}
           github-token: ${{ github.token }}
           path: ${{ env.APP }}/.migrate
-      - name: Restore the old site's build
-        id: old-build
-        uses: actions/cache/restore@v4
+      - name: The original
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Plan
         if: steps.plan.outputs.run == ''
         run: |
@@ -315,7 +349,7 @@ jobs:
           if-no-files-found: ignore
 
   capture:
-    needs: prepare
+    needs: [prepare, original]
     if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 345
@@ -335,14 +369,13 @@ jobs:
         with:
           name: pl-inputs
           path: ${{ runner.temp }}/inputs
-      - name: Restore the old site's build
-        id: old-build
-        uses: actions/cache/restore@v4
+      - name: The original
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Capture
@@ -375,7 +408,7 @@ jobs:
           if-no-files-found: ignore
 
   emit:
-    needs: [prepare, capture]
+    needs: [prepare, capture, original]
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -446,14 +479,14 @@ jobs:
           run-id: ${{ inputs.captures-from }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/captured
-      - name: Restore the old site's build
+      - name: The original
         if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
-        uses: actions/cache/restore@v4
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         run: bash "deploy/$SITE/ci-serve.sh" old
@@ -684,8 +717,8 @@ jobs:
   # Which routes ship what they shipped when last checked (check --reuse's key: NEW's HTML and the code each can run, the
   # files it names, OLD's HTML, the checker's version): those reuse their result, and only the rest go to check's shards.
   check-select:
-    needs: [build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.run != 'mac' }}
+    needs: [build, original]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.original.result == 'success' && needs.build.outputs.run != 'mac' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -707,13 +740,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Fetch the build
         run: bash scripts/pipeline-artifact.sh build "pl-$SITE-build-${{ needs.build.outputs.key }}" "$BUILD_URL" "$RUNNER_TEMP/build"
-      - name: Restore the old site's build
-        uses: actions/cache/restore@v4
+      - name: The original
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - run: bash "deploy/$SITE/ci-serve.sh" old
       - run: bash "deploy/$SITE/ci-serve.sh" new "file://$RUNNER_TEMP/build/output.tar.gz"
       - name: Restore results from earlier runs
@@ -765,10 +798,15 @@ jobs:
           if-no-files-found: ignore
 
   check:
-    needs: [build, check-select]
+    needs: [build, check-select, original]
     if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
     uses: ./.github/workflows/check.yml
+    # check.yml's original job asks for write, which it uses only when run alone and nothing is published yet.
+    permissions:
+      contents: write
+      actions: read
     with:
+      original: ${{ needs.original.outputs.id }}
       site: ${{ inputs.site || 'shadcn-ui' }}
       app: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
       targets: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}

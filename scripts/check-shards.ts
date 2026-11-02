@@ -4,7 +4,9 @@
 // <out.json>` writes the pages check's template grouping measures page load on, one per group of the whole site;
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
 // routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
-// results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago.
+// results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago; `times <.migrate dir>
+// <out.json>` writes a shard's route times, however it ended, for a later run's `split`. The merged summary also tells the
+// original served, the old-side store's counts and the runner time of each part of the check.
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { routeState } from '../src/check/route-state.ts';
@@ -35,8 +37,9 @@ interface ReportRoute {
 export function split(targets: Targets, n: number, costs?: ReadonlyMap<string, number>): Targets[] {
 	const shards = Array.from({ length: n }, () => ({ routes: [] as string[], endpoints: [] as string[], redirects: [] as string[], unchecked: [] as unknown[] }));
 	const known = targets.routes.map((r) => costs?.get(r)).filter((ms): ms is number => ms !== undefined).sort((x, y) => x - y);
-	// Times for under half the routes (another site's report, or a run of a few) would pack by guesses.
-	if (known.length && known.length * 2 >= targets.routes.length) {
+	// Times for under a quarter of the routes (another site's report, or a run of a few) would pack by guesses; full runs stopped
+	// at the step cap time about half of shadcn's 605.
+	if (known.length && known.length * 4 >= targets.routes.length) {
 		const median = known[known.length >> 1]!;
 		const cost = (r: string) => costs!.get(r) ?? median;
 		const load = new Array<number>(n).fill(0);
@@ -107,17 +110,140 @@ async function finished(dir: string): Promise<{ path: string; routes: ReportRout
 	return routes.length ? [{ path: join(dir, 'report.json'), routes }] : [];
 }
 
-async function write(dir: string, routes: readonly ReportRoute[]): Promise<void> {
+async function write(dir: string, routes: readonly ReportRoute[], data?: Datasets): Promise<void> {
 	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, 'report.json'), `${JSON.stringify({ routes }, null, '\t')}\n`);
-	const text = summary(routes);
+	const { phases: parts } = phases(routes);
+	await writeFile(join(dir, 'report.json'), `${JSON.stringify({ routes, ...(data ? { datasets: data } : {}), ...(parts.length ? { phases: parts } : {}) }, null, '\t')}\n`);
+	const text = summary(routes, data);
 	await writeFile(join(dir, 'summary.md'), text);
 	console.log(text.split('\n')[0]);
 }
 
-/** Routes the run did not check to the end: not checked at all, or stopped at --timeout part way. Any of them makes the run red. */
-/** Each route's check time in a merged report, for `split`. */
-export const costsOf = (routes: readonly (ReportRoute & { readonly timing?: { readonly ms: number } })[]): Map<string, number> => new Map(routes.flatMap((r) => (r.timing ? [[r.route, r.timing.ms] as const] : [])));
+type Timed = ReportRoute & { readonly timing?: { readonly ms: number; readonly steps?: readonly { readonly name: string; readonly ms: number }[] } };
+
+/** How long a route took: its timing, or for a route stopped at its deadline, the deadline (it took at least that). */
+function routeMs(r: Timed): number | undefined {
+	if (r.timing) return r.timing.ms;
+	const said = [r.infrastructure?.message, ...(r.failures ?? []).filter((f) => f.check === 'the check of this route').map((f) => (f as { actual?: string }).actual)];
+	const s = said.map((m) => /timed out after (\d+) s/.exec(m ?? '')?.[1]).find(Boolean);
+	return s ? Number(s) * 1000 : undefined;
+}
+
+/** Each route's check time in earlier runs' reports, newest run first: a route's newest time stands, however its run ended. */
+export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<string, number> {
+	const costs = new Map<string, number>();
+	for (const routes of newestFirst)
+		for (const r of routes) {
+			const ms = costs.has(r.route) ? undefined : routeMs(r);
+			if (ms !== undefined) costs.set(r.route, ms);
+		}
+	return costs;
+}
+
+/** Each route's time in a shard's .migrate folder (its report, or the progress files of a shard stopped before one), as a report of routes and timings only. */
+export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[]> {
+	const out: { route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[] = [];
+	for (const { routes } of await reports(dir)) {
+		for (const r of routes as Timed[]) {
+			const ms = routeMs(r);
+			if (ms === undefined) continue;
+			out.push(r.timing ? { route: r.route, timing: { ms } } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` } });
+		}
+	}
+	return out;
+}
+
+export interface Phase {
+	readonly name: string;
+	readonly ms: number;
+	readonly routes: number;
+}
+
+/** Every route's time per part of its check, summed over the routes that finished. Parts can run at once, so shares can add up past 100%. */
+export function phases(routes: readonly ReportRoute[]): { phases: Phase[]; routeMs: number; timed: number } {
+	const by = new Map<string, { ms: number; routes: Set<string> }>();
+	let routeMs = 0;
+	let timed = 0;
+	for (const r of routes as Timed[]) {
+		if (!r.timing) continue;
+		timed++;
+		routeMs += r.timing.ms;
+		for (const step of r.timing.steps ?? []) {
+			const p = by.get(step.name) ?? by.set(step.name, { ms: 0, routes: new Set() }).get(step.name)!;
+			p.ms += step.ms;
+			p.routes.add(`${r.route}\0${r.role ?? ''}`);
+		}
+	}
+	return { phases: [...by].map(([name, p]) => ({ name, ms: p.ms, routes: p.routes.size })).sort((a, b) => b.ms - a.ms || (a.name < b.name ? -1 : 1)), routeMs, timed };
+}
+
+export type StoreCounts = Record<'hit' | 'miss' | 'changed' | 'stale-checker', number>;
+
+export interface Datasets {
+	/** The original every shard served, by its originalId. */
+	readonly original?: string;
+	readonly shards: { readonly reported: number; readonly progressOnly: number };
+	/** The old-side store's entries over the shards that wrote a report (a shard stopped before its report has no counts). */
+	readonly store?: StoreCounts & { readonly shards: number };
+}
+
+/** What each shard's report says it read: the old-side store's counts, and how many shards wrote a report or only progress files. */
+export async function datasets(dir: string, original?: string): Promise<Datasets> {
+	const store: StoreCounts = { hit: 0, miss: 0, changed: 0, 'stale-checker': 0 };
+	let counted = 0;
+	let reported = 0;
+	let progressOnly = 0;
+	for (const shard of (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory() && /^check-\d+$/.test(e.name))) {
+		const files = await readdir(join(dir, shard.name), { recursive: true, withFileTypes: true });
+		const report = files.find((f) => f.isFile() && f.name === 'report.json');
+		if (!report) {
+			if (files.some((f) => f.isDirectory() && f.name === 'check-progress')) progressOnly++;
+			continue;
+		}
+		reported++;
+		const cache = (JSON.parse(await readFile(join(report.parentPath, report.name), 'utf8')) as { cache?: Partial<StoreCounts> }).cache;
+		if (!cache) continue;
+		counted++;
+		for (const k of Object.keys(store) as (keyof StoreCounts)[]) store[k] += cache[k] ?? 0;
+	}
+	return { ...(original ? { original } : {}), shards: { reported, progressOnly }, ...(counted ? { store: { ...store, shards: counted } } : {}) };
+}
+
+const hours = (ms: number) => (ms / 3_600_000).toFixed(1);
+
+/** The merged summary's account of where the runner time went and what data the run read. */
+export function accounts(routes: readonly ReportRoute[], data?: Datasets): string[] {
+	const { phases: parts, routeMs, timed } = phases(routes);
+	const lines: string[] = [];
+	if (data) {
+		const store = data.store;
+		const asked = store ? store.hit + store.miss + store.changed + store['stale-checker'] : 0;
+		lines.push(
+			'| Data | Count |',
+			'|---|---:|',
+			...(data.original ? [`| Original (originalId) | \`${data.original.slice(0, 12)}\` |`] : []),
+			`| Shards that wrote a report | ${data.shards.reported} |`,
+			`| Shards stopped before their report (results from progress files) | ${data.shards.progressOnly} |`,
+			`| Routes with a time | ${timed} of ${routes.length} |`,
+			...(store ? [`| Old-side store entries reused (hit) | ${store.hit} of ${asked}, over ${store.shards} shards |`, `| Old-side store entries recorded again: not stored, changed, other checker | ${store.miss}, ${store.changed}, ${store['stale-checker']} |`] : []),
+			'',
+		);
+	}
+	if (parts.length)
+		lines.push(
+			`<details><summary>Time per part of the check: ${hours(routeMs)} runner-hours over ${timed} routes</summary>`,
+			'',
+			'| Part | Runner-hours | Of route time | Routes |',
+			'|---|---:|---:|---:|',
+			...parts.map((p) => `| ${p.name.replace(/\|/g, '/')} | ${hours(p.ms)} | ${routeMs ? Math.round((p.ms / routeMs) * 100) : 0}% | ${p.routes} |`),
+			'',
+			'Parts that run at once (forced states beside journeys) each count their own time, so the shares can add up past 100%.',
+			'',
+			'</details>',
+			'',
+		);
+	return lines;
+}
 
 /** Every old-side cache entry under `from` (`.migrate/cache/old` and `.migrate/slow-network` of each shard, and earlier joined ones) copied into `to`. Entries are named by what they hold, so one name is one entry wherever it came from. */
 export async function joinOld(from: string, to: string): Promise<number> {
@@ -152,12 +278,13 @@ export async function lostUploads(dir: string): Promise<string[]> {
 	return lost;
 }
 
+/** Routes the run did not check to the end: not checked at all, or stopped at --timeout part way. Any of them makes the run red. */
 export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : routeState(r) === 'incomplete' ? 'incomplete' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;
 
-export function summary(routes: readonly ReportRoute[]): string {
+export function summary(routes: readonly ReportRoute[], data?: Datasets): string {
 	const counts = new Map<string, number>();
 	const causes = new Map<string, number>();
 	const rows: string[] = [];
@@ -177,6 +304,7 @@ export function summary(routes: readonly ReportRoute[]): string {
 	return [
 		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check` : ''}`,
 		'',
+		...accounts(routes, data),
 		...(left ? [`**${left} of ${routes.length} routes were not checked to the end (not checked, or incomplete at --timeout), so this run is red.**`, ''] : []),
 		'| Routes | Cause |',
 		'|---:|---|',
@@ -212,18 +340,26 @@ export async function joinKept(from: string, to: string, now: Date, days = 30): 
 }
 
 async function main(): Promise<void> {
-	const [command, a, b, c, d] = process.argv.slice(2);
+	const [command, a, b, c] = process.argv.slice(2);
 	if (command === 'split' && a && b && c) {
-		const earlier = d ? await readFile(d, 'utf8').catch(() => undefined) : undefined;
-		const costs = earlier ? costsOf((JSON.parse(earlier) as { routes?: ReportRoute[] }).routes ?? []) : undefined;
+		const earlier = (await Promise.all(process.argv.slice(6).map((f) => readFile(f, 'utf8').then((t) => (JSON.parse(t) as { routes?: ReportRoute[] }).routes ?? [], () => [] as ReportRoute[])))).filter((r) => r.length);
+		const costs = earlier.length ? costsOf(...earlier) : undefined;
 		const shards = split(JSON.parse(await readFile(a, 'utf8')) as Targets, Number(b), costs);
-		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${d}`);
+		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${earlier.length} earlier runs`);
 		await mkdir(c, { recursive: true });
 		for (const [i, shard] of shards.entries()) await writeFile(join(c, `shard-${i + 1}.json`), `${JSON.stringify(shard)}\n`);
 		console.log(JSON.stringify(shards.map((_, i) => i + 1)));
 		return;
 	}
+	if (command === 'times' && a && b) {
+		const routes = await routeTimes(a);
+		await writeFile(b, `${JSON.stringify({ routes })}\n`);
+		console.log(`${routes.length} route times`);
+		return;
+	}
 	if (command === 'merge' && a && b) {
+		const at = process.argv.indexOf('--original');
+		const original = at > 0 ? process.argv[at + 1] : undefined;
 		const routes: ReportRoute[] = [];
 		const reported = new Map<number, Set<string>>();
 		for (const { path, routes: got } of await reports(a)) {
@@ -231,7 +367,7 @@ async function main(): Promise<void> {
 			const shard = /(?:^|\/)check-(\d+)\//.exec(path)?.[1];
 			if (shard) reported.set(Number(shard), new Set([...(reported.get(Number(shard)) ?? []), ...got.map((r) => r.route)]));
 		}
-		if (c) {
+		if (c && c !== '--original') {
 			const shards = new Map<number, Targets>();
 			for (const name of await readdir(c)) {
 				const n = /^shard-(\d+)\.json$/.exec(name)?.[1];
@@ -239,7 +375,7 @@ async function main(): Promise<void> {
 			}
 			routes.push(...unreported(shards, reported));
 		}
-		await write(b, routes);
+		await write(b, routes, await datasets(a, original || undefined));
 		return;
 	}
 	if (command === 'combine' && a) {
@@ -289,7 +425,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | merge <reports dir> <out dir> [<shard files dir>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir>');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>, newest run first...] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir>');
 	process.exit(2);
 }
 
