@@ -5,15 +5,11 @@ import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv, databaseFramesReceived } from './browser.ts';
 import { clickOnce } from './click.ts';
-import { clockLine } from './clock.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
-import { HINTS } from './hints.ts';
 import { signInCookies, storageKeys } from './storage.ts';
-import { diffLines, lineTemplates, template } from './noise.ts';
-import type { Box, Dimension, Failure, Viewport, WriteLine } from './types.ts';
+import type { Box, Viewport, WriteLine } from './types.ts';
 import { changedRegions } from './visual.ts';
-import { storageCandidate, type StorageOwner } from './automatic.ts';
 import { loadPage } from './infrastructure.ts';
 import { availableParallelism } from 'node:os';
 import { STRUCTURE_ENGINE, type Structure } from './structure.ts';
@@ -194,8 +190,6 @@ async function inSession<T>(task: () => Promise<T>): Promise<T> {
 }
 // Other pages tried as the place a visitor arrives from.
 const ARRIVAL_ENTRIES = 3;
-// Journeys run again after arriving in place, most important first.
-export const MAX_ARRIVED = 30;
 const STEP_TIMEOUT = 3_000;
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);

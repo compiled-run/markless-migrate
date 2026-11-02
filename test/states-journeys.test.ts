@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { defaultEnv } from '../src/check/browser.ts';
 import { withFailures } from '../src/check/compare.ts';
-import { statesAndJourneys } from '../src/check/run.ts';
+import { statesAndJourneys } from '../src/check/route-judge.ts';
 import type { Failure, RouteResult } from '../src/check/types.ts';
 
 const fail = (check: string): Failure => ({ route: '/', dimension: check.startsWith('state') ? 'css' : 'behaviour', check, expected: 'a', actual: 'b', hint: 'c' });

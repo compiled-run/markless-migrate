@@ -7,6 +7,9 @@ import type { CycleAct, Journey, Reaction, RecordedJourney, Run, Step, StepResul
 import type { Structure } from './structure.ts';
 import type { Box, Dimension, Failure } from './types.ts';
 
+// Journeys run again after arriving in place, most important first.
+export const MAX_ARRIVED = 30;
+
 export const describeStructure = (s: Structure) => `<${s.tag}> #${s.index + 1}${s.scope ? ` in ${s.scope}` : ''}`;
 
 export function describeTarget(t: Target): string {

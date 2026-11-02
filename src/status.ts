@@ -8,7 +8,7 @@ import { stepRoutes } from './plan/source.ts';
 import { matchRoute } from './source/pattern.ts';
 import type { FailureDimension as Dimension, Failure, Report, RouteCoverage } from './check/types.ts';
 import { isSwitched, readSwitched } from './switch/state.ts';
-import { timingHeadlines, type RouteTiming } from './check/responsiveness.ts';
+import { timingHeadlines, type RouteTiming } from './check/responsiveness-summary.ts';
 
 export const STATE_DIR = '.migrate';
 

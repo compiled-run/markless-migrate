@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { leftOut } from '../src/check/run.ts';
+import { leftOut } from '../src/check/route-judge.ts';
 
 test('keyboard journeys and repeated-use sequences the budget left out turn the route red, saying how many', () => {
 	assert.deepEqual(leftOut('/', { skipped: 0 }), []);

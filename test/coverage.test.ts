@@ -107,7 +107,7 @@ test('an identical new app is green only when every interactive element was exer
 });
 
 test('a route sharing a layout with a route that was not compared is red for the shared controls, and the report lists every element', async () => {
-	const { shareLayout } = await import('../src/check/run.ts');
+	const { shareLayout } = await import('../src/check/report-judge.ts');
 	const { renderHtml } = await import('../src/check/html.ts');
 	const { DIMENSIONS } = await import('../src/check/types.ts');
 	const zero = { downloaded: 0, source: 0, executed: 0 };

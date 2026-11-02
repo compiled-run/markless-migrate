@@ -8,8 +8,8 @@ import type { Failure, HttpCapture, LoginResult } from './types.ts';
 import { VIEWPORTS } from './types.ts';
 import { signedInStorage, storageFailure } from './storage.ts';
 import { classify, RETRY_BACKOFF_MS, sleep } from './infrastructure.ts';
+import { ANONYMOUS } from './types.ts';
 
-export const ANONYMOUS = 'anonymous';
 
 /** A control on the login page: a Playwright selector, or found by its label, placeholder, or role and name. */
 export type Target = string | { readonly label: string } | { readonly placeholder: string } | { readonly role: string; readonly name?: string };

@@ -9,9 +9,12 @@ import type { LiveEmbed } from './embeds.ts';
 import type { LoopEffect } from './loops.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
-import type { Filmstrip, MotionResult } from './motion.ts';
+import type { Filmstrip, MotionResult } from './motion-compare.ts';
 import type { RouteLoad } from './load.ts';
 import type { WasteReport } from './waste.ts';
+
+/** The role every route is checked as besides the --auth roles: no one signed in. */
+export const ANONYMOUS = 'anonymous';
 
 export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'load', 'responsiveness', 'motion', 'navigation'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];

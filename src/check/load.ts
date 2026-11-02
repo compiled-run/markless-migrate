@@ -6,13 +6,11 @@ import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { throttling } from 'lighthouse/core/config/constants.js';
 import { chromium } from 'playwright';
-import { HINTS } from './hints.ts';
 import { mannWhitneyGreater, median, noiseBand, SIGNIFICANCE, spread } from './stats.ts';
 import { LOAD_METRICS, type LoadMetric, type Metrics } from './load-verdicts.ts';
 import { TRACKER_HOSTS, type BlockList } from './trackers.ts';
-import type { Failure } from './types.ts';
 import type { WasteCheckOptions, WasteReport } from './waste.ts';
-import type { FieldData, PsiOptions, PsiResult } from './psi.ts';
+import type { PsiOptions, PsiResult } from './psi.ts';
 import type { RouteNetwork, SlowNetworkOptions } from './slow-network.ts';
 
 export interface LoadOptions {

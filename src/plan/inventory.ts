@@ -12,7 +12,8 @@ import { defaultEnv } from '../check/browser.ts';
 import { discoverEndpoints } from '../check/endpoints.ts';
 import { DEFAULT_CRAWL_BOUND, enumerateRoutes, routesToPort, type Enumeration, type PlannedRoute, type RouteSource } from './enumerate.ts';
 import { routeTargets, type Samples } from './routes.ts';
-import { ANONYMOUS, signIn, type AuthConfig } from '../check/auth.ts';
+import { signIn, type AuthConfig } from '../check/auth.ts';
+import { ANONYMOUS } from '../check/types.ts';
 import type { StorageState } from '../check/browser.ts';
 
 export interface InventoryRoute {
