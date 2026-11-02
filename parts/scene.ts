@@ -66,6 +66,8 @@ function setRun(el: Element, run: number, text: string): void {
 	}
 }
 
+const animated = new WeakMap<Element, string>();
+
 function apply(player: Player, i: number, el: Element): void {
 	const [, kind, which, longest] = player.data.entries[i]!;
 	const v = player.values[i];
@@ -73,12 +75,44 @@ function apply(player: Player, i: number, el: Element): void {
 	const { typed } = player.data;
 	const own = (text: string) => (typed && player.typed !== undefined ? text.replaceAll(typed, player.typed) : text);
 	// An SVG element has no hidden property: the attribute is what hides it.
-	if (kind === 'h') el.toggleAttribute('hidden', v === 1);
-	else if (kind === 't') setRun(el, which as number, own(typeof v === 'number' ? (longest ?? '').slice(0, v) : (v ?? '')));
-	else if (which === '.value') {
+	if (kind === 'h') {
+		// Shown, an element keeps a hidden value of its own (React Aria's closed panel is hidden="until-found").
+		const recorded = v === 0 ? player.data.entries.findIndex(([k, w, n]) => k === player.data.entries[i]![0] && w === 'a' && n === 'hidden') : -1;
+		const kept = recorded >= 0 ? player.values[recorded] : null;
+		if (typeof kept === 'string') el.setAttribute('hidden', kept);
+		else if (v === 1) el.toggleAttribute('hidden', true);
+		else if (el.getAttribute('hidden') === '') el.removeAttribute('hidden');
+	} else if (kind === 't') setRun(el, which as number, own(typeof v === 'number' ? (longest ?? '').slice(0, v) : (v ?? '')));
+	else if (which === '.animate') {
+		// The old page's script animation, started as its frame shows it starting: once per animation.
+		if (typeof v === 'string' && animated.get(el) !== v) {
+			animated.set(el, v);
+			for (const a of JSON.parse(v) as { k: Keyframe[]; d: number | string; e: string; l: number; f: FillMode }[]) el.animate(a.k, { duration: typeof a.d === 'number' ? a.d : 0, easing: a.e, delay: a.l, fill: a.f });
+		}
+	} else if (which === '.value') {
 		if (el !== player.typing) (el as HTMLInputElement).value = own(typeof v === 'string' ? v : '');
 	} else if (v === null) el.removeAttribute(which as string);
-	else if (el.getAttribute(which as string) !== String(own(String(v)))) el.setAttribute(which as string, own(String(v)));
+	else if (which === 'style') {
+		if (el instanceof HTMLElement) fromMeasuredSize(el, String(v));
+		if (el.getAttribute('style') !== String(v)) el.setAttribute('style', String(v));
+	} else if (el.getAttribute(which as string) !== String(own(String(v)))) el.setAttribute(which as string, own(String(v)));
+}
+
+// A panel's size variable going from auto to a length starts from the size it has: React Aria and Base UI write the
+// measured size and the collapsed one in one task, which the recording sees only as auto, then the length.
+function fromMeasuredSize(el: HTMLElement, next: string): void {
+	const parsed = document.createElement('div').style;
+	parsed.cssText = next;
+	let measured = false;
+	for (let k = 0; k < parsed.length; k++) {
+		const name = parsed.item(k);
+		const axis = /^--.+-(height|width)$/.exec(name)?.[1];
+		if (!axis || el.style.getPropertyValue(name).trim() !== 'auto' || parsed.getPropertyValue(name).trim() === 'auto') continue;
+		const box = el.getBoundingClientRect();
+		el.style.setProperty(name, `${axis === 'height' ? box.height : box.width}px`);
+		measured = true;
+	}
+	if (measured) void el.offsetHeight;
 }
 
 function write(player: Player, i: number): void {
@@ -132,26 +166,30 @@ export function playScene(event: Event, set: (frame: number) => void): void {
 	const region = target?.closest('[data-mm-scene]');
 	const player = region ? playerOf(region) : undefined;
 	if (!player || !target) return;
-	const listed = controlOf(player.region, target, player.data.listed);
+	// A form's submit button sends what its listed field holds, as Enter in that field does (the chat demo's Send).
+	const form = event.type === 'click' ? (target.closest('button[type="submit"]') as HTMLButtonElement | null)?.form : null;
+	const sent = form && !controlOf(player.region, target, player.data.listed) ? [...form.querySelectorAll(FIELD)].find((f) => controlOf(player.region, f, player.data.listed)) : undefined;
+	const listed = controlOf(player.region, sent ?? target, player.data.listed);
 	if (!listed) return;
 	// A listed field: given text (or emptied) it plays its fill (or clear) use with the visitor's text left alone; Enter
 	// without Shift plays its enter use, the visitor's text shown where the capture's was.
-	const field = target.closest(FIELD) as HTMLInputElement | null;
+	const field = (sent ?? target.closest(FIELD)) as HTMLInputElement | null;
+	const entered = sent !== undefined || (event.type === 'keydown' && (event as KeyboardEvent).key === 'Enter' && !(event as KeyboardEvent).shiftKey && !(event as KeyboardEvent).isComposing);
 	let control = listed;
 	if (field) {
 		if (event.type === 'input') control = `${listed}|${field.value === '' ? 'clear' : 'fill'}`;
-		else if (event.type === 'keydown' && (event as KeyboardEvent).key === 'Enter' && !(event as KeyboardEvent).shiftKey && !(event as KeyboardEvent).isComposing) control = `${listed}|enter`;
+		else if (entered) control = `${listed}|enter`;
 		else return;
 	} else if (event.type !== 'click') return;
 	if (!player.data.edges.some(([from, c]) => from === player.state && c === control)) {
-		if (field && event.type === 'keydown') event.preventDefault();
+		if (field && entered) event.preventDefault();
 		return;
 	}
 	settle(player);
 	const edge = player.data.edges.find(([from, c]) => from === player.state && c === control);
 	if (!edge) return;
 	if (field) {
-		if (event.type === 'keydown') {
+		if (entered) {
 			event.preventDefault();
 			player.typed = field.value;
 			player.typing = undefined;

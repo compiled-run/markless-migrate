@@ -287,11 +287,15 @@ test('switching between open Base UI menubar menus is instant (data-instant="gro
 	// tw-animate's enter and exit as shadcn's menubar content uses them (duration-100).
 	const css = '<style>@keyframes enter{from{opacity:0;transform:scale(.95)}}@keyframes exit{to{opacity:0;transform:scale(.95)}}[role=menu][data-open]{animation:enter 100ms}[role=menu][data-closed]{animation:exit 100ms}</style>';
 	const page = await open(`${css}<main style="padding:100px"><div role="menubar" data-slot="menubar">${bar('m1', 'File')}${bar('m2', 'Edit')}</div></main>${layer('m1', ['New Tab', 'Print'])}${layer('m2', ['Undo', 'Redo'])}`, ['base-ui/menu']);
+	// The animation clock stands still, so a fade reads its first frame however late the read comes; only the part's own finish() moves it.
+	const cdp = await page.context().newCDPSession(page);
+	await cdp.send('Animation.enable');
+	await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
 	const frame = () =>
 		page.evaluate(() => new Promise<string[]>((done) => requestAnimationFrame(() => done([...document.querySelectorAll<HTMLElement>('[role=menu]')].filter((m) => m.getClientRects().length).map((m) => `${m.getAttribute('aria-labelledby')} ${Number(getComputedStyle(m).opacity).toFixed(2)} ${m.getAttribute('data-instant') ?? '-'}`)))));
 	await page.locator('#m1').click();
 	assert.deepEqual(await frame(), ['m1 0.00 -'], 'a first open fades in');
-	await page.waitForTimeout(200);
+	await page.evaluate(() => document.querySelector('[role=menu][aria-labelledby=m1]')!.getAnimations().forEach((a) => a.finish()));
 	await page.locator('#m2').hover();
 	assert.deepEqual(await frame(), ['m2 1.00 group'], 'no fade either way on a switch');
 	assert.equal(await page.evaluate(() => document.querySelector('[role=menu][aria-labelledby=m1]')!.getAttribute('data-instant')), 'group');
@@ -542,6 +546,22 @@ test('a Base UI context menu opened under the pointer highlights nothing until i
 	await page.close();
 });
 
+test("a left click in a Base UI context menu's trigger area while its menu is open closes it, as a press outside its popup", async () => {
+	const page = await open(
+		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
+		<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px">${['Back', 'Forward', 'Reload'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="context-menu-item">${t}</div>`).join('')}</div></div></div>`,
+		['base-ui/context-menu'],
+	);
+	const st = () => page.evaluate(() => `open=${!document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden} pressed=${document.querySelector('[data-slot="context-menu-trigger"]')!.hasAttribute('data-pressed')} focus=${document.activeElement?.tagName}`);
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	assert.equal(await st(), 'open=true pressed=true focus=DIV');
+	await page.mouse.click(550, 250);
+	await page.waitForTimeout(300);
+	assert.equal(await st(), 'open=false pressed=false focus=BODY');
+	await page.close();
+});
+
 test("a click on a Base UI context menu's submenu trigger leaves the menu open and its submenu opens; choosing in the submenu closes both", async () => {
 	const page = await open(
 		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
@@ -714,5 +734,37 @@ test('an item-aligned Base UI select that closes takes the unplaced positioner s
 	assert.match(await read(), /^fixed \d+(\.\d+)?px - - popup:100%$/);
 	await page.keyboard.press('Escape');
 	assert.equal(await read(), 'absolute 0px 0 none popup:-');
+	await page.close();
+});
+
+// The trigger takes the press's own focus, as Base UI's does: the browser's focus-visible heuristic then follows the
+// visitor's modality (a key shows the ring on the focused option, the pointer never does).
+const ring = (page: Page) =>
+	page.evaluate(() => {
+		const at = document.activeElement;
+		return `${at?.matches('[role="option"], button') ? at.textContent?.trim() : at?.getAttribute('data-slot')} ${at?.matches(':focus-visible')}`;
+	});
+
+test('a Base UI select opened by a press shows the focus ring once a key is typed on the option it focused', async () => {
+	const page = await open(select, ['base-ui/select']);
+	await page.locator('#base').click();
+	await settled(page);
+	assert.equal(await ring(page), 'Apple false');
+	await press(page, 'a');
+	assert.equal(await ring(page), 'Apple true');
+	await page.close();
+});
+
+test("a Base UI select opened by a press shows no focus ring as the pointer leaves its options or presses outside", async () => {
+	const page = await open(select, ['base-ui/select']);
+	await page.locator('#base').click();
+	await page.locator('[role="option"]', { hasText: 'Banana' }).hover();
+	assert.equal(await ring(page), 'Banana false');
+	await page.mouse.move(990, 790, { steps: 3 });
+	await settled(page);
+	assert.equal(await ring(page), 'select-content false');
+	await page.mouse.click(990, 790);
+	await page.waitForTimeout(400);
+	assert.equal(await ring(page), 'Select a fruit false');
 	await page.close();
 });

@@ -5,6 +5,7 @@ import type { Browser, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { trackSettle } from './settle.ts';
 
 /** A node of a demo as one frame showed it: an element, or a run of adjacent text (the browser parses a run as one node). */
 export type SceneNode = { readonly id: number; readonly tag: string; readonly attrs: readonly (readonly [string, string])[]; readonly kids: readonly SceneNode[] } | { readonly id: number; readonly text: string };
@@ -95,6 +96,19 @@ function snapshotIn(): unknown {
 			const max = el.scrollHeight - el.clientHeight;
 			live.push(['.scroll', max <= 1 || Math.abs(el.scrollTop - max) <= 1 ? 'end' : el.scrollTop <= 1 ? 'start' : 'last-anchor']);
 		}
+		// A script's own animation (motion's element.animate) changes nothing in the DOM: its keyframes and timing are recorded.
+		const own = el.getAnimations().filter((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition) && a.effect instanceof KeyframeEffect && a.effect.target === el);
+		if (own.length)
+			live.push([
+				'.animate',
+				JSON.stringify(
+					own.map((a) => {
+						const effect = a.effect as KeyframeEffect;
+						const t = effect.getTiming();
+						return { k: effect.getKeyframes().map(({ computedOffset: _, ...k }) => k), d: t.duration, e: t.easing, l: t.delay, f: t.fill };
+					}),
+				),
+			]);
 		return { id: id(el), tag: el.tagName.toLowerCase(), attrs: [...[...el.attributes].map((a) => [a.name, value(el, a)]), ...live], kids };
 	};
 	return snap(s.root);
@@ -139,16 +153,26 @@ async function startRecording(page: Page): Promise<void> {
 	});
 }
 
-async function stopRecording(page: Page, settle: number, max: number): Promise<Frame[]> {
+// A demo that waits on a timer of its own (a stream's pause between steps) is not done, however long it has been still.
+const PAUSE_MS = 5000;
+
+/** Waits until the demo has been still for `settle` with no timer of its page due within PAUSE_MS, or `max` has passed. */
+async function untilUseEnds(page: Page, settle: number, max: number): Promise<void> {
 	const started = Date.now();
 	for (;;) {
 		await page.waitForTimeout(100);
-		const quiet = await page.evaluate(() => {
+		const left = max - (Date.now() - started);
+		const { quiet, busy } = await page.evaluate((within) => {
 			const s = (window as unknown as { __mmScene: { last: number } }).__mmScene;
-			return performance.now() - s.last;
-		});
-		if (quiet >= settle || Date.now() - started > max) break;
+			const settle = (globalThis as { __mmSettle__?: (within: number) => { busy: number } }).__mmSettle__;
+			return { quiet: performance.now() - s.last, busy: settle?.(within).busy ?? 0 };
+		}, Math.min(PAUSE_MS, Math.max(0, left)));
+		if ((quiet >= settle && busy === 0) || left < 0) return;
 	}
+}
+
+async function stopRecording(page: Page, settle: number, max: number): Promise<Frame[]> {
+	await untilUseEnds(page, settle, max);
 	return page.evaluate(() => {
 		const s = (window as unknown as { __mmScene: { frames: { t: number; tree: unknown }[]; observer?: MutationObserver } }).__mmScene;
 		s.observer?.disconnect();
@@ -172,12 +196,7 @@ async function timeUse(page: Page, act: () => Promise<boolean>, limits: SceneLim
 		s.observer.observe(s.root, { subtree: true, childList: true, attributes: true, characterData: true });
 	});
 	if (!(await act())) return 0;
-	const started = Date.now();
-	for (;;) {
-		await page.waitForTimeout(100);
-		const quiet = await page.evaluate(() => performance.now() - (window as unknown as { __mmScene: { last: number } }).__mmScene.last);
-		if (quiet >= limits.settle || Date.now() - started > limits.max) break;
-	}
+	await untilUseEnds(page, limits.settle, limits.max);
 	return page.evaluate(() => Math.round((window as unknown as { __mmScene: { changed?: number } }).__mmScene.changed ?? 0));
 }
 
@@ -263,7 +282,7 @@ async function use(page: Page, selector: string, index: number, listed: string, 
  * `limits`), and records each use frame by frame. A state is reached again by replaying the uses that led to it.
  */
 export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = ''): Promise<SceneCapture> {
-	const file = join(dir, `${createHash('sha256').update(`scenes:6:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`scenes:8:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
@@ -288,6 +307,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 	let current = 0;
 	try {
 		await page.addInitScript(`globalThis.__mmSnapshot = ${snapshotIn.toString()};`);
+		await page.addInitScript(trackSettle);
 		await loadPage(page, url);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 		const demos = await page.evaluate(([selector, listed, text]) => {

@@ -157,3 +157,17 @@ export function classifyScript(source: string): Classified {
 	// A framework runtime that bundles a library (DocSearch's Preact) is the framework; the library inside is not kept on its own.
 	return { runtimes: [...found], libraries: found.size ? [] : [...libraries], parsed: errorsOf(result).length === 0 };
 }
+
+/** The modules a script imports by a literal specifier: statically, re-exported from, or with `import()`. */
+export function moduleImports(source: string): string[] {
+	if (!/\bimport\b|\bexport\b/.test(source)) return [];
+	const program = parse(source, { sourceType: 'module', preserveParens: false }).program as unknown as N;
+	const found = new Set<string>();
+	walk(program, (n) => {
+		if (n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration' || n.type === 'ExportNamedDeclaration' || n.type === 'ImportExpression') {
+			const specifier = keyName(n.source as N | undefined);
+			if (specifier) found.add(specifier);
+		}
+	});
+	return [...found];
+}

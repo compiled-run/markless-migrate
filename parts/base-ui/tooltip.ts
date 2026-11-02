@@ -3,7 +3,7 @@ import { closestTrigger } from '../reveal.ts';
 
 // Base UI Tooltip under shadcn's TooltipProvider delay={0}: hover or keyboard focus on the trigger shows it at once,
 // leaving or blurring hides it. The popup is never focused.
-const TRIGGER = '[data-slot="tooltip-trigger"]';
+const TRIGGER = '[data-slot="tooltip-trigger"], [data-mm-part="tooltip-trigger"]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-mm-key]:not([data-state]), [id]:not([data-state])', (slot) => /^tooltip-trigger$/.test(slot));
 const shown = new Map<HTMLElement, Popup>();

@@ -518,6 +518,26 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.close();
 });
 
+test('cmdk: a list scrolled before its layer closed opens again at the top, so the pointer lands where it did the first time', async () => {
+	const many = Array.from({ length: 30 }, (_, i) => commandItem(`i${i}`, `Item ${i}`, false, i === 0).replace('>Item', ' style="height:30px">Item')).join('');
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k"><div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" type="text" value=""><div cmdk-list="" role="listbox" style="height:150px;overflow:auto"><div cmdk-list-sizer=""><div cmdk-group="" role="presentation"><div cmdk-group-items="" role="group">${many}</div></div></div></div></div></div>`, ['cmdk']);
+	const chosen = () => page.evaluate(() => [...document.querySelectorAll('[cmdk-item][aria-selected="true"]')].map((i) => i.id).join(','));
+	await page.locator('[cmdk-input]').focus();
+	await page.locator('[cmdk-list]').hover();
+	const pointed = await chosen();
+	await page.mouse.wheel(0, 240);
+	await page.waitForFunction(() => document.querySelector('[cmdk-list]')!.scrollTop > 0);
+	await page.locator('#trigger').focus();
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => !document.querySelector('[cmdk-item][aria-selected="true"]'));
+	await page.mouse.move(10, 400);
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
+	assert.equal(await page.evaluate(() => document.querySelector('[cmdk-list]')!.scrollTop), 0, 'cmdk mounts the list again, so it starts at the top');
+	await page.locator('[cmdk-list]').hover();
+	assert.equal(await chosen(), pointed, 'the pointer lands on the item it landed on the first time');
+	await page.close();
+});
+
 test('cmdk: items the page renders during a search are filtered and sorted by it; with nothing selected, or the selected item gone, the first is', async () => {
 	const page = await open(COMMAND, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
@@ -1004,6 +1024,24 @@ test('a Base UI vertical slider steps up with ArrowUp and follows the pointer fr
 	await page.close();
 });
 
+test('react-textarea-autosize: an autosize textarea grows with each line typed and shrinks back, from its inline important height; a plain one is left alone', async () => {
+	const css = 'box-sizing:border-box;width:300px;padding:10px 12px;border:1px solid;font:16px/24px sans-serif;resize:none';
+	const page = await open(`<textarea id="auto" placeholder="Autoresize textarea..." style="${css};height: 40px !important;"></textarea><textarea id="plain" style="${css};height:40px"></textarea>`, ['textarea-autosize']);
+	const height = (id: string) => page.evaluate((id) => Math.round(document.getElementById(id)!.getBoundingClientRect().height), id);
+	await page.waitForFunction(() => document.getElementById('auto')!.style.height !== '40px');
+	assert.equal(await height('auto'), 46, 'mounted: one row (24) plus padding (20) and border (2)');
+	await page.locator('#auto').fill('');
+	await page.locator('#auto').pressSequentially('one\ntwo\nthree');
+	assert.equal(await height('auto'), 94, 'three rows');
+	assert.equal(await page.locator('#auto').evaluate((t: HTMLTextAreaElement) => t.style.getPropertyPriority('height')), 'important');
+	await page.keyboard.press('Backspace');
+	for (let i = 0; i < 10; i++) await page.keyboard.press('Backspace');
+	assert.equal(await height('auto'), 46, 'back to one row');
+	await page.locator('#plain').pressSequentially('one\ntwo\nthree');
+	assert.equal(await height('plain'), 40);
+	await page.close();
+});
+
 test('react-resizable-panels: a press on a separator focuses it; once released it is inactive until the pointer moves again', async () => {
 	const page = await open(
 		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div><button>after</button></div>`,
@@ -1022,6 +1060,27 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 	await page.close();
 });
 
+
+test('react-resizable-panels: the resize cursor covers the page while a separator is pointed at or dragged, and goes once it is inactive', async () => {
+	const panels = (dir: string, size: string) => `<div data-group="" style="display:flex;flex-direction:${dir};${size}"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="${dir === 'row' ? 'width' : 'height'}:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div>`;
+	const page = await open(`<div style="padding:50px">${panels('row', 'width:400px;height:100px')}<p id="away">away</p>${panels('column', 'width:200px;height:300px')}</div>`, ['resizable']);
+	const cursor = () => page.evaluate(() => `${getComputedStyle(document.getElementById('away')!).cursor} ${document.adoptedStyleSheets.flatMap((s) => [...s.cssRules].map((r) => r.cssText)).join(' ').includes('touch-action: none') ? 'no-touch' : ''}`.trim());
+	for (const [n, want] of [[0, 'ew-resize'], [1, 'ns-resize']] as const) {
+		const box = (await page.locator('[role="separator"]').nth(n).boundingBox())!;
+		const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+		await page.mouse.move(x, y);
+		assert.equal(await cursor(), want, 'pointed at');
+		await page.mouse.down();
+		await page.mouse.move(x + 20, y + 20, { steps: 3 });
+		assert.equal(await cursor(), `${want} no-touch`, 'while dragged');
+		await page.mouse.up();
+		assert.equal(await cursor(), 'auto', 'released, it is inactive');
+		await page.mouse.move(x + 21, y + 21);
+		await page.mouse.move(5, 5);
+		assert.equal(await cursor(), 'auto', 'pointed away');
+	}
+	await page.close();
+});
 
 test('react-resizable-panels: a press within the separator\'s 10 px hit area drags it, though another element is on top there', async () => {
 	// The second panel is drawn over the separator, as a block viewer's panel is once a viewport button has resized it.
@@ -1292,6 +1351,73 @@ test('Radix ScrollArea: the scrollbar rendered beside the content shows on hover
 	await page.mouse.wheel(0, 300);
 	await page.waitForTimeout(200);
 	assert.match(await page.locator('[data-slot="scroll-area-thumb"]').evaluate((e) => (e as HTMLElement).style.transform), /translate3d\(0px, 75px, 0px\)/);
+	await page.close();
+});
+
+test('Radix ScrollArea: a press on the track brings the thumb\'s centre under the pointer, a thumb drag scrolls with the pointer, the wheel over the scrollbar scrolls, and it hides 600 ms after the pointer leaves', async () => {
+	const rows = Array.from({ length: 40 }, (_, i) => `<div style="height:20px;width:600px">row ${i}</div>`).join('');
+	const page = await open(
+		`<div data-slot="scroll-area" style="position:relative;width:200px;height:200px"><div data-slot="scroll-area-viewport" style="overflow:scroll;height:100%;scrollbar-width:none">${rows}</div><div hidden data-mm-shown-with="p:1"><div data-slot="scroll-area-scrollbar" data-orientation="vertical" data-state="hidden" style="position:absolute;top:0;right:0;bottom:0;width:10px"><div data-slot="scroll-area-thumb" style="height:var(--radix-scroll-area-thumb-height)"></div></div></div><div hidden data-mm-shown-with="p:1"><div data-slot="scroll-area-scrollbar" data-orientation="horizontal" data-state="hidden" style="position:absolute;left:0;right:0;bottom:0;height:10px"><div data-slot="scroll-area-thumb" style="width:var(--radix-scroll-area-thumb-width);height:10px"></div></div></div></div>`,
+		['radix/scroll-area'],
+	);
+	const scroll = () => page.locator('[data-slot="scroll-area-viewport"]').evaluate((v) => [v.scrollLeft, v.scrollTop]);
+	await page.mouse.move(100, 100);
+	await page.mouse.click(195, 175);
+	assert.deepEqual(await scroll(), [0, 600], 'the thumb (50 px) centred at 175 is at the end of the 200 px track');
+	await page.mouse.move(195, 175);
+	await page.mouse.down();
+	await page.mouse.move(195, 115, { steps: 4 });
+	await page.mouse.up();
+	assert.deepEqual(await scroll(), [0, 360], 'the point pressed stays under the pointer: 60 px of track is 240 px of scroll');
+	await page.mouse.move(195, 100);
+	await page.mouse.wheel(0, 40);
+	await page.waitForTimeout(100);
+	assert.deepEqual(await scroll(), [0, 400]);
+	await page.mouse.click(20, 195);
+	assert.deepEqual(await scroll(), [0, 400], 'the horizontal thumb pressed at its own point does not move');
+	await page.mouse.click(180, 195);
+	assert.equal((await scroll())[0], 400, 'a press at the horizontal track\'s end scrolls to the end');
+	await page.mouse.move(400, 400);
+	await page.waitForTimeout(300);
+	assert.equal(await page.locator('[data-slot="scroll-area-scrollbar"]').first().getAttribute('data-state'), 'visible');
+	await page.waitForTimeout(450);
+	assert.equal(await page.locator('[data-slot="scroll-area-scrollbar"]').first().getAttribute('data-state'), 'hidden');
+	await page.close();
+});
+
+test('Base UI ScrollArea: the thumb follows the scroll with the overflow edges and scrolling state; a press on the track centres the thumb there, a thumb drag and the wheel over the scrollbar scroll', async () => {
+	const rows = Array.from({ length: 40 }, (_, i) => `<div style="height:20px">row ${i}</div>`).join('');
+	const page = await open(
+		`<div role="presentation" data-slot="scroll-area" style="position:relative;width:200px;height:200px" data-has-overflow-y="" data-overflow-y-end=""><div role="presentation" tabindex="0" data-slot="scroll-area-viewport" style="overflow:scroll;height:100%;scrollbar-width:none" data-has-overflow-y="" data-overflow-y-end="">${rows}</div><div data-orientation="vertical" data-slot="scroll-area-scrollbar" data-has-overflow-y="" data-overflow-y-end="" style="position:absolute;top:0;bottom:0;inset-inline-end:0;width:10px;--scroll-area-thumb-height:50px"><div data-orientation="vertical" data-slot="scroll-area-thumb" style="height:var(--scroll-area-thumb-height);transform:translate3d(0px,0px,0px)"></div></div></div>`,
+		['base-ui/scroll-area'],
+	);
+	const state = () =>
+		page.evaluate(() => {
+			const v = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+			const bar = document.querySelector<HTMLElement>('[data-slot="scroll-area-scrollbar"]')!;
+			const thumb = document.querySelector<HTMLElement>('[data-slot="scroll-area-thumb"]')!;
+			return { top: v.scrollTop, thumb: Math.round(new DOMMatrixReadOnly(getComputedStyle(thumb).transform).m42), attrs: ['data-hovering', 'data-scrolling', 'data-overflow-y-start', 'data-overflow-y-end'].filter((a) => bar.hasAttribute(a)).join(' ') };
+		});
+	await page.mouse.move(100, 100);
+	assert.deepEqual(await state(), { top: 0, thumb: 0, attrs: 'data-hovering data-overflow-y-end' });
+	await page.mouse.wheel(0, 300);
+	await page.waitForTimeout(100);
+	assert.deepEqual(await state(), { top: 300, thumb: 75, attrs: 'data-hovering data-scrolling data-overflow-y-start data-overflow-y-end' });
+	await page.waitForTimeout(600);
+	assert.equal((await state()).attrs, 'data-hovering data-overflow-y-start data-overflow-y-end', 'scrolling ends 500 ms after');
+	await page.mouse.click(195, 25);
+	assert.deepEqual(await state(), { top: 0, thumb: 0, attrs: 'data-hovering data-scrolling data-overflow-y-end' }, 'the thumb centred at 25 px is at the start');
+	await page.mouse.move(195, 10);
+	await page.mouse.down();
+	await page.mouse.move(195, 85, { steps: 4 });
+	await page.mouse.up();
+	assert.equal((await state()).top, 300, '75 px of the 150 px of thumb travel is half the 600 px of scroll');
+	await page.mouse.move(195, 150);
+	await page.mouse.wheel(0, 60);
+	await page.waitForTimeout(100);
+	assert.equal((await state()).top, 360);
+	await page.mouse.move(400, 400);
+	assert.equal((await state()).attrs.includes('data-hovering'), false);
 	await page.close();
 });
 

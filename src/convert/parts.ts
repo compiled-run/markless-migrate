@@ -30,6 +30,8 @@ export interface Port {
 	/** The exports it implements, as the source names them off the package. */
 	readonly exports: readonly string[];
 	readonly events: readonly PartEvent[];
+	/** DOM events whose library answer the port announces with an event of its own once the library would call the app (a questionnaire's checked submit). */
+	readonly announces?: Readonly<Record<string, string>>;
 	/**
 	 * Among the parts the source renders with an element's `data-slot`, whether this element is this library's: the markup
 	 * contract tells Radix's tab from Base UI's when a site renders both. The source decides the part; this only places it.
@@ -125,14 +127,19 @@ export const PORTS: readonly Port[] = [
 	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
+	{ module: 'textarea-autosize', library: 'react-textarea-autosize', exports: ['default'], events: ['input'], locate: (el) => el.tagName === 'textarea' },
 	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
 	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
+	// Base UI's toasts are Markless state (convert's NotifyPlan); the part runs the store, viewport and each root.
+	{ module: 'base-ui/toast', library: '@base-ui/react', exports: ['Toast.Provider', 'Toast.Viewport', 'Toast.Root', 'Toast.Content', 'Toast.Title', 'Toast.Description', 'Toast.Action', 'Toast.Close'], events: [], locate: () => false },
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
 	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false, needs: ['recharts-motion', 'recharts-layout', 'clock'] },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).
 	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown', 'focusin'], locate: (el) => radix(el) },
 	// Radix ScrollArea: the scrollbars it mounts on hover are rendered hidden in the area (convert's companions).
-	{ module: 'radix/scroll-area', library: 'radix-ui', needs: [], exports: ['ScrollArea.Root', 'ScrollArea.Viewport', 'ScrollArea.Scrollbar', 'ScrollArea.ScrollAreaScrollbar', 'ScrollArea.Thumb', 'ScrollArea.ScrollAreaThumb', 'ScrollArea.Corner'], events: ['pointerover'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'scroll-area' },
+	{ module: 'radix/scroll-area', library: 'radix-ui', needs: [], exports: ['ScrollArea.Root', 'ScrollArea.Viewport', 'ScrollArea.Scrollbar', 'ScrollArea.ScrollAreaScrollbar', 'ScrollArea.Thumb', 'ScrollArea.ScrollAreaThumb', 'ScrollArea.Corner'], events: ['pointerover', 'pointerdown'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'scroll-area' },
+	// Base UI ScrollArea: the scrollbars are in the page; the part sizes and moves the thumbs and takes the presses and wheel on them.
+	{ module: 'base-ui/scroll-area', library: '@base-ui/react', exports: ['ScrollArea.Root', 'ScrollArea.Viewport', 'ScrollArea.Content', 'ScrollArea.Scrollbar', 'ScrollArea.Thumb', 'ScrollArea.Corner'], events: ['pointerover', 'pointerdown', 'focusin'], locate: (el) => attr(el, 'data-slot')?.startsWith('scroll-area') === true },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 	// react-day-picker calendars are Markless state with handlers on their root (day-picker.ts DayPickerPlan places the
@@ -176,7 +183,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'qwik-ui/carousel', library: QWIK_UI, exports: ['Carousel.Root', 'Carousel.Scroller', 'Carousel.Slide', 'Carousel.Next', 'Carousel.Previous', 'Carousel.Pagination', 'Carousel.Bullet', 'Carousel.Player', 'Carousel.Stepper', 'Carousel.Step', 'Carousel.Title'], events: ['click', 'keydown', 'focusin', 'pointerdown'], locate: () => true, markup: (el) => attr(el, 'data-qui-carousel') !== undefined },
 	{ module: 'qwik-ui/toggle-group', library: QWIK_UI, exports: ['ToggleGroup.Root', 'ToggleGroup.Item'], events: ['keydown', 'click'], locate: () => true, markup: (el) => attr(el, 'data-qui-togglegroup-root') !== undefined },
 	{ module: 'qwik-ui/modal', library: QWIK_UI, exports: ['Modal.Root', 'Modal.Trigger', 'Modal.Panel', 'Modal.Close', 'Modal.Title', 'Modal.Description'], events: ['click', 'pointerdown', 'keydown'], locate: () => true, markup: (el) => el.tagName === 'dialog' && /-root$/.test(attr(el, 'id') ?? ''), handlers: [{ origin: /\/kit-headless\/src\/components\/modal\/modal-close\.tsx$/, mark: 'data-mm-close' }], qwikContext: { element: (id) => `${id}-root`, props: { closeOnBackdropClick: 'data-mm-backdrop-close' } } },
-	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
+	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input', 'submit'], announces: { submit: 'mmsubmit' }, locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
 // Exports whose element behaves as the native element it renders (a button, an input, a label, a heading, an icon's
@@ -276,6 +283,12 @@ export function portFor(el: Element): string | undefined {
 	if (!s || !resolver) return undefined;
 	const candidates = narrow(el, resolver.candidates(s));
 	return PORTS.find((port) => candidates.some((c) => c.library === port.library && port.exports.includes(c.export)) && port.locate(el))?.module;
+}
+
+/** The event the port of an element announces for a DOM event, when it checks it before the library calls the app. */
+export function announced(el: Element, event: string): string | undefined {
+	const module = portFor(el);
+	return PORTS.find((p) => p.module === module)?.announces?.[event];
 }
 
 let handled: (el: Element) => boolean = () => false;

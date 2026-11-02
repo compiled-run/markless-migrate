@@ -241,8 +241,11 @@ function goNext(form: HTMLFormElement): void {
 	setItem(form, enabled[index + 1]!);
 }
 
+// A submit whose checks passed: the submit event it causes is announced (mmsubmit), as the library then calls onSubmit.
+const passed = new WeakSet<HTMLFormElement>();
+
 /** The form's submit as the library checks it: the first item not answered is shown and focused instead. */
-export function submit(form: HTMLFormElement): boolean {
+function check(form: HTMLFormElement): boolean {
 	const active = activeOf(form);
 	const bad = enabledOf(form).find((item) => !validate(item));
 	render(form);
@@ -253,7 +256,19 @@ export function submit(form: HTMLFormElement): boolean {
 }
 
 function requestSubmit(form: HTMLFormElement): void {
-	if (submit(form)) form.requestSubmit();
+	if (!check(form)) return;
+	passed.add(form);
+	form.requestSubmit();
+}
+
+/** A submit event of the form: checked unless its press already was, then announced for the app's own submit handler. */
+export function submit(target: Element): boolean {
+	const form = target.closest<HTMLFormElement>(ROOT);
+	if (!form) return false;
+	remember(form);
+	if (!passed.delete(form) && !check(form)) return true;
+	form.dispatchEvent(new CustomEvent('mmsubmit', { bubbles: true }));
+	return true;
 }
 
 function confirmCurrent(form: HTMLFormElement): void {
@@ -336,7 +351,7 @@ export function input(target: Element): boolean {
 	return true;
 }
 
-export function click(target: Element): boolean {
+export function click(target: Element, event?: Event): boolean {
 	const button = target.closest<HTMLButtonElement>('button');
 	const form = button?.closest<HTMLFormElement>(ROOT);
 	if (!button || !form || button.disabled) return false;
@@ -345,7 +360,10 @@ export function click(target: Element): boolean {
 	if (slot === 'questionnaire-previous') goPrevious(form);
 	else if (slot === 'questionnaire-next') goNext(form);
 	else if (slot === 'questionnaire-skip') skipCurrent(form);
-	else if (button.type === 'submit') submit(form);
+	else if (button.type === 'submit') {
+		if (check(form)) passed.add(form);
+		else event?.preventDefault();
+	}
 	else if (button.type === 'reset') setTimeout(() => reset(form));
 	else return false;
 	return true;

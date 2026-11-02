@@ -24,6 +24,8 @@ export interface Choice {
 	readonly shown?: string;
 	/** What a menu item's trigger showed after it was chosen, when choosing changed only that (a version or team switcher). */
 	readonly trigger?: TriggerShown;
+	/** A message scroller it scrolled to a message (useMessageScroller's scrollToMessage), smoothly or at once. */
+	readonly scrolled?: { readonly message: string; readonly smooth: boolean };
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
@@ -212,6 +214,23 @@ const triggerShown = (page: Page, inMenu = false) =>
 			return { text, svg };
 		}, inMenu)
 		.catch(() => undefined);
+// Where each message scroller's viewport stands (run in the page).
+const scrollTops = () => [...document.querySelectorAll('[data-slot="message-scroller-viewport"]')].map((v) => v.scrollTop);
+
+// The message a scroller the choice moved stands at, at the top of its view, and whether it got there over frames (run in the page).
+function scrolledTo({ tops, early }: { tops: number[]; early: number[] }): { message: string; smooth: boolean } | undefined {
+	const viewports = [...document.querySelectorAll<HTMLElement>('[data-slot="message-scroller-viewport"]')];
+	const i = viewports.findIndex((v, k) => Math.abs(v.scrollTop - (tops[k] ?? 0)) > 1);
+	const viewport = viewports[i];
+	if (!viewport) return undefined;
+	const top = viewport.getBoundingClientRect().top;
+	const items = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')];
+	const at = items.reduce<HTMLElement | undefined>((best, item) => (!best || Math.abs(item.getBoundingClientRect().top - top) < Math.abs(best.getBoundingClientRect().top - top) ? item : best), undefined);
+	const message = at?.dataset.messageId;
+	if (!message) return undefined;
+	const mid = early[i] ?? tops[i] ?? 0;
+	return { message, smooth: Math.abs(mid - (tops[i] ?? 0)) > 1 && Math.abs(mid - viewport.scrollTop) > 1 };
+}
 
 // Options past this many are chosen on further pages at once, each page starting from the control opened afresh.
 const OPTIONS_PER_PAGE = 20;
@@ -220,10 +239,10 @@ const OPTIONS_PER_PAGE = 20;
  * Chooses, once per control, every option its revealed content offers without a link, and records where each sent the
  * page or what it copied, keyed by the option's value (cmdk's data-value) or its text. Each page it opens runs under `limit`.
  */
-export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task()): Promise<Record<string, Choice>> {
+export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}, limit: Limit = (task) => task(), scrollers = false): Promise<Record<string, Choice>> {
 	const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-	// shown5: menu choices also record the text and SVGs their trigger shows after.
-	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown5`}.json`);
+	// shown5: menu choices also record the text and SVGs their trigger shows after; .scroll: on a page with a message scroller, where an option scrolled it.
+	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : `-${optionsShown(reveal)}.shown5`}${scrollers ? '.scroll' : ''}.json`);
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
 	const viewport = VIEWPORTS.find((v) => v.name === reveal.viewport) ?? VIEWPORTS[0]!;
@@ -252,13 +271,16 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 					w.__mmCopied = [];
 					w.__mmWent = [];
 				});
+				const tops = scrollers ? await page.evaluate(scrollTops) : [];
 				// A click that cannot land (the list still opening under something) chose nothing: tried once more on a fresh load.
 				if (!(await target.click({ timeout: 2000 }).then(() => true, () => false)) && !((await openOn(page, origin, route, reveal.path)) && (await target.click({ timeout: 5000 }).then(() => true, () => false)))) {
 					failure ??= `could not choose ${key}`;
 					await openOn(page, origin, route, reveal.path);
 					continue;
 				}
+				const early = scrollers ? await page.waitForTimeout(40).then(() => page.evaluate(scrollTops)) : [];
 				await afterChoosing(page, before, requests, earlier);
+				const scrolled = scrollers ? await page.evaluate(scrolledTo, { tops, early }) : undefined;
 				const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
 				const went = await page.evaluate(() => (window as unknown as { __mmWent?: string[] }).__mmWent?.at(-1));
 				const after = page.url();
@@ -266,7 +288,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 				const moved = after !== before || went === before;
 				const triggerAfter = moved || copied !== undefined || triggerBefore === undefined ? undefined : await triggerShown(page);
 				const triggerChanged = triggerAfter !== undefined && JSON.stringify(triggerAfter) !== JSON.stringify(triggerBefore);
-				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : triggerChanged ? { trigger: triggerAfter } : chosen;
+				out[key] = moved ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : triggerChanged ? { trigger: triggerAfter } : scrolled ? { scrolled } : chosen;
 				// Only the item the trigger names is the current one; another that changes nothing (Add team) is not.
 				if (triggerAfter !== undefined && !triggerChanged && ownLabel !== '' && triggerAfter.text.map(([, t]) => t).join(' ').includes(ownLabel)) kept.set(key, triggerAfter);
 				if (triggerChanged || moved || copied !== undefined || !(await target.isVisible().catch(() => false))) await reopenOn(page, origin, route, reveal.path, before, listbox);
@@ -333,4 +355,11 @@ export function copyBinding(el: Tree, choices: Readonly<Record<string, Choice>> 
 	if (!choices || !/^menuitem/.test(attr(el, 'role') ?? '')) return undefined;
 	const copied = choices[textContent(el).trim()]?.copied;
 	return copied === undefined ? undefined : { extra: [`onClick={() => { void navigator.clipboard.writeText(${lit(copied)}); }}`] };
+}
+
+/** A menu item whose choosing scrolled a message scroller to a message on the old page: its click scrolls there too. */
+export function scrollBinding(el: Tree, choices: Readonly<Record<string, Choice>> | undefined): Binding | undefined {
+	if (!choices || !/^menuitem/.test(attr(el, 'role') ?? '')) return undefined;
+	const scrolled = choices[textContent(el).trim()]?.scrolled;
+	return scrolled ? { extra: [`onClick={() => scrollToMessage(${lit(scrolled.message)}, ${lit(scrolled.smooth ? 'smooth' : 'auto')})}`] } : undefined;
 }

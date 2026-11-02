@@ -7,12 +7,14 @@ import { isConfigFile, isScript, isTestFile, openProject, resolveImport, type Pr
 import { functionOf, isFunction, keyName, localInit, memberName, parseJsonc, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
 import type { Component, SourceRoute } from '../source/types.ts';
 import { catalogEntry, engineTraits, wrappedEngine, type CatalogEntry } from './catalog.ts';
+import { Compositions } from './composition.ts';
+import { Handlers } from './handlers.ts';
 import { PORTS, portDir } from './ports/index.ts';
 import { componentRoutes, fileRoutes } from './routes.ts';
 import { decideLibraries } from './decide.ts';
 import type { Overrides } from '../overrides.ts';
 import { cssPackage, drawsPixels, entryBytes, exportedNames, injectedTokens, installedPackage, packageFramework, rendersDom, type InstalledPackage } from './package.ts';
-import type { EngineFacts, ExportUsage, FamilyMapping, LibrariesFile, LibraryClass, LibraryPort, LibraryUsage, PortPart, PropUsage, Site, UsageSite } from './types.ts';
+import type { CarriedHandler, Composition, EngineFacts, ExportUsage, FamilyMapping, LibrariesFile, LibraryClass, LibraryPort, LibraryUsage, PortPart, PropUsage, Site, UsageSite } from './types.ts';
 
 const BUILTIN = new Set(builtinModules);
 const SKIP_SPEC = /^(node:|virtual:|~icons\/|\/|#|bun:|data:)|\?(url|raw|inline|worker)$/;
@@ -354,12 +356,14 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 	const bindingsToTrack: { mod: Module; binding: Binding }[] = [];
 	const importedFns: { exp: ExportUsage; path: string; file: string; spec: string; imported: string }[] = [];
 	const importers = new Map<string, string[]>();
+	const scanned: Module[] = [];
 
 	for (const file of files) {
 		const mod = await ctx.module(file);
 		if (!mod) continue;
 		// Test helpers outside a test folder (test-utils/) still only serve tests.
 		if ((mod.program.body as N[]).some((s) => s.type === 'ImportDeclaration' && TEST_LIBS.test(String(s.source.value)))) continue;
+		scanned.push(mod);
 		// A module loaded by `import("…")` (a registry's lazy examples) is rendered where its loader is.
 		walk(mod.program, (n) => {
 			if (n.type !== 'ImportExpression' || n.source?.type !== 'Literal') return;
@@ -752,6 +756,21 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		return hit;
 	};
 
+	const composer = new Compositions(ctx);
+	const carrier = new Handlers(ctx, composer);
+	const compositions: Composition[] = [];
+	const handlers: CarriedHandler[] = [];
+	for (const mod of scanned) {
+		for (const site of await composer.sites(mod)) {
+			const routes = siteRoutes(enclosingComponent(site.file, site.line)?.id, site.file);
+			compositions.push({ ...site, ...(routes.length ? { routes } : {}) });
+		}
+		for (const site of await carrier.sites(mod)) {
+			const routes = siteRoutes(enclosingComponent(site.file, site.line)?.id, site.file);
+			handlers.push({ ...site, ...(routes.length ? { routes } : {}) });
+		}
+	}
+
 	const kitExternalSites = new Map<string, number>();
 	if (kit) {
 		const d = drafts.get(kit.name);
@@ -875,7 +894,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 	const order: Record<LibraryClass, number> = { dom: 0, parity: 1, ported: 2, 'markless-ui': 3, unknown: 4, 'as-is': 5, framework: 6, drop: 7 };
 	libraries.sort((a, b) => order[a.class] - order[b.class] || b.sites - a.sites || a.name.localeCompare(b.name));
 	if (!options.newApp || !ui) limits.push('@markless/ui is not installed in the new app, so `available` on each mapping is null (install it and run plan again)');
-	return decideLibraries({ version: 1, generatedAt: new Date().toISOString(), source: dir, framework: options.framework ?? null, ...(ui ? { markless_ui: ui.version } : {}), libraries, limits: limits.sort() }, options.overrides);
+	return decideLibraries({ version: 1, generatedAt: new Date().toISOString(), source: dir, framework: options.framework ?? null, ...(ui ? { markless_ui: ui.version } : {}), libraries, ...(compositions.length ? { compositions } : {}), ...(handlers.length ? { handlers } : {}), limits: limits.sort() }, options.overrides);
 }
 
 function seenIn(exp: ExportUsage, key: string, file: string): void {

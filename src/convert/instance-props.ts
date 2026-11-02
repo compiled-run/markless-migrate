@@ -34,7 +34,8 @@ export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'react-aria/overlay', selector: '[role="tooltip"][data-rac][data-placement]', props: [{ name: 'placement' }, { name: 'offset' }, { name: 'crossOffset' }], hints: ['data-rac', 'role="tooltip"'] },
 	// The side and alignment a popup asked for: its data-side and data-align are where it went, after a flip away from an edge.
 	{ port: 'base-ui/popup', selector: '[data-base-ui-portal] > [role="presentation"][data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-base-ui-portal', 'data-side'] },
-	{ port: 'popper', selector: '[data-radix-popper-content-wrapper] > [data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }], hints: ['data-radix-popper-content-wrapper'] },
+	{ port: 'radix/dropdown-menu', selector: '[role="menubar"]', props: [{ name: 'loop' }], hints: ['role="menubar"'] },
+	{ port: 'popper', selector: '[data-radix-popper-content-wrapper] > [data-side]', props: [{ name: 'side', fallback: 'bottom' }, { name: 'align', fallback: 'center' }, { name: 'sideOffset' }, { name: 'alignOffset' }], hints: ['data-radix-popper-content-wrapper'], version: 2 },
 ];
 
 let siteSpecs: readonly InstanceSpec[] = [];
@@ -96,7 +97,8 @@ export function markInstanceProps({ specs, added }: { readonly specs: readonly I
 			const found = new Map<string, unknown>();
 			let toString: unknown;
 			for (let from = start, f = start.return; f && found.size < spec.props.length; from = f, f = f.return) {
-				if (others(f, from)) break;
+				// Past an element of the same kind holding this one (a submenu mounted inside its menu) is the outer instance's.
+				if (others(f, from) || (f.stateNode instanceof Element && typeof f.type === 'string' && f.stateNode.matches(spec.selector))) break;
 				for (const p of spec.props) if (!found.has(p.name) && own(f, p.name)) found.set(p.name, (f.memoizedProps as Record<string, unknown>)[p.name]);
 			}
 			if (spec.props.some((p) => p.as === 'form-value'))

@@ -608,6 +608,8 @@ export interface Notify {
 	readonly ms: number;
 	/** A sonner toast: what its Toast and Toaster were given, and its markup over its life. */
 	readonly sonner?: SonnerToast;
+	/** A Base UI toast: what its toast and Provider were given, and its root's markup over its life. */
+	readonly base?: BaseToastCapture;
 	/**
 	 * A listing's toast template: the one toast taken, the text its control copied (which the toast names), the site
 	 * function that copies and gives the text for any of them, and every control it stands for.
@@ -629,6 +631,14 @@ export interface SonnerToast {
 	readonly toaster: { readonly position: string; readonly gap: number; readonly visibleToasts: number; readonly expand: boolean; readonly hotkey: readonly string[]; readonly ol: readonly (readonly [string, string])[] };
 }
 
+/** A Base UI toast as the old page's React tree held it (parts/base-ui/toast.ts runs it). */
+export interface BaseToastCapture {
+	readonly timeout?: number;
+	readonly priority?: 'high' | 'low';
+	readonly phases: readonly { readonly at: number; readonly type?: string; readonly attrs: readonly (readonly [string, string])[]; readonly inner: string }[];
+	readonly provider: { readonly timeout: number; readonly limit: number };
+}
+
 export interface NotifyCapture {
 	readonly route: string;
 	readonly notifications: readonly Notify[];
@@ -636,7 +646,7 @@ export interface NotifyCapture {
 
 /** Uses each listed control on a fresh load and records what it added inside a live region, until that went away. */
 export async function captureNotifications(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[], template?: string): Promise<NotifyCapture> {
-	const file = join(dir, `${createHash('sha256').update(`notify2:${route}|${JSON.stringify(selectors)}${template ? `|template:${template}` : ''}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`notify3:${route}|${JSON.stringify(selectors)}${template ? `|template:${template}` : ''}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as NotifyCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const notifications: Notify[] = [];
@@ -755,7 +765,8 @@ export async function recordNotification(page: Page, use: () => Promise<boolean>
 	});
 	if (!added) return undefined;
 	const sonner = await page.evaluate(readSonner).catch(() => undefined);
-	const phases = sonner ? [...sonner.phases] : [];
+	const base = sonner ? undefined : await page.evaluate(readBaseToast).catch(() => undefined);
+	const phases = sonner ? [...sonner.phases] : base ? [...base.phases] : [];
 	let ms = 0;
 	while (Date.now() - started < 15000) {
 		const gone = await page.evaluate(() => (window as unknown as { __mmAdded: { node: Element }[] }).__mmAdded.every((a) => !a.node.isConnected));
@@ -764,17 +775,43 @@ export async function recordNotification(page: Page, use: () => Promise<boolean>
 			break;
 		}
 		// A toast whose content changes while it shows (a promise's result) is recorded at each change.
-		if (sonner) {
+		if (sonner || base) {
 			const now = await page.evaluate(sonnerPhase).catch(() => undefined);
 			const last = phases[phases.length - 1]!;
 			if (now && (now.inner !== last.inner || now.type !== last.type)) phases.push({ ...now, at: Date.now() - started });
 		}
-		await page.waitForTimeout(sonner ? 100 : 250);
+		await page.waitForTimeout(sonner || base ? 100 : 250);
 	}
-	return { sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}) };
+	return { sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}), ...(base ? { base: { ...base, phases } } : {}) };
 }
 
-/** The newest sonner toast's markup and type (run in the page). */
+/**
+ * The Base UI toast the use added, read from its React tree (run in the page): the toast's own timeout and priority, the
+ * Provider's timeout and limit, and its root's markup.
+ */
+function readBaseToast(): (Omit<BaseToastCapture, 'phases'> & { phases: { at: number; type?: string; attrs: [string, string][]; inner: string }[] }) | undefined {
+	const w = window as unknown as { __mmAdded: { node: Element }[]; __mmToast?: Element };
+	const root = w.__mmAdded.flatMap((a) => (a.node.matches('[data-slot="toast"]') ? [a.node] : [...a.node.querySelectorAll('[data-slot="toast"]')])).find((e) => e.isConnected && e.parentElement?.getAttribute('data-slot') === 'toast-viewport');
+	if (!root) return undefined;
+	type Fiber = { memoizedProps?: Record<string, unknown>; return?: Fiber };
+	const fiberOf = (el: Element) => (el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$'))!];
+	let f = fiberOf(root);
+	while (f && !(f.memoizedProps && typeof f.memoizedProps.toast === 'object')) f = f.return;
+	let provider = f;
+	while (provider && !(provider.memoizedProps && 'toastManager' in provider.memoizedProps)) provider = provider.return;
+	const toast = f?.memoizedProps?.toast as { timeout?: number; priority?: 'high' | 'low' } | undefined;
+	if (!toast) return undefined;
+	w.__mmToast = root;
+	const props = provider?.memoizedProps ?? {};
+	return {
+		...(typeof toast.timeout === 'number' ? { timeout: toast.timeout } : {}),
+		...(toast.priority ? { priority: toast.priority } : {}),
+		phases: [{ at: 0, type: root.getAttribute('data-type') ?? undefined, attrs: [...root.attributes].map((a) => [a.name, a.value]), inner: root.innerHTML }],
+		provider: { timeout: typeof props.timeout === 'number' ? props.timeout : 5000, limit: typeof props.limit === 'number' ? props.limit : 3 },
+	};
+}
+
+/** The newest toast's markup and type (run in the page). */
 function sonnerPhase(): { type?: string; attrs: [string, string][]; inner: string } | undefined {
 	const li = (window as unknown as { __mmToast?: Element }).__mmToast;
 	if (!li?.isConnected) return undefined;

@@ -484,3 +484,175 @@ test('a query library is replaced by Markless itself: a query becomes an async c
 	}
 	assert.equal(catalogEntry('@tanstack/react-query-devtools')?.class, 'drop');
 });
+
+test('a part rendered through its child (Radix asChild, Base UI render) is recorded with the slots its element can carry, through local wrappers', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-compose-'));
+	const put = async (rel: string, text: string) => {
+		await mkdir(join(dir, rel, '..'), { recursive: true });
+		await writeFile(join(dir, rel), text);
+	};
+	await put('package.json', JSON.stringify({ name: 'compose', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.4.3', '@base-ui/react': '1.0.0', '@radix-ui/react-popover': '1.1.0' } }));
+	await put('tsconfig.json', JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['./*'] } } }));
+	await put('styles/radix/ui/button.tsx', 'import { Slot } from "radix-ui"\nfunction Button({ asChild = false, ...props }) {\n\tconst Comp = asChild ? Slot.Root : "button"\n\treturn <Comp data-slot="button" {...props} />\n}\nexport { Button }\n');
+	await put('styles/radix/ui/sheet.tsx', [
+		'"use client"',
+		'import { Dialog as SheetPrimitive } from "radix-ui"',
+		'import { Button } from "@/styles/radix/ui/button"',
+		'function Sheet({ ...props }) {\n\treturn <SheetPrimitive.Root data-slot="sheet" {...props} />\n}',
+		'function SheetTrigger({ ...props }) {\n\treturn <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />\n}',
+		'function SheetClose({ ...props }) {\n\treturn <SheetPrimitive.Close data-slot="sheet-close" {...props} />\n}',
+		'function SheetContent({ children, ...props }) {\n\treturn (\n\t\t<SheetPrimitive.Portal>\n\t\t\t<SheetPrimitive.Content data-slot="sheet-content" {...props}>\n\t\t\t\t{children}\n\t\t\t\t<SheetPrimitive.Close data-slot="sheet-close" asChild>\n\t\t\t\t\t<Button>\n\t\t\t\t\t\t<span className="sr-only">Close</span>\n\t\t\t\t\t</Button>\n\t\t\t\t</SheetPrimitive.Close>\n\t\t\t</SheetPrimitive.Content>\n\t\t</SheetPrimitive.Portal>\n\t)\n}',
+		'function SheetFooter(props) {\n\treturn <div data-slot="sheet-footer" {...props} />\n}',
+		'export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetFooter }',
+		'',
+	].join('\n'));
+	await put('styles/base/ui/button.tsx', 'import { Button as ButtonPrimitive } from "@base-ui/react/button"\nfunction Button({ ...props }) {\n\treturn <ButtonPrimitive data-slot="button" {...props} />\n}\nexport { Button }\n');
+	await put('styles/base/ui/sheet.tsx', [
+		'import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"',
+		'function Sheet({ ...props }) {\n\treturn <SheetPrimitive.Root data-slot="sheet" {...props} />\n}',
+		'function SheetTrigger({ ...props }) {\n\treturn <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />\n}',
+		'function SheetClose({ ...props }) {\n\treturn <SheetPrimitive.Close data-slot="sheet-close" {...props} />\n}',
+		'function SheetFooter(props) {\n\treturn <div data-slot="sheet-footer" {...props} />\n}',
+		'export { Sheet, SheetTrigger, SheetClose, SheetFooter }',
+		'',
+	].join('\n'));
+	await put('examples/close-button.tsx', 'import { SheetClose } from "@/styles/radix/ui/sheet"\nexport function CloseButton(props) {\n\treturn <SheetClose {...props} />\n}\n');
+	await put('examples/radix-demo.tsx', [
+		'import * as Popover from "@radix-ui/react-popover"',
+		'import { Button } from "@/styles/radix/ui/button"',
+		'import { Sheet, SheetClose, SheetContent, SheetFooter, SheetTrigger } from "@/styles/radix/ui/sheet"',
+		'import { CloseButton } from "./close-button"',
+		'export default function RadixDemo() {',
+		'\treturn (',
+		'\t\t<Sheet>',
+		'\t\t\t<SheetTrigger asChild>',
+		'\t\t\t\t<Button variant="outline">Open</Button>',
+		'\t\t\t</SheetTrigger>',
+		'\t\t\t<SheetContent>',
+		'\t\t\t\t<SheetFooter>',
+		'\t\t\t\t\t<SheetClose asChild>',
+		'\t\t\t\t\t\t<Button variant="outline">Close</Button>',
+		'\t\t\t\t\t</SheetClose>',
+		'\t\t\t\t\t<CloseButton asChild>',
+		'\t\t\t\t\t\t<Button>Done</Button>',
+		'\t\t\t\t\t</CloseButton>',
+		'\t\t\t\t\t<SheetClose>Plain</SheetClose>',
+		'\t\t\t\t\t<Popover.Close asChild>',
+		'\t\t\t\t\t\t<button aria-label="Dismiss" />',
+		'\t\t\t\t\t</Popover.Close>',
+		'\t\t\t\t</SheetFooter>',
+		'\t\t\t</SheetContent>',
+		'\t\t</Sheet>',
+		'\t)',
+		'}',
+		'',
+	].join('\n'));
+	await put('examples/base-demo.tsx', [
+		'import { Button } from "@/styles/base/ui/button"',
+		'import { Sheet, SheetClose, SheetFooter, SheetTrigger } from "@/styles/base/ui/sheet"',
+		'export default function BaseDemo() {',
+		'\treturn (',
+		'\t\t<Sheet>',
+		'\t\t\t<SheetTrigger render={<Button variant="outline" />}>Open</SheetTrigger>',
+		'\t\t\t<SheetFooter>',
+		'\t\t\t\t<SheetClose render={<Button variant="outline" />}>Close</SheetClose>',
+		'\t\t\t</SheetFooter>',
+		'\t\t</Sheet>',
+		'\t)',
+		'}',
+		'',
+	].join('\n'));
+	await put('app/docs/radix/page.tsx', 'import RadixDemo from "../../../examples/radix-demo"\nexport default function Page() {\n\treturn <RadixDemo />\n}\n');
+	await put('app/docs/base/page.tsx', 'import BaseDemo from "../../../examples/base-demo"\nexport default function Page() {\n\treturn <BaseDemo />\n}\n');
+	const file = await scanLibraries(dir);
+	const found = (file.compositions ?? []).map((c) => [c.file, c.line, c.library, c.export, c.part, c.via, c.slots, c.text ?? null, c.label ?? null, c.within ?? null, c.routes ?? null]);
+	assert.deepEqual(found, [
+		['examples/base-demo.tsx', 6, '@base-ui/react', 'Dialog.Trigger', 'dialog-trigger', 'render', ['sheet-trigger', 'button'], 'Open', null, 'sheet', ['/docs/base']],
+		['examples/base-demo.tsx', 8, '@base-ui/react', 'Dialog.Close', 'dialog-close', 'render', ['sheet-close', 'button'], 'Close', null, 'sheet-footer', ['/docs/base']],
+		['examples/radix-demo.tsx', 8, 'radix-ui', 'Dialog.Trigger', 'dialog-trigger', 'asChild', ['sheet-trigger', 'button'], 'Open', null, 'sheet', ['/docs/radix']],
+		['examples/radix-demo.tsx', 13, 'radix-ui', 'Dialog.Close', 'dialog-close', 'asChild', ['sheet-close', 'button'], 'Close', null, 'sheet-footer', ['/docs/radix']],
+		['examples/radix-demo.tsx', 16, 'radix-ui', 'Dialog.Close', 'dialog-close', 'asChild', ['sheet-close', 'button'], 'Done', null, 'sheet-footer', ['/docs/radix']],
+		['examples/radix-demo.tsx', 20, '@radix-ui/react-popover', 'Close', 'popover-close', 'asChild', [], null, 'Dismiss', 'sheet-footer', ['/docs/radix']],
+		['styles/radix/ui/sheet.tsx', 18, 'radix-ui', 'Dialog.Close', 'dialog-close', 'asChild', ['sheet-close', 'button'], 'Close', null, 'sheet-content', ['/docs/radix']],
+	]);
+	// The row a site stands in is kept where its parent puts its children in the page as written (a host element, or a wrapper spreading its props).
+	const rows = (file.compositions ?? []).filter((c) => c.within === 'sheet-footer').map((c) => [c.file, c.line, c.siblings ?? null, c.index ?? null]);
+	assert.deepEqual(rows, [
+		['examples/base-demo.tsx', 8, ['Close'], 0],
+		['examples/radix-demo.tsx', 13, ['Close', 'Done', 'Plain', null], 0],
+		['examples/radix-demo.tsx', 16, ['Close', 'Done', 'Plain', null], 1],
+		['examples/radix-demo.tsx', 20, ['Close', 'Done', 'Plain', null], 3],
+	]);
+	await rm(dir, { recursive: true, force: true });
+});
+
+test('a kit wrapper rendered with asChild is a composition of the part it wraps', async () => {
+	const file = await scanLibraries(react);
+	const close = (file.compositions ?? []).filter((c) => c.file === 'src/features/delete-user.tsx').map((c) => [c.export, c.part, c.slots, c.text, c.routes]);
+	assert.deepEqual(close, [
+		['Trigger', 'dialog-trigger', ['dialog-trigger', 'button'], 'Delete', ['/account']],
+		['Close', 'dialog-close', ['dialog-close', 'button'], 'Cancel', ['/account']],
+	]);
+});
+
+test('an app submit handler is carried from the source with what it reads, its library calls named, and refused where it reads React', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-carry-'));
+	const put = async (rel: string, text: string) => {
+		await mkdir(join(dir, rel, '..'), { recursive: true });
+		await writeFile(join(dir, rel), text);
+	};
+	await put('package.json', JSON.stringify({ name: 'carry', dependencies: { next: '16.0.0', react: '19.0.0', sonner: '2.0.0' } }));
+	await put('lib/format.ts', 'export function list(values: string[]): string {\n\treturn values.join(", ") || "None"\n}\n');
+	await put('app/page.tsx', [
+		'import * as React from "react"',
+		'import { toast } from "sonner"',
+		'import { list } from "../lib/format"',
+		'const TITLE = "Plan saved"',
+		'const labelOf = (v: FormDataEntryValue | null) => String(v ?? "None")',
+		'export default function Page({ onDone }: { onDone: () => void }) {',
+		'\tconst [count, setCount] = React.useState(0)',
+		'\tconst prefix = "Direction: "',
+		'\tfunction handleSubmit(event: React.FormEvent<HTMLFormElement>) {',
+		'\t\tevent.preventDefault()',
+		'\t\tconst data = new FormData(event.currentTarget)',
+		'\t\ttoast(TITLE, { description: `${prefix}${labelOf(data.get("direction"))} · ${list(data.getAll("signals") as string[])}` })',
+		'\t}',
+		'\treturn (',
+		'\t\t<div>',
+		'\t\t\t<form data-slot="plan" onSubmit={handleSubmit}><p>Choose a direction for the agent</p></form>',
+		'\t\t\t<form data-slot="counter" onSubmit={() => setCount(count + 1)}><p>Count the submits made</p></form>',
+		'\t\t\t<form data-slot="done" onSubmit={(e) => { onDone() }}><p>Tell the caller it is done</p></form>',
+		'\t\t\t<form data-slot="maybe" onSubmit={(e) => { if (count) e.preventDefault() }}><p>Cancel only sometimes here</p></form>',
+		'\t\t</div>',
+		'\t)',
+		'}',
+		'',
+	].join('\n'));
+	const file = await scanLibraries(dir);
+	const handlers = file.handlers ?? [];
+	assert.deepEqual(handlers.map((h) => [h.slots, h.refused ?? null, h.cancels ?? false]), [
+		[['plan'], null, true],
+		[['counter'], 'reads count, setCount, which React state or a hook keeps', false],
+		[['done'], "reads the component's prop onDone", false],
+		[['maybe'], 'cancels its event where only it knows when, which a page applies as the event dispatches', false],
+	]);
+	const plan = handlers[0]!;
+	assert.deepEqual(plan.calls, { toast: { from: 'sonner', imported: 'toast' } });
+	assert.deepEqual(plan.words, ['Choose a direction for the agent']);
+	assert.doesNotMatch(plan.code!, /FormEvent|: string|preventDefault/);
+	// The carried code runs as the source's handler did, given what stands in for the library's toast.
+	const shown: unknown[] = [];
+	const form = { currentTarget: 'the form' };
+	const FormDataStub = class {
+		get() {
+			return 'tool-calls';
+		}
+		getAll() {
+			return ['progress', 'risks'];
+		}
+	};
+	const handler = new Function('FormData', `return (${plan.code})`)(FormDataStub)((...args: unknown[]) => shown.push(args));
+	handler(form);
+	assert.deepEqual(shown, [['Plan saved', { description: 'Direction: tool-calls · progress, risks' }]]);
+	await rm(dir, { recursive: true, force: true });
+});

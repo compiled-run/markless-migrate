@@ -17,6 +17,7 @@ const MARKUP: Readonly<Record<string, { readonly slot: string; readonly library:
 	resizable: { slot: 'resizable-panel-group', library: 'react-resizable-panels', export: 'Group', html: (t) => `<div data-slot="resizable-panel-group" data-group=""><p>${t}</p></div>` },
 	'shadcn/questionnaire': { slot: 'questionnaire', library: '@shadcn/react', export: 'Questionnaire.Root', html: (t) => `<div data-slot="questionnaire"><p>${t}</p></div>` },
 	cmdk: { slot: 'command', library: 'cmdk', export: 'Command', html: (t) => `<div data-slot="command" cmdk-root=""><input cmdk-input="" aria-label="${t}"></div>` },
+	'textarea-autosize': { slot: 'input-group-control', library: 'react-textarea-autosize', export: 'default', html: (t) => `<textarea data-slot="input-group-control" aria-label="${t}" style="height: 40px !important;"></textarea>` },
 };
 const MODULES = Object.keys(MARKUP);
 

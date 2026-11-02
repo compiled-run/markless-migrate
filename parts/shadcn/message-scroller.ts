@@ -409,3 +409,9 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	scrollerOf(target)?.userScrollIntent();
 	return false;
 }
+
+/** useMessageScroller's scrollToMessage, from a control outside the transcript (a menu item): the message is found by its id. */
+export function scrollToMessage(id: string, behavior: ScrollBehavior): void {
+	const item = [...document.querySelectorAll<HTMLElement>(`${CONTENT} > [data-message-id]`)].find((el) => el.dataset.messageId === id);
+	if (item) scrollerOf(item)?.scrollToMessage(id, { align: 'start', behavior });
+}

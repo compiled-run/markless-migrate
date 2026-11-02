@@ -13,6 +13,8 @@ export interface Factored {
 	readonly components: readonly SharedComponent[];
 	binding(route: string, el: Element): Binding | undefined;
 	used(route: string): readonly SharedComponent[];
+	/** The shared component that renders the element, if any. */
+	of(el: Element): SharedComponent | undefined;
 }
 
 /** Values a framework generates per render position (React's useId, Radix's and React Aria's ids built on it). */
@@ -302,6 +304,7 @@ export function factor(roots: ReadonlyMap<string, Element>, options: { readonly 
 			return component ? { replace: `<${component.name} path={path} />` } : undefined;
 		},
 		used: (route) => usedBy.get(route) ?? [],
+		of: (el) => byElement.get(el),
 	};
 }
 

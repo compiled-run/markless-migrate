@@ -107,13 +107,13 @@ export function place(anchor: Anchor, wrapper: HTMLElement, options: PlaceOption
 	return stop;
 }
 
-/** The placement a layer asks for: the captured content's own side and alignment, and the source's offsets. */
+/** The placement a layer asks for: the captured content's own side, alignment and offsets, else the source's offsets. */
 export function optionsOf(layer: HTMLElement, content: Element | null): PlaceOptions {
 	return {
 		// What the source asked for (convert reads it off the instance); data-side is where it went, after any flip.
 		side: content?.getAttribute('data-mm-side') ?? content?.getAttribute('data-side') ?? 'bottom',
 		align: content?.getAttribute('data-mm-align') ?? content?.getAttribute('data-align') ?? 'center',
-		sideOffset: Number(layer.dataset.mmSideOffset ?? '0'),
-		alignOffset: Number(layer.dataset.mmAlignOffset ?? '0'),
+		sideOffset: Number(content?.getAttribute('data-mm-side-offset') ?? layer.dataset.mmSideOffset ?? '0'),
+		alignOffset: Number(content?.getAttribute('data-mm-align-offset') ?? layer.dataset.mmAlignOffset ?? '0'),
 	};
 }

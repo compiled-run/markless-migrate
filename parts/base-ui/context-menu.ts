@@ -3,7 +3,7 @@ import { closesOnClick } from './menu.ts';
 
 // Base UI ContextMenu: a right press on the trigger area opens the menu at the pointer, focused; the menu port's item
 // rules (highlight, arrows, choosing closes) apply, and Escape or a press outside closes it.
-const TRIGGER = '[data-slot="context-menu-trigger"]:not([data-state])';
+const TRIGGER = ':is([data-slot="context-menu-trigger"], [data-mm-part="context-menu-trigger"]):not([data-state])';
 let current: Popup | undefined;
 
 const keyOf = (t: HTMLElement) => t.dataset.mmKey || t.id;
@@ -16,7 +16,7 @@ export function contextmenu(target: Element, event: MouseEvent): boolean {
 	const x = event.clientX;
 	const y = event.clientY;
 	const anchor = { getBoundingClientRect: () => DOMRect.fromRect({ x, y, width: 0, height: 0 }) };
-	current = openPopup(trigger, { key: keyOf(trigger), anchor, popupSelector: '[role="menu"]', fallbackAxisSide: 'none', onDismiss: (p) => close(p) });
+	current = openPopup(trigger, { key: keyOf(trigger), anchor, popupSelector: '[role="menu"]', fallbackAxisSide: 'none', triggerOutside: true, onDismiss: (p) => close(p) });
 	// Base UI's trigger area stays data-pressed while the menu it opened is open.
 	if (current) trigger.setAttribute('data-pressed', '');
 	current?.popup.focus({ preventScroll: true });

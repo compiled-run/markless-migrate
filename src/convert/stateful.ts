@@ -1,8 +1,9 @@
 import { parseFragment } from 'parse5';
-import { attr, childrenOf, inner as innerOf, isElement, isText, outer as outerOf, walk, type Element, type Node } from './dom.ts';
+import { attr, childrenOf, find, inner as innerOf, isElement, isText, outer as outerOf, textContent, walk, type Element, type Node } from './dom.ts';
 import { lit, mergeBindings, type Binding } from './tsrx.ts';
-import type { Notify, SonnerToast, Switch, ToggleGroup } from './toggles.ts';
+import type { BaseToastCapture, Notify, SonnerToast, Switch, ToggleGroup } from './toggles.ts';
 import { SONNER_STATE } from '../../parts/sonner.ts';
+import { BASE_TOAST_STATE } from '../../parts/base-ui/toast.ts';
 
 /**
  * Radix Tabs on Markless state: each tab list becomes one state() in the component that renders it, holding the active
@@ -730,6 +731,23 @@ export class NotifyPlan {
 
 	/** Whether a sonner toast was placed: parts/sonner.ts runs it. */
 	sonner = false;
+	/** Whether a Base UI toast was placed: parts/base-ui/toast.ts runs it. */
+	baseToast = false;
+	/** Whether the page's own handlers call sonner's toast() (carried from the source): each toaster then shows those too. */
+	programmatic = false;
+	private readonly programs = new Map<Element, { readonly call: string; readonly declare: readonly string[] }>();
+
+	/** What the page's own `toast()` calls in a handler carried onto `el` call: the toaster of its page, or none. */
+	programFor(el: Element): { readonly call: string; readonly declare: readonly string[] } | undefined {
+		let top: Element = el;
+		while (top.parentNode) top = top.parentNode as Element;
+		for (const [region, program] of this.programs) {
+			let r: Element = region;
+			while (r.parentNode) r = r.parentNode as Element;
+			if (r === top) return program;
+		}
+		return undefined;
+	}
 	private readonly toasterRegions = new Set<Element>();
 
 	/** Whether the element is (not merely holds) a region a sonner Toaster renders its toasts in. */
@@ -741,10 +759,16 @@ export class NotifyPlan {
 	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): number {
 		let placed = 0;
 		const toasters = new Map<Element, { control: Element; toast: SonnerToast; note: Notify; template?: { name: string; copied: string; controls: Element[] } }[]>();
+		const viewports = new Map<Element, { control: Element; toast: BaseToastCapture }[]>();
 		for (const note of notifications) {
 			const control = locate(note.sig, note.nth);
 			const region = locate(note.into.sig, note.into.nth);
 			if (!control || !region || this.bindings.has(control)) continue;
+			if (note.base) {
+				(viewports.get(region) ?? viewports.set(region, []).get(region)!).push({ control, toast: note.base });
+				placed++;
+				continue;
+			}
 			if (note.sonner) {
 				const template = note.template && { name: note.template.name, copied: note.template.copied, controls: note.template.controls.map((c) => locate(c.sig, c.nth)).filter((el): el is Element => el !== undefined && !this.bindings.has(el)) };
 				(toasters.get(region) ?? toasters.set(region, []).get(region)!).push({ control, toast: note.sonner, note, ...(template ? { template } : {}) });
@@ -763,7 +787,67 @@ export class NotifyPlan {
 			placed++;
 		}
 		for (const [region, toasts] of toasters) this.sonnerToaster(region, toasts, emit);
+		for (const [region, toasts] of viewports) this.baseViewport(region, toasts, emit);
 		return placed;
+	}
+
+	/**
+	 * A Base UI Toast viewport on Markless state (parts/base-ui/toast.ts): it renders a root per entry of one state(), each
+	 * showing the markup its control's use showed then, in an arm per toast and phase.
+	 */
+	private baseViewport(region: Element, toasts: readonly { control: Element; toast: BaseToastCapture }[], emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): void {
+		const name = `btst${this.n++}`;
+		const declare = [`let ${name} = state(BASE_TOAST_EMPTY);`];
+		const commit = `(v) => (${name} = v)`;
+		const first = toasts[0]!.toast.provider;
+		const T = JSON.stringify({ id: name, timeout: first.timeout, limit: first.limit });
+		const names: string[] = [];
+		for (const { toast } of toasts)
+			for (const phase of toast.phases)
+				phase.attrs.forEach(([n], k) => {
+					if (BASE_TOAST_STATE.has(n) || names.includes(n)) return;
+					const before = phase.attrs.slice(0, k).map(([m]) => m).reverse().find((m) => names.includes(m));
+					names.splice(before === undefined ? 0 : names.indexOf(before) + 1, 0, n);
+				});
+		for (const n of BASE_TOAST_STATE) if (n !== 'style' && !names.includes(n)) names.push(n);
+		const arms: string[] = [];
+		const alerts: string[] = [];
+		const escaped = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/[{}]/g, (c) => `{${lit(c)}}`);
+		toasts.forEach(({ control, toast }, k) => {
+			const spec = { view: k, ...(toast.timeout !== undefined ? { timeout: toast.timeout } : {}), ...(toast.priority ? { priority: toast.priority } : {}), phases: toast.phases.map((p) => ({ at: p.at, ...(p.type !== undefined ? { type: p.type } : {}), attrs: Object.fromEntries(p.attrs.filter(([n]) => !BASE_TOAST_STATE.has(n))) })) };
+			toast.phases.forEach((p, i) => {
+				// Only its own view is in the root: a hidden arm's text would be announced with the region's.
+				const view = lit(`${k}.${i}`);
+				const inner = emit(p.inner, (el) => (attr(el, 'data-slot') === 'toast-content' ? { omit: ['data-expanded', 'data-behind'], extra: ['data-expanded={item.c.expanded}', 'data-behind={item.c.behind}'] } : undefined));
+				arms.push(`@if (item.view === ${view}) { <>${inner}</> }`);
+				// ToastViewport's visually hidden alert for a high-priority toast: its title and description.
+				if (toast.priority === 'high') {
+					const frag = parseFragment(p.inner) as unknown as Element;
+					const text = (slot: string) => {
+						const el = find(frag, (e) => attr(e, 'data-slot') === slot);
+						return el ? escaped(textContent(el).trim()) : '';
+					};
+					alerts.push(`@if (a.view === ${view}) { <><div>${text('toast-title')}</div><div>${text('toast-description')}</div></> }`);
+				}
+			});
+			this.names.set(control, `${name}:${k}`);
+			this.bindings.set(control, mergeBindings(this.bindings.get(control), { declare, extra: [`onClick={() => baseToastAdd(${T}, ${JSON.stringify(spec)}, ${commit})}`] })!);
+		});
+		const on = (events: readonly string[]) => events.map((e) => `on${e}={(event) => baseToastViewport(${T}, event, ${commit})}`);
+		const root = `@for (const item of ${name}.items; key item.id) { <div ${names.map((n) => `${n}={item.a[${lit(n)}]}`).join(' ')} style={item.a.style}>${arms.join('')}</div> }`;
+		this.regions.add(region);
+		this.toasterRegions.add(region);
+		const own = this.bindings.get(region);
+		this.bindings.set(region, { ...own, declare: [...(own?.declare ?? []), ...declare], omit: [...(own?.omit ?? []), 'style', 'data-expanded'], extra: [...(own?.extra ?? []), `data-mm-base-toaster=${lit(name)}`, `style={${name}.style}`, `data-expanded={${name}.expanded}`, ...on(['MouseEnter', 'MouseMove', 'MouseLeave', 'FocusIn', 'FocusOut', 'Click', 'KeyDown', 'PointerDown', 'PointerMove', 'PointerUp', 'PointerCancel'])], children: root });
+		const portal = region.parentNode;
+		if (alerts.length && portal && isElement(portal)) {
+			const hidden = 'clip-path: inset(50%); overflow: hidden; white-space: nowrap; border: 0px; padding: 0px; width: 1px; height: 1px; margin: -1px; position: fixed; top: 0px; left: 0px;';
+			// Markless rebuilds no @if around rows holding branches: the hidden container stays, empty while nothing is announced.
+			const markup = `<div style=${lit(hidden)}>@for (const a of ${name}.alerts; key a.id) { <div role="alert" aria-atomic="true">${alerts.join('')}</div> }</div>`;
+			const at = this.bindings.get(portal);
+			this.bindings.set(portal, { ...at, declare: [...(at?.declare ?? []), ...declare], inserts: [...(at?.inserts ?? []), { before: null, markup }] });
+		}
+		this.baseToast = true;
 	}
 
 	/**
@@ -820,6 +904,11 @@ export class NotifyPlan {
 				this.bindings.set(each, mergeBindings(this.bindings.get(each), { declare, extra: [add] })!);
 			}
 		});
+		const program = this.programmatic ? this.programArm(toasts, toasts.length, emit) : undefined;
+		if (program) {
+			arms.push(program.arm);
+			this.programs.set(region, { call: `(message, options) => sonnerToast(${T}, ${JSON.stringify(program.spec)}, ${commit}, message, options)`, declare });
+		}
 		const on = (events: readonly string[], call: string) => events.map((e) => `on${e}={(event) => ${call}}`);
 		const li = names.map((n) => `${n}={item.a[${lit(n)}]}`);
 		const ol = first.ol.map(([n, v]) => (n === 'data-y-position' ? `${n}={list.y}` : n === 'data-x-position' ? `${n}={list.x}` : n === 'style' ? 'style={list.style}' : `${n}=${lit(v)}`));
@@ -830,6 +919,40 @@ export class NotifyPlan {
 		const own = this.bindings.get(region);
 		this.bindings.set(region, { ...own, declare: [...(own?.declare ?? []), ...declare], extra: [...(own?.extra ?? []), `data-mm-toaster=${lit(name)}`], children: markup });
 		this.sonner = true;
+	}
+
+	/**
+	 * The arm a toast the page's own code shows (sonner's `toast(title, { description })`) renders: a plain toast the old
+	 * page showed, its title the call's and a description beside it shaped as sonner renders one (the title's element with
+	 * data-description), shown only when the call gives one.
+	 */
+	private programArm(toasts: readonly { toast: SonnerToast }[], view: number, emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): { arm: string; spec: object } | undefined {
+		const TITLE = 'mmToastTitle0f3a';
+		const DESCRIPTION = 'mmToastDescription0f3a';
+		for (const { toast } of toasts) {
+			const phase = toast.phases.find((p) => !p.type || p.type === 'default');
+			if (!phase) continue;
+			const holder = parseFragment(phase.inner) as unknown as Element;
+			const title = [...walk(holder)].find((el) => attr(el, 'data-title') !== undefined);
+			if (!title?.parentNode) continue;
+			title.childNodes = [{ nodeName: '#text', value: TITLE, parentNode: title } as unknown as Node] as never;
+			const attrs = [...title.attrs.map((a) => (a.name === 'data-title' ? { ...a, name: 'data-description' } : a)).filter((a) => a.name !== 'class' || !a.value), { name: 'data-mm-description', value: '' }];
+			const description = { ...title, attrs, childNodes: [] as Node[] } as unknown as Element;
+			description.childNodes = [{ nodeName: '#text', value: DESCRIPTION, parentNode: description } as unknown as Node] as never;
+			const siblings = childrenOf(title.parentNode as Element);
+			siblings.splice(siblings.indexOf(title as never) + 1, 0, description as never);
+			const key = lit(`${view}.0`);
+			const markup = emit(innerOf(holder as never), (el) => {
+				if (el.parentNode && !('tagName' in el.parentNode)) return { omit: ['style'], extra: [`style={item.view === ${key} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] };
+				if (attr(el, 'data-mm-description') !== undefined) return { omit: ['data-mm-description'], extra: ['hidden={!item.t["description"]}'] };
+				return undefined;
+			});
+			const arm = markup.replaceAll(`{${lit(TITLE)}}`, TITLE).replaceAll(`{${lit(DESCRIPTION)}}`, DESCRIPTION).replaceAll(TITLE, '{item.t["title"] ?? ""}').replaceAll(DESCRIPTION, '{item.t["description"] ?? ""}');
+			if (!arm.includes('item.t["title"]')) continue;
+			const spec = { view, ...(toast.position ? { position: toast.position } : {}), duration: toast.duration, dismissible: toast.dismissible, promise: false, style: '', phases: [{ at: 0, attrs: Object.fromEntries(phase.attrs.filter(([n]) => n !== 'style' && !SONNER_STATE.has(n))) }] };
+			return { arm, spec };
+		}
+		return undefined;
 	}
 
 	/**
