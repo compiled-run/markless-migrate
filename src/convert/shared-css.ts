@@ -213,6 +213,19 @@ function layerOrder(css: string, ast: Node, into: string[]): void {
 	visit(ast.children, '');
 }
 
+/** How many leading characters the texts share, ending after a whole top-level rule: none when one is empty. */
+export function commonRules(texts: readonly string[]): number {
+	if (texts.length < 2 || texts.some((t) => !t)) return 0;
+	const ends = texts.map((t) => new Set<number>(parse(t).ast.children.map((n: Node) => n.end as number)));
+	let common = 0;
+	for (const end of [...ends[0]!].sort((a, b) => a - b)) {
+		const head = texts[0]!.slice(0, end);
+		if (!texts.every((t, i) => ends[i]!.has(end) && t.startsWith(head))) break;
+		common = end;
+	}
+	return common;
+}
+
 /** The leaf set a sheet's text keeps, from the shared choice, as recorded for a later partial convert. */
 export interface SharedRecord {
 	readonly sheets: readonly { readonly href: string; readonly sha: string; readonly keep: readonly number[] }[];
@@ -249,65 +262,63 @@ export async function shareStylesheets<T extends Tag>(input: {
 	readonly cuts: ReadonlyMap<string, Cut>;
 	readonly appended: ReadonlyMap<string, { readonly from: string; readonly extra: string }>;
 	readonly previous?: SharedRecord;
-	/** Per route, whether one element can carry two selectors' subject classes; without it any two can. */
-	readonly together?: ReadonlyMap<string, Together>;
+	/** A route's answer to whether one element can carry two selectors' subject classes; without it any two can. Asked once per route, in page order. */
+	readonly together?: (route: string) => Together | Promise<Together>;
 }): Promise<SharedResult<T> | { readonly skipped: string }> {
 	const { publicDir, heads, cuts, appended } = input;
 	const routes = [...input.pages.values()].flat().filter((r) => heads.has(r));
 	if (routes.length < 2) return { skipped: 'fewer than two pages' };
-	const files = new Map<string, Promise<Sheet | undefined>>();
-	const sheet = (href: string, text?: string) => {
-		const key = text === undefined ? href : `${href}\0${text}`;
-		if (!files.has(key))
-			files.set(
-				key,
-				(text === undefined ? readFile(join(publicDir, href), 'utf8') : Promise.resolve(text)).then(
-					(css) => {
-						// A rule whose selector does not parse is one a browser drops, wherever it is written.
-						const { ast } = parse(css);
-						return { css, ast, leaves: leavesOf(css, ast) };
-					},
-					() => undefined,
-				),
+	const read = (href: string) => readFile(join(publicDir, href), 'utf8').catch(() => undefined);
+	// The sheets cut from (a few, each read whole once); a page's own files are read when its turn comes and not kept.
+	const sources = new Map<string, Promise<Sheet | undefined>>();
+	const source = (href: string) => {
+		if (!sources.has(href))
+			sources.set(
+				href,
+				read(href).then((css) => {
+					if (css === undefined) return undefined;
+					// A rule whose selector does not parse is one a browser drops, wherever it is written.
+					const { ast } = parse(css);
+					return { css, ast, leaves: leavesOf(css, ast) };
+				}),
 			);
-		return files.get(key)!;
+		return sources.get(href)!;
 	};
-	// Each link as the sheet it was cut from, the leaves it keeps (all when uncut) and the page's own text appended to it.
-	const sources = new Map<string, { href: string; kept: ReadonlySet<number> | undefined; extra: string }>();
+	const keysOf = (css: string) => leavesOf(css, parse(css).ast).map((l) => l.keys);
+	// Each link as the sheet it was cut from, the leaves it keeps (all when uncut), the file before the page's own text was
+	// appended to it, and that text.
+	const links = new Map<string, { href: string; kept: ReadonlySet<number> | undefined; base: string; extra: string }>();
 	const lists = new Map<string, string[]>();
-	for (const [page, pageRoutes] of input.pages) {
-		const orders = pageRoutes.map((r) => heads.get(r)!.filter(isStylesheet));
-		if (orders.some((o) => !o.every(movable))) return { skipped: `${page} links a stylesheet that is not a plain same-origin file` };
-		const hrefs = orders.map((o) => o.map((t) => t.attrs.href!).filter((h, i, all) => all.lastIndexOf(h) === i));
-		if (hrefs.some((h) => h.join('\n') !== hrefs[0]!.join('\n'))) return { skipped: `${page}'s routes link different stylesheets` };
-		for (const r of pageRoutes) lists.set(r, hrefs[0]!);
-	}
+	for (const [page, pageRoutes] of input.pages)
+		for (const r of pageRoutes) {
+			const tags = heads.get(r)?.filter(isStylesheet);
+			if (!tags) continue;
+			if (!tags.every(movable)) return { skipped: `${page} links a stylesheet that is not a plain same-origin file` };
+			lists.set(r, tags.map((t) => t.attrs.href!).filter((h, i, all) => all.lastIndexOf(h) === i));
+		}
 	for (const hrefs of lists.values())
 		for (const href of hrefs) {
-			if (sources.has(href)) continue;
+			if (links.has(href)) continue;
 			const add = appended.get(href);
 			const base = add ? add.from : href;
 			const cut = cuts.get(base);
-			sources.set(href, { href: cut ? cut.href : base, kept: cut?.kept, extra: add?.extra ?? '' });
+			links.set(href, { href: cut ? cut.href : base, kept: cut?.kept, base, extra: add?.extra ?? '' });
 		}
-	for (const s of new Set([...sources.values()].map((s) => s.href))) {
-		const parsed = await sheet(s);
-		if (!parsed) return { skipped: `${s} does not parse` };
+	for (const s of new Set([...links.values()].map((s) => s.href))) {
+		const parsed = await source(s);
+		if (!parsed) return { skipped: `${s} does not read` };
 		if (parsed.ast.children.some((n: Node) => n.type === 'Atrule' && /^(?:import|namespace)$/i.test(n.name))) return { skipped: `${s} has an @import or @namespace` };
 	}
 	// The sheets every page links, in one order; the shared sheet of each holds the leaves the choice keeps.
-	const linked = (r: string) => lists.get(r)!.map((h) => sources.get(h)!.href);
+	const linked = (r: string) => lists.get(r)!.map((h) => links.get(h)!.href);
 	const common = linked(routes[0]!).filter((h) => routes.every((r) => linked(r).includes(h)));
 	if (routes.some((r) => linked(r).filter((h) => common.includes(h)).join('\n') !== common.join('\n'))) return { skipped: 'pages link the common stylesheets in different orders' };
 	if (!common.length) return { skipped: 'no stylesheet is linked by every page' };
-	const keptBy = (route: string, href: string) => {
-		const s = sources.get(lists.get(route)!.find((h) => sources.get(h)!.href === href)!)!;
-		return s.kept;
-	};
+	const keptBy = (route: string, href: string) => links.get(lists.get(route)!.find((h) => links.get(h)!.href === href)!)!.kept;
 	const choice = new Map<string, Set<number>>();
 	const previous = input.previous?.sheets;
 	const fits = async (p: SharedRecord['sheets'][number]) => {
-		const s = await sheet(p.href);
+		const s = await source(p.href);
 		if (!s || sha(s.css) !== p.sha) return false;
 		// A shared leaf other than a style rule (a withheld @font-face) must be one every page keeps.
 		const others = s.leaves.filter(({ leaf }) => leaf.type !== 'Rule' && p.keep.includes(leaf.start));
@@ -320,7 +331,7 @@ export async function shareStylesheets<T extends Tag>(input: {
 	if (reuse) for (const p of previous) choice.set(p.href, new Set(p.keep));
 	else
 		for (const href of common) {
-			const { leaves } = (await sheet(href))!;
+			const { leaves } = (await source(href))!;
 			const votes = new Map<number, number>();
 			for (const r of routes) {
 				const kept = keptBy(r, href);
@@ -332,10 +343,10 @@ export async function shareStylesheets<T extends Tag>(input: {
 		}
 	const sharedHrefs = common.filter((h) => choice.get(h)?.size);
 	if (!sharedHrefs.length) return { skipped: 'no rule is kept by more than half the pages' };
-	const written = new Map<string, string>();
+	const written = new Set<string>();
 	const write = async (path: string, text: string) => {
 		if (!written.has(path)) {
-			written.set(path, text);
+			written.add(path);
 			await writeFile(join(publicDir, path), text);
 		}
 		return path;
@@ -343,83 +354,105 @@ export async function shareStylesheets<T extends Tag>(input: {
 	const sharedTexts: string[] = [];
 	const shared: string[] = [];
 	for (const href of sharedHrefs) {
-		const { css, ast } = (await sheet(href))!;
+		const { css, ast } = (await source(href))!;
 		const keep = choice.get(href)!;
 		const text = keptText(css, ast, (leaf) => keep.has(leaf.start));
 		sharedTexts.push(text);
 		shared.push(await write(href.replace(/\.css$/, `.shared-${sha(text)}.css`), text));
 	}
-	const orders = new Map<string, string[]>();
 	const orderOf = (text: string) => {
-		if (!orders.has(text)) {
-			const into: string[] = [];
-			layerOrder(text, parse(text).ast, into);
-			orders.set(text, into);
-		}
-		return orders.get(text)!;
+		const into: string[] = [];
+		layerOrder(text, parse(text).ast, into);
+		return into;
 	};
-	const ranked = (texts: readonly string[]) => [...new Set(texts.flatMap(orderOf))];
+	const sharedOrder = sharedTexts.flatMap(orderOf);
+	// What a page links unchanged (a sheet not every page links): its layers, its size and its keys, by href.
+	const unchanged = new Map<string, Promise<{ order: string[]; size: number; keys: (readonly Key[])[] } | undefined>>();
+	const facts = (href: string) => {
+		if (!unchanged.has(href)) unchanged.set(href, read(href).then((css) => (css === undefined ? undefined : { order: orderOf(css), size: css.length, keys: keysOf(css) })));
+		return unchanged.get(href)!;
+	};
+	// A page's routes' own <style> texts after one sheet: the leading rules all of them have, imported by the page, and each one's rest.
+	const extraParts = new Map<string, readonly string[]>();
+	for (const pageRoutes of input.pages.values()) {
+		const bySheet = new Map<string, Map<string, string>>();
+		for (const r of pageRoutes)
+			for (const href of lists.get(r) ?? []) {
+				const link = links.get(href)!;
+				if (!bySheet.has(link.href)) bySheet.set(link.href, new Map());
+				bySheet.get(link.href)!.set(r, link.extra);
+			}
+		for (const extras of bySheet.values()) {
+			const texts = pageRoutes.map((r) => extras.get(r) ?? '');
+			const common = commonRules(texts);
+			for (const [r, extra] of extras) if (extra) extraParts.set(`${r}\0${extra}`, [extra.slice(0, common), extra.slice(common)].filter((t) => t.trim()));
+		}
+	}
 	const out = new Map<string, T[]>();
 	const bytes = { shared: sharedTexts.reduce((n, t) => n + t.length, 0), pages: 0, before: 0 };
 	for (const route of routes) {
-		const placed = new Placed(input.together?.get(route));
-		const replaced = new Map<string, string | undefined>();
-		const before: string[] = [];
-		const after: string[] = [];
+		const placed = new Placed(await input.together?.(route));
+		const own: string[] = [];
+		const was: string[][] = [];
+		const now: string[][] = [sharedOrder];
 		for (const href of lists.get(route)!) {
-			const source = sources.get(href)!;
-			const current = await sheet(href);
-			if (!current) return { skipped: `${href} does not parse` };
-			before.push(current.css);
-			const keep = choice.get(source.href);
-			const { css, ast, leaves } = (await sheet(source.href))!;
+			const link = links.get(href)!;
+			const keep = choice.get(link.href);
 			if (!keep) {
-				for (const l of current.leaves) placed.add(l.keys);
-				after.push(current.css);
-				replaced.set(href, href);
-				continue;
+				const base = await facts(link.base);
+				if (!base) return { skipped: `${link.base} does not read` };
+				for (const k of base.keys) placed.add(k);
+				was.push(base.order);
+				now.push(base.order);
+				bytes.before += base.size;
+				bytes.pages += base.size;
+				own.push(link.base);
+			} else {
+				const { css, ast, leaves } = (await source(link.href))!;
+				const mine = new Set<number>();
+				for (const l of leaves) {
+					if (link.kept && !link.kept.has(l.leaf.start)) continue;
+					// A shared leaf stays shared unless a leaf of this page's that came before it could lose to it now.
+					if (keep.has(l.leaf.start) && !placed.conflicts(l.keys)) continue;
+					mine.add(l.leaf.start);
+					placed.add(l.keys);
+				}
+				const cutBefore = link.kept ? keptText(css, ast, (leaf) => link.kept!.has(leaf.start)) : css;
+				was.push(orderOf(cutBefore));
+				bytes.before += cutBefore.length;
+				if (mine.size) {
+					const cut = keptText(css, ast, (leaf) => mine.has(leaf.start));
+					now.push(orderOf(cut));
+					bytes.pages += cut.length;
+					own.push(await write(link.href.replace(/\.css$/, `.used-${sha(cut)}.css`), cut));
+				}
 			}
-			const mine = new Set<number>();
-			for (const l of leaves) {
-				if (source.kept && !source.kept.has(l.leaf.start)) continue;
-				// A shared leaf stays shared unless a leaf of this page's that came before it could lose to it now.
-				if (keep.has(l.leaf.start) && !placed.conflicts(l.keys)) continue;
-				mine.add(l.leaf.start);
-				placed.add(l.keys);
+			// The page's own <style> text, after the sheet it was appended to: one file of its own, so the cut is the same on every page that keeps it.
+			if (link.extra) {
+				for (const k of keysOf(link.extra)) placed.add(k);
+				const order = orderOf(link.extra);
+				was.push(order);
+				now.push(order);
+				bytes.before += link.extra.length + 1;
+				bytes.pages += link.extra.length;
+				for (const part of extraParts.get(`${route}\0${link.extra}`) ?? [link.extra]) own.push(await write(link.href.replace(/\.css$/, `.used-${sha(part)}.css`), part));
 			}
-			if (source.extra) {
-				const extra = await sheet(`${href}#extra`, source.extra);
-				if (!extra) return { skipped: `${href}'s appended page CSS does not parse` };
-				for (const l of extra.leaves) placed.add(l.keys);
-			}
-			if (!mine.size && !source.extra) {
-				replaced.set(href, undefined);
-				continue;
-			}
-			const cut = keptText(css, ast, (leaf) => mine.has(leaf.start));
-			const own = source.extra ? `${cut}\n${source.extra}` : cut;
-			after.push(own);
-			replaced.set(href, await write(source.href.replace(/\.css$/, `.used-${sha(own)}.css`), own));
 		}
-		const was = ranked(before);
-		const now = ranked([...sharedTexts, ...after]);
-		if (now.filter((l) => was.includes(l)).join('\n') !== was.join('\n')) return { skipped: `${route} would rank its cascade layers otherwise` };
-		bytes.before += before.reduce((n, t) => n + t.length, 0);
-		bytes.pages += after.reduce((n, t) => n + t.length, 0);
-		out.set(
-			route,
-			heads.get(route)!.flatMap((t) => {
-				if (!isStylesheet(t)) return [t];
-				const href = replaced.get(t.attrs.href!);
-				return href ? [{ ...t, attrs: { ...t.attrs, href } }] : [];
-			}),
-		);
+		const before = [...new Set(was.flat())];
+		const after = [...new Set(now.flat())];
+		if (after.filter((l) => before.includes(l)).join('\n') !== before.join('\n')) return { skipped: `${route} would rank its cascade layers otherwise` };
+		const tags = heads.get(route)!;
+		const first = tags.findIndex(isStylesheet);
+		const template = tags[first]!;
+		const rest = tags.filter((t) => !isStylesheet(t));
+		const at = tags.slice(0, first).filter((t) => !isStylesheet(t)).length;
+		out.set(route, [...rest.slice(0, at), ...own.map((href) => ({ ...template, attrs: { ...template.attrs, href } })), ...rest.slice(at)]);
 	}
 	return {
 		shared,
 		heads: out,
-		written: [...written.keys()],
-		record: { sheets: await Promise.all(sharedHrefs.map(async (href) => ({ href, sha: sha((await sheet(href))!.css), keep: [...choice.get(href)!].sort((a, b) => a - b) }))) },
+		written: [...written],
+		record: { sheets: await Promise.all(sharedHrefs.map(async (href) => ({ href, sha: sha((await source(href))!.css), keep: [...choice.get(href)!].sort((a, b) => a - b) }))) },
 		reused: Boolean(reuse),
 		bytes,
 	};

@@ -38,31 +38,47 @@ test('a relative url() in an imported sheet is rewritten to the path it named fr
 	const css = '@font-face{font-family:f;src:url(../media/f.woff2) format("woff2"),url( "g h.woff" )}.a{background:url(/x.png)}.b{mask:url(data:image/svg+xml;utf8,<svg/>)}.c{filter:url(#n)}';
 	const dir = await app({ '/_next/static/chunks/s.css': css }, { 'p/one.tsrx': '//\n' });
 	const heads = new Map([['/one', [link('/_next/static/chunks/s.css')]]]);
-	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false), { moved: 1, urls: ['/_next/static/media/f.woff2', '/_next/static/chunks/g%20h.woff', '/x.png'], dropped: [] });
+	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false), { moved: 1, urls: ['/_next/static/media/f.woff2', '/_next/static/chunks/g%20h.woff', '/x.png'], dropped: [], body: new Map() });
 	assert.equal(await readFile(join(dir, 'styles/converted/_next/static/chunks/s.css'), 'utf8'), '@font-face{font-family:f;src:url("/_next/static/media/f.woff2") format("woff2"),url("/_next/static/chunks/g%20h.woff")}.a{background:url(/x.png)}.b{mask:url(data:image/svg+xml;utf8,<svg/>)}.c{filter:url(#n)}');
 	assert.equal(await readFile(join(dir, 'public/_next/static/chunks/s.css'), 'utf8'), css);
 	await rm(dir, { recursive: true, force: true });
 });
 
-test('a page keeps its links when its routes differ, a sheet has a media query, a cross-origin href or an @import', async () => {
-	const dir = await app({ '/s/a.css': '.a{}', '/s/b.css': '.b{}', '/s/rel.css': '@import "./r.css";.r{}' }, { 'p/one.tsrx': '//\n', 'p/two.tsrx': '//\n', 'p/three.tsrx': '//\n', 'p/four.tsrx': '//\n' });
+test('a page keeps its links when a sheet has a media query, a cross-origin href or an @import', async () => {
+	const dir = await app({ '/s/a.css': '.a{}', '/s/rel.css': '@import "./r.css";.r{}' }, { 'p/two.tsrx': '//\n', 'p/three.tsrx': '//\n', 'p/four.tsrx': '//\n' });
 	const heads = new Map([
-		['/one', [link('/s/a.css')]],
-		['/one?tab=2', [link('/s/b.css')]],
 		['/two', [link('/s/a.css', { media: 'print' })]],
 		['/three', [link('https://cdn.example/a.css')]],
 		['/four', [link('/s/rel.css')]],
 	]);
 	const before = structuredClone([...heads]);
 	const pages = new Map([
-		['p/one.tsrx', ['/one', '/one?tab=2']],
 		['p/two.tsrx', ['/two']],
 		['p/three.tsrx', ['/three']],
 		['p/four.tsrx', ['/four']],
 	]);
-	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), pages, heads, false), { moved: 0, urls: [], dropped: [] });
+	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), pages, heads, false), { moved: 0, urls: [], dropped: [], body: new Map() });
 	assert.deepEqual([...heads], before);
 	for (const file of pages.keys()) assert.equal(await readFile(join(dir, file), 'utf8'), '//\n');
+	await rm(dir, { recursive: true, force: true });
+});
+
+test("a page whose routes link different sheets imports the ones they all link first, and each route's others go to the body, in order", async () => {
+	const dir = await app({ '/s/a.css': '.a{}', '/s/b.css': '.b{}', '/s/x.css': '.x{}', '/s/y.css': '.y{}' }, { 'p/one.tsrx': '//\n', 'p/solo.tsrx': '//\n' });
+	const heads = new Map([
+		['/one', [meta, link('/s/a.css'), link('/s/b.css'), link('/s/x.css')]],
+		['/one?page=2', [meta, link('/s/a.css'), link('/s/b.css'), link('/s/y.css'), link('/s/x.css')]],
+		['/one?page=3', [meta, link('/s/a.css'), link('/s/b.css')]],
+		['/solo', [link('/s/x.css'), link('/s/y.css')]],
+	]);
+	const result = await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one', '/one?page=2', '/one?page=3']], ['p/solo.tsrx', ['/solo']]]), heads, false);
+	assert.equal(result.moved, 2);
+	assert.deepEqual(result.body, new Map([['/one', ['/s/x.css']], ['/one?page=2', ['/s/y.css', '/s/x.css']]]));
+	const source = await readFile(join(dir, 'p/one.tsrx'), 'utf8');
+	const copy = /^\/\/\nimport "\.\.\/(styles\/converted\/_combined\/[0-9a-f]{12}\.css)";\n$/.exec(source);
+	assert.ok(copy, source);
+	assert.equal(await readFile(join(dir, copy[1]!), 'utf8'), '.a{}\n.b{}');
+	for (const route of ['/one', '/one?page=2', '/one?page=3']) assert.deepEqual(heads.get(route), [meta]);
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -71,7 +87,7 @@ test('a rule whose selector a browser cannot parse is dropped from the copy, as 
 	const dir = await app({ '/c/s.css': css }, { 'p/one.tsrx': '//\n' });
 	const heads = new Map([['/one', [link('/c/s.css')]]]);
 	const result = await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false);
-	assert.deepEqual(result, { moved: 1, urls: ['/m/x.png'], dropped: [{ href: '/c/s.css', rule: '[data-vaul-handle-hitarea]:{width:100%;height:100%}', reason: 'Identifier is expected' }] });
+	assert.deepEqual(result, { moved: 1, urls: ['/m/x.png'], dropped: [{ href: '/c/s.css', rule: '[data-vaul-handle-hitarea]:{width:100%;height:100%}', reason: 'Identifier is expected' }], body: new Map() });
 	assert.equal(await readFile(join(dir, 'styles/converted/c/s.css'), 'utf8'), '@media (hover:hover) and (pointer:fine){[data-vaul-drawer]{user-select:none}}@media (pointer:fine){}.a{background:url("/m/x.png")}');
 	await rm(dir, { recursive: true, force: true });
 });
