@@ -528,11 +528,24 @@ export const recordPageSize = (rows: number, pageSize: number | undefined): numb
 const pageSizeOf = (state: Readonly<Record<string, Json>>): number | undefined => ((state.pagination as { pageSize?: number } | undefined)?.pageSize);
 
 /** Uses each control of the table once (a sorting control from every direction) and records what it did. */
+// How many tables each page's first load found: a reload waits until it finds them all again.
+const tablesOn = new WeakMap<Page, number>();
+
 /** The page as loaded again, its tables found again in the same order. */
 async function reload(page: Page): Promise<void> {
 	await page.reload({ waitUntil: 'load' }).catch(() => {});
 	await page.waitForTimeout(300);
-	await page.evaluate(findTables);
+	await findAgain(page, tablesOn.get(page) ?? 0);
+}
+
+/** Finds the page's tables again, waiting (up to 10 s) on a busy machine until there are `want` of them, as its first load had. */
+export async function findAgain(page: Pick<Page, 'evaluate' | 'waitForTimeout'>, want: number): Promise<void> {
+	for (let k = 0; ; k++) {
+		const found = (await page.evaluate(findTables)).filter((f) => f.spec).length;
+		if (found >= want) return;
+		if (k === 33) throw new Error(`${found} of the page's ${want} TanStack tables found again after it loaded again`);
+		await page.waitForTimeout(300);
+	}
 }
 
 async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, log: (line: string) => void): Promise<TableControl[]> {
@@ -994,6 +1007,7 @@ export async function captureTables(browser: Browser, origin: string, route: str
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForTimeout(300);
 		const found = await page.evaluate(findTables);
+		tablesOn.set(page, found.filter((f) => f.spec).length);
 		let index = 0;
 		for (const f of found) {
 			if (!f.spec || !f.region) {
