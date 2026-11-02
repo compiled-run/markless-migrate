@@ -33,6 +33,21 @@ test('a recharts chart: the active point in state(), the tooltip and the SVG\'s 
 	assert.deepEqual(plan.bind(wrapper)?.declare, ['let chart0 = state(-1);', 'const chart0t = [["March"],["April"]];', 'const chart0w0v0a0 = [["5","6"],["15","7"]];', 'const chart0w0v0c0 = ["layer","layer recharts-active-shape"];']);
 });
 
+test('a tooltip the old page shows at rest (recharts\' defaultIndex) starts the chart\'s state() on the point it shows', () => {
+	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"><g class="layer"></g></svg><div class="recharts-tooltip-wrapper" style="visibility: visible; transform: translate(20px, 5px);"><div><span>April</span></div></div></div></body>');
+	const wrapper = find(body(doc), (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const plan = new ChartPlan();
+	const states = [
+		{ tooltip: '<div><span>March</span></div>', x: 20, y: null, added: [], changed: [] },
+		{ tooltip: '<div><span>April</span></div>', x: 40, y: null, added: [], changed: [] },
+	];
+	const variant = { mode: 'x' as const, segments: [[0, 10, 0], [12, 30, 1]] as [number, number, number][], states, points: {}, elements: 1 };
+	assert.equal(plan.add(body(doc), [{ sig: 's', nth: 0, width: 100, height: 50, view: [5, 5, 90, 40], variants: [variant], drivers: [], index: 0, widths: [] }], () => wrapper, (h) => h), 1);
+	assert.equal(plan.bind(wrapper)?.declare?.[0], 'let chart0 = state(1);');
+	const emitted = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(emitted, /@if \(chart0 >= 0\) \{ <><div><span>\{chart0t\[chart0\]\[0\]\}<\/span><\/div><\/> \}/, 'the tooltip is still the template over every point');
+});
+
 test('a card whose controls change the chart: a state() for the SVG shown, set by a press or by the option chosen', () => {
 	const doc = parseDocument('<body><div data-slot="card"><div data-slot="card-header"><button data-active="true">Desktop</button><button data-active="false">Mobile</button></div><div class="recharts-wrapper"><svg class="recharts-surface"><g class="a"></g></svg><div class="recharts-tooltip-wrapper"></div></div></div></body>');
 	const root = body(doc);

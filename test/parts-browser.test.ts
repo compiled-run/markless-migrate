@@ -1284,6 +1284,26 @@ test('recharts: an SVG scaled to its container maps the pointer and the tooltip 
 	await page.close();
 });
 
+test('recharts: a tooltip shown at rest (defaultIndex) goes where the arrow keys put its point, at the size the chart is drawn, without sliding there', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]], k: [[0, 50, 20], [1, 200, 20]], r: 1 });
+	const page = await open(
+		// Chrome on Linux can send a pointerover at 0,0 as the page loads: the chart is clear of it, as no pointer is over it at rest.
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: visible; position: absolute; top: 0px; left: 0px; transform: translate(200px, 20px);">tip</div></div></div>`,
+		['recharts'],
+	);
+	await page.mouse.move(900, 700);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	assert.match(await tooltipAt(page, /translate\(400px, 40px\)/), /translate\(400px, 40px\)/, 'point 1 at the keys\' place, its translate doubled with the SVG');
+	const tip = page.locator('.recharts-tooltip-wrapper');
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.transition), '', 'placed, not slid in from the capture\'s place');
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'visible');
+	await page.mouse.move(300, 150);
+	assert.match(await tooltipAt(page, /translate\(100px, 40px\)/), /translate\(100px, 40px\)/, 'the pointer takes over');
+	await page.mouse.move(900, 700);
+	await page.waitForFunction(() => (document.querySelector('.recharts-tooltip-wrapper') as HTMLElement).style.visibility === 'hidden');
+	await page.close();
+});
+
 test('recharts: a radar\'s tooltip follows the pointer\'s radius on the point\'s axis, as recharts anchors it', async () => {
 	const facts = JSON.stringify({ w: 200, h: 200, v: [0, 0, 200, 200], m: 'a', c: [100, 100], g: [[45, 135, 0], [225, 315, 1]], sp: [0, 100], p: [[null, null], [null, null]], q: [90, 270] });
 	const page = await open(
