@@ -119,21 +119,7 @@ test("shards are packed longest first by each route's time in an earlier run, so
 	assert.deepEqual(shards.map((s) => s.routes), [['/a'], ['/b', '/f'], ['/e', '/d', '/c']]);
 	// Dealt in turn, as before, the two slow pages would share a runner with others.
 	assert.deepEqual(split(targets, 3).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']]);
-	assert.deepEqual(split(targets, 3, costsOf([{ route: '/a', ok: true, timing: { ms: 1 } }] as never)).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']], 'times for under a quarter of the routes are not used');
-});
-
-test("a route's newest time in any earlier run packs the shards, and a route stopped at its deadline took at least the deadline", () => {
-	const newest = [
-		{ route: '/a', ok: true, timing: { ms: 10 } },
-		{ route: '/b', ok: false, infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 1800 s, steps done 3 of 8: ...' } },
-		{ route: '/c', ok: false, failures: [{ dimension: 'http', check: 'the check of this route', actual: 'incomplete: timed out after 900 s, steps done 9 of 10' }] },
-		{ route: '/d', ok: false, infrastructure: { cause: 'shard not finished', message: 'shard 2 wrote no report' } },
-	];
-	const older = [
-		{ route: '/a', ok: true, timing: { ms: 99 } },
-		{ route: '/d', ok: true, timing: { ms: 7 } },
-	];
-	assert.deepEqual([...costsOf(newest as never, older as never)], [['/a', 10], ['/b', 1_800_000], ['/c', 900_000], ['/d', 7]]);
+	assert.deepEqual(split(targets, 3, costsOf([{ route: '/a', ok: true, timing: { ms: 1 } }] as never)).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']], 'times for under half the routes are not used');
 });
 
 test("a shard's route times come from its progress files when it stopped before its report", async () => {
@@ -145,7 +131,6 @@ test("a shard's route times come from its progress files when it stopped before 
 	await writeFile(join(dir, '3.json'), JSON.stringify({ route: '/c', result: { route: '/c', ok: false, failures: [], infrastructure: { message: 'no answer' } } }));
 	const times = await routeTimes(join(root, '.migrate'));
 	assert.deepEqual(times.sort((x, y) => (x.route < y.route ? -1 : 1)), [{ route: '/a', timing: { ms: 1234 } }, { route: '/b', infrastructure: { message: 'timed out after 60 s' } }]);
-	assert.deepEqual([...costsOf(times as never)], [['/a', 1234], ['/b', 60_000]]);
 });
 
 test('the merged summary tells the runner time of each part of the check, the original served and the old-side store counts', async () => {

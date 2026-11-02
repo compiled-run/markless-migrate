@@ -137,7 +137,7 @@ jobs:
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
       build: ${{ steps.build.outputs.build }}
@@ -183,28 +183,16 @@ jobs:
         with:
           name: ${{ inputs.only-artifact }}
           path: ${{ runner.temp }}/only
-      # Each route's newest time in the last 10 checks that timed any route, however they ended (most full runs are cancelled or
-      # stop at the step cap), packs the shards, longest first: each shard's route times, or the merged report of a run before them.
-      - name: Earlier checks' route times
+      # Each route's time in the last finished check packs the shards, longest first (split ignores a report of another site's routes).
+      - name: The last check's route times
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          i=0
-          runs=$( { for wf in check.yml pipeline.yml; do gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" -L 30 --json databaseId,createdAt,status --jq '.[] | select(.status == "completed") | "\(.createdAt) \(.databaseId)"'; done; } | sort -r | cut -d' ' -f2)
-          for run in $runs; do
-            dir="$RUNNER_TEMP/earlier/$i"
-            if gh run download "$run" -R "$GITHUB_REPOSITORY" -p 'check-times-*' -D "$dir" 2>/dev/null && [ -n "$(find "$dir" -name route-times.json)" ]; then
-              # shellcheck disable=SC2046
-              node -e 'const fs=require("fs");const [out,...files]=process.argv.slice(1);fs.writeFileSync(out,JSON.stringify({routes:files.flatMap(f=>JSON.parse(fs.readFileSync(f,"utf8")).routes)}))' "$dir/report.json" $(find "$dir" -name route-times.json)
-            elif ! gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$dir" 2>/dev/null; then rm -rf "$dir"; continue; fi
-            echo "route times from run $run"
-            i=$((i + 1))
-            [ "$i" -lt 10 ] || break
+          for run in $(gh run list -R "$GITHUB_REPOSITORY" --workflow check.yml --status success -L 10 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$RUNNER_TEMP/earlier" 2>/dev/null; then echo "route times from run $run"; break; fi
           done
       - id: split
-        run: |
-          # shellcheck disable=SC2046
-          echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards $(for d in $(seq 0 9); do [ ! -f "$RUNNER_TEMP/earlier/$d/report.json" ] || echo "$RUNNER_TEMP/earlier/$d/report.json"; done))" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
@@ -355,7 +343,7 @@ jobs:
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
-      # A few kB a later run's plan reads to pack its shards, kept apart from the shard's artifact so the plan downloads only this.
+      # A few kB: each route's time, however the shard ended, kept apart from the shard's artifact so a later run can read only this.
       - name: Route times
         if: always()
         run: |
