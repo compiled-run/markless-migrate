@@ -23,7 +23,7 @@ after(async () => {
 
 const twoFrames = () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 100))));
 
-test('a layout shift right after a click is not counted, as Chrome leaves it out of CLS (hadRecentInput)', async () => {
+test("a layout shift right after a click adds nothing to the step's layout shift score, as Chrome leaves it out of CLS (hadRecentInput); the jump is still read", async () => {
 	const tab = await browser.newPage({ viewport: { width: 800, height: 600 } });
 	try {
 		await tab.setContent(page);
@@ -32,13 +32,13 @@ test('a layout shift right after a click is not counted, as Chrome leaves it out
 		await tab.click('#go');
 		await tab.evaluate(twoFrames);
 		const read = await tab.evaluate(readReaction);
-		assert.deepEqual(read.shift, { score: 0, x: 0, y: 0 });
+		assert.deepEqual(read.shift, { score: 0, x: 0, y: 300 });
 	} finally {
 		await tab.close();
 	}
 });
 
-test('a layout shift with no input before it is counted', async () => {
+test('a layout shift with no input before it counts in the score', async () => {
 	const tab = await browser.newPage({ viewport: { width: 800, height: 600 } });
 	try {
 		await tab.setContent(page);

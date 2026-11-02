@@ -801,13 +801,12 @@ export function watchReaction(): void {
 		}
 	});
 	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
-	// Layout shifts while the step runs, as CLS counts them: a shift within 500 ms of a discrete input (hadRecentInput) is the visitor's own doing.
+	// The score is CLS's, without shifts within 500 ms of a discrete input (hadRecentInput); the jump counts every shift: a page that jumps when a dialog closes is no answer the old page gave.
 	let shifts: PerformanceObserver | undefined;
 	try {
 		shifts = new PerformanceObserver((list) => {
 			for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
-				if (entry.hadRecentInput) continue;
-				shift.score += entry.value;
+				if (!entry.hadRecentInput) shift.score += entry.value;
 				// Only a large part of the page moving counts as the page jumping; a word reflowing beside a changed number does not.
 				for (const source of entry.sources ?? []) {
 					if (source.currentRect.width * source.currentRect.height < innerWidth * innerHeight * 0.25) continue;
@@ -836,8 +835,7 @@ export function readReaction(): { changes: string[]; affected: string[]; scrolle
 	const watch = g.__markless_migrate_reaction__;
 	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [], tweened: [] };
 	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
-		if (entry.hadRecentInput) continue;
-		watch.shift.score += entry.value;
+		if (!entry.hadRecentInput) watch.shift.score += entry.value;
 		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
 	}
 	watch.shifts?.disconnect();
