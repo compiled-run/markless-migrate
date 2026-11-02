@@ -6,7 +6,7 @@
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
 // routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
 // results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago; `times <.migrate dir>
-// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline); `survey-join <site targets.json>
+// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline), for a later run's `split`; `survey-join <site targets.json>
 // <out.json> <slice survey.json>...` joins the layout surveys of the site's slices in the site's order. The merged summary also tells the
 // original served, the old-side store's counts and the runner time of each part of the check.
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -42,8 +42,9 @@ interface ReportRoute {
 export function split(targets: Targets, n: number, costs?: ReadonlyMap<string, number>): Targets[] {
 	const shards = Array.from({ length: n }, () => ({ routes: [] as string[], endpoints: [] as string[], redirects: [] as string[], unchecked: [] as unknown[] }));
 	const known = targets.routes.map((r) => costs?.get(r)).filter((ms): ms is number => ms !== undefined).sort((x, y) => x - y);
-	// Times for under half the routes (another site's report, or a run of a few) would pack by guesses.
-	if (known.length && known.length * 2 >= targets.routes.length) {
+	// Times for under a quarter of the routes (another site's report, or a run of a few) would pack by guesses; full runs stopped
+	// at the step cap time about half of shadcn's 605.
+	if (known.length && known.length * 4 >= targets.routes.length) {
 		const median = known[known.length >> 1]!;
 		const cost = (r: string) => costs!.get(r) ?? median;
 		const load = new Array<number>(n).fill(0);
@@ -202,8 +203,16 @@ export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, numbe
 	return { kept: { ...targets, routes: targets.routes.filter((r) => !long.includes(r)) }, sliced };
 }
 
-/** Each route's check time in a merged report, for `split`. */
-export const costsOf = (routes: readonly Timed[]): Map<string, number> => new Map(routes.flatMap((r) => (r.timing ? [[r.route, r.timing.ms] as const] : [])));
+/** Each route's check time in earlier runs' reports, newest run first: a route's newest time stands, however its run ended. */
+export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<string, number> {
+	const costs = new Map<string, number>();
+	for (const routes of newestFirst)
+		for (const r of routes) {
+			const ms = costs.has(r.route) ? undefined : tookMs(r);
+			if (ms !== undefined) costs.set(r.route, ms);
+		}
+	return costs;
+}
 
 /** Each route's time in a shard's .migrate folder (its report, or the progress files of a shard stopped before one), as a report of routes and timings only. */
 export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[]> {
@@ -429,19 +438,22 @@ export async function joinKept(from: string, to: string, now: Date, days = 30): 
 }
 
 async function main(): Promise<void> {
-	const [command, a, b, c, d] = process.argv.slice(2);
+	const [command, a, b, c] = process.argv.slice(2);
 	if (command === 'split' && a && b && c) {
 		const at = process.argv.indexOf('--slice-over');
 		const over = at > 0 ? Number(process.argv[at + 1]) : undefined;
 		if (at > 0 && !(over! > 0)) throw new Error(`split: --slice-over takes the seconds a route may take, got ${process.argv[at + 1]}`);
-		const earlier = d && d !== '--slice-over' ? await readReport(d).catch(() => undefined) : undefined;
-		const earlierRoutes = earlier?.routes ?? [];
-		const costs = earlier ? costsOf(earlierRoutes) : undefined;
+		const files = process.argv.slice(6).filter((_, i) => at < 0 || (i + 6 !== at && i + 6 !== at + 1));
+		const earlier = (await Promise.all(files.map((f) => readReport(f).then((r) => r.routes ?? [], () => [] as ReportRoute[])))).filter((r) => r.length);
+		const costs = earlier.length ? costsOf(...earlier) : undefined;
+		// Slicing reads each route's newest record, newest run first.
+		const seen = new Set<string>();
+		const newest = earlier.flat().filter((r) => !seen.has(r.route) && seen.add(r.route));
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
-		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(earlierRoutes), over * 1000) : { kept: targets, sliced: [] };
+		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000) : { kept: targets, sliced: [] };
 		const shards = split(kept, Number(b), costs);
-		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${d}`);
-		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier run says it takes ${Math.round(estimatesOf(earlierRoutes).get(r.route)! / 1000)} s, over its ${over} s`);
+		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${earlier.length} earlier runs`);
+		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier runs say it takes ${Math.round(estimatesOf(newest).get(r.route)! / 1000)} s, over its ${over} s`);
 		await mkdir(c, { recursive: true });
 		for (const [i, shard] of shards.entries()) await writeFile(join(c, `shard-${i + 1}.json`), `${JSON.stringify(shard)}\n`);
 		for (const r of sliced) await writeFile(join(c, `shard-${r.shard}.json`), `${JSON.stringify({ routes: [r.route], endpoints: [], redirects: [], unchecked: [] })}\n`);
@@ -532,7 +544,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] [--slice-over <seconds>] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>, newest run first...] [--slice-over <seconds>] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
 	process.exit(2);
 }
 
