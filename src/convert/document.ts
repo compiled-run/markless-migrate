@@ -138,6 +138,9 @@ ${arms}
 			}${headScripts.map((h) => (typeof h === 'string' ? `\n\t\t\t<script>{${h}}</script>` : `\n\t\t\t<script ${h.attributes}>{${h.name}}</script>`)).join('')}
 		</head>
 		<body${bodyNames.map((n) => ` ${n}={${attrExpr('page.body', n)}}`).join('')}>
+			@for (const href of page.sheets; key href) {
+				<link rel="stylesheet" href={href} />
+			}
 			${before.join('\n\t\t\t')}
 			{children}
 			<BodyExtras route={route} />
@@ -348,6 +351,8 @@ export interface PageHead {
 	readonly body: Readonly<Record<string, string>>;
 	readonly tags: readonly { readonly key: number; readonly tag: string; readonly a: Readonly<Record<string, string | undefined>>; readonly text: string }[];
 	readonly late: readonly string[];
+	/** The page's own stylesheets its module does not import, linked first in the body. */
+	readonly sheets: readonly string[];
 }
 
 export function headOf(page: { readonly href: string } | undefined): PageHead {
@@ -356,11 +361,12 @@ export function headOf(page: { readonly href: string } | undefined): PageHead {
 	const origin = import.meta.env.VITE_APP_URL || (url ? url.origin : '');
 	// A path no route has is the not-found page's.
 	const route = (url && (ROUTES[url.pathname + url.search] ?? ROUTES[url.pathname] ?? ROUTES['/_markless-migrate/not-found'])) ?? ROUTES['/'];
-	if (!route) return { html: {}, body: {}, tags: [], late: [] };
+	if (!route) return { html: {}, body: {}, tags: [], late: [], sheets: [] };
 	return {
 		html: route.html,
 		body: route.body,
 		late: route.late ?? [],
+		sheets: route.sheets ?? [],
 		tags: route.tags.map((id, key) => {
 			const t = TAGS[id]!;
 			const a: Record<string, string | undefined> = { ...t.attrs };
