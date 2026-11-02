@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import { chromium } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
-import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
-import { extrasModule, LAYER_FILL, layerTable, pagesWiring, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
+import { body, find, isElement, outer, parseDocument, walk } from '../src/convert/dom.ts';
+import { documentExtras, extrasModule, LAYER_FILL, layerTable, pagesWiring, SERVED_LAYER_BYTES, splitBody, trailingExtras } from '../src/convert/document.ts';
 import { componentImport, componentName, inPageComponent, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
@@ -238,6 +238,22 @@ test('a page site component names the library ports its own markup uses; a name 
 	} finally {
 		await rm(app, { recursive: true, force: true });
 	}
+});
+
+test("a toast region only some pages have after their root is the page's, before the layers it portals: a dialog opened later lands after it, as the old portal did", () => {
+	const doc = parseDocument('<body><header id="bar">Bar</header><main id="root-a"></main><section aria-live="polite" aria-label="Notifications alt+T"></section><div data-base-ui-portal="" data-slot="toast-portal"><div role="region" aria-live="polite" aria-label="Notifications"></div></div><main id="root-b"></main><section aria-live="polite" aria-label="Notifications alt+T"></section></body>');
+	const [bar, rootA, sonnerA, toasts, rootB, sonnerB] = body(doc).childNodes.filter(isElement);
+	const split = splitBody(new Map([
+		['/a', { route: '/a', before: [bar!], after: [sonnerA!, toasts!], htmlAttrs: {}, bodyAttrs: {}, head: [] }],
+		['/b', { route: '/b', before: [], after: [sonnerB!], htmlAttrs: {}, bodyAttrs: {}, head: [] }],
+	]));
+	assert.deepEqual([rootA, rootB].map((r) => r?.tagName), ['main', 'main']);
+	assert.equal(split.after.length, 1, 'the sonner region every page has is shared');
+	assert.deepEqual(trailingExtras(split, '/a'), [toasts], "the toast region only /a has follows its root: /a renders it");
+	assert.deepEqual(trailingExtras(split, '/b'), []);
+	const source = extrasModule(documentExtras(split, new Set()), () => {}, { files: [], served: [], everywhere: [] } as never);
+	assert.match(source, /<header id="bar">Bar<\/header>/, 'what precedes the root stays with the Document');
+	assert.doesNotMatch(source, /toast-portal/, 'the Document, which renders after every layer the page holds, no longer renders the toast region');
 });
 
 test('a layer every page portals goes in the Document only when it is plain markup: one with a site component or state stays in each page', () => {

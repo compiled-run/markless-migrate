@@ -294,6 +294,28 @@ export function pagesWiring(extras: ReadonlyMap<string, readonly Element[]>, wir
 	return new Map([...extras].filter(([, els]) => els.some((el) => [...walk(el)].some(wired))).map(([route, els]) => [route, [...els]]));
 }
 
+/**
+ * A route's body children only some pages have that follow its root (a toast region the pages without toasts lack): the
+ * page renders them before the layers it portals, so what it opens lands after them as a portal at the end of the old
+ * body did. The Document renders after the page and every layer in it.
+ */
+export function trailingExtras(split: BodySplit, route: string): Element[] {
+	const page = split.pages.find((p) => p.route === route);
+	return (split.extras.get(route) ?? []).filter((el) => page?.after.includes(el));
+}
+
+/** The extras the Document renders: none of a route whose page renders its own (`owned`), and no route's trailing ones. */
+export function documentExtras(split: BodySplit, owned: ReadonlySet<string>): BodySplit {
+	const extras = new Map<string, Element[]>();
+	for (const [route, els] of split.extras) {
+		if (owned.has(route)) continue;
+		const trailing = trailingExtras(split, route);
+		const rest = els.filter((el) => !trailing.includes(el));
+		if (rest.length) extras.set(route, rest);
+	}
+	return { ...split, extras };
+}
+
 export function extrasModule(split: BodySplit, dropped: (what: string) => void, table: LayerTable, bind?: (el: Element) => Binding | undefined): string {
 	const cases = [...split.extras.keys()];
 	const arms = cases.map((route) => `\t\t\t@case ${lit(route)}: {\n\t\t\t\t<>${(split.extras.get(route) ?? []).map((el) => emitElement(el, { dropped, ...(bind ? { bind } : {}) })).join('')}</>\n\t\t\t}`).join('\n');
