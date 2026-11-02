@@ -54,12 +54,14 @@ export function installProbe(): void {
 	};
 	// The widget around the control, by what it is rather than how many wrappers a port adds: its composite, else the nearest group, form, section or component part holding it.
 	const SCOPE = `${COMPOSITE}, form, fieldset, figure, section, article, label, [role="region"], [role="group"], [data-slot]:not([data-slot$="trigger"]):not([data-slot="button"])`;
+	// Its size is what it renders: content a page keeps hidden in it (a port's View Code markup) is no part a visitor meets.
+	const size = (e: Element) => [...e.querySelectorAll('*')].filter((d) => d.checkVisibility()).length;
 	const scopeOf = (el: Element) => {
 		const composite = el.closest(COMPOSITE);
-		if (composite && composite.querySelectorAll('*').length <= 400) return composite;
+		if (composite && size(composite) <= 400) return composite;
 		let at = el.parentElement;
 		for (let n = 0; at && at !== document.body && n < 6; at = at.parentElement, n++) if (at.matches(SCOPE)) break;
-		return at && at !== document.body && at.matches(SCOPE) && at.querySelectorAll('*').length <= 150 ? at : el;
+		return at && at !== document.body && at.matches(SCOPE) && size(at) <= 150 ? at : el;
 	};
 	const scopeState = (scope: Element, own: Element) => {
 		const out: string[] = [];
