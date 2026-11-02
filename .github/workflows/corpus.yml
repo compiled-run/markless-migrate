@@ -170,7 +170,9 @@ jobs:
             name="${dir#recorded/}"; build="${name#corpus-}"; build="${build%-*}"
             observations=$(find "$dir" -type d -name observations | head -n 1)
             if [ -z "$observations" ]; then echo "::warning::$name holds no observations"; continue; fi
-            node src/cli.ts check judge "$observations" --out "by-build/$build/$name"
+            # 1 is a red report, which is what the judged routes of a corpus build are.
+            judged=0; node src/cli.ts check judge "$observations" --out "by-build/$build/$name" || judged=$?
+            [ "$judged" -le 1 ] || exit "$judged"
           done
           status=0
           node scripts/corpus.ts verify deploy/shadcn-ui/corpus/bugs.json by-build > table.md || status=$?
