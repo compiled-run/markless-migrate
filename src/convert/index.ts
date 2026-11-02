@@ -763,6 +763,16 @@ function switcherVariants(menu: Element, values: Readonly<Record<string, Choice>
 	});
 }
 
+/**
+ * cmdk mounts what a Command in a layer holds each time the layer opens. The part tells the page when that unmounts and when
+ * it may mount again (mmunmount, mmmount on the root), so each opening shows a new input and list, at the top, nothing selected.
+ */
+function remountedCommand(own: Binding | undefined, n: number): Binding | undefined {
+	if (own?.replace !== undefined) return own;
+	const mounted = `commandMounted${n}`;
+	return mergeBindings(own, { declare: [`let ${mounted} = state(true);`], extra: [`onMmunmount={() => (${mounted} = false)}`, `onMmmount={() => (${mounted} = true)}`], wrap: (children) => `@if (${mounted}) { <>${own?.wrap ? own.wrap(children) : children}</> }` });
+}
+
 function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added), trigger?: Element): { markup: string; shell: string; fill: string; declare: string[]; site?: SiteComponent } {
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
@@ -799,6 +809,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
 	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies) || scrollBinding(x, copies)));
+	const commands = kept.flatMap((top) => [top, ...walkAll(top)]).filter((x) => attr(x, 'cmdk-root') !== undefined && !siteComponentOf(x, siteComponents));
 	const emit = (shell: boolean) =>
 		kept
 			.map((top) =>
@@ -807,7 +818,9 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					declarations,
 					bind: (x) => {
 						const own = mergeBindings(mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), dayPickerIn(pickers?.bind(x)))), mergeBindings(tableMenu?.bind(x), mergeBindings(copyBinding(x, copies), scrollBinding(x, copies)))), carriedBinding(x, announced, false, portedCall));
-						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
+						const command = commands.indexOf(x);
+						const bound = command < 0 ? own : remountedCommand(own, command);
+						return shell && x === hollow ? mergeBindings(bound, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : bound;
 					},
 				}),
 			)

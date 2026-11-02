@@ -1,4 +1,4 @@
-import { computed, type Children } from '@markless/core';
+import { computed, state, type Children } from '@markless/core';
 import { hide } from '../parts/base-ui/dialog.ts';
 import { roving } from '../parts/radix/roving.ts';
 import { applyCommand, frameworkOf, initCommand, NO_MONOREPO_FRAMEWORKS, parsePresetInput, resetUpdate, templateValue, themeCss, type CreateParams, type PackageManager } from './create-params.ts';
@@ -156,32 +156,38 @@ export function Palette({ base, away }: { readonly base: string; readonly away?:
 	const t = createState();
 	const current = computed(() => t.view.params.item);
 	const items = PALETTE_ITEMS[base] ?? [];
+	// The cmdk part turns this off and on as the dialog closes, so each opening mounts a new input and list.
+	let mounted = state(true);
 
-	<div hidden={away} tabindex="-1" data-slot="command" class="flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground" cmdk-root="" data-create-palette={base}>
-		<label cmdk-label="" for={`${ACTION_MENU}-${base}-input`} id={`${ACTION_MENU}-${base}-label`} style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
-		<div data-slot="command-input-wrapper" class="p-1 pb-0">
-			<div data-slot="input-group" role="group" class={INPUT_GROUP}>
-				<input data-slot="command-input" class="w-full text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50" placeholder="Search" cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls={`${ACTION_MENU}-${base}-list`} aria-labelledby={`${ACTION_MENU}-${base}-label`} id={`${ACTION_MENU}-${base}-input`} type="text" value="" />
-				<div role="group" data-slot="input-group-addon" data-align="inline-start" class={INPUT_ADDON}>
-					<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-				</div>
-			</div>
-		</div>
-		<div data-slot="command-list" class="no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id={`${ACTION_MENU}-${base}-list`}>
-			<div cmdk-list-sizer="">
-				<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden>No items found.</div>
-				<div data-slot="command-group" class={COMMAND_GROUP} cmdk-group="" role="presentation" data-value="undefined">
-					<div cmdk-group-items="" role="group">
-						@for (const item of items; key item.name) {
-							<div data-slot="command-item" class={COMMAND_ITEM} data-checked={current === item.name ? 'true' : 'false'} id={`${ACTION_MENU}-${base}-${item.name}`} cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value={item.value} data-create-item={item.name}>
-								{item.label}
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"><path d="M20 6 9 17l-5-5"></path></svg>
-							</div>
-						}
+	<div hidden={away} tabindex="-1" data-slot="command" class="flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground" cmdk-root="" data-create-palette={base} onMmunmount={() => (mounted = false)} onMmmount={() => (mounted = true)}>
+		@if (mounted) {
+			<>
+				<label cmdk-label="" for={`${ACTION_MENU}-${base}-input`} id={`${ACTION_MENU}-${base}-label`} style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
+				<div data-slot="command-input-wrapper" class="p-1 pb-0">
+					<div data-slot="input-group" role="group" class={INPUT_GROUP}>
+						<input data-slot="command-input" class="w-full text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50" placeholder="Search" cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls={`${ACTION_MENU}-${base}-list`} aria-labelledby={`${ACTION_MENU}-${base}-label`} id={`${ACTION_MENU}-${base}-input`} type="text" value="" />
+						<div role="group" data-slot="input-group-addon" data-align="inline-start" class={INPUT_ADDON}>
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+						</div>
 					</div>
 				</div>
-			</div>
-		</div>
+				<div data-slot="command-list" class="no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id={`${ACTION_MENU}-${base}-list`}>
+					<div cmdk-list-sizer="">
+						<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden>No items found.</div>
+						<div data-slot="command-group" class={COMMAND_GROUP} cmdk-group="" role="presentation" data-value="undefined">
+							<div cmdk-group-items="" role="group">
+								@for (const item of items; key item.name) {
+									<div data-slot="command-item" class={COMMAND_ITEM} data-checked={current === item.name ? 'true' : 'false'} id={`${ACTION_MENU}-${base}-${item.name}`} cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value={item.value} data-create-item={item.name}>
+										{item.label}
+										<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"><path d="M20 6 9 17l-5-5"></path></svg>
+									</div>
+								}
+							</div>
+						</div>
+					</div>
+				</div>
+			</>
+		}
 	</div>
 }
 
