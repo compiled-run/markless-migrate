@@ -11,7 +11,7 @@ import { cacheRules, cloudflareRules } from './rules.ts';
 import { pageFilesByConvention, pageFilesFromOrigin } from './pages.ts';
 import { planCaching, readCachingPlan, summarizeCachingPlan, writeCachingPlan, type CachingPlan } from './plan.ts';
 import { summarizeCachingReport, verifyCaching } from './verify.ts';
-import { psiFailures, psiLines } from '../check/load.ts';
+import { psiFailures, psiLines } from '../check/load-verdicts.ts';
 import { measurePsi, PSI_NOTICE, psiKey } from '../check/psi.ts';
 
 const STATE_DIR = '.migrate';

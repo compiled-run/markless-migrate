@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import type { SideEnv } from '../src/check/browser.ts';
-import { checkCoverage } from '../src/check/coverage.ts';
+import { checkCoverage } from '../src/check/coverage-check.ts';
 
 // Both apps send every unknown path to /install, as alpinejs.dev sends it to /essentials/installation; the new app's pages carry Markless's route marker.
 function app(pages: readonly string[], markless = false): Promise<Server> {

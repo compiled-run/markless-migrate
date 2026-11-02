@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cpuMultiplier, loadLine, psiFailures, psiLines, routeLoad, type LoadRun } from '../src/check/load.ts';
+import { cpuMultiplier, routeLoad, type LoadRun } from '../src/check/load.ts';
+import { loadLine, psiFailures, psiLines } from '../src/check/load-verdicts.ts';
 import { fieldData, measurePsi, psiRun, type Fetcher } from '../src/check/psi.ts';
 
 const response = JSON.parse(readFileSync(join(import.meta.dirname, 'load-fixtures', 'psi-port.json'), 'utf8'));

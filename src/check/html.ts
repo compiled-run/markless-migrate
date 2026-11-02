@@ -1,8 +1,9 @@
 import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
-import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail, type RouteLoad } from './load.ts';
-import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMetric } from './slow-network.ts';
+import { type LoadDetail, type RouteLoad } from './load.ts';
+import { formatMetric, METRIC_LABEL, psiLines } from './load-verdicts.ts';
+import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMetric } from './slow-network-verdicts.ts';
 import { GATED, networkHeadline, routeVerdicts } from './slow-network-verdicts.ts';
 import { overBudget, referenceLine, wasteHeadline, wasteHtml } from './waste.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
