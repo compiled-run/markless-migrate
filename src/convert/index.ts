@@ -957,6 +957,11 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 					unplaced.push(`${reveal.key}: its control is not on the converted page`);
 					continue;
 				}
+				// A Radix menu's popper not portaled (Menubar.Content alone) is fixed wherever it mounts: a layer, as a portaled one is.
+				if (attr(trigger, 'aria-haspopup') === 'menu' && kept.every((e) => attr(e, 'data-radix-popper-content-wrapper') !== undefined)) {
+					pendingLayers.push({ reveal, added, trigger, kept });
+					continue;
+				}
 				const parent = elementAt(root, added.into);
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.

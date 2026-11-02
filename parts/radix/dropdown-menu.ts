@@ -21,6 +21,10 @@ const BAR = '[role="menubar"]';
 const BAR_TRIGGER = '[role="menuitem"]';
 const barTriggers = (bar: Element) => [...bar.querySelectorAll<HTMLElement>(BAR_TRIGGER)].filter((t) => t.closest(BAR) === bar);
 const barOf = (trigger: Element) => (trigger.matches(BAR_TRIGGER) ? trigger.closest<HTMLElement>(BAR) : null);
+// Menubar's loop (true by default), as convert read it off the instance.
+const loops = (bar: Element) => bar.getAttribute('data-mm-loop') !== 'false';
+// The item `step` places on from `at` in `list`, wrapping round when the bar loops.
+const stepIn = <T,>(list: readonly T[], at: number, step: number, loop: boolean) => (loop ? list[(at + step + list.length) % list.length] : list[at + step]);
 const openOf = (trigger: HTMLElement) => layerOf(document.getElementById(trigger.getAttribute('aria-controls') ?? '') ?? trigger);
 const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
 const keyOf = (trigger: HTMLElement) => layerKey(trigger);
@@ -195,6 +199,7 @@ let grace: { layer: Layer; area: { x: number; y: number }[]; side: string; until
 let openTimer = 0;
 
 // MenuContent's onPointerMove: the way the mouse last moved across the content, from where it lies inside it.
+// An item's handlers run before the content's, so they read the way the pointer headed before the move they answer.
 const motion = new WeakMap<Layer, { x: number; dir: string }>();
 function track(layer: Layer, event: PointerEvent): void {
 	const m = motion.get(layer) ?? { x: 0, dir: 'right' };
@@ -211,7 +216,11 @@ function watchMoves(): void {
 		(event) => {
 			if (event.pointerType !== 'mouse' || !(event.target instanceof Element)) return;
 			const layer = layerOf(event.target);
-			if (layer?.content.contains(event.target)) track(layer, event);
+			if (!layer?.content.contains(event.target)) return;
+			// MenuItem's onPointerMove: an item the pointer moves on takes focus again, though the pointer never left it.
+			const item = event.target.closest<HTMLElement>(ITEM);
+			if (item && layerOf(item) === layer && !item.contains(document.activeElement)) enter(item, layer, event);
+			track(layer, event);
 		},
 		true,
 	);
@@ -243,25 +252,26 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 		return open ? switchTo(open, bar, false) : false;
 	}
 	const within = event.pointerType === 'mouse' ? layerOf(target) : undefined;
-	if (within?.content.contains(target)) {
-		watchMoves();
-		track(within, event);
-	}
+	if (within?.content.contains(target)) watchMoves();
 	const item = target.closest<HTMLElement>(ITEM);
 	const layer = item && layerOf(item);
 	if (!item || !layer || event.pointerType !== 'mouse') return false;
+	enter(item, layer, event);
+	return true;
+}
+
+function enter(item: HTMLElement, layer: Layer, event: PointerEvent): void {
 	if (disabled(item)) {
 		if (!movingToSub(layer, event)) layer.content.focus({ preventScroll: true });
-		return true;
+		return;
 	}
-	if (movingToSub(layer, event)) return true;
+	if (movingToSub(layer, event)) return;
 	highlight(item);
 	if (isSubTrigger(item) && subOf.get(layer)?.trigger !== item) {
 		grace = undefined;
 		clearTimeout(openTimer);
 		openTimer = window.setTimeout(() => layerOf(item) === layer && openSub(item, false), 100);
 	}
-	return true;
 }
 
 // MenuItem's onPointerLeave: the content takes focus back from the item.
@@ -271,7 +281,6 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 	if (!item || !layer || event.pointerType !== 'mouse') return false;
 	const to = event.relatedTarget instanceof Node ? event.relatedTarget : null;
 	if (to && item.contains(to)) return true;
-	if (to && layer.content.contains(to)) track(layer, event);
 	const sub = subOf.get(layer);
 	if (isSubTrigger(item)) {
 		clearTimeout(openTimer);
@@ -284,8 +293,9 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 			grace = { layer, side, until: Date.now() + 300, area: [{ x: event.clientX + (right ? -5 : 5), y: event.clientY }, { x: near, y: rect.top }, { x: far, y: rect.top }, { x: far, y: rect.bottom }, { x: near, y: rect.bottom }] };
 		}
 	}
-	if (movingToSub(layer, event)) return true;
-	if (item.contains(document.activeElement)) layer.content.focus({ preventScroll: true });
+	const heading = movingToSub(layer, event);
+	if (to && layer.content.contains(to)) track(layer, event);
+	if (!heading && item.contains(document.activeElement)) layer.content.focus({ preventScroll: true });
 	return true;
 }
 
@@ -307,9 +317,9 @@ export function focusin(target: Element, event: FocusEvent): boolean {
 	}
 	const layer = layerOf(target);
 	if (!layer) return false;
-	// Focus moving in a menu, elsewhere than an open submenu's trigger, closes that submenu (its onFocusOutside).
+	// Focus moving in a menu closes each open submenu it is not in or on the trigger of (their onFocusOutside).
 	const sub = subOf.get(layer);
-	if (sub && sub.trigger !== target && layer.content.contains(target)) closeSubs(layer);
+	if (sub && layer.content.contains(target)) closeSubs(sub.trigger === target ? sub : layer);
 	if (target.matches(ITEM)) mark(target);
 	return false;
 }
@@ -323,7 +333,7 @@ function rove(trigger: HTMLElement, event: KeyboardEvent): boolean {
 	event.preventDefault();
 	const list = barTriggers(bar).filter((t) => !disabled(t));
 	const at = list.indexOf(trigger);
-	const to = intent === 'first' ? list[0] : intent === 'last' ? list[list.length - 1] : list[(at + (intent === 'next' ? 1 : -1) + list.length) % list.length];
+	const to = intent === 'first' ? list[0] : intent === 'last' ? list[list.length - 1] : stepIn(list, at, intent === 'next' ? 1 : -1, loops(bar));
 	setTimeout(() => to?.focus());
 	return true;
 }
@@ -364,7 +374,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		const all = barTriggers(barOf(root.trigger)!).filter((t) => !disabled(t));
 		const step = (event.key === 'ArrowRight') !== rtl(root.trigger) ? 1 : -1;
 		event.preventDefault();
-		return switchTo(root.trigger, all[(all.indexOf(root.trigger) + step + all.length) % all.length], false);
+		return switchTo(root.trigger, stepIn(all, all.indexOf(root.trigger), step, loops(barOf(root.trigger)!)), false);
 	}
 	const list = items(layer);
 	const at = list.indexOf(target.closest<HTMLElement>(ITEM)!);
@@ -381,6 +391,11 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		highlight(to);
 		return true;
 	}
+	const typing = Boolean(searches.get(layer.content)?.text);
+	if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey && (typing || event.key !== ' ')) {
+		typeahead(layer, list, event.key);
+		return true;
+	}
 	if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
 		event.preventDefault();
 		list[at]!.click();
@@ -390,11 +405,30 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		event.preventDefault();
 		return true;
 	}
-	if (event.key.length === 1 && /\S/.test(event.key)) {
-		const from = at + 1;
-		const match = [...list.slice(from), ...list.slice(0, from)].find((i) => (i.textContent ?? '').trim().toLowerCase().startsWith(event.key.toLowerCase()));
-		highlight(match);
-		return true;
-	}
 	return false;
+}
+
+// MenuContent's typeahead: the keys typed less than a second apart are one search, matched from the focused item.
+const searches = new WeakMap<HTMLElement, { text: string; timer: number }>();
+function typeahead(layer: Layer, list: readonly HTMLElement[], key: string): void {
+	const own = searches.get(layer.content) ?? { text: '', timer: 0 };
+	searches.set(layer.content, own);
+	own.text += key;
+	clearTimeout(own.timer);
+	own.timer = window.setTimeout(() => (own.text = ''), 1000);
+	const texts = list.map((i) => (i.textContent ?? '').trim());
+	const current = list.findIndex((i) => i === document.activeElement);
+	const match = nextMatch(texts, own.text, current < 0 ? undefined : texts[current]);
+	highlight(match === undefined ? undefined : list[texts.indexOf(match)]);
+}
+
+// Radix's getNextMatch: one key repeated is that key, a single key skips the current match, and none but it is no move.
+function nextMatch(values: readonly string[], search: string, current: string | undefined): string | undefined {
+	const repeated = search.length > 1 && [...search].every((c) => c === search[0]);
+	const wanted = (repeated ? search[0]! : search).toLowerCase();
+	const from = Math.max(current === undefined ? -1 : values.indexOf(current), 0);
+	let wrapped = [...values.slice(from), ...values.slice(0, from)];
+	if (wanted.length === 1) wrapped = wrapped.filter((v) => v !== current);
+	const next = wrapped.find((v) => v.toLowerCase().startsWith(wanted));
+	return next !== current ? next : undefined;
 }
