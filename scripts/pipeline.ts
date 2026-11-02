@@ -1,8 +1,8 @@
 // The pipeline workflow's keys and caches (.github/workflows/pipeline.yml). Every stage keys its work by content, so a
 // stage whose inputs are unchanged is read back from the run that made it instead of done again:
 //   key plan|emit|emit-base|build ...   one stage's key (see stageKey)
-//   record-split <pages.txt> <origin> <store> <n> <out dir> [<captures>]   each page's recording key; shards of the pages the store lacks
-//   prune <store> <record-keys.json>    drops recordings no page's current key names
+//   record-split <pages.txt> <origin> <store> <n> <out dir> [<captures>]   each page's key; shards of the pages the store lacks a kind of
+//   prune <store> <record-keys.json>    drops recordings no page's current kind keys name
 //   copied-parts <app>                  the app's lib/parts files that are copies of parts/ (written beside the converted app)
 //   refresh-parts <app> <list>          copies those files from parts/ again (an emit whose only change is in copied parts)
 //   receipt <file> <stage> k=v...       appends a stage's receipt (seconds, cache hit, counts)
@@ -122,20 +122,51 @@ interface Sources {
 	readonly flat?: Readonly<Record<string, string>>;
 }
 
-/** A page is in the store when its capture under its current key is (or the flat files of a cache from before keys were made from that key). */
-export async function recordHits(keys: ReadonlyMap<string, string>, store: string): Promise<{ readonly hits: string[]; readonly misses: string[] }> {
+type KindKey = (versions: Readonly<Record<string, string>>, kind: string, page: string) => string;
+
+interface Visit {
+	readonly route: string;
+	readonly page: string;
+	readonly kinds: Readonly<Record<string, string>>;
+}
+
+async function visits(store: string): Promise<Visit[]> {
+	const dir = join(store, 'visits');
+	if (!existsSync(dir)) return [];
+	const out: Visit[] = [];
+	for (const name of (await readdir(dir)).filter((f) => f.endsWith('.json')).sort()) {
+		const visit = await readFile(join(dir, name), 'utf8').then((t) => JSON.parse(t) as Visit).catch(() => undefined);
+		if (typeof visit?.route === 'string' && typeof visit.page === 'string' && visit.kinds) out.push(visit);
+	}
+	return out;
+}
+
+/**
+ * A page is in the store when it was last recorded from the page it is now, and every kind it was recorded for then is
+ * there under that kind's current key (or the flat files of a cache from before keys were made from its page). A kind it
+ * comes to need only now is recorded by the emit's convert.
+ */
+export async function recordHits(pages: ReadonlyMap<string, string>, store: string, versions: Readonly<Record<string, string>>, kindKey: KindKey): Promise<{ readonly hits: string[]; readonly misses: string[] }> {
 	const sources = (await readFile(join(store, 'sources.json'), 'utf8').then((t) => JSON.parse(t) as Sources, () => ({}))) as Sources;
+	const last = new Map((await visits(store)).map((v) => [v.route, v]));
 	const hits: string[] = [];
 	const misses: string[] = [];
-	for (const [route, key] of keys) {
-		const dir = join(store, 'captures', key);
-		const held = (!key.startsWith('unreachable-') && existsSync(dir) && (await readdir(dir)).length > 0) || sources.flat?.[route] === key;
+	for (const [route, page] of pages) {
+		const visit = last.get(route);
+		const held = !page.startsWith('unreachable-') && ((visit?.page === page && Object.keys(visit.kinds).every((kind) => versions[kind] !== undefined && existsSync(join(store, kind, kindKey(versions, kind, page))))) || sources.flat?.[route] === page);
 		(held ? hits : misses).push(route);
 	}
 	return { hits, misses };
 }
 
-/** Drops every recording directory whose key no page has now; flat files (a cache from before keys) stay. */
+/** Every kind's key of every page, the keys `pruneStore` keeps. */
+export function storeKeys(pages: Iterable<string>, versions: Readonly<Record<string, string>>, kindKey: KindKey): Set<string> {
+	const keep = new Set<string>();
+	for (const page of pages) for (const kind of Object.keys(versions)) keep.add(kindKey(versions, kind, page));
+	return keep;
+}
+
+/** Drops every recording directory whose key no page has now; flat files (a cache from before keys) and visits stay. */
 export async function pruneStore(store: string, keep: ReadonlySet<string>): Promise<{ readonly kept: number; readonly dropped: number }> {
 	let kept = 0;
 	let dropped = 0;
@@ -154,19 +185,9 @@ export async function pruneStore(store: string, keep: ReadonlySet<string>): Prom
 	return { kept, dropped };
 }
 
-/** The route each capture under the store was recorded for, by the key it was recorded under (captures/<key>/*.json). */
+/** The page key each route under the store was last recorded from (visits/*.json). */
 export async function capturedKeys(store: string): Promise<Map<string, string>> {
-	const out = new Map<string, string>();
-	const dir = join(store, 'captures');
-	if (!existsSync(dir)) return out;
-	for (const key of (await readdir(dir)).sort()) {
-		if (!KEY_DIR.test(key)) continue;
-		for (const file of (await readdir(join(dir, key))).filter((f) => f.endsWith('.json')).sort()) {
-			const route = (JSON.parse(await readFile(join(dir, key, file), 'utf8')) as { route?: unknown }).route;
-			if (typeof route === 'string') out.set(route, key);
-		}
-	}
-	return out;
+	return new Map((await visits(store)).map((v) => [v.route, v.page]));
 }
 
 /**
@@ -309,13 +330,16 @@ async function main(): Promise<void> {
 		const routes = (await readFile(pages, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean);
 		const keys = new Map<string, string>();
 		let keyed = false;
+		let versions: Record<string, string> = {};
+		let kindKey: KindKey = () => '';
 		try {
-			const { fetchRecordKey, recorderVersions } = (await import('../src/convert/record-key.ts' as string)) as { fetchRecordKey: (v: Record<string, string>, origin: string, route: string) => Promise<string>; recorderVersions: () => Promise<Record<string, string>> };
-			const versions = await recorderVersions();
+			const recording = (await import('../src/convert/record-key.ts' as string)) as { fetchPageKey: (origin: string, route: string) => Promise<string>; recorderVersions: () => Promise<Record<string, string>>; kindKey: KindKey };
+			versions = await recording.recorderVersions();
+			kindKey = recording.kindKey;
 			const queue = [...routes];
 			await Promise.all(
 				Array.from({ length: 8 }, async () => {
-					for (let r = queue.shift(); r !== undefined; r = queue.shift()) keys.set(r, await fetchRecordKey(versions, origin, r));
+					for (let r = queue.shift(); r !== undefined; r = queue.shift()) keys.set(r, await recording.fetchPageKey(origin, r));
 				}),
 			);
 			keyed = true;
@@ -323,23 +347,24 @@ async function main(): Promise<void> {
 			if ((error as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
 			for (const r of routes) keys.set(r, `unreachable-${createHash('sha256').update(r).digest('hex').slice(0, 8)}`);
 		}
-		// A run's own captures, made by its shards before this run took them over: each route keeps the key it was recorded under.
+		// A run's own captures, made by its shards before this run took them over: each route keeps the page it was recorded from.
 		let taken = 0;
 		if (from) for (const [route, key] of await capturedKeys(from)) if (keys.has(route) && keys.get(route) !== key) (keys.set(route, key), taken++);
 		const ordered = new Map(routes.map((r) => [r, keys.get(r)!]));
-		const { hits, misses } = await recordHits(ordered, store);
+		const { hits, misses } = await recordHits(ordered, store, versions, kindKey);
 		const shards = deal(misses, Number(n), await captureCosts(store));
 		await mkdir(join(out, 'shards'), { recursive: true });
 		for (const [i, shard] of shards.entries()) await writeFile(join(out, 'shards', `shard-${i + 1}.txt`), `${shard.join('\n')}\n`);
 		await writeFile(join(out, 'record-keys.json'), `${JSON.stringify(Object.fromEntries(ordered), null, 1)}\n`);
 		await writeFile(join(out, 'misses.txt'), misses.length ? `${misses.join('\n')}\n` : '');
-		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, ...(from ? { recordedKeys: taken } : {}), keys: digest([...ordered].map(([r, k]) => [r, k] as const)).slice(0, 32) }));
+		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, ...(from ? { recordedKeys: taken } : {}), keys: digest([...[...ordered].map(([r, k]) => [r, k] as const), ...Object.entries(versions).map(([kind, v]) => [`recorder ${kind}`, v] as const)]).slice(0, 32) }));
 		return;
 	}
 	if (command === 'prune') {
 		const [store, keysFile] = rest;
 		if (!store || !keysFile) throw new Error('usage: pipeline.ts prune <store> <record-keys.json>');
-		const keep = new Set(Object.values(JSON.parse(await readFile(keysFile, 'utf8')) as Record<string, string>));
+		const { recorderVersions, kindKey } = (await import('../src/convert/record-key.ts' as string)) as { recorderVersions: () => Promise<Record<string, string>>; kindKey: KindKey };
+		const keep = storeKeys(Object.values(JSON.parse(await readFile(keysFile, 'utf8')) as Record<string, string>), await recorderVersions(), kindKey);
 		console.log(JSON.stringify(await pruneStore(store, keep)));
 		return;
 	}

@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { captureCosts, capturedKeys, codeClosure, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
+import { captureCosts, capturedKeys, codeClosure, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report, storeKeys } from '../scripts/pipeline.ts';
+import { kindKey } from '../src/convert/record-key.ts';
 
 async function tree(files: Record<string, string>): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'pipeline-'));
@@ -81,17 +82,28 @@ const KEY_A = 'A'.repeat(43);
 const KEY_B = 'B'.repeat(43);
 const KEY_C = 'C'.repeat(43);
 
-test('a page is recorded already when its capture is held under its current key, or in flat files made from that key', async () => {
-	const store = await tree({ [`captures/${KEY_A}/page.json`]: '{}', [`reveals/${KEY_B}/x.json`]: '{}', 'sources.json': JSON.stringify({ flat: { '/flat': KEY_C, '/moved': KEY_A } }) });
-	const keys = new Map([
+test('a page is recorded already when it was last recorded from the page it is now and every kind it had is held under its current key', async () => {
+	const versions = { captures: 'c1', reveals: 'r1', tables: 't1' };
+	const visit = (route: string, page: string, kinds: string[]) => [`visits/${route.slice(1)}.json`, JSON.stringify({ route, page, kinds: Object.fromEntries(kinds.map((k) => [k, kindKey(versions, k, page)])) })] as const;
+	const store = await tree({
+		[`captures/${kindKey(versions, 'captures', KEY_A)}/page.json`]: '{}',
+		[`reveals/${kindKey(versions, 'reveals', KEY_A)}/x.json`]: '{}',
+		[`captures/${kindKey(versions, 'captures', KEY_B)}/page.json`]: '{}',
+		[`captures/${kindKey(versions, 'captures', KEY_C)}/page.json`]: '{}',
+		...Object.fromEntries([visit('/a', KEY_A, ['captures', 'reveals']), visit('/b', KEY_B, ['captures', 'tables']), visit('/c', KEY_A, ['captures'])]),
+		'sources.json': JSON.stringify({ flat: { '/flat': KEY_C } }),
+	});
+	const pages = new Map([
 		['/a', KEY_A],
 		['/b', KEY_B],
+		['/c', KEY_C],
 		['/flat', KEY_C],
-		['/moved', KEY_B],
 		['/down', 'unreachable-1234abcd'],
 	]);
-	assert.deepEqual(await recordHits(keys, store), { hits: ['/a', '/flat'], misses: ['/b', '/moved', '/down'] });
-	assert.deepEqual(await recordHits(keys, join(store, 'none')), { hits: [], misses: ['/a', '/b', '/flat', '/moved', '/down'] });
+	assert.deepEqual(await recordHits(pages, store, versions, kindKey), { hits: ['/a', '/flat'], misses: ['/b', '/c', '/down'] }, '/b lacks its tables, /c was recorded from another page');
+	assert.deepEqual(await recordHits(pages, store, { ...versions, reveals: 'r2' }, kindKey), { hits: ['/flat'], misses: ['/a', '/b', '/c', '/down'] }, 'a changed reveals recorder records the pages that had reveals');
+	assert.deepEqual(await recordHits(pages, store, { ...versions, tables: 't2' }, kindKey), { hits: ['/a', '/flat'], misses: ['/b', '/c', '/down'] }, 'a changed tables recorder leaves the pages without tables recorded');
+	assert.deepEqual(await recordHits(pages, join(store, 'none'), versions, kindKey), { hits: [], misses: ['/a', '/b', '/c', '/flat', '/down'] });
 });
 
 test('pruning keeps the recordings of current keys and flat files, and drops every other keyed directory', async () => {
@@ -148,8 +160,13 @@ test("the plan's key reads the planner's code, not the CLI that hands it its arg
 	assert.ok(!files.includes('src/convert/index.ts') && !files.includes('src/convert/reveal.ts'), 'a change to the emit or the recorder keeps the plan');
 });
 
-test("a run's own captures give each route the key it was recorded under, read from the capture itself", async () => {
-	const store = await tree({ [`captures/${KEY_A}/x.json`]: JSON.stringify({ route: '/a', status: 200 }), [`captures/${KEY_B}/y.json`]: JSON.stringify({ route: '/b' }), [`reveals/${KEY_C}/z.json`]: JSON.stringify({ route: '/c' }), 'captures/flat.json': JSON.stringify({ route: '/flat' }) });
+test("a run's own captures give each route the page it was recorded from, read from its visit", async () => {
+	const store = await tree({ 'visits/a.json': JSON.stringify({ route: '/a', page: KEY_A, kinds: {} }), 'visits/b.json': JSON.stringify({ route: '/b', page: KEY_B, kinds: {} }), 'visits/broken.json': '{', [`captures/${KEY_C}/z.json`]: JSON.stringify({ route: '/c' }) });
 	assert.deepEqual([...(await capturedKeys(store))], [['/a', KEY_A], ['/b', KEY_B]]);
 	assert.deepEqual([...(await capturedKeys(join(store, 'none')))], []);
+});
+
+test("pruning keeps every kind's key of every current page", () => {
+	const versions = { captures: 'c1', reveals: 'r1' };
+	assert.deepEqual([...storeKeys([KEY_A], versions, kindKey)].sort(), [kindKey(versions, 'captures', KEY_A), kindKey(versions, 'reveals', KEY_A)].sort());
 });

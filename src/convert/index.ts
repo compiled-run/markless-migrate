@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, MANAGED_ASSETS, pruneUnreferenced, readManaged, referencedAssets, resourcePaths, writeManaged } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
-import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
+import { fetchPageKey, recorderVersions, RecordDirs, type RecordingKind } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -1364,13 +1364,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
 		const reading = limiter(width * 2);
-		// Each route's recordings are kept under a key made from its old page as the server sends it (record-key.ts).
-		const dirs = await RecordDirs.open(join(state, 'convert'));
-		const recorder = await recorderVersions();
+		// Each kind of a route's recordings is kept under a key of its old page as the server sends it and of that kind's recorder (record-key.ts).
+		const dirs = await RecordDirs.open(join(state, 'convert'), await recorderVersions());
 		const sources = new Map<string, Promise<string>>();
-		const atFor = async (route: string, kind: string): Promise<string> => {
+		const atFor = async (route: string, kind: RecordingKind): Promise<string> => {
 			let source = sources.get(route);
-			if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route)!) : fetchRecordKey(recorder, options.old, route)));
+			if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route)!) : fetchPageKey(options.old, route)));
 			return dirs.dir(route, await source, kind);
 		};
 		const reveal = options.reveal !== false;
