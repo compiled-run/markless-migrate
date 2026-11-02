@@ -357,7 +357,7 @@ async function main(): Promise<void> {
 		for (const [i, shard] of shards.entries()) await writeFile(join(out, 'shards', `shard-${i + 1}.txt`), `${shard.join('\n')}\n`);
 		await writeFile(join(out, 'record-keys.json'), `${JSON.stringify(Object.fromEntries(ordered), null, 1)}\n`);
 		await writeFile(join(out, 'misses.txt'), misses.length ? `${misses.join('\n')}\n` : '');
-		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, ...(from ? { recordedKeys: taken } : {}), keys: digest([...ordered].map(([r, k]) => [r, k] as const)).slice(0, 32) }));
+		console.log(JSON.stringify({ matrix: shards.map((_, i) => i + 1), pages: routes.length, hits: hits.length, misses: misses.length, keyed, ...(from ? { recordedKeys: taken } : {}), keys: digest([...[...ordered].map(([r, k]) => [r, k] as const), ...Object.entries(versions).map(([kind, v]) => [`recorder ${kind}`, v] as const)]).slice(0, 32) }));
 		return;
 	}
 	if (command === 'prune') {
