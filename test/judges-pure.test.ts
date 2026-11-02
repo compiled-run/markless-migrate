@@ -5,7 +5,28 @@ import { test } from 'node:test';
 import { moduleEdges, ROOT } from '../src/code-closure.ts';
 
 /** The modules that judge: each is loaded by `check judge`, which runs with no browser. */
-export const JUDGES = ['src/check/journeys-compare.ts', 'src/check/compare.ts', 'src/check/timing-verdicts.ts', 'src/check/stats.ts', 'src/check/accepted.ts', 'src/check/coverage.ts', 'src/check/blocked.ts', 'src/check/load-verdicts.ts', 'src/check/slow-network-verdicts.ts'];
+export const JUDGES = [
+	'src/check/judge.ts',
+	'src/check/route-judge.ts',
+	'src/check/report-judge.ts',
+	'src/check/compare.ts',
+	'src/check/journeys-compare.ts',
+	'src/check/states-compare.ts',
+	'src/check/probes-compare.ts',
+	'src/check/control-parity-compare.ts',
+	'src/check/motion-compare.ts',
+	'src/check/timing-verdicts.ts',
+	'src/check/stats.ts',
+	'src/check/accepted.ts',
+	'src/check/coverage.ts',
+	'src/check/blocked.ts',
+	'src/check/load-verdicts.ts',
+	'src/check/slow-network-verdicts.ts',
+	'src/check/responsiveness-summary.ts',
+	'src/data/codec.ts',
+	'src/data/rows.ts',
+	'src/data/observations.ts',
+];
 
 /** Packages that drive or measure a browser; Lighthouse's throttling constants are data. */
 const BROWSER = new Set(['playwright', 'playwright-core', 'lighthouse']);

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withFailures } from '../src/check/compare.ts';
-import { applyNavigation, compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult, requestFailures } from '../src/check/nav-parity.ts';
+import { compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult, requestFailures } from '../src/check/nav-parity.ts';
+import { applyNavigation } from '../src/check/report-judge.ts';
 import { flashFailures, layoutFailures, layoutFlash, themeFlashes } from '../src/check/swap-frames.ts';
 import { DIMENSIONS, notCompared, type RouteResult } from '../src/check/types.ts';
 

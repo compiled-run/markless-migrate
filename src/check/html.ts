@@ -1,6 +1,7 @@
 import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
-import { headlines, type Sample } from './responsiveness.ts';
+import { type Sample } from './responsiveness.ts';
+import { headlines } from './responsiveness-summary.ts';
 import { type LoadDetail, type RouteLoad } from './load.ts';
 import { formatMetric, METRIC_LABEL, psiLines } from './load-verdicts.ts';
 import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMetric } from './slow-network-verdicts.ts';
@@ -9,7 +10,7 @@ import { overBudget, referenceLine, wasteHeadline, wasteHtml } from './waste.ts'
 import { NETWORK_PROFILES } from './throttle.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
-import type { Filmstrip, MotionInteraction } from './motion.ts';
+import type { Filmstrip, MotionInteraction } from './motion-compare.ts';
 import { remaining, type Status } from '../status.ts';
 
 const list = (items: readonly string[], cls = '') => `<ul>${items.map((x) => `<li${cls ? ` class="${cls}"` : ''}>${esc(x)}</li>`).join('')}</ul>`;

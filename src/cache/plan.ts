@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ANONYMOUS } from '../check/auth.ts';
+import { ANONYMOUS } from '../check/types.ts';
 import { plannedRoutes, type Inventory } from '../plan/inventory.ts';
 import { classify, type CacheClass, type RouteCaching } from './classify.ts';
 import { fetchFacts, probeRoutes, type RouteEvidence } from './evidence.ts';

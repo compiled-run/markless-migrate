@@ -1,70 +1,66 @@
-import { shellRoute, type OldRouting } from './hash-routes.ts';
-import { hashLinkFailures } from './hash-links.ts';
 import { randomUUID } from 'node:crypto';
-import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { chromium, firefox, webkit, type Browser } from 'playwright';
 import { Relauncher } from '../convert/relaunch.ts';
-import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
-import { applyAccepted, type Accept } from './accepted.ts';
-import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
-import type { AutomaticRule } from './automatic.ts';
-import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
-import { BlockedError, blockedResult, detectChallenge } from './blocked.ts';
-import { probeWall } from './browser.ts';
-import type { ClientFact } from './source-facts.ts';
-import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
-import { captureHttp, captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
-import { OldCache } from './cache.ts';
-import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
-import { mergeRecordings, recordLive, restRecords } from './live-record.ts';
-import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
-import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
-import { HINTS } from './hints.ts';
-import { locateFailures, NOT_EXERCISED } from './locate.ts';
-import { checkClock } from './clock-shift.ts';
-import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
-import { checkControlParity, type ControlParityOptions } from './control-parity.ts';
-import { mapRules } from './sourcemap.ts';
-import { negotiationFailures } from './i18n.ts';
-import { MAX_ARRIVED, replay, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults, type StepResult } from './journeys.ts';
-import { choppier, compareJourneys, describeTarget, interimViews, timedOnly, inDarkMode, themed } from './journeys-compare.ts';
-import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
-import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
-import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
-import { CheckProgress } from './progress.ts';
-import { selfUrlFailures } from './self-urls.ts';
-import { routeState } from './route-state.ts';
-import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
-import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { measureLoad, type LoadOptions } from './load.ts';
-import { loadFailures, psiFailures } from './load-verdicts.ts';
-import { measurePsi, psiKey } from './psi.ts';
-import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
-import { measureWaste, type WasteReport } from './waste.ts';
-import { networkFailures } from './slow-network-verdicts.ts';
-import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, weightAllowed, withFailures, type Probe } from './compare.ts';
-import { matchElements } from './match.ts';
-import { contractLines, type NetworkRecord } from './network.ts';
-import type { SourceFacts } from './source-facts.ts';
-import { compareStates, type StateInput } from './states.ts';
-import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
-import { renderHtmlParts } from './html.ts';
-import type { Status } from '../status.ts';
-import { blocker, type BlockList } from './trackers.ts';
-import { learnLiveCounts, pinnedCounts } from './live-counts.ts';
+import { recording, RouteLog, type Producers } from '../data/rows.ts';
+import type { Observations } from '../data/observations.ts';
+import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
-import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteCoverage, RouteResult, Shot, Viewport } from './types.ts';
-import { DIMENSIONS, REPRESENTATIVE_ONLY, VIEWPORTS } from './types.ts';
-import { mergeCoverage } from './coverage.ts';
+import type { Status } from '../status.ts';
+import type { Accept } from './accepted.ts';
+import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
+import type { AutomaticRule } from './automatic.ts';
+import { accessFailures, compareLogin, loginRoutes, saveState, saysDenied, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
+import { detectChallenge } from './blocked.ts';
+import { adoptAnswers, DEFINITE, defaultEnv, isLoopback, LAUNCH, probeWall, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type SideEnv, type StorageState, type StoredAnswer, type WallHit } from './browser.ts';
+import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
+import { OldCache } from './cache.ts';
+import { captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
+import { checkClock } from './clock-shift.ts';
+import { forgetFailures, httpFailures, weightAllowed, type Probe } from './compare.ts';
+import { observeControlParity, type ControlParityOptions } from './control-parity.ts';
 import { checkCoverage } from './coverage-check.ts';
-import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
-import { bodyText, request } from './http.ts';
+import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
+import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
+import { DEFAULT_FREEZE, type FreezeOptions } from './freeze.ts';
+import { hashLinkFailures } from './hash-links.ts';
+import type { OldRouting } from './hash-routes.ts';
+import { HINTS } from './hints.ts';
+import { renderHtmlParts } from './html.ts';
 import { classify, InfrastructureError, Scope } from './infrastructure.ts';
+import { themed } from './journeys-compare.ts';
+import { DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, replay, replayAll, replayDestructive, survey, type Exploration, type ExploreOptions, type Run as RunResults } from './journeys.ts';
+import { learnLiveCounts, pinnedCounts } from './live-counts.ts';
+import { mergeRecordings, recordLive, restRecords } from './live-record.ts';
+import { measureLoad, type LoadOptions } from './load.ts';
+import { locateFailures } from './locate.ts';
+import { motionRules, type MotionOptions } from './motion-compare.ts';
+import { observeMotion } from './motion.ts';
+import { checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
+import { contractLines, type NetworkRecord } from './network.ts';
+import { observeProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
+import { CheckProgress } from './progress.ts';
+import { measurePsi, psiKey } from './psi.ts';
+import { applyLoads, asRole, embedsOnly, finishReport, loadable, outOfPart, roleCompared, routeOutcome, templateGroups, withTemplate, type RunEvent, type RunHeader } from './report-judge.ts';
+import { checkResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
+import { deadlineResult, destructiveCoverage, loadTimeout, partialResult, probesOnly, roleCheck, stopped, unreachableAlike, unreachableTried, type Deadline, type JourneysRow, type RouteContext, type RouteStages } from './route-judge.ts';
+import { routeState } from './route-state.ts';
+import { selfUrlFailures } from './self-urls.ts';
+import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
+import type { ClientFact, SourceFacts } from './source-facts.ts';
+import { mapRules } from './sourcemap.ts';
+import { stateNoise, type StatesRequest, type StatesRow, type StatesViewportRow } from './states-compare.ts';
+import { observeStates } from './states.ts';
+import { discoverStates, parseRules } from './stylesheet.ts';
+import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
+import { blocker, type BlockList } from './trackers.ts';
+import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
+import { measureWaste, type WasteReport } from './waste.ts';
+import { bodyText, request } from './http.ts';
 
 export interface CheckOptions {
 	readonly oldOrigin: string;
@@ -147,6 +143,8 @@ export interface CheckOptions {
 	/** Told as each page route's check finishes, with its result as the report will keep it. */
 	readonly onRoute?: (result: RouteResult) => void;
 	readonly oldRouting?: OldRouting;
+	/** Where every observation the check makes is written as it is made, for `check judge` to judge again with no browser. */
+	readonly observations?: Observations;
 }
 
 
@@ -230,12 +228,6 @@ async function negotiate(env: SideEnv, route: string, locales: readonly string[]
 	return out;
 }
 
-function routeLocales(capture: RouteCapture, known: readonly string[]): string[] {
-	const seo = Object.values(capture.pages)[0]?.seo ?? {};
-	const found = Object.keys(seo).flatMap((key) => (key.startsWith('hreflang:') && key !== 'hreflang:x-default' ? [key.slice('hreflang:'.length)] : []));
-	return [...new Set([...known, ...found, ...(seo['html:lang'] ? [seo['html:lang']] : [])])].sort();
-}
-
 /** Two loads of OLD and one of NEW, and a third of OLD after NEW when the first two differ; OLD's from the cache when nothing it loaded changed since. */
 async function loadBoth(browser: Browser, run: Run, route: string, viewports: readonly Viewport[]): Promise<{ olds: RouteCapture[]; next: RouteCapture; loads: readonly string[] }> {
 	const key = { route, viewports };
@@ -277,118 +269,112 @@ async function steadyWeight(browser: Browser, run: Run, route: string, viewports
 	return { ...next, pages: { ...next.pages, [desktop]: kept } };
 }
 
-/** The old page loaded without a stylesheet of its own in every load (a stale snapshot naming a file its host no longer serves): it shows unstyled, so nothing is compared against it and the route is not checked rather than red. */
-export function brokenOld(route: string, olds: readonly RouteCapture[]): RouteResult | undefined {
-	const missing = (o: RouteCapture) => new Set(Object.values(o.pages).flatMap((p) => p.assets.filter((a) => a.type === 'stylesheet' && (a.status === 0 || a.status >= 400)).map((a) => `${a.url} (${a.status || 'no answer'})`)));
-	const [first, ...rest] = olds.map(missing);
-	const always = [...(first ?? [])].filter((s) => rest.every((r) => r.has(s)));
-	if (!always.length) return undefined;
-	return partialResult(route, [], [], undefined, { side: 'old', cause: 'old page broken', message: `OLD: the old page loads without its stylesheet ${always.join(', ')}, so it shows unstyled; serve the old side as it was (a snapshot whose files are all there) and check again` });
+// Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
+const unframed = (key: string, value: unknown) => (key === 'regions' || key === 'answeredMs' || key === 'shift' ? undefined : value);
+
+export async function servesPage(env: SideEnv, path: string): Promise<boolean> {
+	try {
+		const response = await request(new URL(path, env.origin).href, { redirect: 'manual', headers: tagHeaders(env), signal: AbortSignal.timeout(15_000) });
+		await response.body?.cancel();
+		return response.status < 400;
+	} catch {
+		return true;
+	}
 }
 
-/** OLD's captures of the route, so a record run can save what OLD fetched. */
-const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
+const RETIMES = 3;
 
-export async function checkRoute(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS, locales: readonly string[] = []): Promise<RouteResult> {
-	const oldOrigin = run.old.origin;
-	const newOrigin = run.new.origin;
-	stepsOf(route).total = 3 + [run.probes, run.busyCpu, run.motion, run.responsiveness, run.embeds].filter(Boolean).length;
-	const { olds, next, loads } = await profiled(route, 'load both sides', () => loadBoth(browser, run, route, viewports));
-	const broken = brokenOld(route, olds);
-	if (broken) return broken;
-	const oldA = olds[0]!;
-	const probes = new Map<string, Probe>();
-	const toProbe = assetsToProbe(oldA, next);
-	for (const [i, found] of (await pool(toProbe, 8, (url) => probe(run.new, url))).entries()) probes.set(toProbe[i]!, found);
-	const languages = routeLocales(oldA, locales);
-	const [negotiatedA, negotiatedB, negotiatedNew] = await Promise.all([negotiate(run.old, route, languages), negotiate(run.old, route, languages), negotiate(run.new, route, languages)]);
-	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
-	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
-	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
-	const selfUrls = await selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, run.new, { seo: Object.values(oldA.pages)[0]?.seo ?? {}, origin: oldOrigin });
-	const result = reached(route, withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew), ...selfUrls], { noise, writes: loadWrites }));
-	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const journeyed = reached(route, await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads))));
-	const explored = reached(route, run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed, true)) : journeyed);
-	const busy = run.busyCpu ? await profiled(route, 'busy CPU', () => checkBusyCpu(run.busyCpu!.browsers, { old: run.old, new: run.new }, route, viewports[0]!, run.busyCpu)) : undefined;
-	const lane = reached(route, busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored);
-	const moved = reached(route, run.motion && lane.journeys?.length ? await profiled(route, 'motion', () => checkMoves(browser, run, route, viewports[0]!, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane);
-	const timed = reached(route, run.responsiveness && moved.journeys?.length ? await profiled(route, 'responsiveness', () => checkTimings(browser, run, route, moved)) : moved);
-	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
-	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
-	const checked = run.embeds && embedded ? await profiled(route, 'embeds', () => checkRouteEmbeds(browser, run, route, viewports, timed)) : timed;
-	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
-	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
-	oldCaptures.set(done, oldA);
-	return done;
+/** What each stage of one route's check observes, with the browser and both apps. */
+function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readonly old: readonly WallHit[]; readonly new: readonly WallHit[] }, route: string, viewports: readonly Viewport[], logins: readonly string[], seen: { loaded?: RouteStages['load']['value'] } = {}): Producers {
+	const viewport = viewports[0]!;
+	const sides = { old: watched.old, new: watched.new };
+	let loaded: RouteStages['load']['value'] | undefined;
+	const load = () => {
+		if (!loaded) throw new Error(`${route} was not loaded before a stage that reads its page loads`);
+		return loaded;
+	};
+	const door = { old: watched.old.origin, serves: (path: string) => isSwitched([route, ...(watched.switched ?? [])], path), ...(watched.old.storageState ? { storageState: watched.old.storageState } : {}), ...(watched.old.signIn ? { signIn: watched.old.signIn } : {}) };
+	// A hash-routed old server only ever serves its shell, so no request of its pages can be handed to the new app.
+	const front: SideEnv = watched.old.routing === 'hash' ? watched.new : { ...watched.new, frontDoor: door };
+	return {
+		wall: async () => {
+			const [old, next] = await Promise.all([probeWall(run.old, route, 'old'), probeWall(run.new, route, 'new')]);
+			return { ...(old ? { old } : {}), ...(next ? { new: next } : {}) };
+		},
+		gate: async ({ role }) => {
+			const [a, b, n] = await Promise.all([captureRouteHttp(run.old, route, tagHeaders(run.old)), captureRouteHttp(run.old, route, tagHeaders(run.old)), captureRouteHttp(run.new, route, tagHeaders(run.new))]);
+			const guarded = run.source?.guarded?.some((pattern) => matchRoute(pattern, route)) ? { old: { saysDenied: await deniedPage(run.old, a) }, new: { saysDenied: await deniedPage(run.new, n) } } : undefined;
+			const decided = accessFailures(route, role, a, n, logins, guarded);
+			return decided.comparable ? { comparable: true, failures: decided.failures } : { comparable: false, failures: [...httpFailures(route, [a, b], n), ...decided.failures] };
+		},
+		load: async ({ light }) => (seen.loaded = loaded = await loadBoth(browser, watched, route, light ? viewports.slice(0, 1) : viewports)),
+		assets: async ({ urls }) => {
+			const found = await pool(urls, 8, (url) => probe(watched.new, url));
+			return urls.map((url, i) => [url, found[i]!] as const);
+		},
+		negotiate: ({ languages }) => Promise.all([negotiate(watched.old, route, languages), negotiate(watched.old, route, languages), negotiate(watched.new, route, languages)]),
+		selfUrls: () => {
+			const { olds, next } = load();
+			return selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, watched.new, { seo: Object.values(olds[0]!.pages)[0]?.seo ?? {}, origin: watched.old.origin });
+		},
+		states: (asked) => observeRouteStates(browser, watched, route, viewports, load().olds, asked),
+		journeys: () => observeJourneys(browser, watched, route, viewport, front, load().loads),
+		arrival: async ({ entry, journeys }) => {
+			if (!(await servesPage(watched.new, entry))) return null;
+			const [a, b, next] = await Promise.all([replayAll(browser, watched.old, route, viewport, journeys), replayAll(browser, watched.old, route, viewport, journeys), replayAll(browser, watched.new, route, viewport, journeys)]);
+			return { a, b, next };
+		},
+		retime: async ({ set, journey }) => {
+			const other = set === 'main' ? front : watched.new;
+			const rounds: { old: RunResults[number]; next: RunResults[number] }[] = [];
+			for (let i = 0; i < RETIMES; i++) {
+				const old = await replay(browser, watched.old, route, viewport, journey).catch(() => []);
+				rounds.push({ old, next: await replay(browser, other, route, viewport, journey).catch(() => []) });
+			}
+			return rounds.map((r) => ({ old: [...r.old], next: [...r.next] }));
+		},
+		clock: () => checkClock(browser, sides, route, viewport),
+		probes: ({ notify }) => observeProbes(browser, sides, route, viewport, notify, watched.probes),
+		parity: ({ film, webkit }) => observeControlParity(browser, sides, route, viewport, { ...watched.controls, webkit: webkit ? watched.controls?.webkit : undefined, film }),
+		busy: () => checkBusyCpu(watched.busyCpu!.browsers, sides, route, viewport, watched.busyCpu),
+		motion: ({ journeys }) => observeMotion(browser, sides, route, viewport, journeys, { ...watched.motion, rules: motionRules(parseRules(load().olds[0]!.pages[viewport.name]?.stylesheets ?? [])) }),
+		responsiveness: ({ journeys }) => checkResponsiveness(browser, sides, route, journeys, watched.responsiveness),
+		embeds: async () => {
+			const out = await checkEmbeds(browser, sides, route, viewports, watched.embeds!);
+			return { failures: out.failures, shots: out.shots };
+		},
+		locate: async ({ failures }) => {
+			const { olds, next } = load();
+			const located = await locateFailures({ failures } as unknown as RouteResult, { route, old: olds[0]!, next, sides: { old: { origin: watched.old.origin, dir: watched.sourceDirs?.old }, new: { origin: watched.new.origin, dir: watched.sourceDirs?.new } }, ...(watched.source ? { facts: watched.source } : {}) });
+			return { patches: located.failures.map((f, i) => (f === failures[i] ? null : { ...(f.old ? { old: f.old } : {}), ...(f.new ? { new: f.new } : {}), where: f.where! })), ...(located.newFiles ? { newFiles: located.newFiles } : {}) };
+		},
+		hashLinks: () => hashLinkFailures(browser, run.new, route, viewport),
+		walls: async () => ({ ...(walls.old[0] ? { old: walls.old[0] } : {}), ...(walls.new[0] ? { new: walls.new[0] } : {}) }),
+	};
 }
 
-/** The forced CSS states, then the journeys on top. While both apps hold every write back, nothing a journey does can change what a forced state shows, so the two run side by side and the result is the same. */
-export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: RouteResult, states: (input: RouteResult) => Promise<RouteResult>, journeys: (input: RouteResult) => Promise<RouteResult>): Promise<RouteResult> {
-	if (run.old.sendWrites || run.new.sendWrites) return journeys(await states(result));
-	const [stated, journeyed] = await Promise.allSettled([states(result), journeys(result)]);
-	if (stated.status === 'rejected') throw stated.reason;
-	if (journeyed.status === 'rejected') throw journeyed.reason;
-	const j = journeyed.value;
-	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
-}
-
-/** The widget probes of the route's controls, the moved-clock look and control parity, old against new, on top of what the journeys found; pop-up motion is filmed on routes that carry motion. */
-async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes' | 'controls' | 'motion'>, route: string, viewport: Viewport, result: RouteResult, film = false): Promise<RouteResult> {
-	const sides = { old: run.old, new: run.new };
-	const clock = await checkClock(browser, sides, route, viewport);
-	const out = await checkProbes(browser, sides, route, viewport, result.journeys, run.probes);
-	const parity = run.controls
-		? await profiled(route, 'control parity', () => checkControlParity(browser, sides, route, viewport, { ...run.controls, film: film && Boolean(run.motion) })).catch((error: Error) => ({ failures: [{ route, dimension: 'behaviour' as const, check: 'control parity', expected: 'control parity runs', actual: error.message.split('\n')[0]!, hint: 'Control parity could not load the route on one side.' }], shots: [], tried: 0, leftOut: 0, ms: 0 }))
-		: undefined;
-	const failures = [...clock, ...out.failures, ...(parity?.failures ?? [])];
-	const shots = parity?.shots.length ? { shots: [...result.shots, ...parity.shots] } : {};
-	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures], shots) : { ...result, ...shots }), probes: { controls: out.controls, ms: out.ms, stateMs: out.stateMs, stateSpread: out.stateSpread }, ...(parity ? { controlParity: { tried: parity.tried, leftOut: parity.leftOut, ms: parity.ms } } : {}) };
-}
-
-async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], result: RouteResult): Promise<RouteResult> {
-	const out = await checkEmbeds(browser, { old: run.old, new: run.new }, route, viewports, run.embeds!);
-	return out.failures.length || out.shots.length ? withFailures(result, [...result.failures, ...out.failures], { shots: [...result.shots, ...out.shots] }) : result;
-}
-
-/** One viewport's http, rendered, seo, assets, css, a11y, i18n, network, weight and behaviour checks: what a page gets when its template group's representative carries visual, responsiveness and motion. Every page's own controls are used and compared, whatever its template: two pages alike in layout can hold different widgets. */
-export async function checkLight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
-	const first = [viewports[0]!];
-	const { olds, next, loads } = await loadBoth(browser, run, route, first);
-	const broken = brokenOld(route, olds);
-	if (broken) return broken;
-	const oldA = olds[0]!;
-	const probes = new Map<string, Probe>();
-	const toProbe = assetsToProbe(oldA, next);
-	for (const [i, found] of (await pool(toProbe, 8, (url) => probe(run.new, url))).entries()) probes.set(toProbe[i]!, found);
-	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
-	const kept = compared.failures.filter((f) => !REPRESENTATIVE_ONLY.includes(f.dimension as Dimension));
-	const checked = withFailures({ ...compared, visualDiffs: [], shots: [] }, kept, { noise: noiseReport(olds, run.frozen, run.source?.nondeterminism) });
-	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
-	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	reached(route, skipped);
-	const journeyed = reached(route, await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads));
-	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
-	const oneEngine = run.controls?.webkit ? { ...run, controls: { ...run.controls, webkit: undefined } } : run;
-	const probed = run.probes ? await probeRoute(browser, oneEngine, route, first[0]!, journeyed) : journeyed;
-	const located = await locateFailures(probed, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
-	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
-	oldCaptures.set(done, oldA);
-	return done;
+// Forces every state the OLD stylesheets style, on the first viewport, and traces each default-state computed style the judge asks about to its OLD rule.
+async function observeRouteStates(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], olds: readonly RouteCapture[], asked: StatesRequest): Promise<StatesRow> {
+	const sources = olds[0]!.pages[viewports[0]!.name]?.stylesheets ?? [];
+	const states = discoverStates(sources);
+	const rules = asked.viewports.length ? await mapRules(parseRules(sources), sources, run.old.origin, run.sourceDirs?.old) : [];
+	const out: StatesViewportRow[] = [];
+	for (const { name, forced, explain } of asked.viewports) {
+		const viewport = viewports.find((v) => v.name === name)!;
+		out.push(await observeStates({ browser, envs: { old: run.old, new: run.new }, route, viewport, states: forced ? states : [], rules, noise: stateNoise(olds, name), explain }));
+	}
+	return { viewports: out };
 }
 
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
-async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner, loads: readonly string[] = []): Promise<RouteResult> {
+async function observeJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, front: SideEnv, loads: readonly string[]): Promise<JourneysRow> {
 	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
 	if (explored.incomplete) throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the machine ran far slower than the journeys need, so ${route} is not checked rather than compared on fewer of them` });
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
-	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
-	// A hash-routed old server only ever serves its shell, so no request of its pages can be handed to the new app.
-	const front: SideEnv = run.old.routing === 'hash' ? run.new : { ...run.new, frontDoor: door };
 	const [again, next] = await profiled(route, `replay ${plain.length} journeys old and new`, () => Promise.all([cached ? cached.runs[1]! : replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]));
 	const runs = cached?.runs ?? [recorded, again];
 	// A third old run, for the journeys whose two old runs differed: the others agree, and their second run stands for the third.
@@ -403,134 +389,53 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const oldRiskyAgain = cached ? cached.oldRiskyAgain : risky.length && !run.old.sendWrites ? await replayDestructive(browser, run.old, route, viewport, risky) : oldRisky;
 	const mine: OldJourneys = { explored, runs, oldRisky, oldRiskyAgain };
 	if (!cached && loads.length && clientOnly(mine)) await run.oldCache?.write('journeys', run.old, key, loads, mine);
-	const journeys: RecordedJourney[] = [...plain, ...risky.map((j, i) => ({ ...j, expected: oldRisky[i]! }))];
-	const olds = runs.map((r, k) => [...r, ...(k === 0 ? oldRisky : oldRiskyAgain)]);
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
-	const reachable = await profiled(route, 'unreachable on new', () => unreachableOnBoth(browser, front, route, viewport, elements));
-	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
-	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped, ...(explored.sequencesSkipped ? { sequencesSkipped: explored.sequencesSkipped } : {}) };
-	const unexercised = [...elements.filter((e) => !e.by && !e.shared && !notAControl(e.reason)).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature))), ...leftOut(route, explored)];
-	const doorErrors = await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]);
+	const tried = unreachableTried(elements);
+	const reachable = await profiled(route, 'unreachable on new', async () => (tried.length ? unreachableAlike(elements, await replayAll(browser, front, route, viewport, tried.map((e) => e.unreachable!.journey))) : []));
+	const doorErrors = [...(await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]))];
 	// A theme toggle starts from the OS colour scheme: its cycles run again with the OS in dark mode, twice on old (what varies there may vary) and once on new.
 	const dark = themed(plain);
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
-	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
-	const improvements: string[] = [];
-	// A page to arrive from that does not load is no reason to drop the route's own result: those journeys are reported as not compared, and the route stays red.
-	const arrivedFailures = explored.arrival
-		? await profiled(route, 'arrival journeys', () => checkArrived(browser, run, route, viewport, plain, explored.arrival!, owner, improvements)).catch((error: unknown): Failure[] => {
-				if (run.old.scope?.closed) throw error;
-				return [{ route, dimension: 'behaviour', check: `journeys after arriving from ${explored.arrival!.entry} by ${describeTarget(explored.arrival!.link)}`, expected: 'the route\'s journeys compared after arriving in place', actual: `not compared: ${(error as Error).message.split('\n')[0]}`, hint: HINTS.coverage }];
-			})
-		: [];
-	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), olds, [...next, ...newRisky]);
-	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
-	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
-	return improvements.length ? { ...compared, improvements: [...(compared.improvements ?? []), ...improvements] } : compared;
+	const darkRuns = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : undefined;
+	return { explored, runs, next, oldRisky, oldRiskyAgain, newRisky, reachable, doorErrors, ...(darkRuns ? { dark: { olds: darkRuns[0], next: darkRuns[1] } } : {}) };
 }
 
-// Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
-const unframed = (key: string, value: unknown) => (key === 'regions' || key === 'answeredMs' || key === 'shift' ? undefined : value);
-
-/**
- * The route's journeys again, arriving the way a visitor does from another page: that page loads, its link to the route is
- * followed (the router swaps the page in place), then the journey's steps run. Twice on old and once on new, compared alike;
- * a part that only works on a fresh load (one whose script runs once, at load) is red here.
- */
-async function checkArrived(browser: Browser, run: Run, route: string, viewport: Viewport, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[]): Promise<Failure[]> {
-	const arrive: Step = { action: 'click', target: arrival.link };
-	const how = `after arriving from ${arrival.entry} by ${describeTarget(arrival.link)}`;
-	// One journey per kind of control is enough to show the parts are wired after the swap: the same control under another nth repeats it.
-	const kinds = new Set<string>();
-	const distinct = plain.filter((j) => {
-		const first = j.steps[0]!;
-		const key = `${j.steps.length}|${first.action}|${first.target.role}|${first.target.name}`;
-		if (j.cycle || j.destructive || j.pattern || kinds.has(key)) return false;
-		kinds.add(key);
-		return true;
-	});
-	const journeys: Journey[] = distinct.slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
-	if (!journeys.length) return [];
-	// A page the new app does not serve (a port of only some routes) has no link to arrive by: that page's own check reports it, not this route's journeys.
-	if (!(await servesPage(run.new, arrival.entry))) return [];
-	const [a, b, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
-	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next);
+/** What the judge reads of the run's configuration for one route. */
+function routeContext(run: Run, route: string, role: string | undefined, options: Pick<CheckOptions, 'viewports' | 'locales'>, light: boolean): RouteContext {
+	return {
+		route,
+		...(role ? { role } : {}),
+		viewports: options.viewports ?? VIEWPORTS,
+		locales: options.locales ?? [],
+		light,
+		origins: { old: run.old.origin, new: run.new.origin },
+		frozen: run.frozen,
+		...(run.source ? { source: run.source } : {}),
+		writes: { old: run.old, new: run.new },
+		...(run.old.routing ? { oldRouting: run.old.routing } : {}),
+		stages: routeStages(run),
+		span: (part, work) => profiled(route, part, work),
+		reached: (result) => void reached(route, result),
+		total: (parts) => void (stepsOf(route).total = parts),
+		closed: () => Boolean(run.old.scope?.closed),
+	};
 }
 
-export async function servesPage(env: SideEnv, path: string): Promise<boolean> {
-	try {
-		const response = await request(new URL(path, env.origin).href, { redirect: 'manual', headers: tagHeaders(env), signal: AbortSignal.timeout(15_000) });
-		await response.body?.cancel();
-		return response.status < 400;
-	} catch {
-		return true;
-	}
-}
+const routeStages = (run: Run): RouteContext['stages'] => ({ probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds) });
 
-// The candidates a route confirms at a time, the largest first, and the rounds of old and new each journey gets: five old and
-// four new samples in all, enough for a one-sided test to reach the share of 0.05 five candidates leave the first of them.
-const RETIMED = 5;
-const RETIMES = 3;
+/** OLD's captures of the route, so a record run can save what OLD fetched. */
+const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
 
-/**
- * A step answered more slowly on the new page, or showing a view in between only there, is timed again one side at a time,
- * old then new, since a busy machine slows whichever side it happens to. It stands only when the samples say so beyond chance,
- * the route's candidates sharing one significance, and an answer only by more than the route's own old runs differ.
- */
-async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[], olds: readonly RunResults[], next: RunResults): Promise<Failure[]> {
-	const floor = Math.max(100, answerFloor(olds));
-	const effect = (f: Failure) => {
-		const { journey, step, views, cadence } = timedOnly.get(f)!;
-		if (views || cadence) return Infinity;
-		const times = olds.map((o) => o[journey]?.[step]?.reaction?.answeredMs);
-		const mine = next[journey]?.[step]?.reaction?.answeredMs;
-		return mine === undefined || times.some((t) => t === undefined) ? Infinity : mine - Math.max(...(times as number[]));
-	};
-	const timed = failures.filter((f) => timedOnly.has(f));
-	// Within what the route's own old runs differ by is the machine, not the page.
-	const candidates = timed.filter((f) => effect(f) > floor).sort((a, b) => effect(b) - effect(a));
-	const replays = new Map<number, Promise<{ old: StepResult[]; next: StepResult[] }[]>>();
-	const roundsOf = (journey: number) => {
-		if (!replays.has(journey))
-			replays.set(
-				journey,
-				(async () => {
-					const rounds: { old: StepResult[]; next: StepResult[] }[] = [];
-					for (let i = 0; i < RETIMES; i++) {
-						const old = await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []);
-						rounds.push({ old, next: await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []) });
-					}
-					return rounds;
-				})(),
-			);
-		return replays.get(journey)!;
-	};
-	const unconfirmed = new Set<Failure>();
-	const sample = async (i: number): Promise<Samples> => {
-		const failure = candidates[i]!;
-		const { journey, step, views, cadence } = timedOnly.get(failure)!;
-		const first = olds.map((o) => o[journey]?.[step]).filter((r): r is StepResult => Boolean(r));
-		const rounds = (await roundsOf(journey)).map((r) => ({ old: r.old[step], next: r.next[step] }));
-		const mine = next[journey]?.[step];
-		if (views || cadence) {
-			const shows = (r: StepResult | undefined) => (r?.reaction?.views ? (cadence ? choppier(first, r) : interimViews(first, r)) !== undefined : undefined);
-			const o = rounds.map((r) => shows(r.old)), n = rounds.map((r) => shows(r.next));
-			if ([...o, ...n].some((x) => x === undefined)) unconfirmed.add(failure);
-			return { kind: 'shown', old: [...first.map(() => false), ...o.map(Boolean)], next: [true, ...n.map(Boolean)] };
-		}
-		const o = rounds.map((r) => r.old?.reaction?.answeredMs), n = rounds.map((r) => r.next?.reaction?.answeredMs);
-		if ([...o, ...n].some((x) => x === undefined)) unconfirmed.add(failure);
-		return { kind: 'answer', old: [...first.map((r) => r.reaction?.answeredMs ?? 0), ...o.map((x) => x ?? 0)], next: [mine?.reaction?.answeredMs ?? 0, ...n.map((x) => x ?? 0)] };
-	};
-	const verdicts = await judgeInTurn(candidates.length, RETIMED, sample, (batch) => judgeTiming(batch, floor));
-	const stands = new Map<Failure, string>();
-	for (const [i, { samples: s, judged: v, among }] of verdicts.entries()) {
-		const failure = candidates[i]!;
-		// A step that could not be timed again keeps its failure, unconfirmed, as before.
-		if (unconfirmed.has(failure)) stands.set(failure, '; it could not be timed again one side at a time');
-		else if (v.stands) stands.set(failure, s.kind === 'answer' ? `; timed again one side at a time: old ${s.old.join(', ')} ms, new ${s.next.join(', ')} ms (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${floor} ms here)` : `; timed again one side at a time: the new page showed it in ${s.next.filter(Boolean).length} of ${s.next.length} runs, the old in ${s.old.filter(Boolean).length} of ${s.old.length} (p = ${v.p.toFixed(3)})`);
-	}
-	return failures.filter((f) => !timedOnly.has(f) || stands.has(f)).map((f) => (stands.has(f) ? { ...f, actual: `${f.actual}${stands.get(f)}` } : f));
+/** Checks one route as one role, its rows in `log`: a bot wall stops it, a different access decision is reported without comparing two different pages. */
+async function liveRouteCheck(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions, light: boolean, log: RouteLog): Promise<RouteResult> {
+	const walls = { old: [] as WallHit[], new: [] as WallHit[] };
+	const watched: Run = { ...run, old: { ...run.old, walls: walls.old }, new: { ...run.new, walls: walls.new } };
+	let passed = false;
+	const seen: { loaded?: RouteStages['load']['value'] } = {};
+	const result = await roleCheck(recording(liveProducers(browser, run, watched, walls, route, options.viewports ?? VIEWPORTS, logins, seen), log), { ...routeContext(run, route, role, options, light), passed: () => void (passed = true) });
+	const old = seen.loaded?.olds[0];
+	if (passed && old) oldCaptures.set(result, old);
+	return result;
 }
 
 /** The parts of each route's check that have finished, the ones running and how many it was going to run: what a timed-out route reports. */
@@ -577,126 +482,6 @@ function clientOnly(o: OldJourneys): boolean {
 	return [...o.runs, o.oldRisky, o.oldRiskyAgain].every((r) => r.every((steps) => steps.every((step) => !step.requests.length && !step.writes?.length && !step.door)));
 }
 
-/** How a control that ends the session or deletes was exercised: by its journey, with the requests it made held back or sent. */
-export function destructiveCoverage(e: ElementCoverage, deferred: Exploration['deferred'], results: RunResults): ElementCoverage {
-	const at = deferred.findIndex((d) => d.signature === e.signature);
-	if (at < 0) return e;
-	const journey = deferred[at]!.journey;
-	const steps = results[at] ?? [];
-	const last = steps.at(-1);
-	const { reason: _, ...rest } = e;
-	if (!last || last.failed || steps.length < journey.steps.length) return { ...rest, reason: `it could not be used on the old page: ${last?.failed ?? 'the journey stopped before it'}`, ...(last?.unreachable ? { unreachable: { journey, kind: last.unreachable } } : {}) };
-	const writes = steps.flatMap((s) => s.writes ?? []);
-	const held = writes.filter((w) => !w.sent).map((w) => w.line);
-	const how = held.length ? `; held back and compared unsent: ${held.join(', ')}` : writes.length ? '; its writes sent (staging or this machine), in a session of its own' : '';
-	return { ...rest, by: `${journey.name}${how}`, journeys: [journey.name] };
-}
-
-/** Elements the old page would not let a visitor use, tried on the new page too: the same reason on both is accepted automatically. */
-async function unreachableOnBoth(browser: Browser, env: SideEnv, route: string, viewport: Viewport, elements: readonly ElementCoverage[]): Promise<Map<string, NonNullable<Failure['automatic']>>> {
-	const tried = elements.filter((e) => e.unreachable && !e.by && !e.shared);
-	const out = new Map<string, NonNullable<Failure['automatic']>>();
-	if (!tried.length) return out;
-	const results = await replayAll(browser, env, route, viewport, tried.map((e) => e.unreachable!.journey));
-	tried.forEach((e, i) => {
-		const steps = results[i]!;
-		const failed = steps.find((r) => r.failed);
-		const candidate = unreachableCandidate(e.unreachable!.kind, e.reason ?? '', failed);
-		if (candidate) out.set(e.signature, candidate);
-	});
-	return out;
-}
-
-async function checkMoves(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, sources: readonly StyleSource[]): Promise<RouteResult> {
-	const moved = await checkMotion(browser, { old: run.old, new: run.new }, route, viewport, result.journeys ?? [], { ...run.motion, rules: motionRules(parseRules(sources)) });
-	return withFailures(result, [...result.failures, ...moved.failures], { motion: moved.motion, ...(moved.filmstrips.length ? { filmstrips: moved.filmstrips } : {}) });
-}
-
-async function checkTimings(browser: Browser, run: Run, route: string, result: RouteResult): Promise<RouteResult> {
-	// The new app is timed on its own, not through the front door: a link's target is its page as it will serve it.
-	const timed = await checkResponsiveness(browser, { old: run.old, new: run.new }, route, (result.journeys ?? []).filter((j) => !j.destructive), run.responsiveness);
-	return withFailures(result, [...result.failures, ...timed.failures], { responsiveness: timed.responsiveness });
-}
-
-/** Keyboard journeys and repeated-use sequences the budget left out: what they would have compared was compared nowhere, so the route is red until they run. */
-export function leftOut(route: string, explored: Pick<Exploration, 'skipped' | 'sequencesSkipped'>): Failure[] {
-	const out: Failure[] = [];
-	const n = (k: number, what: string) => `${k} ${what}${k === 1 ? '' : 's'}`;
-	if (explored.skipped) out.push(notExercised(route, n(explored.skipped, 'keyboard journey'), `left out when the journey budget ran out; raise --max-journeys until they run`));
-	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --max-journeys until they run`));
-	return out;
-}
-
-/**
- * What the original's page lists as clickable but no visitor can use as such: a box of no size at rest, and one covered by a
- * link or button over it (a card's stretched link), where the cover is the control.
- */
-export const notAControl = (reason: string | undefined): boolean => /could not be used: hidden: it has no size|could not be used: occluded: covered by (a|button)\b/.test(reason ?? '');
-
-export function notExercised(route: string, element: string, reason: string, automatic?: Failure['automatic']): Failure {
-	return { route, dimension: 'behaviour', check: `${NOT_EXERCISED}${element}`, expected: 'a journey that uses it on the old page, replayed on the new one', actual: reason, hint: HINTS.coverage, ...(automatic ? { automatic } : {}) };
-}
-
-/** Each shared layout control is exercised by the first route of the run that has it; the others carry its verdict. */
-export function shareLayout(results: readonly RouteResult[]): RouteResult[] {
-	const byRoute = new Map(results.map((r) => [r.route, r]));
-	return results.map((r) => {
-		const shared = r.coverage?.elements.filter((e) => e.shared) ?? [];
-		if (!shared.length) return r;
-		const added: Failure[] = [];
-		let exercised = r.coverage!.exercised;
-		for (const e of shared) {
-			const owner = byRoute.get(e.shared!);
-			const theirs = owner?.coverage?.elements.find((o) => o.signature === e.signature);
-			if (!theirs || !theirs.by) {
-				added.push(notExercised(r.route, `${e.element}, shared with ${e.shared}`, theirs?.reason ?? `${e.shared} was not compared, so its shared controls were not exercised`));
-				continue;
-			}
-			exercised++;
-			const names = theirs.journeys ?? [];
-			for (const f of owner!.failures) if (names.some((n) => f.check === n || f.check.startsWith(`${n} (step `))) added.push({ ...f, route: r.route, check: `${f.check}, in the layout shared with ${e.shared}` });
-		}
-		const coverage = { ...r.coverage!, exercised };
-		return added.length ? withFailures({ ...r, coverage }, [...r.failures, ...added]) : { ...r, coverage };
-	});
-}
-
-// Forces every state the OLD stylesheets style, on the first viewport, and names the OLD rule behind each computed-style failure.
-async function checkStates(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], olds: readonly RouteCapture[], result: RouteResult): Promise<RouteResult> {
-	const oldOrigin = run.old.origin;
-	const newOrigin = run.new.origin;
-	const first = viewports[0]!;
-	const sources = olds[0]!.pages[first.name]?.stylesheets ?? [];
-	const states = discoverStates(sources);
-	const rules = await mapRules(parseRules(sources), sources, run.old.origin, run.sourceDirs?.old);
-	const failures: Failure[] = [];
-	const explained = new Map<Failure, Failure>();
-	const shots: Shot[] = [];
-	const checked: string[] = [];
-	const skipped: string[] = [];
-	for (const viewport of viewports) {
-		const a = olds[0]!.pages[viewport.name];
-		if (!a) continue;
-		const others = olds.slice(1).map((o) => o.pages[viewport.name]!).filter(Boolean);
-		const explain = result.failures.flatMap((failure) => {
-			const target = failure.viewport === viewport.name ? cssTargets.get(failure) : undefined;
-			return target ? [{ failure, ...target }] : [];
-		});
-		const forced = viewport === first ? states : [];
-		if (!forced.length && !explain.length) continue;
-		const styleNoise = noisyStyles(a.elements, others.map((o) => o.elements));
-		const textNoise = new Set(others.flatMap((o) => [...matchElements(a.elements, o.elements)].filter(([i, j]) => a.elements[i]!.text !== o.elements[j]!.text).map(([i]) => i)));
-		const noise = a.elements.flatMap((element, i): StateInput['noise'][number][] => (textNoise.has(i) ? [{ element, props: 'text' }] : styleNoise.get(i)?.size ? [{ element, props: styleNoise.get(i)! }] : []));
-		const out = await compareStates({ browser, oldOrigin, newOrigin, envs: { old: run.old, new: run.new }, route, viewport, states: forced, rules, noise, explain });
-		failures.push(...out.failures);
-		for (const [from, to] of out.explained) explained.set(from, to);
-		shots.push(...out.shots);
-		checked.push(...out.checked.map((label) => (viewports.length > 1 ? `${label} (${viewport.name})` : label)));
-		skipped.push(...out.skipped);
-	}
-	return withFailures(result, [...result.failures.map((f) => explained.get(f) ?? f), ...failures], { shots: [...result.shots, ...shots], states: { checked, skipped } });
-}
-
 /** Writes go out only when both apps are staging or on this machine; otherwise both are held back, so they compare alike. */
 export function writesAllowed(options: Pick<CheckOptions, 'oldOrigin' | 'newOrigin' | 'staging'>): boolean {
 	return (Boolean(options.staging?.old) || isLoopback(options.oldOrigin)) && (Boolean(options.staging?.new) || isLoopback(options.newOrigin));
@@ -731,31 +516,6 @@ async function navigationRun(run: Run, data: CheckOptions['data'], routes: reado
 	return next;
 }
 
-/** A route that was not compared in full: only `compared` dimensions carry a verdict, the rest are skipped. */
-function partialResult(route: string, failures: readonly Failure[], compared: readonly Dimension[], blocked?: Blocked, infrastructure?: Infrastructure): RouteResult {
-	const failed = new Set(failures.map((f) => f.dimension));
-	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : compared.includes(d) ? 'pass' : 'skipped'])) as RouteResult['dimensions'];
-	const zero = { downloaded: 0, source: 0, executed: 0 };
-	return { route, ok: false, dimensions, failures, weight: { old: zero, new: zero }, visualDiffs: [], shots: [], ...(blocked ? { blocked } : {}), ...(infrastructure ? { infrastructure } : {}) };
-}
-
-/** The route's result when the network failed it (a page that would not load after a retry, an origin that does not resolve or refuses the connection): an infrastructure failure, not the app's; undefined for any other error. */
-export function loadTimeout(route: string, error: unknown, [oldOrigin, newOrigin]: readonly [string, string]): RouteResult | undefined {
-	const kind = classify(error);
-	if (!kind || !(error instanceof Error)) return undefined;
-	const origin = error instanceof InfrastructureError ? error.infrastructure.origin : undefined;
-	const at = (o: string) => origin !== undefined && new URL(origin).origin === new URL(o).origin;
-	const side = oldOrigin === newOrigin ? undefined : at(newOrigin) ? 'new' : at(oldOrigin) ? 'old' : undefined;
-	const message = error.message.split('\n')[0]!.split(oldOrigin).join('OLD').split(newOrigin).join('NEW');
-	return partialResult(route, [], [], undefined, { ...(side ? { side } : {}), cause: kind.cause, ...(kind.code && kind.code !== 'timeout' ? { code: kind.code } : {}), ...(origin ? { origin } : {}), message: `${side ? `${side.toUpperCase()}: ` : ''}${message}` });
-}
-
-/** A route whose check stopped part way (the page navigated away while it was captured, a script broke the page): red with why, and every other route is still checked. */
-export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: readonly [string, string]): RouteResult {
-	const message = (error instanceof Error ? error.message : String(error)).split('\n')[0]!.split(oldOrigin).join('OLD').split(newOrigin).join('NEW');
-	return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `it stopped: ${message}`, hint: HINTS.checkStopped }], []);
-}
-
 /** Default per route check: ten minutes, or five journey budgets when the budget is raised. */
 /** What the embed step may add to a route's check: its embeds pictured in every state and scheme, then activated. */
 export const EMBED_STEP_BUDGET_MS = 600_000;
@@ -765,7 +525,7 @@ export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys
 }
 
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
-export async function withDeadline(route: string, run: Run, ms: number, work: (run: Run) => Promise<RouteResult>): Promise<RouteResult> {
+export async function withDeadline(route: string, run: Run, ms: number, work: (run: Run) => Promise<RouteResult>, log?: RouteLog): Promise<RouteResult> {
 	routeSteps.delete(route);
 	const began = Date.now();
 	const scope = new Scope();
@@ -776,7 +536,9 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	try {
 		const first = await Promise.race([task, late]);
 		if (first !== 'late') {
-			const timed = { ...first, timing: { ms: Date.now() - began, steps: [...stepsOf(route).done] } };
+			const timing = { ms: Date.now() - began, steps: [...stepsOf(route).done] };
+			log?.record({ stage: 'timing', req: '', value: timing });
+			const timed = { ...first, timing };
 			routeSteps.delete(route);
 			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
 			return timed;
@@ -784,6 +546,7 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	} finally {
 		clearTimeout(timer);
 	}
+	log?.seal();
 	// A route whose pages were all answered right up to the deadline is not a network failure: it took longer to check than --timeout allows.
 	const window = Math.min(30_000, ms / 2);
 	const stalled = scope.stalled(window);
@@ -794,17 +557,16 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	// What the finished steps found stands: a route stopped part way is reported with them, the stop beside them.
 	const found = stepsOf(route).latest?.failures ?? [];
 	routeSteps.delete(route);
-	const so = (r: RouteResult) => (found.length ? withFailures(r, [...found, ...r.failures]) : r);
 	await scope.close();
 	await Promise.race([task.catch(() => {}), new Promise((done) => setTimeout(done, 10_000))]);
 	// A request left waiting, one failing, or an app that never answered is the servers' doing; a long part that sends no request (journeys deciding, a busy-CPU lane) is the check's own time.
-	if (stalled || failedLately || lastAnswer === undefined) return so(partialResult(route, [], [], undefined, { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` }));
-	const answering = lastAnswer < window ? `both apps were still answering (each answered within ${(lastAnswer / 1000).toFixed(1)} s of it stopping)` : `both apps had answered and no request was waiting or had failed (the last answer ${Math.round(lastAnswer / 1000)} s before it stopped)`;
-	return so(partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime }], []));
-}
-
-function asRole(result: RouteResult, role: string | undefined): RouteResult {
-	return role ? { ...result, role, failures: result.failures.map((f) => ({ ...f, role })) } : result;
+	const answering = lastAnswer !== undefined && lastAnswer < window ? `both apps were still answering (each answered within ${(lastAnswer / 1000).toFixed(1)} s of it stopping)` : `both apps had answered and no request was waiting or had failed (the last answer ${Math.round((lastAnswer ?? 0) / 1000)} s before it stopped)`;
+	const deadline: Deadline =
+		stalled || failedLately || lastAnswer === undefined
+			? { infrastructure: { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` } }
+			: { failure: { route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime } };
+	log?.record({ stage: 'deadline', req: '', value: deadline }, true);
+	return deadlineResult(route, deadline, found);
 }
 
 async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
@@ -812,43 +574,6 @@ async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
 	const url = new URL(http.chain.at(-1)!.url, env.origin);
 	const response = await request(url, { headers: tagHeaders(env) }).catch(() => undefined);
 	return response ? saysDenied(await bodyText(response, url).catch(() => '')) : false;
-}
-
-/** Checks one route as one role: a bot wall stops it, a different access decision is reported without comparing two different pages. */
-async function checkAs(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions, light = false): Promise<RouteResult> {
-	const [oldWall, newWall] = await Promise.all([probeWall(run.old, route, 'old'), probeWall(run.new, route, 'new')]);
-	const wall = oldWall ?? newWall;
-	if (wall) return partialResult(route, [], [], wall);
-	const gate: Failure[] = [];
-	if (role) {
-		const [a, b, n] = await Promise.all([captureRouteHttp(run.old, route, tagHeaders(run.old)), captureRouteHttp(run.old, route, tagHeaders(run.old)), captureRouteHttp(run.new, route, tagHeaders(run.new))]);
-		const guarded = run.source?.guarded?.some((pattern) => matchRoute(pattern, route)) ? { old: { saysDenied: await deniedPage(run.old, a) }, new: { saysDenied: await deniedPage(run.new, n) } } : undefined;
-		const decided = accessFailures(route, role, a, n, logins, guarded);
-		if (!decided.comparable) return partialResult(route, [...httpFailures(route, [a, b], n), ...decided.failures], ['http', 'auth']);
-		gate.push(...decided.failures);
-	}
-	const walls = { old: [] as WallHit[], new: [] as WallHit[] };
-	const watched: Run = { ...run, old: { ...run.old, walls: walls.old }, new: { ...run.new, walls: walls.new } };
-	try {
-		const checked = light ? await checkLight(browser, watched, route, options.viewports) : await checkRoute(browser, watched, route, options.viewports, options.locales);
-		const links = shellRoute(route, run.old.routing) ? await hashLinkFailures(browser, run.new, route, (options.viewports ?? VIEWPORTS)[0]!) : [];
-		const result = links.length ? withFailures(checked, [...checked.failures, ...links]) : checked;
-		if (result !== checked && oldCaptures.has(checked)) oldCaptures.set(result, oldCaptures.get(checked)!);
-		// A wall that started part way through (an asset, a journey's post, a forced state) stops the route like one at the door.
-		const hit = walls.old[0] ? ({ side: 'old', ...walls.old[0] } as const) : walls.new[0] ? ({ side: 'new', ...walls.new[0] } as const) : undefined;
-		if (hit) return partialResult(route, [], [], blockedResult(hit.side, hit.status, hit));
-		if (!gate.length) return result;
-		const gated = withFailures(result, [...gate, ...result.failures]);
-		const old = oldCaptures.get(result);
-		if (old) oldCaptures.set(gated, old);
-		return gated;
-	} catch (error) {
-		if (run.old.scope?.closed) throw error;
-		const timedOut = loadTimeout(route, error, [run.old.origin, run.new.origin]);
-		if (timedOut) return timedOut;
-		if (!(error instanceof BlockedError)) throw error;
-		return partialResult(route, [], [], blockedResult(error.origin === run.new.origin && error.origin !== run.old.origin ? 'new' : 'old', error.blocked.status, error.blocked));
-	}
 }
 
 async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpec, auth: AuthConfig, stateDir: string | undefined): Promise<{ run?: Run; login: LoginResult }> {
@@ -921,8 +646,38 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
 	const loginPaths = auth ? loginRoutes(auth) : [];
+	const loadPhase = Boolean(options.load && options.only !== 'embeds') || options.only === 'load';
+	const header: RunHeader = {
+		old: options.oldOrigin,
+		new: options.newOrigin,
+		startedAt,
+		routes: options.routes,
+		endpoints: options.endpoints ?? [],
+		redirects: options.redirects ?? [],
+		viewports: options.viewports ?? VIEWPORTS,
+		locales: options.locales ?? [],
+		freeze,
+		sendWrites: shared.sendWrites,
+		...(options.source ? { source: options.source } : {}),
+		...(options.oldRouting ? { oldRouting: options.oldRouting } : {}),
+		...(options.data ? { data: options.data } : {}),
+		roles,
+		...(options.unchecked ? { unchecked: options.unchecked } : {}),
+		accepted: options.accepted ?? [],
+		automaticOff: options.automaticOff ?? [],
+		...(options.only ? { only: options.only } : {}),
+		stages: { ...routeStages(base), load: loadPhase, navigation: Boolean(options.navigation) },
+		...(options.responsiveness ? { responsiveness: options.responsiveness } : {}),
+		coverage: Boolean(options.coverage),
+		...(options.partial ? { partial: options.partial } : {}),
+		cache: Boolean(oldCache),
+		auth: Boolean(auth),
+	};
+	const observed = options.observations;
+	await observed?.header(header);
+	const event = async (e: RunEvent) => void (await observed?.event(e));
 	try {
-		const routes: RouteResult[] = [];
+		let routes: RouteResult[] = [];
 		const unreachable = (route: string) => (error: unknown) => loadTimeout(route, error, [options.oldOrigin, options.newOrigin]) ?? stopped(route, error, [options.oldOrigin, options.newOrigin]);
 		const endpoints = new Set(options.endpoints ?? []);
 		const redirects = new Set(options.redirects ?? []);
@@ -941,12 +696,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		const allPages = options.routes.filter((route) => !endpoints.has(route) && !redirects.has(route));
 		const groupPages = options.templates !== false && options.templates?.site ? [...new Set([...options.templates.site, ...allPages])] : allPages;
 		const groups: TemplateGroup[] = options.templates !== false && groupPages.length > (options.templates?.threshold ?? TEMPLATE_THRESHOLD) ? await groupTemplates(base.old, groupPages, options.templates?.patterns) : [];
-		const groupOf = new Map(groups.filter((g) => g.members.length > 1).flatMap((g) => g.members.map((m) => [m, g] as const)));
-		const light = (route: string) => groupOf.has(route) && groupOf.get(route)!.representative !== route;
-		const withTemplate = (result: RouteResult): RouteResult => {
-			const group = groupOf.get(result.route);
-			return group ? { ...result, template: { pattern: group.pattern, representative: group.representative, members: group.members.length } } : result;
-		};
+		await event({ kind: 'plan', endpoints: [...endpoints], redirects: [...redirects], groups });
+		const { groupOf, light } = templateGroups(groups);
 		const coverages: RouteCoverage[] = [];
 		const wasteReferences: WasteReport[] = [];
 		const navigation: NavigationResult[] = [];
@@ -955,15 +706,14 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			if (auth && role && role !== ANONYMOUS) {
 				const signed = await signInAs(browser, base, role, auth.roles[role]!, auth, options.authStateDir);
 				logins.push(signed.login);
+				await event({ kind: 'login', role, login: signed.login, signedIn: Boolean(signed.run) });
 				if (!signed.run) continue;
 				roleRun = signed.run;
 			}
 			// A widget is shared only among one role's routes: a signed-in visitor may meet another one behind the same markup.
 			if (roleRun.probes) roleRun = { ...roleRun, probes: { ...roleRun.probes, shared: new Map<string, SharedProbe>() } };
-			// A run of one part leaves endpoints and redirects to the full check; they are listed as that part's, not as not checked.
-			const outOfPart = (only: 'load' | 'embeds' | 'probes') => [...endpoints, ...redirects].map((route) => asRole({ ...partialResult(route, [], []), ok: true, only }, role));
 			if (options.only === 'load') {
-				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })), ...outOfPart('load'));
+				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate(groupOf, { ...partialResult(route, [], []), ok: true, only: 'load' as const })), ...outOfPart([...endpoints], [...redirects], 'load', role));
 				continue;
 			}
 			if (options.only === 'embeds') {
@@ -971,41 +721,61 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				const viewports = options.viewports ?? VIEWPORTS;
 				for (const route of allPages) {
 					const out = await checkEmbeds(browser, { old: roleRun.old, new: roleRun.new }, route, viewports, step).catch((error: Error) => ({ failures: [{ route, dimension: 'rendered' as const, check: 'embed step', expected: 'the embed step runs', actual: error.message.split('\n')[0]!, hint: 'The embed step could not load the route on one side.' }], shots: [], results: [] }));
-					const result = { ...partialResult(route, out.failures, [...new Set(out.failures.map((f) => f.dimension as Dimension))]), shots: out.shots, only: 'embeds' as const };
-					routes.push(asRole(withTemplate({ ...result, ok: out.failures.length === 0 }), role));
+					await event({ kind: 'embeds only', ...(role ? { role } : {}), route, out: { failures: out.failures, shots: out.shots } });
+					routes.push(embedsOnly(groupOf, route, out, role));
 				}
-				routes.push(...outOfPart('embeds'));
+				routes.push(...outOfPart([...endpoints], [...redirects], 'embeds', role));
 				continue;
 			}
 			if (options.only === 'probes') {
 				const probing = { ...roleRun, probes: roleRun.probes ?? { shared: new Map<string, SharedProbe>() } };
-				const viewport = (options.viewports ?? VIEWPORTS)[0]!;
+				const viewports = options.viewports ?? VIEWPORTS;
 				for (const route of allPages) {
-					const empty = { ...partialResult(route, [], ['behaviour', 'a11y', 'rendered']), ok: true };
-					const result = await probeRoute(browser, probing, route, viewport, empty).catch((error: Error) => partialResult(route, [{ route, dimension: 'behaviour', check: 'the widget probes', expected: 'the widget probes run', actual: error.message.split('\n')[0]!, hint: 'The widget probes could not load the route on one side.' }], []));
-					routes.push(asRole(withTemplate({ ...result, ok: result.failures.length === 0, only: 'probes' as const }), role));
+					const log = new RouteLog(observed && ((row) => observed.row(row)));
+					const result = await probesOnly(recording(liveProducers(browser, probing, probing, { old: [], new: [] }, route, viewports, loginPaths), log), routeContext(probing, route, role, options, false));
+					await observed?.route({ route, ...(role ? { role } : {}), kind: 'probes' }, log.rows);
+					routes.push(asRole(withTemplate(groupOf, { ...result, ok: result.failures.length === 0, only: 'probes' as const }), role));
 				}
-				routes.push(...outOfPart('probes'));
+				routes.push(...outOfPart([...endpoints], [...redirects], 'probes', role));
 				continue;
 			}
 			const oldLanding = (env: SideEnv) => (route: string) => landing(browser, env, route, (options.viewports ?? VIEWPORTS)[0]!);
-			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role, oldLanding(roleRun.old)));
+			if (options.coverage) {
+				const coverage = await checkCoverage(roleRun.old, roleRun.new, options.coverage, role, oldLanding(roleRun.old));
+				coverages.push(coverage);
+				await event({ kind: 'coverage', coverage });
+			}
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
-			const shared = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
+			const sharedData = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
 			const pages = allPages;
 			const full = pages.filter((route) => !light(route));
 			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
 			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
+				const key = { route, ...(role ? { role } : {}), kind: 'page' as const };
 				const earlier = await progress?.done(route, role);
 				if (earlier) {
+					if (observed) await observed.route(key, [observed.row({ stage: 'resumed', req: '', value: earlier })]);
 					options.onRoute?.(earlier);
 					return earlier;
 				}
-				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, shared!) : { run: roleRun, failures: [] };
-				const checkOn = (browser: Browser) => withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route)));
-				const done = await (relaunched ? relaunched.retried(route, checkOn, async () => {}).then((got) => ('value' in got ? got.value : stopped(route, new Error(`${got.failed}, on both tries`), [options.oldOrigin, options.newOrigin]))) : checkOn(browser)).catch(unreachable(route));
+				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, sharedData!) : { run: roleRun, failures: [] };
+				const newLog = () => new RouteLog(observed && ((row) => observed.row(row)));
+				let log = newLog();
+				const checkOn = (browser: Browser) => {
+					const mine = (log = newLog());
+					return withDeadline(route, run, routeTimeout(options), (scoped) => liveRouteCheck(browser, scoped, route, role, loginPaths, options, light(route), mine), mine);
+				};
+				const done = await (relaunched
+					? relaunched.retried(route, checkOn, async () => {}).then((got) => {
+							if ('value' in got) return got.value;
+							log = newLog();
+							log.record({ stage: 'outcome', req: '', value: got.failed });
+							return stopped(route, new Error(`${got.failed}, on both tries`), [options.oldOrigin, options.newOrigin]);
+						})
+					: checkOn(browser)
+				).catch(unreachable(route));
 				const old = oldCaptures.get(done);
 				oldCaptures.delete(done);
 				forgetFailures(done.failures);
@@ -1015,8 +785,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const live = await recordLive(browser, run.old, route, first?.sockets ?? [], data.liveWindowMs ?? 0, (options.viewports ?? VIEWPORTS)[0]!);
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records), ...(live ? { live } : {}) });
 				}
-				const result = withTemplate(done);
-				const checkedAs = asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
+				if (observed) await observed.route(key, [...(failures.length ? [observed.row({ stage: 'data', req: '', value: failures })] : []), ...log.rows]);
+				const checkedAs = routeOutcome(groupOf, done, role, failures);
 				const kept = artifacts ? await artifacts.keep(checkedAs) : checkedAs;
 				await progress?.write(route, role, kept);
 				options.onRoute?.(kept);
@@ -1024,17 +794,26 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			});
 			const navRun = options.navigation ? await navigationRun(roleRun, data, pages) : undefined;
 			const navigated = navRun ? await checkNavigation(browser, navRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: navRun.old, ...options.navigation }) : undefined;
-			if (navigated) navigation.push(navigated);
-			const compared = navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked);
+			if (navigated) {
+				navigation.push(navigated);
+				await event({ kind: 'navigation', result: navigated });
+			}
+			const compared = roleCompared(checked, navigated);
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
-			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
-			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route, oldLanding(roleRun.old)).catch(unreachable(route)), role));
+			for (const route of endpoints) {
+				const result = await checkEndpoint(roleRun, route).catch(unreachable(route));
+				await event({ kind: 'endpoint', ...(role ? { role } : {}), route, result });
+				routes.push(asRole(result, role));
+			}
+			for (const route of redirects) {
+				const result = await checkRedirect(roleRun, route, oldLanding(roleRun.old)).catch(unreachable(route));
+				await event({ kind: 'redirect', ...(role ? { role } : {}), route, result });
+				routes.push(asRole(result, role));
+			}
 		}
-		if ((options.load && options.only !== 'embeds') || options.only === 'load') {
-			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
-			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
+		if (loadPhase) {
+			const routesToLoad = loadable(routes, allPages, light);
 			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
-			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
 			// The bypass token goes to the two apps' origins alone; PageSpeed Insights, which cannot carry it, is left out.
 			const bypass = bypassed ? { origins: [options.oldOrigin, options.newOrigin], ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}) } : undefined;
 			const loads = await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load, ...(bypass ? { bypass } : {}) });
@@ -1058,39 +837,12 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				}
 				for (const url of wasteOptions.references ?? []) wasteReferences.push(await measureWaste(url, wasteOptions));
 			}
-			routes.forEach((r, i) => {
-				const load = anonymous(r) ? loads.get(r.route) : undefined;
-				if (!load) return;
-				// Real PageSpeed Insights, when it answered, is the gate; the calibrated lab stands in for it otherwise.
-				const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load)), ...networkFailures(r.route, load.network)];
-				routes[i] = r.only ? { ...r, load, failures, ok: failures.length === 0, dimensions: { ...r.dimensions, load: failures.length ? 'fail' : 'pass' } } : withFailures(r, failures, { load });
-			});
+			await event({ kind: 'loads', loads: [...loads] });
+			routes = applyLoads(routes, loads);
 		}
-		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
-		const coverage = options.coverage ? mergeCoverage(coverages) : undefined;
-		const checkedCount = new Set([...options.routes, ...(options.redirects ?? []), ...(options.endpoints ?? [])]).size;
-		const grouped = groups.filter((g) => g.members.length > 1 && g.members.some((m) => allPages.includes(m)));
-		return applyAccepted({
-			version: 1,
-			old: options.oldOrigin,
-			new: options.newOrigin,
-			startedAt,
-			ok: routes.every((r) => r.ok) && logins.every((l) => l.ok),
-			routes,
-			pinned: [...pinnedSummary(freeze), ...pinnedCounts(base.new.liveCounts ?? new Map())],
-			...(sources ? { sources } : {}),
-			...(options.data ? { data: options.data } : {}),
-			writes: shared.sendWrites ? 'sent' : 'held back',
-			...(auth ? { roles: roles as string[], logins } : {}),
-			...(options.unchecked?.length ? { unchecked: options.unchecked } : {}),
-			...(options.responsiveness ? { responsiveness: summarizeResponsiveness(routes, options.responsiveness) } : {}),
-			...(coverage ? { coverage } : {}),
-			...(options.partial ? { partial: { checked: checkedCount, total: options.partial.total } } : {}),
-			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
-			...(wasteReferences.length ? { wasteReferences } : {}),
-			...(oldCache ? { cache: { ...oldCache.counts } } : {}),
-			...(navigation.length ? { navigation: { destinations: navigation.reduce((n, r) => n + r.destinations.length, 0), pairs: navigation.reduce((n, r) => n + r.pairs.length, 0), inPlace: navigation.reduce((n, r) => n + r.pairs.filter((p) => p.inPlace).length, 0), loads: navigation.reduce((n, r) => n + r.loads, 0), ms: navigation.reduce((n, r) => n + r.ms, 0) } } : {}),
-		}, options.accepted ?? [], options.automaticOff ?? []);
+		const footer = { kind: 'footer' as const, pinned: pinnedCounts(base.new.liveCounts ?? new Map()), ...(oldCache ? { cache: { ...oldCache.counts } } : {}), wasteReferences };
+		await event(footer);
+		return finishReport(header, routes, logins, coverages, navigation, groups, allPages, footer);
 	} finally {
 		await relaunched?.close();
 		await webkitBrowser?.close();

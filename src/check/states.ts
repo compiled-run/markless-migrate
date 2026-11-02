@@ -1,27 +1,14 @@
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
-import { PNG } from 'pngjs';
-import { defaultEnv, openPage, type SideEnv } from './browser.ts';
+import { openPage, type SideEnv } from './browser.ts';
 import { settle } from './capture.ts';
 import { readPage } from './collect.ts';
-import { HINTS } from './hints.ts';
-import { isClock } from './clock.ts';
-import { carry, failureElements, failureRules } from './locate.ts';
-import { describe, matchElements } from './match.ts';
+import { matchElements } from './match.ts';
 import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
-import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
-import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
+import type { Box, ElementSnapshot, ImageRecord, Viewport } from './types.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, settleMotion } from './loops.ts';
 import { maskedShot } from './embeds.ts';
-import { responsiveRegionsCandidate } from './automatic.ts';
-import type { ImageRecord, PageCapture } from './types.ts';
-
-const MAX_STATES = 40;
-const TARGETS_PER_STATE = 2;
-const ELEMENTS_PER_STATE = 5;
-const CLIP_PADDING = 8;
-// font-family is compared through the font files that render, so generated family names do not differ.
-const IGNORED = new Set(['font-family']);
+import { CLIP_PADDING, ELEMENTS_PER_STATE, MAX_STATES, stateDiff, stateShot, TARGETS_PER_STATE, type Explanation, type StateNoise, type StateRun, type StatesViewportRow } from './states-compare.ts';
 
 interface Side {
 	readonly context: BrowserContext;
@@ -29,30 +16,6 @@ interface Side {
 	readonly session: CDPSession;
 	readonly inflight: () => number;
 	base: ElementSnapshot[];
-}
-
-export interface StateInput {
-	readonly browser: Browser;
-	readonly oldOrigin: string;
-	readonly newOrigin: string;
-	/** How each app is loaded (frozen clock, blocked trackers, held-back writes, recorded data); defaults from the origins. */
-	readonly envs?: { readonly old: SideEnv; readonly new: SideEnv };
-	readonly route: string;
-	readonly viewport: Viewport;
-	readonly states: readonly CssState[];
-	readonly rules: readonly CssRule[];
-	/** OLD elements whose text or styles varied between the default OLD loads, with the varying properties. */
-	readonly noise: readonly { readonly element: ElementSnapshot; readonly props: ReadonlySet<string> | 'text' }[];
-	/** Default-state computed-style failures to trace back to the OLD rule. */
-	readonly explain: readonly { readonly failure: Failure; readonly element: ElementSnapshot; readonly props: readonly string[] }[];
-}
-
-export interface StateOutput {
-	readonly failures: Failure[];
-	readonly explained: Map<Failure, Failure>;
-	readonly shots: Shot[];
-	readonly checked: string[];
-	readonly skipped: string[];
 }
 
 async function open(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<Side> {
@@ -192,39 +155,20 @@ function explainInPage({ id, props, rules }: { id: number; props: string[]; rule
 	return out;
 }
 
-async function explain(side: Side, rules: readonly CssRule[], element: ElementSnapshot, props: readonly string[], source?: { rule?: CssRule }): Promise<string | undefined> {
+async function explain(side: Side, rules: readonly CssRule[], element: ElementSnapshot, props: readonly string[]): Promise<Explanation | undefined> {
 	const found = await side.page.evaluate(explainInPage, { id: element.id, props: [...props], rules: rules as unknown as Parameters<typeof explainInPage>[0]['rules'] });
 	const lines = new Set<string>();
+	let first: CssRule | undefined;
 	for (const prop of props) {
 		const hit = found[prop];
 		if (!hit) continue;
 		const rule = rules[hit.rule]!;
-		if (source && !source.rule) source.rule = rule;
+		first ??= rule;
 		let line = `${describeRule(rule)} sets ${prop} with \`${hit.value}\``;
 		if (hit.variable) line += `, reading ${hit.variable.name} from ${describeRule(rules[hit.variable.rule]!)} (\`${hit.variable.value}\`)`;
 		lines.add(line);
 	}
-	return lines.size ? [...lines].join('; ') : undefined;
-}
-
-function hintWith(rule: string | undefined, base: string): string {
-	return rule ? `Old rule: ${rule}. ${base}` : base;
-}
-
-// Text whose width varies moves the rest of its line (right-aligned and centred text most visibly), so the whole block around it is noise.
-function blockAround(elements: readonly ElementSnapshot[], el: ElementSnapshot): Box {
-	const inside = (outer: Box, inner: Box) => outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.width >= inner.x + inner.width && outer.y + outer.height >= inner.y + inner.height;
-	const blocks = elements.filter((other) => !other.style.display?.startsWith('inline') && inside(other.box, el.box) && other.box.height <= el.box.height * 3);
-	return blocks.sort((a, b) => a.box.width * a.box.height - b.box.width * b.box.height)[0]?.box ?? el.box;
-}
-
-function union(boxes: readonly Box[]): Box | undefined {
-	if (!boxes.length) return undefined;
-	const x0 = Math.min(...boxes.map((b) => b.x));
-	const y0 = Math.min(...boxes.map((b) => b.y));
-	const x1 = Math.max(...boxes.map((b) => b.x + b.width));
-	const y1 = Math.max(...boxes.map((b) => b.y + b.height));
-	return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+	return lines.size ? { line: [...lines].join('; '), ...(first ? { rule: first } : {}) } : undefined;
 }
 
 // What a page-wide state newly draws (a breakpoint's image, a dark-mode twin) loads now, as the page's own settle scrolled every lazy image in: the shot compares pictures, not load timing.
@@ -258,38 +202,32 @@ async function screenshot(page: Page, clip: Box | undefined): Promise<Buffer> {
 	return (await maskedShot(page, (mask) => page.screenshot({ fullPage: true, clip: box, animations: 'disabled', caret: 'hide', mask }))).shot;
 }
 
-export async function compareStates(input: StateInput): Promise<StateOutput> {
-	const { browser, oldOrigin, newOrigin, route, viewport } = input;
-	const out: StateOutput = { failures: [], explained: new Map(), shots: [], checked: [], skipped: [] };
-	const envs = input.envs ?? { old: defaultEnv(oldOrigin), new: defaultEnv(newOrigin) };
+export interface StatesInput {
+	readonly browser: Browser;
+	/** How each app is loaded (frozen clock, blocked trackers, held-back writes, recorded data). */
+	readonly envs: { readonly old: SideEnv; readonly new: SideEnv };
+	readonly route: string;
+	readonly viewport: Viewport;
+	readonly states: readonly CssState[];
+	readonly rules: readonly CssRule[];
+	readonly noise: StateNoise;
+	/** Default-state computed styles to trace back to the OLD rule. */
+	readonly explain: readonly { readonly element: ElementSnapshot; readonly props: readonly string[] }[];
+}
+
+/** Forces each state on the old page twice and the new page once, and reads every element of each page in it; what differs is judged by states-compare.ts. */
+export async function observeStates(input: StatesInput): Promise<StatesViewportRow> {
+	const { browser, envs, route, viewport } = input;
+	const oldOrigin = envs.old.origin;
+	const newOrigin = envs.new.origin;
 	const [o1, o2, n] = await Promise.all([open(browser, envs.old, route, viewport), open(browser, envs.old, route, viewport), open(browser, envs.new, route, viewport)]);
 	try {
-		for (const { failure, element, props } of input.explain) {
+		const explained: (Explanation | undefined)[] = [];
+		for (const { element, props } of input.explain) {
 			const at = matchElements([element], o1.base).get(0);
-			const source: { rule?: CssRule } = {};
-			const rule = at === undefined ? undefined : await explain(o1, input.rules, o1.base[at]!, props, source);
-			if (rule) {
-				const explained = carry(failure, { ...failure, hint: hintWith(rule, failure.hint) });
-				if (source.rule) failureRules.set(explained, source.rule);
-				out.explained.set(failure, explained);
-			}
+			explained.push(at === undefined ? undefined : await explain(o1, input.rules, o1.base[at]!, props));
 		}
-		const noiseIn = (elements: readonly ElementSnapshot[]) => {
-			const textNoise = new Set<number>();
-			const styleNoise = new Map<number, ReadonlySet<string>>();
-			const pairs = matchElements(
-				input.noise.map((x) => x.element),
-				elements,
-			);
-			input.noise.forEach((x, k) => {
-				const j = pairs.get(k);
-				if (j === undefined) return;
-				if (x.props === 'text') textNoise.add(j);
-				else styleNoise.set(j, x.props);
-			});
-			return { textNoise, styleNoise };
-		};
-
+		const runs: StateRun[] = [];
 		const m12 = matchElements(o1.base, o2.base);
 		const m1n = matchElements(o1.base, n.base);
 		for (const state of input.states.slice(0, MAX_STATES)) {
@@ -298,7 +236,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const ids = new Set(await o1.page.evaluate(matchingIds, state.target));
 				targets = o1.base.flatMap((el, i) => (ids.has(el.id) ? [i] : [])).filter((i) => m12.has(i) && m1n.has(i)).slice(0, TARGETS_PER_STATE);
 				if (!targets.length) {
-					out.skipped.push(`${state.label}: no visible element on the page matches it on both sides`);
+					runs.push({ label: state.label, kind: state.kind, skipped: `${state.label}: no visible element on the page matches it on both sides` });
 					continue;
 				}
 			}
@@ -310,7 +248,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 			const idsOn = (pairs: Map<number, number> | undefined, side: Side, indices: readonly number[]) => indices.map((i) => side.base[pairs ? pairs.get(i)! : i]!.id);
 			const containers = state.kind === 'container' ? o1.base.flatMap((el, i) => (el.style['container-type'] && el.style['container-type'] !== 'normal' && (!state.name || el.style['container-name']?.split(' ').includes(state.name)) && m12.has(i) && m1n.has(i) ? [i] : [])) : [];
 			if (state.kind === 'container' && !containers.length) {
-				out.skipped.push(`${state.label}: no size container on the page`);
+				runs.push({ label: state.label, kind: state.kind, skipped: `${state.label}: no size container on the page` });
 				continue;
 			}
 
@@ -339,82 +277,23 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 			await apply(true);
 			try {
 				const [s1, s2, sn] = await Promise.all([collect(o1, oldOrigin), collect(o2, oldOrigin), collect(n, newOrigin)]);
-				const base1 = new Map(o1.base.map((el) => [el.id, el]));
-				const baseN = new Map(n.base.map((el) => [el.id, el]));
-				const p12 = matchElements(s1, s2);
-				const p1n = matchElements(s1, sn);
-				const { textNoise, styleNoise } = noiseIn(s1);
-				const changedBoxes: Box[] = [];
-				const differing: { el: ElementSnapshot; other: ElementSnapshot; props: string[] }[] = [];
-				for (const [i, el] of s1.entries()) {
-					const b1 = base1.get(el.id);
-					const props = Object.keys(el.style).filter((p) => !IGNORED.has(p));
-					const changed1 = props.filter((p) => !b1 || b1.style[p] !== el.style[p]);
-					if (changed1.length) changedBoxes.push(el.box);
-					const j = p1n.get(i);
-					const twin = s2[p12.get(i) ?? -1];
-					if (j === undefined || !twin) continue;
-					const other = sn[j]!;
-					const bn = baseN.get(other.id);
-					const changed = new Set([...changed1, ...props.filter((p) => !bn || bn.style[p] !== other.style[p])]);
-					const noisy = styleNoise.get(i);
-					const diff = [...changed].filter((p) => twin.style[p] === el.style[p] && !noisy?.has(p) && el.style[p] !== other.style[p]);
-					if (diff.length) differing.push({ el, other, props: diff });
+				const { changedBoxes, differing } = stateDiff(o1.base, n.base, s1, s2, sn, input.noise);
+				const explanations: (Explanation | undefined)[] = [];
+				for (const { el, props } of differing.slice(0, ELEMENTS_PER_STATE)) explanations.push(await explain(o1, input.rules, el, props));
+				const { shoot, clip } = stateShot(state.kind, changedBoxes, differing.length, targets, o1.base);
+				if (!shoot) {
+					runs.push({ label: state.label, kind: state.kind, targets, s1, s2, sn, explanations });
+					continue;
 				}
-				out.checked.push(state.label);
-				for (const { el, other, props } of differing.slice(0, ELEMENTS_PER_STATE)) {
-					const source: { rule?: CssRule } = {};
-					const rule = await explain(o1, input.rules, el, props, source);
-					const failure: Failure = {
-						route,
-						dimension: 'css',
-						check: `computed style in ${state.label}: ${describe(el)}`,
-						viewport: viewport.name,
-						expected: props.map((p) => `${p}: ${el.style[p]}`).join('; '),
-						actual: props.map((p) => `${p}: ${other.style[p] ?? '(unset)'}`).join('; '),
-						hint: hintWith(rule, HINTS.cssState),
-					};
-					failureElements.set(failure, { old: el, new: other });
-					if (source.rule) failureRules.set(failure, source.rule);
-					out.failures.push(failure);
-				}
-				if (differing.length > ELEMENTS_PER_STATE) {
-					out.failures.push({ route, dimension: 'css', check: `computed style in ${state.label}`, viewport: viewport.name, expected: '', actual: `${differing.length - ELEMENTS_PER_STATE} more elements differ`, hint: HINTS.cssState });
-				}
-
-				const pageWide = state.kind === 'media' || state.kind === 'width' || state.kind === 'container';
-				if (!pageWide && !changedBoxes.length && !differing.length) continue;
-				const clip = pageWide ? undefined : union([...changedBoxes, ...targets.map((i) => o1.base[i]!.box)]);
 				const images = await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]);
-				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
-				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
-				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
-				// Where both pages show a clock at another reading: its glyphs differ, the clock does not.
-				for (const [i, j] of p1n) if (isClock(s1[i]!.text) && isClock(sn[j]!.text) && s1[i]!.text !== sn[j]!.text) noisyBoxes.push(shift(blockAround(s1, s1[i]!)), shift(blockAround(sn, sn[j]!)));
-				const diff = identicalShots(shot1, shotN) ?? compareWithNoise(shot1, shotN, [shot2], noisyBoxes);
-				const different = visuallyDifferent(diff);
-				if (different) {
-					// Boxes into the shot's coordinates: a state's shot may be clipped around its target.
-					const inShot = (list: ImageRecord[]) => list.map((img) => (img.box ? { ...img, box: shift(img.box) } : img));
-					const auto = !diff.sizeMismatch ? responsiveRegionsCandidate(diff.regions, { images: inShot(images[0]) } as unknown as PageCapture, { images: inShot(images[2]) } as unknown as PageCapture, diff.differing, { old: PNG.sync.read(shot1), new: PNG.sync.read(shotN) }) : undefined;
-					out.failures.push({
-						route,
-						dimension: 'visual',
-						check: `screenshot in ${state.label}`,
-						viewport: viewport.name,
-						expected: diff.sizeMismatch ? diff.sizeMismatch.expected : 'same pixels outside the noise mask',
-						actual: diff.sizeMismatch ? diff.sizeMismatch.actual : `${diff.differing} pixels differ${clip ? ' around the state target' : ''}`,
-						hint: HINTS.visualState,
-						...(auto ? { automatic: auto } : {}),
-					});
-					out.shots.push({ label: `${viewport.name} in ${state.label}`, viewport: viewport.name, old: shot1, new: shotN, diff: diff.png, regions: diff.regions, ok: false });
-				}
+				const shots = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
+				runs.push({ label: state.label, kind: state.kind, targets, s1, s2, sn, explanations, images, shots });
 			} finally {
 				await apply(false);
 			}
 		}
+		return { viewport: viewport.name, explained, base1: o1.base, baseN: n.base, states: runs };
 	} finally {
 		await Promise.all([o1, o2, n].map((side) => side.context.close()));
 	}
-	return out;
 }

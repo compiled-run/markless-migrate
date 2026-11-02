@@ -5,7 +5,8 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
 import type { RecordedJourney } from '../src/check/journeys.ts';
-import { checkProbes, compareRuns, type Reading, type SharedProbe } from '../src/check/probes.ts';
+import { checkProbes, type SharedProbe } from '../src/check/probes.ts';
+import { compareRuns, type Reading } from '../src/check/probes-compare.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
 // A focus marker kept the way React Aria keeps it: any key press means keyboard (`keys` narrows which), a pointer press means pointer.

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compareMotion, motionCycles, motionDismissals, motionJourneys, motionRules, pinnedMoments, sameEasing, type MotionCapture, type MotionRecord, type PinnedElement, type PinnedFrame } from '../src/check/motion.ts';
+import { pinnedMoments } from '../src/check/motion.ts';
+import { compareMotion, motionCycles, motionDismissals, motionJourneys, motionRules, sameEasing, type MotionCapture, type MotionRecord, type PinnedElement, type PinnedFrame } from '../src/check/motion-compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
 

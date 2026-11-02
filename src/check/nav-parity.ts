@@ -3,11 +3,10 @@ import type { Browser, Page } from 'playwright';
 import { openPage, tagHeaders, type SideEnv, type StorageState } from './browser.ts';
 import { bodyText, request } from './http.ts';
 import { pool, quiet } from './journeys.ts';
-import { withFailures } from './compare.ts';
 import { RUNTIME_MARKERS } from './residue.ts';
 import { maskedShot } from './embeds.ts';
 import { armThemeFrames, flashFailures, layoutFailures, readThemeFrames, recordSwapShots, themeFrameRecorder, type SwapShot, type ThemeRecording } from './swap-frames.ts';
-import type { Failure, RouteNavigation, RouteResult, Shot, Viewport } from './types.ts';
+import type { Failure, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent, type VisualNoise } from './visual.ts';
 import { VIEWPORTS } from './types.ts';
 
@@ -898,25 +897,5 @@ function dedupe(failures: readonly Failure[]): Failure[] {
 		if (seen.has(key)) return false;
 		seen.add(key);
 		return true;
-	});
-}
-
-/** Adds the navigation check's failures and what it compared to each route's result: destinations name their entry pages, routes of the same shape the page that stood for them. */
-export function applyNavigation(results: readonly RouteResult[], nav: NavigationResult): RouteResult[] {
-	const by = new Map<string, Failure[]>();
-	for (const f of nav.failures) by.set(f.route, [...(by.get(f.route) ?? []), f]);
-	const covered = new Map<string, RouteNavigation>();
-	for (const d of nav.destinations) {
-		const pairs = nav.pairs.filter((p) => p.to === d.route && p.inPlace && !p.swappedByPage);
-		if (!pairs.length) continue;
-		covered.set(d.route, { from: pairs.map((p) => `${p.from}${p.control ? ` after ${p.control}` : ''}`) });
-		for (const r of d.represents) covered.set(r, { from: [], representedBy: d.route });
-	}
-	return results.map((r) => {
-		const navigation = covered.get(r.route);
-		const added = by.get(r.route) ?? [];
-		if (!navigation && !added.length) return r;
-		const shots = nav.shots.filter((s) => s.route === r.route).map((s) => s.shot);
-		return withFailures(r, [...r.failures, ...added], { navigation: navigation ?? { from: [] }, ...(shots.length ? { shots: [...r.shots, ...shots] } : {}) });
 	});
 }

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { slug } from './data.ts';
-import type { Filmstrip } from './motion.ts';
+import type { Filmstrip } from './motion-compare.ts';
 import type { RouteResult, Shot } from './types.ts';
 
 /** A screenshot written to disk once its route was checked: the file, and the size the report lays it out at. */

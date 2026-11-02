@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { notAControl } from '../src/check/run.ts';
+import { notAControl } from '../src/check/route-judge.ts';
 
 // Reasons from the corpus A/A run (the original against itself): a zero-size clickable div and a button under a card's link.
 test("a clickable of no size at rest, and one a link or button covers, are not controls left unverified; other reasons still are", () => {

@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import { applyAccepted, failureId } from '../src/check/accepted.ts';
 import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
-import { controlsToMeasure, fetchKind, headlines, judge, likelyCause, speeds, speedTiming, summarizeResponsiveness, worstLine, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { controlsToMeasure, fetchKind, judge, likelyCause, speeds, speedTiming, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { headlines, summarizeResponsiveness, worstLine } from '../src/check/responsiveness-summary.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
 import { recordResults, status, summarizeStatus } from '../src/status.ts';
 
