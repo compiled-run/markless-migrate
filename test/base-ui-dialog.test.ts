@@ -225,3 +225,22 @@ test("a cmdk command in a Base UI dialog is cmdk's: the pointer selects its item
 	assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[cmdk-item]')].map((i) => `${i.getAttribute('data-value')}:${i.getAttribute('data-selected')}:${i.hasAttribute('data-highlighted')}`)), ['Calendar:false:false', 'Search Emoji:false:false', 'Settings:true:false']);
 	await page.close();
 });
+
+// shadcn's home page: the layout's main holds a JSON-LD script, and the page has a sonner and a Base UI toast live region.
+test("a modal Base UI alert dialog hides the page as floating-ui's markOthers does: a script inside keeps nothing shown, live regions stay announced but carry its marker", async () => {
+	const page = await open(
+		`<div id="layout"><header><button type="button">Docs</button></header><main><div><script type="application/ld+json">{}</script><button type="button" data-slot="alert-dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="ad">Alert Dialog</button></div></main></div>
+		<section id="sonner" aria-label="Notifications alt+T" tabindex="-1" aria-live="polite"></section><script>void 0</script>
+		<div id="toasts"><div id="viewport" role="region" aria-live="polite" aria-label="Notifications" data-slot="toast-viewport"></div></div>
+		<div data-base-ui-portal hidden data-mm-layer="ad">${INTERNAL_BACKDROP}<div data-slot="alert-dialog-overlay" aria-hidden="true" data-base-ui-inert data-closed></div><div role="alertdialog" tabindex="-1" data-slot="alert-dialog-content" data-closed style="position:relative;z-index:1"><button data-slot="alert-dialog-cancel" type="button">Don't allow</button><button type="button">Allow</button></div></div>`,
+		['base-ui/dialog'],
+	);
+	const marks = () => page.evaluate(() => ['#layout', '#sonner', '#toasts', '#viewport', 'body > script:not([type=module])', 'main script'].map((s) => { const e = document.querySelector(s)!; return `${s}:${e.getAttribute('aria-hidden') ?? '-'}:${e.hasAttribute('data-base-ui-inert') ? 'inert' : '-'}`; }));
+	await page.getByText('Alert Dialog').click();
+	await settled(page);
+	assert.deepEqual(await marks(), ['#layout:true:inert', '#sonner:-:inert', '#toasts:-:inert', '#viewport:-:-', 'body > script:not([type=module]):-:-', 'main script:-:-']);
+	await page.getByText("Don't allow").click();
+	await settled(page);
+	assert.deepEqual(await marks(), ['#layout:-:-', '#sonner:-:-', '#toasts:-:-', '#viewport:-:-', 'body > script:not([type=module]):-:-', 'main script:-:-']);
+	await page.close();
+});
