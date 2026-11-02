@@ -163,6 +163,8 @@ const SAMPLED = new Set(['row', 'gridcell', 'treeitem']);
 const SAMPLES = 2;
 /** An element found by its listeners rather than its role: located by its text or label. */
 export const CLICKABLE = 'clickable';
+// A clickable's name keeps this many characters of its text; a name that long is matched as the start of the text.
+const NAME_KEPT = 80;
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** The time a page's journeys are sized by (one journey per NOMINAL_JOURNEY_MS of it); the time cap is a multiple of it. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
@@ -255,7 +257,8 @@ export function describeStep(step: Step): string {
 /** Elements labelled `name`: the innermost one whose text is exactly it, or one with no text and that aria-label or title. */
 export function labelled(name: string): string {
 	const v = name.includes("'") ? `concat('${name.split("'").join(`', "'", '`)}')` : `'${name}'`;
-	return `//body//*[(normalize-space(.)=${v} and not(*[normalize-space(.)=${v}])) or (normalize-space(.)='' and (@aria-label=${v} or @title=${v}))]`;
+	const is = (of: string) => (name.length >= NAME_KEPT ? `starts-with(${of}, ${v})` : `${of}=${v}`);
+	return `//body//*[(${is('normalize-space(.)')} and not(*[${is('normalize-space(.)')}])) or (normalize-space(.)='' and (${is('@aria-label')} or ${is('@title')}))]`;
 }
 
 export function locate(page: Page, t: Target): Locator {
@@ -396,7 +399,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		if (info) add({ target: { role: 'summary', name, nth }, region: info.region, importance: importance(info) });
 	}
 	let unnamed = 0;
-	for (const c of await page.evaluate(clickables, FRAMEWORK_MARKUP_SELECTOR).catch(() => [])) {
+	for (const c of await page.evaluate(clickables, { frameworkMarkup: FRAMEWORK_MARKUP_SELECTOR, kept: NAME_KEPT }).catch(() => [])) {
 		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++, ...(c.name ? {} : { structure: c.structure }) };
 		const base = { target, region: c.region, importance: importance(c), ...(c.name ? { kind: `${c.region || 'page'}|${CLICKABLE}|${c.name}|${c.structure.tag}` } : {}), ...(c.focusable ? { focusable: true } : {}) };
 		add(c.name && DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
@@ -506,13 +509,14 @@ function contentsSections(): string[] {
 }
 
 /** Elements that answer a click or a key themselves but have no interactive role, each with its label and its index among the elements `labelled` finds for it. */
-function clickables(frameworkMarkup: string) {
+function clickables({ frameworkMarkup, kept }: { frameworkMarkup: string; kept: number }) {
 	const handlers = (globalThis as { __markless_migrate_handlers__?: WeakSet<Element> }).__markless_migrate_handlers__;
 	if (!handlers) return [];
 	// The same expression as labelled(), written out here because a page with a CSP may refuse eval.
 	const xpathFor = (name: string) => {
 		const v = name.includes("'") ? `concat('${name.split("'").join(`', "'", '`)}')` : `'${name}'`;
-		return `//body//*[(normalize-space(.)=${v} and not(*[normalize-space(.)=${v}])) or (normalize-space(.)='' and (@aria-label=${v} or @title=${v}))]`;
+		const is = (of: string) => (name.length >= kept ? `starts-with(${of}, ${v})` : `${of}=${v}`);
+		return `//body//*[(${is('normalize-space(.)')} and not(*[${is('normalize-space(.)')}])) or (normalize-space(.)='' and (${is('@aria-label')} or ${is('@title')}))]`;
 	};
 	// The same scope as the structure selector engine (structure.ts) computes, written out here because this runs in the page.
 	const LANDMARK: Record<string, string> = { main: 'main', nav: 'navigation', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', dialog: 'dialog', figure: 'figure', svg: 'svg', ul: 'list', ol: 'list' };
@@ -525,7 +529,7 @@ function clickables(frameworkMarkup: string) {
 		return parts.join('>');
 	};
 	const control = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="textbox"], [role="searchbox"], [role="spinbutton"], [role="combobox"], [role="slider"], [role="treeitem"], [contenteditable=""], [contenteditable="true"]';
-	const label = (el: Element) => ((el.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, 80);
+	const label = (el: Element) => ((el.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, kept);
 	const cell = '[role="columnheader"], [role="row"], [role="gridcell"]';
 	// A header's own label listening for the header's click is the header, already counted by its role.
 	const ownLabel = (el: Element) => !!el.closest(cell) && label(el.closest(cell)!) === label(el);
