@@ -43,6 +43,8 @@ function open(trigger: HTMLElement, { shown, rendered, key = trigger.id || layer
 	// DialogPortal renders its InternalBackdrop only for modal={true}: the page behind is then inert and does not scroll.
 	const modal = Boolean(p.portal.querySelector(':scope > [role="presentation"][data-base-ui-inert]:not([data-slot])'));
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
+	// DrawerPopup's initialFocus is the popup itself, DialogPopup's its first tabbable element: read before the writes below, so opening recalculates style once.
+	const initial = shown ? undefined : p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup, false)[0] ?? p.popup);
 	if (overlay && !shown) enter(overlay);
 	// Open at load, the page came with the marks markOthers left on everything else; they are taken again, so they go on close.
 	if (shown) for (const el of document.querySelectorAll('[data-base-ui-inert]')) if (!p.portal.contains(el)) {
@@ -99,9 +101,7 @@ function open(trigger: HTMLElement, { shown, rendered, key = trigger.id || layer
 		others();
 		unlock();
 	});
-	if (shown) return p;
-	// DrawerPopup's initialFocus is the popup itself; DialogPopup's is its first tabbable element.
-	(p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup, false)[0] ?? p.popup)).focus({ preventScroll: true });
+	initial?.focus({ preventScroll: true });
 	return p;
 }
 
