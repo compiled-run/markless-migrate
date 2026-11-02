@@ -10,6 +10,7 @@ import { MEASURE_WIDTHS, readImages, readImageWidths, type ImageFacts } from './
 import { fontPreloadsInFirstScreen, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
 import { instancePropMarks, instanceSpecs, legacyInstanceProps, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
+import { restoreScrollState, watchScrollState } from './scroll-state.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
 export interface CapturedPage {
@@ -119,7 +120,9 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 				server = await servedHtml(page, response);
 				status = response?.status() ?? 0;
 			}
+			await page.evaluate(watchScrollState).catch(() => {});
 			await settle(page);
+			await page.evaluate(restoreScrollState).catch(() => 0);
 			await finishAnimations(page);
 			await keepCommandEmpty(page);
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
