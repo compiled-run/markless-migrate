@@ -78,11 +78,11 @@ test("a shared rule stays shared when no element of the page carries both its cl
 	const css = '.p4{padding:4px}.px2{padding-left:2px}.w{width:1px}';
 	const { dir, cuts, heads, pagesOf } = await site({ '/s.css': css }, { '/one': { markup: 'p4 px2 w' }, '/two': { markup: 'px2 w' }, '/three': { markup: 'px2 w' } });
 	const apart = new Map([['/one', together([['p4'], ['px2', 'w']], new Set())]]);
-	const out = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map(), together: apart });
+	const out = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map(), together: (r) => apart.get(r)! });
 	assert.ok(!('skipped' in out));
 	assert.equal(await read(dir, out.heads.get('/one')![0]!.attrs.href), '.p4{padding:4px}');
 	const coded = new Map([['/one', together([['p4'], ['px2', 'w']], new Set(['px2']))]]);
-	const again = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map(), together: coded });
+	const again = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map(), together: (r) => coded.get(r)! });
 	assert.ok(!('skipped' in again));
 	assert.equal(await read(dir, again.heads.get('/one')![0]!.attrs.href), '.p4{padding:4px}.px2{padding-left:2px}');
 	await rm(dir, { recursive: true, force: true });
@@ -111,7 +111,32 @@ test("a page's appended <style> text stays with its page, after its cut", async 
 	heads.set('/one', [link('/s.used-extra.css')]);
 	const out = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map([['/s.used-extra.css', { from: own, extra }]]) });
 	assert.ok(!('skipped' in out));
-	assert.equal(await read(dir, out.heads.get('/one')![0]!.attrs.href), `\n${extra}`);
+	assert.deepEqual(await Promise.all(out.heads.get('/one')!.map((t) => read(dir, t.attrs.href))), [extra]);
+	await rm(dir, { recursive: true, force: true });
+});
+
+test("routes of one page whose own <style> text differs still share; each keeps its own text as a file of its own, after its cut", async () => {
+	const css = '.a{color:red}.b{color:blue}.c{margin:1px}';
+	const { dir, cuts, heads } = await site({ '/s.css': css }, { '/d': { markup: 'a b c' }, '/d?page=2': { markup: 'a b c' }, '/e': { markup: 'a b' } });
+	for (const [route, extra] of [['/d', '.cls-1{fill:none}'], ['/d?page=2', '.cls-1{fill:#0f537c}']] as const) {
+		const own = heads.get(route)![0]!.attrs.href!;
+		const path = `/s.used-x${route.length}.css`;
+		await writeFile(join(dir, path), `${await read(dir, own)}\n${extra}`);
+		heads.set(route, [link(path)]);
+	}
+	const appended = new Map(
+		await Promise.all(
+			(['/d', '/d?page=2'] as const).map(async (route, i) => [heads.get(route)![0]!.attrs.href!, { from: `/s.used-${route.replace(/\W/g, '')}.css`, extra: ['.cls-1{fill:none}', '.cls-1{fill:#0f537c}'][i]! }] as const),
+		),
+	);
+	const pages = new Map([['pages/d.tsrx', ['/d', '/d?page=2']], ['pages/e.tsrx', ['/e']]]);
+	const out = await shareStylesheets({ publicDir: dir, pages, heads, cuts, appended });
+	assert.ok(!('skipped' in out), JSON.stringify(out));
+	assert.equal(await read(dir, out.shared[0]!), css);
+	const texts = async (route: string) => Promise.all(out.heads.get(route)!.map((t) => read(dir, t.attrs.href)));
+	assert.deepEqual(await texts('/d'), ['.cls-1{fill:none}']);
+	assert.deepEqual(await texts('/d?page=2'), ['.cls-1{fill:#0f537c}']);
+	assert.deepEqual(await texts('/e'), []);
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -195,7 +220,7 @@ test('random utility sheets: every page computes the same styles from the shared
 			const { dir, cuts, heads, used, pagesOf } = await site({ '/s.css': css }, markup);
 			try {
 				const apart = new Map(pages.map((els, i) => [`/p${i}`, together(els, new Set())]));
-				const out = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map(), together: apart });
+				const out = await shareStylesheets({ publicDir: dir, pages: pagesOf, heads, cuts, appended: new Map(), together: (r) => apart.get(r)! });
 				if ('skipped' in out) return;
 				compared++;
 				const shared = await Promise.all(out.shared.map((h) => read(dir, h)));

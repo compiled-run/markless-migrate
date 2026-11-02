@@ -71,34 +71,40 @@ function lastOccurrences(hrefs: readonly string[]): string[] {
 
 /**
  * Moves each page's stylesheet links into imports at the top of its page module (copies under styles/converted/), so a
- * Markless build carries that CSS inside the page's HTML instead of as render-blocking requests. A page keeps its links
- * when any of them is not a plain same-origin file, when its routes link different sheets (one module imports one set),
- * or when a sheet has an @import. Returns the pages moved, the same-origin paths the moved sheets load (their fonts),
- * which the heads no longer lead to, and the rules the copies left out.
+ * Markless build carries that CSS inside the page's HTML instead of as render-blocking requests. The module imports the
+ * sheets all its routes link first, in the same order; a route's sheets after those are returned in `body`, to be linked
+ * first in the body, where they still follow every sheet the head carries. A page keeps its links when any of them is not
+ * a plain same-origin file, or a sheet has an @import. Returns the pages moved, the same-origin paths the moved sheets load
+ * (their fonts), which the heads no longer lead to, and the rules the copies left out.
  */
-export async function importStylesheets<T extends Tag>(app: string, publicDir: string, pages: ReadonlyMap<string, readonly string[]>, heads: ReadonlyMap<string, T[]>, keepOthers: boolean): Promise<{ moved: number; urls: string[]; dropped: DroppedRule[] }> {
+export async function importStylesheets<T extends Tag>(app: string, publicDir: string, pages: ReadonlyMap<string, readonly string[]>, heads: ReadonlyMap<string, T[]>, keepOthers: boolean): Promise<{ moved: number; urls: string[]; dropped: DroppedRule[]; body: Map<string, string[]> }> {
 	const out = join(app, 'styles', 'converted');
 	if (!keepOthers) await rm(out, { recursive: true, force: true });
 	const copy = copier(publicDir);
 	let moved = 0;
 	const urls = new Set<string>();
 	const dropped = new Map<string, readonly DroppedRule[]>();
+	const body = new Map<string, string[]>();
 	for (const [page, routes] of pages) {
 		const lists = routes.map((route) => heads.get(route)?.filter(isStylesheet));
 		if (!lists.length || lists.some((list) => !list?.length || !list.every(movable))) continue;
 		const orders = lists.map((list) => lastOccurrences(list!.map((t) => t.attrs.href!)));
-		if (orders.some((order) => order.join('\n') !== orders[0]!.join('\n'))) continue;
-		const done = await importInto(app, page, orders[0]!, copy);
-		if (!done) continue;
-		for (const url of done.urls) urls.add(url);
-		for (const [href, rules] of done.dropped) dropped.set(href, rules);
-		for (const route of routes) {
+		let common = 0;
+		while (common < orders[0]!.length && orders.every((o) => o[common] === orders[0]![common])) common++;
+		if (common) {
+			const done = await importInto(app, page, orders[0]!.slice(0, common), copy);
+			if (!done) continue;
+			for (const url of done.urls) urls.add(url);
+			for (const [href, rules] of done.dropped) dropped.set(href, rules);
+		}
+		for (const [i, route] of routes.entries()) {
 			const head = heads.get(route)!;
 			head.splice(0, Infinity, ...head.filter((t) => !isStylesheet(t)));
+			if (orders[i]!.length > common) body.set(route, orders[i]!.slice(common));
 		}
 		moved++;
 	}
-	return { moved, urls: [...urls], dropped: [...dropped.values()].flat() };
+	return { moved, urls: [...urls], dropped: [...dropped.values()].flat(), body };
 }
 
 type Copier = (href: string) => Promise<ReturnType<typeof relocated>>;
