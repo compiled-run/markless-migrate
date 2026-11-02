@@ -1276,7 +1276,8 @@ test('recharts: an SVG scaled to its container maps the pointer and the tooltip 
 test('recharts: a tooltip shown at rest (defaultIndex) goes where the arrow keys put its point, at the size the chart is drawn, without sliding there', async () => {
 	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]], k: [[0, 50, 20], [1, 200, 20]], r: 1 });
 	const page = await open(
-		`<div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: visible; position: absolute; top: 0px; left: 0px; transform: translate(200px, 20px);">tip</div></div>`,
+		// Chrome on Linux can send a pointerover at 0,0 as the page loads: the chart is clear of it, as no pointer is over it at rest.
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: visible; position: absolute; top: 0px; left: 0px; transform: translate(200px, 20px);">tip</div></div></div>`,
 		['recharts'],
 	);
 	await page.mouse.move(900, 700);
@@ -1285,7 +1286,7 @@ test('recharts: a tooltip shown at rest (defaultIndex) goes where the arrow keys
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.transition), '', 'placed, not slid in from the capture\'s place');
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'visible');
-	await page.mouse.move(250, 100);
+	await page.mouse.move(300, 150);
 	assert.match(await tooltipAt(page, /translate\(100px, 40px\)/), /translate\(100px, 40px\)/, 'the pointer takes over');
 	await page.mouse.move(900, 700);
 	await page.waitForFunction(() => (document.querySelector('.recharts-tooltip-wrapper') as HTMLElement).style.visibility === 'hidden');
