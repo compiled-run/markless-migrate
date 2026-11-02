@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { CONVERT_INPUTS, type ConvertInputs } from './inputs.ts';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import { copyAssets, copyStaticDir, MANAGED_ASSETS, pruneUnreferenced, readManaged, referencedAssets, resourcePaths, writeManaged } from './assets.ts';
 import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
+import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
@@ -36,7 +37,6 @@ import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHAR
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
 import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendarMessages, RacCalendarPlan, type CapturedCalendars } from './rac-calendar.ts';
 import type { CalendarMessages } from '../../parts/react-aria/calendar.ts';
-import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { framesAsServed, nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
@@ -59,6 +59,12 @@ import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOri
 const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
 const PAGE_SHOWN = 'PAGE_SHOWN';
 const NOT_FOUND = '/_markless-migrate/not-found';
+
+/** Waits for every task, then throws the first failure: none is left running when one fails. */
+async function allSettled(tasks: readonly unknown[]): Promise<void> {
+	const failure = (await Promise.allSettled(tasks)).find((r) => r.status === 'rejected');
+	if (failure) throw failure.reason;
+}
 
 /** The registries under `lib/parts/` a module's calls of the parts runtime import: its pages' ports, and the ports that mount. */
 interface Registries {
@@ -223,6 +229,8 @@ export interface ConvertReport {
 	readonly assets: { readonly copied: number; readonly missing: readonly string[] };
 	readonly styles: number;
 	readonly unconverted: readonly { readonly route: string; readonly reason: string }[];
+	/** Of `unconverted`, the pages whose capture failed (the browser died under it twice, or the capture threw). */
+	readonly failedCaptures?: number;
 	readonly endpoints: readonly EndpointPort[];
 	/** Library parts the source renders that no port implements yet, with how many routes show them (only where a route renders the part itself, not in a shared region). */
 	readonly unported: readonly { readonly part: string; readonly routes: number }[];
@@ -1334,7 +1342,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
 	siteComponents = await readSiteComponents(app);
 	useSiteInstanceProps(await readFile(join(app, 'lib', 'site', 'instance-props.json'), 'utf8').then((t) => JSON.parse(t) as InstanceSpec[], () => []));
-	const browser = await chromium.launch();
+	// Chromium's last lines of output, said in the log if it dies.
+	const said: string[] = [];
+	const browsers = await new Relauncher<Browser>(() => chromium.launch({ logger: { isEnabled: (name) => name === 'browser', log: (_name, _severity, message) => void (said.push(String(message)) > 8 && said.shift()) } }), log, () => said.slice(-3).join(' / ')).start();
+	const browser = browsers.shared;
 	const width = Math.max(1, options.concurrency ?? 4);
 	let captures: CapturedRef[];
 	const revealed = new Map<string, readonly Reveal[]>();
@@ -1360,6 +1371,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
 	layerChoices = choices;
+	const failed = new Map<string, string>();
 	try {
 		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
@@ -1368,10 +1380,44 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const dirs = await RecordDirs.open(join(state, 'convert'));
 		const recorder = await recorderVersions();
 		const sources = new Map<string, Promise<string>>();
+		// Per route, the directories of its own key its recordings went into.
+		const keyedDirs = new Map<string, Map<string, string>>();
 		const atFor = async (route: string, kind: string): Promise<string> => {
 			let source = sources.get(route);
 			if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route)!) : fetchRecordKey(recorder, options.old, route)));
-			return dirs.dir(route, await source, kind);
+			const key = await source;
+			const dir = await dirs.dir(route, key, kind);
+			if (dir === join(state, 'convert', kind, key)) (keyedDirs.get(route) ?? keyedDirs.set(route, new Map()).get(route)!).set(kind, dir);
+			return dir;
+		};
+		// What a failed capture of a route wrote since it started, of these kinds (every kind if none named), is removed: no part-recording is kept.
+		const discard = (route: string, kinds?: readonly string[]) => async (since: number) => {
+			for (const [kind, dir] of keyedDirs.get(route) ?? []) {
+				if (kinds && !kinds.includes(kind)) continue;
+				for (const name of await readdir(dir, { recursive: true }).catch((): string[] => [])) {
+					const file = join(dir, name);
+					if (((await stat(file).catch(() => undefined))?.mtimeMs ?? -1) >= since) await rm(file, { force: true });
+				}
+			}
+		};
+		/**
+		 * One route's capture: taken once more on a new browser if the browser died under it, failed if it died again; an
+		 * error of the capture's own fails its route alone, the browser left open for every other route.
+		 */
+		const guarded = async <T>(route: string, kinds: readonly string[] | undefined, work: (browser: Browser) => Promise<T>): Promise<T | undefined> => {
+			const since = Date.now();
+			try {
+				const got = await browsers.retried(route, work, discard(route, kinds));
+				if ('value' in got) return got.value;
+				failed.set(route, failed.get(route) ?? `${got.failed}, on both tries`);
+			} catch (error) {
+				await discard(route, kinds)(since);
+				if (!failed.has(route)) {
+					failed.set(route, (error as Error).message?.split('\n')[0] ?? String(error));
+					log(`  capture of ${route} failed: ${failed.get(route)}`);
+				}
+			}
+			return undefined;
 		};
 		const reveal = options.reveal !== false;
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
@@ -1391,9 +1437,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		let capturedCount = 0;
 		const pageOf = new Map(
 			captureRoutes.map((route) => {
-				const ref = limit(async () => capturePage(browser, options.old, route, (await atFor(route, 'captures')))).then(({ status }): CapturedRef => {
+				const ref = guarded(route, ['captures'], (browser) => limit(async () => capturePage(browser, options.old, route, (await atFor(route, 'captures'))))).then((got): CapturedRef | undefined => {
+					if (!got) return undefined;
 					log(`captured ${++capturedCount}/${captureRoutes.length} ${route}`);
-					return { route, status, load: async () => capturePage(browser, options.old, route, (await atFor(route, 'captures'))) };
+					return { route, status: got.status, load: async () => capturePage(browser, options.old, route, (await atFor(route, 'captures'))) };
 				});
 				ref.catch(() => {});
 				return [route, ref] as const;
@@ -1401,11 +1448,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		);
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
-		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text)).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...got[i]!.scenes.map((scene) => ({ scene, listed: selector }))])));
+		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
 		const notifies = listed.filter((x) => x.action === 'notify').flatMap((c) => routes.filter((r) => !c.routes || new RegExp(c.routes).test(r)).map((r) => [c.selector, r, c.template] as const));
-		const notifiesRead = eachLimited(limit, notifies, async ([selector, r, template]) => captureNotifications(browser, options.old, r, (await atFor(r, 'toggles')), [selector], template)).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...got[i]!.notifications])));
+		const notifiesRead = eachLimited(limit, notifies, async ([selector, r, template]) => guarded(r, ['toggles'], async (browser) => captureNotifications(browser, options.old, r, (await atFor(r, 'toggles')), [selector], template))).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...(got[i]?.notifications ?? [])])));
 		notifiesRead.catch(() => {});
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
@@ -1436,15 +1483,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			switches?: readonly Switch[];
 			floating?: readonly QwikFloating[];
 		}
-		const readRoute = async (route: string): Promise<RouteFacts> => {
-			const ref = await pageOf.get(route)!;
+		const readRoute = async (route: string, ref: CapturedRef, browser: Browser, running: Promise<unknown>[]): Promise<RouteFacts> => {
 			const facts: RouteFacts = {};
 			// The capture (a few MB of JSON) is read once for all of this route's steps.
 			let loaded: Promise<CapturedPage> | undefined;
 			const page = () => (loaded ??= ref.load());
 			let reveals: readonly Reveal[] | undefined;
 			// What does not depend on the route's reveals is read alongside them, each capture in a slot of its own.
-			const side = Promise.all([
+			const side = allSettled([
 				(async () => {
 					if (ref.status !== 200) return;
 					const settled = Object.values((await page()).settled);
@@ -1452,7 +1498,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					facts.dated = settled.some((html) => DATED.test(html));
 					// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
 					// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
-					await Promise.all([
+					await allSettled([
 						settled.some((html) => html.includes('data-slot="carousel"')) && limit(async () => captureCarousels(browser, options.old, route, (await atFor(route, 'toggles')))).then((r) => void (facts.carousels = r.carousels)),
 						settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"')) && limit(async () => captureSliders(browser, options.old, route, (await atFor(route, 'toggles')))).then((r) => void (facts.sliders = r.sliders)),
 						facts.dated && limit(async () => captureClock(browser, options.old, route, (await atFor(route, 'clock')))).then((r) => void (facts.clock = r.marks)),
@@ -1500,7 +1546,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					facts.switches = switches.switches;
 				})(),
 			]);
-			// Awaited after the reveals; a failure meanwhile is not unhandled.
+			// Awaited after the reveals; a failure meanwhile is not unhandled. The caller waits for it however the route ends.
+			running.push(side);
 			side.catch(() => {});
 			if (reveal && routes.includes(route)) {
 				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
@@ -1605,7 +1652,24 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				spent.set(route, (spent.get(route) ?? 0) + (Date.now() - start) / 1000);
 			}
 		};
-		const reads = captureRoutes.map((route) => reading(() => timed(route, () => readRoute(route))));
+		const reads = captureRoutes.map((route) =>
+			reading(() =>
+				timed(route, async (): Promise<RouteFacts> => {
+					const ref = await pageOf.get(route)!;
+					if (!ref) return {};
+					// A route that fails ends once all it started has: nothing of its own writes after its failed capture is cleared.
+					const read = async (browser: Browser) => {
+						const running: Promise<unknown>[] = [];
+						try {
+							return await readRoute(route, ref, browser, running);
+						} finally {
+							await Promise.allSettled(running);
+						}
+					};
+					return (await guarded(route, ['reveals', 'toggles', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars'], read)) ?? {};
+				}),
+			),
+		);
 		for (const pending of reads) pending.catch(() => {});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control and options
 		// shown. Choosing starts once the routes before have their reveals, so each run is chosen on the route it would be if it waited for all.
@@ -1620,7 +1684,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
 				if (!choosing.has(run)) {
 					const dir = await atFor(route, 'choices');
-					const chosen = timed(route, async () => captureChoices(browser, options.old, route, reveal, dir, log, limit, Boolean((await pending).scrollers?.length)));
+					const chosen = timed(route, async () => (await guarded(route, ['choices'], async (browser) => captureChoices(browser, options.old, route, reveal, dir, log, limit, Boolean((await pending).scrollers?.length)))) ?? {});
 					chosen.catch(() => {});
 					choosing.set(run, chosen);
 				}
@@ -1628,9 +1692,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 		}
 		const read = await Promise.all(reads);
-		captures = await Promise.all(captureRoutes.map((route) => pageOf.get(route)!));
+		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
 		await Promise.all([scenesRead, notifiesRead]);
 		captureRoutes.forEach((route, i) => {
+			if (failed.has(route)) return;
 			const f = read[i]!;
 			if (f.reveals) revealed.set(route, f.reveals);
 			if (f.racEmpties) racPageEmpties.set(route, f.racEmpties);
@@ -1653,6 +1718,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		});
 		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
 		for (const { route, reveal, run } of shownOn) {
+			if (failed.has(route)) continue;
 			const found = chosenBy.get(run)!;
 			const copied = Object.entries(found).filter(([, c]) => c.copied !== undefined);
 			if (copied.length && !choices[reveal.key]) choices[reveal.key] = Object.fromEntries(copied);
@@ -1662,8 +1728,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
-			const forms = await eachLimited(limit, routes, async (route) => timed(route, async () => captureForms(browser, options.old, route, (await atFor(route, 'toggles')))).catch(() => ({ route, forms: [] })));
-			for (const f of forms) submitted.set(f.route, f.forms);
+			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] }))))));
+			for (const f of forms) if (f && !failed.has(f.route)) submitted.set(f.route, f.forms);
 		}
 		await dirs.save();
 		if (options.captureOnly) {
@@ -1671,9 +1737,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			for (const [route, seconds] of spent) await writeFile(join(state, 'convert', 'costs', `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`), JSON.stringify({ route, seconds: Math.round(seconds) }));
 		}
 	} finally {
-		await browser.close();
+		await browsers.close();
 	}
-	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: [], endpoints: [], unported: [] };
+	const failedCaptures = [...failed].map(([route, reason]) => ({ route, reason }));
+	if (failedCaptures.length) captures = captures.filter((ref) => !failed.has(ref.route));
+	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: failedCaptures, failedCaptures: failedCaptures.length, endpoints: [], unported: [] };
 	const usagePath = join(state, 'usage.json');
 	const librariesPath = join(state, 'libraries.json');
 	const hasUsage = await stat(usagePath).then(() => true, () => false);
@@ -1694,7 +1762,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	log(`parts resolved by: ${resolver.name}`);
 	const dropped: Dropped = new Map();
 	const styles = new Map<string, string>();
-	const unconverted: { route: string; reason: string }[] = [];
+	const unconverted: { route: string; reason: string }[] = failedCaptures.map((f) => ({ route: f.route, reason: `its capture failed: ${f.reason}` }));
 	// React Aria calendars on Markless state, with React Aria's messages for each locale from the old source; the layers
 	// prepare() writes bind the ones their popovers show.
 	const racCalendars = new RacCalendarPlan();
@@ -2441,6 +2509,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		assets: { copied: assets.copied.length, missing: assets.missing },
 		styles: styles.size,
 		unconverted,
+		failedCaptures: failedCaptures.length,
 		endpoints,
 		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
 	};

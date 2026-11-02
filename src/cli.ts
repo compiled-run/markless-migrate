@@ -1145,11 +1145,13 @@ async function main(argv: string[]): Promise<number> {
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
 			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), ...(recordKeys ? { recordKeys } : {}), log: (line) => out(`${line}\n`) });
 			if (values['capture-only']) {
-				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}\n`);
+				// A page whose capture failed keeps no recording: the convert after this records it again, and fails if it fails there.
+				for (const f of report.unconverted) out(`not captured ${f.route}: ${f.reason}\n`);
+				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}${report.unconverted.length ? ` (${report.unconverted.length} page${report.unconverted.length === 1 ? '' : 's'} not captured)` : ''}\n`);
 				return 0;
 			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
-			if (!report.routes.length) return 1;
+			if (!report.routes.length || report.failedCaptures) return 1;
 			const mode = values.ledger ?? 'fail';
 			if (!values.source || mode === 'off') return 0;
 			// Two threads after convert: each reads the whole port, and convert's own memory is still held.

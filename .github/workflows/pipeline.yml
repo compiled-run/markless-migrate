@@ -352,11 +352,15 @@ jobs:
           set -euo pipefail
           t=$(date +%s)
           mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
-          env CAPTURE_ONLY=1 CONCURRENCY=3 RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
-          tail -n 15 "$RUNNER_TEMP/capture.txt"
+          status=0
+          env CAPTURE_ONLY=1 CONCURRENCY=3 RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || status=$?
           rm -f "$APP/.migrate/convert/sources.json" "$APP/.migrate/convert/report.json"
-          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") seconds=$(( $(date +%s) - t ))
-      - uses: actions/upload-artifact@v4
+          if [ "$status" -ne 0 ]; then tail -n 80 "$RUNNER_TEMP/capture.txt"; exit "$status"; fi
+          tail -n 15 "$RUNNER_TEMP/capture.txt"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") failed=$(grep -c '^not captured ' "$RUNNER_TEMP/capture.txt" || true) seconds=$(( $(date +%s) - t ))
+      # What a failed shard finished is kept too: a run given this one's captures-from records only the pages missing.
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: pl-captures-${{ matrix.shard }}
           path: ${{ env.APP }}/.migrate/convert
