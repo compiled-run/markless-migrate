@@ -2,8 +2,11 @@ name: Judge gate
 
 # A sharded check of the original against itself (or against a kept port build), each shard then judged again from the
 # observations it recorded: the judged report must be the one the check wrote, route by route. Against itself, every red
-# route is a false red; the summary counts them. Both sides are served on the runner, never a deployment.
+# route is a false red; the summary counts them. Both sides are served on the runner, never a deployment. A push to a
+# gate/judge-* branch runs it with the defaults (the original against itself on the component pages).
 on:
+  push:
+    branches: ['gate/judge-**']
   workflow_dispatch:
     inputs:
       targets:
@@ -36,9 +39,13 @@ env:
   APP: examples/shadcn-ui-markless
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
+  TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-components.json' }}
+  SHARDS: ${{ inputs.shards || '20' }}
+  BUILD: ${{ inputs.build }}
+  FLAGS: ${{ inputs.flags }}
 
 concurrency:
-  group: judge-gate-${{ github.ref }}-${{ inputs.targets }}-${{ inputs.build }}
+  group: judge-gate-${{ github.ref }}-${{ inputs.targets || 'components' }}-${{ inputs.build }}
   cancel-in-progress: false
 
 jobs:
@@ -58,8 +65,6 @@ jobs:
           node-version: 24
       - id: size
         name: Count the routes
-        env:
-          TARGETS: ${{ inputs.targets }}
         run: node scripts/full-site-gate.ts size "$TARGETS" >> "$GITHUB_OUTPUT"
       - name: Wait for a full-site slot
         if: steps.size.outputs.full == 'true'
@@ -87,14 +92,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Cap the shards run at once
         env:
-          MAX_PARALLEL: ${{ inputs.max_parallel }}
+          MAX_PARALLEL: ${{ inputs.max_parallel || '10' }}
         run: |
           case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 10, got '$MAX_PARALLEL'"; exit 1 ;; esac
           if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 10 ]; then echo "::error::max_parallel must be from 1 to 10, got $MAX_PARALLEL"; exit 1; fi
       - id: split
-        env:
-          TARGETS: ${{ inputs.targets }}
-          SHARDS: ${{ inputs.shards }}
         run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
@@ -108,7 +110,7 @@ jobs:
     timeout-minutes: 345
     strategy:
       fail-fast: false
-      max-parallel: ${{ fromJSON(inputs.max_parallel) }}
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '10') }}
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
@@ -133,8 +135,6 @@ jobs:
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Serve the new side
-        env:
-          BUILD: ${{ inputs.build }}
         run: |
           set -euo pipefail
           if [ -n "$BUILD" ]; then bash "deploy/$SITE/ci-serve.sh" new "$BUILD"; exit 0; fi
@@ -146,8 +146,6 @@ jobs:
         timeout-minutes: 320
         env:
           SHARD: ${{ matrix.shard }}
-          TARGETS: ${{ inputs.targets }}
-          FLAGS: ${{ inputs.flags }}
           MARKLESS_MIGRATE_PROFILE: '1'
         run: |
           set -uo pipefail
@@ -209,13 +207,12 @@ jobs:
           path: shards/check-shards
       - name: Merge
         env:
-          BUILD: ${{ inputs.build || 'the original against itself' }}
-          TARGETS: ${{ inputs.targets }}
+          SIDE: ${{ inputs.build || 'the original against itself' }}
         run: |
           set -euo pipefail
           node scripts/check-shards.ts merge shards merged shards/check-shards
           judged=$(grep -l "matches" shards/*/judge.txt 2>/dev/null | wc -l || true)
-          { echo "### $SITE: $BUILD, $TARGETS"; echo; echo "$judged shards judged again from their observations alike."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### $SITE: $SIDE, $TARGETS"; echo; echo "$judged shards judged again from their observations alike."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: judge-gate-merged
