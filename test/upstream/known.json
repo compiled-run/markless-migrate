@@ -311,39 +311,39 @@
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `valid` validity": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the message shows on the port (parts/radix/form.ts), then the test reads the <pre> the story's onSubmit fills from its own React state, which convert does not port",
+			"why": "needs React state conversion (queued); was passing only because React ran on the port page; the message shows on the port (parts/radix/form.ts), then the test reads the <pre> the story's onSubmit fills from its own React state, which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > should focus the first control with a server error": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
+			"why": "needs React state conversion (queued); was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > allows showing custom server error messages per-field": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
+			"why": "needs React state conversion (queued); was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > allows re-using client-side matchers for server errors": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
+			"why": "needs React state conversion (queued); was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Toast.cy.ts > electron > Toast > given multiple toasts > should reverse tab order from most recent to least": {
 			"class": "part",
-			"why": "was passing only because React ran on the port page; no part answers the story's Add toast button (Radix Toast has no part)",
+			"why": "needs React state conversion (queued); was passing only because React ran on the port page; no part answers the story's Add toast button (Radix Toast has no part)",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Toast.cy.ts > electron > Toast > given multiple toasts > should tab forwards from viewport to latest toast or backwards into the document": {
 			"class": "part",
-			"why": "was passing only because React ran on the port page; no part answers the story's Add toast button (Radix Toast has no part)",
+			"why": "needs React state conversion (queued); was passing only because React ran on the port page; no part answers the story's Add toast button (Radix Toast has no part)",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		}
 	}
 }
