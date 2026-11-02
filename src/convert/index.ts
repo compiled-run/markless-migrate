@@ -31,6 +31,7 @@ import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts
 import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
 import { carriedBinding, carriesCall, markHandlers, notCarried, useHandlers, type HandlerFact, type PortedCall } from './handlers.ts';
 import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
+import { RadixFormPlan, radixFormSources } from './radix-form.ts';
 import { formSources } from './form-schemas.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -1993,6 +1994,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) formLibCount += formLibs.add(route, formLibsRead.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
 	for (const line of formLibs.notes) log(`  ${line}`);
 	if (formLibCount) log(`form-library forms on Markless state: ${formLibCount}`);
+	// Radix forms: each Form.Message the source renders on a match, placed where it renders, with the source's matchers.
+	const radixForms = new RadixFormPlan(await radixFormSources(options.source, librariesPath));
+	let radixFormCount = 0;
+	for (const [route, p] of prepared) radixFormCount += radixForms.add(route, p.root.parentNode as Element, emitHtml);
+	for (const line of radixForms.notes) log(`  ${line}`);
+	if (radixFormCount) log(`Radix forms with their validity messages: ${radixFormCount}`);
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
@@ -2066,6 +2073,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(racTables.bind(el), binding);
 		binding = mergeBindings(tables.bind(el), binding);
 		binding = mergeBindings(needs(formLibs.bind(el), 'form-library'), binding);
+		binding = mergeBindings(needs(radixForms.bind(el), 'radix/form'), binding);
 		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
 		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), formOf(el))), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
@@ -2311,7 +2319,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	await writeParts(app, usedPorts, choices, [...(tables.used ? ['tanstack-table'] : []), ...(dayPickers.chrono ? ['chrono-date'] : []), ...(await siteImportedParts(app))], dayPickers.chrono ? { 'chrono-node': dayPickers.chrono } : {});
 	await writeRegistries(app, registrySets.values(), !options.only?.length);
-	for (const [file, source] of formLibs.files()) {
+	for (const [file, source] of [...formLibs.files(), ...radixForms.files()]) {
 		await mkdir(dirname(join(app, 'lib', 'parts', file)), { recursive: true });
 		await writeFile(join(app, 'lib', 'parts', file), source);
 	}
