@@ -185,8 +185,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           shows and keeps after it, and by how it answered: the viewport's pixels before and after it
           (outside the used control's own box) and its widgets' state (values, selections, what opened,
           a track that moved or scrolled). A step the old page answers and the new page does not is red,
-          and so is one where the new page shifts its layout more (layout-shift entries, with scrollbars
-          shown) or first changes more than 100 ms and 1.5x later after the input. Pages with a contents
+          and so is one where the new page shifts its layout more (layout-shift entries as CLS counts them,
+          none within 500 ms of an input, with scrollbars shown) or first changes more than 100 ms and 1.5x later after the input. Pages with a contents
           list are scrolled to each section; surfaces that answer the pointer (charts) are pointed at
           across their width; and up to 30 journeys run again after arriving in place from another page.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
