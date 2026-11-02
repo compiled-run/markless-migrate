@@ -10,6 +10,7 @@ import { chartModel } from '../src/convert/charts.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { earlyThemeScript } from '../parts/next-themes.ts';
 import { registryModule } from '../src/convert/parts.ts';
+import { MARKLESS_ROUTER_RENDERED_EVENT } from '@markless/router';
 
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
@@ -44,7 +45,7 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		const d3 = /^\/(d3-shape|d3-path)\/(.*)$/.exec(path);
 		if (d3) return route.fulfill({ contentType: 'text/javascript', body: await readFile(join(D3[d3[1] as 'd3-shape' | 'd3-path'], d3[2]!), 'utf8') });
-		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
+		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: `export const navigate = async (href) => { window.navigated = href; }; export const MARKLESS_ROUTER_RENDERED_EVENT = ${JSON.stringify(MARKLESS_ROUTER_RENDERED_EVENT)};` });
 		// What choosing each option did on the old page, which convert writes beside the ports.
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
 		// The site's JSON (its RTL translations) as the module a bundler makes of it.
@@ -2636,5 +2637,37 @@ test("Base UI RadioGroup: Home and End neither move focus nor choose, and are no
 	await page.locator('#other-b').focus();
 	await page.keyboard.press('End');
 	assert.equal(await state(), 'other-c base-ui-b,other-c');
+	await page.close();
+});
+
+// components/docs-sidebar.tsx's markup: a 200 px scrolling list of 30 items 30 px tall, one of them active for the path.
+const sidebar = `<div data-docs-sidebar-content style="height:200px;overflow:auto">${Array.from({ length: 30 }, (_, i) => `<div data-slot="sidebar-menu-item" style="height:30px"><a href="/docs/item-${i}">Item ${i}</a></div>`).join('')}</div>`;
+
+test("shadcn-ui site: after each in-place page swap the docs sidebar keeps the path's own position, else centres the active item, and saves it, as DocsSidebar's layout effect does per pathname", async () => {
+	const page = await open(sidebar, ['site']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-docs-sidebar-content'));
+	// What the router does in place: the address changes, the kept sidebar's items take the new page's data-active, then it says the page is rendered.
+	const swap = (path: string, active: number) =>
+		page.evaluate(
+			([path, active, event]) => {
+				history.pushState(null, '', path);
+				document.querySelectorAll('[data-docs-sidebar-content] > div').forEach((item, i) => (i === active ? item.setAttribute('data-active', 'true') : item.removeAttribute('data-active')));
+				document.dispatchEvent(new CustomEvent(event));
+				return [document.querySelector('[data-docs-sidebar-content]')!.scrollTop, sessionStorage.getItem('docs-sidebar-scroll')] as const;
+			},
+			[path, active, MARKLESS_ROUTER_RENDERED_EVENT] as const,
+		);
+	// Item 20 (600 to 630) is below the 200 px view: centred, 600 - (200 - 30) / 2.
+	assert.deepEqual(await swap('/docs/item-20', 20), [515, JSON.stringify({ pathname: '/docs/item-20', scrollTop: 515 })]);
+	// Item 18 (540 to 570) is in view at 515: left where it is.
+	assert.deepEqual(await swap('/docs/item-18', 18), [515, JSON.stringify({ pathname: '/docs/item-18', scrollTop: 515 })]);
+	// Item 3 is above the view: centred, 90 - 85.
+	assert.deepEqual(await swap('/docs/item-3', 3), [5, JSON.stringify({ pathname: '/docs/item-3', scrollTop: 5 })]);
+	// A path the session kept a position for goes back to it, whatever is active.
+	await page.evaluate(() => sessionStorage.setItem('docs-sidebar-scroll', JSON.stringify({ pathname: '/docs/item-25', scrollTop: 123 })));
+	assert.deepEqual(await swap('/docs/item-25', 25), [123, JSON.stringify({ pathname: '/docs/item-25', scrollTop: 123 })]);
+	// A swap that keeps the path (another ?page=) is no new pathname: nothing runs.
+	await page.evaluate(() => sessionStorage.setItem('docs-sidebar-scroll', JSON.stringify({ pathname: '/docs/item-1', scrollTop: 40 })));
+	assert.deepEqual(await swap('/docs/item-25?page=2', 1), [123, JSON.stringify({ pathname: '/docs/item-1', scrollTop: 40 })]);
 	await page.close();
 });
