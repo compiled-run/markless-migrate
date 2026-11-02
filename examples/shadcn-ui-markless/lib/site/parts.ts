@@ -7,6 +7,7 @@ import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 import { parseParams, previewValues, TYPESET_PARAMS_MESSAGE, updateSearch, type TypesetKey, type TypesetParams } from './typeset-params.ts';
 import { show } from '../parts/base-ui/dialog.ts';
 import { GET_CODE, isCreatePreview } from './create-messages.ts';
+import { MARKLESS_ROUTER_RENDERED_EVENT } from '@markless/router';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -227,13 +228,59 @@ const copyButton: Part = {
 };
 
 // components/docs-sidebar.tsx: the sidebar's scroll position is kept per path in sessionStorage, saved once it is shown
-// (after lib/docs-sidebar-scroll.ts's inline script has restored it) and on every scroll.
+// (after lib/docs-sidebar-scroll.ts's inline script has restored it), on every scroll, and after each page swap.
 const SIDEBAR_SCROLL_KEY = 'docs-sidebar-scroll';
 function saveScroll(container: Element): void {
 	try {
 		sessionStorage.setItem(SIDEBAR_SCROLL_KEY, JSON.stringify({ pathname: location.pathname, scrollTop: container.scrollTop }));
 	} catch {}
 }
+function readScroll(): { pathname: string; scrollTop: number } | null {
+	try {
+		return JSON.parse(sessionStorage.getItem(SIDEBAR_SCROLL_KEY) ?? '');
+	} catch {
+		return null;
+	}
+}
+// The longest route wins, as section links also match by prefix; equal routes keep the item nearest the list's centre.
+function activeItem(container: Element): Element | null {
+	let active: Element | null = null;
+	let activePathLength = -1;
+	let activeDistance = Infinity;
+	const containerCenter = container.getBoundingClientRect().top + container.clientHeight / 2;
+	for (const item of container.querySelectorAll('[data-active="true"]')) {
+		const href = item.getAttribute('href') ?? item.querySelector('a[href]')?.getAttribute('href');
+		const pathLength = href?.length ?? 0;
+		const rect = item.getBoundingClientRect();
+		const distance = Math.abs(rect.top + rect.height / 2 - containerCenter);
+		if (pathLength > activePathLength || (pathLength === activePathLength && distance < activeDistance)) {
+			active = item;
+			activePathLength = pathLength;
+			activeDistance = distance;
+		}
+	}
+	return active;
+}
+// DocsSidebar's layout effect on [pathname]: the path's kept position, else the active item centred when out of view; then saved.
+function followPath(container: Element): void {
+	const kept = readScroll();
+	if (kept?.pathname === location.pathname) container.scrollTop = kept.scrollTop;
+	else {
+		const active = activeItem(container);
+		if (active) {
+			const containerRect = container.getBoundingClientRect();
+			const activeRect = active.getBoundingClientRect();
+			if (activeRect.top < containerRect.top || activeRect.bottom > containerRect.bottom) container.scrollTop += activeRect.top - containerRect.top - (container.clientHeight - activeRect.height) / 2;
+		}
+	}
+	saveScroll(container);
+}
+let sidebarPath = location.pathname;
+document.addEventListener(MARKLESS_ROUTER_RENDERED_EVENT, () => {
+	if (location.pathname === sidebarPath) return;
+	sidebarPath = location.pathname;
+	for (const container of document.querySelectorAll('[data-docs-sidebar-content]')) followPath(container);
+});
 const docsSidebar: Part = {
 	mount(el) {
 		if (!el.hasAttribute('data-docs-sidebar-content')) return;
