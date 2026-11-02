@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { LAUNCH } from '../src/check/browser.ts';
-import { interimViews, type StepResult, type Views } from '../src/check/journeys.ts';
+import { type StepResult, type Views } from '../src/check/journeys.ts';
+import { interimViews } from '../src/check/journeys-compare.ts';
 import { runCheck } from '../src/check/run.ts';
 import { VIEWPORTS, type Report } from '../src/check/types.ts';
 

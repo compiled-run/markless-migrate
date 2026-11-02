@@ -1,6 +1,6 @@
 // Whether a step's slower answer, or a view in between only the new page shows, is the page's or the machine's: samples of
 // both sides taken in turn, judged by a one-sided test whose significance the route's candidates share (Holm's step-down).
-import { mannWhitneyGreater, median, SIGNIFICANCE } from './load.ts';
+import { mannWhitneyGreater, median, SIGNIFICANCE } from './stats.ts';
 import type { StepResult } from './journeys.ts';
 
 /** How far apart two old runs of one step land, over the route's steps: what a busy machine alone does to an answer time. */

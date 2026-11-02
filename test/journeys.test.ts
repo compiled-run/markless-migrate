@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageAsset } from '../src/check/browser.ts';
-import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, locate, movedLines, pagePath, stepDiff, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { consoleErrorText, labelled, localUrl, locate, movedLines, pagePath, stepDiff, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys, describeStep } from '../src/check/journeys-compare.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
 const pour = { role: 'button', name: 'Pour a cup', nth: 0 };
@@ -146,7 +147,7 @@ test('a button the new page marks aria-expanded when it opens a menu, where the 
 });
 
 test('a step answered more slowly on the new page is red only when neither side asked the server first', async () => {
-	const { slowerAnswer } = await import('../src/check/journeys.ts');
+	const { slowerAnswer } = await import('../src/check/journeys-compare.ts');
 	const at = (ms: number, requests: string[] = []) => result({ requests, reaction: { regions: [], changes: [], answeredMs: ms } });
 	assert.match(slowerAnswer([at(40), at(60)], at(400)) ?? '', /old page changes 60 ms after the step; the new page 400 ms/);
 	assert.equal(slowerAnswer([at(40), at(60)], at(140)), undefined, 'within 100 ms');

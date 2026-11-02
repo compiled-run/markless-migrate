@@ -3,7 +3,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { compareJourneys, stateChange, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { stateChange, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys } from '../src/check/journeys-compare.ts';
 import { runCheck } from '../src/check/run.ts';
 import { VIEWPORTS, type Report } from '../src/check/types.ts';
 

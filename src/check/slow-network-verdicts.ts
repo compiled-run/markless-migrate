@@ -1,4 +1,5 @@
-import { mannWhitneyGreater, median, noiseBand, psiFailures, SIGNIFICANCE } from './load.ts';
+import { noiseBand, psiFailures } from './load.ts';
+import { mannWhitneyGreater, median, SIGNIFICANCE } from './stats.ts';
 
 export { noiseBand };
 import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, RUN_METRIC_LABEL, runMetric, type NetworkCell, type NetworkRun, type RouteNetwork, type RunMetric } from './slow-network.ts';

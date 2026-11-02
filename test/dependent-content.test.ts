@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
-import { compareJourneys, explore, replayAll } from '../src/check/journeys.ts';
+import { explore, replayAll } from '../src/check/journeys.ts';
+import { compareJourneys } from '../src/check/journeys-compare.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
 const items = ['Magic UI', 'Aceternity', 'Origin UI', 'Kibo', 'Cult UI'];
