@@ -7,6 +7,7 @@ import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { chromium, firefox, webkit, type Browser } from 'playwright';
+import { Relauncher } from '../convert/relaunch.ts';
 import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
 import { applyAccepted, type Accept } from './accepted.ts';
 import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
@@ -896,7 +897,9 @@ async function layoutOwners(browser: Browser, run: Run, routes: readonly string[
 export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
 	resetSharedAnswers();
-	const browser = options.browser ?? (await chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }));
+	// A browser of the check's own is launched again if it dies, and the route it died under checked once more; a given one is the caller's.
+	const relaunched = options.browser ? undefined : await new Relauncher<Browser>(() => chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }), (line) => void process.stderr.write(`${line}\n`)).start();
+	const browser = options.browser ?? relaunched!.shared;
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const dataHosts = clientHosts(options.source?.clients ?? []);
@@ -997,7 +1000,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					return earlier;
 				}
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, shared!) : { run: roleRun, failures: [] };
-				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
+				const checkOn = (browser: Browser) => withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route)));
+				const done = await (relaunched ? relaunched.retried(route, checkOn, async () => {}).then((got) => ('value' in got ? got.value : stopped(route, new Error(`${got.failed}, on both tries`), [options.oldOrigin, options.newOrigin]))) : checkOn(browser)).catch(unreachable(route));
 				const old = oldCaptures.get(done);
 				oldCaptures.delete(done);
 				forgetFailures(done.failures);
@@ -1084,7 +1088,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(navigation.length ? { navigation: { destinations: navigation.reduce((n, r) => n + r.destinations.length, 0), pairs: navigation.reduce((n, r) => n + r.pairs.length, 0), inPlace: navigation.reduce((n, r) => n + r.pairs.filter((p) => p.inPlace).length, 0), loads: navigation.reduce((n, r) => n + r.loads, 0), ms: navigation.reduce((n, r) => n + r.ms, 0) } } : {}),
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
-		if (!options.browser) await browser.close();
+		await relaunched?.close();
 		await webkitBrowser?.close();
 		await laneBrowsers?.[0].close();
 		if (!webkitBrowser) await laneBrowsers?.[1].close();

@@ -162,7 +162,8 @@ export async function capturedKeys(store: string): Promise<Map<string, string>> 
 	for (const key of (await readdir(dir)).sort()) {
 		if (!KEY_DIR.test(key)) continue;
 		for (const file of (await readdir(join(dir, key))).filter((f) => f.endsWith('.json')).sort()) {
-			const route = (JSON.parse(await readFile(join(dir, key, file), 'utf8')) as { route?: unknown }).route;
+			// A file a cancelled shard was writing when it stopped is not a capture.
+			const route = await readFile(join(dir, key, file), 'utf8').then((t) => (JSON.parse(t) as { route?: unknown }).route, () => undefined);
 			if (typeof route === 'string') out.set(route, key);
 		}
 	}
