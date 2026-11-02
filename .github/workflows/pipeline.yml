@@ -469,7 +469,8 @@ jobs:
           only=""
           [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/all/shard-1.txt"
           t=$(date +%s)
-          /usr/bin/time -v env ONLY="$only" RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
+          # The full shadcn convert outgrew Node's default ~4 GB heap (OOM at 4.06 GB, run 41290495832); the runner has 16 GB.
+          /usr/bin/time -v env NODE_OPTIONS=--max-old-space-size=12288 ONLY="$only" RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
           tail -n 30 "$RUNNER_TEMP/convert.txt"
           node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
           if [ -d "$RUNNER_TEMP/kept-app" ]; then
