@@ -1,4 +1,4 @@
-import { hideOthers } from '../aria-hidden.ts';
+import { markOthers } from './mark-others.ts';
 import { acquireScrollLock, closePopup, isOpen, openPopup, popupOf, setTrigger, top, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
 import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
@@ -50,7 +50,7 @@ function open(trigger: HTMLElement, { shown, rendered, key = trigger.id || layer
 		el.removeAttribute('aria-hidden');
 		el.removeAttribute('inert');
 	}
-	const others = modal ? hideOthers([p.portal]) : () => {};
+	const others = modal ? markOthers([p.portal]) : () => {};
 	const unlock = modal ? acquireScrollLock() : () => {};
 	const onKey = (event: KeyboardEvent) => {
 		if (event.key !== 'Tab') return;
