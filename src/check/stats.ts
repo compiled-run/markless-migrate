@@ -39,3 +39,23 @@ export function mannWhitneyGreater(lower: readonly number[], higher: readonly nu
 	const total = row.reduce((a, b) => a + b, 0);
 	return row.reduce((n, count, sum) => n + (sum >= observed ? count : 0), 0) / total;
 }
+
+/** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
+export function noiseBand(old: readonly number[]): number | undefined {
+	if (old.length < 4) return undefined;
+	const n = old.length;
+	const small = n >> 1;
+	const gaps: number[] = [];
+	const pick = (start: number, chosen: number[]) => {
+		if (chosen.length === small) {
+			const a = chosen.map((i) => old[i]!);
+			const b = old.filter((_, i) => !chosen.includes(i));
+			gaps.push(Math.abs(median(a) - median(b)));
+			return;
+		}
+		for (let i = start; i < n; i++) pick(i + 1, [...chosen, i]);
+	};
+	pick(0, []);
+	gaps.sort((x, y) => x - y);
+	return gaps[Math.min(gaps.length - 1, Math.floor(0.9 * gaps.length))]!;
+}

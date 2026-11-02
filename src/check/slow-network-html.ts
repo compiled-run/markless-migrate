@@ -1,4 +1,5 @@
-import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type NetworkRun, type SideNetwork } from './slow-network.ts';
+import { type NetworkRun, type SideNetwork } from './slow-network.ts';
+import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS } from './slow-network-verdicts.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

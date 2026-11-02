@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { isLoopback } from './browser.ts';
-import { judgeLoad, readRun, type LoadRun, type LoadVerdict, type Metrics } from './load.ts';
+import { judgeLoad, readRun, type LoadRun, type LoadVerdict } from './load.ts';
+import { type Metrics } from './load-verdicts.ts';
 
 export const PSI_ENDPOINT = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
 /** Where a PageSpeed Insights API key is created: free, one click after choosing a Google Cloud project. */

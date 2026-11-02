@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { gunzipSync, brotliDecompressSync, gzipSync, inflateSync } from 'node:zlib';
 import type { Browser } from 'playwright';
 import { weightMatches } from '../check/fonts.ts';
-import { formatMetric, judgeLoad, measureLoad, type LoadOptions, type Metrics, type RouteLoad } from '../check/load.ts';
+import { judgeLoad, measureLoad, type LoadOptions, type RouteLoad } from '../check/load.ts';
+import { formatMetric, type Metrics } from '../check/load-verdicts.ts';
 
 /** The web font the largest text on a page paints with, when the page only finds it once its stylesheet has arrived and been parsed. */
 export interface LateFont {

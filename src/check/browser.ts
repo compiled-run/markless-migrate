@@ -7,13 +7,13 @@ import { request as playwrightRequest, type APIRequestContext, type Browser, typ
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
 import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
 import { at, writeHandler, type WriteFact } from './source-facts.ts';
-import { detectChallenge } from './blocked.ts';
+import { blockedResult, detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
 import { trackLoops } from './loops.ts';
 import type { TimedNetwork } from './timing-network.ts';
 import { registerStructure } from './structure.ts';
-import type { Viewport } from './types.ts';
-import { request } from './http.ts';
+import type { Blocked, Viewport } from './types.ts';
+import { bodyText, request } from './http.ts';
 import type { Scope } from './infrastructure.ts';
 import { FIREBASE_SOCKET, restAnswer, serveDatabases, type FakeDatabase, type LiveRecording, type SocketLog } from './live-data.ts';
 import { setRouting, shellRoute, type OldRouting } from './hash-routes.ts';
@@ -604,3 +604,27 @@ export async function pushRecording(env: SideEnv): Promise<boolean> {
 
 /** How check launches Chromium: with scrollbars, as a visitor's browser shows them, so a page that mishandles their width (scroll-lock padding) is seen doing it. */
 export const LAUNCH = { ignoreDefaultArgs: ['--hide-scrollbars'] } as const;
+
+const WALL_BODY = 256 * 1024;
+
+/** Loads the route as the checker's own requests do, following redirects on the app's origin, and reports a bot wall on the way. */
+export async function probeWall(env: SideEnv, route: string, side: 'old' | 'new'): Promise<Blocked | undefined> {
+	const home = new URL(env.origin).origin;
+	let url = new URL(route, env.origin);
+	try {
+		for (let hop = 0; hop < 10 && url.origin === home; hop++) {
+			const response = await request(url, { headers: tagHeaders(env), redirect: 'manual' });
+			const body = (await bodyText(response, url)).slice(0, WALL_BODY);
+			const headers: Record<string, string> = {};
+			response.headers.forEach((value, key) => (headers[key] = value));
+			const setCookie = response.headers.getSetCookie();
+			if (setCookie.length) headers['set-cookie'] = setCookie.join(', ');
+			const found = detectChallenge({ status: response.status, headers, body });
+			if (found) return blockedResult(side, response.status, found);
+			const location = response.headers.get('location');
+			if (response.status < 300 || response.status >= 400 || !location) return undefined;
+			url = new URL(location, url);
+		}
+	} catch {}
+	return undefined;
+}

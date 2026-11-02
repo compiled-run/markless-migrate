@@ -1,7 +1,7 @@
 import { acceptedLabel } from './automatic.ts';
 import { coverageLines } from './coverage.ts';
 import { headlines, worstLine } from './responsiveness.ts';
-import { loadLine, psiLines } from './load.ts';
+import { loadLine, psiLines } from './load-verdicts.ts';
 import { PSI_NOTICE } from './psi.ts';
 import { routeState } from './route-state.ts';
 import { networkLines } from './slow-network-verdicts.ts';

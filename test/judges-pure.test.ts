@@ -5,10 +5,11 @@ import { test } from 'node:test';
 import { moduleEdges, ROOT } from '../src/code-closure.ts';
 
 /** The modules that judge: each is loaded by `check judge`, which runs with no browser. */
-export const JUDGES = ['src/check/journeys-compare.ts', 'src/check/compare.ts', 'src/check/timing-verdicts.ts', 'src/check/stats.ts'];
+export const JUDGES = ['src/check/journeys-compare.ts', 'src/check/compare.ts', 'src/check/timing-verdicts.ts', 'src/check/stats.ts', 'src/check/accepted.ts', 'src/check/coverage.ts', 'src/check/blocked.ts', 'src/check/load-verdicts.ts', 'src/check/slow-network-verdicts.ts'];
 
-/** Packages that drive or measure a browser. */
+/** Packages that drive or measure a browser; Lighthouse's throttling constants are data. */
 const BROWSER = new Set(['playwright', 'playwright-core', 'lighthouse']);
+const DATA = new Set(['lighthouse/core/config/constants.js']);
 
 /** The first import chain from `entry` to a browser package, type-only imports and files read beside a module aside. */
 async function browserChain(entry: string): Promise<string[] | undefined> {
@@ -18,7 +19,7 @@ async function browserChain(entry: string): Promise<string[] | undefined> {
 		const file = queue.shift()!;
 		for (const edge of (await moduleEdges(file)).edges) {
 			if (edge.typeOnly || edge.read) continue;
-			if (edge.target.kind === 'package' && BROWSER.has(edge.target.name)) {
+			if (edge.target.kind === 'package' && BROWSER.has(edge.target.name) && !DATA.has(edge.spec)) {
 				const chain = [edge.target.name];
 				for (let at: string | null | undefined = file; at; at = from.get(at)) chain.unshift(relative(ROOT, at));
 				return chain;

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
-import { GATED, latestAnswer, networkFailures, noiseBand, resolution, settledNotSlower } from './slow-network-verdicts.ts';
+import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, GATED, latestAnswer, networkFailures, noiseBand, resolution, RUN_METRIC_LABEL, RUN_METRICS, runMetric, settledNotSlower, type RunMetric } from './slow-network-verdicts.ts';
 import { criticalPathOf, networkGroups, type CriticalPath } from './slow-network-groups.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
@@ -11,8 +11,6 @@ export type NetworkBrowser = (typeof NETWORK_BROWSERS)[number];
 export const DEFAULT_NETWORK_RUNS = 5;
 /** The first state-bearing control on the page that is not yet on: an unselected tab, else a closed disclosure. */
 export const AUTO_CONTROL = '[role="tab"][aria-selected="false"]:visible, [aria-expanded="false"]:visible';
-/** A person clicking a control that does not answer clicks again about this often (Firefox profiles of a tabs page, clicked until it answered: 250 to 300 ms). */
-export const CLICK_EVERY_MS = 250;
 const VIEWPORT = { width: 1350, height: 940 };
 const QUIET_MS = 2000;
 /** After the answer, the run waits for the network to go quiet this long at most: "in all" means by then. */
@@ -78,33 +76,6 @@ export interface RunCapture {
 	readonly coverage: readonly CoverageEntry[];
 }
 
-export const RUN_METRICS = ['ttfb', 'firstFrame', 'fcp', 'lcp', 'load', 'answered', 'visibleToAnswer', 'bytesByAnswer', 'bytes', 'jsDownloadedByAnswer', 'jsDownloaded', 'jsExecutedByAnswer'] as const;
-export type RunMetric = (typeof RUN_METRICS)[number];
-
-export const RUN_METRIC_LABEL: Readonly<Record<RunMetric, string>> = {
-	ttfb: 'Time to first byte',
-	firstFrame: 'First painted frame',
-	fcp: 'FCP (as the browser reports it)',
-	lcp: 'Largest paint (LCP)',
-	load: 'Load event',
-	answered: 'First click answered',
-	visibleToAnswer: 'Painted to first click answered',
-	bytesByAnswer: 'Downloaded by the answer',
-	bytes: 'Downloaded in all',
-	jsDownloadedByAnswer: 'JS downloaded by the answer',
-	jsDownloaded: 'JS downloaded in all',
-	jsExecutedByAnswer: 'JS executed by the answer (Chromium)',
-};
-
-export function runMetric(run: NetworkRun, metric: RunMetric): number | undefined {
-	if (run.error) return undefined;
-	if (metric === 'visibleToAnswer') {
-		const painted = run.firstFrame ?? run.fcp;
-		return run.answered !== undefined && painted !== undefined ? run.answered - painted : undefined;
-	}
-	return run[metric];
-}
-
 export function median(values: readonly number[]): number | undefined {
 	if (!values.length) return undefined;
 	const sorted = [...values].sort((a, b) => a - b);
@@ -160,8 +131,6 @@ export function blankFrame(png: Buffer): boolean {
 	for (let i = 4; i < data.length; i += 4) if (Math.abs(data[i]! - r) > 8 || Math.abs(data[i + 1]! - g) > 8 || Math.abs(data[i + 2]! - b) > 8) return false;
 	return true;
 }
-
-export const FRAME_EVERY_MS = 100;
 
 /** Epoch ms when the first screenshot with anything painted came back, taken every 100 ms until one is or `stop` says so. */
 async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<number | undefined> {
@@ -594,14 +563,6 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 			}),
 		),
 	}));
-}
-
-const BYTE_METRICS = new Set<RunMetric>(['bytesByAnswer', 'bytes', 'jsDownloadedByAnswer', 'jsDownloaded', 'jsExecutedByAnswer']);
-
-export function formatValue(metric: RunMetric, value: number | undefined): string {
-	if (value === undefined) return '-';
-	if (BYTE_METRICS.has(metric)) return `${(value / 1000).toFixed(value >= 100_000 ? 0 : 1)} kB`;
-	return `${(value / 1000).toFixed(2)} s`;
 }
 
 /** One table per profile and browser: a row per metric, a column per page, medians of the runs. */

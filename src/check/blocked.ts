@@ -1,6 +1,4 @@
-import { tagHeaders, type SideEnv } from './browser.ts';
 import type { Blocked } from './types.ts';
-import { bodyText, request } from './http.ts';
 
 export interface Answer {
 	readonly status: number;
@@ -81,30 +79,6 @@ export class BlockedError extends Error {
 		this.blocked = blocked;
 		this.origin = origin;
 	}
-}
-
-const MAX_BODY = 256 * 1024;
-
-/** Loads the route as the checker's own requests do, following redirects on the app's origin, and reports a bot wall on the way. */
-export async function probeWall(env: SideEnv, route: string, side: 'old' | 'new'): Promise<Blocked | undefined> {
-	const home = new URL(env.origin).origin;
-	let url = new URL(route, env.origin);
-	try {
-		for (let hop = 0; hop < 10 && url.origin === home; hop++) {
-			const response = await request(url, { headers: tagHeaders(env), redirect: 'manual' });
-			const body = (await bodyText(response, url)).slice(0, MAX_BODY);
-			const headers: Record<string, string> = {};
-			response.headers.forEach((value, key) => (headers[key] = value));
-			const setCookie = response.headers.getSetCookie();
-			if (setCookie.length) headers['set-cookie'] = setCookie.join(', ');
-			const found = detectChallenge({ status: response.status, headers, body });
-			if (found) return blockedResult(side, response.status, found);
-			const location = response.headers.get('location');
-			if (response.status < 300 || response.status >= 400 || !location) return undefined;
-			url = new URL(location, url);
-		}
-	} catch {}
-	return undefined;
 }
 
 /** `--header 'name: value'` and `--cookie name=value`, as check options. */

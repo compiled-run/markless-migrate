@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 
 process.env.MARKLESS_MIGRATE_REQUEST_TIMEOUT_MS = '800';
 const { captureHttp } = await import('../src/check/capture.ts');
-const { probeWall } = await import('../src/check/blocked.ts');
+const { probeWall } = await import('../src/check/browser.ts');
 const { captureEndpoint } = await import('../src/check/endpoints.ts');
 const { defaultEnv } = await import('../src/check/browser.ts');
 
