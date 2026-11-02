@@ -2,14 +2,15 @@
 //   run.ndjson     the run's header, then its events, one JSON line each
 //   routes.ndjson  one line per checked route: its key and every row its check made
 //   blobs/<sha256> each screenshot, frame and response body, once
-import { existsSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { z } from 'zod';
 import type { RunEvent, RunHeader } from '../check/report-judge.ts';
 import { encode, sha256, type Blobs, type Json } from './codec.ts';
 import { readObserved, routeKey, type Observations, type Observed, type RouteKey } from './observations.ts';
-import type { Row } from './rows.ts';
+import { rowJson, type Row } from './rows.ts';
 
 /** The rows' layout and encoding: a reader of another version refuses them rather than misread them. */
 export const OBSERVATIONS_VERSION = 1;
@@ -83,32 +84,49 @@ export class DirObservations implements Observations {
 		return this.#append('run.ndjson', { kind: 'event', event: encode(event, this.#blobs) });
 	}
 	row(row: Row): Json {
-		return encode(row, this.#blobs);
+		return rowJson(row, this.#blobs);
+	}
+	failed(reason: string): Promise<void> {
+		return this.#ready.then(() => writeFile(join(this.#dir, INCOMPLETE), `${reason}\n`));
 	}
 	route(key: RouteKey, rows: readonly Json[]): Promise<void> {
 		return this.#append('routes.ndjson', { key, rows });
 	}
 }
 
-const lines = (text: string) => text.split('\n').filter(Boolean).map((line) => JSON.parse(line) as unknown);
+/** Why a run's observations are not whole, when writing them failed part way: a judge refuses them. */
+const INCOMPLETE = 'incomplete';
+
+/** A file's JSON lines, read one at a time: a run's routes file outgrows any one string. */
+async function* lines(path: string): AsyncGenerator<unknown> {
+	for await (const line of createInterface({ input: createReadStream(path, 'utf8'), crlfDelay: Infinity })) if (line) yield JSON.parse(line) as unknown;
+}
 
 /** A run's observations as `DirObservations` wrote them. */
 export async function readObservations(dir: string): Promise<Observed> {
-	const run = lines(await readFile(join(dir, 'run.ndjson'), 'utf8')).map((line, i) => {
+	if (existsSync(join(dir, INCOMPLETE))) throw new Error(`${dir} is incomplete: writing it failed (${(await readFile(join(dir, INCOMPLETE), 'utf8')).trim()})`);
+	const runFile = join(dir, 'run.ndjson');
+	const run: z.infer<typeof RunLine>[] = [];
+	let n = 0;
+	for await (const line of lines(runFile)) {
+		n++;
 		const parsed = RunLine.safeParse(line);
-		if (!parsed.success) throw new Error(`${join(dir, 'run.ndjson')} line ${i + 1}: ${parsed.error.issues[0]?.message ?? 'not a run line'}`);
-		return parsed.data;
-	});
+		if (!parsed.success) throw new Error(`${runFile} line ${n}: ${parsed.error.issues[0]?.message ?? 'not a run line'}`);
+		run.push(parsed.data);
+	}
 	const [head, ...rest] = run;
-	if (head?.kind !== 'header') throw new Error(`${join(dir, 'run.ndjson')} starts without the run's header`);
+	if (head?.kind !== 'header') throw new Error(`${runFile} starts without the run's header`);
 	if (head.v !== OBSERVATIONS_VERSION) throw new Error(`${dir} holds observations of version ${head.v}; this checker reads version ${OBSERVATIONS_VERSION}`);
 	const events = rest.map((line) => (line.kind === 'event' ? line.event : undefined)).filter((e): e is Json => e !== undefined);
 	const routes = new Map<string, readonly Json[]>();
 	const routesFile = join(dir, 'routes.ndjson');
-	for (const [i, line] of (existsSync(routesFile) ? lines(await readFile(routesFile, 'utf8')) : []).entries()) {
-		const parsed = RouteLine.safeParse(line);
-		if (!parsed.success) throw new Error(`${routesFile} line ${i + 1}: ${parsed.error.issues[0]?.message ?? 'not a route line'}`);
-		routes.set(routeKey(parsed.data.key as RouteKey), parsed.data.rows);
-	}
+	n = 0;
+	if (existsSync(routesFile))
+		for await (const line of lines(routesFile)) {
+			n++;
+			const parsed = RouteLine.safeParse(line);
+			if (!parsed.success) throw new Error(`${routesFile} line ${n}: ${parsed.error.issues[0]?.message ?? 'not a route line'}`);
+			routes.set(routeKey(parsed.data.key as RouteKey), parsed.data.rows);
+		}
 	return readObserved(head.header, events, routes, new DirBlobs(join(dir, 'blobs')));
 }
