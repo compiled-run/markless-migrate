@@ -1290,6 +1290,11 @@ function* writtenMarkup(pages: Iterable<Prepared>): Generator<Element> {
 	}
 }
 
+// Made outside the capture block: a loader made in it keeps every recording that block read alive until convert returns.
+function storedCapture(browser: Browser, origin: string, ref: CapturedRef, dir: string): CapturedRef {
+	return { route: ref.route, status: ref.status, load: () => capturePage(browser, origin, ref.route, dir) };
+}
+
 /** The body's elements; a body showing only text (a bare 404) first gets a <div> holding it, the page's root. */
 export function bodyChildren(doc: Document): Element[] {
 	const b = body(doc);
@@ -1378,6 +1383,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const browser = browsers.shared;
 	const width = Math.max(1, options.concurrency ?? 4);
 	let captures: CapturedRef[];
+	const captureDirs = new Map<string, string>();
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
@@ -1725,6 +1731,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		const read = await Promise.all(reads);
 		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
+		for (const ref of captures) captureDirs.set(ref.route, await atFor(ref.route, 'captures'));
 		await Promise.all([scenesRead, notifiesRead]);
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
@@ -1773,6 +1780,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const failedCaptures = [...failed].map(([route, reason]) => ({ route, reason }));
 	if (failedCaptures.length) captures = captures.filter((ref) => !failed.has(ref.route));
+	captures = captures.map((ref) => storedCapture(browser, options.old, ref, captureDirs.get(ref.route)!));
 	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: failedCaptures, failedCaptures: failedCaptures.length, endpoints: [], unported: [] };
 	const usagePath = join(state, 'usage.json');
 	const librariesPath = join(state, 'libraries.json');
@@ -1849,6 +1857,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		for (const r of revealed.get(ref.route) ?? []) if (r.sig) racChips(prepared.get(ref.route)!.root.parentNode as Element, r);
 	}
+	revealed.clear();
 	templatePorts.routes = undefined;
 	let placedFloating = 0;
 	for (const [route, panels] of floatingRead) {
@@ -2133,6 +2142,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		templatePorts.plan('scene');
 		templatePorts.plan('form');
 	}
+	scenes.clear();
 	for (const why of scenePlan.refused) log(`  recorded uses not played: ${why}`);
 	for (const [container, r] of replaced) {
 		replacedParts.set(container, { append: r.markup });

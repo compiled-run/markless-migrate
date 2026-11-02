@@ -108,7 +108,7 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 		}
 		for (const [slot, uses] of called) if (!bySlot.has(slot)) bySlot.set(slot, uses);
 	}
-	const modules = new Map<string, Module | undefined>();
+	const modules = new Map<string, SourceFacts | undefined>();
 	const defaults = new Map<string, string | undefined>();
 	const slotProps = new Map<string, string | undefined>();
 	return {
@@ -126,7 +126,7 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 					try {
 						text = readFileSync(join(source, site.file), 'utf8');
 					} catch {}
-					modules.set(site.file, text === undefined ? undefined : parseModule(site.file, text));
+					modules.set(site.file, text === undefined ? undefined : sourceFacts(parseModule(site.file, text)));
 				}
 				const mod = modules.get(site.file);
 				const value = mod ? paramDefault(mod, site.line, prop) : undefined;
@@ -147,7 +147,7 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 					try {
 						text = readFileSync(join(source, site.file), 'utf8');
 					} catch {}
-					modules.set(site.file, text === undefined ? undefined : parseModule(site.file, text));
+					modules.set(site.file, text === undefined ? undefined : sourceFacts(parseModule(site.file, text)));
 				}
 				const mod = modules.get(site.file);
 				const value = mod ? slotSiteProp(mod, site.line, slot, prop) : undefined;
@@ -161,27 +161,14 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 }
 
 /** A prop of the JSX element opened on `line` with this literal data-slot: its literal, or the default of the parameter it passes. */
-function slotSiteProp(mod: Module, line: number, slot: string, prop: string): string | undefined {
-	let found: string | undefined;
-	walk(mod.program, (node: N) => {
-		if (found !== undefined || node.type !== 'JSXOpeningElement' || mod.line(node.start) !== line) return;
-		const attrs = (node.attributes ?? []) as N[];
-		const named = (name: string) => attrs.find((a) => a.type === 'JSXAttribute' && a.name?.name === name);
-		if (named('data-slot')?.value?.value !== slot) return;
-		const written = named(prop);
-		const value = written?.value;
-		// A boolean prop written bare (`autoFocus`).
-		if (written && !value) found = 'true';
-		if (!value) return;
-		if (value.type === 'Literal') found = String(value.value);
-		else if (value.type === 'JSXExpressionContainer') {
-			const e = value.expression;
-			if (e.type === 'Literal') found = String(e.value);
-			else if (e.type === 'UnaryExpression' && e.operator === '-' && e.argument.type === 'Literal') found = `-${e.argument.value}`;
-			else if (e.type === 'Identifier') found = paramDefault(mod, line, e.name);
-		}
-	});
-	return found;
+function slotSiteProp(facts: SourceFacts, line: number, slot: string, prop: string): string | undefined {
+	for (const el of facts.slotted.get(line) ?? []) {
+		if (el.slot !== slot || !el.props.has(prop)) continue;
+		const w = el.props.get(prop);
+		const found = w === undefined ? undefined : 'param' in w ? paramDefault(facts, line, w.param) : w.value;
+		if (found !== undefined) return found;
+	}
+	return undefined;
 }
 
 /**
@@ -193,9 +180,9 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 	const file = JSON.parse(await readFile(librariesPath, 'utf8')) as LibrariesFile;
 	const bySlot = new Map<string, PartUsage[]>();
 	const counts = new Map<string, number>();
-	const modules = new Map<string, Module | undefined>();
+	const modules = new Map<string, SourceFacts | undefined>();
 	const moduleOf = async (rel: string) => {
-		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => parseModule(rel, text), () => undefined) : undefined);
+		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => sourceFacts(parseModule(rel, text)), () => undefined) : undefined);
 		return modules.get(rel);
 	};
 	// A value written on a site: a literal, or the default of the wrapper's parameter it passes (`data-slot={dataSlot}`).
@@ -282,7 +269,7 @@ async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ sl
 	const out = new Map<string, PartUsage[]>();
 	if (!forwards.size) return { slots: out, props: () => undefined };
 	const project = await openProject(source);
-	const modules = new Map<string, Module>();
+	const modules = new Map<string, SourceFacts>();
 	// Each JSX element naming a component: the component it names, the slot it writes, whether it spreads after it, and the component it sits in.
 	const edges: { target: string; slot?: string; spreads: boolean; within?: string; file: string; line: number }[] = [];
 	for (const rel of project.files) {
@@ -290,7 +277,7 @@ async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ sl
 		const text = await project.read(rel);
 		if (!/<[A-Z]/.test(text)) continue;
 		const mod = parseModule(rel, text);
-		modules.set(rel, mod);
+		modules.set(rel, sourceFacts(mod));
 		const owner = (ancestors: readonly N[]) => {
 			for (let i = ancestors.length - 1; i >= 0; i--) {
 				const a = ancestors[i]!;
@@ -332,9 +319,9 @@ async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ sl
 	// The default a component's own parameter gives a prop: `({ sideOffset = 4 })`.
 	const defaultOf = (target: string, prop: string) => {
 		const [file, name] = target.split('#') as [string, string];
-		const mod = modules.get(file);
-		const fn = mod?.bindings.get(name);
-		return mod && fn ? paramDefault(mod, mod.line(fn.start), prop) : undefined;
+		const facts = modules.get(file);
+		const line = facts?.bindings.get(name);
+		return facts && line !== undefined ? paramDefault(facts, line, prop) : undefined;
 	};
 	const props = (slot: string, prop: string, library?: string) => {
 		const votes = new Map<string, number>();
@@ -350,23 +337,76 @@ async function forwardedSlots(file: LibrariesFile, source: string): Promise<{ sl
 }
 
 /** The literal default of a destructured parameter of the function that encloses a line: `({ sideOffset = 4 })`. */
-function paramDefault(mod: Module, line: number, name: string): string | undefined {
-	let found: string | undefined;
+function paramDefault(facts: SourceFacts, line: number, name: string): string | undefined {
+	for (const fn of facts.functions) {
+		if (fn.start > line || fn.end < line) continue;
+		let found: string | undefined;
+		// By its key (`offset = 4`) or the name it is bound to (`"data-slot": dataSlot = "dropdown-menu-content"`).
+		for (const d of fn.defaults) if ((d.key === name || d.bound === name) && d.value !== undefined) found = d.value;
+		if (found !== undefined) return found;
+	}
+	return undefined;
+}
+
+type Written = { readonly value: string } | { readonly param: string };
+interface ParamDefault {
+	readonly key?: string;
+	readonly bound?: string;
+	readonly value?: string;
+}
+interface Slotted {
+	readonly slot: unknown;
+	readonly props: ReadonlyMap<string, Written | undefined>;
+}
+
+/** What the resolvers read off a parsed source module, kept instead of its tree. */
+interface SourceFacts {
+	/** Functions with destructured parameter defaults, outermost first, by their first and last line. */
+	readonly functions: readonly { readonly start: number; readonly end: number; readonly defaults: readonly ParamDefault[] }[];
+	/** By line, each JSX opening element with a literal data-slot: what each prop is written as. */
+	readonly slotted: ReadonlyMap<number, readonly Slotted[]>;
+	/** Top-level bindings, by the line they start on. */
+	readonly bindings: ReadonlyMap<string, number>;
+}
+
+function sourceFacts(mod: Module): SourceFacts {
+	const functions: SourceFacts['functions'][number][] = [];
+	const slotted = new Map<number, Slotted[]>();
 	walk(mod.program, (node: N) => {
-		if (found !== undefined) return false;
-		if (!['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type)) return;
-		if (mod.line(node.start) > line || mod.line(node.end) < line) return false;
-		for (const param of (node.params ?? []) as N[]) {
-			const pattern = param.type === 'AssignmentPattern' ? param.left : param;
-			if (pattern?.type !== 'ObjectPattern') continue;
-			for (const p of pattern.properties as N[]) {
-				// By its key (`offset = 4`) or the name it is bound to (`"data-slot": dataSlot = "dropdown-menu-content"`).
-				if (p.type !== 'Property' || p.value?.type !== 'AssignmentPattern' || (p.key?.name !== name && p.value.left?.name !== name)) continue;
-				const d = p.value.right;
-				if (d.type === 'Literal' && (typeof d.value === 'string' || typeof d.value === 'number' || typeof d.value === 'boolean')) found = String(d.value);
-				else if (d.type === 'UnaryExpression' && d.operator === '-' && d.argument.type === 'Literal') found = `-${d.argument.value}`;
+		if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type)) {
+			const defaults: ParamDefault[] = [];
+			for (const param of (node.params ?? []) as N[]) {
+				const pattern = param.type === 'AssignmentPattern' ? param.left : param;
+				if (pattern?.type !== 'ObjectPattern') continue;
+				for (const p of pattern.properties as N[]) {
+					if (p.type !== 'Property' || p.value?.type !== 'AssignmentPattern') continue;
+					const r = p.value.right;
+					const value = r.type === 'Literal' && (typeof r.value === 'string' || typeof r.value === 'number' || typeof r.value === 'boolean') ? String(r.value) : r.type === 'UnaryExpression' && r.operator === '-' && r.argument.type === 'Literal' ? `-${r.argument.value}` : undefined;
+					defaults.push({ key: p.key?.name, bound: p.value.left?.name, value });
+				}
 			}
+			if (defaults.length) functions.push({ start: mod.line(node.start), end: mod.line(node.end), defaults });
+		} else if (node.type === 'JSXOpeningElement') {
+			const attrs = (node.attributes ?? []) as N[];
+			const named = (name: string) => attrs.find((a) => a.type === 'JSXAttribute' && a.name?.name === name);
+			const slot = named('data-slot')?.value?.value;
+			if (slot === undefined) return;
+			const props = new Map<string, Written | undefined>();
+			for (const a of attrs) {
+				const name = a.type === 'JSXAttribute' ? a.name?.name : undefined;
+				if (typeof name !== 'string' || props.has(name)) continue;
+				const value = a.value;
+				// A boolean prop written bare (`autoFocus`).
+				if (!value) props.set(name, { value: 'true' });
+				else if (value.type === 'Literal') props.set(name, { value: String(value.value) });
+				else if (value.type === 'JSXExpressionContainer') {
+					const e = value.expression;
+					props.set(name, e?.type === 'Literal' ? { value: String(e.value) } : e?.type === 'UnaryExpression' && e.operator === '-' && e.argument?.type === 'Literal' ? { value: `-${e.argument.value}` } : e?.type === 'Identifier' ? { param: e.name } : undefined);
+				} else props.set(name, undefined);
+			}
+			const line = mod.line(node.start);
+			(slotted.get(line) ?? slotted.set(line, []).get(line)!).push({ slot, props });
 		}
 	});
-	return found;
+	return { functions, slotted, bindings: new Map([...mod.bindings].map(([name, node]) => [name, mod.line(node.start)])) };
 }
