@@ -1273,6 +1273,23 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, siteLayers: [...new Set([...walk(body(doc))].map((el) => pageComponentOf(el, siteComponents)).filter((c) => c?.layers))] as SiteComponent[], clipboard, copyLabels, downloads, late, lateFontPaths, bodyCss };
 }
 
+const markupOf = (p: Prepared): string[] => [...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])];
+
+// Parsed one at a time and each distinct template once: every page's layers parsed at once outgrew the heap.
+function* writtenMarkup(pages: Iterable<Prepared>): Generator<Element> {
+	const parsed = new Set<string>();
+	for (const p of pages) {
+		yield p.root;
+		yield* p.before;
+		yield* p.after;
+		for (const m of markupOf(p)) {
+			if (parsed.has(m)) continue;
+			parsed.add(m);
+			yield parseFragment(m) as unknown as Element;
+		}
+	}
+}
+
 /** The body's elements; a body showing only text (a bare 404) first gets a <div> holding it, the page's root. */
 export function bodyChildren(doc: Document): Element[] {
 	const b = body(doc);
@@ -2473,7 +2490,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const previous = options.only?.length ? ((await readFile(sharedFile, 'utf8').then(JSON.parse, () => undefined)) as SharedRecord | undefined) : undefined;
 		// Which classes one element of a page can carry together: as its markup or its code's elements have them, or any its code names.
 		const elementClasses = (p: Prepared) => {
-			const markup = [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)];
+			const markup = [p.root, ...p.before, ...p.after, ...markupOf(p).map((m) => parseFragment(m) as unknown as Element)];
 			return [p.htmlAttrs.class, p.bodyAttrs.class, ...markup.flatMap((root) => [...walk(root)].map((el) => attr(el, 'class')))].flatMap((c) => (c ? [c.split(/\s+/).filter(Boolean)] : []));
 		};
 		// Asked route by route in page order: one page module's facts are held at a time.
@@ -2517,7 +2534,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// What the old pages loaded and the written app no longer names (the old framework's scripts, a sheet a cut sheet
 	// replaced, a font no kept rule draws) is not shipped; the source's own public/ files stay as they are.
 	const referenced = await referencedAssets(options.old, publicDir, {
-		markup: [...prepared.values()].flatMap((p) => [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)]),
+		markup: writtenMarkup(prepared.values()),
 		urls: [...[...prepared.values()].flatMap((p) => [...p.head.flatMap((t) => Object.values(t.attrs).flatMap((v) => v.split(',').map((c) => c.trim().split(/\s+/)[0]!))), ...p.late, ...p.lateFontPaths]), ...importedUrls, ...[...bodySheets.values()].flat()],
 	});
 	// A whole convert also removes what an earlier one copied or cut and this one no longer references; one of some
