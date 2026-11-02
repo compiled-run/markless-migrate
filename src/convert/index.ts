@@ -48,7 +48,7 @@ import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort, type TrailingOutput } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, SERVED_LAYER_BYTES, splitBody, type LayerTable } from './document.ts';
+import { bodyAfterModule, documentExtras, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, SERVED_LAYER_BYTES, splitBody, trailingExtras, type LayerTable } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
 import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
@@ -2286,6 +2286,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const ownedExtras = ownExtras.get(route) ?? [];
 		const leading = ownedExtras.filter((el) => p.before.includes(el) && !notifyPlan.rendersToasts(el)).map(emitOwn).join('');
 		for (const el of ownedExtras.filter((x) => !p.before.includes(x) || notifyPlan.rendersToasts(x))) after.push({ markup: emitOwn(el), toaster: notifyPlan.rendersToasts(el) });
+		if (!ownExtras.has(route)) for (const el of trailingExtras(bodyParts, route)) after.push({ markup: emitElement(el, { declarations, bind: (x) => bindParts(x, usedPorts), dropped: noteDropped }) });
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}${p.copyLabels[key] !== undefined ? ` data-mm-label=${lit(p.copyLabels[key]!)}` : ''}></template>`).join('') + Object.entries(p.downloads).map(([key, file]) => { const { name, type, text } = JSON.parse(file) as { name: string; type: string; text: string }; return `<template data-mm-download=${lit(key)} data-mm-name=${lit(name)} data-mm-type=${lit(type)} data-mm-text={${lit(text)}}></template>`; }).join('');
 		after.push(...pageLayers.map((n) => ({ markup: `<${n} />`, layer: n })), ...p.siteLayers.map((c) => ({ markup: `<${layersName(c)} />` })), { markup: copied });
@@ -2427,7 +2428,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		return standIn ? { replace: `<${componentName(standIn)} />` } : bindParts(el, usedPorts);
 	};
 	const extrasFile = join('components', 'converted', 'body-extras.tsrx');
-	await writeFile(join(app, extrasFile), appUrlDeclaration(withSiteImports(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers, extrasBind), siteComponents, appDir(extrasFile))));
+	await writeFile(join(app, extrasFile), appUrlDeclaration(withSiteImports(extrasModule(documentExtras(bodyParts, new Set(ownExtras.keys())), noteDropped, layers, extrasBind), siteComponents, appDir(extrasFile))));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
 	for (const line of tables.notes.slice(tableNotesPlaced)) log(`  ${line}; it renders as the old page showed it`);
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page; ${layers.served.length} served as files and mounted on use`);
