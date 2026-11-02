@@ -288,6 +288,17 @@ test("another document's theme switch (the storage event next-themes' ThemeProvi
 	await page.close();
 });
 
+test("on /docs/directory the docs sidebar asks nothing of /r/registries.json: the directory's list (directory-list.tsrx) makes the page's one request, as the original's one useSearchRegistry does", async () => {
+	const page = await open('<aside><div data-docs-sidebar-content="">sidebar</div></aside>', ['site']);
+	const asked: string[] = [];
+	page.on('request', (request) => request.url().includes('registries.json') && asked.push(request.url()));
+	await page.evaluate(() => history.replaceState(null, '', '/docs/directory'));
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-docs-sidebar-content'));
+	await page.waitForTimeout(300);
+	assert.deepEqual(asked, []);
+	await page.close();
+});
+
 test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base UI's useTypeahead stops it: the site's D shortcut does not see it", async () => {
 	const page = await open(
 		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
