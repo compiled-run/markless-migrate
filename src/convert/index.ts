@@ -34,7 +34,7 @@ import { carriedBinding, carriesCall, markHandlers, notCarried, useHandlers, typ
 import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
 import { RadixFormPlan, radixFormSources } from './radix-form.ts';
 import { formSources } from './form-schemas.ts';
-import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
+import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, tablesShown, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
 import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendarMessages, RacCalendarPlan, type CapturedCalendars } from './rac-calendar.ts';
 import type { CalendarMessages } from '../../parts/react-aria/calendar.ts';
@@ -1523,8 +1523,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					const settled = Object.values((await page()).settled);
 					// What each TanStack table was given and showed in each state, where the settled page has a table.
 					if (usesTables && settled.some(mayHoldTable)) {
-						const captured = await limit(async () => captureTables(browser, options.old, route, (await atFor(route, 'tables')), log));
+						const shown = tablesShown((await page()).settled);
+						const captured = await limit(async () => captureTables(browser, options.old, route, (await atFor(route, 'tables')), log, shown));
 						for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
+						if (captured.notFound) log(`  tables on ${route} not found: ${captured.notFound}`);
 						if (captured.tables.length) facts.tables = captured.tables;
 					}
 				})(),
