@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BUILT_IN_MESSAGES, DEFAULT_INVALID_MESSAGE } from '../../parts/radix/form.ts';
+import { BUILT_IN_MESSAGES, DEFAULT_INVALID_MESSAGE, initialView } from '../../parts/radix/form.ts';
 import { parseModule, walk as walkJs, type Module, type N } from '../source/js.ts';
 import { attr, elementChildren, walk, type Element } from './dom.ts';
 import { copiedModule } from './form-schemas.ts';
@@ -16,7 +16,7 @@ export type FieldChild =
 	/** Rendered from page state (a `{cond ? <Form.Message/> : null}`): nothing at load, and nothing the port shows. */
 	| { readonly kind: 'dynamic' }
 	/** A Form.Message rendered on a built-in match (its ValidityState key) or a custom matcher (its index among the form's). */
-	| { readonly kind: 'message'; readonly field: string; readonly match: string | number; readonly force: boolean; readonly html: string };
+	| { readonly kind: 'message'; readonly field: string; readonly match: string | number; readonly id?: string; readonly attrs: string; readonly text: string };
 
 export interface SourceField {
 	readonly name: string;
@@ -87,7 +87,9 @@ interface Message {
 	readonly match: { readonly kind: 'built-in'; readonly name: string } | { readonly kind: 'custom'; readonly fn: N } | undefined;
 	readonly force: boolean | 'state';
 	readonly field?: string;
-	readonly html?: string;
+	readonly id?: string;
+	readonly attrs?: string;
+	readonly text?: string;
 	readonly why?: string;
 }
 
@@ -104,12 +106,17 @@ function messageOf(el: N, mod: Module): Message {
 	if (match && !matcher) return { match: undefined, force, why: `its match is ${mod.text.slice(match.start, match.end).slice(0, 40)}` };
 	if (nameAttr && field === undefined) return { match: matcher, force, why: 'its name is an expression' };
 	const attrs: string[] = [];
+	let id: string | undefined;
 	for (const a of el.openingElement.attributes as N[]) {
 		if (a.type !== 'JSXAttribute' || a.name.type !== 'JSXIdentifier') return { match: matcher, force, why: 'it spreads props' };
 		const n = a.name.name as string;
 		if (n === 'match' || n === 'forceMatch' || n === 'name' || n === 'key') continue;
 		const v = stringOf(a);
 		if (v === undefined) return { match: matcher, force, why: `its ${n} is an expression` };
+		if (n === 'id') {
+			id = v;
+			continue;
+		}
 		attrs.push(`${n === 'className' ? 'class' : n}="${escapeAttr(v)}"`);
 	}
 	const kids = (el.children as N[]).filter((c) => !isEmptyExpression(c));
@@ -120,8 +127,7 @@ function messageOf(el: N, mod: Module): Message {
 		text = parts.join('');
 	}
 	const shows = text || (matcher?.kind === 'built-in' ? BUILT_IN_MESSAGES[matcher.name] : DEFAULT_INVALID_MESSAGE);
-	const html = `<span${attrs.length ? ` ${attrs.join(' ')}` : ''}>${escapeText(shows ?? '')}</span>`;
-	return { match: matcher, force, ...(field !== undefined ? { field } : {}), html };
+	return { match: matcher, force, ...(field !== undefined ? { field } : {}), ...(id !== undefined ? { id } : {}), attrs: attrs.map((a) => ` ${a}`).join(''), text: escapeText(shows ?? '') };
 }
 
 /** The Radix Form.Roots of a source file, each with its fields' children and its custom matchers' module. */
@@ -154,7 +160,7 @@ export function radixForms(file: string, text: string): SourceRadixForm[] {
 				else if (part !== 'Message') children.push({ kind: 'element' });
 				else {
 					const m = messageOf(c, mod);
-					if (m.why || !m.html) {
+					if (m.why || m.attrs === undefined || m.text === undefined) {
 						notes.push(`${file}:${mod.line(c.start)} a Form.Message of ${name} is not ported: ${m.why}`);
 						// What it renders at load is unknown: the field cannot be told apart on the page.
 						children.push({ kind: 'dynamic' });
@@ -172,7 +178,7 @@ export function radixForms(file: string, text: string): SourceRadixForm[] {
 						match = matchers.length;
 						matchers.push(m.match.fn);
 					}
-					children.push({ kind: 'message', field: m.field ?? name, match, force: false, html: m.html });
+					children.push({ kind: 'message', field: m.field ?? name, match, ...(m.id !== undefined ? { id: m.id } : {}), attrs: m.attrs, text: m.text });
 				}
 			}
 			fields.push({ name, children });
@@ -207,21 +213,24 @@ export async function radixFormSources(source: string | undefined, librariesPath
 	return out;
 }
 
-export const MATCHERS_MODULE = 'radix-forms.ts';
+export const FORMS_MODULE = 'radix-forms.ts';
 export const MATCHERS_DIR = 'radix-form-matchers';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 12);
 const named = (el: Element) => (/^(input|select|textarea)$/.test(el.tagName) ? attr(el, 'name') : undefined);
+const FLAGS = ['data-valid', 'data-invalid'];
 
 /**
- * Radix forms on the converted pages: each message a template where Radix renders it, which parts/radix/form.ts shows
- * while its match holds; each field, label and control marked with its field's name.
+ * Radix forms on the converted pages on Markless state: each message an arm where Radix renders it, and each field's
+ * flags and its control's description, which parts/radix/form.ts sets as Radix Form would.
  */
 export class RadixFormPlan {
 	private readonly bindings = new Map<Element, Binding>();
+	private readonly entries = new Map<string, string>();
 	private readonly modules = new Map<string, string>();
 	readonly notes: string[] = [];
 	private readonly sources: readonly SourceRadixForm[];
+	private n = 0;
 
 	constructor(sources: readonly SourceRadixForm[]) {
 		this.sources = sources;
@@ -229,15 +238,11 @@ export class RadixFormPlan {
 	}
 
 	get used(): boolean {
-		return this.bindings.size > 0;
+		return this.entries.size > 0;
 	}
 
 	bind(el: Element): Binding | undefined {
 		return this.bindings.get(el);
-	}
-
-	private set(el: Element, b: Binding): void {
-		this.bindings.set(el, mergeBindings(this.bindings.get(el), b)!);
 	}
 
 	/** Places the source's forms on the page under `root`; the number placed. */
@@ -260,9 +265,12 @@ export class RadixFormPlan {
 	}
 
 	private place(route: string, form: Element, source: SourceRadixForm, emit: (html: string) => string): boolean {
+		const name = `rf${this.n}`;
 		const staged = new Map<Element, Binding>();
 		const stage = (el: Element, b: Binding) => staged.set(el, mergeBindings(staged.get(el), b)!);
-		let messages = 0;
+		const messages: { field: string; id: string; match?: string; matcher?: number }[] = [];
+		const fields: string[] = [];
+		const described: Record<string, string> = {};
 		for (const field of source.fields) {
 			const controls = [...walk(form)].filter((el) => named(el) === field.name);
 			const at = field.children.findIndex((c) => c.kind === 'control');
@@ -275,11 +283,20 @@ export class RadixFormPlan {
 				this.notes.push(`${route}: the Form.Field ${field.name} is not ported: the page does not show the children its source renders${dynamic ? ' (it renders some from page state)' : ''}`);
 				continue;
 			}
-			stage(div, { extra: [`data-mm-rf-field=${lit(field.name)}`] });
+			const label = field.children.findIndex((c) => c.kind === 'label');
+			const flagged = [div, controls[0]!, ...(label >= 0 ? [kids[rendered.indexOf(field.children[label]!)]!] : [])];
+			if (flagged.some((el) => FLAGS.some((f) => attr(el, f) !== undefined))) {
+				this.notes.push(`${route}: the Form.Field ${field.name} is not ported: it is valid or invalid at load, which only page state makes it`);
+				continue;
+			}
+			const f = lit(field.name);
+			fields.push(field.name);
+			const own = attr(controls[0]!, 'aria-describedby');
+			if (own) described[field.name] = own;
+			for (const el of flagged) stage(el, { extra: [`data-valid={${name}.v[${f}]}`, `data-invalid={${name}.i[${f}]}`] });
+			stage(controls[0]!, { omit: ['aria-describedby'], extra: [`aria-describedby={${name}.d[${f}]}`, 'data-mm-rf-control=""'] });
 			let k = 0;
 			field.children.forEach((c, i) => {
-				if (c.kind === 'label') stage(kids[k]!, { extra: [`data-mm-rf-label=${lit(field.name)}`] });
-				if (c.kind === 'control') stage(kids[k]!, { extra: ['data-mm-rf-control=""'] });
 				if (c.kind === 'label' || c.kind === 'control' || c.kind === 'element') {
 					k++;
 					return;
@@ -287,25 +304,29 @@ export class RadixFormPlan {
 				if (c.kind !== 'message') return;
 				const next = field.children.slice(i + 1).findIndex((x) => x.kind === 'label' || x.kind === 'control' || x.kind === 'element');
 				const before = next < 0 ? null : (kids[k] ?? null);
-				const how = typeof c.match === 'number' ? `data-mm-rf-matcher="${c.match}"` : `data-mm-rf-match=${lit(c.match)}`;
-				stage(div, { inserts: [{ before, markup: `<template data-mm-rf-message=${lit(c.field)} ${how}>${emit(c.html)}</template>` }] });
-				messages++;
+				const index = messages.length;
+				const id = c.id ?? `radix-${name}m${index}`;
+				messages.push({ field: c.field, id, ...(typeof c.match === 'number' ? { matcher: c.match } : { match: c.match }) });
+				stage(div, { inserts: [{ before, markup: `@if (${name}.s[${index}]) { ${emit(`<span id="${escapeAttr(id)}"${c.attrs}>${c.text}</span>`)} }` }] });
 			});
 		}
-		if (!messages) return false;
-		const key = source.matchers ? `rfm_${hash(source.matchers)}` : '';
-		if (source.matchers) this.modules.set(key, source.matchers);
-		stage(form, { extra: [`data-mm-rf=${lit(key)}`, 'onVisible={() => mount("data-mm-rf")}'] });
-		for (const [el, b] of staged) this.set(el, b);
+		if (!messages.length) return false;
+		this.n++;
+		const entry = JSON.stringify({ fields, messages, described });
+		const matchersKey = source.matchers ? `rfm_${hash(source.matchers)}` : undefined;
+		if (matchersKey) this.modules.set(matchersKey, source.matchers!);
+		const key = `rf_${hash(`${entry}${matchersKey ?? ''}`)}`;
+		this.entries.set(key, `${lit(key)}: { ...${entry}${matchersKey ? `, matchers: () => import('./${MATCHERS_DIR}/${matchersKey}.ts').then((m) => m.matchers)` : ''} }`);
+		stage(form, { declare: [`let ${name} = state(${JSON.stringify(initialView(described))});`], extra: [`data-mm-rf=${lit(key)}`, 'onVisible={() => mount("data-mm-rf")}', `onMmradixform={(event) => (${name} = (event as CustomEvent).detail)}`] });
+		for (const [el, b] of staged) this.bindings.set(el, mergeBindings(this.bindings.get(el), b)!);
 		return true;
 	}
 
-	/** The matchers' registry and modules, under the app's lib/parts/. */
+	/** The forms' entries and their matchers' modules, under the app's lib/parts/. */
 	files(): Map<string, string> {
 		const out = new Map<string, string>();
 		if (!this.used) return out;
-		const entries = [...this.modules.keys()].map((key) => `\t${key}: () => import('./${MATCHERS_DIR}/${key}.ts').then((m) => m.matchers),`);
-		out.set(MATCHERS_MODULE, `// Generated by markless-migrate convert: each Radix form's custom matchers; change the converter, not this file.\nexport const MATCHERS: Readonly<Record<string, () => Promise<readonly ((value: string, formData: FormData) => boolean | Promise<boolean>)[]>>> = {\n${entries.join('\n')}\n};\n`);
+		out.set(FORMS_MODULE, `// Generated by markless-migrate convert: each Radix form's messages and matchers; change the converter, not this file.\nimport type { RadixFormEntry } from './radix/form.ts';\n\nexport const FORMS: Readonly<Record<string, RadixFormEntry>> = {\n${[...this.entries.values()].map((e) => `\t${e},`).join('\n')}\n};\n`);
 		for (const [key, module] of this.modules) out.set(`${MATCHERS_DIR}/${key}.ts`, `// Generated by markless-migrate convert: the old source's Form.Message matchers, copied unchanged.\n${module}`);
 		return out;
 	}

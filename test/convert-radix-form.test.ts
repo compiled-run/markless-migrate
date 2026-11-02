@@ -78,14 +78,14 @@ test('the source gives each Form.Field its messages in order: built-in matches, 
 	assert.deepEqual(name.children.map((c) => c.kind), ['label', 'control', 'message', 'message']);
 	const messages = form.fields.flatMap((f) => f.children.flatMap((c) => (c.kind === 'message' ? [c] : [])));
 	assert.deepEqual(messages.map((m) => m.match), ['valueMissing', 'valid', 'typeMismatch', 'patternMismatch', 0, 1, 'patternMismatch']);
-	assert.deepEqual(messages.map((m) => m.html), [
-		'<span data-slot="form-message">This value is missing</span>',
-		'<span data-slot="form-message">valid!</span>',
-		'<span data-slot="form-message">This value does not match the required type</span>',
-		'<span data-slot="form-message">This value does not match the required pattern</span>',
-		'<span data-slot="form-message">This value is not valid</span>',
-		'<span data-slot="form-message">This value is not valid</span>',
-		'<span data-slot="form-message">Country should be "France" or "Spain"</span>',
+	assert.deepEqual(messages.map((m) => `${m.attrs}|${m.text}`), [
+		' data-slot="form-message"|This value is missing',
+		' data-slot="form-message"|valid!',
+		' data-slot="form-message"|This value does not match the required type',
+		' data-slot="form-message"|This value does not match the required pattern',
+		' data-slot="form-message"|This value is not valid',
+		' data-slot="form-message"|This value is not valid',
+		' data-slot="form-message"|Country should be "France" or "Spain"',
 	]);
 	// The server message renders only while the story's own state says so: nothing at load, and nothing the port shows.
 	assert.deepEqual(form.fields[1]!.children.map((c) => c.kind), ['label', 'control', 'message', 'dynamic']);
@@ -95,21 +95,26 @@ test('the source gives each Form.Field its messages in order: built-in matches, 
 	assert.match(form.matchers!, /async function wait\(ms: number\)/);
 });
 
-test('the page form gets its messages as templates where Radix renders them, and its fields, labels and controls marked', () => {
+test("the page form gets each message as an arm where Radix renders it, and each field's flags and description on its state", () => {
 	const plan = new RadixFormPlan(radixForms('src/form.tsx', SOURCE));
 	const root = pageRoot();
 	assert.equal(plan.add('/story/form--cypress/', root, emit), 1, plan.notes.join('\n'));
-	const out = emitElement(root, { bind: (el) => plan.bind(el) });
-	const key = /data-mm-rf="(rfm_[0-9a-f]+)"/.exec(out)?.[1];
+	const declarations: string[] = [];
+	const out = emitElement(root, { bind: (el) => plan.bind(el), declarations });
+	const key = /data-mm-rf="(rf_[0-9a-f]+)"/.exec(out)?.[1];
 	assert.ok(key, out);
-	assert.match(out, /<form data-slot="form" data-mm-rf="rfm_[0-9a-f]+" onVisible=\{\(\) => mount\("data-mm-rf"\)\}>/);
-	assert.match(out, /<div data-slot="form-field" data-mm-rf-field="name"><label data-slot="form-label" for="radix-_r_0_" data-mm-rf-label="name">Name \(required\)<\/label><input title="" data-slot="form-control" required id="radix-_r_0_" type="text" name="name" data-mm-rf-control="" \/><template data-mm-rf-message="name" data-mm-rf-match="valueMissing"><span data-slot="form-message">This value is missing<\/span><\/template><template data-mm-rf-message="name" data-mm-rf-match="valid"><span data-slot="form-message">valid!<\/span><\/template><\/div>/);
-	assert.match(out, /<template data-mm-rf-message="secret" data-mm-rf-matcher="0">/);
-	assert.match(out, /<template data-mm-rf-message="asyncSecret" data-mm-rf-matcher="1">/);
-	assert.match(out, /<template data-mm-rf-message="country" data-mm-rf-match="patternMismatch"><span data-slot="form-message">Country should be "France" or "Spain"<\/span><\/template>/);
+	assert.deepEqual(declarations, ['let rf0 = state({"s":{},"d":{},"v":{},"i":{}});']);
+	assert.match(out, /<form data-slot="form" data-mm-rf="rf_[0-9a-f]+" onVisible=\{\(\) => mount\("data-mm-rf"\)\} onMmradixform=\{\(event\) => \(rf0 = \(event as CustomEvent\)\.detail\)\}>/);
+	const flags = (f: string) => `data-valid=\\{rf0\\.v\\["${f}"\\]\\} data-invalid=\\{rf0\\.i\\["${f}"\\]\\}`;
+	assert.match(out, new RegExp(`<div data-slot="form-field" ${flags('name')}><label data-slot="form-label" for="radix-_r_0_" ${flags('name')}>Name \\(required\\)</label><input title="" data-slot="form-control" required id="radix-_r_0_" type="text" name="name" ${flags('name')} aria-describedby=\\{rf0\\.d\\["name"\\]\\} data-mm-rf-control="" />@if \\(rf0\\.s\\[0\\]\\) \\{ <span id="radix-rf0m0" data-slot="form-message">This value is missing</span> \\}@if \\(rf0\\.s\\[1\\]\\) \\{ <span id="radix-rf0m1" data-slot="form-message">valid!</span> \\}</div>`));
+	assert.match(out, /@if \(rf0\.s\[6\]\) \{ <span id="radix-rf0m6" data-slot="form-message">Country should be "France" or "Spain"<\/span> \}/);
 	const files = plan.files();
-	assert.match(files.get('radix-forms.ts')!, new RegExp(`${key}: \\(\\) => import\\('./radix-form-matchers/${key}.ts'\\)\\.then\\(\\(m\\) => m\\.matchers\\)`));
-	assert.match(files.get(`radix-form-matchers/${key}.ts`)!, /export const matchers = \[/);
+	const entry = files.get('radix-forms.ts')!;
+	assert.match(entry, new RegExp(`"${key}": \\{ \\.\\.\\.\\{"fields":\\["name","email","pin","secret","asyncSecret","country"\\],"messages":\\[\\{"field":"name","id":"radix-rf0m0","match":"valueMissing"\\}`));
+	assert.match(entry, /\{"field":"secret","id":"radix-rf0m4","matcher":0\},\{"field":"asyncSecret","id":"radix-rf0m5","matcher":1\}/);
+	const matchers = /import\('\.\/radix-form-matchers\/(rfm_[0-9a-f]+)\.ts'\)\.then\(\(m\) => m\.matchers\)/.exec(entry)?.[1];
+	assert.ok(matchers, entry);
+	assert.match(files.get(`radix-form-matchers/${matchers}.ts`)!, /export const matchers = \[/);
 	assert.ok(plan.used);
 });
 

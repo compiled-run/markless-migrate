@@ -1,1 +1,2 @@
-export const MATCHERS: Readonly<Record<string, () => Promise<readonly ((value: string, formData: FormData) => boolean | Promise<boolean>)[]>>> = {};
+import type { RadixFormEntry } from './radix/form.ts';
+export const FORMS: Readonly<Record<string, RadixFormEntry>> = {};

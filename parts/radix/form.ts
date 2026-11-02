@@ -1,19 +1,36 @@
 // Radix Form (@radix-ui/react-form 0.1.8, radix-ui 1.4.3) as its FormControl and FormMessage run: a control is
-// validated on its invalid event and native change and reset on input and form reset; each Form.Message convert left as
-// a <template data-mm-rf-message> renders before its template while its match holds.
+// validated on its invalid event and native change and reset on input and form reset. What that shows is the form's
+// Markless state (convert's RadixFormPlan): each message while its match holds, the fields' flags, the descriptions.
 
 type Validity = Readonly<Record<string, boolean>>;
 type Matcher = (value: string, formData: FormData) => boolean | Promise<boolean>;
 
-interface FormState {
-	readonly validity: Record<string, Validity | undefined>;
-	/** Each custom matcher's last result, by field and matcher index. */
-	readonly custom: Record<string, Record<string, boolean>>;
-	matchers?: readonly Matcher[];
+/** A Form.Message that renders on a match: a built-in ValidityState key, or the index of a custom matcher. */
+export interface RadixFormMessage {
+	readonly field: string;
+	readonly id: string;
+	readonly match?: string;
+	readonly matcher?: number;
 }
 
-const FORM = 'data-mm-rf';
-const MESSAGE = 'data-mm-rf-message';
+export interface RadixFormEntry {
+	readonly fields: readonly string[];
+	readonly messages: readonly RadixFormMessage[];
+	/** Each control's aria-describedby at load: the ids of the messages that render without a match. */
+	readonly described: Readonly<Record<string, string>>;
+	readonly matchers?: () => Promise<readonly Matcher[]>;
+}
+
+/** What the form shows: the messages shown by index, and by field its control's description and its valid/invalid flags. */
+export interface RadixFormView {
+	readonly s: Readonly<Record<number, true>>;
+	readonly d: Readonly<Record<string, string>>;
+	readonly v: Readonly<Record<string, 'true'>>;
+	readonly i: Readonly<Record<string, 'true'>>;
+}
+
+export const initialView = (described: Readonly<Record<string, string>>): RadixFormView => ({ s: {}, d: { ...described }, v: {}, i: {} });
+
 export const DEFAULT_INVALID_MESSAGE = 'This value is not valid';
 /** What a Form.Message with no children shows for each built-in match (DEFAULT_BUILT_IN_MESSAGES). */
 export const BUILT_IN_MESSAGES: Readonly<Record<string, string | undefined>> = {
@@ -29,12 +46,21 @@ export const BUILT_IN_MESSAGES: Readonly<Record<string, string | undefined>> = {
 	valueMissing: 'This value is missing',
 };
 
-const forms = new WeakMap<HTMLFormElement, FormState>();
-const rendered = new WeakMap<HTMLTemplateElement, HTMLElement>();
-let ids = 0;
+interface Live {
+	readonly entry: RadixFormEntry;
+	readonly validity: Record<string, Validity | undefined>;
+	/** Each custom matcher's last result, by field and matcher index. */
+	readonly custom: Record<string, Record<number, boolean>>;
+	/** Each field's message ids in the order they mounted, as Radix's set of message ids per field keeps them. */
+	readonly order: Record<string, string[]>;
+	shown: ReadonlySet<number>;
+	matchers?: readonly Matcher[];
+}
 
-let registry: Promise<Readonly<Record<string, () => Promise<readonly Matcher[]>>>> | undefined;
-const matchersOf = (key: string): Promise<readonly Matcher[]> => (registry ??= import('../radix-forms.ts').then((m) => m.MATCHERS as Readonly<Record<string, () => Promise<readonly Matcher[]>>>)).then((all) => all[key]?.() ?? []);
+const FORM = 'data-mm-rf';
+
+let registry: Promise<Readonly<Record<string, RadixFormEntry>>> | undefined;
+const entries = () => (registry ??= import('../radix-forms.ts').then((m) => m.FORMS as Readonly<Record<string, RadixFormEntry>>));
 
 const hasBuiltInError = (validity: Validity) => Object.entries(validity).some(([key, on]) => key !== 'valid' && key !== 'customError' && on);
 
@@ -44,80 +70,52 @@ function validityObject(validity: ValidityState): Validity {
 	return out;
 }
 
-const templatesOf = (form: HTMLFormElement) => [...form.querySelectorAll<HTMLTemplateElement>(`template[${MESSAGE}]`)];
-const controlsOf = (form: HTMLFormElement, name: string) => [...form.querySelectorAll<HTMLInputElement>('[data-mm-rf-control]')].filter((c) => c.name === name);
 const isInvalid = (el: Element) => 'validity' in el && ((el as HTMLInputElement).validity.valid === false || el.getAttribute('aria-invalid') === 'true');
 
-function matches(state: FormState, template: HTMLTemplateElement): boolean {
-	if (template.hasAttribute('data-mm-rf-force')) return true;
-	const name = template.getAttribute(MESSAGE) ?? '';
-	const validity = state.validity[name];
-	const builtIn = template.getAttribute('data-mm-rf-match');
-	if (builtIn) return validity?.[builtIn] === true;
-	const matcher = template.getAttribute('data-mm-rf-matcher') ?? '';
-	return !!validity && !hasBuiltInError(validity) && state.custom[name]?.[matcher] === true;
+function matches(live: Live, m: RadixFormMessage): boolean {
+	const validity = live.validity[m.field];
+	if (m.match !== undefined) return validity?.[m.match] === true;
+	return !!validity && !hasBuiltInError(validity) && live.custom[m.field]?.[m.matcher ?? -1] === true;
 }
 
-const setFlag = (el: Element, name: string, on: boolean) => (on ? el.setAttribute(name, 'true') : el.removeAttribute(name));
-
-/** What React renders from the form's validity: each message shown or not, each field's flags and its control's description. */
-function render(form: HTMLFormElement, state: FormState): void {
-	const removed = new Map<string, Set<string>>();
-	const added = new Map<string, string[]>();
-	for (const template of templatesOf(form)) {
-		const name = template.getAttribute(MESSAGE) ?? '';
-		const shown = rendered.get(template);
-		const on = matches(state, template);
-		if (on && !shown) {
-			const el = template.content.firstElementChild?.cloneNode(true) as HTMLElement | undefined;
-			if (!el) continue;
-			if (!el.id) el.id = `radix-mm-${++ids}`;
-			template.before(el);
-			rendered.set(template, el);
-			(added.get(name) ?? added.set(name, []).get(name)!).push(el.id);
-		} else if (!on && shown) {
-			shown.remove();
-			rendered.delete(template);
-			(removed.get(name) ?? removed.set(name, new Set()).get(name)!).add(shown.id);
-		}
+/** Hands the form's state what React renders from its validity. */
+function render(form: HTMLFormElement, live: Live): void {
+	const shown = new Set<number>();
+	live.entry.messages.forEach((m, k) => matches(live, m) && shown.add(k));
+	live.entry.messages.forEach((m, k) => {
+		if (live.shown.has(k) && !shown.has(k)) live.order[m.field] = (live.order[m.field] ?? []).filter((id) => id !== m.id);
+	});
+	live.entry.messages.forEach((m, k) => {
+		if (!live.shown.has(k) && shown.has(k)) live.order[m.field] = [...(live.order[m.field] ?? []), m.id];
+	});
+	live.shown = shown;
+	const s: Record<number, true> = {};
+	for (const k of shown) s[k] = true;
+	const d: Record<string, string> = {};
+	const v: Record<string, 'true'> = {};
+	const i: Record<string, 'true'> = {};
+	for (const field of live.entry.fields) {
+		const ids = live.order[field] ?? [];
+		if (ids.length) d[field] = ids.join(' ');
+		const validity = live.validity[field];
+		if (validity?.valid === true) v[field] = 'true';
+		if (validity?.valid === false) i[field] = 'true';
 	}
-	const names = new Set([...form.querySelectorAll('[data-mm-rf-field]')].map((f) => f.getAttribute('data-mm-rf-field')!));
-	for (const t of templatesOf(form)) names.add(t.getAttribute(MESSAGE)!);
-	for (const name of names) {
-		const validity = state.validity[name];
-		const targets = [...form.querySelectorAll(`[data-mm-rf-field="${CSS.escape(name)}"], [data-mm-rf-label="${CSS.escape(name)}"]`), ...controlsOf(form, name)];
-		for (const el of targets) {
-			setFlag(el, 'data-valid', validity?.valid === true);
-			setFlag(el, 'data-invalid', validity?.valid === false);
-		}
-		// The ids in the order their messages mounted, as Radix's set of message ids per field keeps them.
-		const gone = removed.get(name);
-		const fresh = added.get(name) ?? [];
-		if (!gone && !fresh.length) continue;
-		for (const control of controlsOf(form, name)) {
-			const kept = (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter((id) => id && !gone?.has(id));
-			const all = [...kept, ...fresh.filter((id) => !kept.includes(id))];
-			if (all.length) control.setAttribute('aria-describedby', all.join(' '));
-			else control.removeAttribute('aria-describedby');
-		}
-	}
+	form.dispatchEvent(new CustomEvent<RadixFormView>('mmradixform', { detail: { s, d, v, i } }));
 }
 
 /** FormControl's updateControlValidity: the built-in validity, else the sync matchers, else the async ones once they settle. */
-async function update(form: HTMLFormElement, state: FormState, control: HTMLInputElement): Promise<void> {
+async function update(form: HTMLFormElement, live: Live, control: HTMLInputElement): Promise<void> {
 	const name = control.name;
 	if (hasBuiltInError(validityObject(control.validity))) {
-		state.validity[name] = { ...state.validity[name], ...validityObject(control.validity) };
-		render(form, state);
+		live.validity[name] = { ...live.validity[name], ...validityObject(control.validity) };
+		render(form, live);
 		return;
 	}
 	const args: [string, FormData] = [control.value, control.form ? new FormData(control.form) : new FormData()];
-	const entries = templatesOf(form)
-		.filter((t) => t.getAttribute(MESSAGE) === name && t.hasAttribute('data-mm-rf-matcher'))
-		.map((t) => ({ id: t.getAttribute('data-mm-rf-matcher')!, match: state.matchers?.[Number(t.getAttribute('data-mm-rf-matcher'))] }))
-		.filter((e): e is { id: string; match: Matcher } => typeof e.match === 'function');
-	const sync: { id: string; match: Matcher }[] = [];
-	const async: { id: string; match: Matcher }[] = [];
+	const entries = live.entry.messages.flatMap((m) => (m.field === name && m.matcher !== undefined && typeof live.matchers?.[m.matcher] === 'function' ? [{ id: m.matcher, match: live.matchers[m.matcher]! }] : []));
+	const sync: { id: number; match: Matcher }[] = [];
+	const async: { id: number; match: Matcher }[] = [];
 	for (const entry of entries) {
 		if (entry.match.constructor.name === 'AsyncFunction' || entry.match(...args) instanceof Promise) async.push(entry);
 		else if (entry.match.constructor.name === 'Function') sync.push(entry);
@@ -125,41 +123,50 @@ async function update(form: HTMLFormElement, state: FormState, control: HTMLInpu
 	const syncErrors = Object.fromEntries(sync.map(({ id, match }) => [id, match(...args) as boolean]));
 	const hasSyncErrors = Object.values(syncErrors).some(Boolean);
 	control.setCustomValidity(hasSyncErrors ? DEFAULT_INVALID_MESSAGE : '');
-	state.validity[name] = { ...state.validity[name], ...validityObject(control.validity) };
-	state.custom[name] = { ...state.custom[name], ...syncErrors };
-	render(form, state);
+	live.validity[name] = { ...live.validity[name], ...validityObject(control.validity) };
+	live.custom[name] = { ...live.custom[name], ...syncErrors };
+	render(form, live);
 	if (hasSyncErrors || !async.length) return;
 	const asyncErrors = Object.fromEntries(await Promise.all(async.map(({ id, match }) => Promise.resolve(match(...args)).then((m) => [id, m] as const))));
 	const hasAsyncErrors = Object.values(asyncErrors).some(Boolean);
 	control.setCustomValidity(hasAsyncErrors ? DEFAULT_INVALID_MESSAGE : '');
-	state.validity[name] = { ...state.validity[name], ...validityObject(control.validity) };
-	state.custom[name] = { ...state.custom[name], ...asyncErrors };
-	render(form, state);
+	live.validity[name] = { ...live.validity[name], ...validityObject(control.validity) };
+	live.custom[name] = { ...live.custom[name], ...asyncErrors };
+	render(form, live);
 }
 
-function reset(form: HTMLFormElement, state: FormState, control: HTMLInputElement): void {
+function reset(form: HTMLFormElement, live: Live, control: HTMLInputElement): void {
 	control.setCustomValidity('');
-	state.validity[control.name] = undefined;
-	state.custom[control.name] = {};
-	render(form, state);
+	live.validity[control.name] = undefined;
+	live.custom[control.name] = {};
+	render(form, live);
 }
 
 const controlOf = (form: HTMLFormElement, target: EventTarget | null): HTMLInputElement | undefined => (target instanceof HTMLElement && target.hasAttribute('data-mm-rf-control') && (target as HTMLInputElement).form === form ? (target as HTMLInputElement) : undefined);
 
+const started = new WeakSet<Element>();
+
 /** Starts a converted Radix Form: its controls' validity is kept as Radix keeps it from here on. */
 export function mount(el: Element): void {
-	if (!(el instanceof HTMLFormElement) || !el.hasAttribute(FORM) || forms.has(el)) return;
+	if (!(el instanceof HTMLFormElement) || !el.hasAttribute(FORM) || started.has(el)) return;
+	started.add(el);
 	const form = el;
-	const state: FormState = { validity: {}, custom: {} };
-	forms.set(form, state);
-	const key = form.getAttribute(FORM);
-	if (key) void matchersOf(key).then((m) => (state.matchers = m));
+	const ready = entries().then((all) => {
+		const entry = all[form.getAttribute(FORM) ?? ''];
+		if (!entry) return undefined;
+		const order: Record<string, string[]> = {};
+		for (const [field, ids] of Object.entries(entry.described)) order[field] = ids.split(/\s+/).filter(Boolean);
+		const live: Live = { entry, validity: {}, custom: {}, order, shown: new Set() };
+		void entry.matchers?.().then((m) => (live.matchers = m));
+		return live;
+	});
+	const when = (run: (live: Live) => void) => void ready.then((live) => live && run(live));
 	// Form's onInvalid runs after the control's, for every control of the form: it focuses the first invalid one.
 	form.addEventListener(
 		'invalid',
 		(event) => {
 			const control = controlOf(form, event.target);
-			if (control) void update(form, state, control);
+			if (control) when((live) => void update(form, live, control));
 			const first = [...form.elements].filter((e): e is HTMLElement => e instanceof HTMLElement).find(isInvalid);
 			if (first && first === event.target) first.focus();
 			event.preventDefault();
@@ -168,14 +175,15 @@ export function mount(el: Element): void {
 	);
 	form.addEventListener('change', (event) => {
 		const control = controlOf(form, event.target);
-		if (control) void update(form, state, control);
+		if (control) when((live) => void update(form, live, control));
 	});
 	form.addEventListener('input', (event) => {
 		const control = controlOf(form, event.target);
-		if (control) reset(form, state, control);
+		if (control) when((live) => reset(form, live, control));
 	});
-	form.addEventListener('reset', () => {
-		for (const control of form.querySelectorAll<HTMLInputElement>('[data-mm-rf-control]')) reset(form, state, control);
-	});
-	render(form, state);
+	form.addEventListener('reset', () =>
+		when((live) => {
+			for (const control of form.querySelectorAll<HTMLInputElement>('[data-mm-rf-control]')) reset(form, live, control);
+		}),
+	);
 }
