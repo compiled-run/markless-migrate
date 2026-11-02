@@ -5,11 +5,12 @@ import type { Browser, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
+import { framesInPage } from '../check/settle.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
 import { parse } from 'yuku';
 import { errorsOf, patternNames, walk as walkJs, type N } from '../source/js.ts';
-import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, outer, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, outer, parseDocument, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { LATE_FONT } from '../../parts/late-fonts.ts';
 import { emitChildren, lit, mergeBindings, type Binding } from './tsrx.ts';
 import { chosenTemplate } from './chosen-template.ts';
@@ -85,6 +86,8 @@ export interface TableCapture {
 	readonly route: string;
 	readonly tables: readonly CapturedTable[];
 	readonly skipped: readonly string[];
+	/** Why no table was read: the tables the settled page showed were not taken over by React in time. Not cached. */
+	readonly notFound?: string;
 }
 
 const VERSION = 'tables-17';
@@ -94,6 +97,12 @@ const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256'
 const ALL_ROWS = 'rows:all';
 
 export const mayHoldTable = (html: string): boolean => /<table[\s>]/.test(html);
+
+/** How many table elements outside templates the settled page showed in the viewport its tables are read at. */
+export function tablesShown(settled: Readonly<Record<string, string>>): number {
+	const count = (node: Parameters<typeof elementChildren>[0]): number => elementChildren(node).reduce((n, el) => (el.tagName === 'template' ? n : n + (el.tagName === 'table' ? 1 : 0) + count(el)), 0);
+	return count(parseDocument(settled[VIEWPORTS[0]!.name] ?? Object.values(settled)[0] ?? ''));
+}
 
 // --- In the page -----------------------------------------------------------------------------------------------------
 
@@ -527,27 +536,49 @@ function chosenLabels(variants: readonly { values: readonly Json[]; extras: read
 export const recordPageSize = (rows: number, pageSize: number | undefined): number => (pageSize && rows >= 3 * pageSize ? pageSize : Math.max(1, Math.floor(rows / 3)));
 const pageSizeOf = (state: Readonly<Record<string, Json>>): number | undefined => ((state.pagination as { pageSize?: number } | undefined)?.pageSize);
 
-/** Uses each control of the table once (a sorting control from every direction) and records what it did. */
-// How many tables each page's first load found: a reload waits until it finds them all again.
-const tablesOn = new WeakMap<Page, number>();
+const READY_MS = 10_000;
+
+/** In the page: how many table elements outside templates React has taken over (given a fiber). */
+function takenOver(): number {
+	return [...document.querySelectorAll('table')].filter((el) => !el.closest('template') && Object.keys(el).some((k) => k.startsWith('__reactFiber$'))).length;
+}
+
+/** In the page: whether there are at least `want` tables and React has taken over each one. */
+function allTakenOver(want: number): boolean {
+	const tables = [...document.querySelectorAll('table')].filter((el) => !el.closest('template'));
+	return tables.length >= want && tables.every((el) => Object.keys(el).some((k) => k.startsWith('__reactFiber$')));
+}
+
+type Ready = Pick<Page, 'evaluate' | 'waitForFunction'>;
+
+/** The page's tables, read once React has taken over the `want` tables it should show (at most READY_MS); `ready` false when it had not. */
+async function findWhenReady(page: Ready, want: number): Promise<{ readonly found: Found[]; readonly ready: boolean }> {
+	const ready = await page.waitForFunction(allTakenOver, want, { timeout: READY_MS }).then(() => true, () => false);
+	if (ready) await page.evaluate(framesInPage).catch(() => {});
+	return { found: await page.evaluate(findTables), ready };
+}
+
+/** What a page's first load showed: its table elements, and how many of them were TanStack tables read. */
+export interface Expected {
+	readonly tables: number;
+	readonly specs: number;
+}
+const expectedOn = new WeakMap<Page, Expected>();
 
 /** The page as loaded again, its tables found again in the same order. */
 async function reload(page: Page): Promise<void> {
 	await page.reload({ waitUntil: 'load' }).catch(() => {});
-	await page.waitForTimeout(300);
-	await findAgain(page, tablesOn.get(page) ?? 0);
+	await findAgain(page, expectedOn.get(page) ?? { tables: 0, specs: 0 });
 }
 
-/** Finds the page's tables again, waiting (up to 10 s) on a busy machine until there are `want` of them, as its first load had. */
-export async function findAgain(page: Pick<Page, 'evaluate' | 'waitForTimeout'>, want: number): Promise<void> {
-	for (let k = 0; ; k++) {
-		const found = (await page.evaluate(findTables)).filter((f) => f.spec).length;
-		if (found >= want) return;
-		if (k === 33) throw new Error(`${found} of the page's ${want} TanStack tables found again after it loaded again`);
-		await page.waitForTimeout(300);
-	}
+/** Finds the page's tables again once React has taken over as many as its first load had; fewer TanStack tables is an error naming how many. */
+export async function findAgain(page: Ready, want: Expected): Promise<void> {
+	const { found, ready } = await findWhenReady(page, want.tables);
+	const specs = found.filter((f) => f.spec).length;
+	if (specs < want.specs) throw new Error(`${specs} of the page's ${want.specs} TanStack tables found again after it loaded again${ready ? '' : `; React had not taken over its ${want.tables} tables within ${READY_MS / 1000} s`}`);
 }
 
+/** Uses each control of the table once (a sorting control from every direction) and records what it did. */
 async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, log: (line: string) => void): Promise<TableControl[]> {
 	const out: TableControl[] = [];
 	const initial = spec.state as Record<string, Json>;
@@ -995,8 +1026,8 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 	return out;
 }
 
-/** Reads every TanStack table of a route on the old page, uses its controls and records its states. Cached by route. */
-export async function captureTables(browser: Browser, origin: string, route: string, dir: string, log: (line: string) => void = () => {}): Promise<TableCapture> {
+/** Reads every TanStack table of a route on the old page (`expected`: the table elements its settled page showed), uses its controls and records its states. Cached by route. */
+export async function captureTables(browser: Browser, origin: string, route: string, dir: string, log: (line: string) => void = () => {}, expected = 1): Promise<TableCapture> {
 	const file = fileFor(dir, route);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as TableCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
@@ -1005,9 +1036,9 @@ export async function captureTables(browser: Browser, origin: string, route: str
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
-		await page.waitForTimeout(300);
-		const found = await page.evaluate(findTables);
-		tablesOn.set(page, found.filter((f) => f.spec).length);
+		const { found, ready } = await findWhenReady(page, expected);
+		if (!ready) return { route, tables: [], skipped, notFound: `${await page.evaluate(takenOver)} of the ${expected} tables the settled page showed were taken over by React within ${READY_MS / 1000} s` };
+		expectedOn.set(page, { tables: expected, specs: found.filter((f) => f.spec).length });
 		let index = 0;
 		for (const f of found) {
 			if (!f.spec || !f.region) {
