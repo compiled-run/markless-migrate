@@ -110,11 +110,11 @@ async function finished(dir: string): Promise<{ path: string; routes: ReportRout
 	return routes.length ? [{ path: join(dir, 'report.json'), routes }] : [];
 }
 
-async function write(dir: string, routes: readonly ReportRoute[], data?: Datasets): Promise<void> {
+async function write(dir: string, routes: readonly ReportRoute[], data?: Datasets, profile?: ReadonlyMap<string, readonly Part[]>): Promise<void> {
 	await mkdir(dir, { recursive: true });
-	const { phases: parts } = phases(routes);
+	const { phases: parts } = phases(routes, profile);
 	await writeFile(join(dir, 'report.json'), `${JSON.stringify({ routes, ...(data ? { datasets: data } : {}), ...(parts.length ? { phases: parts } : {}) }, null, '\t')}\n`);
-	const text = summary(routes, data);
+	const text = summary(routes, data, profile);
 	await writeFile(join(dir, 'summary.md'), text);
 	console.log(text.split('\n')[0]);
 }
@@ -122,7 +122,7 @@ async function write(dir: string, routes: readonly ReportRoute[], data?: Dataset
 type Timed = ReportRoute & { readonly timing?: { readonly ms: number; readonly steps?: readonly { readonly name: string; readonly ms: number }[] } };
 
 /** How long a route took: its timing, or for a route stopped at its deadline, the deadline (it took at least that). */
-function routeMs(r: Timed): number | undefined {
+function tookMs(r: Timed): number | undefined {
 	if (r.timing) return r.timing.ms;
 	const said = [r.infrastructure?.message, ...(r.failures ?? []).filter((f) => f.check === 'the check of this route').map((f) => (f as { actual?: string }).actual)];
 	const s = said.map((m) => /timed out after (\d+) s/.exec(m ?? '')?.[1]).find(Boolean);
@@ -134,7 +134,7 @@ export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<stri
 	const costs = new Map<string, number>();
 	for (const routes of newestFirst)
 		for (const r of routes) {
-			const ms = costs.has(r.route) ? undefined : routeMs(r);
+			const ms = costs.has(r.route) ? undefined : tookMs(r);
 			if (ms !== undefined) costs.set(r.route, ms);
 		}
 	return costs;
@@ -145,7 +145,7 @@ export async function routeTimes(dir: string): Promise<{ route: string; timing?:
 	const out: { route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[] = [];
 	for (const { routes } of await reports(dir)) {
 		for (const r of routes as Timed[]) {
-			const ms = routeMs(r);
+			const ms = tookMs(r);
 			if (ms === undefined) continue;
 			out.push(r.timing ? { route: r.route, timing: { ms } } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` } });
 		}
@@ -159,17 +159,41 @@ export interface Phase {
 	readonly routes: number;
 }
 
-/** Every route's time per part of its check, summed over the routes that finished. Parts can run at once, so shares can add up past 100%. */
-export function phases(routes: readonly ReportRoute[]): { phases: Phase[]; routeMs: number; timed: number } {
+type Part = { readonly name: string; readonly ms: number };
+
+/** A part's name without its counts ("replay 303 journeys old and new" is "replay N journeys old and new"), so parts sum across routes. */
+const partName = (name: string) => name.replace(/\d+/g, 'N');
+
+/** Each route's finished parts from the `[profile] <route> <part>: <s> s` lines of every shard's check.txt (MARKLESS_MIGRATE_PROFILE), which a route stopped at its deadline also wrote. */
+export async function profiled(dir: string): Promise<Map<string, Part[]>> {
+	const parts = new Map<string, Part[]>();
+	for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile() || entry.name !== 'check.txt') continue;
+		for (const m of (await readFile(join(entry.parentPath, entry.name), 'utf8')).matchAll(/^\[profile\] (\S+) (.+): ([\d.]+) s$/gm)) (parts.get(m[1]!) ?? parts.set(m[1]!, []).get(m[1]!)!).push({ name: m[2]!, ms: Number(m[3]) * 1000 });
+	}
+	return parts;
+}
+
+/**
+ * Every route's time per part of its check, summed: from the shards' profile lines where there are any, else from each
+ * finished route's timing. Parts run inside one another and at once ("journeys" holds exploring and the replays; forced
+ * states run beside it), so the shares can add up past 100%.
+ */
+export function phases(routes: readonly ReportRoute[], profile: ReadonlyMap<string, readonly Part[]> = new Map()): { phases: Phase[]; routeMs: number; timed: number } {
 	const by = new Map<string, { ms: number; routes: Set<string> }>();
 	let routeMs = 0;
 	let timed = 0;
+	const seen = new Set<string>();
 	for (const r of routes as Timed[]) {
-		if (!r.timing) continue;
+		const ms = tookMs(r);
+		const steps = profile.get(r.route) ?? r.timing?.steps;
+		if (ms === undefined || !steps || seen.has(r.route)) continue;
+		if (profile.has(r.route)) seen.add(r.route);
 		timed++;
-		routeMs += r.timing.ms;
-		for (const step of r.timing.steps ?? []) {
-			const p = by.get(step.name) ?? by.set(step.name, { ms: 0, routes: new Set() }).get(step.name)!;
+		routeMs += ms;
+		for (const step of steps) {
+			const name = partName(step.name);
+			const p = by.get(name) ?? by.set(name, { ms: 0, routes: new Set() }).get(name)!;
 			p.ms += step.ms;
 			p.routes.add(`${r.route}\0${r.role ?? ''}`);
 		}
@@ -212,8 +236,8 @@ export async function datasets(dir: string, original?: string): Promise<Datasets
 const hours = (ms: number) => (ms / 3_600_000).toFixed(1);
 
 /** The merged summary's account of where the runner time went and what data the run read. */
-export function accounts(routes: readonly ReportRoute[], data?: Datasets): string[] {
-	const { phases: parts, routeMs, timed } = phases(routes);
+export function accounts(routes: readonly ReportRoute[], data?: Datasets, profile?: ReadonlyMap<string, readonly Part[]>): string[] {
+	const { phases: parts, routeMs, timed } = phases(routes, profile);
 	const lines: string[] = [];
 	if (data) {
 		const store = data.store;
@@ -224,7 +248,7 @@ export function accounts(routes: readonly ReportRoute[], data?: Datasets): strin
 			...(data.original ? [`| Original (originalId) | \`${data.original.slice(0, 12)}\` |`] : []),
 			`| Shards that wrote a report | ${data.shards.reported} |`,
 			`| Shards stopped before their report (results from progress files) | ${data.shards.progressOnly} |`,
-			`| Routes with a time | ${timed} of ${routes.length} |`,
+			`| Routes timed (finished, or stopped at their deadline) | ${timed} of ${routes.length} |`,
 			...(store ? [`| Old-side store entries reused (hit) | ${store.hit} of ${asked}, over ${store.shards} shards |`, `| Old-side store entries recorded again: not stored, changed, other checker | ${store.miss}, ${store.changed}, ${store['stale-checker']} |`] : []),
 			'',
 		);
@@ -237,7 +261,7 @@ export function accounts(routes: readonly ReportRoute[], data?: Datasets): strin
 			'|---|---:|---:|---:|',
 			...parts.map((p) => `| ${p.name.replace(/\|/g, '/')} | ${hours(p.ms)} | ${routeMs ? Math.round((p.ms / routeMs) * 100) : 0}% | ${p.routes} |`),
 			'',
-			'Parts that run at once (forced states beside journeys) each count their own time, so the shares can add up past 100%.',
+			'Parts run inside one another and at once ("journeys" holds exploring and the replays; forced states run beside it), so the shares add up past 100%.',
 			'',
 			'</details>',
 			'',
@@ -284,7 +308,7 @@ export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => rou
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : routeState(r) === 'incomplete' ? 'incomplete' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;
 
-export function summary(routes: readonly ReportRoute[], data?: Datasets): string {
+export function summary(routes: readonly ReportRoute[], data?: Datasets, profile?: ReadonlyMap<string, readonly Part[]>): string {
 	const counts = new Map<string, number>();
 	const causes = new Map<string, number>();
 	const rows: string[] = [];
@@ -304,7 +328,7 @@ export function summary(routes: readonly ReportRoute[], data?: Datasets): string
 	return [
 		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check` : ''}`,
 		'',
-		...accounts(routes, data),
+		...accounts(routes, data, profile),
 		...(left ? [`**${left} of ${routes.length} routes were not checked to the end (not checked, or incomplete at --timeout), so this run is red.**`, ''] : []),
 		'| Routes | Cause |',
 		'|---:|---|',
@@ -375,7 +399,7 @@ async function main(): Promise<void> {
 			}
 			routes.push(...unreported(shards, reported));
 		}
-		await write(b, routes, await datasets(a, original || undefined));
+		await write(b, routes, await datasets(a, original || undefined), await profiled(a));
 		return;
 	}
 	if (command === 'combine' && a) {

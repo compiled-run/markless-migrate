@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accounts, combine, costsOf, datasets, joinKept, joinOld, lostUploads, phases, reports, routeTimes, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
+import { accounts, combine, profiled, costsOf, datasets, joinKept, joinOld, lostUploads, phases, reports, routeTimes, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -170,10 +170,25 @@ test('the merged summary tells the runner time of each part of the check, the or
 	const text = summary(routes as never, data);
 	assert.match(text, /\| Original \(originalId\) \| `ffffffffffff` \|/);
 	assert.match(text, /\| Old-side store entries reused \(hit\) \| 1 of 8, over 2 shards \|/);
-	assert.match(text, /\| Routes with a time \| 2 of 3 \|/);
+	assert.match(text, /\| Routes timed \(finished, or stopped at their deadline\) \| 2 of 3 \|/);
 	assert.match(text, /2\.0 runner-hours over 2 routes/);
 	assert.match(text, /\| explore old \| 1\.0 \| 50% \| 2 \|/);
 	assert.deepEqual(accounts([{ route: '/a', ok: true }] as never), [], 'nothing to tell without times or data');
+});
+
+test("a route stopped at its deadline still counts each part it finished, from its shard's profile lines, with counts left out of the part's name", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'profile-'));
+	await mkdir(join(root, 'check-1/_temp'), { recursive: true });
+	await writeFile(join(root, 'check-1/_temp/check.txt'), ['[profile] /a explore old: 1800.0 s', '[profile] /a replay 303 journeys old and new: 900.5 s', 'other output', '[profile] /b replay 12 journeys old and new: 99.5 s', ''].join('\n'));
+	const profile = await profiled(root);
+	const routes = [
+		{ route: '/a', ok: false, infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 3600 s, steps done 2 of 3' } },
+		{ route: '/b', ok: true, timing: { ms: 100_000, steps: [{ name: 'ignored when profiled', ms: 1 }] } },
+	];
+	const { phases: parts, routeMs, timed } = phases(routes as never, profile);
+	assert.deepEqual(parts, [{ name: 'explore old', ms: 1_800_000, routes: 1 }, { name: 'replay N journeys old and new', ms: 1_000_000, routes: 2 }]);
+	assert.equal(routeMs, 3_700_000);
+	assert.equal(timed, 2);
 });
 
 test("every shard's old-side cache entries and the earlier joined ones become one cache", async () => {
