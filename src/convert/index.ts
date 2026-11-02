@@ -43,7 +43,9 @@ import { framesAsServed, nextImageWidths, pairImages, planImages, type ImagePlan
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
-import { importStylesheets } from './stylesheet-imports.ts';
+import { importIntoDocument, importStylesheets } from './stylesheet-imports.ts';
+import { codeClasses, together as togetherIn, type Together } from './class-facts.ts';
+import { type SharedRecord, shareStylesheets } from './shared-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
@@ -55,6 +57,9 @@ import { componentImport, componentName, inPageComponent, layersName, pageCompon
 import { fragmentPath } from '../cache/apply.ts';
 import { queryVariants, variantValue, VARIANT_DECLARATIONS, variantPick, VARIANT_TABLE, type QueryVariants } from './query-variants.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
+
+// The rules the document's shared stylesheets hold, so a partial convert keeps them for the pages it does not write.
+const SHARED_CSS = 'shared-css.json';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
 const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
@@ -1126,8 +1131,8 @@ export function foldLateStyles(late: readonly Element[]): { css: string[]; kept:
 	return { css, kept };
 }
 
-/** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. */
-export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>): Promise<number> {
+/** Appends each page's folded body CSS to its last same-origin head stylesheet, as a new file; returns how many pages it did. `appended` gets each new file's sheet and added text. */
+export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>, appended?: Map<string, { readonly from: string; readonly extra: string }>): Promise<number> {
 	const sheets = new Map<string, Promise<string>>();
 	const read = (href: string) => sheets.get(href) ?? sheets.set(href, readFile(join(publicDir, href), 'utf8')).get(href)!;
 	let count = 0;
@@ -1147,6 +1152,7 @@ export async function appendBodyCss(publicDir: string, pages: Iterable<Prepared>
 		const css = `${await read(tag.attrs.href!)}\n${extra}`;
 		const href = tag.attrs.href!.replace(/(\.used-[0-9a-f]{12})?\.css$/, `.used-${hash(css)}.css`);
 		await writeFile(join(publicDir, href), css);
+		appended?.set(href, { from: tag.attrs.href!, extra });
 		page.head[at] = { ...tag, attrs: { ...tag.attrs, href } };
 		count++;
 	}
@@ -2451,17 +2457,51 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pageOf = new Map(out.map((r) => [r.route, r.page]));
 	const used = await usedStylesheets(app, new Map([...prepared].flatMap(([route, p]) => (pageOf.has(route) ? [[route, { page: pageOf.get(route)!, head: p.head, texts: [JSON.stringify(p.htmlAttrs), JSON.stringify(p.bodyAttrs), JSON.stringify(p.head)], withheld: p.lateFontPaths }] as const] : []))));
 	for (const [route, head] of used.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
-	const folded = await appendBodyCss(publicDir, prepared.values());
+	const bodyCssAppended = new Map<string, { readonly from: string; readonly extra: string }>();
+	const folded = await appendBodyCss(publicDir, prepared.values(), bodyCssAppended);
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	const importedUrls: string[] = [];
+	const sharedFile = join(state, 'convert', SHARED_CSS);
 	if (await wantsStylesheetImports(app)) {
 		const pagesOf = new Map<string, string[]>();
 		for (const r of out) pagesOf.set(r.page, [...(pagesOf.get(r.page) ?? []), r.route]);
-		const imported = await importStylesheets(app, publicDir, pagesOf, new Map([...prepared].map(([route, p]) => [route, p.head])), Boolean(options.only?.length));
+		const heads = new Map([...prepared].map(([route, p]) => [route, p.head]));
+		const previous = options.only?.length ? ((await readFile(sharedFile, 'utf8').then(JSON.parse, () => undefined)) as SharedRecord | undefined) : undefined;
+		// Which classes one element of a page can carry together: as its markup or its code's elements have them, or any its code names.
+		const elementClasses = (p: Prepared) => {
+			const markup = [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)];
+			return [p.htmlAttrs.class, p.bodyAttrs.class, ...markup.flatMap((root) => [...walk(root)].map((el) => attr(el, 'class')))].flatMap((c) => (c ? [c.split(/\s+/).filter(Boolean)] : []));
+		};
+		const together = new Map<string, Together>();
+		const codeOf = codeClasses(app);
+		for (const [page, routes] of pagesOf) {
+			const code = await codeOf([page, 'document.tsrx']);
+			const oracle = togetherIn([...routes.flatMap((r) => (prepared.has(r) ? elementClasses(prepared.get(r)!) : [])), ...code.elements], code.floating);
+			for (const r of routes) together.set(r, oracle);
+		}
+		const shared = await shareStylesheets({ publicDir, pages: pagesOf, heads, cuts: used.cuts, appended: bodyCssAppended, together, ...(previous ? { previous } : {}) });
+		if ('skipped' in shared) log(`stylesheets: no sheet shared by the document: ${shared.skipped}${previous ? '; the pages this partial convert did not write still expect the earlier shared sheets, so convert every page again' : ''}`);
+		else {
+			for (const [route, head] of shared.heads) prepared.get(route)!.head.splice(0, Infinity, ...head);
+			used.written.push(...shared.written);
+			log(`stylesheets: the document imports the rules most pages use (${Math.round(shared.bytes.shared / 1024)} kB), kept across navigations; the pages' own sheets hold ${Math.round(shared.bytes.pages / 1024)} of the ${Math.round(shared.bytes.before / 1024)} kB they linked`);
+		}
+		const imported = await importStylesheets(app, publicDir, pagesOf, heads, Boolean(options.only?.length));
 		importedUrls.push(...imported.urls);
 		log(`stylesheets: ${imported.moved} of ${pagesOf.size} page modules import their stylesheets, so the build carries them in the HTML`);
 		for (const d of imported.dropped) log(`stylesheets: ${d.href} drops ${d.rule} from its copy, as a browser does (${d.reason})`);
+		if (!('skipped' in shared)) {
+			// The shared sheets come first only if no page still links a sheet of its own.
+			const linking = [...pagesOf.values()].flat().find((route) => heads.get(route)?.some((t) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? '')));
+			if (linking) throw new Error(`convert: ${linking} still links a stylesheet after the document took the shared ones, which would follow them`);
+			const document = await importIntoDocument(app, publicDir, shared.shared);
+			if (!document) throw new Error(`convert: the document cannot import the shared stylesheets ${shared.shared.join(', ')}`);
+			importedUrls.push(...document.urls);
+			for (const d of document.dropped) log(`stylesheets: ${d.href} drops ${d.rule} from its copy, as a browser does (${d.reason})`);
+			if (previous && !shared.reused) log('stylesheets: the shared sheets changed in a partial convert: convert every page again so the others follow them');
+			await writeFile(sharedFile, JSON.stringify(shared.record));
+		}
 	}
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	// What the old pages loaded and the written app no longer names (the old framework's scripts, a sheet a cut sheet
