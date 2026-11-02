@@ -2461,6 +2461,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const imported = await importStylesheets(app, publicDir, pagesOf, new Map([...prepared].map(([route, p]) => [route, p.head])), Boolean(options.only?.length));
 		importedUrls.push(...imported.urls);
 		log(`stylesheets: ${imported.moved} of ${pagesOf.size} page modules import their stylesheets, so the build carries them in the HTML`);
+		for (const d of imported.dropped) log(`stylesheets: ${d.href} drops ${d.rule} from its copy, as a browser does (${d.reason})`);
 	}
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	// What the old pages loaded and the written app no longer names (the old framework's scripts, a sheet a cut sheet

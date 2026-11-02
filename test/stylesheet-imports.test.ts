@@ -36,7 +36,7 @@ test('a relative url() in an imported sheet is rewritten to the path it named fr
 	const css = '@font-face{font-family:f;src:url(../media/f.woff2) format("woff2"),url( "g h.woff" )}.a{background:url(/x.png)}.b{mask:url(data:image/svg+xml;utf8,<svg/>)}.c{filter:url(#n)}';
 	const dir = await app({ '/_next/static/chunks/s.css': css }, { 'p/one.tsrx': '//\n' });
 	const heads = new Map([['/one', [link('/_next/static/chunks/s.css')]]]);
-	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false), { moved: 1, urls: ['/_next/static/media/f.woff2', '/_next/static/chunks/g%20h.woff', '/x.png'] });
+	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false), { moved: 1, urls: ['/_next/static/media/f.woff2', '/_next/static/chunks/g%20h.woff', '/x.png'], dropped: [] });
 	assert.equal(await readFile(join(dir, 'styles/converted/_next/static/chunks/s.css'), 'utf8'), '@font-face{font-family:f;src:url("/_next/static/media/f.woff2") format("woff2"),url("/_next/static/chunks/g%20h.woff")}.a{background:url(/x.png)}.b{mask:url(data:image/svg+xml;utf8,<svg/>)}.c{filter:url(#n)}');
 	assert.equal(await readFile(join(dir, 'public/_next/static/chunks/s.css'), 'utf8'), css);
 	await rm(dir, { recursive: true, force: true });
@@ -58,8 +58,18 @@ test('a page keeps its links when its routes differ, a sheet has a media query, 
 		['p/three.tsrx', ['/three']],
 		['p/four.tsrx', ['/four']],
 	]);
-	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), pages, heads, false), { moved: 0, urls: [] });
+	assert.deepEqual(await importStylesheets(dir, join(dir, 'public'), pages, heads, false), { moved: 0, urls: [], dropped: [] });
 	assert.deepEqual([...heads], before);
 	for (const file of pages.keys()) assert.equal(await readFile(join(dir, file), 'utf8'), '//\n');
+	await rm(dir, { recursive: true, force: true });
+});
+
+test('a rule whose selector a browser cannot parse is dropped from the copy, as the browser drops it, and its neighbours stay', async () => {
+	const css = '@media (hover:hover) and (pointer:fine){[data-vaul-drawer]{user-select:none}}@media (pointer:fine){[data-vaul-handle-hitarea]:{width:100%;height:100%}}.a{background:url(../m/x.png)}';
+	const dir = await app({ '/c/s.css': css }, { 'p/one.tsrx': '//\n' });
+	const heads = new Map([['/one', [link('/c/s.css')]]]);
+	const result = await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false);
+	assert.deepEqual(result, { moved: 1, urls: ['/m/x.png'], dropped: [{ href: '/c/s.css', rule: '[data-vaul-handle-hitarea]:{width:100%;height:100%}', reason: 'Identifier is expected' }] });
+	assert.equal(await readFile(join(dir, 'styles/converted/c/s.css'), 'utf8'), '@media (hover:hover) and (pointer:fine){[data-vaul-drawer]{user-select:none}}@media (pointer:fine){}.a{background:url("/m/x.png")}');
 	await rm(dir, { recursive: true, force: true });
 });
