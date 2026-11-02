@@ -42,6 +42,7 @@ import { framesAsServed, nextImageWidths, pairImages, planImages, type ImagePlan
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
+import { importStylesheets } from './stylesheet-imports.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
@@ -1281,6 +1282,12 @@ export function pageRoot(kids: readonly Element[]): Element {
 // A dialog open on load is a layer the page portaled to the body, not the page.
 const isDialog = (el: Element) => /^(dialog|alertdialog)$/.test(attr(el, 'role') ?? '') || attr(el, 'aria-modal') === 'true';
 
+/** The app opts in with `"markless-migrate": { "stylesheetImports": true }` in its package.json: it needs a Markless whose build carries imported CSS (compiled-run/markless#391). */
+async function wantsStylesheetImports(app: string): Promise<boolean> {
+	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8').catch(() => '{}')) as { 'markless-migrate'?: { stylesheetImports?: boolean } };
+	return manifest['markless-migrate']?.stylesheetImports === true;
+}
+
 function headModule(byRoute: Map<string, Prepared>): string {
 	const table: HeadTag[] = [];
 	const index = new Map<string, number>();
@@ -2363,12 +2370,20 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const folded = await appendBodyCss(publicDir, prepared.values());
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
+	const importedUrls: string[] = [];
+	if (await wantsStylesheetImports(app)) {
+		const pagesOf = new Map<string, string[]>();
+		for (const r of out) pagesOf.set(r.page, [...(pagesOf.get(r.page) ?? []), r.route]);
+		const imported = await importStylesheets(app, publicDir, pagesOf, new Map([...prepared].map(([route, p]) => [route, p.head])), Boolean(options.only?.length));
+		importedUrls.push(...imported.urls);
+		log(`stylesheets: ${imported.moved} of ${pagesOf.size} page modules import their stylesheets, so the build carries them in the HTML`);
+	}
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	// What the old pages loaded and the written app no longer names (the old framework's scripts, a sheet a cut sheet
 	// replaced, a font no kept rule draws) is not shipped; the source's own public/ files stay as they are.
 	const referenced = await referencedAssets(options.old, publicDir, {
 		markup: [...prepared.values()].flatMap((p) => [p.root, ...p.before, ...p.after, ...[...p.appends.values(), ...p.layers.flatMap((l) => [l.markup, l.shell, l.fill])].map((m) => parseFragment(m) as unknown as Element)]),
-		urls: [...prepared.values()].flatMap((p) => [...p.head.flatMap((t) => Object.values(t.attrs).flatMap((v) => v.split(',').map((c) => c.trim().split(/\s+/)[0]!))), ...p.late, ...p.lateFontPaths]),
+		urls: [...[...prepared.values()].flatMap((p) => [...p.head.flatMap((t) => Object.values(t.attrs).flatMap((v) => v.split(',').map((c) => c.trim().split(/\s+/)[0]!))), ...p.late, ...p.lateFontPaths]), ...importedUrls],
 	});
 	// A whole convert also removes what an earlier one copied or cut and this one no longer references; one of some
 	// routes (--only) leaves every other page's files alone.
