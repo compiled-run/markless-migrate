@@ -318,11 +318,22 @@ const settle = async (page: Page) => {
 	await finishAnimations(page).catch(() => {});
 };
 
+// How many forms each page's first load found: a later load waits until it finds them all again.
+const formsOn = new WeakMap<Page, number>();
+
 async function ready(page: Page, url: string): Promise<Found[]> {
 	await loadPage(page, url);
 	await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 	await page.waitForTimeout(300);
-	return page.evaluate(findForms);
+	const want = formsOn.get(page);
+	for (let k = 0; ; k++) {
+		const found = await page.evaluate(findForms);
+		const count = found.filter((f) => f.region && f.library).length;
+		if (want === undefined) formsOn.set(page, count);
+		if (want === undefined || count >= want) return found;
+		if (k === 33) throw new Error(`${count} of the page's ${want} forms found again after it loaded again`);
+		await page.waitForTimeout(300);
+	}
 }
 
 const controlHandle = (page: Page, k: number) => page.evaluateHandle((k) => (window as unknown as { __mmFormControls: Element[] }).__mmFormControls[k]!, k);

@@ -66,8 +66,13 @@ function reads(node: N): Set<string> {
 
 /** The schema module for an expression of a module: its imports and top-level declarations it reaches, in source order. */
 export function schemaModule(mod: Module, expr: N): { module?: string; packages: string[]; why?: string } {
+	return copiedModule(mod, [expr], 'schema');
+}
+
+/** The module exporting `name`: the one expression given, or an array of several, with what they reach of their module. */
+export function copiedModule(mod: Module, exprs: readonly N[], exportName: string): { module?: string; packages: string[]; why?: string } {
 	const needed = new Set<string>();
-	const pending = [...reads(expr)];
+	const pending = exprs.flatMap((expr) => [...reads(expr)]);
 	const statements = new Set<N>();
 	const packages = new Set<string>();
 	const imports: string[] = [];
@@ -93,7 +98,8 @@ export function schemaModule(mod: Module, expr: N): { module?: string; packages:
 		for (const n of reads(decl)) if (!needed.has(n)) pending.push(n);
 	}
 	const body = [...statements].sort((a, b) => a.start - b.start).map((s) => mod.text.slice(s.start, s.end));
-	const module = `${[...new Set(imports)].sort().join('\n')}\n\n${body.join('\n\n')}\n\nexport const schema = ${mod.text.slice(expr.start, expr.end)};\n`;
+	const value = exprs.length === 1 ? mod.text.slice(exprs[0]!.start, exprs[0]!.end) : `[${exprs.map((expr) => mod.text.slice(expr.start, expr.end)).join(', ')}]`;
+	const module = `${[...new Set(imports)].sort().join('\n')}\n\n${body.join('\n\n')}\n\nexport const ${exportName} = ${value};\n`;
 	return { module, packages: [...packages] };
 }
 

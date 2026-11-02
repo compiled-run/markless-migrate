@@ -149,6 +149,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
 	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config, and it runs from the document's head.
 	{ module: 'docsearch', library: '@docsearch/react', exports: ['DocSearch'], events: [], locate: (el) => isDocSearchButton(el) },
+	// Radix Form's messages are templates convert's RadixFormPlan places; the part validates each control as FormControl does.
+	{ module: 'radix/form', library: 'radix-ui', exports: ['Form.Root', 'Form.Field', 'Form.Label', 'Form.Control', 'Form.Message', 'Form.Submit'], events: [], locate: () => false },
 	// A form the old page's script handled does not submit: Markless's own onSubmit is not resumed on every page (LOG, bug 14).
 	{ module: 'form', library: 'markless-migrate', exports: [], events: ['submit'], locate: () => false },
 	// Form-library forms (react-hook-form, TanStack Form, Formisch): each field's errors are Markless state (convert's

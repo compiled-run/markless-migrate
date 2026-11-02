@@ -61,5 +61,8 @@
 				"vite"
 			]
 		}
+	},
+	"markless-migrate": {
+		"stylesheetImports": true
 	}
 }

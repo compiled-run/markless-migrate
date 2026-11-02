@@ -5,11 +5,12 @@ import type { Browser, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
+import { framesInPage } from '../check/settle.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { parseFragment } from 'parse5';
 import { parse } from 'yuku';
 import { errorsOf, patternNames, walk as walkJs, type N } from '../source/js.ts';
-import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, outer, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText, outer, parseDocument, removeAttr, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { LATE_FONT } from '../../parts/late-fonts.ts';
 import { emitChildren, lit, mergeBindings, type Binding } from './tsrx.ts';
 import { chosenTemplate } from './chosen-template.ts';
@@ -85,6 +86,8 @@ export interface TableCapture {
 	readonly route: string;
 	readonly tables: readonly CapturedTable[];
 	readonly skipped: readonly string[];
+	/** The settled page's tables React had not taken over in time, so a TanStack table among them was not read. Not cached. */
+	readonly notFound?: string;
 }
 
 const VERSION = 'tables-17';
@@ -94,6 +97,12 @@ const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256'
 const ALL_ROWS = 'rows:all';
 
 export const mayHoldTable = (html: string): boolean => /<table[\s>]/.test(html);
+
+/** How many table elements outside templates the settled page showed in the viewport its tables are read at. */
+export function tablesShown(settled: Readonly<Record<string, string>>): number {
+	const count = (node: Parameters<typeof elementChildren>[0]): number => elementChildren(node).reduce((n, el) => (el.tagName === 'template' ? n : n + (el.tagName === 'table' ? 1 : 0) + count(el)), 0);
+	return count(parseDocument(settled[VIEWPORTS[0]!.name] ?? Object.values(settled)[0] ?? ''));
+}
 
 // --- In the page -----------------------------------------------------------------------------------------------------
 
@@ -527,14 +536,49 @@ function chosenLabels(variants: readonly { values: readonly Json[]; extras: read
 export const recordPageSize = (rows: number, pageSize: number | undefined): number => (pageSize && rows >= 3 * pageSize ? pageSize : Math.max(1, Math.floor(rows / 3)));
 const pageSizeOf = (state: Readonly<Record<string, Json>>): number | undefined => ((state.pagination as { pageSize?: number } | undefined)?.pageSize);
 
-/** Uses each control of the table once (a sorting control from every direction) and records what it did. */
+const READY_MS = 10_000;
+
+/** In the page: how many table elements outside templates React has taken over (given a fiber). */
+function takenOver(): number {
+	return [...document.querySelectorAll('table')].filter((el) => !el.closest('template') && Object.keys(el).some((k) => k.startsWith('__reactFiber$'))).length;
+}
+
+/** In the page: whether React has taken over at least `want` tables. */
+function wantTakenOver(want: number): boolean {
+	return [...document.querySelectorAll('table')].filter((el) => !el.closest('template') && Object.keys(el).some((k) => k.startsWith('__reactFiber$'))).length >= want;
+}
+
+type Ready = Pick<Page, 'evaluate' | 'waitForFunction'>;
+
+// A TanStack table is only known by its instance, which React gives it on taking it over: plain tables are waited for too.
+/** The page's tables, read once React has taken over `want` of them (at most READY_MS); `ready` false when it had not. */
+async function findWhenReady(page: Ready, want: number): Promise<{ readonly found: Found[]; readonly ready: boolean }> {
+	const ready = await page.waitForFunction(wantTakenOver, want, { timeout: READY_MS }).then(() => true, () => false);
+	if (ready) await page.evaluate(framesInPage).catch(() => {});
+	return { found: await page.evaluate(findTables), ready };
+}
+
+/** What a page's first load showed: the tables React had taken over, and how many of them were TanStack tables read. */
+export interface Expected {
+	readonly tables: number;
+	readonly specs: number;
+}
+const expectedOn = new WeakMap<Page, Expected>();
+
 /** The page as loaded again, its tables found again in the same order. */
 async function reload(page: Page): Promise<void> {
 	await page.reload({ waitUntil: 'load' }).catch(() => {});
-	await page.waitForTimeout(300);
-	await page.evaluate(findTables);
+	await findAgain(page, expectedOn.get(page) ?? { tables: 0, specs: 0 });
 }
 
+/** Finds the page's tables again once React has taken over as many as its first load had; fewer TanStack tables is an error naming how many. */
+export async function findAgain(page: Ready, want: Expected): Promise<void> {
+	const { found, ready } = await findWhenReady(page, want.tables);
+	const specs = found.filter((f) => f.spec).length;
+	if (specs < want.specs) throw new Error(`${specs} of the page's ${want.specs} TanStack tables found again after it loaded again${ready ? '' : `; React had not taken over its ${want.tables} tables within ${READY_MS / 1000} s`}`);
+}
+
+/** Uses each control of the table once (a sorting control from every direction) and records what it did. */
 async function probe(page: Page, i: number, spec: NonNullable<Found['spec']>, log: (line: string) => void): Promise<TableControl[]> {
 	const out: TableControl[] = [];
 	const initial = spec.state as Record<string, Json>;
@@ -982,18 +1026,21 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 	return out;
 }
 
-/** Reads every TanStack table of a route on the old page, uses its controls and records its states. Cached by route. */
-export async function captureTables(browser: Browser, origin: string, route: string, dir: string, log: (line: string) => void = () => {}): Promise<TableCapture> {
+/** Reads every TanStack table of a route on the old page (`expected`: the table elements its settled page showed), uses its controls and records its states. Cached by route. */
+export async function captureTables(browser: Browser, origin: string, route: string, dir: string, log: (line: string) => void = () => {}, expected = 1): Promise<TableCapture> {
 	const file = fileFor(dir, route);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as TableCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const tables: CapturedTable[] = [];
 	const skipped: string[] = [];
+	let notFound: string | undefined;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
-		await page.waitForTimeout(300);
-		const found = await page.evaluate(findTables);
+		const { found, ready } = await findWhenReady(page, expected);
+		const taken = ready ? expected : await page.evaluate(takenOver);
+		if (!ready) notFound = `${taken} of the ${expected} tables the settled page showed were taken over by React within ${READY_MS / 1000} s; a TanStack table among the rest was not read`;
+		expectedOn.set(page, { tables: taken, specs: found.filter((f) => f.spec).length });
 		let index = 0;
 		for (const f of found) {
 			if (!f.spec || !f.region) {
@@ -1008,6 +1055,7 @@ export async function captureTables(browser: Browser, origin: string, route: str
 	} finally {
 		await context.close().catch(() => {});
 	}
+	if (notFound) return { route, tables, skipped, notFound };
 	const capture: TableCapture = { route, tables, skipped };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
