@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { APP_PARTS_DIR, PARTS_REGISTRIES } from './app-parts.ts';
 import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
@@ -10,10 +11,7 @@ import type { PartResolver, PartUsage } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
 export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url));
-/** Where convert puts the used library ports and their registries in the app. */
-export const APP_PARTS_DIR = 'lib/parts';
-/** The folder under it of the registries, each listing the ports a set of pages uses, which those pages' markup imports. */
-export const PARTS_REGISTRIES = 'registries';
+export { APP_PARTS_DIR, PARTS_REGISTRIES };
 
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
 export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6', '@internationalized/date': '3.12.3', '@tanstack/table-core': '9.0.0', 'd3-shape': '3.2.0' };

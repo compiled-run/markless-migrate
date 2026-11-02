@@ -5,6 +5,9 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { closureOf, keyOf, ROOT, usedBy, type Closure } from '../code-closure.ts';
+import type { N } from '../source/js.ts';
+import { partSelectors } from './probe-parts.ts';
 import type { RouteResult } from './types.ts';
 
 export interface Closures {
@@ -82,14 +85,34 @@ export async function readReusable(dir: string, key: string): Promise<Reused | u
 	}
 }
 
+const CLI = join(ROOT, 'src/cli.ts');
+// What the checker reads of the repository as data: the parts' selectors, and the code it keys (which is in the key already).
+const CHECKER_DIRS = [
+	{ dir: ROOT, by: 'src/check/probe-parts.ts', read: async () => JSON.stringify(await partSelectors(ROOT)) },
+	{ dir: ROOT, by: 'src/code-closure.ts', read: async () => '' },
+];
+
 /**
- * What decides a key besides the route itself: this checkout's checker and converter (git tree of src/ and scripts/), and
- * the Markless packages the port names. Undefined when either is unknown, so nothing is reused.
+ * The checker's version: the check command's branch of src/cli.ts and what it reaches there, the module graph of every
+ * import it uses, and of parts/ only the selectors the widget probes read (probe-parts.ts). Unique when a load is unresolved.
  */
-export async function shipVersions(appDir: string, git: (args: string[]) => Promise<string | undefined>): Promise<Record<string, string> | undefined> {
-	const [src, scripts] = await Promise.all([git(['rev-parse', 'HEAD:src']), git(['rev-parse', 'HEAD:scripts'])]);
-	const dirty = await git(['status', '--porcelain', '--', 'src', 'scripts']);
-	if (!src?.trim() || !scripts?.trim() || dirty === undefined || dirty.trim()) return undefined;
+export async function checkerClosure(): Promise<{ readonly closure: Closure; readonly text: string }> {
+	const used = await usedBy(CLI, (program) => {
+		const main = program.body.find((s: N) => s.type === 'FunctionDeclaration' && s.id?.name === 'main') as N | undefined;
+		if (!main) return { nodes: [program] };
+		return { within: main, nodes: [...main.params, ...main.body.body.flatMap((s: N) => (s.type !== 'SwitchStatement' ? [s] : [s.discriminant, ...s.cases.filter((c: N) => c.test?.value === 'check')]))] };
+	});
+	const closure = await closureOf([], { edges: used.edges, dirs: CHECKER_DIRS });
+	return { closure: { ...closure, unresolved: [...closure.unresolved, ...used.unresolved] }, text: used.text };
+}
+
+export async function checkerVersion(): Promise<string> {
+	const { closure, text } = await checkerClosure();
+	return keyOf(closure, { 'check command': text });
+}
+
+/** What decides a key besides the route itself: the checker's version, and the Markless packages the port names (undefined when it names none, so nothing is reused). */
+export async function shipVersions(appDir: string): Promise<Record<string, string> | undefined> {
 	let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } };
 	try {
 		pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
@@ -102,7 +125,7 @@ export async function shipVersions(appDir: string, git: (args: string[]) => Prom
 		.map(([name, spec]) => `${name}@${spec}`)
 		.join(' ');
 	if (!markless) return undefined;
-	return { checker: `${src.trim()} ${scripts.trim()}`, markless };
+	return { checker: await checkerVersion(), markless };
 }
 
 export interface ReuseSelection {
