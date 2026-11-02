@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 
 export const SLOTS = 2;
 export const SUBSET = 50;
-export const GATED = ['convert.yml', 'check.yml', 'pipeline.yml', 'probe-dead-controls.yml', 'probe-measure.yml'].map((f) => `.github/workflows/${f}`);
+export const GATED = ['convert.yml', 'check.yml', 'pipeline.yml', 'probe-dead-controls.yml', 'probe-measure.yml', 'judge-gate.yml'].map((f) => `.github/workflows/${f}`);
 export const STEP = 'Wait for a full-site slot';
 
 export function routeCount(spec: string, read: (path: string) => string = (p) => readFileSync(p, 'utf8')): number {

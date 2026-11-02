@@ -26,6 +26,8 @@ import { bypassOptions } from './check/blocked.ts';
 import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
 import { jsonReportParts, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
+import { judgeObserved, reportDifferences } from './check/judge.ts';
+import { DirObservations, readObservations } from './data/store.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { partialLine, summarize } from './check/summary.ts';
 import { TEMPLATE_THRESHOLD } from './check/templates.ts';
@@ -150,6 +152,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
+          [--observations <dir>]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -313,7 +316,9 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           the Markless packages the port names. A route whose key has a kept result, and whose load-time
           responses fetch the same again, is not checked: its result is reported marked reused. A route
           with no key (no Markless route script, a module without a hash) is always checked.
-          Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
+          Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report. Every
+          observation the check makes (each page load, replay, probe and parity reading, as rows, their
+          screenshots kept once by content) goes to .migrate/observations/, or --observations <dir>.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
           blocked. --source scans the old app's code for what varies and which handlers write.
           --data record saves what OLD fetched per route in .migrate/data/; --data replay serves it to
@@ -322,6 +327,11 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --auth names roles (a login script or a Playwright storage state file each, see plan's
           .migrate/auth.json); every route is checked once per role and once anonymous. A route a bot
           wall answers is stopped as blocked; --header and --cookie send a bypass token to both apps.
+  check judge [<dir>] [--report <report.json>] [--out <dir>] [--json]
+          Judge a check again from the observations it wrote (default .migrate/observations/), with no
+          browser and the checker's judges as they are now: a change to how check decides is scored on
+          an earlier run's rows in minutes. --report compares the result with the report that check
+          wrote, route by route, and exits 6 when any differs; --out writes report.json and report.html.
   parity  <library> [--route <path>]... [--new-source <path>]
           Write a port skeleton for one library into lib/parity/<library>/ of the new app: exactly the
           components, props, hooks, options and fields the old app uses (narrowed to --route), plus
@@ -864,6 +874,29 @@ async function run(args: string[], cwd: string): Promise<number> {
 	}
 }
 
+/** `check judge`: the report a check's recorded observations give with today's judges, and, with --report, where it differs from the one the check wrote. */
+async function judgeCheck(args: readonly string[], cwd: string): Promise<number> {
+	const { values, positionals } = parseArgs({ args: [...args], allowPositionals: true, options: { report: { type: 'string' }, out: { type: 'string' }, json: { type: 'boolean' } } });
+	const dir = resolve(positionals[0] ?? join(cwd, STATE_DIR, 'observations'));
+	const report = await readObservations(dir)
+		.then(judgeObserved)
+		.catch((error: Error) => fail(`check judge: ${error.message}`));
+	if (values.out) out(`Judged report: ${await writeReport(report, resolve(values.out))}\n`);
+	if (values.report) {
+		const written = JSON.parse(await readFile(resolve(values.report), 'utf8')) as Record<string, unknown>;
+		const differences = reportDifferences(written, report);
+		if (differences.length) {
+			err(`markless-migrate: check judge: ${differences.length} difference${differences.length === 1 ? '' : 's'} between the report judged from ${dir} and ${values.report}:\n${differences.map((d) => `  ${d}\n`).join('')}`);
+			return 6;
+		}
+		out(`check judge: the report judged from ${dir} matches ${values.report}, ${report.routes.length} route results and the run's own fields alike.\n`);
+		return 0;
+	}
+	if (values.json) await writePieces(process.stdout, jsonReportParts(report));
+	else if (!values.out) out(summarize(report));
+	return report.ok ? 0 : 1;
+}
+
 async function main(argv: string[]): Promise<number> {
 	const [command, ...rest] = argv;
 	const cwd = process.cwd();
@@ -877,9 +910,11 @@ async function main(argv: string[]): Promise<number> {
 		case 'plan':
 			return planCommand(rest, cwd, out, fail);
 		case 'check': {
+			if (rest[0] === 'judge') return judgeCheck(rest.slice(1), cwd);
 			const { values } = parseArgs({
 				args: rest,
 				options: {
+					observations: { type: 'string' },
 					old: { type: 'string' },
 					new: { type: 'string' },
 					route: { type: 'string', multiple: true },
@@ -1012,7 +1047,9 @@ async function main(argv: string[]): Promise<number> {
 				source = scanned.facts;
 			}
 			const freeze = values['no-freeze'] ? false : { ...(time !== undefined ? { time } : {}), ...(seed !== undefined ? { seed } : {}), ...(values.timezone ? { timezone: values.timezone } : {}), ...(values.locale ? { locale: values.locale } : {}) };
+			const observations = new DirObservations(resolve(values.observations ?? join(cwd, STATE_DIR, 'observations')));
 			let report = await runCheck({
+				observations,
 				oldOrigin: values.old,
 				newOrigin: values.new,
 				routes: routes ?? [],
@@ -1055,6 +1092,7 @@ async function main(argv: string[]): Promise<number> {
 				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse.keys, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
 				out(`--reuse: kept ${kept} result${kept === 1 ? '' : 's'} for later runs.\n`);
 				report = { ...report, ok: report.ok && reuse.reused.every((r) => r.ok), routes: [...report.routes, ...reuse.reused] };
+				await observations.event({ kind: 'reused', routes: reuse.reused });
 			}
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));

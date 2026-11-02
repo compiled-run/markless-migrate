@@ -351,6 +351,24 @@ results.json, apart from differences a person accepted:
 Anything else stays red until it is fixed or a person accepts it. An expert may turn a rule off in
 `.migrate/overrides.json` (`{ "automatic": { "live-embed": false } }`); the file is optional.
 
+## Observations, and judging a check again
+
+Everything a check observes in a browser or over HTTP is kept as data, apart from what it decides: each
+route's page loads, journey replays, forced states, widget probe and control parity readings, motion
+recordings and timings, as rows in `.migrate/observations/` (`--observations <dir>` puts them elsewhere).
+`run.ndjson` holds the run's settings and its own observations (its routes' kinds and template groups,
+sign-ins, coverage, navigation, endpoints and page loads), `routes.ndjson` one line per checked route
+with every row its check made, and `blobs/` each screenshot and frame once, named by the SHA-256 of its
+bytes.
+
+`markless-migrate check judge [<dir>]` judges those rows again with the checker as it is now, with no
+browser: it answers each observation the check asks for from the rows, in the order the check made them,
+and stops with an error when the check asks for one the rows do not hold. A change to how check decides
+(a tolerance, a new reading of the rows, a finding's wording) is scored on an earlier run's rows in
+minutes, and the result is the report a fresh check would give on the same pages. `--report
+.migrate/report.json` compares the two route by route and exits 6 on any difference; `--out <dir>` writes
+the judged report.json and report.html.
+
 ## Command-line tools
 
 When the product includes a command-line tool (a scaffolder, a code generator, shadcn's `shadcn add`),

@@ -2,7 +2,8 @@
 // alone, so a judge change can be scored on a run's rows with no browser. Pages of the bug corpus's micro-site, with some
 // bugs put back and some not, exercise every stage: loads, forced states, journeys, probes, control parity, motion and timings.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -11,8 +12,10 @@ import { after, test } from 'node:test';
 import { digest } from '../../src/data/codec.ts';
 import { MemoryObservations } from '../../src/data/observations.ts';
 import { judgeObserved } from '../../src/check/judge.ts';
-import { jsonReport, runCheck } from '../../src/check/run.ts';
+import { runCheck } from '../../src/check/run.ts';
+import { jsonReport } from '../../src/check/report-judge.ts';
 import { CASES, ORIGINAL } from '../corpus/site.ts';
+import { ROOT } from './harness.ts';
 
 const servers: Server[] = [];
 after(() => {
@@ -60,3 +63,37 @@ test('every route of a check, judged again from its recorded rows, gives the rep
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+function cli(cwd: string, args: readonly string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
+	return new Promise((done) => {
+		const child = spawn(process.execPath, [join(ROOT, 'src/cli.ts'), ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+		let stdout = '', stderr = '';
+		child.stdout.on('data', (d: Buffer) => (stdout += d));
+		child.stderr.on('data', (d: Buffer) => (stderr += d));
+		child.on('close', (code) => done({ code, stdout, stderr }));
+	});
+}
+
+test('check writes its observations to .migrate/observations, check judge gives back the report it wrote, and names a route whose report differs', async () => {
+	const c = CASES['combobox-clear']!;
+	const [oldOrigin, newOrigin] = await Promise.all([serve(ORIGINAL), serve({ ...ORIGINAL, [c.route]: c.mutant })]);
+	const cwd = await mkdtemp(join(tmpdir(), 'judge-cli-'));
+	try {
+		const checked = await cli(cwd, ['check', '--old', oldOrigin, '--new', newOrigin, '--route', c.route, '--control-webkit', '--no-load']);
+		assert.ok(checked.code === 1 || checked.code === 4, `check found the bug (exit ${checked.code}):\n${checked.stderr.slice(-2000)}`);
+		assert.deepEqual((await readdir(join(cwd, '.migrate/observations'))).sort(), ['blobs', 'routes.ndjson', 'run.ndjson']);
+		const same = await cli(cwd, ['check', 'judge', '--report', '.migrate/report.json']);
+		assert.equal(same.code, 0, same.stderr);
+		assert.match(same.stdout, /matches \.migrate\/report\.json/);
+		const path = join(cwd, '.migrate/report.json');
+		const written = JSON.parse(await readFile(path, 'utf8')) as { routes: { failures: { actual: string }[] }[] };
+		written.routes[0]!.failures[0]!.actual += ' (edited)';
+		await writeFile(path, JSON.stringify(written));
+		const differs = await cli(cwd, ['check', 'judge', '--report', '.migrate/report.json']);
+		assert.equal(differs.code, 6, differs.stdout);
+		assert.match(differs.stderr, new RegExp(`${c.route.replace(/\//g, '\\/')}: [^\\n]*failures`));
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+

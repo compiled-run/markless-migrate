@@ -3,7 +3,9 @@ name: Corpus
 # The bugs the owner found by hand in the ui.shadcn.com port (deploy/shadcn-ui/corpus/bugs.json), checked on the kept port
 # builds that still have them, against the old site built from its source: a check change that stops reporting any of them
 # is red. Each runner checks one route as check.yml's shards do, with the flags a site's run uses, page load left out (no
-# corpus bug is a load bug). The micro-site corpus (test/e2e/corpus.test.ts) runs in ci.yml's merge queue instead.
+# corpus bug is a load bug), then judges it again from the observations it recorded: the report must come out the same. The
+# micro-site corpus (test/e2e/corpus.test.ts) runs in ci.yml's merge queue instead. With rows_from, no build is checked: an
+# earlier run's recorded observations are judged again by this commit's judges and scored, in minutes and with no browser.
 on:
   push:
     branches: [main]
@@ -15,6 +17,11 @@ on:
       - deploy/shadcn-ui/ci-serve.sh
       - .github/workflows/corpus.yml
   workflow_dispatch:
+    inputs:
+      rows_from:
+        description: A corpus run whose recorded observations are judged again and scored, instead of checking the builds
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -31,6 +38,7 @@ concurrency:
 
 jobs:
   plan:
+    if: ${{ !inputs.rows_from }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -89,13 +97,18 @@ jobs:
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is red and 4 a partial run, the results; 3 is a route not checked, which verify reports as such.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+      # The judges read only what the check recorded: judged again from its rows, the report is the one it wrote.
+      - name: Judge again from the recorded observations
+        run: node src/cli.ts check judge "$APP/.migrate/observations" --report "$APP/.migrate/report.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: corpus-${{ matrix.key }}
           path: |
             ${{ env.APP }}/.migrate/report.json
+            ${{ env.APP }}/.migrate/observations
             ${{ runner.temp }}/check.txt
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
@@ -125,3 +138,43 @@ jobs:
           cat table.md >> "$GITHUB_STEP_SUMMARY"
           cat table.md
           exit "$status"
+
+  rescore:
+    if: ${{ inputs.rows_from }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: The recorded observations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.rows_from }}
+        run: gh run download "$RUN" -R "$GITHUB_REPOSITORY" -p 'corpus-*' -D recorded
+      - name: Every corpus bug is reported, judged from the recorded observations
+        env:
+          RUN: ${{ inputs.rows_from }}
+        run: |
+          set -euo pipefail
+          # Each artifact's observations judged by this commit, its report under by-build/<build>/<artifact>/, as verify reads them.
+          for dir in recorded/corpus-*; do
+            name="${dir#recorded/}"; build="${name#corpus-}"; build="${build%-*}"
+            observations=$(find "$dir" -type d -name observations | head -n 1)
+            if [ -z "$observations" ]; then echo "::warning::$name holds no observations"; continue; fi
+            node src/cli.ts check judge "$observations" --out "by-build/$build/$name"
+          done
+          status=0
+          node scripts/corpus.ts verify deploy/shadcn-ui/corpus/bugs.json by-build > table.md || status=$?
+          { echo "Judged from the observations run $RUN recorded."; echo; cat table.md; } >> "$GITHUB_STEP_SUMMARY"
+          cat table.md
+          exit "$status"
+
