@@ -2649,11 +2649,14 @@ test("shadcn-ui site: after each in-place page swap the docs sidebar keeps the p
 	// What the router does in place: the address changes, the kept sidebar's items take the new page's data-active, then it says the page is rendered.
 	const swap = (path: string, active: number) =>
 		page.evaluate(
-			([path, active, event]) => {
+			async ([path, active, event]) => {
 				history.pushState(null, '', path);
 				document.querySelectorAll('[data-docs-sidebar-content] > div').forEach((item, i) => (i === active ? item.setAttribute('data-active', 'true') : item.removeAttribute('data-active')));
 				document.dispatchEvent(new CustomEvent(event));
-				return [document.querySelector('[data-docs-sidebar-content]')!.scrollTop, sessionStorage.getItem('docs-sidebar-scroll')] as const;
+				const read = [document.querySelector('[data-docs-sidebar-content]')!.scrollTop, sessionStorage.getItem('docs-sidebar-scroll')] as const;
+				// The scroll event of this swap's own scrollTop fires a frame later and saves again: let it, before the test writes the session.
+				await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+				return read;
 			},
 			[path, active, MARKLESS_ROUTER_RENDERED_EVENT] as const,
 		);
