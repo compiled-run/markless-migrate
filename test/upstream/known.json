@@ -257,139 +257,79 @@
 		},
 		"cypress/e2e/ContextMenu.cy.ts > electron > ContextMenu > given submenu user > When using pointer in RTL > should close submenu when pointer moves away but remain open when moving towards": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
+			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/ContextMenu.cy.ts > electron > ContextMenu > given submenu user > When using keyboard in RTL > should open submenu and focus first item when pressing left arrow key but close when pressing right arrow key": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
+			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/DropdownMenu.cy.ts > electron > DropdownMenu > given submenu user > When using pointer in RTL > should close submenu when pointer moves away but remain open when moving towards": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
+			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/DropdownMenu.cy.ts > electron > DropdownMenu > given submenu user > When using keyboard in RTL > should open submenu and focus first item when pressing left arrow key but close when pressing right arrow key": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
+			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > should move to next menu using right arrow and previous menu with left arrow": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Loop checkbox halfway, the story's own React state (Menubar.Root's loop), which convert does not port",
+			"why": "needs React state conversion (queued): the test ticks the story's Loop checkbox halfway, the story's own React state (Menubar.Root's loop), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > with portals enabled > should move to next menu using right arrow and previous menu with left arrow": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Loop checkbox halfway, the story's own React state (Menubar.Root's loop), which convert does not port",
+			"why": "needs React state conversion (queued): the test ticks the story's Loop checkbox halfway, the story's own React state (Menubar.Root's loop), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > with RTL enabled > should move to next menu using right arrow and previous menu with left arrow": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
+			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > with RTL enabled > should open submenu and focus first item when pressing left arrow key but close when pressing right arrow key": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
+			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Dialog.cy.ts > electron > Dialog > given a non-modal dialog > can be open/closed with a pointer": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the story's counter button is the page's own React state, which convert does not port",
+			"why": "needs React state conversion (queued): the story's counter button is the page's own React state, which convert does not port",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `valueMissing` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `valid` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `rangeOverflow` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `rangeUnderflow` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `stepMismatch` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `typeMismatch` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `tooShort` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `patternMismatch` validity": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle custom validity (sync custom validator)": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle custom validity (async custom validator)": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
-			"owner": "thejackshelton",
-			"expires": "2026-11-08"
-		},
-		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should allow custom error messages": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
+			"class": "convert",
+			"why": "was passing only because React ran on the port page; the message shows on the port (parts/radix/form.ts), then the test reads the <pre> the story's onSubmit fills from its own React state, which convert does not port",
 			"owner": "thejackshelton",
 			"expires": "2026-11-08"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > should focus the first control with a server error": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
+			"class": "convert",
+			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
 			"owner": "thejackshelton",
 			"expires": "2026-11-08"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > allows showing custom server error messages per-field": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
+			"class": "convert",
+			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
 			"owner": "thejackshelton",
 			"expires": "2026-11-08"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > allows re-using client-side matchers for server errors": {
-			"class": "part",
-			"why": "was passing only because React ran on the port page; no part shows Radix Form's validity messages or focuses the first control with a server error",
+			"class": "convert",
+			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
 			"owner": "thejackshelton",
 			"expires": "2026-11-08"
 		},
