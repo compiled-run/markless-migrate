@@ -37,7 +37,7 @@ export function classTokens(texts: Iterable<string>): Set<string> {
 	return tokens;
 }
 
-const unescape = (name: string) => name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?|\\(.)/g, (_, hex: string | undefined, ch: string | undefined) => (hex ? String.fromCodePoint(parseInt(hex, 16)) : ch!));
+export const unescape = (name: string) => name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?|\\(.)/g, (_, hex: string | undefined, ch: string | undefined) => (hex ? String.fromCodePoint(parseInt(hex, 16)) : ch!));
 
 const ANY_OF = new Set(['is', 'where', 'matches', '-webkit-any', '-moz-any', 'has']);
 // Rules in these at-rules are style rules; any other at-rule (@keyframes, @font-face, @property) is kept whole.
@@ -54,37 +54,30 @@ function possible(selector: Node, tokens: { has(token: string): boolean }): bool
 	return true;
 }
 
+/** A rule or other at-rule the cut keeps or drops whole, by its start offset; a grouping at-rule holding none of them goes too. */
+export type Leaf = Node;
+
 /**
- * The stylesheet without the style rules no element of the page can match: a rule goes when each of its selectors needs a
- * class or id (outside `:not()`) that `tokens` does not hold, and a grouping at-rule goes with its last rule, except
- * `@layer`, whose order it declares. What stays is the source text, byte for byte and in its order, so the cascade among
- * the kept rules is the original's. With `late`, an @font-face any of whose files is `withheld` (paths, its url()s
- * resolved from the stylesheet's path `sheet`) goes too: the page adds that face from script (late-fonts.ts).
+ * The text of `css` keeping only the leaves `keep` names (a style rule at any depth, an at-rule that groups no rules), in
+ * source order and byte for byte: a grouping at-rule goes with its last leaf, except `@layer`, whose order it declares.
  */
-export function usedCss(css: string, tokens: { has(token: string): boolean }, late?: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): string {
-	let ast: Node;
-	try {
-		ast = parse(css).ast;
-	} catch {
-		return css;
-	}
+export function keptText(css: string, ast: Node, keep: (leaf: Leaf) => boolean): string {
 	const cuts: [number, number][] = [];
 	// Returns whether anything in `nodes` stays.
 	const walk = (nodes: readonly Node[]): boolean => {
 		let kept = false;
 		for (const node of nodes) {
 			if (node.type === 'Rule') {
-				if (node.prelude?.type === 'SelectorList' && !node.prelude.children.some((s: Node) => possible(s, tokens))) cuts.push([node.start, node.end]);
+				if (!keep(node)) cuts.push([node.start, node.end]);
 				else {
 					walk(node.block.children);
 					kept = true;
 				}
-			} else if (late && node.type === 'Atrule' && node.block && node.name.toLowerCase() === 'font-face' && withheldFace(css, node, late)) {
-				cuts.push([node.start, node.end]);
 			} else if (node.type === 'Atrule' && node.block && GROUPING.has(node.name.toLowerCase())) {
 				if (walk(node.block.children) || node.name.toLowerCase() === 'layer') kept = true;
 				else cuts.push([node.start, node.end]);
-			} else kept = true;
+			} else if (node.type === 'Atrule' && !keep(node)) cuts.push([node.start, node.end]);
+			else kept = true;
 		}
 		return kept;
 	};
@@ -102,6 +95,30 @@ export function usedCss(css: string, tokens: { has(token: string): boolean }, la
 	return out + css.slice(at);
 }
 
+/** Whether the page whose markup and code hold `tokens` keeps `leaf` (usedCss). */
+export function usedLeaf(css: string, leaf: Leaf, tokens: { has(token: string): boolean }, late?: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): boolean {
+	if (leaf.type === 'Rule') return leaf.prelude?.type !== 'SelectorList' || leaf.prelude.children.some((s: Node) => possible(s, tokens));
+	if (late && leaf.block && leaf.name.toLowerCase() === 'font-face') return !withheldFace(css, leaf, late);
+	return true;
+}
+
+/**
+ * The stylesheet without the style rules no element of the page can match: a rule goes when each of its selectors needs a
+ * class or id (outside `:not()`) that `tokens` does not hold, and a grouping at-rule goes with its last rule, except
+ * `@layer`, whose order it declares. What stays is the source text, byte for byte and in its order, so the cascade among
+ * the kept rules is the original's. With `late`, an @font-face any of whose files is `withheld` (paths, its url()s
+ * resolved from the stylesheet's path `sheet`) goes too: the page adds that face from script (late-fonts.ts).
+ */
+export function usedCss(css: string, tokens: { has(token: string): boolean }, late?: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): string {
+	let ast: Node;
+	try {
+		ast = parse(css).ast;
+	} catch {
+		return css;
+	}
+	return keptText(css, ast, (leaf) => usedLeaf(css, leaf, tokens, late));
+}
+
 function withheldFace(css: string, node: Node, late: { readonly sheet: string; readonly withheld: ReadonlySet<string> }): boolean {
 	const src = (node.block.children as Node[]).find((d) => d.type === 'Declaration' && d.property.toLowerCase() === 'src');
 	if (!src) return false;
@@ -110,6 +127,20 @@ function withheldFace(css: string, node: Node, late: { readonly sheet: string; r
 		const at = new URL(m[2]!, base);
 		return late.withheld.has(at.origin === base.origin ? at.pathname + at.search : at.href);
 	});
+}
+
+/** A cut sheet: the stylesheet it was cut from and the start offsets of the leaves (keptText) it keeps. */
+export interface Cut {
+	readonly href: string;
+	readonly kept: ReadonlySet<number>;
+}
+
+function parsed(css: string): { css: string; ast: Node | undefined } {
+	try {
+		return { css, ast: parse(css).ast };
+	} catch {
+		return { css, ast: undefined };
+	}
 }
 
 interface Tag {
@@ -129,7 +160,7 @@ async function filesUnder(dir: string): Promise<string[]> {
  * url()s still resolve, and the page's link names it. `texts` is what else the page's markup holds (its <html> and <body>
  * attributes, its head). Returns the pages' head tags with the new hrefs.
  */
-export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; written: string[]; bytes: [number, number] }> {
+export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; written: string[]; bytes: [number, number]; cuts: Map<string, Cut> }> {
 	const publicDir = join(app, 'public');
 	const texts = new Map<string, Promise<string>>();
 	const read = (file: string) => {
@@ -153,8 +184,9 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 	const shared = new Set<string>(await filesUnder(join(app, 'lib')));
 	await closure('document.tsrx', shared);
 	const sharedTokens = classTokens(await Promise.all([...shared].map(read)));
-	const sheets = new Map<string, string>();
+	const sheets = new Map<string, { css: string; ast: Node | undefined }>();
 	const written = new Map<string, string>();
+	const cuts = new Map<string, Cut>();
 	const bytes: [number, number] = [0, 0];
 	const out = new Map<string, T[]>();
 	const ownTexts = async (route: string) => {
@@ -197,9 +229,18 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 				tags.push(tag);
 				continue;
 			}
-			if (!sheets.has(href)) sheets.set(href, await readFile(join(publicDir, href), 'utf8').catch(() => ''));
-			const css = sheets.get(href)!;
-			const used = css && usedCss(css, tokens, withheldPaths.size ? { sheet: href, withheld: withheldPaths } : undefined);
+			if (!sheets.has(href)) sheets.set(href, parsed(await readFile(join(publicDir, href), 'utf8').catch(() => '')));
+			const { css, ast } = sheets.get(href)!;
+			const late = withheldPaths.size ? { sheet: href, withheld: withheldPaths } : undefined;
+			const kept = new Set<number>();
+			const used =
+				css && ast
+					? keptText(css, ast, (leaf) => {
+							const keep = usedLeaf(css, leaf, tokens, late);
+							if (keep) kept.add(leaf.start);
+							return keep;
+						})
+					: css;
 			if (!used || used === css) {
 				tags.push(tag);
 				continue;
@@ -207,6 +248,7 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 			const path = href.replace(/\.css$/, `.used-${createHash('sha256').update(used).digest('hex').slice(0, 12)}.css`);
 			if (!written.has(path)) {
 				written.set(path, used);
+				cuts.set(path, { href, kept });
 				await writeFile(join(publicDir, path), used);
 			}
 			bytes[0] += css.length;
@@ -215,5 +257,5 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 		}
 		out.set(route, tags);
 	}
-	return { heads: out, sheets: written.size, written: [...written.keys()], bytes };
+	return { heads: out, sheets: written.size, written: [...written.keys()], bytes, cuts };
 }
