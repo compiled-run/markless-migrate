@@ -158,6 +158,48 @@ test('a popup records the side and alignment it asked for, not where a flip away
 	await page.close();
 });
 
+test("a Radix popper's content gets the sideOffset and alignOffset its own instance was given, as a submenu's SubContent passes them on", async () => {
+	const page = await browser.newPage();
+	const POPPER = INSTANCE_PROPS.filter((s) => s.port === 'popper');
+	// DropdownMenu.SubContent given sideOffset 12 and alignOffset -6, which MenuSubContent passes to PopperContent; Content given none.
+	await fibers(
+		page,
+		`<div data-radix-popper-content-wrapper=""><div id="sub" data-side="right" data-align="start" role="menu"></div></div><div data-radix-popper-content-wrapper=""><div id="root" data-side="bottom" data-align="center" role="menu"></div></div>`,
+		[3, {}, [
+			[0, { sideOffset: 12, alignOffset: -6, children: [] }, [[0, { side: 'right', align: 'start', sideOffset: 12, alignOffset: -6 }, [[11, {}, [[5, '#sub']]]]]]],
+			[0, { children: [] }, [[11, { loop: true }, [[5, '#root']]]]],
+		]],
+	);
+	await page.evaluate(markInstanceProps, { specs: POPPER, added: false });
+	assert.deepEqual([await attrs(page, 'data-mm-side-offset'), await attrs(page, 'data-mm-align-offset')], [{ sub: '12', root: null }, { sub: '-6', root: null }]);
+	await page.close();
+});
+
+test("a Radix submenu mounted inside its menu (Menubar.SubContent, not portaled) does not take the menu's own offsets", async () => {
+	const page = await browser.newPage();
+	const POPPER = INSTANCE_PROPS.filter((s) => s.port === 'popper');
+	await fibers(
+		page,
+		`<div data-radix-popper-content-wrapper=""><div id="menu" data-side="bottom" data-align="start" role="menu"><div data-radix-popper-content-wrapper=""><div id="sub" data-side="right" data-align="start" role="menu"></div></div></div></div>`,
+		[3, {}, [[0, { sideOffset: 2, children: [] }, [[11, { sideOffset: 2 }, [[5, '#menu', [[0, { alignOffset: -6, children: [] }, [[11, { alignOffset: -6 }, [[5, '#sub']]]]]]]]]]]]],
+	);
+	await page.evaluate(markInstanceProps, { specs: POPPER, added: false });
+	assert.deepEqual([await attrs(page, 'data-mm-side-offset'), await attrs(page, 'data-mm-align-offset')], [{ menu: '2', sub: null }, { menu: null, sub: '-6' }]);
+	await page.close();
+});
+
+test("a Radix menubar gets the loop its Menubar.Root passes to its RovingFocusGroup, true unless given false", async () => {
+	const page = await browser.newPage();
+	const BAR = INSTANCE_PROPS.filter((s) => s.selector === '[role="menubar"]');
+	await fibers(page, '<div id="stops" role="menubar"></div><div id="loops" role="menubar"></div>', [3, {}, [
+		[0, { loop: false, children: [] }, [[0, { loop: false, orientation: 'horizontal' }, [[11, {}, [[5, '#stops']]]]]]],
+		[0, { children: [] }, [[0, { loop: true, orientation: 'horizontal' }, [[11, {}, [[5, '#loops']]]]]]],
+	]]);
+	await page.evaluate(markInstanceProps, { specs: BAR, added: false });
+	assert.deepEqual(await attrs(page, 'data-mm-loop'), { stops: 'false', loops: 'true' });
+	await page.close();
+});
+
 test("a Base UI menu item gets the closeOnClick its instance was given, and none when left to its default", async () => {
 	const page = await browser.newPage();
 	const item = (id: string, role: string) => `<div id="${id}" role="${role}" tabindex="-1">${id}</div>`;

@@ -371,3 +371,105 @@ test("Radix DropdownMenu: a switcher's chosen item shows its logo variant on the
 	assert.deepEqual(await shown(), ['a', 'A', 'A']);
 	await page.close();
 });
+
+test("a Radix popper is placed off its anchor by its own instance's offsets, else the source's on its layer", async () => {
+	const page = await open('<div id="given" data-mm-side-offset="3"><div id="sub" data-side="right" data-align="start" data-mm-side-offset="12" data-mm-align-offset="-6"></div></div><div id="source" data-mm-side-offset="5"><div id="root" data-side="bottom"></div></div>', []);
+	const options = await page.evaluate(async () => {
+		const { optionsOf } = (await import('/parts/popper.ts' as string)) as typeof import('../parts/popper.ts');
+		const at = (id: string) => document.getElementById(id)!;
+		return [optionsOf(at('given'), at('sub')), optionsOf(at('source'), at('root'))];
+	});
+	assert.deepEqual(options, [
+		{ side: 'right', align: 'start', sideOffset: 12, alignOffset: -6 },
+		{ side: 'bottom', align: 'center', sideOffset: 5, alignOffset: 0 },
+	]);
+	await page.close();
+});
+
+// withSub with a submenu in its submenu (the Submenus story's Bookmarks, then WorkOS).
+const nested = withSub
+	.replace('<div role="menuitem" tabindex="-1">Message</div>', '<div role="menuitem" tabindex="-1">Message</div><div role="menuitem" id="sub2" aria-haspopup="menu" aria-expanded="false" aria-controls="sub2-content" data-state="closed" tabindex="-1" data-slot="dropdown-menu-sub-trigger">More</div>')
+	.concat('<div data-mm-layer="sub2" hidden data-radix-popper-content-wrapper><div data-slot="dropdown-menu-sub-content" role="menu" id="sub2-content" aria-labelledby="sub2" data-state="closed" tabindex="-1" data-radix-menu-content="" data-side="right" data-align="start"><div role="menuitem" tabindex="-1">Deep</div></div></div>');
+
+test('Radix DropdownMenu.Sub: the pointer back on a sub-trigger whose submenu is open closes the submenus opened from that submenu, and leaves it open', async () => {
+	const page = await open(nested, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	const rest = async (text: string) => {
+		const box = (await page.getByText(text, { exact: true }).boundingBox())!;
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.waitForTimeout(150);
+		await settled(page);
+	};
+	await rest('Invite users');
+	await rest('More');
+	await rest('Deep');
+	assert.equal(await page.locator('#sub2').getAttribute('aria-expanded'), 'true');
+	await rest('Invite users');
+	assert.equal(await subOpen(page), true);
+	assert.equal(await page.locator('#sub2').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.locator('#sub2-content').isVisible(), false);
+	await page.close();
+});
+
+test("Radix menus' typeahead: the keys typed within a second are one search from the focused item, so a longer match keeps its item and a space while typing is part of it", async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await page.getByText('GitHub', { exact: true }).focus();
+	await page.keyboard.type('In');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'Invite users');
+	await page.waitForTimeout(1100);
+	await page.getByText('Team', { exact: true }).focus();
+	await page.keyboard.type('New T');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'New Team');
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'true');
+	await page.waitForTimeout(1100);
+	// One key typed again and again is that key: from New Team, on to Team, the only other item it starts.
+	await page.keyboard.type('tt');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'Team');
+	await page.close();
+});
+
+test("Radix Menubar given loop={false}: the arrows stop at the first and last trigger, closed or open", async () => {
+	const page = await open(menubar().replace('role="menubar"', 'role="menubar" data-mm-loop="false"'), ['radix/dropdown-menu']);
+	await page.locator('#t-File').focus();
+	await press(page, 'ArrowLeft');
+	assert.equal(await active(page), 'File');
+	await press(page, 'End');
+	assert.equal(await active(page), 'View');
+	await press(page, 'ArrowRight');
+	assert.equal(await active(page), 'View');
+	await press(page, 'Enter');
+	await press(page, 'ArrowRight');
+	assert.equal(await page.locator('#t-View').getAttribute('aria-expanded'), 'true');
+	await press(page, 'ArrowLeft');
+	assert.equal(await page.locator('#t-Edit').getAttribute('aria-expanded'), 'true');
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub: the pointer moving on a sub-trigger it never left, after its submenu closed, focuses it and opens the submenu again (SubTrigger listens to pointermove)', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	const r = (await page.locator('#sub').boundingBox())!;
+	await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	// Leftwards along it to its bottom-left corner, then a pointerout there, as a test harness sends one: away from the submenu.
+	await page.mouse.move(r.x + r.width - 2, r.y + r.height / 2);
+	await page.mouse.move(r.x + 2, r.y + r.height - 2);
+	await page.locator('#sub').dispatchEvent('pointerout', { clientX: r.x + 2, clientY: r.y + r.height - 2, pointerType: 'mouse', bubbles: true });
+	await settled(page);
+	assert.equal(await subOpen(page), false);
+	assert.equal(await active(page), 'content');
+	// At once: the item reads the way the pointer headed before this move (leftwards, away), as Radix's handler order does.
+	await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+	await page.waitForTimeout(150);
+	assert.equal(await active(page), 'Invite users');
+	assert.equal(await subOpen(page), true);
+	await page.close();
+});
