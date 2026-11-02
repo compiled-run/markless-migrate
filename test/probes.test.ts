@@ -40,6 +40,10 @@ const labelled = (native: boolean) => `<label id="lbl" for="n">Wi-Fi</label><inp
 // The same dialog trigger in a left-to-right and a right-to-left section; `drop` loses focus on a click outside only in the right-to-left one.
 const directions = (drop: boolean) => ['ltr', 'rtl'].map((dir) => `<section dir="${dir}"><button id="${dir}-o" aria-haspopup="dialog" aria-expanded="false">${dir === 'rtl' ? 'الإعدادات' : 'Settings'}</button><div id="${dir}-d" role="dialog" aria-label="${dir}" hidden><button>Close</button></div></section><script>(() => { const o = document.getElementById('${dir}-o'); const d = document.getElementById('${dir}-d'); const close = (back) => { d.hidden = true; o.setAttribute('aria-expanded', 'false'); if (back) o.focus(); else document.activeElement?.blur(); }; o.onclick = () => { d.hidden = false; o.setAttribute('aria-expanded', 'true'); d.querySelector('button').focus(); }; d.querySelector('button').onclick = () => close(true); addEventListener('keydown', (e) => { if (e.key === 'Escape' && !d.hidden) close(true); }); addEventListener('click', (e) => { if (!d.hidden && !d.contains(e.target) && e.target !== o) close(${drop ? `'${dir}' !== 'rtl'` : 'true'}); }); })();</script>`).join('');
 
+// A select drawn as Base UI draws one: a combobox trigger, then the hidden input that follows the chosen value; its list is
+// outside the demo. `stale` leaves the input as it was; `extra` adds markup the demo keeps hidden (a port's View Code content).
+const chooser = (stale: boolean, extra: boolean) => `<div data-slot="component-preview"><div><button type="button" id="t" role="combobox" aria-haspopup="listbox" aria-expanded="false">Arabic</button><input id="v" tabindex="-1" aria-hidden="true" value="ar" style="position:fixed;top:0;left:0;width:1px;height:1px;clip-path:inset(50%)"></div>${extra ? `<div hidden>${'<p><span>code</span></p>'.repeat(100)}</div>` : ''}</div><div id="o" role="listbox" hidden><div role="option" tabindex="-1" data-value="en">English</div><div role="option" tabindex="-1" data-value="ar">Arabic</div></div><script>const close = () => { o.hidden = true; t.setAttribute('aria-expanded', 'false'); t.focus(); }; t.onclick = () => { if (!o.hidden) return close(); o.hidden = false; t.setAttribute('aria-expanded', 'true'); o.firstElementChild.focus(); }; for (const i of o.children) i.onclick = () => { t.textContent = i.textContent; ${stale ? '' : 'v.value = i.dataset.value;'} close(); }; addEventListener('keydown', (e) => { if (e.key === 'Escape' && !o.hidden) close(); }); addEventListener('click', (e) => { if (!o.hidden && !o.contains(e.target) && e.target !== t) close(); });</script>`;
+
 const PAIRS: Record<string, { old: string; bad: string }> = {
 	modality: { old: modality('true'), bad: modality("e.key === 'Tab'") },
 	popup: { old: dialog(false), bad: dialog(true) },
@@ -74,14 +78,20 @@ const SHARED: Record<string, { old: string; bad: string }> = {
 	'/shared-c': { old: `<p>Contact</p>${dialog(false)}`, bad: `<p>Contact</p>${dialog(true).replace('<button id="o"', '<button class="wide" id="o"')}` },
 };
 
+// The same select, the new demo also holding markup it keeps hidden; on /hidden-stale the new select leaves its input as it was.
+const HIDDEN: Record<string, { old: string; bad: string }> = {
+	'/hidden-same': { old: chooser(false, false), bad: chooser(false, true) },
+	'/hidden-stale': { old: chooser(false, false), bad: chooser(true, true) },
+};
+
 let browser: Browser;
 let old: string;
 let bad: string;
 const servers: Server[] = [];
 before(async () => {
 	browser = await chromium.launch();
-	const a = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.old]), ...Object.entries(SHARED).map(([k, v]) => [k, v.old])]));
-	const b = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.bad]), ...Object.entries(SHARED).map(([k, v]) => [k, v.bad])]));
+	const a = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.old]), ...Object.entries(SHARED).map(([k, v]) => [k, v.old]), ...Object.entries(HIDDEN).map(([k, v]) => [k, v.old])]));
+	const b = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.bad]), ...Object.entries(SHARED).map(([k, v]) => [k, v.bad]), ...Object.entries(HIDDEN).map(([k, v]) => [k, v.bad])]));
 	servers.push(a.server, b.server);
 	old = a.origin;
 	bad = b.origin;
@@ -158,4 +168,15 @@ test('a widget rendered alike on several routes is driven once a run and its res
 	assert.ok(driver >= 0, JSON.stringify(both.map((r) => r.controls)));
 	assert.equal(popup(both[1 - driver]!)?.state, `probed on ${['/shared-a', '/shared-b'][driver]}, which renders the same widget`);
 	assert.equal(mine(both[1 - driver]!).length, mine(both[driver]!).length);
+});
+
+test('the widget around a control is read from what its demo renders: markup the new demo keeps hidden does not shrink it to the control', async () => {
+	const sides = { old: defaultEnv(old), new: defaultEnv(bad) };
+	const [same, stale] = await Promise.all(['/hidden-same', '/hidden-stale'].map((route) => checkProbes(browser, sides, route, VIEWPORTS[0]!)));
+	const mine = (r: Awaited<ReturnType<typeof checkProbes>>) => r.failures.filter((f) => f.check.startsWith('popup probe of combobox "Arabic"'));
+	assert.deepEqual(mine(same!), [], JSON.stringify(same!.failures, null, 1));
+	const chosen = mine(stale!).find((f) => /\(step 7 of 12: click item 1 of what is open\)$/.test(f.check));
+	assert.ok(chosen, JSON.stringify(stale!.failures, null, 1));
+	assert.match(chosen.expected, /widget: input #1: aria-hidden=true tabindex=-1 value=en/);
+	assert.match(chosen.actual, /value=ar/);
 });
