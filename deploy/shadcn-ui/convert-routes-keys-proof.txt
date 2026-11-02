@@ -1,0 +1,14 @@
+/
+/docs/components/radix/accordion
+/docs/components/radix/data-table
+/examples/tasks
+/docs/components/radix/command
+/docs/components/radix/date-picker
+/docs/components/radix/carousel
+/docs/components/radix/slider
+/docs/components/radix/hover-card
+/charts/bar
+/docs/components/aria/calendar
+/docs/forms/react-hook-form
+/docs/components/base/combobox
+/docs/components/radix/input-otp
