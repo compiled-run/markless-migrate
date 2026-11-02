@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import type { RunEvent, RunHeader } from '../src/check/report-judge.ts';
-import { routeKey } from '../src/data/observations.ts';
+import { GuardedObservations, routeKey } from '../src/data/observations.ts';
 import type { Row } from '../src/data/rows.ts';
 import { DirObservations, readObservations } from '../src/data/store.ts';
 
@@ -48,6 +48,43 @@ test('observations of another version are refused, not misread', async () => {
 		const run = join(dir, 'run.ndjson');
 		await writeFile(run, (await readFile(run, 'utf8')).replace('"v":1', '"v":99'));
 		await assert.rejects(readObservations(dir), /version 99; this checker reads version 1/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a route whose rows outgrow one string is written in parts and read back whole', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'observations-'));
+	try {
+		const out = new DirObservations(dir);
+		await out.header(header);
+		// Three replays of a page that swaps most of itself at every step: about 12 MB of lines in one row.
+		const runs = Array.from({ length: 3 }, (_, r) => Array.from({ length: 400 }, (_, j) => [{ added: Array.from({ length: 100 }, (_, k) => `- text "${r}.${j}.${k} ${'w'.repeat(80)}"`) }]));
+		const rows: Row[] = [{ stage: 'journeys', req: 'r', value: { runs } }];
+		await out.route({ route: '/big', kind: 'page' }, rows.map((r) => out.row(r)));
+		const line = (await readFile(join(dir, 'routes.ndjson'), 'utf8')).trim();
+		assert.ok(line.length < 70_000, `the route's line is ${line.length} characters`);
+		const back = await readObservations(dir);
+		assert.deepStrictEqual(back.routes.get(routeKey({ route: '/big', kind: 'page' })), rows);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('observations that fail to write never stop the check: the first failure is reported once and a judge refuses them', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'observations-'));
+	try {
+		const out = new DirObservations(dir);
+		const warnings: string[] = [];
+		const guarded = new GuardedObservations({ header: (h) => out.header(h), event: (e) => out.event(e), row: () => { throw new RangeError('Invalid string length'); }, route: (k, r) => out.route(k, r), failed: (why) => out.failed(why) }, (line) => warnings.push(line));
+		await guarded.header(header);
+		assert.equal(guarded.row({ stage: 'journeys', req: 'r', value: {} }), null);
+		await guarded.route({ route: '/a', kind: 'page' }, []);
+		assert.equal(guarded.row({ stage: 'load', req: 'r', value: {} }), null);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0]!, /observations not written \(Invalid string length\)/);
+		await guarded.event({ kind: 'footer', pinned: [], wasteReferences: [] } as RunEvent);
+		await assert.rejects(readObservations(dir), /incomplete: writing it failed \(Invalid string length\)/);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

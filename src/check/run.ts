@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { chromium, firefox, webkit, type Browser } from 'playwright';
 import { Relauncher } from '../convert/relaunch.ts';
 import { recording, RouteLog, type Producers } from '../data/rows.ts';
-import type { Observations } from '../data/observations.ts';
+import { GuardedObservations, type Observations } from '../data/observations.ts';
 import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
@@ -672,7 +672,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		cache: Boolean(oldCache),
 		auth: Boolean(auth),
 	};
-	const observed = options.observations;
+	const observed = options.observations && new GuardedObservations(options.observations, (line) => void process.stderr.write(line));
 	await observed?.header(header);
 	const event = async (e: RunEvent) => void (await observed?.event(e));
 	try {

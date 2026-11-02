@@ -4,7 +4,7 @@ import { BlockedError } from '../check/blocked.ts';
 import { InfrastructureError } from '../check/infrastructure.ts';
 import { Unobserved, type Observe, type RouteStages, type Stage } from '../check/route-judge.ts';
 import type { Blocked, Infrastructure } from '../check/types.ts';
-import { digest, type Json } from './codec.ts';
+import { digest, encode, spill, type Blobs, type Json } from './codec.ts';
 
 /** What a producer threw, as the judge's error handling reads it: its class, name, message and cause. */
 export interface ErrorRow {
@@ -102,4 +102,11 @@ export function replaying(rows: readonly Row[]): Observe {
 		if (row.error) throw rebuilt(row.error);
 		return row.value;
 	}) as Observe;
+}
+
+/** A row as written: its parts put away by `spill`, and a large row as one blob, so a route's line stays short. */
+export function rowJson(row: Row, blobs: Blobs): Json {
+	const json = spill(encode(row, blobs), blobs);
+	const text = JSON.stringify(json);
+	return text.length > 65_536 ? { $json: blobs.put(Buffer.from(text)) } : json;
 }
