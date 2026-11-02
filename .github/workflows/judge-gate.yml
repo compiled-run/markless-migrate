@@ -1,0 +1,223 @@
+name: Judge gate
+
+# A sharded check of the original against itself (or against a kept port build), each shard then judged again from the
+# observations it recorded: the judged report must be the one the check wrote, route by route. Against itself, every red
+# route is a false red; the summary counts them. Both sides are served on the runner, never a deployment.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: A `check --all --write-targets` file in the repository
+        required: true
+        default: deploy/shadcn-ui/check-targets-components.json
+      build:
+        description: URL of a kept port build (a .tar.gz of its .output or .vercel/output); empty checks the original against itself
+        required: false
+        default: ''
+      shards:
+        description: Runners to split the routes across
+        required: true
+        default: '20'
+      flags:
+        description: Extra check flags
+        required: false
+        default: ''
+      max_parallel:
+        description: Shards run at once, at most 10 (the org runs 60 jobs; leave room for every repository's CI)
+        required: false
+        default: '10'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SITE: shadcn-ui
+  APP: examples/shadcn-ui-markless
+  OLD: http://localhost:4000
+  NEW: http://127.0.0.1:3000
+
+concurrency:
+  group: judge-gate-${{ github.ref }}-${{ inputs.targets }}-${{ inputs.build }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: full-site gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            deploy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: size
+        name: Count the routes
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: node scripts/full-site-gate.ts size "$TARGETS" >> "$GITHUB_OUTPUT"
+      - name: Wait for a full-site slot
+        if: steps.size.outputs.full == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/full-site-gate.ts wait
+
+  plan:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cap the shards run at once
+        env:
+          MAX_PARALLEL: ${{ inputs.max_parallel }}
+        run: |
+          case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max_parallel must be a whole number from 1 to 10, got '$MAX_PARALLEL'"; exit 1 ;; esac
+          if [ "$MAX_PARALLEL" -lt 1 ] || [ "$MAX_PARALLEL" -gt 10 ]; then echo "::error::max_parallel must be from 1 to 10, got $MAX_PARALLEL"; exit 1; fi
+      - id: split
+        env:
+          TARGETS: ${{ inputs.targets }}
+          SHARDS: ${{ inputs.shards }}
+        run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: judge-gate-shards
+          path: shards
+          retention-days: 3
+
+  check:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel) }}
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium firefox webkit
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: judge-gate-shards
+          path: ${{ runner.temp }}/shards
+      - name: Restore the old site's build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deploy/${{ env.SITE }}/old
+            !deploy/${{ env.SITE }}/old/**/.next/cache
+          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Serve the new side
+        env:
+          BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILD" ]; then bash "deploy/$SITE/ci-serve.sh" new "$BUILD"; exit 0; fi
+          # The original against itself: a second server of the same build, so each side has its own process and origin.
+          PORT=3000 nohup bash "deploy/$SITE/serve-old.sh" > "$RUNNER_TEMP/new-serve.log" 2>&1 &
+          for _ in $(seq 1 240); do curl -s -o /dev/null "$NEW/" && exit 0; sleep 0.5; done
+          echo "no answer from $NEW" >&2; tail -n 40 "$RUNNER_TEMP/new-serve.log"; exit 1
+      - name: Check
+        timeout-minutes: 320
+        env:
+          SHARD: ${{ matrix.shard }}
+          TARGETS: ${{ inputs.targets }}
+          FLAGS: ${{ inputs.flags }}
+          MARKLESS_MIGRATE_PROFILE: '1'
+        run: |
+          set -uo pipefail
+          cd "$APP"
+          status=0
+          # A fresh old side every run (--no-cache): the gate measures today's check, not a kept result.
+          # shellcheck disable=SC2086
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check) --no-load --no-cache $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          tail -n 40 "$RUNNER_TEMP/check.txt"
+          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+      - name: Judge again from the recorded observations
+        run: node src/cli.ts check judge "$APP/.migrate/observations" --report "$APP/.migrate/report.json" | tee "$RUNNER_TEMP/judge.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-${{ matrix.shard }}
+          path: |
+            ${{ env.APP }}/.migrate/report.json
+            ${{ runner.temp }}/check.txt
+            ${{ runner.temp }}/judge.txt
+            ${{ runner.temp }}/new-serve.log
+            ${{ runner.temp }}/old-serve.log
+          if-no-files-found: warn
+          retention-days: 14
+      # The rows themselves are kept where they were judged differently, to find which stage the judge read otherwise.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: observations-${{ matrix.shard }}
+          path: ${{ env.APP }}/.migrate/observations
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  merge:
+    needs: [plan, check]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: check-*
+          path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          name: judge-gate-shards
+          path: shards/check-shards
+      - name: Merge
+        env:
+          BUILD: ${{ inputs.build || 'the original against itself' }}
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          node scripts/check-shards.ts merge shards merged shards/check-shards
+          judged=$(grep -l "matches" shards/*/judge.txt 2>/dev/null | wc -l || true)
+          { echo "### $SITE: $BUILD, $TARGETS"; echo; echo "$judged shards judged again from their observations alike."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: judge-gate-merged
+          path: merged
+          retention-days: 30

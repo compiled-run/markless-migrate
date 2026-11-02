@@ -8,6 +8,7 @@ import { pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import type { NavigationResult } from './nav-parity.ts';
 import { notExercised, partialResult } from './route-judge.ts';
 import { summarizeResponsiveness } from './responsiveness-summary.ts';
+import { routeState } from './route-state.ts';
 import type { ResponsivenessOptions } from './responsiveness.ts';
 import type { SourceFacts } from './source-facts.ts';
 import type { TemplateGroup } from './templates.ts';
@@ -56,7 +57,9 @@ export type RunEvent =
 	| { readonly kind: 'endpoint'; readonly role?: string; readonly route: string; readonly result: RouteResult }
 	| { readonly kind: 'redirect'; readonly role?: string; readonly route: string; readonly result: RouteResult }
 	| { readonly kind: 'loads'; readonly loads: readonly (readonly [string, RouteLoad])[] }
-	| { readonly kind: 'footer'; readonly pinned: readonly string[]; readonly cache?: Report['cache']; readonly wasteReferences: readonly WasteReport[] };
+	| { readonly kind: 'footer'; readonly pinned: readonly string[]; readonly cache?: Report['cache']; readonly wasteReferences: readonly WasteReport[] }
+	/** Results `check --reuse` kept from earlier runs and added to the report after the run. */
+	| { readonly kind: 'reused'; readonly routes: readonly RouteResult[] };
 
 /** Template groups of more than one page, by member: a member that is not its group's representative is checked light. */
 export function templateGroups(groups: readonly TemplateGroup[]): { readonly groupOf: ReadonlyMap<string, TemplateGroup>; readonly light: (route: string) => boolean } {
@@ -189,4 +192,9 @@ export function finishReport(header: RunHeader, routes: readonly RouteResult[], 
 		header.accepted,
 		header.automaticOff,
 	);
+}
+
+/** report.json as check writes it: each route's state, its visual diffs' files, and its journeys counted. */
+export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
+	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, storedJourneys, ...route }) => ({ ...route, state: routeState(route), visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? storedJourneys?.names.length ?? 0 })) };
 }
