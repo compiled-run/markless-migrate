@@ -138,6 +138,18 @@ jobs:
           node scripts/check-budget.ts measure . "$RUNNER_TEMP/head.json"
           node scripts/check-budget.ts compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
 
+  # A convert's peak live heap on a fixed multi-route site (scripts/convert-budget.ts states the bound and how it was measured).
+  convert-budget:
+    name: Convert budget
+    needs: changes
+    if: needs.changes.outputs.tested != 'true' && needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: node scripts/convert-budget.ts
+
   # The checker's mutation suites were 60% of a pull request's runner time; they run in the merge queue and on main.
   mutation:
     name: E2E ${{ matrix.suite }} (${{ matrix.shard }})
@@ -178,7 +190,7 @@ jobs:
   passed:
     name: CI passed
     if: always()
-    needs: [changes, typecheck, unit, e2e, budget, mutation]
+    needs: [changes, typecheck, unit, e2e, budget, convert-budget, mutation]
     runs-on: ubuntu-latest
     steps:
       - run: |
@@ -189,6 +201,7 @@ jobs:
           test "$UNIT" = success
           if [ "$E2E_WANTED" = true ]; then test "$E2E" = success; else test "$E2E" = skipped; fi
           if [ "$E2E_WANTED" = true ] && [ "$EVENT" != push ]; then test "$BUDGET" = success; fi
+          if [ "$E2E_WANTED" = true ]; then test "$CONVERT_BUDGET" = success; fi
           if [ "$EVENT" = pull_request ]; then test "$MUTATION" = skipped; elif [ "$E2E_WANTED" = true ]; then test "$MUTATION" = success; fi
         env:
           EVENT: ${{ github.event_name }}
@@ -199,4 +212,5 @@ jobs:
           UNIT: ${{ needs.unit.result }}
           E2E: ${{ needs.e2e.result }}
           BUDGET: ${{ needs.budget.result }}
+          CONVERT_BUDGET: ${{ needs.convert-budget.result }}
           MUTATION: ${{ needs.mutation.result }}
