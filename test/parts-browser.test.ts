@@ -871,17 +871,40 @@ test('shadcn-ui site: a package manager list a page brings in place shows the ke
 	const page = await open('<main id="main"></main>', ['site'], 'body');
 	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
 	const seen = await page.evaluate(
-		() =>
+		(event) =>
 			new Promise<string>((done) => {
 				const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
 				// The page an in-place navigation swaps in, its tab state its own (the converter's mousedown handler).
 				document.getElementById('main')!.innerHTML = `<div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div>`;
 				const list = document.querySelector('[role="tablist"]')!;
 				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				document.dispatchEvent(new CustomEvent(event));
 				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
 			}),
+		MARKLESS_ROUTER_RENDERED_EVENT,
 	);
 	assert.equal(seen, 'npm', 'chosen before the next frame');
+	await page.close();
+});
+
+test('shadcn-ui site: a list the router keeps in place across a swap, its state reset to the default, takes the kept choice again once the swap commits', async () => {
+	const tab = (v: string, on: boolean) => `<button role="tab" aria-controls="r-content-${v}" aria-selected="${on}">${v}</button>`;
+	const page = await open(`<main id="main"><div role="tablist">${tab('pnpm', true)}${tab('npm', false)}</div></main>`, ['site'], 'body');
+	await page.evaluate(() => localStorage.setItem('config', JSON.stringify({ style: 'new-york-v4', packageManager: 'npm', installationType: 'cli' })));
+	const seen = await page.evaluate(
+		(event) =>
+			new Promise<string>((done) => {
+				const list = document.querySelector('[role="tablist"]')!;
+				list.addEventListener('mousedown', (e) => { const t = (e.target as Element).closest('[role="tab"]'); for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === t)); });
+				// The swapped-in page's own state: the kept node shows the default again, and no tablist is added.
+				for (const x of list.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x.textContent === 'pnpm'));
+				history.replaceState(null, '', '/docs/next');
+				document.dispatchEvent(new CustomEvent(event));
+				requestAnimationFrame(() => done([...list.querySelectorAll('[aria-selected="true"]')].map((t) => t.textContent).join()));
+			}),
+		MARKLESS_ROUTER_RENDERED_EVENT,
+	);
+	assert.equal(seen, 'npm');
 	await page.close();
 });
 
