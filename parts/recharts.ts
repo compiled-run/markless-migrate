@@ -27,6 +27,8 @@ interface Facts {
 	readonly a?: readonly unknown[];
 	readonly l?: string;
 	readonly pl?: readonly unknown[];
+	/** The state the chart starts in: the point whose tooltip recharts shows at rest (its defaultIndex). */
+	readonly r?: number;
 }
 
 const WRAPPER = '[data-mm-chart]';
@@ -74,12 +76,13 @@ function anchor(f: Facts, state: number, x: number, y: number): [number, number]
 	return [cx + radius * Math.cos(angle), cy - radius * Math.sin(angle)];
 }
 
-function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: number, place?: { x: number; y: number } | { key: number }): void {
+function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: number, place?: { x: number; y: number } | { key: number; still?: boolean }): void {
 	const f = surface && factsOf(surface);
 	const tip = wrapper.querySelector<HTMLElement>('.recharts-tooltip-wrapper');
 	if (!tip) return;
 	const now = active.get(wrapper);
 	const shown = f ? state : -1;
+	resting.delete(wrapper);
 	if (!now || now.surface !== surface || now.state !== shown) wrapper.dispatchEvent(new CustomEvent('mmchart', { detail: shown }));
 	if (surface) active.set(wrapper, { surface, state: shown, key: place && 'key' in place ? place.key : (now?.key ?? -1) });
 	if (shown < 0 || !place || !f || !surface) {
@@ -115,7 +118,8 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 		const at = new DOMPoint(x, y).matrixTransform(m);
 		const box = wrapper.getBoundingClientRect();
 		tip.style.visibility = 'visible';
-		if (!matchMedia('(prefers-reduced-motion: reduce)').matches) tip.style.transition = 'transform 400ms';
+		if ('still' in place && place.still) tip.style.removeProperty('transition');
+		else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) tip.style.transition = 'transform 400ms';
 		tip.style.transform = `translate(${at.x - box.left}px, ${at.y - box.top}px)`;
 	});
 }
@@ -175,10 +179,22 @@ export function mount(el: Element): void {
 	wire(el);
 	watch(el);
 	track(el);
+	rest(el);
 	const card = el.closest('[data-mm-morph]');
 	if (card?.querySelector('[data-mm-variant]') && card.querySelector('[data-slot="select-trigger"]')) share(card);
 	followLanguage(el);
 	begin(el);
+}
+
+// recharts places the tooltip it shows at rest where the arrow keys would put it, for the size the chart is drawn at.
+const resting = new WeakSet<Element>();
+function rest(wrapper: HTMLElement): void {
+	const surface = surfaceOf(wrapper);
+	const f = surface && factsOf(surface);
+	const key = f?.r === undefined ? -1 : (f.k?.findIndex((e) => e[0] === f.r) ?? -1);
+	if (!surface || !f || key < 0 || (active.has(wrapper) && !resting.has(wrapper))) return;
+	show(wrapper, surface, f.r!, { key, still: true });
+	resting.add(wrapper);
 }
 
 // An RTL preview's language (its data-lang, which the site's RTL part sets; English where it is left to right) picks
@@ -292,6 +308,7 @@ function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wr
 		layout.fit(svg, W, H, local, c.claim);
 		laid.set(svg, key);
 		parsed.delete(svg);
+		rest(wrapper);
 		for (const path of svg.querySelectorAll('path[data-mm-geo]')) finals.delete(path);
 	};
 	if (layoutIn) run(layoutIn);

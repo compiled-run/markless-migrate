@@ -6,7 +6,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
-import { attr, childrenOf, elementChildren, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, elementChildren, inner, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 import type { Limit } from './limit.ts';
 
@@ -1133,7 +1133,10 @@ export class ChartPlan {
 			const name = `chart${this.n++}`;
 			const v = `${name}v`;
 			const many = chart.variants.length > 1;
-			const declare = [`let ${name} = state(-1);`, ...(many ? [`let ${v} = state(0);`] : [])];
+			// recharts' defaultIndex: the point whose tooltip the old page shows at rest is the one the chart starts on.
+			const resting = tip && elementChildren(tip).length ? inner(tip) : undefined;
+			const start = resting === undefined ? -1 : (chart.variants[0]?.states ?? []).findIndex((s) => inner(parseFragment(s.tooltip) as unknown as Tree) === resting);
+			const declare = [`let ${name} = state(${start});`, ...(many ? [`let ${v} = state(0);`] : [])];
 			const entries: ChartWidth[] = [{ viewport: 0, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
 			const spares = spareCounts(entries.flatMap((entry) => entry.variants.map((v) => parsedSvg(v.svg ?? ''))));
 			// Each width's variants by the reference's: the rest is 0, a control's state is the one the same control (by its text) shows.
@@ -1184,7 +1187,7 @@ export class ChartPlan {
 					spare(tree, spares);
 					motion(tree, entry.view);
 					const style = attr(tree, 'style');
-					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(grid ? { gy: grid } : {}), ...(many && chart.lag ? { z: chart.lag } : {}) }))}}`];
+					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify({ ...this.factsOf(entry, variant, tree), ...(grid ? { gy: grid } : {}), ...(many && chart.lag ? { z: chart.lag } : {}), ...(k === 0 && start >= 0 ? { r: start } : {}) }))}}`];
 					const hide = `${v} === ${k} ? ${lit(style ?? '')} : ${lit(`${style ? `${style.replace(/;?\s*$/, ';')} ` : ''}display: none;`)}`;
 					if (many && style === undefined) extra.unshift(`style={${hide}}`);
 					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
