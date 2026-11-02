@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { parse } from 'yuku-css';
@@ -78,8 +79,7 @@ function lastOccurrences(hrefs: readonly string[]): string[] {
 export async function importStylesheets<T extends Tag>(app: string, publicDir: string, pages: ReadonlyMap<string, readonly string[]>, heads: ReadonlyMap<string, T[]>, keepOthers: boolean): Promise<{ moved: number; urls: string[]; dropped: DroppedRule[] }> {
 	const out = join(app, 'styles', 'converted');
 	if (!keepOthers) await rm(out, { recursive: true, force: true });
-	const copies = new Map<string, Promise<ReturnType<typeof relocated>>>();
-	const copy = (href: string) => copies.get(href) ?? copies.set(href, readFile(join(publicDir, href), 'utf8').then((css) => relocated(css, href), () => undefined)).get(href)!;
+	const copy = copier(publicDir);
 	let moved = 0;
 	const urls = new Set<string>();
 	const dropped = new Map<string, readonly DroppedRule[]>();
@@ -88,22 +88,10 @@ export async function importStylesheets<T extends Tag>(app: string, publicDir: s
 		if (!lists.length || lists.some((list) => !list?.length || !list.every(movable))) continue;
 		const orders = lists.map((list) => lastOccurrences(list!.map((t) => t.attrs.href!)));
 		if (orders.some((order) => order.join('\n') !== orders[0]!.join('\n'))) continue;
-		const sheets = orders[0]!;
-		const css = await Promise.all(sheets.map(copy));
-		if (css.some((c) => c === undefined)) continue;
-		const file = join(app, page);
-		const imports = [];
-		for (const [i, href] of sheets.entries()) {
-			const target = join(out, href);
-			await mkdir(dirname(target), { recursive: true });
-			await writeFile(target, css[i]!.css);
-			for (const url of css[i]!.urls) urls.add(url);
-			dropped.set(href, css[i]!.dropped);
-			imports.push(`import ${JSON.stringify(relative(dirname(file), target).replace(/^(?!\.)/, './'))};`);
-		}
-		const source = await readFile(file, 'utf8');
-		const firstLine = source.indexOf('\n') + 1;
-		await writeFile(file, `${source.slice(0, firstLine)}${imports.join('\n')}\n${source.slice(firstLine)}`);
+		const done = await importInto(app, page, orders[0]!, copy);
+		if (!done) continue;
+		for (const url of done.urls) urls.add(url);
+		for (const [href, rules] of done.dropped) dropped.set(href, rules);
 		for (const route of routes) {
 			const head = heads.get(route)!;
 			head.splice(0, Infinity, ...head.filter((t) => !isStylesheet(t)));
@@ -111,4 +99,52 @@ export async function importStylesheets<T extends Tag>(app: string, publicDir: s
 		moved++;
 	}
 	return { moved, urls: [...urls], dropped: [...dropped.values()].flat() };
+}
+
+type Copier = (href: string) => Promise<ReturnType<typeof relocated>>;
+
+function copier(publicDir: string): Copier {
+	const copies = new Map<string, Promise<ReturnType<typeof relocated>>>();
+	return (href) => copies.get(href) ?? copies.set(href, readFile(join(publicDir, href), 'utf8').then((css) => relocated(css, href), () => undefined)).get(href)!;
+}
+
+/**
+ * Imports the sheets, in order, at the top of the module `file` (from the app), as copies under styles/converted/: two or
+ * more as one combined copy, since a bundler that splits CSS across chunks loads a sheet other modules import too ahead
+ * of the module's own. Undefined, and nothing written, when one cannot move.
+ */
+async function importInto(app: string, file: string, sheets: readonly string[], copy: Copier): Promise<{ urls: string[]; dropped: Map<string, readonly DroppedRule[]> } | undefined> {
+	const css = await Promise.all(sheets.map(copy));
+	if (css.some((c) => c === undefined)) return undefined;
+	const out = join(app, 'styles', 'converted');
+	const path = join(app, file);
+	const urls = css.flatMap((c) => c!.urls);
+	const dropped = new Map(sheets.map((href, i) => [href, css[i]!.dropped]));
+	const combined = css.map((c) => c!.css).join('\n');
+	const targets = sheets.length > 1 && joinable(css.map((c) => c!.css), combined) ? [{ target: join(out, '_combined', `${createHash('sha256').update(combined).digest('hex').slice(0, 12)}.css`), text: combined }] : sheets.map((href, i) => ({ target: join(out, href), text: css[i]!.css }));
+	const imports = [];
+	for (const { target, text } of targets) {
+		await mkdir(dirname(target), { recursive: true });
+		await writeFile(target, text);
+		imports.push(`import ${JSON.stringify(relative(dirname(path), target).replace(/^(?!\.)/, './'))};`);
+	}
+	const source = await readFile(path, 'utf8');
+	const firstLine = source.indexOf('\n') + 1;
+	await writeFile(path, `${source.slice(0, firstLine)}${imports.join('\n')}\n${source.slice(firstLine)}`);
+	return { urls, dropped };
+}
+
+/** Whether the sheets read the same as one text: none leaves a block or comment open for the next to fall into. */
+function joinable(sheets: readonly string[], combined: string): boolean {
+	try {
+		return parse(combined).ast.children.length === sheets.reduce((n, css) => n + parse(css).ast.children.length, 0);
+	} catch {
+		return false;
+	}
+}
+
+/** Imports the shared sheets into document.tsrx, so every page carries them ahead of its own and a navigation keeps them. Call after importStylesheets, which clears the copies. */
+export async function importIntoDocument(app: string, publicDir: string, sheets: readonly string[]): Promise<{ urls: string[]; dropped: DroppedRule[] } | undefined> {
+	const done = await importInto(app, 'document.tsrx', sheets, copier(publicDir));
+	return done && { urls: done.urls, dropped: [...done.dropped.values()].flat() };
 }

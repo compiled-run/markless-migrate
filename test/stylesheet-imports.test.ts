@@ -21,13 +21,15 @@ async function app(sheets: Record<string, string>, pages: Record<string, string>
 	return dir;
 }
 
-test('a page imports its sheets in cascade order, a twice-linked sheet at its last link, and its head keeps the rest', async () => {
+test('a page imports its sheets in cascade order as one copy, a twice-linked sheet at its last link, and its head keeps the rest', async () => {
 	const dir = await app({ '/_converted/styles/a.css': '.a{color:red}', '/_converted/styles/b.css': '.b{background:url(/x.png)}' }, { 'pages/docs/x.tsrx': '// generated\nimport X from "x";\n' });
 	const head = [meta, link('/_converted/styles/a.css'), link('/_converted/styles/b.css'), link('/_converted/styles/a.css')];
 	const heads = new Map([['/docs/x/', head]]);
 	assert.equal((await importStylesheets(dir, join(dir, 'public'), new Map([['pages/docs/x.tsrx', ['/docs/x/']]]), heads, false)).moved, 1);
-	assert.equal(await readFile(join(dir, 'pages/docs/x.tsrx'), 'utf8'), '// generated\nimport "../../styles/converted/_converted/styles/b.css";\nimport "../../styles/converted/_converted/styles/a.css";\nimport X from "x";\n');
-	assert.equal(await readFile(join(dir, 'styles/converted/_converted/styles/a.css'), 'utf8'), '.a{color:red}');
+	const source = await readFile(join(dir, 'pages/docs/x.tsrx'), 'utf8');
+	const copy = /^\/\/ generated\nimport "\.\.\/\.\.\/(styles\/converted\/_combined\/[0-9a-f]{12}\.css)";\nimport X from "x";\n$/.exec(source);
+	assert.ok(copy, source);
+	assert.equal(await readFile(join(dir, copy[1]!), 'utf8'), '.b{background:url(/x.png)}\n.a{color:red}');
 	assert.deepEqual(heads.get('/docs/x/'), [meta]);
 	await rm(dir, { recursive: true, force: true });
 });
@@ -71,5 +73,13 @@ test('a rule whose selector a browser cannot parse is dropped from the copy, as 
 	const result = await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false);
 	assert.deepEqual(result, { moved: 1, urls: ['/m/x.png'], dropped: [{ href: '/c/s.css', rule: '[data-vaul-handle-hitarea]:{width:100%;height:100%}', reason: 'Identifier is expected' }] });
 	assert.equal(await readFile(join(dir, 'styles/converted/c/s.css'), 'utf8'), '@media (hover:hover) and (pointer:fine){[data-vaul-drawer]{user-select:none}}@media (pointer:fine){}.a{background:url("/m/x.png")}');
+	await rm(dir, { recursive: true, force: true });
+});
+
+test('sheets stay separate imports when one leaves a block open that the next would fall into', async () => {
+	const dir = await app({ '/s/a.css': '@media (min-width:1px){.a{color:red}', '/s/b.css': '.b{color:blue}' }, { 'p/one.tsrx': '//\n' });
+	const heads = new Map([['/one', [link('/s/a.css'), link('/s/b.css')]]]);
+	assert.equal((await importStylesheets(dir, join(dir, 'public'), new Map([['p/one.tsrx', ['/one']]]), heads, false)).moved, 1);
+	assert.equal(await readFile(join(dir, 'p/one.tsrx'), 'utf8'), '//\nimport "../styles/converted/s/a.css";\nimport "../styles/converted/s/b.css";\n');
 	await rm(dir, { recursive: true, force: true });
 });
