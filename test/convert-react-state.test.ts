@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { body, parseDocument } from '../src/convert/dom.ts';
+import { attr, body, parseDocument, type Element } from '../src/convert/dom.ts';
 import { ReactStatePlan } from '../src/convert/react-state.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 import { scanLibraries } from '../src/library/index.ts';
@@ -25,10 +25,10 @@ async function facts(files: Record<string, string>): Promise<StateComponent[]> {
 	}
 }
 
-function convert(list: StateComponent[], html: string) {
+function convert(list: StateComponent[], html: string, opens?: (el: Element) => boolean) {
 	const root = body(parseDocument(`<body><main>${html}</main></body>`));
 	const plan = new ReactStatePlan(list);
-	const found = plan.add(root);
+	const found = plan.add(root, undefined, opens);
 	const declarations: string[] = [];
 	const out = emitElement(root.childNodes[0] as never, { declarations, bind: (el) => plan.bind(el) });
 	return { plan, found, out, declarations };
@@ -203,5 +203,35 @@ export default function Submenus() {
 	assert.deepEqual(declarations, ['let rtl_0 = state(false);']);
 	assert.ok(out.includes('data-slot="dropdown-menu-trigger" data-mm-dir={rtl_0 ? "rtl" : "ltr"}>Open</button>'), out);
 	assert.ok(out.includes('onInput={(event) => (rtl_0 = event.currentTarget.checked)}'), out);
+	await compiles(declarations, out);
+});
+
+test("a dialog's open state the app's own button sets is found where that button opens the dialog's layer: it carries the state for the dialog to follow and takes its announced changes", async () => {
+	const list = await facts({
+		'package.json': JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.0.0' } }),
+		'components/ui/button.tsx': 'export function Button(props: any) {\n\treturn <button data-slot="button" {...props} />\n}\n',
+		'components/ui/dialog.tsx': 'import { Dialog as P } from "radix-ui"\nexport function Dialog(props: any) {\n\treturn <P.Root data-slot="dialog" {...props} />\n}\nexport function DialogContent({ children, ...props }: any) {\n\treturn <P.Portal><P.Content data-slot="dialog-content" {...props}>{children}</P.Content></P.Portal>\n}\n',
+		'app/page.tsx': `import * as React from "react"
+import { Button } from "../components/ui/button"
+import { Dialog, DialogContent } from "../components/ui/dialog"
+export default function CommandBasic() {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <div data-command="">
+      <Button type="button" onClick={() => setOpen(true)}>Open Menu</Button>
+      <Dialog open={open} onOpenChange={setOpen}><DialogContent><p>Calendar</p></DialogContent></Dialog>
+    </div>
+  )
+}
+`,
+	});
+	const html = '<div data-command=""><button data-slot="button" type="button">Open Menu</button></div>';
+	assert.equal(convert(list, html).found, 0, 'a button that opens no layer on the page is not the dialog\'s opener');
+	const { found, out, declarations } = convert(list, html, (el) => attr(el, 'data-slot') === 'button');
+	assert.equal(found, 1);
+	assert.deepEqual(declarations, ['let open_0 = state(false);']);
+	assert.ok(out.includes('data-mm-open={(open_0) ? "true" : "false"}'), out);
+	assert.ok(out.includes('onClick={() => (open_0 = true)}'), out);
+	assert.ok(out.includes('onMmopen={(mmEvent) => (((v) => (open_0 = typeof v === "function" ? v(open_0) : v)))((mmEvent as CustomEvent).detail)}'), out);
 	await compiles(declarations, out);
 });

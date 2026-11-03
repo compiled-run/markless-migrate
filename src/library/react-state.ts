@@ -1,5 +1,5 @@
 import { isFunction, patternNames, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
-import { announcedChange, configAttribute } from '../convert/parts.ts';
+import { announcedChange, configAttribute, followedProp, followsAny } from '../convert/parts.ts';
 import type { Compositions, PartRef } from './composition.ts';
 import { cancelOf, freeNames, GLOBALS, HOOK, Refused, TS_EXPRESSIONS, WRAPPERS, type Handlers } from './handlers.ts';
 import type { BoundAttribute, StateCode, StateComponent, StateNode, StateSlot } from './types.ts';
@@ -102,7 +102,11 @@ interface ControlledPair {
 	readonly change: N;
 	/** The part's element in the render, once it is placed; none where convert cannot find it on the page. */
 	node?: { events?: Record<string, StateCode> };
+	/** The part's own trigger among its children, which opens it without the app's state. */
+	trigger?: string;
 }
+
+type ElementNode = { -readonly [K in keyof Extract<StateNode, { kind: 'element' }>]: Extract<StateNode, { kind: 'element' }>[K] };
 
 interface Scope {
 	readonly mod: Module;
@@ -119,6 +123,8 @@ interface Scope {
 	readonly declarators: Map<number, N>;
 	/** Each state a part's controlled prop takes, with the nodes that name it there (its value's state, its callback's setter). */
 	readonly controlled: Map<number, ControlledPair[]>;
+	/** Each element found with DOM event handlers, and the handlers' expressions. */
+	readonly sites: { readonly node: ElementNode; readonly exprs: readonly N[] }[];
 }
 
 const isReference = (n: N, parent: N | undefined) =>
@@ -317,7 +323,7 @@ export class StateComponents {
 
 	private async component(mod: Module, fn: N, body: N[], effects: { line: number; reason: string }[]): Promise<Pick<StateComponent, 'slots' | 'nodes' | 'partState'>> {
 		const props = new Set((fn.params as N[]).flatMap((p) => patternNames(p)));
-		const scope: Scope = { mod, component: fn, slots: [], index: new Map(), setters: new Map(), dispatchers: new Map(), locals: new Map(), kept: new Set(), props, declarators: new Map(), controlled: new Map() };
+		const scope: Scope = { mod, component: fn, slots: [], index: new Map(), setters: new Map(), dispatchers: new Map(), locals: new Map(), kept: new Set(), props, declarators: new Map(), controlled: new Map(), sites: [] };
 		let returned: N | undefined;
 		for (const [i, st] of body.entries()) {
 			if (st.type === 'ReturnStatement') {
@@ -352,7 +358,20 @@ export class StateComponents {
 			const own = scope.declarators.get(slot)!;
 			const setters = [...scope.setters].filter(([, i]) => i === slot).map(([setter]) => setter);
 			const elsewhere = (names: readonly string[]) => names.some((n) => references(fn.body, n, own).some((r) => !uses.includes(r)));
-			if (elsewhere(setters)) throw new Refused(`passes its state ${name} to <${tag}>'s ${prop} and sets it elsewhere, which needs <${tag}> to follow it`);
+			if (elsewhere(setters)) {
+				const followed = followedProp(part.library, part.export, prop);
+				const refs = setters.flatMap((setter) => references(fn.body, setter, own).filter((r) => !uses.includes(r)));
+				const sitesOf = (r: N) => scope.sites.filter((site) => site.exprs.some((e) => within(r, e) || (e.type === 'Identifier' && within(r, scope.locals.get(e.name)?.fn))));
+				if (!followed || refs.some((r) => !sitesOf(r).length)) throw new Refused(`passes its state ${name} to <${tag}>'s ${prop} and sets it elsewhere, which needs <${tag}> to follow it`);
+				if (pair.trigger) throw new Refused(`passes its state ${name} to <${tag}>'s ${prop} and sets it elsewhere beside its own <${pair.trigger}>, which its port does not follow yet`);
+				// The part follows the state its openers carry and announces its own changes there, as the library calls back.
+				for (const site of new Set(refs.flatMap(sitesOf))) {
+					site.node.opens = true;
+					site.node.bound = { ...site.node.bound, [followed.attribute]: { code: ['(', slot, ') ? "true" : "false"'], initial: attributeText(followed.attribute, Boolean(value)), added: true } };
+					site.node.events = { ...site.node.events, [`on${followed.event[0]!.toUpperCase()}${followed.event.slice(1)}`]: tidy(['(mmEvent) => (', ...rewrite(scope, pair.change), ')((mmEvent as CustomEvent).detail)']) };
+				}
+				continue;
+			}
 			if (!elsewhere([name])) {
 				mirrored.add(slot);
 				partState.push({ state: name, part: `${part.library} ${part.export}`, prop });
@@ -552,6 +571,7 @@ export class StateComponents {
 		const attrs: Record<string, string> = {};
 		const bound: Record<string, BoundAttribute> = { ...given };
 		const events: Record<string, StateCode> = {};
+		const handlers: N[] = [];
 		const controlled = host ? { attrs: new Set<N>(), pairs: [] } : await this.controlledPairs(scope, opening, name, tag.part);
 		for (const a of opening.attributes as N[]) {
 			if (controlled.attrs.has(a)) continue;
@@ -570,6 +590,7 @@ export class StateComponents {
 				if (!passesEvent(prop)) throw new Refused(`sets its state from <${name}>'s ${prop}, which <${name}> answers itself, not as the DOM event`);
 				const event = prop === 'onChange' && wraps && TEXT_INPUT.test(wraps) ? 'onInput' : prop === 'onDoubleClick' ? 'onDblClick' : prop;
 				events[event] = await this.handler(scope, expr);
+				handlers.push(expr);
 				continue;
 			}
 			const dom = domName(prop);
@@ -605,9 +626,18 @@ export class StateComponents {
 		}
 		const kids = (el.children as N[]).filter((c) => !(c.type === 'JSXText' && !jsxTextValue(c.value)));
 		const stateInside = kids.some((c) => (c.type === 'JSXExpressionContainer' ? reads(scope, c.expression) : c.type !== 'JSXText' && jsxReads(scope, c)));
-		const node: { -readonly [K in keyof Extract<StateNode, { kind: 'element' }>]: Extract<StateNode, { kind: 'element' }>[K] } = { kind: 'element', attrs, ...(host ? { tag: host } : {}), ...(slots.length ? { slots } : {}) };
+		if (tag.part && !host && followsAny(tag.part.library, tag.part.export)) {
+			// A Root that renders no element: its content is a layer, what the page shows of it the wrapper's own.
+			if (stateInside) throw new Refused(`its state reaches inside <${name}>, whose content is a layer convert does not search yet`);
+			if (Object.keys(bound).length || Object.keys(events).length) throw new Refused(`its state reaches <${name}>, which convert cannot find on the page`);
+			const trigger = await this.ownTrigger(scope, el, tag.part);
+			for (const pair of controlled.pairs) if (trigger) pair.trigger = trigger;
+			return { kind: 'opaque' };
+		}
+		const node: ElementNode = { kind: 'element', attrs, ...(host ? { tag: host } : {}), ...(slots.length ? { slots } : {}) };
 		if (Object.keys(bound).length) node.bound = bound;
 		if (Object.keys(events).length) node.events = events;
+		if (handlers.length) scope.sites.push({ node, exprs: handlers });
 		if (!host && !slots.length) {
 			if (stateInside || node.bound || node.events) throw new Refused(`its state reaches <${name}>, which convert cannot find on the page`);
 			return { kind: 'opaque' };
@@ -626,6 +656,20 @@ export class StateComponents {
 		node.children = children;
 		if (!passes) node.loose = true;
 		return node;
+	}
+
+	/** The tag of a part's own Trigger among an element's descendants (`<DialogTrigger>` in a Dialog), if it has one. */
+	private async ownTrigger(scope: Scope, el: N, part: PartRef): Promise<string | undefined> {
+		const trigger = `${part.export.split('.')[0]}.Trigger`;
+		const openings: N[] = [];
+		walk(el, (n) => {
+			if (n !== el.openingElement && n.type === 'JSXOpeningElement') openings.push(n);
+		});
+		for (const o of openings) {
+			const found = (await this.composer.tag(scope.mod, o.name)).part;
+			if (found?.library === part.library && found.export === trigger) return tagName(o.name);
+		}
+		return undefined;
 	}
 
 	/**
@@ -845,6 +889,8 @@ function setterCall(fn: N, isSetter: (name: string) => boolean): N | undefined {
 	const arg = unwrap(args[0]);
 	return body?.type === 'CallExpression' && body.callee.type === 'Identifier' && isSetter(body.callee.name) && args.length === 1 && arg?.type === 'Identifier' && arg.name === param ? body.callee : undefined;
 }
+
+const within = (n: N, outer: N | undefined) => Boolean(outer) && n.start >= outer!.start && n.end <= outer!.end;
 
 /** The nodes in a component's body that read `name` as its own binding: not a parameter or a declaration of the same name, nor `own`'s declaration of it. */
 function references(body: N, name: string, own: N): N[] {

@@ -216,6 +216,8 @@ export type StateNode =
 			readonly children?: readonly StateNode[];
 			/** Its children sit somewhere inside it (a component's), not as its own children in order. */
 			readonly loose?: true;
+			/** It opens a layer of the page (the dialog whose open state it carries): found only on an element that does. */
+			readonly opens?: true;
 	  }
 	/** Text: what the source fixes, or (`bound`) what it computes from state. */
 	| { readonly kind: 'text'; readonly value: string; readonly bound?: BoundAttribute }

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { attr, childrenOf, elementChildren, walk, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
 import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
+import { LAYER_OPEN_ATTRIBUTE, LAYER_OPEN_EVENT } from '../../parts/open-state.ts';
 import { SLIDER_VALUE_EVENT } from '../../parts/slider.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
 
@@ -38,6 +39,11 @@ export interface Port {
 	 * the library's next value; `list`: the values as a list, which a library given one value calls back with the first of.
 	 */
 	readonly changes?: Readonly<Record<string, { readonly event: string; readonly list?: true }>>;
+	/**
+	 * Controlled props of its `roots`, which render no element (a dialog's Root), the port follows from the app's state:
+	 * written as `attribute` on each element whose handler sets that state, where the port announces its own changes with `event`.
+	 */
+	readonly follows?: { readonly roots: readonly string[]; readonly props: Readonly<Record<string, { readonly attribute: string; readonly event: string }>> };
 	/**
 	 * Among the parts the source renders with an element's `data-slot`, whether this element is this library's: the markup
 	 * contract tells Radix's tab from Base UI's when a site renders both. The source decides the part; this only places it.
@@ -105,10 +111,12 @@ function narrow(el: Element, candidates: readonly PartUsage[]): PartUsage[] {
 const quiFloating = (el: Element) => attr(el, 'data-floating') !== undefined && attr(el, 'popover') !== undefined;
 const QWIK_UI = '@qwik-ui/headless';
 
+const followsOpen = (...roots: string[]) => ({ roots, props: { open: { attribute: LAYER_OPEN_ATTRIBUTE, event: LAYER_OPEN_EVENT } } });
+
 export const PORTS: readonly Port[] = [
 	// Radix Tabs are Markless state (convert's TabsPlan); the part is only the roving focus the triggers' keydown calls.
 	{ module: 'radix/roving', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content', 'ToggleGroup.Root', 'ToggleGroup.Item', 'RadioGroup.Root', 'RadioGroup.Item'], events: ['pointerdown', 'focusin', 'keydown'], locate: (el) => radix(el) },
-	{ module: 'radix/dialog', library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'radix/dialog', library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], follows: followsOpen('Dialog.Root', 'AlertDialog.Root'), locate: (el) => radix(el) },
 	{ module: 'cmdk', library: 'cmdk', exports: ['Command', 'Command.Input', 'Command.List', 'Command.Item', 'Command.Group', 'Command.Empty'], events: ['input', 'keydown', 'pointerover', 'click', 'focusin', 'focusout'], locate: () => true, needs: ['choices'] },
 	{ module: 'radix/popover', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },
 	{ module: 'radix/dropdown-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item', 'Menubar.Root', 'Menubar.Menu', 'Menubar.Trigger', 'Menubar.Content', 'Menubar.Item'], events: ['pointerdown', 'click', 'pointerover', 'pointerout', 'focusin', 'keydown'], locate: (el) => radix(el) },
@@ -128,7 +136,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'base-ui/navigation-menu', library: '@base-ui/react', exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Portal', 'NavigationMenu.Positioner', 'NavigationMenu.Popup', 'NavigationMenu.Viewport'], events: ['pointerover', 'pointerout', 'click', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/preview-card', library: '@base-ui/react', exports: ['PreviewCard.Root', 'PreviewCard.Trigger', 'PreviewCard.Popup', 'PreviewCard.Positioner', 'PreviewCard.Portal'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/context-menu', library: '@base-ui/react', exports: ['ContextMenu.Root', 'ContextMenu.Trigger', 'ContextMenu.Popup', 'ContextMenu.Positioner', 'ContextMenu.Portal', 'ContextMenu.Item'], events: ['contextmenu', 'click'], locate: (el) => base(el) || attr(el, 'data-slot') === 'context-menu-trigger', needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'base-ui/menu'] },
-	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
+	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], follows: followsOpen('Dialog.Root', 'AlertDialog.Root', 'Drawer.Root'), locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
 	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	// shadcn's Carousel drives Embla through useEmblaCarousel: the slots its file writes are the call's (usage.ts).
 	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
@@ -308,6 +316,14 @@ const CONFIG_PROPS: readonly { readonly library: string; readonly export: string
 export function configAttribute(library: string, exportName: string, prop: string): { readonly attribute: string; readonly on?: string } | undefined {
 	return CONFIG_PROPS.find((c) => c.library === library && c.export === exportName && c.prop === prop);
 }
+
+/** How a port follows a controlled prop of a part that renders no element from the app's state, if it does. */
+export function followedProp(library: string, exportName: string, prop: string): { readonly attribute: string; readonly event: string } | undefined {
+	return PORTS.find((p) => p.library === library && p.follows?.roots.includes(exportName) && p.follows.props[prop])?.follows!.props[prop];
+}
+
+/** Whether a part is a Root a port follows, which renders no element of its own. */
+export const followsAny = (library: string, exportName: string): boolean => PORTS.some((p) => p.library === library && p.follows?.roots.includes(exportName));
 
 /** The event a port announces a library part's controlled prop's changes with, if one does. */
 export function announcedChange(library: string, exportName: string, prop: string): { readonly event: string; readonly list?: true } | undefined {

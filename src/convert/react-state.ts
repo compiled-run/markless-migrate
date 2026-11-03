@@ -42,6 +42,7 @@ export class ReactStatePlan {
 	private readonly computed = new Set<string>();
 	private n = 0;
 	private taken: (el: Element) => boolean = () => false;
+	private opens: (el: Element) => boolean = () => false;
 	/** Instances found, by component. */
 	readonly counts = new Map<string, number>();
 
@@ -58,9 +59,13 @@ export class ReactStatePlan {
 		return this.computed.has(line);
 	}
 
-	/** Finds each instance of a converted component in `root`, never on an element `taken` (another plan binds it); how many it found. */
-	add(root: Element, taken: (el: Element) => boolean = () => false): number {
+	/**
+	 * Finds each instance of a converted component in `root`, never on an element `taken` (another plan binds it), an
+	 * opener only where the element `opens` a layer of the page; how many it found.
+	 */
+	add(root: Element, taken: (el: Element) => boolean = () => false, opens: (el: Element) => boolean = () => false): number {
 		this.taken = taken;
+		this.opens = opens;
 		let found = 0;
 		for (const fact of this.facts) {
 			for (const start of walk(root)) {
@@ -137,6 +142,11 @@ export class ReactStatePlan {
 		for (const [name, b] of Object.entries(node.bound ?? {})) {
 			if (b.added) continue;
 			if (name === 'class' ? !classFits(el, b) : (attr(el, name) ?? null) !== b.initial) return undefined;
+			evidence++;
+			state++;
+		}
+		if (node.opens) {
+			if (!this.opens(el)) return undefined;
 			evidence++;
 			state++;
 		}

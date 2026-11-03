@@ -1,6 +1,7 @@
 import { markOthers } from './mark-others.ts';
 import { acquireScrollLock, closePopup, isOpen, openPopup, popupOf, setTrigger, top, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
+import { announceOpen, followOpen, followsOpen } from '../open-state.ts';
 import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
 
 // Base UI Dialog, AlertDialog and Drawer: a press on the trigger opens the popup with its backdrop, focus moves to the
@@ -25,7 +26,8 @@ const scroller = (el: HTMLElement) => {
 };
 const tabbables = (root: HTMLElement, scrollers = true) => [...root.querySelectorAll<HTMLElement>(scrollers ? '*' : TABBABLE)].filter((el) => (el.matches(TABBABLE) || scroller(el)) && !el.closest('[hidden], [inert]') && !el.matches(':disabled') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 
-function close(p: Popup, returnFocus = true): void {
+function close(p: Popup, returnFocus = true, own = true): void {
+	if (own) announceOpen(p.trigger, false);
 	undo.get(p)?.();
 	// onOpenChange(false): the page's own state about the dialog (a field it clears) hears it closing.
 	p.popup.dispatchEvent(new CustomEvent('mmclose', { bubbles: true }));
@@ -105,8 +107,27 @@ function open(trigger: HTMLElement, { shown, rendered, key = trigger.id || layer
 	return p;
 }
 
+const keyOf = (trigger: HTMLElement) => trigger.id || layerKey(trigger);
+const portalOf = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal'));
+const openedFrom = (trigger: HTMLElement) => [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
+
+// The app's state, once written, opens or closes the dialog; a press on its opener is the app's to answer.
+function sync(opener: HTMLElement, want: boolean): void {
+	const key = keyOf(opener);
+	if (!key || !portalOf(key) || want === isOpen(key)) return;
+	if (want) open(opener);
+	else {
+		const p = openedFrom(opener);
+		if (p && undo.has(p)) close(p, true, false);
+	}
+}
+
 export function click(target: Element): boolean {
 	const trigger = triggerOf(target);
+	if (trigger && followsOpen(trigger) && portalOf(keyOf(trigger))) {
+		followOpen(sync);
+		return true;
+	}
 	if (trigger) {
 		if (trigger.matches(TRIGGER) && opensPopover(trigger.id || layerKey(trigger))) return false;
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
@@ -148,6 +169,7 @@ function adoptShown(): void {
 
 export function idle(): void {
 	adoptShown();
+	followOpen(sync);
 }
 
 // Base UI's FloatingFocusManager gives focus back to what had it before a dialog opened without a trigger: a stand-in trigger.
