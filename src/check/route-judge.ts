@@ -302,12 +302,8 @@ async function journeysCheck(o: Observe, ctx: RouteContext, result: RouteResult,
 	return improvements.length ? { ...compared, improvements: [...(compared.improvements ?? []), ...improvements] } : compared;
 }
 
-/**
- * The route's journeys again, arriving the way a visitor does from another page: that page loads, its link to the route is
- * followed (the router swaps the page in place), then the journey's steps run. Twice on old and once on new, compared alike;
- * a part that only works on a fresh load (one whose script runs once, at load) is red here.
- */
-async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[]): Promise<Failure[]> {
+/** The journeys run after arriving from another page: one per kind of control, each starting with the link that arrives. */
+export function arrivalJourneys(plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>): Journey[] {
 	const arrive: Step = { action: 'click', target: arrival.link };
 	const how = `after arriving from ${arrival.entry} by ${describeTarget(arrival.link)}`;
 	// One journey per kind of control is enough to show the parts are wired after the swap: the same control under another nth repeats it.
@@ -319,7 +315,16 @@ async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJ
 		kinds.add(key);
 		return true;
 	});
-	const journeys: Journey[] = distinct.slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
+	return distinct.slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
+}
+
+/**
+ * The route's journeys again, arriving the way a visitor does from another page: that page loads, its link to the route is
+ * followed (the router swaps the page in place), then the journey's steps run. Twice on old and once on new, compared alike;
+ * a part that only works on a fresh load (one whose script runs once, at load) is red here.
+ */
+async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[]): Promise<Failure[]> {
+	const journeys = arrivalJourneys(plain, arrival);
 	if (!journeys.length) return [];
 	// A page the new app does not serve (a port of only some routes) has no link to arrive by: that page's own check reports it, not this route's journeys.
 	const seen = await o('arrival', { entry: arrival.entry, journeys });

@@ -1,0 +1,41 @@
+{
+	"v": 1,
+	"producers": {
+		"routes": {
+			"version": 1,
+			"closure": "W1k8vZfec13fM1tZQ2QlIA"
+		},
+		"served": {
+			"version": 1,
+			"closure": "W1k8vZfec13fM1tZQ2QlIA"
+		},
+		"responses": {
+			"version": 1,
+			"closure": "V4ZDdoJwRjMp1Y1JhMqsYM"
+		},
+		"loads": {
+			"version": 1,
+			"closure": "V4ZDdoJwRjMp1Y1JhMqsYM"
+		},
+		"layout_survey": {
+			"version": 1,
+			"closure": "nns5_AOWKdEi2Y1Sm_tRTU"
+		},
+		"controls": {
+			"version": 1,
+			"closure": "GYRP0z39yVOE2nDLNuWRT-"
+		},
+		"journeys": {
+			"version": 1,
+			"closure": "GYRP0z39yVOE2nDLNuWRT-"
+		},
+		"replays": {
+			"version": 1,
+			"closure": "GYRP0z39yVOE2nDLNuWRT-"
+		},
+		"forced_states": {
+			"version": 1,
+			"closure": "none"
+		}
+	}
+}
