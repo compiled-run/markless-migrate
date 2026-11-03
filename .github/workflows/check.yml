@@ -399,6 +399,18 @@ jobs:
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+      # The rows the check recorded, judged again with no browser: a report they do not give back fails the shard (exit 6).
+      - name: Judge again from the recorded observations
+        run: node src/cli.ts check judge "$APP/.migrate/observations" --report "$APP/.migrate/report.json"
+      # Every check leaves rows a later judge change can be scored on offline (check judge, corpus.yml rows_from).
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-observations-${{ matrix.shard }}
+          path: ${{ env.APP }}/.migrate/observations
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
       # A few kB: each route's time, however the shard ended, kept apart from the shard's artifact so a later run can read only this.
       - name: Route times
         if: always()
