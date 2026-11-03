@@ -194,6 +194,8 @@ export interface StateSlot {
 export interface BoundAttribute {
 	readonly code: StateCode;
 	readonly initial: string | null;
+	/** A port's attribute the library wrote nothing for: the page has none of it to check. */
+	readonly added?: true;
 }
 
 /** What a component renders, as the page can find it: elements with what the source fixes for them, and what reads state. */

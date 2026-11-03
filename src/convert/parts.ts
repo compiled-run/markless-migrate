@@ -294,6 +294,20 @@ export function portFor(el: Element): string | undefined {
 	return PORTS.find((port) => candidates.some((c) => c.library === port.library && port.exports.includes(c.export)) && port.locate(el))?.module;
 }
 
+// Props a part takes with no change callback that its port reads off the page, by the attribute it reads; `on`: the
+// export whose element carries it, where this one renders none (Radix gives the Root's dir to the menu's content).
+const CONFIG_PROPS: readonly { readonly library: string; readonly export: string; readonly prop: string; readonly attribute: string; readonly on?: string }[] = [
+	{ library: 'radix-ui', export: 'DropdownMenu.Root', prop: 'dir', attribute: 'data-mm-dir', on: 'DropdownMenu.Trigger' },
+	{ library: 'radix-ui', export: 'ContextMenu.Root', prop: 'dir', attribute: 'data-mm-dir', on: 'ContextMenu.Trigger' },
+	{ library: 'radix-ui', export: 'Menubar.Root', prop: 'dir', attribute: 'dir' },
+	{ library: 'radix-ui', export: 'Menubar.Root', prop: 'loop', attribute: 'data-mm-loop' },
+];
+
+/** Where a port reads a part's config prop: the attribute, and the export whose element has it when the part renders none. */
+export function configAttribute(library: string, exportName: string, prop: string): { readonly attribute: string; readonly on?: string } | undefined {
+	return CONFIG_PROPS.find((c) => c.library === library && c.export === exportName && c.prop === prop);
+}
+
 /** The event a port announces a library part's controlled prop's changes with, if one does. */
 export function announcedChange(library: string, exportName: string, prop: string): { readonly event: string; readonly list?: true } | undefined {
 	return PORTS.find((p) => p.library === library && p.exports.includes(exportName) && p.changes?.[prop])?.changes![prop];

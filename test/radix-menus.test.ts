@@ -473,3 +473,47 @@ test('Radix DropdownMenu.Sub: the pointer moving on a sub-trigger it never left,
 	assert.equal(await subOpen(page), true);
 	await page.close();
 });
+
+test("Radix menus take the Root's dir from their trigger's data-mm-dir when they open: the content and its wrapper get it, a submenu its menu's and the inline-end side, and the inline arrows follow", async () => {
+	const ltr = withSub.replaceAll('data-radix-popper-content-wrapper>', 'data-radix-popper-content-wrapper dir="ltr">').replaceAll('data-radix-menu-content=""', 'data-radix-menu-content="" dir="ltr"');
+	const page = await open(ltr.replace('data-slot="dropdown-menu-trigger"', 'data-slot="dropdown-menu-trigger" data-mm-dir="rtl"'), ['radix/dropdown-menu']);
+	const dirs = () => page.evaluate(() => ['menu', 'sub'].flatMap((k) => { const w = document.querySelector(`[data-mm-layer="${k}"]`)!; return [w.getAttribute('dir'), w.querySelector('[role="menu"]')!.getAttribute('dir')]; }));
+	await page.locator('#menu').focus();
+	await press(page, 'Enter');
+	await press(page, 'ArrowDown');
+	assert.deepEqual((await dirs()).slice(0, 2), ['rtl', 'rtl']);
+	await press(page, 'ArrowRight');
+	assert.equal(await subOpen(page), false, 'ArrowRight is the inline-start arrow right to left');
+	await press(page, 'ArrowLeft');
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Email');
+	assert.deepEqual(await dirs(), ['rtl', 'rtl', 'rtl', 'rtl']);
+	assert.equal(await page.locator('#sub-content').getAttribute('data-side'), 'left');
+	await press(page, 'ArrowRight');
+	assert.equal(await subOpen(page), false);
+	assert.equal(await active(page), 'Invite users');
+	await press(page, 'Escape');
+	// The app's state turns the menu back left to right: the next open follows it.
+	await page.locator('#menu').evaluate((t) => t.setAttribute('data-mm-dir', 'ltr'));
+	await page.locator('#menu').focus();
+	await press(page, 'Enter');
+	await press(page, 'ArrowDown');
+	await press(page, 'ArrowRight');
+	assert.equal(await subOpen(page), true);
+	assert.deepEqual(await dirs(), ['ltr', 'ltr', 'ltr', 'ltr']);
+	assert.equal(await page.locator('#sub-content').getAttribute('data-side'), 'right');
+	await page.close();
+});
+
+test("Radix ContextMenu takes the Root's dir from its trigger area's data-mm-dir when it opens", async () => {
+	const page = await open(
+		`<main><div data-slot="context-menu-trigger" data-state="closed" data-mm-key="ctx" data-mm-dir="rtl" style="position:fixed;left:0;top:0;width:600px;height:300px">Right click here</div></main>
+<div data-mm-layer="ctx" hidden data-radix-popper-content-wrapper dir="ltr" style="position:fixed;left:40px;top:100px"><div data-slot="context-menu-content" role="menu" id="ctx-content" data-state="closed" tabindex="-1" data-radix-menu-content="" dir="ltr"><div role="menuitem" tabindex="-1">Back</div></div></div>`,
+		['radix/context-menu'],
+	);
+	await page.mouse.click(20, 20, { button: 'right' });
+	await settled(page);
+	assert.equal(await page.locator('#ctx-content').getAttribute('dir'), 'rtl');
+	assert.equal(await page.locator('[data-mm-layer="ctx"]').getAttribute('dir'), 'rtl');
+	await page.close();
+});

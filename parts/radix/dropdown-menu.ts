@@ -33,6 +33,12 @@ const rtl = (el: Element) => getComputedStyle(el).direction === 'rtl';
 
 const isSubTrigger = (el: Element) => el.matches(ITEM) && el.getAttribute('aria-haspopup') === 'menu' && !barOf(el);
 
+/** Radix gives a menu's content and its wrapper the Root's dir (convert writes the app's on the trigger, a bar has its own). */
+export function takeDir(layer: Layer, dir: string | null | undefined): void {
+	if (dir) for (const el of [layer.content, layer.wrapper]) el?.setAttribute('dir', dir);
+}
+const rootDir = (trigger: HTMLElement) => trigger.getAttribute('data-mm-dir') ?? barOf(trigger)?.getAttribute('dir');
+
 function setTrigger(trigger: HTMLElement, open: boolean, layer?: Layer): void {
 	// A context menu's trigger area (opened by the context-menu port) is not a menu button.
 	if (!trigger.hasAttribute('aria-haspopup')) return;
@@ -111,6 +117,7 @@ function close(layer: Layer, keepFocus = false): void {
 function openMenu(trigger: HTMLElement, first: boolean): boolean {
 	const layer = openLayer(trigger, keyOf(trigger), { modal: !barOf(trigger), onDismiss: (l) => close(l) });
 	if (!layer) return false;
+	takeDir(layer, rootDir(trigger));
 	setTrigger(trigger, true, layer);
 	clearHighlight(layer);
 	if (barOf(trigger)) setTabStop(trigger);
@@ -186,6 +193,10 @@ function openSub(trigger: HTMLElement, keyboard: boolean): Layer | undefined {
 		},
 	});
 	if (!layer) return undefined;
+	// MenuSubContent opens on the inline-end side of its menu's direction, whatever the source asked.
+	const dir = parent.content.getAttribute('dir');
+	takeDir(layer, dir);
+	if (dir) layer.content.setAttribute('data-mm-side', dir === 'rtl' ? 'left' : 'right');
 	subOf.set(parent, layer);
 	setTrigger(trigger, true, layer);
 	clearHighlight(layer);

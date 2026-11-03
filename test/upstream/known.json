@@ -305,45 +305,45 @@
 		},
 		"cypress/e2e/Dialog.cy.ts > electron > Dialog > given a non-modal dialog > can be open/closed with a pointer": {
 			"class": "convert",
-			"why": "needs React state conversion (queued): the story's counter button is the page's own React state, which convert does not port",
+			"why": "outside conversion first: the test ticks the story's modal checkbox, then expects a press on count up outside the open dialog to count and close it, and parts/radix/dialog-engine.ts runs every Radix dialog modal (it traps focus and sets pointer-events: none on the body), with no non-modal path a modal prop could switch. convert also refuses the component: Dialog.Root's modal has no attribute a port reads, and the Content's className and destroy me button read state inside the dialog's layer, a separate component the page's state does not reach",
 			"owner": "thejackshelton",
 			"expires": "2026-11-22"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with client-side validation > should handle `valid` validity": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the message shows on the port (parts/radix/form.ts), then the test reads the <pre> the story's onSubmit fills from its own React state, which convert does not port",
+			"why": "the message shows on the port (parts/radix/form.ts); then the test reads the Data <pre> the story's Form.Root onSubmit fills from its own React state. convert refuses that component (src/library/react-state.ts): it sets state from Form.Root's onClearServerErrors, a Radix callback no DOM event fires and the form port does not announce. Past that, its onSubmit is async (it awaits a timer) and sits on the form element RadixFormPlan binds, which a state plan leaves to that plan",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-17"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > should focus the first control with a server error": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
+			"why": "outside conversion first: the test ticks Simulate server errors, and the story's onSubmit sets serverErrors, given to each Form.Field's serverInvalid and the pin's Form.Message forceMatch and rendering a server message. parts/radix/form.ts has no serverInvalid or forceMatch (RadixFormEntry carries neither), so no bound state could show them. convert also refuses the component at Form.Root's onClearServerErrors, a callback no DOM event fires",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-17"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > allows showing custom server error messages per-field": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
+			"why": "outside conversion first: the test ticks Simulate server errors, and the story's onSubmit sets serverErrors, given to each Form.Field's serverInvalid and the pin's Form.Message forceMatch and rendering a server message. parts/radix/form.ts has no serverInvalid or forceMatch (RadixFormEntry carries neither), so no bound state could show them. convert also refuses the component at Form.Root's onClearServerErrors, a callback no DOM event fires",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-17"
 		},
 		"cypress/e2e/Form.cy.ts > electron > Form > given a form with server-side validation > allows re-using client-side matchers for server errors": {
 			"class": "convert",
-			"why": "was passing only because React ran on the port page; the test ticks the story's Simulate server errors checkbox and its onSubmit sets serverErrors, the story's own React state (each Field's serverInvalid, the server message, the pin's forceMatch), which convert does not port",
+			"why": "outside conversion first: the test ticks Simulate server errors, and the story's onSubmit sets serverErrors, given to each Form.Field's serverInvalid and the pin's Form.Message forceMatch and rendering a server message. parts/radix/form.ts has no serverInvalid or forceMatch (RadixFormEntry carries neither), so no bound state could show them. convert also refuses the component at Form.Root's onClearServerErrors, a callback no DOM event fires",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-17"
 		},
 		"cypress/e2e/Toast.cy.ts > electron > Toast > given multiple toasts > should reverse tab order from most recent to least": {
 			"class": "part",
-			"why": "was passing only because React ran on the port page; no part answers the story's Add toast button (Radix Toast has no part)",
+			"why": "outside conversion first: Radix Toast has no port (no radix-ui Toast.* in src/convert/parts.ts PORTS), so nothing answers F8 or orders the viewport's tab stops. convert also refuses the story's component: its rows are Toast.Root parts mapped from [...Array(count)] with a block body, which it cannot render from the source",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-17"
 		},
 		"cypress/e2e/Toast.cy.ts > electron > Toast > given multiple toasts > should tab forwards from viewport to latest toast or backwards into the document": {
 			"class": "part",
-			"why": "was passing only because React ran on the port page; no part answers the story's Add toast button (Radix Toast has no part)",
+			"why": "outside conversion first: Radix Toast has no port (no radix-ui Toast.* in src/convert/parts.ts PORTS), so nothing answers F8 or orders the viewport's tab stops. convert also refuses the story's component: its rows are Toast.Root parts mapped from [...Array(count)] with a block body, which it cannot render from the source",
 			"owner": "thejackshelton",
-			"expires": "2026-11-08"
+			"expires": "2026-11-17"
 		}
 	}
 }
