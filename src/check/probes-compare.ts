@@ -9,7 +9,7 @@ import type { Dimension, Failure } from './types.ts';
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle';
+export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle' | 'switch';
 
 export type Op =
 	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
@@ -19,6 +19,8 @@ export type Op =
 	| { readonly op: 'submenu'; readonly how: 'hover' | 'key' }
 	/** The wheel turned over the first scrolling list of what is open. */
 	| { readonly op: 'scroll' }
+	/** The next trigger of the control's menubar or navigation menu: pointed at. */
+	| { readonly op: 'next trigger' }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
 	| { readonly op: 'typeahead'; readonly n: number }
 	| { readonly op: 'key'; readonly key: string }
@@ -49,6 +51,8 @@ export function describeOp(op: Op): string {
 			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1} of what is open`;
 		case 'scroll':
 			return 'turn the wheel over the list of what is open';
+		case 'next trigger':
+			return 'point at the next trigger';
 		case 'submenu':
 			return op.how === 'hover' ? 'point at the first item of what is open that opens a submenu' : 'focus the first item of what is open that opens a submenu and press ArrowRight';
 		case 'typeahead':
@@ -74,7 +78,7 @@ export function describeOp(op: Op): string {
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y', switch: 'behaviour' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
@@ -83,6 +87,7 @@ export const PROBE_HINTS: Record<ProbeClass, string> = {
 	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a list opened by the pointer takes focus so ArrowDown moves in it, and Tab closes it; a typed letter moves to the item it starts; a hidden form input follows the chosen value; a reopened overlay is visible and its content rendered once; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 	drag: 'A pointer drag moves this control on the old page: follow the pointer (pointerdown, pointermove, pointerup), move the value, panel or slide by the same amount, take focus as the old one does, and leave the same state attributes after release.',
+	switch: "With one menu of this menubar or navigation menu open, the pointer on another trigger and the side arrows open that trigger's menu on the old page: every trigger needs its own layer, and the move closes the old menu and opens the new one as there.",
 	repeat: 'Each use of this control adds what the old page adds (a toast, a notification): the next use stacks on top rather than replacing it, the front one is marked as such, and pointing at the stack expands it as on the old page.',
 	'tab stops': 'This widget is one tab stop on the old page with arrows moving inside it (roving tabindex): keep exactly the same tab stops, move with the arrows of its orientation only, remember the last item when Tab leaves and comes back, and leave disabled items out.',
 };
