@@ -306,11 +306,19 @@ export async function dev(options: DevOptions): Promise<number> {
 			log(`check --only probes in ${seconds(since)}:\n${done.output.trim().split('\n').slice(-8).join('\n')}`);
 		};
 		const verdictProbe = probe ?? (await probeScript(options.probe));
+		const layoutSurvey = join(work, 'layout-survey.json');
+		let surveyed: Promise<void> | undefined;
+		// The original is the same all session, so its layout is surveyed once, over the whole site, as check.yml's survey job does.
+		const survey = () =>
+			(surveyed ??= run(process.execPath, [CLI, 'check', '--old', old, '--new', old, '--targets', siteTargets, '--site-targets', siteTargets, '--write-layout-survey', layoutSurvey, '--no-cache', ...shardCheckArgs()], { cwd: devApp, logFile: join(work, 'layout-survey.log') }).then((done) => {
+				if (done.code !== 0) throw new Error(`the site's layout survey failed (exit ${done.code}, ${join(work, 'layout-survey.log')})`);
+			}));
 		const checkOn = async (which: readonly string[]): Promise<CheckedRoute[] | undefined> => {
+			await survey();
 			const since = Date.now();
 			const report = join(devApp, '.migrate', 'report.json');
 			await rm(report, { force: true });
-			const args = [CLI, 'check', '--old', old, '--new', origin, ...which.flatMap((r) => ['--route', r]), '--site-targets', siteTargets, ...shardCheckArgs()];
+			const args = [CLI, 'check', '--old', old, '--new', origin, ...which.flatMap((r) => ['--route', r]), '--site-targets', siteTargets, '--layout-survey', layoutSurvey, ...shardCheckArgs()];
 			const done = await run(process.execPath, args, { cwd: devApp, env: { MARKLESS_MIGRATE_PROFILE: '1' }, logFile: join(work, 'verdict-check.log') });
 			log(`check in ${seconds(since)} (exit ${done.code}, ${join(work, 'verdict-check.log')})`);
 			const parsed = await readFile(report, 'utf8').then((t) => JSON.parse(t) as { routes?: CheckedRoute[] }, () => undefined);
