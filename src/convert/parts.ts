@@ -299,7 +299,8 @@ export function portFor(el: Element): string | undefined {
 const CONFIG_PROPS: readonly { readonly library: string; readonly export: string; readonly prop: string; readonly attribute: string; readonly on?: string }[] = [
 	{ library: 'radix-ui', export: 'DropdownMenu.Root', prop: 'dir', attribute: 'data-mm-dir', on: 'DropdownMenu.Trigger' },
 	{ library: 'radix-ui', export: 'ContextMenu.Root', prop: 'dir', attribute: 'data-mm-dir', on: 'ContextMenu.Trigger' },
-	{ library: 'radix-ui', export: 'Menubar.Root', prop: 'dir', attribute: 'dir' },
+	// Menubar.Root hands dir to its RovingFocusGroup and menus, and writes none of it on the bar.
+	{ library: 'radix-ui', export: 'Menubar.Root', prop: 'dir', attribute: 'data-mm-dir' },
 	{ library: 'radix-ui', export: 'Menubar.Root', prop: 'loop', attribute: 'data-mm-loop' },
 ];
 

@@ -541,7 +541,7 @@ export default function Bar() {
 	const root = wrap.children![0]!;
 	if (root.kind !== 'element') throw new Error('shape');
 	assert.deepEqual(root.slots, ['menubar']);
-	assert.deepEqual(root.bound, { 'data-mm-loop': { code: ['(', 0, ') ? "true" : "false"'], initial: 'false', added: true }, dir: { code: [3], initial: 'ltr' } });
+	assert.deepEqual(root.bound, { 'data-mm-loop': { code: ['(', 0, ') ? "true" : "false"'], initial: 'false', added: true }, 'data-mm-dir': { code: [3], initial: 'ltr', added: true } });
 });
 
 test("a config prop no port reads, a Root whose trigger is not its child, and a state-chosen tag other than a portal stay refused with why", async () => {

@@ -37,7 +37,9 @@ const isSubTrigger = (el: Element) => el.matches(ITEM) && el.getAttribute('aria-
 export function takeDir(layer: Layer, dir: string | null | undefined): void {
 	if (dir) for (const el of [layer.content, layer.wrapper]) el?.setAttribute('dir', dir);
 }
-const rootDir = (trigger: HTMLElement) => trigger.getAttribute('data-mm-dir') ?? barOf(trigger)?.getAttribute('dir');
+const rootDir = (trigger: HTMLElement) => trigger.getAttribute('data-mm-dir') ?? barOf(trigger)?.getAttribute('data-mm-dir');
+// Menubar's dir prop where convert bound it to the app's state, else the page's direction there.
+const barRtl = (bar: Element) => (bar.getAttribute('data-mm-dir') ?? getComputedStyle(bar).direction) === 'rtl';
 
 function setTrigger(trigger: HTMLElement, open: boolean, layer?: Layer): void {
 	// A context menu's trigger area (opened by the context-menu port) is not a menu button.
@@ -337,7 +339,7 @@ export function focusin(target: Element, event: FocusEvent): boolean {
 
 function rove(trigger: HTMLElement, event: KeyboardEvent): boolean {
 	const bar = barOf(trigger)!;
-	const key = rtl(bar) ? ({ ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft' } as Record<string, string>)[event.key] ?? event.key : event.key;
+	const key = barRtl(bar) ? ({ ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft' } as Record<string, string>)[event.key] ?? event.key : event.key;
 	const intent = ({ ArrowLeft: 'prev', ArrowRight: 'next', Home: 'first', PageUp: 'first', End: 'last', PageDown: 'last' } as Record<string, string>)[key];
 	if (!intent) return false;
 	if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return true;
@@ -383,7 +385,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && barOf(root.trigger)) {
 		const all = barTriggers(barOf(root.trigger)!).filter((t) => !disabled(t));
-		const step = (event.key === 'ArrowRight') !== rtl(root.trigger) ? 1 : -1;
+		const step = (event.key === 'ArrowRight') !== barRtl(barOf(root.trigger)!) ? 1 : -1;
 		event.preventDefault();
 		return switchTo(root.trigger, stepIn(all, all.indexOf(root.trigger), step, loops(barOf(root.trigger)!)), false);
 	}

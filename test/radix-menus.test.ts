@@ -517,3 +517,18 @@ test("Radix ContextMenu takes the Root's dir from its trigger area's data-mm-dir
 	assert.equal(await page.locator('[data-mm-layer="ctx"]').getAttribute('dir'), 'rtl');
 	await page.close();
 });
+
+test("Radix Menubar takes its dir from the bar's data-mm-dir, the app's state, over the page's direction: the arrows rove that way and each menu opens with it", async () => {
+	const page = await open(menubar().replace('role="menubar"', 'role="menubar" data-mm-dir="rtl"'), ['radix/dropdown-menu']);
+	await page.locator('#t-File').focus();
+	await press(page, 'ArrowLeft');
+	assert.equal(await active(page), 'Edit');
+	await press(page, 'Enter');
+	assert.equal(await page.locator('#c-Edit').getAttribute('dir'), 'rtl');
+	await press(page, 'Escape');
+	await page.locator('[role="menubar"]').evaluate((bar) => bar.setAttribute('data-mm-dir', 'ltr'));
+	await page.locator('#t-Edit').focus();
+	await press(page, 'ArrowRight');
+	assert.equal(await active(page), 'View');
+	await page.close();
+});
