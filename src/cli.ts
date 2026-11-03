@@ -25,6 +25,7 @@ import { readAuthFile } from './check/auth.ts';
 import { bypassOptions } from './check/blocked.ts';
 import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
+import { parseLayoutSurvey, type LayoutSurvey } from './check/layout-survey.ts';
 import { jsonReportParts, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
 import { judgeObserved, reportDifferences } from './check/judge.ts';
 import { openOriginal } from './data/original/read.ts';
@@ -177,6 +178,10 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
           --site-targets <targets.json> names every page of the site when this run checks a shard of it: groups,
           and page load, which runs on representatives too, are then made over the whole site, not the shard.
+          Each shared header, nav or sidebar control is exercised by one route: the first page of the run that
+          shows it and has room. --write-layout-survey <file> surveys every page of --targets for those controls
+          and checks nothing; --layout-survey <file> makes a shard of a site's run read that survey, so owners are
+          the site's whichever shard a route lands in, and leaves the owners' verdicts to check-shards.ts merge.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
           journeys are explored main content first (tables, forms), until each element is used or
@@ -960,6 +965,8 @@ async function main(argv: string[]): Promise<number> {
 					targets: { type: 'string' },
 					'write-targets': { type: 'string' },
 					'site-targets': { type: 'string' },
+					'layout-survey': { type: 'string' },
+					'write-layout-survey': { type: 'string' },
 					...TIMING_FLAGS,
 				},
 			});
@@ -1028,12 +1035,17 @@ async function main(argv: string[]): Promise<number> {
 					out(`--reuse: ${reuse.reused.length} route${reuse.reused.length === 1 ? '' : 's'} ship what they shipped when last checked and reuse that result; ${reuse.check.length} to check${reuse.unkeyed.size ? ` (${reuse.unkeyed.size} with no key: ${[...why].map(([w, n]) => `${n} ${w}`).join('; ')})` : ''}.\n`);
 				}
 			}
-			const navigation = navigationOptions(values, partial ? planned : undefined);
-			const load = loadOptions(values);
-			requireNetworkBrowsers(load, values);
+			// A layout survey only loads the original's pages: no page load, slow network or navigation is measured.
+			const surveying = Boolean(values['write-layout-survey']);
+			const navigation = surveying ? undefined : navigationOptions(values, partial ? planned : undefined);
+			const load = surveying ? undefined : loadOptions(values);
+			if (!surveying) requireNetworkBrowsers(load, values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 			const site = values['site-targets'] ? (JSON.parse(await readFile(resolve(values['site-targets']), 'utf8')) as { routes: string[] }).routes : undefined;
+			if (values['layout-survey'] && values['write-layout-survey']) fail('--layout-survey reads a survey and --write-layout-survey makes one: pass one of them');
+			const layoutSurvey = values['layout-survey'] ? parseLayoutSurvey(await readFile(resolve(values['layout-survey']), 'utf8'), values['layout-survey']) : undefined;
+			const surveyTo = values['write-layout-survey'] ? resolve(values['write-layout-survey']) : undefined;
 			const newDir = resolve(values['new-source'] ?? cwd);
 			const commit = await gitHead(newDir);
 			if (values.changed) {
@@ -1094,7 +1106,13 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
 				artifactsDir: join(cwd, STATE_DIR),
 				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
+				...(layoutSurvey ? { layoutSurvey } : {}),
+				...(surveyTo ? { writeLayoutSurvey: (survey: LayoutSurvey) => writeFile(surveyTo, `${JSON.stringify(survey, null, '\t')}\n`) } : {}),
 			});
+			if (surveyTo) {
+				out(`Layout survey: ${surveyTo}\n`);
+				return 0;
+			}
 			if (reuse) {
 				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse.keys, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
 				out(`--reuse: kept ${kept} result${kept === 1 ? '' : 's'} for later runs.\n`);

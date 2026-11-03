@@ -257,6 +257,8 @@ export interface RouteResult {
 	readonly storedJourneys?: { readonly path: string; readonly names: readonly string[] };
 	/** Every interactive element of the OLD page and the journey that exercised it; one that none did keeps the route red. */
 	readonly coverage?: Coverage;
+	/** Shared layout controls left to their owners in other shards of a site's run: the merge adds the owners' verdicts (`shareLayoutLater`). */
+	readonly sharedLater?: true;
 	/** What still varied between OLD loads after freezing, and what was blocked. */
 	readonly noise?: NoiseReport;
 	/** The request contract of each side's first load: `browser GET host/path?query {body shape}`. */

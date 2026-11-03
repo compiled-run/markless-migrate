@@ -244,10 +244,48 @@ jobs:
           ID: ${{ inputs.original || steps.resolve.outputs.id || steps.publish.outputs.id }}
         run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
 
+  # Shared header and sidebar controls are each exercised by one route of the site, chosen from this survey of every page:
+  # every shard reads the same one, so a route explores the same journeys whichever shard it is dealt to.
+  survey:
+    needs: original
+    if: ${{ !cancelled() && needs.original.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - name: The original
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Survey the site's layout
+        env:
+          FLAGS: ${{ inputs.flags }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          set -euo pipefail
+          cd "$APP"
+          mkdir -p "$RUNNER_TEMP/survey"
+          # shellcheck disable=SC2086
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$OLD" --targets "$GITHUB_WORKSPACE/$TARGETS" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --write-layout-survey "$RUNNER_TEMP/survey/layout-survey.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY") $FLAGS --no-cache
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check-layout-survey
+          path: ${{ runner.temp }}/survey
+          retention-days: 14
+
   check:
-    needs: [plan, original]
+    needs: [plan, original, survey]
     # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
@@ -270,6 +308,10 @@ jobs:
         with:
           name: check-shards
           path: ${{ runner.temp }}/shards
+      - uses: actions/download-artifact@v4
+        with:
+          name: check-layout-survey
+          path: ${{ runner.temp }}/survey
       # The original the original job named: a Next.js build differs from the last in every file name, so one published build is
       # what keeps every shard serving the same original.
       - name: The original
@@ -336,10 +378,10 @@ jobs:
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
           status=0
-          # Template groups are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, not of each shard.
+          # Template groups and layout owners are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, and each shared control on one route of it.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
           # shellcheck disable=SC2086
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY" "$TIMEOUT") $REUSE $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --layout-survey "$RUNNER_TEMP/survey/layout-survey.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY" "$TIMEOUT") $REUSE $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"

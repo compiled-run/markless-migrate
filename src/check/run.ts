@@ -31,6 +31,7 @@ import { checkCoverage } from './coverage-check.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, type FreezeOptions } from './freeze.ts';
+import { layoutOwners, LAYOUT_SURVEY_VERSION, surveyRows, type LayoutSurvey, type SurveyRow } from './layout-survey.ts';
 import { hashLinkFailures } from './hash-links.ts';
 import type { OldRouting } from './hash-routes.ts';
 import { HINTS } from './hints.ts';
@@ -139,6 +140,10 @@ export interface CheckOptions {
 	readonly partial?: { readonly total: number | null };
 	/** Above TEMPLATE_THRESHOLD pages, visual, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
 	readonly templates?: false | { readonly patterns?: readonly string[]; /** Above how many pages templates are grouped (default TEMPLATE_THRESHOLD). */ readonly threshold?: number; /** Every page of the site when this run checks a shard of it: groups are made over all of them, so a group's representative may be another shard's page. */ readonly site?: readonly string[] };
+	/** The site's layout survey (`check --write-layout-survey`), read instead of surveying this run's pages: every shard of a site's check reads the same one, and the merge of the shards gives each route its shared controls' verdicts. */
+	readonly layoutSurvey?: LayoutSurvey;
+	/** Survey the site's shared layout controls and hand the survey here, checking nothing. */
+	readonly writeLayoutSurvey?: (survey: LayoutSurvey) => Promise<void>;
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
 	/** The report directory: each route's screenshots, diffs and motion frames are written under its `shots` as soon as the route is checked, and the report keeps only their paths. */
@@ -666,28 +671,14 @@ async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpe
 	};
 }
 
-/** Which route exercises each shared layout control: the first, in the order the routes were given, that has it. */
-// About as many controls as a route's journey budget exercises at its default (49 on ui.shadcn.com's home page, its heaviest).
-const ROUTE_ROOM = 40;
-
-async function layoutOwners(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<Map<string, string>> {
+async function surveyLayout(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<SurveyRow[]> {
 	const viewport = (options.viewports ?? VIEWPORTS)[0]!;
 	// A survey that fails once is tried again: an empty survey hands its route's shared controls to another route.
-	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => survey(browser, run.old, route, viewport)).catch(() => ({ layout: [] as string[], own: 0 })));
-	// The first route with room exercises a shared control, so one page full of its own controls does not leave
-	// every shared one to run out of its budget; past every route's room, the least loaded takes it.
-	const load = found.map((f) => f.own);
-	const having = new Map<string, number[]>();
-	routes.forEach((_, i) => {
-		for (const signature of found[i]!.layout) (having.get(signature) ?? having.set(signature, []).get(signature)!).push(i);
-	});
-	const owners = new Map<string, string>();
-	for (const [signature, at] of having) {
-		const i = at.find((k) => load[k]! < ROUTE_ROOM) ?? at.reduce((a, b) => (load[b]! < load[a]! ? b : a));
-		load[i]!++;
-		owners.set(signature, routes[i]!);
-	}
-	return owners;
+	return pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) =>
+		survey(browser, run.old, route, viewport)
+			.catch(() => survey(browser, run.old, route, viewport))
+			.then((found): SurveyRow => ({ route, ...found }), (): SurveyRow => ({ route, layout: [], own: 0, failed: true })),
+	);
 }
 
 export async function runCheck(options: CheckOptions): Promise<Report> {
@@ -702,10 +693,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir && !options.original ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const webkitBrowser = options.controls?.webkit ? await webkit.launch().catch((error: Error) => {
+	const webkitBrowser = options.controls?.webkit && !options.writeLayoutSurvey ? await webkit.launch().catch((error: Error) => {
 		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
 	}) : undefined;
-	const laneBrowsers = options.busyCpu ? await Promise.all([firefox.launch(), webkitBrowser ?? webkit.launch()]).catch((error: Error) => {
+	const laneBrowsers = options.busyCpu && !options.writeLayoutSurvey ? await Promise.all([firefox.launch(), webkitBrowser ?? webkit.launch()]).catch((error: Error) => {
 		throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
 	}) : undefined;
 	if (options.original) {
@@ -746,6 +737,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		...(options.partial ? { partial: options.partial } : {}),
 		cache: Boolean(oldCache),
 		auth: Boolean(auth),
+		...(options.layoutSurvey ? { sharedLater: true as const } : {}),
 	};
 	const observed = options.observations && new GuardedObservations(options.observations, (line) => void process.stderr.write(line));
 	await observed?.header(header);
@@ -775,6 +767,12 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		const coverages: RouteCoverage[] = [];
 		const wasteReferences: WasteReport[] = [];
 		const navigation: NavigationResult[] = [];
+		const full = allPages.filter((route) => !light(route));
+		const layoutOf = async (env: Run, role: string | undefined): Promise<readonly SurveyRow[]> => {
+			if (options.layoutSurvey) return surveyRows(options.layoutSurvey, role, full);
+			return full.length > 1 ? surveyLayout(browser, env, full, options) : [];
+		};
+		const surveys: { role: string | null; routes: readonly SurveyRow[] }[] = [];
 		for (const role of roles) {
 			let roleRun = base;
 			if (auth && role && role !== ANONYMOUS) {
@@ -786,6 +784,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			}
 			// A widget is shared only among one role's routes: a signed-in visitor may meet another one behind the same markup.
 			if (roleRun.probes) roleRun = { ...roleRun, probes: { ...roleRun.probes, shared: new Map<string, SharedProbe>() } };
+			if (options.writeLayoutSurvey) {
+				surveys.push({ role: role ?? null, routes: await surveyLayout(browser, roleRun, full, options) });
+				continue;
+			}
 			if (options.only === 'load') {
 				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate(groupOf, { ...partialResult(route, [], []), ok: true, only: 'load' as const })), ...outOfPart([...endpoints], [...redirects], 'load', role));
 				continue;
@@ -822,8 +824,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const sharedData = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
 			const pages = allPages;
-			const full = pages.filter((route) => !light(route));
-			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
+			const owners = layoutOwners(await layoutOf(roleRun, role));
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
 			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
@@ -872,7 +873,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				navigation.push(navigated);
 				await event({ kind: 'navigation', result: navigated });
 			}
-			const compared = roleCompared(checked, navigated);
+			const compared = roleCompared(checked, navigated, Boolean(options.layoutSurvey));
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
 			for (const route of endpoints) {
 				const result = await checkEndpoint(roleRun, route).catch(unreachable(route));
@@ -884,6 +885,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				await event({ kind: 'redirect', ...(role ? { role } : {}), route, result });
 				routes.push(asRole(result, role));
 			}
+		}
+		if (options.writeLayoutSurvey) {
+			await options.writeLayoutSurvey({ version: LAYOUT_SURVEY_VERSION, roles: surveys });
+			return finishReport(header, [], logins, [], [], groups, allPages, { kind: 'footer', pinned: pinnedCounts(new Map()), wasteReferences: [] });
 		}
 		if (loadPhase) {
 			const routesToLoad = loadable(routes, allPages, light);

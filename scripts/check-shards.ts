@@ -9,6 +9,7 @@
 // original served, the old-side store's counts and the runner time of each part of the check.
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { shareLayoutLater } from '../src/check/report-judge.ts';
 import { routeState } from '../src/check/route-state.ts';
 
 interface Targets {
@@ -390,7 +391,7 @@ async function main(): Promise<void> {
 			}
 			routes.push(...unreported(shards, reported));
 		}
-		await write(b, routes, await datasets(a, original || undefined), await profiled(a));
+		await write(b, shareLayoutLater(routes as unknown as Parameters<typeof shareLayoutLater>[0]) as unknown as ReportRoute[], await datasets(a, original || undefined), await profiled(a));
 		return;
 	}
 	if (command === 'combine' && a) {

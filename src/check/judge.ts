@@ -103,7 +103,7 @@ export async function judgeObserved(observed: Observed): Promise<Report> {
 		for (const route of allPages) checked.push(await judgeRouteRows(header, route, role, light(route), groupOf, rowsOf({ route, ...(role ? { role } : {}), kind: 'page' })));
 		const navigated = header.stages.navigation ? next('navigation').result : undefined;
 		if (navigated) navigation.push(navigated);
-		routes.push(...roleCompared(checked, navigated));
+		routes.push(...roleCompared(checked, navigated, Boolean(header.sharedLater)));
 		for (const _ of plan.endpoints) routes.push(asRole(next('endpoint').result, role));
 		for (const _ of plan.redirects) routes.push(asRole(next('redirect').result, role));
 	}
