@@ -35,8 +35,13 @@ after(async () => {
 // `deliver`: also hand every event to the parts from the body's or the window's capture phase, as a Markless page delegates
 // them, before the event reaches the document listener.
 // `head`: what the app's Document puts in the head before any module (the inline theme toggle).
+/** The paths each page asked for, in order. */
+const requested = new WeakMap<Page, string[]>();
 async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = '', timezoneId?: string, hasTouch = false): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, ...(timezoneId ? { timezoneId } : {}), ...(hasTouch ? { hasTouch } : {}) });
+	const asked: string[] = [];
+	requested.set(page, asked);
+	page.on('request', (r) => asked.push(new URL(r.url()).pathname));
 	// `site`: the shadcn-ui port's own site parts (lib/site/parts.ts), which import the ports as the app's lib/parts.
 	const registry = registryModule(ports.filter((p) => p !== 'site'), '.', ports.includes('site') ? './site.ts' : undefined);
 	await page.route('http://parts.test/**', async (route) => {
@@ -53,7 +58,11 @@ async function open(body: string, ports: readonly string[], deliver?: 'body' | '
 		// The site's parts import their siblings in lib/site (the theme toggle, the typeset params) as well as the ports.
 		const name = path.replace(/^\/parts\//, '');
 		const sibling = path === '/parts/site.ts' ? SITE : await stat(join(PARTS, name)).then(() => undefined, () => join(dirname(SITE), name));
-		const text = path === '/parts/registry.ts' ? registry : sibling ? (await readFile(sibling, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, name), 'utf8');
+		// A module the converter writes into the app (a site's form registry) is not here: answered as missing.
+		const read = (file: string) => readFile(file, 'utf8').catch(() => undefined);
+		const source = path === '/parts/registry.ts' ? registry : sibling ? (await read(sibling))?.replaceAll("'../parts/", "'./") : await read(join(PARTS, name));
+		if (source === undefined) return route.fulfill({ status: 404, body: '' });
+		const text = source;
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
 	});
 	await page.goto('http://parts.test/');
@@ -1332,6 +1341,23 @@ test('a Radix dialog returns focus on close to its own Trigger only: one a plain
 	await settled(page);
 	assert.equal(await focusOf(page), 'button:Search');
 	await page.close();
+});
+
+test('a chart drawn at another size than its capture and a library form fetch the code they need once the page is idle, before any use or scroll', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, a: [] });
+	const page = await open(
+		`<div style="height:2000px"></div><div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg></div><div data-mm-fl="fl_0123456789"><input data-mm-fl-field="title" /></div>`,
+		['recharts', 'form-library'],
+	);
+	await page.waitForTimeout(300);
+	const asked = requested.get(page)!;
+	assert.ok(asked.includes('/parts/recharts-layout.ts'), `the chart below the fold, never mounted, has its layout code fetched: ${asked.join(' ')}`);
+	assert.ok(asked.includes('/parts/form-libraries.ts'), `the form, never used, has its library code fetched: ${asked.join(' ')}`);
+	await page.close();
+	const same = await open(`<div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" style="width:100%;height:100%;display:block" data-mm-facts='${JSON.stringify({ w: 600, h: 200, a: [] })}'></svg></div>`, ['recharts']);
+	await same.waitForTimeout(300);
+	assert.ok(!requested.get(same)!.includes('/parts/recharts-layout.ts'), 'a chart shown at the size it was captured at fetches nothing');
+	await same.close();
 });
 
 test('recharts: an SVG scaled to its container maps the pointer and the tooltip through its scale', async () => {
