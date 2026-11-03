@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { sessionDatabases, updateCount } from './live-data.ts';
 import { linkUrl, pageRouting, routeLinks, routePath, shownUrl } from './hash-routes.ts';
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
-import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
+import type { Browser, BrowserContext, Locator, Page, Request, Route } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv, databaseFramesReceived } from './browser.ts';
 import { clickOnce } from './click.ts';
 import { markHandlers } from './handlers.ts';
@@ -1086,6 +1086,19 @@ const pendingWork = (page: Page) =>
 		.catch(() => 0);
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+/** Lets held requests go on, and waits until each has been answered or failed (at most RACE_ANSWER_MS). */
+async function released(page: Page, routes: Route[]): Promise<void> {
+	const held = routes.splice(0);
+	const answered = held.map((route) => {
+		const request = route.request();
+		return Promise.race([request.response().then(async (response) => void (await response?.finished().catch(() => null))).catch(() => {}), sleep(RACE_ANSWER_MS)]);
+	});
+	for (const route of held) await route.fallback().catch(() => {});
+	await Promise.all(answered);
+	if (held.length) await page.waitForTimeout(RACE_GAP_MS).catch(() => {});
+}
+const RACE_ANSWER_MS = 10_000;
 // The second click of a race lands this long after the first: sooner than any app's server answers a page.
 const RACE_GAP_MS = 60;
 // About how fast a person types into a search box.
@@ -1374,12 +1387,31 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 			// The wheel brings the section to the top, as a reader scrolls, so what follows the scroll position (a contents list's current link) answers.
 			return void (await reach(page, target, (t, timeout) => t.evaluate((el) => el.scrollIntoView({ block: 'start' }), undefined, { timeout }), false, patience));
 		case 'race': {
-			await reach(page, target, (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
-			await sleep(RACE_GAP_MS);
-			// Back is queued so it can leave the document without destroying this evaluate's context.
-			// A document that started loading in the gap has no context to queue it in: the browser goes back instead.
-			if (step.then === 'back') return void (await page.evaluate(() => void setTimeout(() => history.back())).catch((error: Error) => (/Execution context was destroyed|navigat/i.test(error.message) ? page.goBack({ waitUntil: 'commit', timeout: STEP_TIMEOUT }).then(() => undefined) : Promise.reject(error))));
-			return reach(page, locate(page, step.then), (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
+			// What a router fetches for the first click is held until the second action has been answered, so its page arrives after
+			// it on every run and both sides, however fast the server. A document load is not held: the page cannot be used while one is pending.
+			const first: Route[] = [];
+			const second: Route[] = [];
+			let bucket: Route[] | undefined = first;
+			const hold = (route: Route) => (bucket && !route.request().isNavigationRequest() ? void bucket.push(route) : route.fallback().catch(() => {}));
+			await page.route('**/*', hold);
+			try {
+				await reach(page, target, (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
+				await sleep(RACE_GAP_MS);
+				bucket = second;
+				// Back is queued so it can leave the document without destroying this evaluate's context.
+				// A document that started loading in the gap has no context to queue it in: the browser goes back instead.
+				if (step.then === 'back') await page.evaluate(() => void setTimeout(() => history.back())).catch((error: Error) => (/Execution context was destroyed|navigat/i.test(error.message) ? page.goBack({ waitUntil: 'commit', timeout: STEP_TIMEOUT }).then(() => undefined) : Promise.reject(error)));
+				else await reach(page, locate(page, step.then), (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
+				await sleep(RACE_GAP_MS);
+				bucket = undefined;
+				await released(page, second);
+				await released(page, first);
+			} finally {
+				bucket = undefined;
+				for (const route of [...second, ...first]) await route.fallback().catch(() => {});
+				await page.unroute('**/*', hold).catch(() => {});
+			}
+			return;
 		}
 		case 'type':
 			await reach(page, target, (t, timeout) => t.fill('', { timeout }), false, patience);
