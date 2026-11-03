@@ -79,46 +79,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/full-site-gate.ts wait
 
-  old:
+  # The original every shard serves, by id: published once (original-id.yml), so no shard or branch builds its own.
+  original:
     needs: gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.14.0
-      - uses: oven-sh/setup-bun@v2
-      - id: old-build
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
-          lookup-only: true
-      - if: steps.old-build.outputs.cache-hit != 'true'
-        run: |
-          # The stamp ci-serve.sh compares: the build script and, where the site has them, the fixtures the build reads.
-          stamped=("deploy/$SITE/fetch-old.sh"); [ -f "deploy/$SITE/old-fixtures.json" ] && stamped+=("deploy/$SITE/old-fixtures.json")
-          built="$(cat "${stamped[@]}" | sha256sum | cut -d' ' -f1)"
-          ORIGIN=http://localhost:4000 "deploy/$SITE/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
-          echo "$built" > "deploy/$SITE/old/.ci-built"
-      - if: steps.old-build.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/original-id.yml
+    with:
+      site: shadcn-ui
 
   measure:
-    needs: old
+    needs: original
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -133,13 +104,15 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           browsers: ${{ matrix.engine }}
-      - uses: actions/cache/restore@v4
+      # The original by its id (.github/actions/old-site): every job of every branch serves the one published build.
+      - name: The original
+        if: needs.original.outputs.id != ''
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
-          fail-on-cache-miss: true
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve both sides
         env:
           BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-RrorpvSy/shadcn-ui-vercel-output-RrorpvSy.tar.gz' }}

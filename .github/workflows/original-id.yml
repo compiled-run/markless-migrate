@@ -1,0 +1,67 @@
+name: Original id
+
+# The originalId a workflow's jobs serve (.github/actions/old-site): the one published for the site's recipe, or, when none
+# is, the old site built here once and published. Every job then restores that one build by id, on any branch. A site whose
+# old side is not built by deploy/<site>/fetch-old.sh (react-hn builds its own) has no original: the id is empty, and each
+# job's ci-serve.sh builds it as before.
+on:
+  workflow_call:
+    inputs:
+      site:
+        type: string
+        required: true
+      original:
+        description: An originalId to serve as it is
+        type: string
+        required: false
+        default: ''
+    outputs:
+      id:
+        value: ${{ jobs.original.outputs.id }}
+
+jobs:
+  original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      SITE: ${{ inputs.site }}
+    outputs:
+      id: ${{ inputs.original || steps.resolve.outputs.id || steps.publish.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: recipe
+        run: echo "built=$([ -f "deploy/$SITE/fetch-old.sh" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - id: resolve
+        if: inputs.original == '' && steps.recipe.outputs.built == 'yes'
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ inputs.site }}
+          step: resolve
+          token: ${{ github.token }}
+      - if: inputs.original == '' && steps.recipe.outputs.built == 'yes' && steps.resolve.outputs.id == ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - if: inputs.original == '' && steps.recipe.outputs.built == 'yes' && steps.resolve.outputs.id == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: inputs.original == '' && steps.recipe.outputs.built == 'yes' && steps.resolve.outputs.id == ''
+        uses: oven-sh/setup-bun@v2
+      - name: Build the old site
+        if: inputs.original == '' && steps.recipe.outputs.built == 'yes' && steps.resolve.outputs.id == ''
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - id: publish
+        if: inputs.original == '' && steps.recipe.outputs.built == 'yes' && steps.resolve.outputs.id == ''
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ inputs.site }}
+          step: publish
+          token: ${{ github.token }}
+      - env:
+          ID: ${{ inputs.original || steps.resolve.outputs.id || steps.publish.outputs.id }}
+        run: echo "Original ${ID:-none, each job builds the old side}" >> "$GITHUB_STEP_SUMMARY"

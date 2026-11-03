@@ -109,8 +109,17 @@ jobs:
           path: shards
           retention-days: 3
 
+  # The original both sides serve, by id: published once (original-id.yml), so no shard or branch builds its own.
+  original:
+    needs: gate
+    permissions:
+      contents: write
+    uses: ./.github/workflows/original-id.yml
+    with:
+      site: shadcn-ui
+
   check:
-    needs: plan
+    needs: [plan, original]
     runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
@@ -130,13 +139,15 @@ jobs:
         with:
           name: judge-gate-shards
           path: ${{ runner.temp }}/shards
-      - name: Restore the old site's build
-        uses: actions/cache/restore@v4
+      # The original by its id (.github/actions/old-site): every job of every branch serves the one published build.
+      - name: The original
+        if: needs.original.outputs.id != ''
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
       - name: Serve the new side
