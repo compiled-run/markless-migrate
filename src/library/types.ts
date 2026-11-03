@@ -174,7 +174,85 @@ export interface LibrariesFile {
 	readonly compositions?: Composition[];
 	/** The app's own submit handlers, carried over from the source as code, or refused with the reason. */
 	readonly handlers?: CarriedHandler[];
+	/** The app's components that keep React state, converted to Markless state() from the source, or refused with the reason. */
+	readonly stateComponents?: StateComponent[];
 	readonly limits: string[];
+}
+
+/** Code with a component's state and computed values left as their index in `slots`, so each instance names its own. */
+export type StateCode = readonly (string | number)[];
+
+/** One value a component keeps: a useState/useReducer state, or a value derived from them (a `const`, a useMemo). */
+export interface StateSlot {
+	readonly name: string;
+	readonly kind: 'state' | 'computed';
+	/** A state's initial value as a literal, a computed's expression. */
+	readonly init: StateCode;
+}
+
+/** An attribute that reads state: its expression and the value the page shows at load (null for absent). */
+export interface BoundAttribute {
+	readonly code: StateCode;
+	readonly initial: string | null;
+}
+
+/** What a component renders, as the page can find it: elements with what the source fixes for them, and what reads state. */
+export type StateNode =
+	| {
+			readonly kind: 'element';
+			/** A host element's tag; a component's element is known by `slots`. */
+			readonly tag?: string;
+			readonly slots?: readonly string[];
+			/** Attribute values the source fixes, by DOM name. */
+			readonly attrs: Readonly<Record<string, string>>;
+			readonly bound?: Readonly<Record<string, BoundAttribute>>;
+			/** Handlers that read or write state, by tsrx event prop (`onClick`): each a function expression. */
+			readonly events?: Readonly<Record<string, StateCode>>;
+			/** Its whole text, when its children are text alone and some of it reads state. */
+			readonly text?: BoundAttribute;
+			/** What it renders inside, in order; absent when it shows its children as the page has them. */
+			readonly children?: readonly StateNode[];
+			/** Its children sit somewhere inside it (a component's), not as its own children in order. */
+			readonly loose?: true;
+	  }
+	/** Text: what the source fixes, or (`bound`) what it computes from state. */
+	| { readonly kind: 'text'; readonly value: string; readonly bound?: BoundAttribute }
+	/** Markup the page has and the state does not decide (the component's children, a library component). */
+	| { readonly kind: 'opaque' }
+	| {
+			readonly kind: 'if';
+			readonly test: StateCode;
+			readonly initial: boolean;
+			readonly then: readonly StateNode[];
+			readonly else: readonly StateNode[];
+			/** The arm the page did not show at load, as tsrx written from the source. */
+			readonly markup?: StateCode;
+	  }
+	| {
+			readonly kind: 'for';
+			readonly list: StateCode;
+			readonly item: string;
+			readonly index?: string;
+			readonly key: StateCode;
+			/** How many rows the page shows at load. */
+			readonly initial: number;
+			/** The tag of each row's element. */
+			readonly tag: string;
+			/** One row as tsrx written from the source, reading `item`. */
+			readonly markup: StateCode;
+	  };
+
+/** A component of the app that keeps React state, converted to Markless state, or refused with why. */
+export interface StateComponent {
+	readonly file: string;
+	readonly line: number;
+	readonly component: string;
+	readonly slots?: readonly StateSlot[];
+	readonly nodes?: readonly StateNode[];
+	readonly refused?: string;
+	/** Each effect it runs (useEffect, useLayoutEffect), by line, and why it is not converted. */
+	readonly effects?: readonly { readonly line: number; readonly reason: string }[];
+	readonly routes?: string[];
 }
 
 /** One app handler of the source: the element it is given to, found in the page as a composition's is, and its code. */

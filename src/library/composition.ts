@@ -90,6 +90,13 @@ function returned(fn: N): N | undefined {
 	return out;
 }
 
+/** The initialiser of a const a component's body declares under `name`. */
+function localConst(fn: N, name: string): N | undefined {
+	const body = fn.body?.type === 'BlockStatement' ? (fn.body.body as N[]) : [];
+	for (const st of body) if (st.type === 'VariableDeclaration' && st.kind === 'const') for (const d of st.declarations as N[]) if (d.id.type === 'Identifier' && d.id.name === name) return d.init;
+	return undefined;
+}
+
 /** The names a component's props reach its body under: `props`, or the rest of a destructured first parameter. */
 function propsNames(fn: N): Set<string> {
 	const raw = (fn.params as N[])[0];
@@ -262,8 +269,46 @@ export class Compositions {
 		return out;
 	}
 
+	/** Whether an element's DOM props (aria-*, data-*, its handlers) land on the element it renders: a host, a library part, or a component whose root spreads its props. */
+	async spreadsProps(mod: Module, element: N): Promise<boolean> {
+		const { host, part, component } = await this.tag(mod, element.openingElement.name);
+		if (host || (part && !component)) return true;
+		const root = component ? returned(component.fn) : undefined;
+		if (root?.type !== 'JSXElement') return Boolean(part);
+		const names = propsNames(component!.fn);
+		return (root.openingElement.attributes as N[]).some((a) => a.type === 'JSXSpreadAttribute' && a.argument.type === 'Identifier' && names.has(a.argument.name));
+	}
+
+	/**
+	 * The host element a local component renders as its root with its props spread on it (`<input {...props} />`),
+	 * through wrappers that spread theirs onto another, and through shadcn's `const Comp = asChild ? Slot : "button"`
+	 * when the element does not pass `asChild`.
+	 */
+	async rootHost(mod: Module, element: N, depth = 0): Promise<string | undefined> {
+		if (depth > MAX_DEPTH || isTrue(element.openingElement, 'asChild')) return undefined;
+		const { component } = await this.tag(mod, element.openingElement.name);
+		const root = component ? returned(component.fn) : undefined;
+		if (root?.type !== 'JSXElement' || root.openingElement.name.type !== 'JSXIdentifier') return undefined;
+		const names = propsNames(component!.fn);
+		if (!(root.openingElement.attributes as N[]).some((a) => a.type === 'JSXSpreadAttribute' && a.argument.type === 'Identifier' && names.has(a.argument.name))) return undefined;
+		const tag: string = root.openingElement.name.name;
+		if (/^[a-z]/.test(tag)) return tag;
+		const local = localConst(component!.fn, tag);
+		if (local) {
+			const init = unwrap(local);
+			if (init?.type === 'Literal' && typeof init.value === 'string') return init.value;
+			// `asChild ? Slot : "button"`: the element is the string branch, as no asChild reaches it.
+			if (init?.type === 'ConditionalExpression' && init.test.type === 'Identifier' && init.test.name === 'asChild') {
+				const branch = [init.consequent, init.alternate].map(unwrap).find((b) => b?.type === 'Literal' && typeof b.value === 'string');
+				return branch?.value;
+			}
+			return undefined;
+		}
+		return this.rootHost(component!.mod, root, depth + 1);
+	}
+
 	/** Whether an element puts its JSX children in the page as they are: a host element, or a component whose root takes them from its props alone. */
-	private async passesChildren(mod: Module, element: N): Promise<boolean> {
+	async passesChildren(mod: Module, element: N): Promise<boolean> {
 		const { host, component } = await this.tag(mod, element.openingElement.name);
 		if (host) return true;
 		const root = component ? returned(component.fn) : undefined;

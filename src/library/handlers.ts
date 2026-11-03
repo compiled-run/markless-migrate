@@ -7,12 +7,12 @@ import type { CarriedHandler } from './types.ts';
 // The events carried: a submit is the one use recording never makes (it submits only form-library forms), so a carried
 // handler never repeats a recorded effect.
 const EVENTS: Readonly<Record<string, string>> = { onSubmit: 'submit' };
-const GLOBALS = new Set(['FormData', 'console', 'Date', 'Math', 'JSON', 'Number', 'String', 'Boolean', 'Array', 'Object', 'URL', 'URLSearchParams', 'setTimeout', 'clearTimeout', 'Intl', 'Promise', 'encodeURIComponent', 'decodeURIComponent', 'Error', 'undefined', 'Infinity', 'NaN', 'Map', 'Set', 'RegExp', 'parseInt', 'parseFloat', 'isNaN']);
-const TS_EXPRESSIONS = new Set(['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression']);
-const HOOK = /^(React\.)?use[A-Z]\w*$/;
+export const GLOBALS: ReadonlySet<string> = new Set(['FormData', 'console', 'Date', 'Math', 'JSON', 'Number', 'String', 'Boolean', 'Array', 'Object', 'URL', 'URLSearchParams', 'setTimeout', 'clearTimeout', 'Intl', 'Promise', 'encodeURIComponent', 'decodeURIComponent', 'Error', 'undefined', 'Infinity', 'NaN', 'Map', 'Set', 'RegExp', 'parseInt', 'parseFloat', 'isNaN']);
+export const TS_EXPRESSIONS: ReadonlySet<string> = new Set(['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression']);
+export const HOOK = /^(React\.)?use[A-Z]\w*$/;
 const MAX_WORDS = 40;
 // A component kit's wrapper modules (shadcn's ui/): their handlers are the library's own behaviour, which its part ports.
-const WRAPPERS = /(^|\/)ui(-[a-z]+)?\/[^/]+\.[jt]sx$/;
+export const WRAPPERS = /(^|\/)ui(-[a-z]+)?\/[^/]+\.[jt]sx$/;
 
 const jsxName = (n: N): string | undefined => (n.type === 'JSXIdentifier' ? n.name : n.type === 'JSXMemberExpression' ? `${jsxName(n.object)}.${n.property.name}` : undefined);
 
@@ -41,7 +41,7 @@ export function stripTypes(text: string, node: N, drop: ReadonlySet<N> = new Set
 }
 
 /** The names a function reads that it does not declare itself, outside its types. */
-function freeNames(fn: N): Set<string> {
+export function freeNames(fn: N): Set<string> {
 	const declared = new Set<string>();
 	const used = new Set<string>();
 	walk(fn, (n, ancestors) => {
@@ -81,7 +81,7 @@ function localDeclaration(component: N, name: string): { node: N; statement: N }
 	return undefined;
 }
 
-class Refused extends Error {}
+export class Refused extends Error {}
 
 interface Carry {
 	/** Statements left out: the handler's own cancel of its event, which the page applies as it dispatches. */
@@ -140,6 +140,16 @@ export class Handlers {
 		const handler = value.type === 'Identifier' ? value.name : stripTypes(mod.text, value, carry.drop);
 		const code = `(${[...carry.calls.keys()].join(', ')}) => {\n${carry.declarations.join('\n')}\nreturn ${handler};\n}`;
 		return { code, calls: Object.fromEntries(carry.calls), ...(cancels ? { cancels: true } : {}) };
+	}
+
+	/**
+	 * What module-level names (a function, a constant, an import) a piece of a component's code reads, carried as
+	 * declarations and library calls, as a submit handler's are. Throws Refused for a name the page has no value for.
+	 */
+	async carryModuleNames(mod: Module, names: Iterable<string>): Promise<{ declarations: string[]; calls: Record<string, { from: string; imported: string }> }> {
+		const carry: Carry = { drop: new Set(), declarations: [], seen: new Set(), calls: new Map() };
+		for (const name of names) await this.need(mod, name, undefined, carry);
+		return { declarations: carry.declarations, calls: Object.fromEntries(carry.calls) };
 	}
 
 	/** What `name` is where the handler reads it, carried along: a declaration, a library call to port, or a global. */
@@ -201,7 +211,7 @@ const functionOf = (d: { node: N } | undefined): N | undefined => {
  * handler runs once the page has loaded it, after the event, so the page cancels the event as it dispatches instead.
  * A cancel anywhere else is a condition only the handler knows, and is refused.
  */
-function cancelOf(fn: N): N | undefined {
+export function cancelOf(fn: N): N | undefined {
 	const param = (fn.params as N[])[0];
 	const name = param?.type === 'Identifier' ? param.name : undefined;
 	const isCancel = (n: N) => n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed && n.callee.property.name === 'preventDefault';

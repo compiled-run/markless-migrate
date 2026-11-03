@@ -31,6 +31,8 @@ import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, announced, triggerPorts, useMar
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
 import { carriedBinding, carriesCall, markHandlers, notCarried, useHandlers, type HandlerFact, type PortedCall } from './handlers.ts';
+import { ReactStatePlan } from './react-state.ts';
+import type { StateComponent } from '../library/types.ts';
 import { captureFormLibraries, FormPlan, type CapturedForm } from './form-libraries.ts';
 import { RadixFormPlan, radixFormSources } from './radix-form.ts';
 import { formSources } from './form-schemas.ts';
@@ -1806,7 +1808,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
 	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
-	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[]; handlers?: HandlerFact[] }) : undefined;
+	const libraries = hasLibraries ? (JSON.parse(await readFile(librariesPath, 'utf8')) as { libraries?: { name: string }[]; compositions?: CompositionFact[]; handlers?: HandlerFact[]; stateComponents?: StateComponent[] }) : undefined;
 	useMarkupLibraries((libraries?.libraries ?? []).map((l) => l.name));
 	useCompositions(libraries?.compositions);
 	useHandlers(libraries?.handlers);
@@ -1987,6 +1989,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let disclosureGroups = 0;
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
+	const reactState = new ReactStatePlan(libraries?.stateComponents);
 	// A closed control whose panel is empty and got no captured content opens nothing on the port: never silently.
 	for (const [route, p] of prepared) {
 		const ids = new Map<string, Element>();
@@ -2196,6 +2199,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(needs(formLibs.bind(el), 'form-library'), binding);
 		binding = mergeBindings(needs(radixForms.bind(el), 'radix/form'), binding);
 		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
+		binding = mergeBindings(reactState.bind(el), binding);
 		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), formOf(el))), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
@@ -2244,9 +2248,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	// Their bind is a lookup; a TanStack table's emits its rows on first bind, so it is left out.
-	const statePlans = [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps, scenePlan, dayPickers, racCalendars, racTables, charts];
+	const statePlans: { bind(el: Element): Binding | undefined }[] = [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps, scenePlan, dayPickers, racCalendars, racTables, charts];
+	// An app component's state is found last, on elements no other plan binds.
+	const bound = (el: Element) => statePlans.some((plan) => plan.bind(el)) || tables.nameOf(el) !== undefined;
+	let stateInstances = 0;
+	for (const p of prepared.values()) stateInstances += reactState.add(p.root, bound);
+	const stateFacts = libraries?.stateComponents ?? [];
+	if (stateFacts.length) log(`app components on React state: ${stateFacts.length - stateFacts.filter((c) => c.refused).length} converted from the source, ${stateFacts.filter((c) => c.refused).length} not (effects, refs, library hooks, props in their markup); ${stateInstances} found on these pages${reactState.counts.size ? ` (${[...reactState.counts].map(([c, n]) => `${c} ${n}`).join(', ')})` : ''}`);
+	statePlans.push(reactState);
 	const declares = (el: Element) => statePlans.flatMap((plan) => plan.bind(el)?.declare ?? []);
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes), declares });
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent, enter: (routes) => (usedPorts.routes = routes), declares, computed: (line) => reactState.declaresComputed(line) });
 	usedPorts.routes = undefined;
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
@@ -2374,7 +2385,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (markup.includes(`(${PAGE_SHOWN})`)) imports.add(`const ${PAGE_SHOWN} = true;`);
 		const usesPath = markup.includes('path={path}') || markup.includes('path ===');
 		const declared = [...new Set(variants.flatMap((v) => v.declarations)), ...(static_?.differs ? VARIANT_DECLARATIONS : [])];
-		if (declared.length) imports.add(static_?.differs ? "import { computed, state } from '@markless/core';" : "import { state } from '@markless/core';");
+		if (declared.length) imports.add(static_?.differs || declared.some((d) => reactState.declaresComputed(d)) ? "import { computed, state } from '@markless/core';" : "import { state } from '@markless/core';");
 		if (static_?.differs) imports.add(`const ${VARIANT_TABLE}: Readonly<Record<string, Readonly<Record<string, string>>>> = ${JSON.stringify(static_.table)};`);
 		const source = `${GENERATED} (${variants.map((v) => v.route).join(', ')})\n${[...imports].join('\n')}\n\nexport default function Page(${perQuery ? '{ url }: PageProps' : '_props: PageProps'}) @{\n${usesPath ? `\tconst path = ${pathExpr};\n` : ''}${perQuery ? '\tconst search = url.search;\n' : ''}${declared.map((d) => `\t${d}\n`).join('')}\n${markup}}\n`;
 		written.set(file, source);
