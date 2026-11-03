@@ -5,6 +5,11 @@ import type { Json } from '../codec.ts';
 /** Fields measured on the real clock, never part of a row's facts. */
 export const TIMING_FIELDS: ReadonlySet<string> = new Set(['answeredMs', 'regions', 'shift', 'ms', 'at', 'startedAt', 'elapsedMs', 'durationMs', 'loadMs', 'timing', 'views', 'frames', 'stateMs']);
 
+/** Fields whose text ends in real-clock counts: a tweened shape's `|frames|ms`. */
+const TIMED_PARTS: Readonly<Record<string, (v: unknown) => unknown>> = {
+	tweened: (v) => (Array.isArray(v) ? v.map((t) => (typeof t === 'string' ? t.replace(/\|\d+\|\d+$/, '') : t)) : v),
+};
+
 export interface Difference {
 	readonly path: string;
 	readonly a: string;
@@ -39,7 +44,7 @@ export function differences(a: unknown, b: unknown, limit = 20, path = ''): Diff
 			return;
 		}
 		const xo = x as Record<string, unknown>, yo = y as Record<string, unknown>;
-		for (const k of new Set([...Object.keys(xo), ...Object.keys(yo)])) if (!TIMING_FIELDS.has(k)) walk(xo[k], yo[k], `${at}.${k}`);
+		for (const k of new Set([...Object.keys(xo), ...Object.keys(yo)])) if (!TIMING_FIELDS.has(k)) walk(TIMED_PARTS[k]?.(xo[k]) ?? xo[k], TIMED_PARTS[k]?.(yo[k]) ?? yo[k], `${at}.${k}`);
 	};
 	walk(a, b, path);
 	return out;

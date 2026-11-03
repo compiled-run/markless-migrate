@@ -138,6 +138,7 @@ test("a shard downloads its routes' buckets and the site-wide tables, nothing el
 test('the canary diff leaves out real-clock fields and names the facts that differ', () => {
 	const a = { added: ['x'], reaction: { answeredMs: 10, regions: [[0, 0, 1, 1]], changes: ['value'] }, screenshot: Buffer.from('one') };
 	assert.deepEqual(differences(a, { ...a, reaction: { ...a.reaction, answeredMs: 99, regions: [] } }), []);
+	assert.deepEqual(differences({ tweened: ['path in group "Series" d|24|400'] }, { tweened: ['path in group "Series" d|19|380'] }), [], "a tween's frame count and span are the clock's");
 	assert.deepEqual(
 		differences(a, { ...a, added: ['y'], screenshot: Buffer.from('two') }).map((d) => d.path),
 		['.added[0]', '.screenshot'],
