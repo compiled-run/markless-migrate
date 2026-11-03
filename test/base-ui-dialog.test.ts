@@ -267,3 +267,22 @@ test('opening a modal Base UI alert dialog reads layout once: the stacking and i
 	assert.equal(await focused(page), 'alert-dialog-cancel');
 	await page.close();
 });
+
+test("a dialog a site component opens from a plain button (Base UI's open prop, no Dialog.Trigger) leaves that button's attributes alone, open, closed and after Escape, and focus goes back to it", async () => {
+	const page = await open(
+		`<main><button type="button" tabindex="0" data-slot="button" id="add">Add</button></main><div id="rendered" data-base-ui-portal data-slot="dialog-portal" hidden>${INTERNAL_BACKDROP}<div data-open role="dialog" tabindex="-1" data-slot="dialog-content"><button data-slot="dialog-close">Done</button></div></div><script type="module">import { openRendered } from '/parts/base-ui/dialog.ts'; document.getElementById('add').addEventListener('click', () => openRendered(document.getElementById('rendered')));</script>`,
+		['base-ui/dialog'],
+	);
+	const attrs = () => page.evaluate(() => [...document.getElementById('add')!.attributes].map((a) => `${a.name}=${a.value}`).join(' '));
+	const before = await attrs();
+	await page.locator('#add').click();
+	await settled(page);
+	assert.equal(await page.locator('#rendered').isHidden(), false);
+	assert.equal(await attrs(), before);
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await page.locator('#rendered').isHidden(), true);
+	assert.equal(await attrs(), before);
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'add');
+	await page.close();
+});

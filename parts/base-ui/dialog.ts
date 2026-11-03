@@ -124,9 +124,12 @@ export function click(target: Element): boolean {
 	return true;
 }
 
-/** A dialog a site component renders itself (its portal in the page, hidden until used), opened from `trigger` as a converted one opens. */
-export function openRendered(trigger: HTMLElement, portal: HTMLElement): boolean {
-	return Boolean(open(trigger, { rendered: portal }));
+/**
+ * A dialog a site component renders itself (its portal in the page, hidden until used) and opens through its open prop,
+ * from a plain button that is no Dialog.Trigger: no element carries open state for it, and focus goes back where it was.
+ */
+export function openRendered(portal: HTMLElement): boolean {
+	return Boolean(open(focusReturn(), { rendered: portal }));
 }
 
 export function closeRendered(portal: HTMLElement): void {
@@ -147,18 +150,23 @@ export function idle(): void {
 	adoptShown();
 }
 
+// Base UI's FloatingFocusManager gives focus back to what had it before a dialog opened without a trigger: a stand-in trigger.
+function focusReturn(): HTMLElement {
+	const at = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+	// Opened from a menu item: the menu closes first and gives focus back to its trigger, where the dialog returns it.
+	const before = (at && popupOf(at)?.trigger) || at;
+	const stand = document.createElement('button');
+	stand.focus = (options?: FocusOptions) => before?.focus(options);
+	return stand;
+}
+
 /**
  * A dialog the page opens itself (its open prop): focus goes back where it was when it closes, as Base UI's
  * FloatingFocusManager returns it; a trigger the page has for it shows it open meanwhile.
  */
 export function show(key: string): boolean {
 	if (isOpen(key)) return false;
-	const at = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
-	// Opened from a menu item: the menu closes first and gives focus back to its trigger, where the dialog returns it.
-	const before = (at && popupOf(at)?.trigger) || at;
-	const stand = document.createElement('button');
-	stand.focus = (options?: FocusOptions) => before?.focus(options);
-	const p = open(stand, { key });
+	const p = open(focusReturn(), { key });
 	if (!p) return false;
 	const trigger = document.getElementById(key);
 	if (trigger?.matches(TRIGGER)) {
