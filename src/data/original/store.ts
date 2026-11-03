@@ -21,12 +21,22 @@ const pad = (b: number) => String(b).padStart(2, '0');
 export const tableFile = (table: Table, bucket?: number) => (bucket === undefined ? `${table}.ndjson` : `${table}-${pad(bucket)}.ndjson`);
 export const blobsDir = (bucket?: number) => (bucket === undefined ? 'blobs-site' : `blobs-${pad(bucket)}`);
 
-/** What one producer shard wrote. */
+/** What one producer shard wrote, and the dataset it wrote it for. */
 export interface Part {
 	readonly shard: string;
+	readonly meta: DatasetMeta;
 	readonly rows: Readonly<Partial<Record<Table, number>>>;
 	readonly buckets: Readonly<Partial<Record<Table, readonly number[]>>>;
 	/** Routes whose `routes` row was written: a producer writes it last, so these are whole. */
+	readonly routes: readonly string[];
+}
+
+export interface DatasetMeta {
+	readonly site: string;
+	readonly originalId: string;
+	readonly conditions: Conditions;
+	readonly versions: ProducerVersions;
+	/** Every route of the dataset, in site order. */
 	readonly routes: readonly string[];
 }
 
@@ -41,8 +51,10 @@ export class DatasetWriter {
 	readonly #routes = new Set<string>();
 	#queue: Promise<void> = Promise.resolve();
 	readonly #ready: Promise<void>;
-	constructor(dir: string, meta: { readonly originalId: string; readonly conditions: Conditions; readonly versions: ProducerVersions; readonly runner: string; readonly shard?: string }) {
+	readonly #meta: DatasetMeta;
+	constructor(dir: string, meta: DatasetMeta & { readonly runner: string; readonly shard?: string }) {
 		this.#dir = dir;
+		this.#meta = { site: meta.site, originalId: meta.originalId, conditions: meta.conditions, versions: meta.versions, routes: meta.routes };
 		this.#shard = meta.shard ?? '0';
 		const conditions = conditionsId(meta.conditions);
 		const at = new Date().toISOString();
@@ -76,17 +88,20 @@ export class DatasetWriter {
 	async close(): Promise<Part> {
 		await this.#queue;
 		for (const blobs of this.#blobs.values()) await blobs.flush();
-		const part: Part = { shard: this.#shard, rows: { ...this.#rows }, buckets: Object.fromEntries(Object.entries(this.#buckets).map(([t, s]) => [t, [...s!].sort((a, b) => a - b)])), routes: [...this.#routes] };
+		const part: Part = { shard: this.#shard, meta: this.#meta, rows: { ...this.#rows }, buckets: Object.fromEntries(Object.entries(this.#buckets).map(([t, s]) => [t, [...s!].sort((a, b) => a - b)])), routes: [...this.#routes] };
 		await writeFile(join(this.#dir, `part-${this.#shard}.json`), `${JSON.stringify(part)}\n`);
 		return part;
 	}
 }
 
 /** Writes the manifest over every shard's part in `dir`: the dataset is readable from here on. */
-export async function commitDataset(dir: string, meta: { readonly site: string; readonly originalId: string; readonly conditions: Conditions; readonly versions: ProducerVersions; readonly routes: readonly string[] }): Promise<Manifest> {
+export async function commitDataset(dir: string): Promise<Manifest> {
 	const parts: Part[] = [];
 	for (const f of (await readdir(dir)).filter((f) => /^part-.+\.json$/.test(f)).sort()) parts.push(JSON.parse(await readFile(join(dir, f), 'utf8')) as Part);
 	if (!parts.length) throw new Error(`${dir} holds no producer part: nothing was produced`);
+	const meta = parts[0]!.meta;
+	const other = parts.find((p) => JSON.stringify(p.meta) !== JSON.stringify(meta));
+	if (other) throw new Error(`shard ${other.shard} produced for another dataset than shard ${parts[0]!.shard} (another original, conditions, producer versions or route list)`);
 	const produced = new Set(parts.flatMap((p) => p.routes));
 	const missing = meta.routes.filter((r) => !produced.has(r));
 	if (missing.length) throw new Error(`${missing.length} route(s) were not produced, for example ${missing.slice(0, 3).join(', ')}: the dataset is not committed`);
@@ -109,7 +124,8 @@ export interface Row<T = unknown> {
 /** What a reader expects of a dataset: a check names the original, the conditions and the producer versions it reads. */
 export interface Expect {
 	readonly originalId?: string;
-	readonly conditions: Conditions;
+	/** Left out, the check compares the conditions itself once it knows them. */
+	readonly conditions?: Conditions;
 	readonly versions: ProducerVersions;
 	readonly tables: readonly Table[];
 }
@@ -131,8 +147,7 @@ export class Dataset {
 		const manifest = JSON.parse(await readFile(path, 'utf8')) as Manifest;
 		if (manifest.v !== DATASET_VERSION) throw new Error(`${dir} is a dataset of version ${manifest.v}; this checker reads version ${DATASET_VERSION}`);
 		if (expect.originalId && manifest.originalId !== expect.originalId) throw new Error(`${dir} is a dataset of the original ${manifest.originalId.slice(0, 12)}, not ${expect.originalId.slice(0, 12)}`);
-		const wanted = conditionsId(expect.conditions);
-		if (manifest.conditionsId !== wanted) throw new Error(`${dir} was produced under other conditions than this check's (${differing(manifest.conditions, expect.conditions).join(', ') || manifest.conditionsId})`);
+		if (expect.conditions && manifest.conditionsId !== conditionsId(expect.conditions)) throw new Error(`${dir} was produced under other conditions than this check's (${differing(manifest.conditions, expect.conditions).join(', ') || manifest.conditionsId})`);
 		for (const t of expect.tables) {
 			const has = manifest.tables[t];
 			const want = expect.versions[t];
@@ -182,7 +197,15 @@ export class Dataset {
 	}
 }
 
-export class MissingRow extends Error {
+/** The dataset lacks what a check asks of it, or holds it in another shape than its manifest says. */
+export class DatasetError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'DatasetError';
+	}
+}
+
+export class MissingRow extends DatasetError {
 	constructor(originalId: string, table: Table, route: string, key: string) {
 		super(`the original ${originalId.slice(0, 12)}'s dataset has no ${table} row ${JSON.stringify(key.split('\u0000').join(' | '))} for ${route}`);
 		this.name = 'MissingRow';

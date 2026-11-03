@@ -55,11 +55,11 @@ async function produced(routes: readonly string[]): Promise<string> {
 	const v = await versions();
 	const half = Math.ceil(routes.length / 2);
 	for (const [shard, part] of [routes.slice(0, half), routes.slice(half)].entries()) {
-		const writer = new DatasetWriter(dir, { originalId: ORIGINAL, conditions, versions: v, runner: 'test', shard: String(shard) });
+		const writer = new DatasetWriter(dir, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes, runner: 'test', shard: String(shard) });
 		for (const route of part) await writeRoute(writer, route, observation(route));
 		await writer.close();
 	}
-	await commitDataset(dir, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes });
+	await commitDataset(dir);
 	return dir;
 }
 
@@ -103,7 +103,15 @@ test('a dataset is read only by a check of the same original, conditions and pro
 		await assert.rejects(Dataset.open(dir, { conditions, versions: { ...v, loads: { ...v.loads, version: v.loads.version + 1 } }, tables: ['loads'] }), /producer version 1; this checker reads version 2/);
 		await rm(join(dir, 'manifest.json'));
 		await assert.rejects(Dataset.open(dir, { conditions, versions: v, tables: ['loads'] }), /no committed dataset/);
-		await assert.rejects(commitDataset(dir, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes: ['/', '/docs'] }), /1 route\(s\) were not produced, for example \/docs/);
+		const writer = new DatasetWriter(dir, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes: ['/', '/docs'], runner: 'test', shard: 'late' });
+		await writer.close();
+		await assert.rejects(commitDataset(dir), /shard late produced for another dataset/);
+		const two = await mkdtemp(join(tmpdir(), 'mm-original-'));
+		const partial = new DatasetWriter(two, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes: ['/', '/docs'], runner: 'test' });
+		await writeRoute(partial, '/', observation('/'));
+		await partial.close();
+		await assert.rejects(commitDataset(two), /1 route\(s\) were not produced, for example \/docs/);
+		await rm(two, { recursive: true, force: true });
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
@@ -134,7 +142,7 @@ test('the canary diff leaves out real-clock fields and names the facts that diff
 		differences(a, { ...a, added: ['y'], screenshot: Buffer.from('two') }).map((d) => d.path),
 		['.added[0]', '.screenshot'],
 	);
-	const t = diffTable(new Map([['k', a], ['only-a', 1]]), new Map([['k', { ...a, added: ['z'] }]]));
+	const t = diffTable(new Map<string, unknown>([['k', a], ['only-a', 1]]), new Map<string, unknown>([['k', { ...a, added: ['z'] }]]));
 	assert.deepEqual([t.onlyA, t.onlyB, t.differing.map((d) => d.key)], [['only-a'], [], ['k']]);
 	assert.ok(same(diffTable(new Map([['k', a]]), new Map([['k', a]]))));
 });
