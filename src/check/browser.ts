@@ -434,7 +434,13 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	if (env.replay?.live) await context.addInitScript(countDatabaseFrames, FIREBASE_SOCKET.source);
 	const door = env.frontDoor;
 	const ownOrigin = (url: URL) => sameApp(url, env.origin) || (door !== undefined && sameApp(url, door.old));
-	await context.route(routedRequests(env, options), async (route: Route) => {
+	await context.route(routedRequests(env, options), (route: Route) =>
+		// A request a race step held may be cancelled before it is let go (Back left the page, the router aborted it): nothing is left to answer.
+		routeRequest(route).catch((error: Error) => {
+			if (!/Route is already handled/.test(error.message)) throw error;
+		}),
+	);
+	async function routeRequest(route: Route): Promise<void> {
 		const request = route.request();
 		const url = new URL(request.url());
 		if (!/^https?:$/.test(url.protocol)) return route.continue();
@@ -507,7 +513,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		if (own) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: tag } });
 		if (env.replay) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: recorderTag(env, randomUUID()) } });
 		return env.headers ? route.continue({ headers: { ...request.headers(), ...extra } }) : route.continue();
-	});
+	}
 	const finish = (request: Request) => {
 		if (handled.has(request) || !contractRequest(request, env.origin) || insideEmbed(request, ownOrigin)) return;
 		const url = new URL(request.url());
