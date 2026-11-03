@@ -254,6 +254,8 @@ function share(card: Element): void {
 // The old card chose on load wherever the chart was, scrolled to or not.
 export function idle(): void {
 	for (const el of document.querySelectorAll<HTMLElement>(`${WRAPPER}[data-mm-start]`)) begin(el);
+	// A chart drawn again at this size or time zone fetches its layout code now, not once it is scrolled to.
+	if (!layoutLoad) for (const el of document.querySelectorAll<HTMLElement>(WRAPPER)) fit(el, surfaceOf(el), true);
 }
 
 // The drawing laid out for the chart's own size and the visitor's time zone (recharts-layout), where either differs
@@ -280,7 +282,7 @@ function clockOf(wrapper: Element): { rules: unknown[]; year: number } | undefin
 // Behind UTC, the dates recharts formats from UTC midnights read a day earlier, so their axis keeps other ticks.
 const behind = (year: number) => [0, 6].some((month) => new Date(Date.UTC(year, month, 1)).getTimezoneOffset() > 0);
 
-function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wrapper)): void {
+function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wrapper), fetchOnly = false): void {
 	const f = svg && factsOf(svg);
 	if (!svg || !f || (!f.a && !f.l && !f.pl)) return;
 	const box = wrapper.getBoundingClientRect();
@@ -295,6 +297,7 @@ function fit(wrapper: HTMLElement, svg: SVGSVGElement | undefined = surfaceOf(wr
 	const dated = axes.some((a) => a && intl(a)?.some((l, i) => l !== a.l[i]));
 	const key = `${W}x${H}${west || dated ? 'w' : ''}`;
 	if (laid.get(svg) === key || (!laid.has(svg) && f.w === W && f.h === H && !west && !dated)) return;
+	if (fetchOnly) return void loadLayout();
 	const run = ([layout, c]: [Layout, Clock]) => {
 		// The axis' text for this visitor, written in place; the clock part is told it is written.
 		const local = (axis: Axis) => {

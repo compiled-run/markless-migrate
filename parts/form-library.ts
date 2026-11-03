@@ -249,6 +249,11 @@ function liveOf(region: Element): Promise<Live | undefined> {
 	return found;
 }
 
+// The form code each region loads on first use is fetched once the page is idle, so a first use waits on no download.
+export function idle(): void {
+	for (const region of document.querySelectorAll(REGION)) void liveOf(region);
+}
+
 /** A list's rows as its region renders them: each row's key, index, and each sub-field's errors and first message. */
 export function rowsOf(spec: FormSpec, state: FormState, list: ListSpec): Record<string, Json>[] {
 	return (state.rows?.[list.name] ?? []).map((k, i) => {
