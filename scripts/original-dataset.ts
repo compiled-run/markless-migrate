@@ -21,8 +21,8 @@ const { values, positionals } = parseArgs({ args, allowPositionals: true, option
 const repo = values.repo ?? process.env.GITHUB_REPOSITORY;
 const gh = (...a: string[]) => execFileSync('gh', [...a, ...(repo ? ['-R', repo] : [])], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
 
-/** A dataset's assets are named by the producer versions it holds and the conditions it was produced under. */
-export const datasetName = (manifest: Manifest): string => `dataset-${digest(TABLES.map((t) => manifest.tables[t].producerVersion)).slice(0, 8)}-${manifest.conditionsId.slice(0, 12)}`;
+/** A dataset's assets are named by the producer versions it holds, the conditions it was produced under and its routes. */
+export const datasetName = (manifest: Manifest): string => `dataset-${digest(TABLES.map((t) => manifest.tables[t].producerVersion)).slice(0, 8)}-${manifest.conditionsId.slice(0, 12)}-${digest([...manifest.routes].sort()).slice(0, 8)}`;
 const pad = (b: number) => String(b).padStart(2, '0');
 
 function pack(dir: string, files: readonly string[], to: string): void {
@@ -73,13 +73,23 @@ if (command === 'name') {
 	mkdirSync(out, { recursive: true });
 	const names = gh('release', 'view', values.tag, '--json', 'assets', '--jq', '.assets[].name').split('\n').filter((n) => /^dataset-.+-manifest\.json$/.test(n)).map((n) => n.replace(/-manifest\.json$/, ''));
 	const wanted = digest(TABLES.map((t) => lock.producers[t].version)).slice(0, 8);
-	const choices = values.name ? names.filter((n) => n === values.name) : names.filter((n) => n.startsWith(`dataset-${wanted}-`));
-	if (choices.length !== 1) throw new Error(`${values.tag} holds ${choices.length ? `${choices.length} datasets of this checker's producer versions (${choices.join(', ')}): name one with --name` : `no dataset of this checker's producer versions (${wanted}); it holds ${names.join(', ') || 'none'}`}`);
-	const name = choices[0]!;
-	gh('release', 'download', values.tag, '-p', `${name}-manifest.json`, '-D', out, '--clobber');
-	execFileSync('mv', [join(out, `${name}-manifest.json`), join(out, 'manifest.json')]);
-	const manifest = manifestOf(out);
+	const candidates = values.name ? names.filter((n) => n === values.name) : names.filter((n) => n.startsWith(`dataset-${wanted}-`));
 	const routes = (JSON.parse(readFileSync(resolve(values.targets), 'utf8')) as { routes: string[] }).routes;
+	const manifests = join(out, '.manifests');
+	mkdirSync(manifests, { recursive: true });
+	// The dataset of this checker's producer versions that holds every route asked for; of several, the smallest.
+	const covering = candidates
+		.map((name) => {
+			gh('release', 'download', values.tag!, '-p', `${name}-manifest.json`, '-D', manifests, '--clobber');
+			return { name, manifest: JSON.parse(readFileSync(join(manifests, `${name}-manifest.json`), 'utf8')) as Manifest };
+		})
+		.filter((c) => routes.every((r) => c.manifest.routes.includes(r)))
+		.sort((a, b) => a.manifest.routes.length - b.manifest.routes.length);
+	if (!covering.length) throw new Error(`${values.tag} holds no dataset of this checker's producer versions (${wanted}) with every route asked for; it holds ${names.join(', ') || 'none'}`);
+	const name = covering[0]!.name;
+	execFileSync('mv', [join(manifests, `${name}-manifest.json`), join(out, 'manifest.json')]);
+	rmSync(manifests, { recursive: true, force: true });
+	const manifest = manifestOf(out);
 	const held = new Set(TABLES.flatMap((t) => manifest.tables[t].buckets));
 	const buckets = [...new Set(routes.map(bucketOf))].filter((b) => held.has(b));
 	const patterns = [...buckets.map((b) => `${name}-bucket-${pad(b)}.tar.zst`), `${name}-site.tar.zst`];
