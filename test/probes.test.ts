@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
 import type { RecordedJourney } from '../src/check/journeys.ts';
-import { checkProbes, type SharedProbe } from '../src/check/probes.ts';
+import { admitSteps, checkProbes, probeSteps, sequencesFor, type SharedProbe } from '../src/check/probes.ts';
 import { compareRuns, type Reading } from '../src/check/probes-compare.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
@@ -179,4 +179,14 @@ test('the widget around a control is read from what its demo renders: markup the
 	assert.ok(chosen, JSON.stringify(stale!.failures, null, 1));
 	assert.match(chosen.expected, /widget: input #1: aria-hidden=true tabindex=-1 value=en/);
 	assert.match(chosen.actual, /value=ar/);
+});
+
+test('the probes\' budget is counted in steps in queue order, so the same sequences are driven however fast the machine is', () => {
+	const queue = [...sequencesFor('popup', { role: 'button', popup: 'menu' }), ...sequencesFor('modality', { role: 'button' })];
+	assert.deepEqual(queue.map((s) => s.ops.length + 1), [13, 7, 11, 6, 5, 6]);
+	assert.deepEqual(admitSteps(queue, 26), { admitted: [true, true, false, true, false, false], spent: 26 });
+	assert.deepEqual(admitSteps(queue.slice(4), 26, 20), { admitted: [true, false], spent: 25 });
+	assert.equal(probeSteps(10, 2), 300);
+	assert.equal(probeSteps(1, 2), 120);
+	assert.equal(probeSteps(100, 2), 1200);
 });
