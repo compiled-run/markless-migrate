@@ -1,3 +1,4 @@
+import { pageFunctions } from 'lighthouse/core/lib/page-functions.js';
 import type { Browser, Page, Request, Response } from 'playwright';
 import { appHeaders, openPage, type SideEnv } from './browser.ts';
 import { HINTS } from './hints.ts';
@@ -6,6 +7,7 @@ import { locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import { describeStep, describeTarget } from './journeys-compare.ts';
 import type { Failure, Viewport } from './types.ts';
 import { loadPage } from './infrastructure.ts';
+import { cpuMultiplier } from './load.ts';
 import { judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
 import { DEFAULT_BUDGET_MS, DEFAULT_CPU, msText } from './responsiveness-summary.ts';
@@ -19,18 +21,31 @@ export interface Speed {
 	readonly viewport: Viewport;
 }
 
-/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `cpu`. */
-export function speeds(cpu: number): Speed[] {
+/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `rate` to stand for Lighthouse's `cpu`x device. */
+export function speeds(cpu: number, rate = cpu): Speed[] {
 	return [
 		{ name: 'desktop', label: 'desktop', cpu: 1, viewport: { name: 'desktop', width: 1280, height: 800, isMobile: false } },
-		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
+		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu: rate, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
 	];
+}
+
+/** This machine's speed as Lighthouse measures it (benchmarkIndex), the median of three reads on a blank page, unthrottled. */
+export async function machineIndex(browser: Browser): Promise<number> {
+	const context = await browser.newContext();
+	try {
+		const page = await context.newPage();
+		const reads: number[] = [];
+		for (let i = 0; i < 3; i++) reads.push(await page.evaluate(pageFunctions.computeBenchmarkIndex));
+		return reads.sort((a, b) => a - b)[1]!;
+	} finally {
+		await context.close();
+	}
 }
 
 export interface ResponsivenessOptions {
 	/** First in-page interaction at the throttled speed must answer within this; default 200 ms. */
 	readonly budgetMs?: number;
-	/** CPU slowdown of the mobile speed; default 4. */
+	/** CPU slowdown of the mobile speed, applied as given; by default the slowdown that makes this machine stand for Lighthouse's 4x device, from its benchmarkIndex measured on each route. */
 	readonly cpu?: number;
 	/** At most this many controls measured per route, in-page controls first; default 16. */
 	readonly maxControls?: number;
@@ -122,6 +137,9 @@ export interface Worst {
 export interface Responsiveness {
 	readonly budgetMs: number;
 	readonly cpu: number;
+	/** The slowdown applied at the throttled speed, and the benchmarkIndex it was calibrated from. */
+	readonly rate?: number;
+	readonly benchmarkIndex?: number;
 	/** The fixed latency every response had on both sides. */
 	readonly latencyMs?: number;
 	readonly controls: readonly ControlTiming[];
@@ -567,7 +585,10 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
 	const cpu = options.cpu ?? DEFAULT_CPU;
 	const picked = controlsToMeasure(journeys, options);
-	const all = speeds(cpu);
+	// Runners differ in speed by up to 2x (A/A runs 41480429505 and 41553969320), which a fixed slowdown carries into the budget.
+	const benchmarkIndex = options.cpu === undefined && picked.steps.length ? await machineIndex(browser) : undefined;
+	const rate = benchmarkIndex !== undefined ? Math.round(cpuMultiplier(benchmarkIndex) * 100) / 100 : cpu;
+	const all = speeds(cpu, rate);
 	const controls: ControlTiming[] = new Array(picked.steps.length);
 	const notMeasured = [...picked.notMeasured];
 	const latencyMs = options.latencyMs ?? DEFAULT_LATENCY_MS;
@@ -599,7 +620,7 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	const measured = controls.filter(Boolean);
 	await addVariance(measured, picked.steps, all, pair, budgetMs);
 	await confirmSlower(measured, picked.steps, all, pair);
-	const responsiveness: Responsiveness = { budgetMs, cpu, latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
+	const responsiveness: Responsiveness = { budgetMs, cpu, ...(benchmarkIndex !== undefined ? { rate, benchmarkIndex: Math.round(benchmarkIndex) } : {}), latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
 	return { responsiveness, failures: failuresOf(route, measured, all) };
 }
 
@@ -651,7 +672,8 @@ async function confirmSlower(controls: ControlTiming[], steps: readonly { step: 
 		const t = controls[c.i]!.speeds[c.at]!;
 		const speed = all.find((x) => x.name === t.speed)!;
 		const olds = [...t.old], news = [...t.new];
-		while (olds.length < CONFIRM_RUNS || news.length < CONFIRM_RUNS) {
+		// A run with no visible result has no time, so runs go on until each side has five times (directory's "1" in run 41553969320 had two).
+		for (let tries = 0; (ms(olds).length < CONFIRM_RUNS || ms(news).length < CONFIRM_RUNS) && tries < CONFIRM_RUNS * 2; tries++) {
 			const again = await pair(speed, steps[c.i]!.step);
 			olds.push(again.o);
 			news.push(again.n);
