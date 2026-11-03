@@ -52,15 +52,18 @@ export function freezePage({ time, seed, clock = 'still' }: { time: number; seed
 	// set going once the film ends and waited out, they land after it on both sides, however long either took to get there.
 	let set = 0;
 	let holding = false;
+	// A probe holds longer ones too (a toast's 4 s lifetime), so how long a busy runner takes between its steps is no page time.
+	let holdingLong = false;
 	let fakeIds = 0;
-	const later = (ms: number) => ms >= 1000 && ms <= 3000;
+	const later = (ms: number) => ms >= 1000 && (ms <= 3000 || holdingLong);
 	const short = new Map<unknown, { n: number; due: number }>();
 	const held = new Map<number, { n: number; start: () => unknown }>();
 	const started = new Map<number, unknown>();
 	Object.defineProperty(globalThis, '__markless_migrate_timer_mark__', { value: () => set });
 	Object.defineProperty(globalThis, '__markless_migrate_hold_timers__', {
-		value: (on: boolean) => {
+		value: (on: boolean, long = false) => {
 			holding = on;
+			holdingLong = on && long;
 			if (on) return;
 			for (const [fake, h] of [...held].sort((a, b) => a[1].n - b[1].n)) {
 				held.delete(fake);

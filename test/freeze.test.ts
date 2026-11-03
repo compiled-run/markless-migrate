@@ -115,3 +115,38 @@ test('each nondeterminism source the scan finds is reported as pinned, blocked o
 	assert.equal(pinnedBy('feature flag', 'client', DEFAULT_FREEZE), 'not pinned: left to the noise baseline');
 	assert.equal(pinnedBy('Math.random', 'client', false), 'not pinned: freezing is off');
 });
+
+test('a probe holds timeouts of a second or more, a toast\'s 4 s lifetime included, until it lets them go', async () => {
+	const env = defaultEnv('http://127.0.0.1:1', {});
+	const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
+	try {
+		await page.route('http://127.0.0.1:1/', (route) => route.fulfill({ body: '<p>x</p>', contentType: 'text/html' }));
+		await page.goto('http://127.0.0.1:1/');
+		const fired = (long: boolean) =>
+			page.evaluate(async (long) => {
+				const g = globalThis as { __markless_migrate_hold_timers__?: (on: boolean, long?: boolean) => void };
+				const seen: string[] = [];
+				g.__markless_migrate_hold_timers__!(true, long);
+				setTimeout(() => seen.push('3.5 s'), 3500);
+				setTimeout(() => seen.push('0.2 s'), 200);
+				await new Promise((done) => setTimeout(done, 500));
+				const held = [...seen];
+				g.__markless_migrate_hold_timers__!(false);
+				return held;
+			}, long);
+		assert.deepEqual(await fired(true), ['0.2 s'], 'held: the 3.5 s timeout does not run while the probe reads');
+		const seen = await page.evaluate(async () => {
+			const out: string[] = [];
+			const g = globalThis as { __markless_migrate_hold_timers__?: (on: boolean, long?: boolean) => void };
+			g.__markless_migrate_hold_timers__!(true, true);
+			const id = setTimeout(() => out.push('ran'), 1500);
+			g.__markless_migrate_hold_timers__!(false);
+			await new Promise((done) => setTimeout(done, 1700));
+			clearTimeout(id);
+			return out;
+		});
+		assert.deepEqual(seen, ['ran'], 'let go, a held timeout runs its full delay');
+	} finally {
+		await context.close();
+	}
+});

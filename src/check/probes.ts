@@ -213,6 +213,8 @@ async function runSequence(side: Side, origin: string, route: string, control: P
 	if (states) await armStateReader(page);
 	const out: Reading[] = [await read(page)];
 	if (states) states.push(await readState(page));
+	// Timeouts of a second or more the steps set start once the sequence is read: three presses show three toasts however slowly the runner takes them.
+	await page.evaluate(() => (globalThis as { __markless_migrate_hold_timers__?: (on: boolean, long?: boolean) => void }).__markless_migrate_hold_timers__?.(true, true)).catch(() => {});
 	for (const op of sequence.ops) {
 		let failed: string | undefined;
 		try {
