@@ -13,7 +13,8 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
     [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth 4] [--timeout 1800]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
-    [--no-navigation] [--nav-entries 2] [--nav-destinations 40]
+    [--no-navigation] [--nav-entries 2] [--nav-destinations 40] [--observations .migrate/observations]
+markless-migrate check judge [.migrate/observations] [--report .migrate/report.json] [--out <dir>] [--json]
 markless-migrate convert --old http://localhost:3000 [--source ../old-app] [--only <file of routes>] [--fallthrough <old deployment>] [--capture-only] [--reuse] [--ledger fail|report|off] [--record-keys <file>]
 markless-migrate ledger --source ../old-app [--json]
 markless-migrate fix (--route <path>... | --routes <glob> | --part <module>) [dev's options] [--site-targets <file>]
@@ -49,7 +50,9 @@ route is red. It writes `.migrate/report.json`, `.migrate/report.html` (one page
 screenshots per route, viewport and failing state, side by side or as a slider or blink toggle, with the
 differing regions boxed and every failure listed with its fix; `--open` opens it; the screenshots are
 PNG files in `.migrate/shots/`, each stored once and loaded lazily, so publish that folder with the page),
-screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
+screenshot diffs in `.migrate/diffs/`, the interactions it explored in `.migrate/journeys/`, and every
+observation it made in `.migrate/observations/`, which `check judge` judges again with no browser (see
+[Observations](check.md#observations-and-judging-a-check-again)).
 Each route's screenshots, motion frames and journeys are written there as soon as that route is checked, and
 only their paths stay in memory, so a run of hundreds of routes holds about as much memory as a run of ten.
 Without `--route` it also measures route coverage: every route of the old site must exist on the new

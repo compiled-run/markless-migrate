@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PNG } from 'pngjs';
-import { decode, digest, encode, MemoryBlobs } from '../src/data/codec.ts';
+import { decode, digest, encode, MemoryBlobs, spill } from '../src/data/codec.ts';
 
 const roundTrip = (value: unknown) => {
 	const blobs = new MemoryBlobs();
@@ -67,4 +67,18 @@ test('an object reached twice comes back as one object, so a judge matching elem
 test('the digest reads what a value holds, not which of its objects are shared', () => {
 	const target = { role: 'button', name: 'Open' };
 	assert.equal(digest({ steps: [target, target] }), digest({ steps: [{ ...target }, { ...target }] }));
+});
+
+test('a value too long for one string is put away in parts and read back whole, shared objects still shared across the parts', () => {
+	const blobs = new MemoryBlobs();
+	const el = { id: 1, text: 'x'.repeat(50) };
+	const steps = Array.from({ length: 2_000 }, (_, i) => ({ i, added: [`- line ${i} ${'y'.repeat(100)}`], element: el }));
+	const value = { journeys: steps, map: new Map([['k', steps.slice(0, 50)]]), big: { a: 'z'.repeat(5_000), b: [el] } };
+	const json = spill(encode(value, blobs), blobs, 20_000);
+	const text = JSON.stringify(json);
+	assert.ok(text.length < 20_000, `the written value is ${text.length} characters`);
+	for (const bytes of blobs.bytes.values()) assert.ok(bytes.length < 30_000, `a part is ${bytes.length} bytes`);
+	const back = decode(JSON.parse(text), blobs) as typeof value;
+	assert.deepStrictEqual(back, value);
+	assert.equal(back.journeys[1_999]!.element, back.big.b[0], 'one object, written in one part and referred to from another');
 });

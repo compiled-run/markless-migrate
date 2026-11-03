@@ -2,7 +2,7 @@
 // arrive (blobs put away by content) so what a producer returned is not held past its judging.
 import type { RunEvent, RunHeader } from '../check/report-judge.ts';
 import { decode, encode, MemoryBlobs, type Blobs, type Json } from './codec.ts';
-import type { Row } from './rows.ts';
+import { rowJson, type Row } from './rows.ts';
 
 /** Which route's rows: a page checked as a role, or a page whose widget probes alone ran (`--only probes`). */
 export interface RouteKey {
@@ -20,6 +20,56 @@ export interface Observations {
 	row(row: Row): Json;
 	/** A route's rows, as `row` encoded them, in the order its check asked for them. */
 	route(key: RouteKey, rows: readonly Json[]): Promise<void>;
+	/** Writing failed: the observations are marked incomplete, so no judge reads them as whole. */
+	failed(reason: string): Promise<void>;
+}
+
+/**
+ * Observations whose failure to write never stops the check: the first error is reported once and marks them incomplete,
+ * and nothing more is written.
+ */
+export class GuardedObservations implements Observations {
+	readonly #inner: Observations;
+	readonly #warn: (line: string) => void;
+	#broken = false;
+	#marked: Promise<void> = Promise.resolve();
+	constructor(inner: Observations, warn: (line: string) => void) {
+		this.#inner = inner;
+		this.#warn = warn;
+	}
+	#fail(error: unknown): void {
+		if (this.#broken) return;
+		this.#broken = true;
+		const reason = (error as Error)?.message ?? String(error);
+		this.#warn(`markless-migrate: observations not written (${reason}); check judge will refuse them\n`);
+		this.#marked = this.#inner.failed(reason).catch(() => {});
+	}
+	/** Once broken, every later call waits for the incomplete mark to be written, and writes nothing. */
+	async #try(work: () => Promise<void>): Promise<void> {
+		if (!this.#broken) await work().catch((error: unknown) => this.#fail(error));
+		await this.#marked;
+	}
+	header(header: RunHeader): Promise<void> {
+		return this.#try(() => this.#inner.header(header));
+	}
+	event(event: RunEvent): Promise<void> {
+		return this.#try(() => this.#inner.event(event));
+	}
+	row(row: Row): Json {
+		if (this.#broken) return null;
+		try {
+			return this.#inner.row(row);
+		} catch (error) {
+			this.#fail(error);
+			return null;
+		}
+	}
+	route(key: RouteKey, rows: readonly Json[]): Promise<void> {
+		return this.#try(() => this.#inner.route(key, rows));
+	}
+	failed(reason: string): Promise<void> {
+		return this.#try(() => this.#inner.failed(reason));
+	}
 }
 
 /** A run's observations as they were recorded, read back. */
@@ -41,13 +91,18 @@ export class MemoryObservations implements Observations {
 	async event(event: RunEvent): Promise<void> {
 		this.#events.push(round(encode(event, this.blobs)));
 	}
+	#failure: string | undefined;
 	row(row: Row): Json {
-		return round(encode(row, this.blobs));
+		return round(rowJson(row, this.blobs));
+	}
+	async failed(reason: string): Promise<void> {
+		this.#failure = reason;
 	}
 	async route(key: RouteKey, rows: readonly Json[]): Promise<void> {
 		this.#routes.set(routeKey(key), rows);
 	}
 	read(): Observed {
+		if (this.#failure) throw new Error(`the observations are incomplete: writing them failed (${this.#failure})`);
 		if (this.#header === undefined) throw new Error('no run header was observed');
 		return readObserved(this.#header, this.#events, this.#routes, this.blobs);
 	}

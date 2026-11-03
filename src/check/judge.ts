@@ -4,7 +4,7 @@ import type { Observed } from '../data/observations.ts';
 import { routeKey, type RouteKey } from '../data/observations.ts';
 import { replaying, type Row } from '../data/rows.ts';
 import { forgetFailures } from './compare.ts';
-import { applyLoads, asRole, embedsOnly, finishReport, outOfPart, roleCompared, routeOutcome, templateGroups, withTemplate, type RunEvent, type RunHeader } from './report-judge.ts';
+import { applyLoads, asRole, embedsOnly, finishReport, jsonReport, outOfPart, roleCompared, routeOutcome, templateGroups, withTemplate, type RunEvent, type RunHeader } from './report-judge.ts';
 import { deadlineResult, loadTimeout, partialResult, probesOnly, roleCheck, stopped, Unobserved, type Deadline, type RouteContext } from './route-judge.ts';
 import type { TemplateGroup } from './templates.ts';
 import { ANONYMOUS, type Failure, type LoginResult, type Report, type RouteCoverage, type RouteResult } from './types.ts';
@@ -108,5 +108,33 @@ export async function judgeObserved(observed: Observed): Promise<Report> {
 		for (const _ of plan.redirects) routes.push(asRole(next('redirect').result, role));
 	}
 	if (header.stages.load) routes = applyLoads(routes, new Map(next('loads').loads));
-	return finishReport(header, routes, logins, coverages, navigation, plan.groups, allPages, next('footer'));
+	const report = finishReport(header, routes, logins, coverages, navigation, plan.groups, allPages, next('footer'));
+	if (events[at]?.kind !== 'reused') return report;
+	const reused = next('reused').routes;
+	return { ...report, ok: report.ok && reused.every((r) => r.ok), routes: [...report.routes, ...reused] };
 }
+
+/** A route of report.json with its visual diffs counted, not named by file: what a report judged elsewhere can be compared by. */
+const comparable = (route: Readonly<Record<string, unknown>>) => JSON.stringify({ ...route, visualDiffs: Array.isArray(route.visualDiffs) ? route.visualDiffs.length : route.visualDiffs });
+
+/** Where a judged report differs from the report.json a check wrote: its run-wide fields, then route by route. Empty when every verdict is the same. */
+export function reportDifferences(written: Readonly<Record<string, unknown>>, judged: Report): string[] {
+	// Visual diffs are named as writeReport names them: by route, every role's under one entry.
+	const diffs: Record<string, string[]> = {};
+	for (const r of judged.routes) for (const _ of r.visualDiffs) (diffs[r.route] ??= []).push('');
+	const mine = jsonReport(judged, diffs) as unknown as Readonly<Record<string, unknown>>;
+	const out: string[] = [];
+	const top = (o: Readonly<Record<string, unknown>>) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'routes'));
+	const [a, b] = [top(written), top(mine)];
+	for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) out.push(`${key}: written ${JSON.stringify(a[key])?.slice(0, 200)}, judged ${JSON.stringify(b[key])?.slice(0, 200)}`);
+	const ra = (written.routes ?? []) as readonly Readonly<Record<string, unknown>>[];
+	const rb = (mine.routes ?? []) as readonly Readonly<Record<string, unknown>>[];
+	if (ra.length !== rb.length) out.push(`routes: ${ra.length} written, ${rb.length} judged`);
+	for (let i = 0; i < Math.min(ra.length, rb.length); i++) {
+		if (comparable(ra[i]!) === comparable(rb[i]!)) continue;
+		const fields = [...new Set([...Object.keys(ra[i]!), ...Object.keys(rb[i]!)])].filter((k) => k !== 'visualDiffs' && JSON.stringify(ra[i]![k]) !== JSON.stringify(rb[i]![k]));
+		out.push(`${String(ra[i]!.route)}${ra[i]!.role ? ` as ${String(ra[i]!.role)}` : ''}: ${fields.length ? fields.join(', ') : 'visual diffs'} differ`);
+	}
+	return out;
+}
+

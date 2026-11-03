@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { chromium, firefox, webkit, type Browser } from 'playwright';
 import { Relauncher } from '../convert/relaunch.ts';
 import { recording, RouteLog, type Producers } from '../data/rows.ts';
-import type { Observations } from '../data/observations.ts';
+import { GuardedObservations, type Observations } from '../data/observations.ts';
 import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
@@ -45,10 +45,9 @@ import { contractLines, type NetworkRecord } from './network.ts';
 import { observeProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { CheckProgress } from './progress.ts';
 import { measurePsi, psiKey } from './psi.ts';
-import { applyLoads, asRole, embedsOnly, finishReport, loadable, outOfPart, roleCompared, routeOutcome, templateGroups, withTemplate, type RunEvent, type RunHeader } from './report-judge.ts';
+import { applyLoads, asRole, embedsOnly, finishReport, jsonReport, loadable, outOfPart, roleCompared, routeOutcome, templateGroups, withTemplate, type RunEvent, type RunHeader } from './report-judge.ts';
 import { checkResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { deadlineResult, destructiveCoverage, loadTimeout, partialResult, probesOnly, roleCheck, stopped, unreachableAlike, unreachableTried, type Deadline, type JourneysRow, type RouteContext, type RouteStages } from './route-judge.ts';
-import { routeState } from './route-state.ts';
 import { selfUrlFailures } from './self-urls.ts';
 import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
 import type { ClientFact, SourceFacts } from './source-facts.ts';
@@ -673,7 +672,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		cache: Boolean(oldCache),
 		auth: Boolean(auth),
 	};
-	const observed = options.observations;
+	const observed = options.observations && new GuardedObservations(options.observations, (line) => void process.stderr.write(line));
 	await observed?.header(header);
 	const event = async (e: RunEvent) => void (await observed?.event(e));
 	try {
@@ -849,10 +848,6 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		await laneBrowsers?.[0].close();
 		if (!webkitBrowser) await laneBrowsers?.[1].close();
 	}
-}
-
-export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
-	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, storedJourneys, ...route }) => ({ ...route, state: routeState(route), visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? storedJourneys?.names.length ?? 0 })) };
 }
 
 export async function writeReport(report: Report, dir: string, status?: Status): Promise<string> {

@@ -27,7 +27,7 @@ export class MemoryBlobs implements Blobs {
 	}
 }
 
-const TAGS = new Set(['$buf', '$map', '$set', '$undef', '$num', '$obj', '$def', '$ref']);
+const TAGS = new Set(['$buf', '$map', '$set', '$undef', '$num', '$obj', '$def', '$ref', '$json', '$chunks']);
 
 const plain = (value: object): boolean => {
 	const proto = Object.getPrototypeOf(value);
@@ -90,7 +90,19 @@ export function encode(value: unknown, blobs: Blobs, { share = true }: { readonl
 /** What `encode` wrote, read back, an object written once and referred to after as one object again. */
 export function decode(json: Json, blobs: Blobs): unknown {
 	const defs: unknown[] = [];
-	const walk = (v: Json): unknown => {
+	const parse = (sha: string) => JSON.parse(blobs.get(sha).toString('utf8')) as Json;
+	// What `spill` put away, read back where it stood, so the walk meets every part in the order it was written.
+	const resolve = (v: Json): Json => {
+		if (v === null || typeof v !== 'object' || Array.isArray(v)) return v;
+		const keys = Object.keys(v);
+		if (keys.length !== 1) return v;
+		const o = v as Record<string, Json>;
+		if (keys[0] === '$json') return resolve(parse(o.$json as string));
+		if (keys[0] === '$chunks') return (o.$chunks as string[]).flatMap((sha) => parse(sha) as Json[]);
+		return v;
+	};
+	const walk = (raw: Json): unknown => {
+		const v = resolve(raw);
 		if (v === null || typeof v !== 'object') return v;
 		if (Array.isArray(v)) return v.map(walk);
 		const o = v as Record<string, Json>;
@@ -106,9 +118,10 @@ export function decode(json: Json, blobs: Blobs): unknown {
 			// The object is registered before what is inside it is read, so a reference inside it already finds it.
 			const at = defs.length;
 			defs.push(undefined);
-			const made = shell(x);
+			const body = resolve(x);
+			const made = shell(body);
 			defs[at] = made;
-			return populate(made, x);
+			return populate(made, body);
 		}
 		return populate(shell(v), v);
 	};
@@ -131,13 +144,61 @@ export function decode(json: Json, blobs: Blobs): unknown {
 		}
 		const o = v as Record<string, Json>;
 		const [tag] = Object.keys(o);
-		if (made instanceof Map) for (const [k, y] of o.$map as Json[][]) made.set(walk(k!), walk(y!));
-		else if (made instanceof Set) for (const y of o.$set as Json[]) made.add(walk(y));
-		else if (tag === '$obj' && Object.keys(o).length === 1) fill(made as Record<string, unknown>, o.$obj as Record<string, Json>);
+		if (made instanceof Map) for (const pair of resolve(o.$map!) as Json[]) {
+			const [k, y] = resolve(pair) as Json[];
+			made.set(walk(k!), walk(y!));
+		}
+		else if (made instanceof Set) for (const y of resolve(o.$set!) as Json[]) made.add(walk(y));
+		else if (tag === '$obj' && Object.keys(o).length === 1) fill(made as Record<string, unknown>, resolve(o.$obj!) as Record<string, Json>);
 		else fill(made as Record<string, unknown>, o);
 		return made;
 	};
 	return walk(json);
+}
+
+/** About how many characters `JSON.stringify` writes for each part of what `encode` wrote. */
+const size = (v: Json): number => (v === null || typeof v !== 'object' ? (typeof v === 'string' ? v.length + 2 : String(v).length) : Array.isArray(v) ? v.reduce<number>((n, x) => n + size(x) + 1, 2) : Object.entries(v).reduce<number>((n, [k, x]) => n + k.length + 4 + size(x), 2));
+
+/**
+ * What `encode` wrote, with every array or object longer than `limit` characters put in `blobs` as JSON (arrays in chunks):
+ * no line or blob of a route's rows nears the longest string JavaScript can hold. `decode` reads them back in place.
+ */
+export function spill(json: Json, blobs: Blobs, limit = 4_000_000): Json {
+	const put = (part: Json) => blobs.put(Buffer.from(JSON.stringify(part)));
+	const walk = (v: Json): { json: Json; size: number } => {
+		if (v === null || typeof v !== 'object') return { json: v, size: size(v) };
+		if (Array.isArray(v)) {
+			const parts = v.map(walk);
+			const total = parts.reduce((n, p) => n + p.size + 1, 2);
+			if (total <= limit) return { json: parts.map((p) => p.json), size: total };
+			const chunks: string[] = [];
+			let chunk: Json[] = [];
+			let held = 2;
+			for (const p of parts) {
+				if (chunk.length && held + p.size > limit) {
+					chunks.push(put(chunk));
+					chunk = [];
+					held = 2;
+				}
+				chunk.push(p.json);
+				held += p.size + 1;
+			}
+			if (chunk.length) chunks.push(put(chunk));
+			return { json: { $chunks: chunks }, size: 16 + 68 * chunks.length };
+		}
+		const parts = Object.entries(v).map(([k, x]) => [k, walk(x)] as const);
+		let total = parts.reduce((n, [k, p]) => n + k.length + 4 + p.size, 2);
+		// The largest parts go first, until what stays is within the limit.
+		for (const at of [...parts.keys()].sort((a, b) => parts[b]![1].size - parts[a]![1].size)) {
+			if (total <= limit) break;
+			const [k, p] = parts[at]!;
+			if (p.size < 1_000) break;
+			parts[at] = [k, { json: { $json: put(p.json) }, size: 80 }];
+			total -= p.size - 80;
+		}
+		return { json: Object.fromEntries(parts.map(([k, p]) => [k, p.json])), size: total };
+	};
+	return walk(json).json;
 }
 
 /** A digest of what `value` holds, blobs by their sha and shared objects as copies: two values with one digest hold the same. */
