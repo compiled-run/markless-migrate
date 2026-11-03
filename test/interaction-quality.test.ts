@@ -189,6 +189,24 @@ test("content that morphs from the previous page's look while the router changes
 	assert.match(nav!.actual, /moves while the page changes: .*background-color/);
 });
 
+test('a carousel that autoplays every 1.2 s, checked against itself, is green: the timer a capture held as a loop never runs inside a journey', async () => {
+	const slides = ['One', 'Two', 'Three', 'Four'];
+	const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Carousel</title></head><body><main><h1>Carousel</h1>
+<section role="region" aria-roledescription="carousel" aria-label="Gallery"><div style="overflow: hidden; width: 300px"><div id="track" style="display: flex">${slides.map((s) => `<div style="min-width: 300px; height: 80px">${s}</div>`).join('')}</div></div>
+<button id="prev" type="button" disabled>Previous slide</button><button id="next" type="button">Next slide</button></section>
+${['Alpha', 'Beta', 'Gamma', 'Delta'].map((n) => `<button type="button" onclick="this.nextElementSibling.textContent = '${n} on'">${n}</button><span></span>`).join('')}
+<script>
+let at = 0;
+const show = (i) => { at = (i + ${slides.length}) % ${slides.length}; document.getElementById('track').style.transform = 'translateX(' + -300 * at + 'px)'; document.getElementById('prev').disabled = at === 0; document.getElementById('next').disabled = at === ${slides.length - 1}; };
+document.getElementById('next').onclick = () => show(at + 1);
+document.getElementById('prev').onclick = () => show(at - 1);
+const play = () => { show(at + 1); setTimeout(play, 1200); };
+setTimeout(play, 1200);
+</script></main></body></html>`;
+	const report = await check(page, page);
+	assert.deepEqual(open(report).filter((f) => f.dimension === 'behaviour' || f.dimension === 'a11y').map((f) => `${f.check}: ${f.actual}`), []);
+});
+
 test('a page that changes on its own every 3 s (a demo toggling a loading state) is the same page whatever phase each step lands on', async () => {
 	const cycling = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Indicator</title></head><body><main><h1>Indicator</h1><button id="post" type="button">Post It!</button><img id="spin" alt="Loading..." hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><script>setInterval(() => { document.getElementById('spin').hidden = !document.getElementById('spin').hidden; }, 3000);</script></main></body></html>`;
 	const same = await check(cycling, cycling);

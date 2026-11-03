@@ -171,6 +171,8 @@ export interface PageCapture {
 	readonly liveEmbeds?: readonly LiveEmbed[];
 	/** Loops (live intervals, self-scheduling timeouts and animation frames) held at their start for the capture, and what each kept changing. */
 	readonly loops?: readonly LoopEffect[];
+	/** The self-scheduling timeouts of a second or more held for the capture (an autoplaying carousel's), by a hash of their code and delay: journeys never run them. */
+	readonly timers?: readonly string[];
 }
 
 export interface WriteLine {
