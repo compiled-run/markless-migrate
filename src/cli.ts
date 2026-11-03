@@ -27,6 +27,7 @@ import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
 import { jsonReportParts, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
 import { judgeObserved, reportDifferences } from './check/judge.ts';
+import { openOriginal } from './data/original/read.ts';
 import { DirObservations, readObservations } from './data/store.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { partialLine, summarize } from './check/summary.ts';
@@ -152,7 +153,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
-          [--observations <dir>]
+          [--observations <dir>] [--original <dir>]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -320,6 +321,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report. Every
           observation the check makes (each page load, replay, probe and parity reading, as rows, their
           screenshots kept once by content) goes to .migrate/observations/, or --observations <dir>.
+          --original <dir> reads the old side's loads and journeys from the original's dataset (original
+          produce) instead of observing them; timing is still measured live on both sides, in pairs.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
           blocked. --source scans the old app's code for what varies and which handlers write.
           --data record saves what OLD fetched per route in .migrate/data/; --data replay serves it to
@@ -916,6 +919,7 @@ async function main(argv: string[]): Promise<number> {
 				args: rest,
 				options: {
 					observations: { type: 'string' },
+					original: { type: 'string' },
 					old: { type: 'string' },
 					new: { type: 'string' },
 					route: { type: 'string', multiple: true },
@@ -1049,8 +1053,10 @@ async function main(argv: string[]): Promise<number> {
 			}
 			const freeze = values['no-freeze'] ? false : { ...(time !== undefined ? { time } : {}), ...(seed !== undefined ? { seed } : {}), ...(values.timezone ? { timezone: values.timezone } : {}), ...(values.locale ? { locale: values.locale } : {}) };
 			const observations = new DirObservations(resolve(values.observations ?? join(cwd, STATE_DIR, 'observations')));
+			const original = values.original ? await openOriginal(resolve(values.original)).catch((error: Error) => fail(error.message)) : undefined;
 			let report = await runCheck({
 				observations,
+				...(original ? { original } : {}),
 				oldOrigin: values.old,
 				newOrigin: values.new,
 				routes: routes ?? [],

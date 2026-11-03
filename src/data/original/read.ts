@@ -4,7 +4,8 @@ import type { ElementCoverage, Exploration, Journey, RecordedJourney, Run } from
 import type { RouteCapture, Viewport } from '../../check/types.ts';
 import { keys, SAMPLES, type ReplayMode } from './dataset.ts';
 import type { RouteRow } from './produce.ts';
-import type { Dataset } from './store.ts';
+import { readLock } from './lock.ts';
+import { Dataset, DatasetError } from './store.ts';
 
 export interface OriginalLoads {
 	readonly olds: readonly RouteCapture[];
@@ -29,7 +30,7 @@ export function originalRoute(dataset: Dataset, route: string): RouteRow {
 export function originalLoads(dataset: Dataset, route: string, viewports: readonly Viewport[]): OriginalLoads {
 	const all = dataset.manifest.conditions.viewports.map((v) => v.name);
 	const names = viewports.map((v) => v.name);
-	if (names.some((n) => !all.includes(n))) throw new Error(`the dataset was loaded at ${all.join(', ')}, not ${names.join(', ')}`);
+	if (names.some((n) => !all.includes(n))) throw new DatasetError(`the dataset was loaded at ${all.join(', ')}, not ${names.join(', ')}`);
 	const olds = Array.from({ length: SAMPLES.loads }, (_, i) => {
 		const sample = dataset.row<RouteCapture>('loads', route, keys.load(route, all, i));
 		return names.length === all.length ? sample : { ...sample, pages: Object.fromEntries(names.map((n) => [n, sample.pages[n]!])) };
@@ -57,7 +58,7 @@ export function originalJourneys(dataset: Dataset, route: string): OriginalJourn
 			? Array.from({ length: samples }, (_, sample) =>
 					Array.from({ length: journeys }, (_, j) => {
 						const steps = replays.get(keys.replay(route, mode, j, sample));
-						if (!steps) throw new Error(`the original's dataset has no ${mode} replay ${sample} of journey ${j} on ${route}`);
+						if (!steps) throw new DatasetError(`the original's dataset has no ${mode} replay ${sample} of journey ${j} on ${route}`);
 						return steps;
 					}),
 				)
@@ -65,7 +66,7 @@ export function originalJourneys(dataset: Dataset, route: string): OriginalJourn
 	const plain = runsOf('plain', count, SAMPLES.plain);
 	const journeys: RecordedJourney[] = Array.from({ length: count }, (_, i) => ({ ...dataset.row<Omit<RecordedJourney, 'expected'>>('journeys', route, keys.journey(route, i)), expected: plain[0]![i]! }));
 	const controls = dataset.rows<ElementCoverage>('controls', route);
-	if (controls.length !== elementCount) throw new Error(`the original's dataset holds ${controls.length} controls of ${route}, its exploration ${elementCount}`);
+	if (controls.length !== elementCount) throw new DatasetError(`the original's dataset holds ${controls.length} controls of ${route}, its exploration ${elementCount}`);
 	const explored: Exploration = { ...rest, journeys, elements: controls.map((c) => c.value) };
 	const risky = runsOf('risky', explored.deferred.length, SAMPLES.risky);
 	const darkCount = new Set(dataset.rows('replays', route).filter((r) => r.key.startsWith(`${route}\u0000dark\u0000`)).map((r) => r.key.split('\u0000')[2])).size;
@@ -79,4 +80,12 @@ export function originalJourneys(dataset: Dataset, route: string): OriginalJourn
 		...(dark.length ? { dark } : {}),
 		...(arrival.length ? { arrival: { journeys: arrivalJourneys, runs: arrival } } : {}),
 	};
+}
+
+/** The tables a check reads of the original. */
+export const CHECK_READS = ['routes', 'responses', 'loads', 'controls', 'journeys', 'replays'] as const;
+
+/** Opens the dataset a check names, refusing one of producer versions other than datasets.lock's. */
+export async function openOriginal(dir: string): Promise<Dataset> {
+	return Dataset.open(dir, { versions: (await readLock()).producers, tables: CHECK_READS });
 }
