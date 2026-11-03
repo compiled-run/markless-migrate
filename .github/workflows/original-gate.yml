@@ -14,7 +14,7 @@ on:
         default: '4'
       flags:
         description: Check flags of all three runs (the stages the dataset does not hold are left out, since they run live either way)
-        default: '--no-motion --no-probes --no-embeds --no-responsiveness --no-load --no-navigation --no-cache'
+        default: '--no-motion --no-probes --no-embeds --no-responsiveness --no-load --no-navigation --no-cache --timeout 7200'
 
 permissions:
   contents: read
@@ -55,6 +55,8 @@ jobs:
     needs: original
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,7 +71,9 @@ jobs:
           token: ${{ github.token }}
       - run: bash "deploy/$SITE/ci-serve.sh" old
       - run: node src/cli.ts check --old "$OLD" --new "$OLD" --targets "$TARGETS" --site-targets "$TARGETS" --write-layout-survey "$RUNNER_TEMP/layout-survey.json" --no-cache
-      - run: node scripts/check-shards.ts split "$TARGETS" "${{ inputs.shards }}" "$RUNNER_TEMP/shards" > /dev/null
+      # The shards the split made, which can be other than the count asked for: the check runs one job per shard file.
+      - id: split
+        run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "${{ inputs.shards }}" "$RUNNER_TEMP/shards")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: gate-plan
@@ -145,7 +149,7 @@ jobs:
       max-parallel: 10
       matrix:
         run: [live, live-again, stored]
-        shard: ${{ fromJSON(needs.original.outputs.shards) }}
+        shard: ${{ fromJSON(needs.survey.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
