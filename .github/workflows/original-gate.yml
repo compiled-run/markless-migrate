@@ -188,7 +188,9 @@ jobs:
           # shellcheck disable=SC2086
           node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/plan/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --layout-survey "$RUNNER_TEMP/plan/layout-survey.json" --concurrency 2 $DATASET $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 30 "$RUNNER_TEMP/check.txt"
-          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+          # Exit 1 is a red route, but a crash exits 1 too: the shard counts only when its report holds every route it was dealt.
+          node -e 'const fs=require("fs");const [r,t]=process.argv.slice(1);if(!fs.existsSync(r)){console.error("::error::the check wrote no report: the shard is incomplete");process.exit(1)}const have=new Set(JSON.parse(fs.readFileSync(r,"utf8")).routes.map(x=>x.route));const lost=JSON.parse(fs.readFileSync(t,"utf8")).routes.filter(x=>!have.has(x));if(lost.length){console.error("::error::the report lacks "+lost.length+" routes the shard was dealt: "+lost.join(", "));process.exit(1)}' .migrate/report.json "$RUNNER_TEMP/plan/shards/shard-$SHARD.json"
+          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || { echo "::error::check exited $status: the shard is incomplete"; exit "$status"; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -222,7 +224,7 @@ jobs:
           for f in "$r"/gate-report-live-[0-9]*/app/.migrate/report.json; do args+=(--live "$f"); done
           for f in "$r"/gate-report-live-again-*/app/.migrate/report.json; do args+=(--live-again "$f"); done
           for f in "$r"/gate-report-stored-*/app/.migrate/report.json; do args+=(--stored "$f"); done
-          node scripts/original-gate.ts compare "${args[@]}" --out "$RUNNER_TEMP/gate.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/original-gate.ts compare "${args[@]}" --targets "$TARGETS" --out "$RUNNER_TEMP/gate.json" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: gate-result
