@@ -185,7 +185,7 @@ export function acquireScrollLock(): () => void {
 }
 
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
-const tabbablesIn = (root: Element) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
+const tabbablesIn = (root: Element) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.closest('[hidden], [inert]') && !el.matches(':disabled') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 // useTriggerFocusGuards: the first tabbable after the trigger that is not in the popup.
 function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement | undefined {
 	return tabbablesIn(document.body).find((el) => !portal.contains(el) && !trigger.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));

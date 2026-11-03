@@ -128,6 +128,15 @@ test('Base UI Popover: Tab past its last control closes it with focus after the 
 	await page.close();
 });
 
+test('Base UI Popover: Tab out of it skips a disabled control after the trigger, even one given tabindex, as tabbable does (a carousel at its first slide)', async () => {
+	const page = await open(popover.replace('<button type="button">After</button>', '<button type="button" tabindex="0" disabled data-disabled="">Previous</button><button type="button" tabindex="0">Next</button>'), ['base-ui/popover']);
+	await page.locator('#pop').click();
+	await page.getByText('Save').focus();
+	await press(page, 'Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.textContent), await page.locator('#pop').getAttribute('aria-expanded')], ['Next', 'false']);
+	await page.close();
+});
+
 test('Base UI Dialog: a scroll container with nothing focusable in it is a Tab stop inside the trap, but its guards wrap to the tabbable content\'s ends', async () => {
 	const page = await open(
 		`<main><button type="button" data-slot="sheet-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="sh">Open</button></main>

@@ -30,7 +30,7 @@ const ours = (p: Popup) => p.trigger.matches(INPUT) || p.trigger.matches(BOX);
 const inputIn = (p: Popup) => (p.trigger.matches(BOX) ? p.popup.querySelector<HTMLInputElement>(INPUT) : (p.trigger as HTMLInputElement));
 const items = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)].filter((o) => !o.hidden && !o.hasAttribute('data-disabled'));
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-const tabbablesIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0);
+const tabbablesIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && !el.matches(':disabled') && el.getClientRects().length > 0);
 // The root's autoHighlight, which convert reads off each instance (data-mm-auto-highlight): 'input-change' or 'always'.
 const autoHighlight = (input: Element | null | undefined) => {
 	const v = input?.getAttribute('data-mm-auto-highlight');

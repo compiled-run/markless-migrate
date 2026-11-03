@@ -23,7 +23,7 @@ const scroller = (el: HTMLElement) => {
 	const { overflowX, overflowY } = getComputedStyle(el);
 	return /auto|scroll/.test(overflowX + overflowY) && (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) && !el.querySelector(TABBABLE);
 };
-const tabbables = (root: HTMLElement, scrollers = true) => [...root.querySelectorAll<HTMLElement>(scrollers ? '*' : TABBABLE)].filter((el) => (el.matches(TABBABLE) || scroller(el)) && !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
+const tabbables = (root: HTMLElement, scrollers = true) => [...root.querySelectorAll<HTMLElement>(scrollers ? '*' : TABBABLE)].filter((el) => (el.matches(TABBABLE) || scroller(el)) && !el.closest('[hidden], [inert]') && !el.matches(':disabled') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 
 function close(p: Popup, returnFocus = true): void {
 	undo.get(p)?.();
