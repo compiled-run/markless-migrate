@@ -13,3 +13,12 @@ test('a Base UI select trigger given its own id is still Base UI\'s: the hidden 
 	assert.equal(portFor(trigger(`${hidden}<button id="checkout-exp-month" role="combobox" aria-haspopup="listbox" data-slot="select-trigger">MM</button>`)), undefined, 'only an input after the trigger is its root\'s');
 	assert.equal(portFor(trigger(`<button type="button" role="combobox" aria-haspopup="listbox" data-slot="select-trigger" data-state="closed">MM</button>`)), 'radix/select');
 });
+
+test("a Base UI scroll area is Base UI's by the data-id its viewport and scrollbars carry, so it gets the Base UI port, not none", () => {
+	const both = (slot: string, part: string) => [{ library: 'radix-ui', export: `ScrollArea.${part}`, file: 'r.tsx', line: 1 }, { library: '@base-ui/react', export: `ScrollArea.${part}`, file: 'b.tsx', line: 1 }];
+	useResolver({ name: 'test', candidates: (slot) => (slot === 'scroll-area-viewport' ? both(slot, 'Viewport') : slot === 'scroll-area-scrollbar' ? both(slot, 'Scrollbar') : []), libraries: () => new Map(), prop: () => undefined });
+	const el = (html: string) => find(parseDocument(`<body><div data-slot="scroll-area">${html}</div></body>`), (e) => (e.attrs.find((a) => a.name === 'data-slot')?.value ?? '').startsWith('scroll-area-'))!;
+	assert.equal(portFor(el('<div role="presentation" data-id="base-ui-_R_43aanpfknqbr6lb_-viewport" tabindex="0" data-slot="scroll-area-viewport"></div>')), 'base-ui/scroll-area');
+	assert.equal(portFor(el('<div data-orientation="vertical" data-id="base-ui-_R_43aanpfknqbr6lb_-scrollbar" data-slot="scroll-area-scrollbar"></div>')), 'base-ui/scroll-area');
+	assert.equal(portFor(el('<div data-radix-scroll-area-viewport="" data-slot="scroll-area-viewport"></div>')), 'radix/scroll-area');
+});
