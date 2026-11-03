@@ -202,6 +202,14 @@ export function trackLoops(known: readonly string[] = []): void {
 				return [{ ...(timing.get(key) ?? { kind: 'timeout', every: 0 }), changes: [...what].map(([node, set]) => ({ node, what: [...set].sort() })) }];
 			});
 			Object.defineProperty(g, '__markless_migrate_loop_effects__', { value: effects, configurable: true });
+			// A bound function's source reads as native code for every one, so only a loop with its own code can be named for later loads.
+			const hash = (text: string) => {
+				let h = 0x811c9dc5;
+				for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+				return (h >>> 0).toString(16);
+			};
+			const timers = [...live].filter((key) => timing.get(key)?.kind === 'timeout' && timing.get(key)!.every >= 1000 && !key.includes('[native code]')).map(hash);
+			Object.defineProperty(g, '__markless_migrate_held_timers__', { value: [...new Set(timers)].sort(), configurable: true });
 			for (const change of undo) {
 				try {
 					revert(change);
@@ -218,6 +226,33 @@ export function trackLoops(known: readonly string[] = []): void {
 			return live.size;
 		},
 	});
+}
+
+/** The self-scheduling timeouts of a second or more the last hold stopped (an autoplaying carousel's), by a hash of their code and delay. */
+export function heldTimers(): string[] {
+	return (globalThis as { __markless_migrate_held_timers__?: string[] }).__markless_migrate_held_timers__ ?? [];
+}
+
+/** Init script for a journey's page: the timeouts a capture of the page held as loops never run, so what changes on its own every few seconds cannot land inside a step on one run and between steps on the next. Must stay self-contained. */
+export function skipHeldTimers(keys: readonly string[]): void {
+	const skip = new Set(keys);
+	const real = globalThis.setTimeout;
+	const hash = (text: string) => {
+		let h = 0x811c9dc5;
+		for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+		return (h >>> 0).toString(16);
+	};
+	let skipped = 0;
+	globalThis.setTimeout = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
+		if (typeof handler === 'function') {
+			let source = '';
+			try {
+				source = Function.prototype.toString.call(handler);
+			} catch {}
+			if (source && skip.has(hash(`${source}\u0000${Math.max(0, Number(ms) || 0)}`))) return -++skipped as unknown as ReturnType<typeof setTimeout>;
+		}
+		return real(handler, ms, ...rest);
+	} as typeof setTimeout;
 }
 
 const SETTLE_LIMIT_MS = 3_000;
