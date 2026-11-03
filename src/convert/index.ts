@@ -44,6 +44,7 @@ import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
 import { importIntoDocument, importStylesheets } from './stylesheet-imports.ts';
+import { scrollSpyAsServed } from './served-marks.ts';
 import { codeClasses, together as togetherIn, type Together } from './class-facts.ts';
 import { type SharedRecord, shareStylesheets } from './shared-css.ts';
 import { lateFontsConfig } from '../../parts/late-fonts.ts';
@@ -1195,6 +1196,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
 	const servedDoc = parseDocument(capture.server);
 	framesAsServed(doc, servedDoc, (el) => bindMount(el) !== undefined);
+	scrollSpyAsServed(doc, servedDoc);
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
