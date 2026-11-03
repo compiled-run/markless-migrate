@@ -106,7 +106,15 @@ A first interaction is red when it is slower than the old app's slower run by mo
 how much the old runs differed) at either
 speed, over `--interaction-budget` (200 ms) at 4x, or fetches code (an interaction never fetches code in
 Markless), unless the old app fetches code on the same interaction in every run and the new one fetches
-no more (VitePress loads its search box and index when search opens). A link is red when the next page shows later than on the old app by the same margin at 4x;
+no more (VitePress loads its search box and index when search opens). The budget holds wherever the old
+app meets it. Where every old run of a control is over the budget too, the new app is held to the old
+app alone: it passes when it is not slower than the old by the same margin and the same confirming runs,
+and the report still shows both times (`/cli`'s "npm" tab: old 1,253 ms, new 1,248 ms, green). Code
+counts when the interaction caused it or waited on it: what its handler imported, and the route's own
+code it loads on the press. A `<link rel="modulepreload">`, `preload` or `prefetch` that was already in
+the document when the pointer went down was started by something else (a router prefetching the links
+in view while the page is idle) and is not counted, even when its download lands inside the timing;
+if the handler then waits on it, that wait is in the time. A link is red when the next page shows later than on the old app by the same margin at 4x;
 its desktop figure is reported. A control that exceeds once is measured again, old and new,
 and is red only when both runs exceed (the slower is then kept); the slowest control at each speed is
 always measured twice so the report states how much runs vary. Up to `--interaction-controls` (16)

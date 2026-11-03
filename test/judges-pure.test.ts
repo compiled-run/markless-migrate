@@ -23,6 +23,7 @@ export const JUDGES = [
 	'src/check/load-verdicts.ts',
 	'src/check/slow-network-verdicts.ts',
 	'src/check/responsiveness-summary.ts',
+	'src/check/responsiveness-compare.ts',
 	'src/data/codec.ts',
 	'src/data/rows.ts',
 	'src/data/observations.ts',

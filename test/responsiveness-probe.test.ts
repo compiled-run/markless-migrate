@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
-import { measureOnce, speeds } from '../src/check/responsiveness.ts';
+import { measureOnce } from '../src/check/responsiveness.ts';
+import { speeds, speedTiming } from '../src/check/responsiveness-compare.ts';
 
 const pages: Record<string, string> = {
 	// Like Docusaurus: an attribute on <html> changes at once, the next page's content paints 200 ms later.
@@ -56,7 +57,31 @@ const pages: Record<string, string> = {
 		if (timer === undefined) timer = setTimeout(expired, 300);
 	});
 </script>`,
+	// A router's prefetch: the pointer passing over the button starts a modulepreload of another page's code, still in flight when the tap's handler answers without it.
+	'/hint': `<!doctype html><html lang="en"><title>Hint</title>
+<main><button id="go">Show</button><output id="out"></output></main>
+<script>
+	const go = document.getElementById('go');
+	go.addEventListener('pointerover', () => {
+		const link = document.createElement('link');
+		link.rel = 'modulepreload';
+		link.href = '/other-page.js';
+		document.head.append(link);
+	}, { once: true });
+	go.addEventListener('click', () => (document.getElementById('out').textContent = 'shown'));
+</script>`,
+	// A handler that needs its code: it imports a chunk on the first click and answers with it.
+	'/import': `<!doctype html><html lang="en"><title>Import</title>
+<main><button id="go">Show</button><output id="out"></output></main>
+<script type="module">
+	document.getElementById('go').addEventListener('click', async () => {
+		const { text } = await import('/handler-chunk.js');
+		document.getElementById('out').textContent = text;
+	});
+</script>`,
 };
+
+const scripts: Record<string, string> = { '/other-page.js': 'export const page = 1;', '/handler-chunk.js': "export const text = 'shown';" };
 
 let browser: Browser;
 let server: Server;
@@ -65,6 +90,7 @@ before(async () => {
 	browser = await chromium.launch();
 	server = createServer((request, response) => {
 		const path = new URL(request.url ?? '/', 'http://x').pathname;
+		if (scripts[path]) return void setTimeout(() => response.writeHead(200, { 'content-type': 'text/javascript' }).end(scripts[path]), 400);
 		const body = pages[path.replace(/\/next$/, '')];
 		if (!body) return void response.writeHead(404).end();
 		response.writeHead(200, { 'content-type': 'text/html' }).end(body);
@@ -97,4 +123,18 @@ test('while timing, the clock runs in real time, so a Date.now debounce waits fr
 	assert.equal(sample.result, 'changed', JSON.stringify(sample));
 	const typing = value.length * 15;
 	assert.ok((sample.ms ?? 0) >= typing + 300, `result at ${sample.ms} ms; typing takes at least ${typing} ms, then the 300 ms debounce`);
+});
+
+test('code a link hint already in the document when the pointer went down is not code the interaction fetched; a chunk the handler imports is', async () => {
+	const click = { action: 'click' as const, target: { role: 'button' as const, name: 'Show', nth: 0 } };
+	const hinted = await measureOnce(browser, defaultEnv(origin), '/hint', desktop, click);
+	const hint = hinted.fetches.find((f) => f.url === '/other-page.js');
+	assert.ok(hint, JSON.stringify(hinted));
+	assert.equal(hint.hint, true);
+	const old = { ...hinted, fetches: [] };
+	assert.deepEqual(speedTiming(desktop, 'in-page', [old], [hinted], 200).problems, []);
+	const imported = await measureOnce(browser, defaultEnv(origin), '/import', desktop, click);
+	const chunk = imported.fetches.find((f) => f.url === '/handler-chunk.js');
+	assert.ok(chunk && (chunk.startMs ?? -1) >= 0, JSON.stringify(imported));
+	assert.match(speedTiming(desktop, 'in-page', [old], [imported], 200).problems.join(), /fetched code on the first interaction: \/handler-chunk\.js/);
 });

@@ -45,7 +45,7 @@ function responsivenessHeader(summary: ResponsivenessSummary): string {
 		})
 		.join('');
 	const table = rows ? `<table class="timings"><thead><tr><th>Route</th><th>Slowest first interaction</th><th>${summary.cpu}x CPU, mobile</th><th>Desktop</th><th>Slowest navigation</th><th>${summary.cpu}x CPU, mobile</th><th>Desktop</th></tr></thead><tbody>${rows}</tbody></table>` : '';
-	return `${lines}${table}<p><small>Each control is used once on a fresh page load, old then new: trusted pointer input to the next frame after the change it causes (Event Timing's duration when that is longer); a link to the next page's first contentful paint. Old against new must stay within max(16 ms, 10%) at both speeds (navigation at ${summary.cpu}x CPU), and a first interaction must answer within ${summary.budgetMs} ms at ${summary.cpu}x CPU and fetch no code. A control fails only when every run of it exceeded.</small></p>`;
+	return `${lines}${table}<p><small>Each control is used once on a fresh page load, old then new: trusted pointer input to the next frame after the change it causes (Event Timing's duration when that is longer); a link to the next page's first contentful paint. Old against new must stay within max(16 ms, 10%) at both speeds (navigation at ${summary.cpu}x CPU), and a first interaction must answer within ${summary.budgetMs} ms at ${summary.cpu}x CPU (where every old run is over it too, no slower than the old) and fetch no code. A control fails only when every run of it exceeded.</small></p>`;
 }
 
 function sample(s: Sample): string {
@@ -69,7 +69,7 @@ function timings(r: RouteResult): string {
 	const failing = t.controls.filter((c) => c.speeds.some((x) => !x.ok)).length;
 	const rows = t.controls
 		.flatMap((c) =>
-			c.speeds.map((x) => `<tr${x.ok ? '' : ' class="differs"'}><td>${esc(c.control)} <small>${esc(c.kind)}</small></td><td>${x.speed === 'throttled' ? `${t.cpu}x CPU, mobile` : 'desktop'}</td><td>${x.old.map(sample).join('<br>')}</td><td>${x.new.map(sample).join('<br>')}</td><td>${x.spread ? `old ±${x.spread.old} ms, new ±${x.spread.new} ms` : 'one run'}</td><td>${esc([...x.problems, ...(x.cause ? [`likely cause: ${x.cause}`] : [])].join('; '))}</td></tr>`),
+			c.speeds.map((x) => `<tr${x.ok ? '' : ' class="differs"'}><td>${esc(c.control)} <small>${esc(c.kind)}</small></td><td>${x.speed === 'throttled' ? `${t.cpu}x CPU, mobile` : 'desktop'}</td><td>${x.old.map(sample).join('<br>')}</td><td>${x.new.map(sample).join('<br>')}</td><td>${x.spread ? `old ±${x.spread.old} ms, new ±${x.spread.new} ms` : 'one run'}</td><td>${esc([...x.problems, ...(x.note ? [x.note] : []), ...(x.cause ? [`likely cause: ${x.cause}`] : [])].join('; '))}</td></tr>`),
 		)
 		.join('');
 	const left = t.notMeasured.length ? `<p>Not timed:</p>${list(t.notMeasured.map((n) => `${n.control}: ${n.reason}`), 'skipped')}` : '';

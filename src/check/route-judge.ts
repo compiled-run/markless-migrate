@@ -15,6 +15,7 @@ import { NOT_EXERCISED } from './locate.ts';
 import { judgeMotion, motionRules, type MotionOptions, type MotionRow } from './motion-compare.ts';
 import { judgeProbes, notifiers, type ProbesRow } from './probes-compare.ts';
 import type { Responsiveness } from './responsiveness.ts';
+import { judgeResponsiveness } from './responsiveness-compare.ts';
 import type { SourceFacts } from './source-facts.ts';
 import { judgeStates, statesPlan, statesRequest, type StatesRequest, type StatesRow } from './states-compare.ts';
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
@@ -236,7 +237,7 @@ export async function routeCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	const busy = ctx.stages.busyCpu ? await span(ctx, 'busy CPU', () => o('busy', {})) : undefined;
 	const lane = reach(ctx, busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored);
 	const moved = reach(ctx, ctx.stages.motion && lane.journeys?.length ? await span(ctx, 'motion', () => motionCheck(o, ctx, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane);
-	const timed = reach(ctx, ctx.stages.responsiveness && moved.journeys?.length ? await span(ctx, 'responsiveness', () => responsivenessCheck(o, moved)) : moved);
+	const timed = reach(ctx, ctx.stages.responsiveness && moved.journeys?.length ? await span(ctx, 'responsiveness', () => responsivenessCheck(o, ctx.route, moved)) : moved);
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
 	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
 	const checked = ctx.stages.embeds && embedded ? await span(ctx, 'embeds', () => embedsCheck(o, timed)) : timed;
@@ -425,9 +426,9 @@ async function motionCheck(o: Observe, ctx: RouteContext, result: RouteResult, s
 	return withFailures(result, [...result.failures, ...moved.failures], { motion: moved.motion, ...(moved.filmstrips.length ? { filmstrips: moved.filmstrips } : {}) });
 }
 
-async function responsivenessCheck(o: Observe, result: RouteResult): Promise<RouteResult> {
+async function responsivenessCheck(o: Observe, route: string, result: RouteResult): Promise<RouteResult> {
 	// The new app is timed on its own, not through the front door: a link's target is its page as it will serve it.
-	const timed = await o('responsiveness', { journeys: (result.journeys ?? []).filter((j) => !j.destructive) });
+	const timed = judgeResponsiveness(route, await o('responsiveness', { journeys: (result.journeys ?? []).filter((j) => !j.destructive) }));
 	return withFailures(result, [...result.failures, ...timed.failures], { responsiveness: timed.responsiveness });
 }
 

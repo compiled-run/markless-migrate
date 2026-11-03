@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import { applyAccepted, failureId } from '../src/check/accepted.ts';
 import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
-import { controlsToMeasure, fetchKind, judge, likelyCause, speeds, speedTiming, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { controlsToMeasure, fetchKind, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { judge, likelyCause, speeds, speedTiming, worstOf } from '../src/check/responsiveness-compare.ts';
 import { headlines, summarizeResponsiveness, worstLine } from '../src/check/responsiveness-summary.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
 import { recordResults, status, summarizeStatus } from '../src/status.ts';
@@ -24,7 +25,7 @@ test('NEW fails only when every run exceeds the slower OLD run by max(16 ms, 10%
 	assert.deepEqual(judge([40, 44], [90, 120]), { ok: false, rerun: false, newMs: 120, slower: true, overBudget: false, oldMs: 44, allowedMs: 60 }, 'both runs over: the slower is kept');
 	assert.deepEqual(judge([73, 120], [128, 159]), { ok: true, rerun: false, newMs: 128, slower: false, overBudget: false, oldMs: 120, allowedMs: 167 }, 'the old runs varied by 47 ms, so that is the noise floor');
 	assert.deepEqual(judge([40, 44], [90, 50]), { ok: true, rerun: false, newMs: 50, slower: false, overBudget: false, oldMs: 44, allowedMs: 60 }, 'one run over: noise, the run within is kept');
-	assert.deepEqual(judge([250, 260], [262, 270], 200), { ok: false, rerun: false, newMs: 270, slower: false, overBudget: true, oldMs: 260, allowedMs: 286 }, 'the budget holds even when the old app was as slow');
+	assert.deepEqual(judge([250, 260], [262, 270], 200), { ok: false, rerun: false, newMs: 270, slower: false, overBudget: true, oldMs: 260, allowedMs: 286 }, 'the budget is flagged even when the old app was as slow: judgeResponsiveness then holds the new app to the old');
 	assert.equal(judge([30], [undefined]).ok, true, 'no visible result is not a time');
 });
 
