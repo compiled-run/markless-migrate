@@ -116,7 +116,9 @@ export async function observeOriginal(browser: Browser, env: SideEnv, route: str
 	const seen = await observeRoute(env, route);
 	if (!seen.served) return seen.route;
 	const loads = await observeLoads(browser, env, route, options.viewports);
-	const journeys = await observeJourneys(browser, env, route, options.viewports[0]!, options.explore);
+	// What the original's loads held as loops (an autoplaying carousel) stays held in every page its journeys open, as a check holds it.
+	const timers = [...new Set(loads.samples.flatMap((c) => Object.values(c.pages).flatMap((p) => p.timers ?? [])))].sort();
+	const journeys = await observeJourneys(browser, timers.length ? { ...env, skipTimers: timers } : env, route, options.viewports[0]!, options.explore);
 	return { route: seen.route, served: seen.served, viewports: options.viewports.map((v) => v.name), loads, journeys };
 }
 
