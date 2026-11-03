@@ -1,10 +1,10 @@
 import type { Browser, Page, Request, Response } from 'playwright';
 import { appHeaders, openPage, type SideEnv } from './browser.ts';
-import { HINTS } from './hints.ts';
 import { request as fetchApp } from './http.ts';
 import { locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import { describeStep, describeTarget } from './journeys-compare.ts';
 import type { Failure, Viewport } from './types.ts';
+import { failuresOf, SLACK_MS, SLACK_RATIO, speeds, speedTiming, verdictFor, worstOf } from './responsiveness-compare.ts';
 import { loadPage } from './infrastructure.ts';
 import { judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
@@ -17,14 +17,6 @@ export interface Speed {
 	readonly label: string;
 	readonly cpu: number;
 	readonly viewport: Viewport;
-}
-
-/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `cpu`. */
-export function speeds(cpu: number): Speed[] {
-	return [
-		{ name: 'desktop', label: 'desktop', cpu: 1, viewport: { name: 'desktop', width: 1280, height: 800, isMobile: false } },
-		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
-	];
 }
 
 export interface ResponsivenessOptions {
@@ -42,14 +34,16 @@ export interface ResponsivenessOptions {
 
 const DEFAULT_MAX_CONTROLS = 16;
 const DEFAULT_MAX_LINKS = 6;
-const SLACK_MS = 16;
-const SLACK_RATIO = 0.1;
 const CONCURRENCY = 2;
 
 export interface Fetch {
 	readonly url: string;
 	readonly kind: 'code' | 'data' | 'asset';
 	readonly bytes: number;
+	/** When the request started, from the pointer going down (or the first key), by the network's clock: a few ms either side of 0 is the same moment. */
+	readonly startMs?: number;
+	/** A `<link>` hint for it (modulepreload, preload or prefetch) was in the document when the pointer went down. */
+	readonly hint?: true;
 }
 
 export interface LongTask {
@@ -102,6 +96,8 @@ export interface SpeedTiming {
 	readonly ok: boolean;
 	readonly problems: readonly string[];
 	readonly cause?: string;
+	/** How the verdict was reached when it is not the usual one: the old app over the budget too, so the new one is held to the old. */
+	readonly note?: string;
 }
 
 export interface ControlTiming {
@@ -146,6 +142,7 @@ export function responsivenessProbe(): void {
 		url: location.href,
 		events: [] as { duration: number; start: number }[],
 		frames: [] as Frame[],
+		hints: [] as string[],
 	};
 	const noisy = new WeakSet<Node>();
 	let armed = false;
@@ -213,6 +210,7 @@ export function responsivenessProbe(): void {
 		s.url = location.href;
 		beforeText = contentText();
 		s.prefetch = document.querySelectorAll('link[rel~="prefetch"], link[rel~="prerender"], link[rel~="modulepreload"], script[type="speculationrules"]').length;
+		s.hints = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="modulepreload"], link[rel~="preload"], link[rel~="prefetch"]')].map((l) => l.href);
 		(globalThis as unknown as { __mmDown?: (at: number) => void }).__mmDown?.(realOrigin + e.timeStamp);
 	};
 	addEventListener('pointerdown', start, { capture: true });
@@ -238,7 +236,7 @@ export function responsivenessProbe(): void {
 				armed = true;
 			},
 			reset: () => {
-				Object.assign(s, { down: -1, change: -1, paint: -1, urlAt: -1, navChange: -1, navPaint: -1, prefetch: 0, url: location.href, events: [], frames: [] });
+				Object.assign(s, { down: -1, change: -1, paint: -1, urlAt: -1, navChange: -1, navPaint: -1, prefetch: 0, url: location.href, events: [], frames: [], hints: [] });
 			},
 			loaded: () => {
 				const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
@@ -260,6 +258,7 @@ interface ProbeState {
 	prefetch: number;
 	events: { duration: number; start: number }[];
 	frames: { start: number; duration: number; scripts: { url: string; fn: string; invoker: string; type: string; duration: number; start: number }[] }[];
+	hints: string[];
 }
 
 const NOISE_WINDOW_MS = 300;
@@ -396,14 +395,19 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 				} else if (eventMs !== undefined) ms = eventMs;
 			}
 		}
-		const fetches = await Promise.all(
-			(watched ?? []).filter((r) => !r.failure()).map(async (r): Promise<Fetch> => {
+		const settled = await Promise.all(
+			(watched ?? []).filter((r) => !r.failure()).map(async (r) => {
 				// A request still open when the timing ends (a stream, a stalled CDN) never settles its response.
 				const response = await Promise.race([r.response().catch(() => null), new Promise<null>((done) => setTimeout(() => done(null), 5000))]);
 				const sizes = response ? await Promise.race([r.sizes().catch(() => ({ responseBodySize: 0 })), new Promise<{ responseBodySize: number }>((done) => setTimeout(() => done({ responseBodySize: 0 }), 5000))]) : { responseBodySize: 0 };
-				return { url: short(r.url(), env.origin), kind: fetchKind(r.resourceType(), r.url(), response?.headers()['content-type'] ?? ''), bytes: sizes.responseBodySize };
+				return { r, response, bytes: sizes.responseBodySize };
 			}),
 		);
+		const hints = new Set(state?.hints);
+		const fetches = settled.map(({ r, response, bytes }): Fetch => {
+			const started = r.timing().startTime;
+			return { url: short(r.url(), env.origin), kind: fetchKind(r.resourceType(), r.url(), response?.headers()['content-type'] ?? ''), bytes, ...(downAt !== undefined && started > 0 ? { startMs: Math.round(started - downAt) } : {}), ...(hints.has(r.url()) ? { hint: true as const } : {}) };
+		});
 		watched = undefined;
 		const longTasks = (state?.frames ?? []).filter((f) => f.duration >= LONG_TASK_MS).map((f): LongTask => {
 			const top = [...f.scripts].sort((a, b) => b.duration - a.duration)[0];
@@ -502,66 +506,6 @@ export function controlsToMeasure(journeys: readonly RecordedJourney[], options:
 	return { steps: [...takeInPage, ...takeLinks], notMeasured };
 }
 
-export interface Verdict {
-	readonly ok: boolean;
-	/** Another run is needed before the verdict holds: only one run exceeded. */
-	readonly rerun: boolean;
-	readonly oldMs?: number;
-	readonly newMs?: number;
-	readonly slower: boolean;
-	readonly overBudget: boolean;
-	readonly allowedMs?: number;
-}
-
-/** NEW fails only when every one of its runs exceeds the slower OLD run by max(16 ms, 10%, how much OLD's own runs varied), or the budget; one run over asks for another. */
-export function judge(old: readonly (number | undefined)[], next: readonly (number | undefined)[], budgetMs?: number): Verdict {
-	const olds = old.filter((n): n is number => n !== undefined);
-	const news = next.filter((n): n is number => n !== undefined);
-	if (!news.length) return { ok: true, rerun: false, slower: false, overBudget: false, ...(olds.length ? { oldMs: Math.max(...olds) } : {}) };
-	const oldMs = olds.length ? Math.max(...olds) : undefined;
-	const oldSpread = olds.length > 1 ? oldMs! - Math.min(...olds) : 0;
-	const allowedMs = oldMs !== undefined ? oldMs + Math.max(SLACK_MS, oldMs * SLACK_RATIO, oldSpread) : undefined;
-	const slow = (n: number) => allowedMs !== undefined && n > allowedMs;
-	const over = (n: number) => budgetMs !== undefined && n > budgetMs;
-	const exceeds = (n: number) => slow(n) || over(n);
-	const all = news.every(exceeds);
-	if (all && news.length < 2) return { ok: false, rerun: true, newMs: news[0]!, slower: slow(news[0]!), overBudget: over(news[0]!), ...(oldMs !== undefined ? { oldMs, allowedMs: allowedMs! } : {}) };
-	const newMs = all ? Math.max(...news) : Math.min(...news.filter((n) => !exceeds(n)));
-	return { ok: !all, rerun: false, newMs, slower: all && news.every(slow), overBudget: all && news.every(over), ...(oldMs !== undefined ? { oldMs, allowedMs: allowedMs! } : {}) };
-}
-
-const kB = (bytes: number) => `${(bytes / 1024).toFixed(1)} kB`;
-
-
-/** Why a NEW interaction was slow, from what its runs saw: code it fetched, a runtime starting, a long task, data it waited on, cold against warm. */
-export function likelyCause(samples: readonly Sample[], kind: ControlTiming['kind'], old: readonly Sample[] = []): string {
-	const s = [...samples].sort((a, b) => (b.ms ?? 0) - (a.ms ?? 0))[0];
-	if (!s) return 'not measured';
-	const causes: string[] = [];
-	if (kind === 'navigation') {
-		const o = old[0];
-		if (s.result === 'reloaded' && o && o.result === 'navigated') causes.push('a full page load where the old app navigates in the page (client-side), with a blank page between');
-		if (s.server) {
-			const oldServer = o?.server;
-			const cold = s.server.warmTtfb !== undefined && s.server.ttfb > s.server.warmTtfb + 100 ? `, ${s.server.warmTtfb} ms when fetched again straight after (a cold server function)` : '';
-			causes.push(`server time ${s.server.ttfb} ms to answer${cold}${oldServer ? `, old ${oldServer.ttfb} ms` : ''}${s.server.served ? ` (${s.server.served})` : ''}, outside this timing`);
-			if (s.server.htmlBytes) causes.push(`${kB(s.server.htmlBytes)} of HTML`);
-		}
-		if (o?.prefetch && !s.prefetch) causes.push(`the old page had ${o.prefetch} prefetch hint${o.prefetch === 1 ? '' : 's'} when the pointer went down, the new one none`);
-		else if (!s.prefetch) causes.push('no prefetch');
-	}
-	const code = s.fetches.filter((f) => f.kind === 'code');
-	if (kind === 'in-page' && s.result === 'reloaded' && old[0] && old[0].result !== 'reloaded') causes.push('a full page load where the old app stays on the page');
-	else if (kind === 'in-page' && code.length) causes.push(`code fetch: ${code.map((f) => `${f.url} (${kB(f.bytes)})`).join(', ')}`);
-	if (s.evaluated.length) causes.push(`runtime start: ${s.evaluated.join(', ')} evaluated on the interaction`);
-	const long = [...s.longTasks].sort((a, b) => b.ms - a.ms)[0];
-	if (long) causes.push(`long task ${long.ms} ms${long.script ? `, top script ${long.script}` : ''}`);
-	const data = s.fetches.filter((f) => f.kind === 'data' && !/^\/?$/.test(f.url));
-	if (kind === 'in-page' && data.length) causes.push(`waits on ${data.length} data fetch${data.length === 1 ? '' : 'es'}: ${data.slice(0, 3).map((f) => f.url).join(', ')}`);
-	if (s.warmMs !== undefined && s.ms !== undefined && s.ms > s.warmMs * 2 && s.ms - s.warmMs > SLACK_MS) causes.push(`first-interaction cost: ${s.ms} ms cold, ${s.warmMs} ms the second time`);
-	return causes.join('; ') || 'no single cause seen: the handler itself is slower';
-}
-
 /** Times every pointer control and internal link the journeys exercised, on a fresh load, at desktop speed and on a throttled phone. */
 export async function checkResponsiveness(browser: Browser, envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string, journeys: readonly RecordedJourney[], options: ResponsivenessOptions = {}): Promise<{ responsiveness: Responsiveness; failures: Failure[] }> {
 	const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
@@ -600,7 +544,7 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	await addVariance(measured, picked.steps, all, pair, budgetMs);
 	await confirmSlower(measured, picked.steps, all, pair);
 	const responsiveness: Responsiveness = { budgetMs, cpu, latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
-	return { responsiveness, failures: failuresOf(route, measured, all) };
+	return { responsiveness, failures: failuresOf(route, measured, all, budgetMs) };
 }
 
 function pairFor(browser: Browser, envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string, networks: { readonly old: TimedNetwork; readonly new: TimedNetwork }) {
@@ -675,94 +619,3 @@ async function confirmSlower(controls: ControlTiming[], steps: readonly { step: 
 		controls[c.i] = { ...controls[c.i]!, speeds };
 	}
 }
-
-const codeBytes = (s: Sample) => s.fetches.filter((f) => f.kind === 'code').reduce((sum, f) => sum + f.bytes, 0);
-
-/** The old page fetches code on this interaction too (VitePress loads its search box and index when search opens), in every run, and the new page fetches no more of it. */
-function oldFetchesAlike(olds: readonly Sample[], news: readonly Sample[]): boolean {
-	const inPage = (s: Sample) => s.result !== 'reloaded';
-	if (!olds.length || !olds.every((s) => inPage(s) && codeBytes(s) > 0)) return false;
-	const allowed = Math.min(...olds.map(codeBytes));
-	return news.every((s) => !inPage(s) || codeBytes(s) <= allowed + Math.max(1024, allowed * SLACK_RATIO));
-}
-
-/** The verdict for one control at one speed from both sides' runs. */
-export function speedTiming(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample[], news: readonly Sample[], budgetMs: number): SpeedTiming {
-	return timing(speed, kind, olds, news, verdictFor(kind, speed, olds, news, budgetMs), budgetMs);
-}
-
-function verdictFor(kind: ControlTiming['kind'], speed: Speed, olds: readonly Sample[], news: readonly Sample[], budgetMs: number): Verdict {
-	if (olds.some((s) => s.heldBack) || news.some((s) => s.heldBack)) return { ...judge(olds.map((s) => s.ms), news.map((s) => s.ms)), ok: true, rerun: false, slower: false, overBudget: false };
-	// Navigation is held to the old app at the throttled speed only; the desktop figures are reported.
-	if (kind === 'navigation' && speed.name !== 'throttled') return { ...judge(olds.map((s) => s.ms), news.map((s) => s.ms)), ok: true, rerun: false, slower: false, overBudget: false };
-	return judge(
-		olds.map((s) => s.ms),
-		news.map((s) => s.ms),
-		kind === 'in-page' && speed.name === 'throttled' ? budgetMs : undefined,
-	);
-}
-
-function timing(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample[], news: readonly Sample[], verdict: Verdict, budgetMs: number): SpeedTiming {
-	const problems: string[] = [];
-	const oldMs = verdict.oldMs;
-	const newMs = verdict.newMs;
-	if (verdict.slower) problems.push(`slower than the old ${msText(oldMs)} by more than max(16 ms, 10%, the old runs' spread)`);
-	if (verdict.overBudget) problems.push(`over the ${budgetMs} ms budget`);
-	// A new document loads its own scripts; that is a page load, not an interaction fetching code.
-	const code = news.flatMap((s) => (kind === 'in-page' && s.result !== 'reloaded' ? s.fetches.filter((f) => f.kind === 'code') : []));
-	if (code.length && !oldFetchesAlike(olds, news)) problems.push(`fetched code on the first interaction: ${[...new Set(code.map((f) => `${f.url} (${kB(f.bytes)})`))].join(', ')}`);
-	const spread = olds.length > 1 && news.length > 1 ? { old: range(olds), new: range(news) } : undefined;
-	return {
-		speed: speed.name,
-		old: olds,
-		new: news,
-		...(oldMs !== undefined ? { oldMs } : {}),
-		...(newMs !== undefined ? { newMs } : {}),
-		...(spread ? { spread } : {}),
-		ok: problems.length === 0,
-		problems,
-		...(problems.length ? { cause: likelyCause(news, kind, olds) } : {}),
-	};
-}
-
-function range(samples: readonly Sample[]): number {
-	const values = samples.flatMap((s) => (s.ms !== undefined ? [s.ms] : []));
-	return values.length > 1 ? Math.max(...values) - Math.min(...values) : 0;
-}
-
-export function worstOf(controls: readonly ControlTiming[]): Responsiveness['worst'] {
-	const out: { interaction: Partial<Record<SpeedName, Worst>>; navigation: Partial<Record<SpeedName, Worst>> } = { interaction: {}, navigation: {} };
-	for (const c of controls) {
-		const bucket = c.kind === 'navigation' ? out.navigation : out.interaction;
-		for (const t of c.speeds) {
-			const current = bucket[t.speed];
-			const slowestOld = Math.max(current?.slowestOld ?? -1, t.oldMs ?? -1);
-			const kept = t.newMs !== undefined && (!current || (current.new ?? -1) < t.newMs) ? { control: c.control, ...(t.oldMs !== undefined ? { old: t.oldMs } : {}), new: t.newMs } : current;
-			if (kept) bucket[t.speed] = { ...kept, ...(slowestOld >= 0 ? { slowestOld } : {}) };
-		}
-	}
-	return { ...(Object.keys(out.interaction).length ? { interaction: out.interaction } : {}), ...(Object.keys(out.navigation).length ? { navigation: out.navigation } : {}) };
-}
-
-function failuresOf(route: string, controls: readonly ControlTiming[], all: readonly Speed[]): Failure[] {
-	const failures: Failure[] = [];
-	for (const c of controls) {
-		for (const t of c.speeds) {
-			if (t.ok) continue;
-			const speed = all.find((s) => s.name === t.speed)!;
-			const what = c.kind === 'navigation' ? 'navigation from' : 'first interaction with';
-			const runs = (samples: readonly Sample[]) => samples.map((s) => msText(s.ms)).join(', ');
-			failures.push({
-				route,
-				dimension: 'responsiveness',
-				check: `${what} ${c.control} (${speed.label})`,
-				viewport: speed.viewport.name,
-				expected: `old ${msText(t.oldMs)} (runs ${runs(t.old)}); new within max(16 ms, 10%) of it${c.kind === 'in-page' && speed.name === 'throttled' ? ` and under the budget` : ''}${c.kind === 'in-page' ? ', fetching no code' : ''}`,
-				actual: `new ${msText(t.newMs)} (runs ${runs(t.new)}); likely cause: ${t.cause}; ${t.problems.join('; ')}`,
-				hint: c.kind === 'navigation' ? HINTS.navigation : HINTS.responsiveness,
-			});
-		}
-	}
-	return failures;
-}
-
