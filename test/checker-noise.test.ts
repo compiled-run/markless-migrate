@@ -10,7 +10,7 @@ import { chromium, type Browser } from 'playwright';
 import { unreachableCandidate } from '../src/check/automatic.ts';
 import { defaultEnv } from '../src/check/browser.ts';
 import { readPage } from '../src/check/collect.ts';
-import { explore, snapshotName } from '../src/check/journeys.ts';
+import { explore, readPatiently, snapshotName } from '../src/check/journeys.ts';
 import { runCheck, type CheckOptions } from '../src/check/run.ts';
 import { VIEWPORTS, type Failure } from '../src/check/types.ts';
 
@@ -450,4 +450,19 @@ test('--journey-depth lets exploring go past four steps, so a link revealed by a
 	const reach = async (maxDepth?: number) => (await explore(browser, defaultEnv(site), '/', desktop[0]!, { budgetMs: 30_000, ...(maxDepth ? { maxDepth } : {}) })).elements.find((e) => e.element.startsWith('link "Deepest link"'));
 	assert.match((await reach())?.reason ?? '', /deeper than check explores: raise --journey-depth/);
 	assert.ok((await reach(5))?.by, 'used by a journey at depth 5');
+});
+
+test('a read of a control that is only slow is made again with more patience, so a busy machine never explores a control as nameless or disabled', async () => {
+	const timeouts: number[] = [];
+	const slowOnce = (count: number) => ({ count: async () => count }) as unknown as Parameters<typeof readPatiently>[0];
+	const read = async (timeout: number) => {
+		timeouts.push(timeout);
+		if (timeouts.length === 1) throw new Error(`Timeout ${timeout}ms exceeded`);
+		return '- option "£ British Pound"';
+	};
+	assert.equal(await readPatiently(slowOnce(1), read), '- option "£ British Pound"');
+	assert.deepEqual(timeouts, [3000, 6000]);
+	timeouts.length = 0;
+	assert.equal(await readPatiently(slowOnce(0), read), undefined, 'a control gone from the page is not read again');
+	assert.deepEqual(timeouts, [3000]);
 });
