@@ -104,8 +104,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/full-site-gate.ts wait
 
-  prepare:
+  # The original every job serves, by id: published once (original-id.yml), so no job or branch builds its own.
+  original:
     needs: gate
+    if: ${{ !inputs.converted-from }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/original-id.yml
+    with:
+      site: ${{ inputs.site || 'shadcn-ui' }}
+
+  prepare:
+    needs: [gate, original]
     if: ${{ !inputs.converted-from }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -119,27 +129,18 @@ jobs:
       # The old site's own build scripts call bun (ui.shadcn.com's registry:build).
       - if: inputs.plan-from == ''
         uses: oven-sh/setup-bun@v2
-      # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
-      - name: Restore the old site's build
-        id: old-build
-        if: inputs.plan-from == ''
-        uses: actions/cache/restore@v4
+      # The original by its id (.github/actions/old-site): every job of every branch serves the one published build.
+      - name: The original
+        if: inputs.plan-from == '' && needs.original.outputs.id != ''
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         if: inputs.plan-from == ''
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Keep the old site's build
-        if: inputs.plan-from == '' && steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - if: inputs.plan-from == ''
         name: Plan
         run: PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
@@ -176,7 +177,7 @@ jobs:
           retention-days: 7
 
   capture:
-    needs: prepare
+    needs: [prepare, original]
     runs-on: ubuntu-latest
     # GitHub stops a job at 6 h: the old site's build takes about 6 minutes, the shard the rest.
     timeout-minutes: 345
@@ -196,25 +197,17 @@ jobs:
         with:
           name: convert-inputs
           path: ${{ runner.temp }}/inputs
-      # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
-      - name: Restore the old site's build
-        id: old-build
-        uses: actions/cache/restore@v4
+      # The original by its id (.github/actions/old-site): every job of every branch serves the one published build.
+      - name: The original
+        if: needs.original.outputs.id != ''
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Capture
         env:
           SHARD: ${{ matrix.shard }}
@@ -242,7 +235,7 @@ jobs:
           retention-days: 7
 
   emit:
-    needs: [prepare, capture]
+    needs: [prepare, capture, original]
     # A shard that failed leaves its pages to be captured here.
     if: ${{ !cancelled() && !inputs.converted-from && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
@@ -262,25 +255,17 @@ jobs:
           pattern: captures-*
           merge-multiple: true
           path: ${{ env.APP }}/.migrate/convert
-      # The old site as check.yml and earlier jobs built it: every job serves the same Next.js deploy, built once.
-      - name: Restore the old site's build
-        id: old-build
-        uses: actions/cache/restore@v4
+      # The original by its id (.github/actions/old-site): every job of every branch serves the one published build.
+      - name: The original
+        if: needs.original.outputs.id != ''
+        uses: ./.github/actions/old-site
         with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Keep the old site's build
-        if: steps.old-build.outputs.cache-hit != 'true' && hashFiles(format('deploy/{0}/old/.ci-built', env.SITE)) != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            deploy/${{ env.SITE }}/old
-            !deploy/${{ env.SITE }}/old/**/.next/cache
-          key: old-site-${{ env.SITE }}-${{ hashFiles(format('deploy/{0}/fetch-old.sh', env.SITE), format('deploy/{0}/old-fixtures.json', env.SITE)) }}
       - name: Convert
         run: |
           set -euo pipefail
