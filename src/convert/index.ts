@@ -2259,7 +2259,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// An app component's state is found last, on elements no other plan binds.
 	const bound = (el: Element) => statePlans.some((plan) => plan.bind(el)) || tables.nameOf(el) !== undefined;
 	let stateInstances = 0;
-	for (const p of prepared.values()) stateInstances += reactState.add(p.root, bound);
+	for (const p of prepared.values()) {
+		const keys = new Set(p.layers.map((l) => l.key));
+		stateInstances += reactState.add(p.root, bound, (el) => [triggerKeys.get(el), attr(el, 'aria-controls'), attr(el, 'id')].some((k) => k !== undefined && keys.has(k)));
+	}
 	const stateFacts = libraries?.stateComponents ?? [];
 	if (stateFacts.length) log(`app components on React state: ${stateFacts.length - stateFacts.filter((c) => c.refused).length} converted from the source, ${stateFacts.filter((c) => c.refused).length} not (effects, refs, library hooks, props in their markup); ${stateInstances} found on these pages${reactState.counts.size ? ` (${[...reactState.counts].map(([c, n]) => `${c} ${n}`).join(', ')})` : ''}`);
 	statePlans.push(reactState);

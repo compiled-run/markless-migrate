@@ -792,6 +792,33 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+test("a Radix dialog an app's state opens follows the opener's data-mm-open, and announces its own closing there (mmopen), as Radix calls onOpenChange", async () => {
+	const layer = (key: string) => dialogLayer(key).replace('role="alertdialog"', 'role="dialog"').replace(/alert-dialog/g, 'dialog').replace(new RegExp(` id="${key}"`), '');
+	// The page's Markless state as convert writes it: the button's onClick sets it, the announced value sets it, and the attribute shows it.
+	const page = await open(
+		`<main style="padding-top:300px"><button data-slot="button" data-mm-key="p:1.2" data-mm-open="false" type="button">Open Menu</button><button data-slot="button" data-mm-key="p:1.3" data-mm-open="false" type="button">Ignored</button></main>${layer('p:1.2')}${layer('p:1.3')}
+		<script>window.announced = []; const b = document.querySelector('[data-mm-key="p:1.2"]'); b.addEventListener('click', () => b.setAttribute('data-mm-open', 'true')); b.addEventListener('mmopen', (e) => { announced.push(e.detail); b.setAttribute('data-mm-open', String(e.detail)); });</script>`,
+		['radix/dialog'],
+	);
+	const state = (key: string) => page.locator(`[data-mm-layer="${key}"][role="dialog"]`).getAttribute('data-state');
+	const announced = () => page.evaluate(() => (window as unknown as { announced: boolean[] }).announced);
+	await page.getByText('Ignored').click();
+	await page.waitForTimeout(50);
+	assert.equal(await state('p:1.3'), 'closed', "a press its state does not answer opens nothing: the state decides");
+	await page.getByText('Open Menu').click();
+	await page.waitForFunction(() => document.querySelector('[data-mm-layer="p:1.2"][role="dialog"]')?.getAttribute('data-state') === 'open');
+	assert.deepEqual(await announced(), [], 'the app opened it: nothing to announce');
+	await page.keyboard.press('Escape');
+	assert.equal(await state('p:1.2'), 'closed');
+	assert.deepEqual(await announced(), [false]);
+	await page.evaluate(() => document.querySelector('[data-mm-key="p:1.2"]')!.setAttribute('data-mm-open', 'true'));
+	await page.waitForFunction(() => document.querySelector('[data-mm-layer="p:1.2"][role="dialog"]')?.getAttribute('data-state') === 'open');
+	await page.evaluate(() => document.querySelector('[data-mm-key="p:1.2"]')!.setAttribute('data-mm-open', 'false'));
+	await page.waitForFunction(() => document.querySelector('[data-mm-layer="p:1.2"][role="dialog"]')?.getAttribute('data-state') === 'closed');
+	assert.deepEqual(await announced(), [false], 'what the state did itself is not announced back');
+	await page.close();
+});
+
 // sidebar-13's settings dialog: its state opens it on mount, so the page came with it open and Radix's marks on the rest.
 const shownDialog = `<main data-aria-hidden="true" aria-hidden="true"><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="true" aria-controls="dlg" data-state="open">Open Dialog</button><button type="button">Behind</button></main>
 	<div data-state="open" data-slot="dialog-overlay" style="position:fixed;inset:0"></div><div role="dialog" id="dlg" data-state="open" data-slot="dialog-content" tabindex="-1" style="pointer-events:auto;position:fixed;top:40px;left:40px"><a href="#x">Link</a><button type="button" data-slot="dialog-close">Close</button></div>`;
@@ -1346,6 +1373,32 @@ test('a Base UI dialog a page opens from a plain button opens under the button\'
 	await page.getByText('Open Menu').click();
 	assert.equal(await page.locator('[role="dialog"]').isVisible(), true);
 	assert.equal(await page.getByText('Open Menu').getAttribute('aria-expanded'), null);
+	await page.close();
+});
+
+test("a Base UI dialog an app's state opens follows the opener's data-mm-open, and announces its own closing there (mmopen)", async () => {
+	const page = await open(
+		`<main><button data-slot="button" data-mm-key="p:3.1" data-mm-open="false" type="button">Open Menu</button><button data-slot="button" data-mm-key="p:3.2" data-mm-open="false" type="button">Ignored</button></main>
+		<div data-mm-layer="p:3.1" hidden data-base-ui-portal><div role="dialog" data-slot="dialog-content" data-closed tabindex="-1"><input placeholder="Type a command"></div></div>
+		<div data-mm-layer="p:3.2" hidden data-base-ui-portal><div role="dialog" data-slot="dialog-content" data-closed tabindex="-1"><input placeholder="Other"></div></div>
+		<script>window.announced = []; const b = document.querySelector('[data-mm-key="p:3.1"]'); b.addEventListener('click', () => b.setAttribute('data-mm-open', 'true')); b.addEventListener('mmopen', (e) => { announced.push(e.detail); b.setAttribute('data-mm-open', String(e.detail)); });</script>`,
+		['base-ui/dialog'],
+	);
+	const shown = (placeholder: string) => page.getByPlaceholder(placeholder).isVisible();
+	const announced = () => page.evaluate(() => (window as unknown as { announced: boolean[] }).announced);
+	await page.getByText('Ignored').click();
+	await page.waitForTimeout(50);
+	assert.equal(await shown('Other'), false, 'a press its state does not answer opens nothing');
+	await page.getByText('Open Menu').click();
+	await page.waitForFunction(() => document.querySelector<HTMLElement>('[placeholder="Type a command"]')?.checkVisibility());
+	await page.keyboard.press('Escape');
+	await page.waitForFunction(() => !document.querySelector<HTMLElement>('[placeholder="Type a command"]')?.checkVisibility());
+	assert.deepEqual(await announced(), [false]);
+	await page.evaluate(() => document.querySelector('[data-mm-key="p:3.1"]')!.setAttribute('data-mm-open', 'true'));
+	await page.waitForFunction(() => document.querySelector<HTMLElement>('[placeholder="Type a command"]')?.checkVisibility());
+	await page.evaluate(() => document.querySelector('[data-mm-key="p:3.1"]')!.setAttribute('data-mm-open', 'false'));
+	await page.waitForFunction(() => !document.querySelector<HTMLElement>('[placeholder="Type a command"]')?.checkVisibility());
+	assert.deepEqual(await announced(), [false], 'what the state did itself is not announced back');
 	await page.close();
 });
 

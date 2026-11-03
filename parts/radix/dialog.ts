@@ -1,4 +1,5 @@
 import { installDialog } from './dialog-engine.ts';
+import { announceOpen, followOpen, followsOpen } from '../open-state.ts';
 import { layersFor, closestTrigger, layerKey, layerSlot } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
@@ -30,6 +31,9 @@ interface Open {
 
 const opened = new Map<string, Open>();
 const installed = new Set<string>();
+const announce = (d: Open, open: boolean) => announceOpen(d.trigger, open);
+// A Base UI dialog's layer is its portal: its own port follows it.
+const radixLayer = (key: string) => !layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal'));
 
 function setTrigger(trigger: HTMLElement, open: boolean): void {
 	if (!trigger.hasAttribute('aria-haspopup')) return;
@@ -37,10 +41,11 @@ function setTrigger(trigger: HTMLElement, open: boolean): void {
 	trigger.setAttribute('data-state', open ? 'open' : 'closed');
 }
 
-function close(key: string): void {
+function close(key: string, own = true): void {
 	const d = opened.get(key);
 	if (!d) return;
 	opened.delete(key);
+	if (own) announce(d, false);
 	setTrigger(d.trigger, false);
 	// dialog-engine.ts hides each part once its exit animation ends.
 	for (const el of [d.overlay, d.content]) el?.setAttribute('data-state', 'closed');
@@ -49,12 +54,13 @@ function close(key: string): void {
 // Dialogs the page showed open at load, opened again where they are.
 const adopted = new Map<string, Open>();
 
-function open(trigger: HTMLElement): boolean {
+function open(trigger: HTMLElement, own = true): boolean {
 	const key = layerKey(trigger);
 	if (opened.has(key)) return true;
 	const shown = adopted.get(key);
 	if (shown) {
 		opened.set(key, shown);
+		if (own) announce(shown, true);
 		setTrigger(trigger, true);
 		for (const el of [shown.overlay, shown.content]) el?.setAttribute('data-state', 'open');
 		return true;
@@ -74,14 +80,28 @@ function open(trigger: HTMLElement): boolean {
 		installDialog(trigger.hasAttribute('aria-haspopup') ? [trigger] : [], overlay, content, cancel, alert);
 		content.addEventListener('radixdismiss', () => close(key));
 	}
-	opened.set(key, { trigger, nodes, content, overlay });
+	const d = { trigger, nodes, content, overlay };
+	opened.set(key, d);
+	if (own) announce(d, true);
 	setTrigger(trigger, true);
 	for (const el of [overlay, content]) el?.setAttribute('data-state', 'open');
 	return true;
 }
 
+// The app's state, once written, opens or closes the dialog; a press on its opener is the app's to answer.
+function sync(opener: HTMLElement, want: boolean): void {
+	const key = layerKey(opener);
+	if (!key || !radixLayer(key) || want === opened.has(key)) return;
+	if (want) open(opener, false);
+	else close(key, false);
+}
+
 export function click(target: Element): boolean {
 	const trigger = triggerOf(target);
+	if (trigger && followsOpen(trigger) && radixLayer(layerKey(trigger))) {
+		followOpen(sync);
+		return true;
+	}
 	if (trigger) return open(trigger);
 	const closer = target.closest<HTMLElement>(CLOSE);
 	if (!closer) return false;
@@ -137,4 +157,5 @@ function adoptShown(): void {
 
 export function idle(): void {
 	adoptShown();
+	followOpen(sync);
 }

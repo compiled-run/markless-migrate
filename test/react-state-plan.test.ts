@@ -568,3 +568,77 @@ export default function Chosen() {
 	assert.equal(only(list, 'Nested').refused, "passes its state to <DropdownMenu.Root>'s dir, which its port reads on <DropdownMenu.Trigger>, not a child of it here");
 	assert.equal(only(list, 'Chosen').refused, "its state's markup reads Menubar, which the page has no value for");
 });
+
+const DIALOG = `import { Dialog as P } from "radix-ui"
+export function Dialog(props: any) {
+	return <P.Root data-slot="dialog" {...props} />
+}
+export function DialogTrigger(props: any) {
+	return <P.Trigger data-slot="dialog-trigger" {...props} />
+}
+export function DialogContent({ children, ...props }: any) {
+	return <P.Portal data-slot="dialog-portal"><P.Content data-slot="dialog-content" {...props}>{children}</P.Content></P.Portal>
+}
+`;
+const COMMAND = `import { Dialog, DialogContent } from "./dialog"
+export function CommandDialog({ children, ...props }: any) {
+	return <Dialog {...props}><div data-slot="dialog-header" className="sr-only"><h2>Command Palette</h2></div><DialogContent>{children}</DialogContent></Dialog>
+}
+`;
+
+test("a dialog's open state the app also sets from its own button stays Markless state: the button carries it for the dialog to follow, and the dialog's announced changes set it", async () => {
+	const list = await scan({
+		'package.json': RADIX,
+		'components/ui/button.tsx': BUTTON,
+		'components/ui/dialog.tsx': DIALOG,
+		'components/ui/command.tsx': COMMAND,
+		'app/page.tsx': `import * as React from "react"
+import { Button } from "../components/ui/button"
+import { CommandDialog } from "../components/ui/command"
+import { Dialog, DialogTrigger, DialogContent } from "../components/ui/dialog"
+export function CommandBasic() {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <div data-command="">
+      <Button onClick={() => setOpen(true)} variant="outline">Open Menu</Button>
+      <CommandDialog open={open} onOpenChange={setOpen}><p>Calendar</p></CommandDialog>
+    </div>
+  )
+}
+export function WithTrigger() {
+  const [open, setOpen] = React.useState(false)
+  return <div data-trigger=""><Button onClick={() => setOpen(true)}>Also opens</Button><Dialog open={open} onOpenChange={setOpen}><DialogTrigger>Open</DialogTrigger><DialogContent><p>Body text</p></DialogContent></Dialog></div>
+}
+export function Counted() {
+  const [n, setN] = React.useState(0)
+  return <div data-counted=""><button type="button" onClick={() => setN(n + 1)}>Add one</button><DialogTrigger data-count={n}>Open</DialogTrigger></div>
+}
+export default function Inside() {
+  const [open, setOpen] = React.useState(false)
+  return <div data-inside=""><Button onClick={() => setOpen(true)}>Open Menu</Button><CommandDialog open={open} onOpenChange={setOpen}><button type="button" onClick={() => setOpen(false)}>Done</button></CommandDialog></div>
+}
+`,
+	});
+	const basic = only(list, 'CommandBasic');
+	assert.equal(basic.refused, undefined);
+	assert.deepEqual(basic.slots, [{ name: 'open', kind: 'state', init: ['false'] }]);
+	assert.equal(basic.partState, undefined);
+	const [div] = basic.nodes!;
+	if (div?.kind !== 'element') throw new Error('shape');
+	const [button, dialog] = div.children!;
+	if (button?.kind !== 'element') throw new Error('shape');
+	assert.deepEqual(button.slots, ['button']);
+	assert.equal(code(button.events!.onClick), '() => (s0 = true)');
+	assert.equal(code(button.events!.onMmopen), '(mmEvent) => (((v) => (s0 = typeof v === "function" ? v(s0) : v)))((mmEvent as CustomEvent).detail)');
+	assert.deepEqual(button.bound, { 'data-mm-open': { code: ['(', 0, ') ? "true" : "false"'], initial: 'false', added: true } });
+	// A dialog's Root renders no element: its content is a layer, what the page shows of it is the component's own.
+	assert.deepEqual(dialog, { kind: 'opaque' });
+	assert.equal(only(list, 'WithTrigger').refused, "passes its state open to <Dialog>'s open and sets it elsewhere beside its own <DialogTrigger>, which its port does not follow yet");
+	// Only the Root renders no element: a Trigger is on the page, and state it reads is bound there.
+	const counted = only(list, 'Counted');
+	assert.equal(counted.refused, undefined);
+	const trigger = counted.nodes![0]!.kind === 'element' ? counted.nodes![0]!.children![1]! : undefined;
+	assert.deepEqual(trigger?.kind === 'element' && [trigger.slots, trigger.bound!['data-count']!.initial], [['dialog-trigger'], '0']);
+	// Set from inside the dialog, a layer: what reads or sets state there is not on the page.
+	assert.equal(only(list, 'Inside').refused, 'its state reaches inside <CommandDialog>, whose content is a layer convert does not search yet');
+});
