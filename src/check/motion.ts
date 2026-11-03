@@ -104,7 +104,15 @@ export function armMotion(pause: boolean): void {
 	const scan = () => {
 		for (const a of document.getAnimations()) add(a);
 	};
-	addEventListener('transitionrun', scan, true);
+	// A transition that starts and ends inside one long task (an Escape handler blocking a busy runner for 300 ms) is gone before
+	// any frame can see it; its run event still names it, and its declared timing is read from the element's style.
+	const ran: { el: Element; property: string; pseudo: string }[] = [];
+	const onRun = (e: Event) => {
+		scan();
+		const t = e as TransitionEvent;
+		if (t.target instanceof Element && ran.length < 500) ran.push({ el: t.target, property: t.propertyName, pseudo: t.pseudoElement });
+	};
+	addEventListener('transitionrun', onRun, true);
 	addEventListener('animationstart', scan, true);
 	const tick = () => {
 		if (stopped) return;
@@ -186,6 +194,35 @@ export function armMotion(pause: boolean): void {
 					...(effect.pseudoElement ? { pseudo: effect.pseudoElement } : {}),
 				});
 			}
+			const filmed = new Map<Element, Set<string>>();
+			for (const a of found) {
+				const effect = a.effect as KeyframeEffect | null;
+				if (typeof CSSTransition === 'undefined' || !(a instanceof CSSTransition) || !effect?.target) continue;
+				filmed.set(effect.target, (filmed.get(effect.target) ?? new Set<string>()).add(`${a.transitionProperty}|${effect.pseudoElement ?? ''}`));
+			}
+			for (const r of ran) {
+				const key = `${r.property}|${r.pseudo}`;
+				if (filmed.get(r.el)?.has(key)) continue;
+				filmed.set(r.el, (filmed.get(r.el) ?? new Set<string>()).add(key));
+				const cs = getComputedStyle(r.el, r.pseudo || undefined);
+				const list = (v: string) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
+				const props = list(cs.transitionProperty);
+				// A longhand runs under its shorthand's entry: border-top-color under border-color, padding-left under padding.
+				const covers = (shorthand: string) => {
+					const want = shorthand.split('-');
+					let i = 0;
+					for (const part of r.property.split('-')) if (part === want[i]) i++;
+					return i === want.length;
+				};
+				const exact = props.indexOf(r.property);
+				const at = exact >= 0 ? exact : props.findLastIndex((p) => p === 'all' || covers(p));
+				if (at < 0) continue;
+				const ms = (v: string | undefined) => (v === undefined ? 0 : v.endsWith('ms') ? Number.parseFloat(v) : Number.parseFloat(v) * 1000);
+				const pick = (v: string[]) => v[at % v.length];
+				const duration = ms(pick(list(cs.transitionDuration)));
+				if (!(duration > 1)) continue;
+				out.push({ kind: 'transition', name: r.property, properties: [r.property], duration: Math.round(duration), delay: Math.round(ms(pick(list(cs.transitionDelay)))), easing: pick(list(cs.transitionTimingFunction)) ?? 'ease', iterations: 1, ...who(r.el), ...(r.pseudo ? { pseudo: r.pseudo } : {}) });
+			}
 			for (const s of sounds) out.push({ kind: 'media', name: s.src, properties: [s.what], duration: s.duration, delay: 0, easing: '', iterations: 1, ...who(s.el) });
 			if ((audio.__mmWebAudio ?? 0) > audioBefore) out.push({ kind: 'media', name: 'Web Audio', properties: ['sound'], duration: 0, delay: 0, easing: '', iterations: 1, ...who(document.body) });
 			for (const [el, s] of styled) {
@@ -259,7 +296,7 @@ export function armMotion(pause: boolean): void {
 		stop() {
 			stopped = true;
 			observer.disconnect();
-			removeEventListener('transitionrun', scan, true);
+			removeEventListener('transitionrun', onRun, true);
 			removeEventListener('animationstart', scan, true);
 			removeEventListener('play', onPlay, true);
 		},
