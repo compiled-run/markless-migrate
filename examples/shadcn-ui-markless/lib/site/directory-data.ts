@@ -3,7 +3,8 @@
 import type { DirectoryEntry } from './directory.ts';
 import index from './directory/index.json' with { type: 'json' };
 
-export const registries: readonly DirectoryEntry[] = index;
+// The JSON's inferred type gives each row's absent svg attributes as undefined keys.
+export const registries = index as readonly DirectoryEntry[];
 
 declare global {
 	interface ImportMeta {
