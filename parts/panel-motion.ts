@@ -136,24 +136,28 @@ export function panelExit(id: string, done: () => void, depth = 0): void {
 			if (n.style.transitionDuration === '0s') n.style.removeProperty('transition-duration');
 		}
 		for (const n of parts) setOpen(n, false);
-		const leaving = parts.filter((n, i) => {
-			const now = getComputedStyle(n).animationName;
-			return now !== 'none' && now !== before[i];
+		// Read once Markless has committed the rest of the state: a read here restyles the whole document a second time.
+		requestAnimationFrame(() => {
+			if (run.get(el) !== token) return;
+			const leaving = parts.filter((n, i) => {
+				const now = getComputedStyle(n).animationName;
+				return now !== 'none' && now !== before[i];
+			});
+			if (!leaving.length) return end();
+			// Presence waits for the animationend (or animationcancel) of the animation the closed state started.
+			let pending = leaving.length;
+			for (const n of leaving) {
+				const names = getComputedStyle(n).animationName.split(',').map((x) => x.trim());
+				const ended = (event: AnimationEvent) => {
+					if (event.target !== n || !names.includes(event.animationName)) return;
+					n.removeEventListener('animationend', ended);
+					n.removeEventListener('animationcancel', ended);
+					if (--pending === 0) end();
+				};
+				n.addEventListener('animationend', ended);
+				n.addEventListener('animationcancel', ended);
+			}
 		});
-		if (!leaving.length) return end();
-		// Presence waits for the animationend (or animationcancel) of the animation the closed state started.
-		let pending = leaving.length;
-		for (const n of leaving) {
-			const names = getComputedStyle(n).animationName.split(',').map((x) => x.trim());
-			const ended = (event: AnimationEvent) => {
-				if (event.target !== n || !names.includes(event.animationName)) return;
-				n.removeEventListener('animationend', ended);
-				n.removeEventListener('animationcancel', ended);
-				if (--pending === 0) end();
-			};
-			n.addEventListener('animationend', ended);
-			n.addEventListener('animationcancel', ended);
-		}
 		return;
 	}
 	// A panel open on load had its open animation suppressed (Base UI's first paint); its first close animates.
@@ -161,10 +165,10 @@ export function panelExit(id: string, done: () => void, depth = 0): void {
 	setBaseSize(el, true);
 	el.removeAttribute('data-starting-style');
 	setOpen(el, false);
-	if (motionOf(el) === 'none' || !(el.scrollHeight > 0 || el.scrollWidth > 0)) return end();
 	// Base UI sets data-ending-style a frame after data-closed and watches the animations a frame after that.
 	requestAnimationFrame(() => {
 		if (run.get(el) !== token) return;
+		if (motionOf(el) === 'none' || !(el.scrollHeight > 0 || el.scrollWidth > 0)) return end();
 		el.setAttribute('data-ending-style', '');
 		requestAnimationFrame(() => {
 			if (run.get(el) === token) void finished(el).then(end);
