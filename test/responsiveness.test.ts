@@ -6,8 +6,10 @@ import { test } from 'node:test';
 import { applyAccepted, failureId } from '../src/check/accepted.ts';
 import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
-import { controlsToMeasure, fetchKind, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
-import { judge, likelyCause, speeds, speedTiming, worstOf } from '../src/check/responsiveness-compare.ts';
+import { chromium } from 'playwright';
+import { cpuMultiplier } from '../src/check/load.ts';
+import { controlsToMeasure, fetchKind, machineIndex, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { judge, likelyCause, speeds, speedTiming, timeOf, worstOf } from '../src/check/responsiveness-compare.ts';
 import { headlines, summarizeResponsiveness, worstLine } from '../src/check/responsiveness-summary.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
 import { recordResults, status, summarizeStatus } from '../src/status.ts';
@@ -146,4 +148,31 @@ test('status keeps each route\'s slowest timings from its last check and shows t
 	await recordResults(cwd, { version: 1, old: 'o', new: 'n', startedAt: 'x', ok: true, routes: [route({ responsiveness: { budgetMs: 200, cpu: 4, controls: [], notMeasured: [], worst } })] });
 	const text = summarizeStatus(await status(cwd));
 	assert.match(text, /\nFirst interaction: old 90 ms → new 230 ms \(4x CPU\)\nNavigation: old 213 ms → new 660 ms \(4x CPU\)\n/);
+});
+
+test('the phone speed stands for Lighthouse\'s 4x device on any machine: its slowdown comes from the machine\'s benchmarkIndex, its name stays', async () => {
+	const [, throttled] = speeds(4, 5.25);
+	assert.deepEqual([throttled!.label, throttled!.cpu], ['4x CPU, mobile', 5.25]);
+	assert.equal(speeds(6)[1]!.cpu, 6, 'a slowdown given is applied as given');
+	const browser = await chromium.launch();
+	try {
+		const index = await machineIndex(browser);
+		assert.ok(index > 100, `benchmarkIndex ${index}`);
+		assert.ok(cpuMultiplier(index) >= 1);
+	} finally {
+		await browser.close();
+	}
+	assert.ok(cpuMultiplier(2000) > cpuMultiplier(1000), 'a faster machine is slowed more');
+});
+
+test('a link whose next page did not show inside the window on the old side was not timed there: its event time is not compared with the new side\'s navigation', () => {
+	const [, throttled] = speeds(4);
+	const none = sample({ result: 'none', ms: 56 });
+	assert.equal(timeOf('navigation', none), undefined);
+	assert.equal(timeOf('in-page', none), 56, 'an in-page control that shows nothing still has its handler time');
+	const t = speedTiming(throttled!, 'navigation', [none, sample({ result: 'none', ms: 112 })], [sample({ result: 'navigated', ms: 731 }), sample({ result: 'navigated', ms: 966 })], 200);
+	assert.deepEqual([t.ok, t.problems], [true, []]);
+	assert.equal(t.oldMs, undefined);
+	const timed = speedTiming(throttled!, 'navigation', [sample({ result: 'navigated', ms: 400 }), sample({ result: 'navigated', ms: 420 })], [sample({ result: 'navigated', ms: 731 }), sample({ result: 'navigated', ms: 966 })], 200);
+	assert.equal(timed.ok, false, 'a navigation the old side did time is still judged');
 });
