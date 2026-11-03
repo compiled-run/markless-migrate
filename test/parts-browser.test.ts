@@ -491,8 +491,25 @@ test('cmdk: the wheel turned over the list under a still pointer leaves the sele
 	await page.close();
 });
 
+// What the page does with a Command in a layer, as the converter emits it: an @if the part turns off and on as the layer closes.
+async function remountOnClose(page: Page): Promise<void> {
+	await page.evaluate(() => {
+		const log: string[] = [];
+		(window as unknown as { mounts: string[] }).mounts = log;
+		for (const root of document.querySelectorAll('[data-mm-layer] [cmdk-root]')) {
+			const fresh = root.innerHTML;
+			root.setAttribute('m:on', 'mmunmount:0;mmmount:1');
+			root.addEventListener('mmunmount', () => (log.push('unmount'), root.replaceChildren()));
+			root.addEventListener('mmmount', () => (log.push('mount'), (root.innerHTML = fresh)));
+		}
+	});
+}
+
+const AT_REST = COMMAND.replace('aria-selected="true"', 'aria-selected="false"').replace('data-selected="true"', 'data-selected="false"');
+
 test('cmdk: a command in a closed layer holds no selection; opening it selects the first item, each time, as cmdk does on mount', async () => {
-	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k" hidden>${COMMAND.replace('aria-selected="true"', 'aria-selected="false"').replace('data-selected="true"', 'data-selected="false"')}</div>`, ['cmdk']);
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k" hidden>${AT_REST}</div>`, ['cmdk']);
+	await remountOnClose(page);
 	await page.evaluate(() => {
 		const log: string[] = [];
 		(window as unknown as { flips: string[] }).flips = log;
@@ -507,13 +524,47 @@ test('cmdk: a command in a closed layer holds no selection; opening it selects t
 		await page.keyboard.press('ArrowDown');
 		await page.locator('#trigger').focus();
 		await page.evaluate(() => ((document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true));
-		await page.waitForFunction(() => !document.querySelector('[cmdk-item][aria-selected="true"]'));
+		await page.waitForFunction(() => (window as unknown as { mounts: string[] }).mounts.length === 2);
+		await page.evaluate(() => (window as unknown as { mounts: string[] }).mounts.splice(0));
 		await flips();
 	}
 	await page.close();
 });
 
-test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
+test('cmdk: once its layer has closed, a command has the page take what it holds away and render it again, so it opens with a new list at the top, no search and its first item selected', async () => {
+	const many = Array.from({ length: 30 }, (_, i) => commandItem(`i${i}`, `Item ${i}`).replace('>Item', ' style="height:30px">Item')).join('');
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k"><div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" type="text" value=""><div cmdk-list="" role="listbox" style="height:150px;overflow:auto"><div cmdk-list-sizer=""><div cmdk-group="" role="presentation"><div cmdk-group-items="" role="group">${many}</div></div></div></div></div></div>`, ['cmdk']);
+	await remountOnClose(page);
+	const chosen = () => page.evaluate(() => [...document.querySelectorAll('[cmdk-item][aria-selected="true"]')].map((i) => i.id).join(','));
+	await page.locator('[cmdk-input]').focus();
+	await page.locator('[cmdk-list]').hover();
+	const pointed = await chosen();
+	await page.mouse.wheel(0, 240);
+	await page.waitForFunction(() => document.querySelector('[cmdk-list]')!.scrollTop > 0);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('Item 2');
+	// Focus leaves as an outside press starts closing the layer: what it shows stays while it animates out, as React's does.
+	await page.locator('#trigger').focus();
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), 'Item 2');
+	await page.evaluate(() => {
+		(window as unknown as { old: Element }).old = document.querySelector('[cmdk-list]')!;
+		(window as unknown as { scrolls: number }).scrolls = 0;
+		document.addEventListener('scroll', () => (window as unknown as { scrolls: number }).scrolls++, true);
+		(document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true;
+	});
+	await page.waitForFunction(() => document.querySelector('[cmdk-list]') && document.querySelector('[cmdk-list]') !== (window as unknown as { old: Element }).old);
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { mounts: string[] }).mounts), ['unmount', 'mount']);
+	await page.mouse.move(10, 400);
+	await page.evaluate(() => ((document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false));
+	await page.locator('[cmdk-input]').focus();
+	assert.deepEqual(await page.evaluate(() => ({ scrollTop: document.querySelector('[cmdk-list]')!.scrollTop, scrolls: (window as unknown as { scrolls: number }).scrolls, input: (document.querySelector('[cmdk-input]') as HTMLInputElement).value })), { scrollTop: 0, scrolls: 0, input: '' }, 'a new list at the top, no scroll event');
+	assert.equal(await chosen(), 'i0', 'the first item is selected');
+	await page.locator('[cmdk-list]').hover();
+	assert.equal(await chosen(), pointed, 'the pointer lands on the item it landed on the first time');
+	await page.close();
+});
+
+test('cmdk: a command in a layer the page does not render again is put back by hand: no search, its first item selected and nothing active', async () => {
 	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
 	await page.locator('[cmdk-input]').focus();
 	await page.keyboard.type('bil');
@@ -527,26 +578,6 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
 	await page.locator('[cmdk-input]').focus();
 	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
-	await page.close();
-});
-
-test('cmdk: a list scrolled before its layer closed opens again at the top, so the pointer lands where it did the first time', async () => {
-	const many = Array.from({ length: 30 }, (_, i) => commandItem(`i${i}`, `Item ${i}`, false, i === 0).replace('>Item', ' style="height:30px">Item')).join('');
-	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k"><div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" type="text" value=""><div cmdk-list="" role="listbox" style="height:150px;overflow:auto"><div cmdk-list-sizer=""><div cmdk-group="" role="presentation"><div cmdk-group-items="" role="group">${many}</div></div></div></div></div></div>`, ['cmdk']);
-	const chosen = () => page.evaluate(() => [...document.querySelectorAll('[cmdk-item][aria-selected="true"]')].map((i) => i.id).join(','));
-	await page.locator('[cmdk-input]').focus();
-	await page.locator('[cmdk-list]').hover();
-	const pointed = await chosen();
-	await page.mouse.wheel(0, 240);
-	await page.waitForFunction(() => document.querySelector('[cmdk-list]')!.scrollTop > 0);
-	await page.locator('#trigger').focus();
-	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
-	await page.waitForFunction(() => !document.querySelector('[cmdk-item][aria-selected="true"]'));
-	await page.mouse.move(10, 400);
-	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
-	assert.equal(await page.evaluate(() => document.querySelector('[cmdk-list]')!.scrollTop), 0, 'cmdk mounts the list again, so it starts at the top');
-	await page.locator('[cmdk-list]').hover();
-	assert.equal(await chosen(), pointed, 'the pointer lands on the item it landed on the first time');
 	await page.close();
 });
 

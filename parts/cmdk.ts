@@ -10,7 +10,8 @@ import { navigate } from '@markless/router';
 // Home, End and Alt with an arrow move the selection; moving the pointer over an item selects it; Enter or a click
 // chooses it, and what choosing does is the old page's: the address in the item's data-mm-href (where it went on that
 // page, or for an item the page renders itself, its own), or what it copied. The input and list
-// carry aria-activedescendant as cmdk computes it. A command in a layer starts again each time its layer opens.
+// carry aria-activedescendant as cmdk computes it. A command in a layer is rendered again by the page each time its layer
+// closes, as cmdk mounts it again when it opens.
 
 export type Filter = (value: string, search: string, keywords: readonly string[]) => number;
 
@@ -371,13 +372,15 @@ export function click(target: Element): boolean {
 export function focusin(target: Element): boolean {
 	const root = rootOf(target);
 	if (!root?.closest('[data-mm-layer]') || selected(root)) return false;
+	if (!commands.has(root)) apply(root, '');
 	const first = items(root)[0];
 	if (first) select(root, first, 'search');
 	return false;
 }
 
-// A Command inside a layer is unmounted when its layer closes: once focus has left it and the layer is hidden (its exit
-// animation shows it as it was), it opens again with no search and nothing selected or active.
+// What a Command inside a layer holds is unmounted when its layer closes: once focus has left it and the layer is hidden
+// (its exit animation shows it as it was), the page is told to take it away (mmunmount on the root), and once it is gone,
+// to render it again (mmmount), so the next opening shows a new input and list as cmdk's mount does.
 const awaiting = new WeakSet<Element>();
 export function focusout(target: Element, event: FocusEvent): boolean {
 	const root = rootOf(target);
@@ -385,7 +388,7 @@ export function focusout(target: Element, event: FocusEvent): boolean {
 	if (!root || !layer || (event.relatedTarget instanceof Node && layer.contains(event.relatedTarget))) return false;
 	if (awaiting.has(root)) return false;
 	if (layer.hidden) {
-		reset(root);
+		unmount(root);
 		return false;
 	}
 	awaiting.add(root);
@@ -393,12 +396,32 @@ export function focusout(target: Element, event: FocusEvent): boolean {
 		if (!layer.hidden) return;
 		watch.disconnect();
 		awaiting.delete(root);
-		reset(root);
+		unmount(root);
 	});
 	watch.observe(layer, { attributes: true, attributeFilter: ['hidden'] });
 	return false;
 }
 
+const mounting = new WeakMap<Element, MutationObserver>();
+// Markless lists a node's handlers in its m:on attribute.
+const rendersAgain = (root: Element) => (root.getAttribute('m:on') ?? '').split(';').some((h) => h.startsWith('mmunmount:'));
+
+function unmount(root: HTMLElement): void {
+	if (!rendersAgain(root)) return reset(root);
+	commands.delete(root);
+	mounting.get(root)?.disconnect();
+	const gone = new MutationObserver(() => {
+		if (root.querySelector('[cmdk-input], [cmdk-list]')) return;
+		gone.disconnect();
+		mounting.delete(root);
+		root.dispatchEvent(new CustomEvent('mmmount'));
+	});
+	gone.observe(root, { childList: true, subtree: true });
+	mounting.set(root, gone);
+	root.dispatchEvent(new CustomEvent('mmunmount'));
+}
+
+// A Command the page cannot render again (its items read state from inside it) is put back as cmdk mounts it, by hand.
 function reset(root: HTMLElement): void {
 	const field = root.querySelector<HTMLInputElement>('[cmdk-input]');
 	if (field) field.value = '';
