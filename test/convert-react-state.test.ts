@@ -178,3 +178,30 @@ export default function Mixed() {
 	assert.ok(out.includes('onClick={() => (count_0 = count_0 + 1)}'), out);
 	await compiles(declarations, out);
 });
+
+test("a menu Root's dir read from state is written on its trigger as the attribute its port reads, which the old page did not have; the checkbox that sets it is bound", async () => {
+	const list = await facts({
+		'package.json': JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.0.0' } }),
+		'app/page.tsx': `import * as React from "react"
+import { DropdownMenu } from "radix-ui"
+export default function Submenus() {
+  const [rtl, setRtl] = React.useState(false)
+  return (
+    <div data-submenus="">
+      <label><input type="checkbox" checked={rtl} onChange={(event) => setRtl(event.currentTarget.checked)} />Right-to-left</label>
+      <DropdownMenu.Root dir={rtl ? "rtl" : "ltr"}>
+        <DropdownMenu.Trigger data-slot="dropdown-menu-trigger">Open</DropdownMenu.Trigger>
+        <DropdownMenu.Portal><DropdownMenu.Content data-slot="dropdown-menu-content" /></DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </div>
+  )
+}
+`,
+	});
+	const { found, out, declarations } = convert(list, '<div data-submenus=""><label><input type="checkbox">Right-to-left</label><button type="button" id="t" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></div>');
+	assert.equal(found, 1);
+	assert.deepEqual(declarations, ['let rtl_0 = state(false);']);
+	assert.ok(out.includes('data-slot="dropdown-menu-trigger" data-mm-dir={rtl_0 ? "rtl" : "ltr"}>Open</button>'), out);
+	assert.ok(out.includes('onInput={(event) => (rtl_0 = event.currentTarget.checked)}'), out);
+	await compiles(declarations, out);
+});

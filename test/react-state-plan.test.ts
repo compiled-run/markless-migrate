@@ -478,3 +478,93 @@ export default function Volume() {
 	});
 	assert.deepEqual(only(list, 'Volume').partState, [{ state: 'v', part: 'react-aria-components Slider', prop: 'value' }]);
 });
+
+test("a state a part's config prop reads (dir, loop) with no callback binds the attribute its port reads: on the Root's trigger where the Root renders no element, on the bar where it does", async () => {
+	const list = await scan({
+		'package.json': RADIX,
+		'app/page.tsx': `import * as React from "react"
+import { DropdownMenu, Menubar } from "radix-ui"
+export function Submenus() {
+  const [rtl, setRtl] = React.useState(false)
+  return (
+    <div data-submenus="">
+      <label><input type="checkbox" checked={rtl} onChange={(event) => setRtl(event.currentTarget.checked)} />Right-to-left</label>
+      <DropdownMenu.Root dir={rtl ? "rtl" : "ltr"}>
+        <DropdownMenu.Trigger data-slot="dropdown-menu-trigger">Open</DropdownMenu.Trigger>
+        <DropdownMenu.Portal data-slot="dropdown-menu-portal"><DropdownMenu.Content data-slot="dropdown-menu-content"><DropdownMenu.Item>New Tab</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </div>
+  )
+}
+export default function Bar() {
+  const [loop, setLoop] = React.useState(false)
+  const [rtl, setRtl] = React.useState(false)
+  const [portalled, setPortalled] = React.useState(false)
+  const dir = rtl ? "rtl" : "ltr"
+  const Portal = portalled ? Menubar.Portal : React.Fragment
+  return (
+    <div data-bar="">
+      <label><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.currentTarget.checked)} />Loop</label>
+      <label><input type="checkbox" checked={rtl} onChange={(event) => setRtl(event.currentTarget.checked)} />Right-to-left</label>
+      <label><input type="checkbox" checked={portalled} onChange={(event) => setPortalled(event.currentTarget.checked)} />Portalled</label>
+      <div dir={dir}>
+        <Menubar.Root data-slot="menubar" loop={loop} dir={dir}>
+          <Menubar.Menu data-slot="menubar-menu">
+            <Menubar.Trigger data-slot="menubar-trigger">File</Menubar.Trigger>
+            <Portal><Menubar.Content data-slot="menubar-content"><Menubar.Item>New Tab</Menubar.Item></Menubar.Content></Portal>
+          </Menubar.Menu>
+        </Menubar.Root>
+      </div>
+    </div>
+  )
+}
+`,
+	});
+	const submenus = only(list, 'Submenus');
+	assert.equal(submenus.refused, undefined);
+	const [div] = submenus.nodes!;
+	if (div?.kind !== 'element') throw new Error('shape');
+	// The Root renders no element: its trigger is the menu's place on the page, its portal's content is a layer.
+	const [, trigger, portal] = div.children!;
+	if (trigger?.kind !== 'element') throw new Error('shape');
+	assert.deepEqual(trigger.slots, ['dropdown-menu-trigger']);
+	assert.deepEqual(trigger.bound, { 'data-mm-dir': { code: [0, ' ? "rtl" : "ltr"'], initial: 'ltr', added: true } });
+	assert.deepEqual(portal, { kind: 'opaque' });
+	const bar = only(list, 'Bar');
+	assert.equal(bar.refused, undefined);
+	assert.deepEqual(bar.slots!.map((s) => s.name), ['loop', 'rtl', 'portalled', 'dir']);
+	const [barDiv] = bar.nodes!;
+	if (barDiv?.kind !== 'element') throw new Error('shape');
+	const wrap = barDiv.children![3]!;
+	if (wrap.kind !== 'element') throw new Error('shape');
+	assert.equal(code(wrap.bound!.dir!.code), 's3');
+	const root = wrap.children![0]!;
+	if (root.kind !== 'element') throw new Error('shape');
+	assert.deepEqual(root.slots, ['menubar']);
+	assert.deepEqual(root.bound, { 'data-mm-loop': { code: ['(', 0, ') ? "true" : "false"'], initial: 'false', added: true }, 'data-mm-dir': { code: [3], initial: 'ltr', added: true } });
+});
+
+test("a config prop no port reads, a Root whose trigger is not its child, and a state-chosen tag other than a portal stay refused with why", async () => {
+	const list = await scan({
+		'package.json': RADIX,
+		'app/page.tsx': `import * as React from "react"
+import { Dialog, DropdownMenu, Menubar } from "radix-ui"
+export function Modal() {
+  const [modal, setModal] = React.useState(true)
+  return <div data-modal=""><input type="checkbox" checked={modal} onChange={(e) => setModal(e.currentTarget.checked)} /><Dialog.Root modal={modal}><Dialog.Trigger data-slot="dialog-trigger">open</Dialog.Trigger></Dialog.Root></div>
+}
+export function Nested() {
+  const [rtl, setRtl] = React.useState(false)
+  return <div data-nested=""><input type="checkbox" checked={rtl} onChange={(e) => setRtl(e.currentTarget.checked)} /><DropdownMenu.Root dir={rtl ? "rtl" : "ltr"}><div><DropdownMenu.Trigger data-slot="dropdown-menu-trigger">Open</DropdownMenu.Trigger></div></DropdownMenu.Root></div>
+}
+export default function Chosen() {
+  const [big, setBig] = React.useState(false)
+  const Tag = big ? Menubar.Root : React.Fragment
+  return <div data-chosen=""><input type="checkbox" checked={big} onChange={(e) => setBig(e.currentTarget.checked)} /><Tag><p>Body text</p></Tag></div>
+}
+`,
+	});
+	assert.equal(only(list, 'Modal').refused, "passes its state to <Dialog.Root>'s modal, a prop convert does not port yet");
+	assert.equal(only(list, 'Nested').refused, "passes its state to <DropdownMenu.Root>'s dir, which its port reads on <DropdownMenu.Trigger>, not a child of it here");
+	assert.equal(only(list, 'Chosen').refused, "its state's markup reads Menubar, which the page has no value for");
+});

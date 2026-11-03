@@ -1,6 +1,6 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
 import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
-import { clearHighlight, closeSubs, menuRoot, trackMenu } from './dropdown-menu.ts';
+import { clearHighlight, closeSubs, menuRoot, takeDir, trackMenu } from './dropdown-menu.ts';
 
 // Radix ContextMenu: a right press (or a long touch) on the trigger area opens the menu at the pointer, modal, with
 // its content focused; the dropdown-menu port's item rules (arrows, typeahead, choosing closes) apply to it as to any
@@ -33,6 +33,7 @@ export function contextmenu(target: Element, event: MouseEvent): boolean {
 	if (key) for (const n of layersFor(key)) if (n.hasAttribute('data-radix-popper-content-wrapper') && n.dataset.mmSideOffset === undefined) n.dataset.mmSideOffset = '2';
 	const layer = key ? openLayer(trigger, key, { modal: true, anchor, onDismiss: (l) => close(trigger, l) }) : undefined;
 	if (!layer) return false;
+	takeDir(layer, trigger.getAttribute('data-mm-dir'));
 	open.set(trigger, layer);
 	trackMenu(layer, () => close(trigger, layer));
 	trigger.setAttribute('data-state', 'open');

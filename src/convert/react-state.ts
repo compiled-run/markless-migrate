@@ -135,6 +135,7 @@ export class ReactStatePlan {
 			evidence++;
 		}
 		for (const [name, b] of Object.entries(node.bound ?? {})) {
+			if (b.added) continue;
 			if (name === 'class' ? !classFits(el, b) : (attr(el, name) ?? null) !== b.initial) return undefined;
 			evidence++;
 			state++;

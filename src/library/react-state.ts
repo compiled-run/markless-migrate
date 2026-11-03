@@ -1,5 +1,5 @@
 import { isFunction, patternNames, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
-import { announcedChange } from '../convert/parts.ts';
+import { announcedChange, configAttribute } from '../convert/parts.ts';
 import type { Compositions, PartRef } from './composition.ts';
 import { cancelOf, freeNames, GLOBALS, HOOK, Refused, TS_EXPRESSIONS, WRAPPERS, type Handlers } from './handlers.ts';
 import type { BoundAttribute, StateCode, StateComponent, StateNode, StateSlot } from './types.ts';
@@ -439,6 +439,11 @@ export class StateComponents {
 			scope.locals.set(d.id.name, { node: d, statement: st, fn: init });
 			return;
 		}
+		// The port mounts a layer in the same place whether the source portals it or not: the tag's choice binds nothing.
+		if (d.id.type === 'Identifier' && init && portalChoice(scope, init)) {
+			scope.locals.set(d.id.name, { node: d, statement: st });
+			return;
+		}
 		if (d.id.type === 'Identifier' && init && reads(scope, init)) return this.derive(scope, d.id.name, init, add);
 		const names = [...freeNames(init ?? d.id)];
 		if (d.id.type === 'Identifier' && init && names.every((n) => PURE.has(n) || (scope.locals.get(n) && 'value' in scope.locals.get(n)!) || (!scope.locals.has(n) && !scope.props.has(n) && moduleLiteral(mod, n) !== undefined))) {
@@ -463,7 +468,7 @@ export class StateComponents {
 				const value = jsxTextValue(c.value);
 				if (value) out.push({ kind: 'text', value });
 			} else if (c.type === 'JSXFragment') out.push(...(await this.nodes(scope, c.children as N[])));
-			else if (c.type === 'JSXElement') out.push(await this.element(scope, c));
+			else if (c.type === 'JSXElement') out.push(...((await this.elementless(scope, c)) ?? [await this.element(scope, c)]));
 			else if (c.type === 'JSXExpressionContainer') {
 				const e = unwrap(c.expression);
 				if (!e || e.type === 'JSXEmptyExpression') continue;
@@ -533,7 +538,7 @@ export class StateComponents {
 		};
 	}
 
-	private async element(scope: Scope, el: N): Promise<StateNode> {
+	private async element(scope: Scope, el: N, given: Readonly<Record<string, BoundAttribute>> = {}): Promise<StateNode> {
 		const { mod } = scope;
 		const opening = el.openingElement;
 		const tag = await this.composer.tag(mod, opening.name);
@@ -545,7 +550,7 @@ export class StateComponents {
 		const passesProp = (prop: string) => Boolean(host) || (spreads && (wraps ? DOM_PROPS : PART_DOM_PROPS).test(prop));
 		const passesEvent = (prop: string) => (wraps ? DOM_EVENTS.test(prop) : spreads && PART_EVENTS.test(prop) && !CALLBACK_LIBRARIES.has(tag.part?.library ?? ''));
 		const attrs: Record<string, string> = {};
-		const bound: Record<string, BoundAttribute> = {};
+		const bound: Record<string, BoundAttribute> = { ...given };
 		const events: Record<string, StateCode> = {};
 		const controlled = host ? { attrs: new Set<N>(), pairs: [] } : await this.controlledPairs(scope, opening, name, tag.part);
 		for (const a of opening.attributes as N[]) {
@@ -569,7 +574,10 @@ export class StateComponents {
 			}
 			const dom = domName(prop);
 			if (!passesProp(prop)) {
-				if (expr && reads(scope, expr)) throw new Refused(`passes its state to <${name}>'s ${prop}, a prop convert does not port yet`);
+				if (!expr || !reads(scope, expr)) continue;
+				const config = tag.part && configAttribute(tag.part.library, tag.part.export, prop);
+				if (!config || config.on) throw new Refused(`passes its state to <${name}>'s ${prop}, a prop convert does not port yet`);
+				bound[config.attribute] = configBound(scope, config.attribute, expr);
 				continue;
 			}
 			if (prop === 'className' || prop === 'style') {
@@ -618,6 +626,43 @@ export class StateComponents {
 		node.children = children;
 		if (!passes) node.loose = true;
 		return node;
+	}
+
+	/**
+	 * A part that renders no element (a Radix menu's Root) given state in a config prop its port reads on a child part's
+	 * element (`dir` on the trigger): its children in its place, that child with the attribute bound, the rest (its
+	 * portal, whose content is a layer) as the page has them. Undefined for any other element.
+	 */
+	private async elementless(scope: Scope, el: N): Promise<StateNode[] | undefined> {
+		const opening = el.openingElement;
+		const { part, component } = await this.composer.tag(scope.mod, opening.name);
+		if (!part || component) return undefined;
+		const name = tagName(opening.name);
+		const given = new Map<string, { props: string[]; bound: Record<string, BoundAttribute> }>();
+		for (const a of opening.attributes as N[]) {
+			if (a.type !== 'JSXAttribute' || a.name.type !== 'JSXIdentifier') continue;
+			const expr = a.value?.type === 'JSXExpressionContainer' ? unwrap(a.value.expression) : undefined;
+			const config = configAttribute(part.library, part.export, a.name.name);
+			if (!config?.on || !expr || !reads(scope, expr)) continue;
+			const at = given.get(config.on) ?? given.set(config.on, { props: [], bound: {} }).get(config.on)!;
+			at.props.push(a.name.name);
+			at.bound[config.attribute] = configBound(scope, config.attribute, expr);
+		}
+		if (!given.size) return undefined;
+		const out: StateNode[] = [];
+		for (const c of el.children as N[]) {
+			if (c.type === 'JSXText' && !jsxTextValue(c.value)) continue;
+			const child = c.type === 'JSXElement' ? (await this.composer.tag(scope.mod, c.openingElement.name)).part : undefined;
+			const placed = child?.library === part.library ? given.get(child.export) : undefined;
+			if (placed) {
+				out.push(await this.element(scope, c, placed.bound));
+				given.delete(child!.export);
+			} else if (c.type === 'JSXExpressionContainer' ? reads(scope, c.expression) : jsxReads(scope, c)) throw new Refused(`its state reaches <${name}>'s children, which convert cannot find on the page`);
+			else out.push({ kind: 'opaque' });
+		}
+		const [unplaced] = given;
+		if (unplaced) throw new Refused(`passes its state to <${name}>'s ${unplaced[1].props.join(', ')}, which its port reads on <${unplaced[0]}>, not a child of it here`);
+		return out;
 	}
 
 	/**
@@ -763,6 +808,31 @@ export class StateComponents {
 		await emit(node);
 		return tidy(out);
 	}
+}
+
+/** `on ? Menu.Portal : React.Fragment`: a tag state picks between a library's Portal and React's Fragment. */
+function portalChoice(scope: Scope, init: N): boolean {
+	if (init.type !== 'ConditionalExpression' || !reads(scope, init.test)) return false;
+	const named = (n: N | undefined) => {
+		const e = unwrap(n);
+		const root = e?.type === 'MemberExpression' && !e.computed && e.object.type === 'Identifier' ? e.object.name : e?.type === 'Identifier' ? e.name : undefined;
+		const imp = root ? scope.mod.imports.get(root) : undefined;
+		if (!imp || imp.source.startsWith('.')) return undefined;
+		const last = e!.type === 'MemberExpression' ? e!.property.name : imp.imported;
+		return imp.source === 'react' ? (last === 'Fragment' ? 'fragment' : undefined) : last === 'Portal' ? 'portal' : undefined;
+	};
+	const sides = [named(init.consequent), named(init.alternate)];
+	if (!sides.includes('portal') || sides.includes(undefined)) return false;
+	checkNames(scope, init.test);
+	return true;
+}
+
+/** A config prop's value bound to the attribute its port reads: a data-mm- one is the port's own, which the page lacks. */
+function configBound(scope: Scope, attribute: string, expr: N): BoundAttribute {
+	checkNames(scope, expr);
+	const code = rewrite(scope, expr);
+	const value = evaluate(scope, code);
+	return { code: /^(aria|data)-/.test(attribute) && typeof value === 'boolean' ? ['(', ...code, ') ? "true" : "false"'] : code, initial: attributeText(attribute, value), ...(/^data-mm-/.test(attribute) ? { added: true as const } : {}) };
 }
 
 /** The setter a callback is or calls with its one parameter alone (`setOpen`, `(v) => setOpen(v)`, `(v) => { setOpen(v) }`): its name's node. */
