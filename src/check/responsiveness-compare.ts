@@ -7,11 +7,11 @@ import type { Failure } from './types.ts';
 export const SLACK_MS = 16;
 export const SLACK_RATIO = 0.1;
 
-/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `rate` to stand for Lighthouse's `cpu`x device. */
-export function speeds(cpu: number, rate = cpu): Speed[] {
+/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `cpu`. */
+export function speeds(cpu: number): Speed[] {
 	return [
 		{ name: 'desktop', label: 'desktop', cpu: 1, viewport: { name: 'desktop', width: 1280, height: 800, isMobile: false } },
-		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu: rate, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
+		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
 	];
 }
 
@@ -212,5 +212,5 @@ export function judgeResponsiveness(route: string, recorded: { readonly responsi
 	const r = recorded.responsiveness;
 	const controls = r.controls.map((c) => ({ ...c, speeds: c.speeds.map((t) => held(c.kind, t, r.budgetMs)) }));
 	if (controls.every((c, i) => c.speeds.every((t, k) => t === r.controls[i]!.speeds[k]))) return { responsiveness: r, failures: [...recorded.failures] };
-	return { responsiveness: { ...r, controls, worst: worstOf(controls) }, failures: failuresOf(route, controls, speeds(r.cpu, r.rate ?? r.cpu), r.budgetMs) };
+	return { responsiveness: { ...r, controls, worst: worstOf(controls) }, failures: failuresOf(route, controls, speeds(r.cpu), r.budgetMs) };
 }

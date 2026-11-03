@@ -6,9 +6,7 @@ import { test } from 'node:test';
 import { applyAccepted, failureId } from '../src/check/accepted.ts';
 import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
-import { chromium } from 'playwright';
-import { cpuMultiplier } from '../src/check/load.ts';
-import { controlsToMeasure, fetchKind, machineIndex, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { controlsToMeasure, fetchKind, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
 import { judge, likelyCause, speeds, speedTiming, timeOf, worstOf } from '../src/check/responsiveness-compare.ts';
 import { headlines, summarizeResponsiveness, worstLine } from '../src/check/responsiveness-summary.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
@@ -148,21 +146,6 @@ test('status keeps each route\'s slowest timings from its last check and shows t
 	await recordResults(cwd, { version: 1, old: 'o', new: 'n', startedAt: 'x', ok: true, routes: [route({ responsiveness: { budgetMs: 200, cpu: 4, controls: [], notMeasured: [], worst } })] });
 	const text = summarizeStatus(await status(cwd));
 	assert.match(text, /\nFirst interaction: old 90 ms → new 230 ms \(4x CPU\)\nNavigation: old 213 ms → new 660 ms \(4x CPU\)\n/);
-});
-
-test('the phone speed stands for Lighthouse\'s 4x device on any machine: its slowdown comes from the machine\'s benchmarkIndex, its name stays', async () => {
-	const [, throttled] = speeds(4, 5.25);
-	assert.deepEqual([throttled!.label, throttled!.cpu], ['4x CPU, mobile', 5.25]);
-	assert.equal(speeds(6)[1]!.cpu, 6, 'a slowdown given is applied as given');
-	const browser = await chromium.launch();
-	try {
-		const index = await machineIndex(browser);
-		assert.ok(index > 100, `benchmarkIndex ${index}`);
-		assert.ok(cpuMultiplier(index) >= 1);
-	} finally {
-		await browser.close();
-	}
-	assert.ok(cpuMultiplier(2000) > cpuMultiplier(1000), 'a faster machine is slowed more');
 });
 
 test('a link whose next page did not show inside the window on the old side was not timed there: its event time is not compared with the new side\'s navigation', () => {

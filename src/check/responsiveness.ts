@@ -1,4 +1,3 @@
-import { pageFunctions } from 'lighthouse/core/lib/page-functions.js';
 import type { Browser, Page, Request, Response } from 'playwright';
 import { appHeaders, openPage, type SideEnv } from './browser.ts';
 import { request as fetchApp } from './http.ts';
@@ -7,7 +6,6 @@ import { describeStep, describeTarget } from './journeys-compare.ts';
 import type { Failure, Viewport } from './types.ts';
 import { failuresOf, SLACK_MS, SLACK_RATIO, speeds, speedTiming, timeOf, verdictFor, worstOf } from './responsiveness-compare.ts';
 import { loadPage } from './infrastructure.ts';
-import { cpuMultiplier } from './load.ts';
 import { judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
 import { DEFAULT_BUDGET_MS, DEFAULT_CPU, msText } from './responsiveness-summary.ts';
@@ -24,7 +22,7 @@ export interface Speed {
 export interface ResponsivenessOptions {
 	/** First in-page interaction at the throttled speed must answer within this; default 200 ms. */
 	readonly budgetMs?: number;
-	/** CPU slowdown of the mobile speed, applied as given; by default the slowdown that makes this machine stand for Lighthouse's 4x device, from its benchmarkIndex measured on each route. */
+	/** CPU slowdown of the mobile speed; default 4. */
 	readonly cpu?: number;
 	/** At most this many controls measured per route, in-page controls first; default 16. */
 	readonly maxControls?: number;
@@ -120,9 +118,6 @@ export interface Worst {
 export interface Responsiveness {
 	readonly budgetMs: number;
 	readonly cpu: number;
-	/** The slowdown applied at the throttled speed, and the benchmarkIndex it was calibrated from. */
-	readonly rate?: number;
-	readonly benchmarkIndex?: number;
 	/** The fixed latency every response had on both sides. */
 	readonly latencyMs?: number;
 	readonly controls: readonly ControlTiming[];
@@ -511,28 +506,12 @@ export function controlsToMeasure(journeys: readonly RecordedJourney[], options:
 	return { steps: [...takeInPage, ...takeLinks], notMeasured };
 }
 
-/** This machine's speed as Lighthouse measures it (benchmarkIndex), the median of three reads on a blank page, unthrottled. */
-export async function machineIndex(browser: Browser): Promise<number> {
-	const context = await browser.newContext();
-	try {
-		const page = await context.newPage();
-		const reads: number[] = [];
-		for (let i = 0; i < 3; i++) reads.push(await page.evaluate(pageFunctions.computeBenchmarkIndex));
-		return reads.sort((a, b) => a - b)[1]!;
-	} finally {
-		await context.close();
-	}
-}
-
 /** Times every pointer control and internal link the journeys exercised, on a fresh load, at desktop speed and on a throttled phone. */
 export async function checkResponsiveness(browser: Browser, envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string, journeys: readonly RecordedJourney[], options: ResponsivenessOptions = {}): Promise<{ responsiveness: Responsiveness; failures: Failure[] }> {
 	const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
 	const cpu = options.cpu ?? DEFAULT_CPU;
 	const picked = controlsToMeasure(journeys, options);
-	// Runners differ in speed by up to 2x (A/A runs 41480429505 and 41553969320), which a fixed slowdown carries into the budget.
-	const benchmarkIndex = options.cpu === undefined && picked.steps.length ? await machineIndex(browser) : undefined;
-	const rate = benchmarkIndex !== undefined ? Math.round(cpuMultiplier(benchmarkIndex) * 100) / 100 : cpu;
-	const all = speeds(cpu, rate);
+	const all = speeds(cpu);
 	const controls: ControlTiming[] = new Array(picked.steps.length);
 	const notMeasured = [...picked.notMeasured];
 	const latencyMs = options.latencyMs ?? DEFAULT_LATENCY_MS;
@@ -564,7 +543,7 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	const measured = controls.filter(Boolean);
 	await addVariance(measured, picked.steps, all, pair, budgetMs);
 	await confirmSlower(measured, picked.steps, all, pair);
-	const responsiveness: Responsiveness = { budgetMs, cpu, ...(benchmarkIndex !== undefined ? { rate, benchmarkIndex: Math.round(benchmarkIndex) } : {}), latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
+	const responsiveness: Responsiveness = { budgetMs, cpu, latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
 	return { responsiveness, failures: failuresOf(route, measured, all, budgetMs) };
 }
 
