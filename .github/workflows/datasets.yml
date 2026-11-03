@@ -1,0 +1,61 @@
+name: Datasets
+
+# datasets.lock against the producers of the original's dataset (design §3.2, §8). A producer whose code moved is reported;
+# a pull request that changes the lock must match the code, and one that records a new digest without bumping the version
+# must show, by a canary re-production at base and at head, that the rows did not change.
+on:
+  pull_request:
+    paths:
+      - src/**
+      - datasets.lock
+      - scripts/datasets-*.ts
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: lint
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          git show "$BASE:datasets.lock" > "$RUNNER_TEMP/base.lock" 2>/dev/null || cp datasets.lock "$RUNNER_TEMP/base.lock"
+          touched=$(git diff --name-only "$BASE"...HEAD -- datasets.lock src/data/original | head -n 1)
+          status=0
+          node scripts/datasets-lint.ts > "$RUNNER_TEMP/lint.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/lint.txt"
+          if [ "$status" -ne 0 ]; then
+            # No check reads a dataset by default yet: a producer change elsewhere is reported, and the lock is settled when one is produced.
+            if [ -z "$touched" ]; then echo "::warning::$(tail -n 1 "$RUNNER_TEMP/lint.txt")"; exit 0; fi
+            exit "$status"
+          fi
+          status=0
+          node scripts/datasets-lint.ts --base "$RUNNER_TEMP/base.lock" > "$RUNNER_TEMP/base.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/base.txt"
+          if [ "$status" -eq 2 ]; then echo "canary=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          exit "$status"
+      - name: Canary at base and at head
+        if: steps.lint.outputs.canary == 'true'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add "$RUNNER_TEMP/base" "$BASE"
+          (cd "$RUNNER_TEMP/base" && pnpm install --frozen-lockfile)
+          cp scripts/datasets-canary.ts "$RUNNER_TEMP/base/scripts/"
+          # Two runs a side: what differs between a side's own runs is named as nondeterministic, never taken for a change.
+          for run in 1 2; do
+            (cd "$RUNNER_TEMP/base" && node scripts/datasets-canary.ts produce "$RUNNER_TEMP/canary-base-$run")
+            node scripts/datasets-canary.ts produce "$RUNNER_TEMP/canary-head-$run"
+          done
+          node scripts/datasets-canary.ts diff "$RUNNER_TEMP"/canary-base-{1,2} "$RUNNER_TEMP"/canary-head-{1,2} --out "$RUNNER_TEMP/canary.json" || true
+          node scripts/datasets-lint.ts --base "$RUNNER_TEMP/base.lock" --canary "$RUNNER_TEMP/canary.json"

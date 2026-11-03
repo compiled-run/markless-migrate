@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { differences, diffTable, same } from '../src/data/original/canary.ts';
+import { canary, differences, diffTable, families, same } from '../src/data/original/canary.ts';
 import { bucketOf, conditionsId, keys, SAMPLES, type Conditions } from '../src/data/original/dataset.ts';
 import { readLock } from '../src/data/original/lock.ts';
 import { writeRoute, type RouteObservation } from '../src/data/original/produce.ts';
@@ -138,6 +138,7 @@ test("a shard downloads its routes' buckets and the site-wide tables, nothing el
 test('the canary diff leaves out real-clock fields and names the facts that differ', () => {
 	const a = { added: ['x'], reaction: { answeredMs: 10, regions: [[0, 0, 1, 1]], changes: ['value'] }, screenshot: Buffer.from('one') };
 	assert.deepEqual(differences(a, { ...a, reaction: { ...a.reaction, answeredMs: 99, regions: [] } }), []);
+	assert.deepEqual(differences({ tweened: ['path in group "Series" d|24|400'] }, { tweened: ['path in group "Series" d|19|380'] }), [], "a tween's frame count and span are the clock's");
 	assert.deepEqual(
 		differences(a, { ...a, added: ['y'], screenshot: Buffer.from('two') }).map((d) => d.path),
 		['.added[0]', '.screenshot'],
@@ -145,4 +146,21 @@ test('the canary diff leaves out real-clock fields and names the facts that diff
 	const t = diffTable(new Map<string, unknown>([['k', a], ['only-a', 1]]), new Map<string, unknown>([['k', { ...a, added: ['z'] }]]));
 	assert.deepEqual([t.onlyA, t.onlyB, t.differing.map((d) => d.key)], [['only-a'], [], ['k']]);
 	assert.ok(same(diffTable(new Map([['k', a]]), new Map([['k', a]]))));
+});
+
+test('the canary names a field family that differs between two runs of the same code, and counts only a change that sticks', () => {
+	const row = (focus: string, added: string[], ms: number) => ({ focus, added, reaction: { answeredMs: ms, changes: ['value'] } });
+	const runs = {
+		base: [new Map([['k', row('button A', ['x'], 10)]]), new Map([['k', row('button A', ['y'], 30)]])],
+		head: [new Map([['k', row('button B', ['z'], 12)]]), new Map([['k', row('button B', ['x'], 11)]])],
+	};
+	const result = canary(['replays'], (side, run) => runs[side][run]!);
+	assert.deepEqual(result.nondeterministic.map((n) => `${n.side} ${n.family}`), ['base .added[]', 'head .added[]'], 'what varies between runs of one side is named, never masked');
+	assert.equal(result.tables.replays!.same, false);
+	assert.match(result.tables.replays!.summary, /k \.focus/, 'the focus changed alike in both head runs: a change that sticks');
+	assert.doesNotMatch(result.tables.replays!.summary, /added/);
+	const alike = canary(['replays'], (side, run) => runs.base[0]!);
+	assert.deepEqual([alike.nondeterministic, alike.tables.replays!.same], [[], true]);
+	assert.equal(families({ a: [1, 2] }).get('.a[]'), families({ a: [1, 2] }).get('.a[]'));
+	assert.notEqual(families({ a: [1, 2] }).get('.a[]'), families({ a: [2, 1] }).get('.a[]'), 'order is a fact, not sorted away');
 });

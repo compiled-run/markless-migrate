@@ -25,10 +25,12 @@ import { readAuthFile } from './check/auth.ts';
 import { bypassOptions } from './check/blocked.ts';
 import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
-import { parseLayoutSurvey, type LayoutSurvey } from './check/layout-survey.ts';
-import { jsonReportParts, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
+import { jsonReportParts, originalConditions, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
 import { judgeObserved, reportDifferences } from './check/judge.ts';
 import { openOriginal } from './data/original/read.ts';
+import { produceOriginal } from './data/original/run-produce.ts';
+import { commitDataset } from './data/original/store.ts';
+import { parseLayoutSurvey, surveyRows, type LayoutSurvey } from './check/layout-survey.ts';
 import { DirObservations, readObservations } from './data/store.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { partialLine, summarize } from './check/summary.ts';
@@ -341,6 +343,13 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           browser and the checker's judges as they are now: a change to how check decides is scored on
           an earlier run's rows in minutes. --report compares the result with the report that check
           wrote, route by route, and exits 6 when any differs; --out writes report.json and report.html.
+  original produce --old <origin> --site <name> --original-id <id> --targets <site targets> --layout-survey <file> --out <dir>
+          [--shard <i>/<n>] [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--concurrency <n>]
+          Record the frozen original once as data: each route's loads (3), exploration and replays, as rows
+          by route bucket, for check --original to read instead of observing the original. A shard writes
+          the buckets it owns; the layout survey (check --write-layout-survey) deals shared controls.
+  original commit <dir>
+          Write the dataset's manifest over every shard's part: from then on it can be read.
   parity  <library> [--route <path>]... [--new-source <path>]
           Write a port skeleton for one library into lib/parity/<library>/ of the new app: exactly the
           components, props, hooks, options and fields the old app uses (narrowed to --route), plus
@@ -881,6 +890,61 @@ async function run(args: string[], cwd: string): Promise<number> {
 	} finally {
 		await server?.stop();
 	}
+}
+
+/** `original produce` writes one shard of the original's dataset; `original commit` writes its manifest over every shard's part. */
+async function originalCommand(args: readonly string[], cwd: string): Promise<number> {
+	const [sub, ...rest] = args;
+	if (sub === 'commit') {
+		const [dir] = rest;
+		if (!dir) fail('original commit needs the dataset folder');
+		const manifest = await commitDataset(resolve(dir)).catch((error: Error) => fail(`original commit: ${error.message}`));
+		out(`Committed the original ${manifest.originalId.slice(0, 12)}'s dataset: ${manifest.routes.length} routes, ${Object.entries(manifest.tables).filter(([, t]) => t.rows).map(([name, t]) => `${t.rows} ${name}`).join(', ')}.\n`);
+		return 0;
+	}
+	if (sub !== 'produce') fail('original takes produce or commit');
+	const { values } = parseArgs({
+		args: rest,
+		options: {
+			old: { type: 'string' },
+			site: { type: 'string' },
+			'original-id': { type: 'string' },
+			targets: { type: 'string' },
+			'layout-survey': { type: 'string' },
+			out: { type: 'string' },
+			shard: { type: 'string' },
+			block: { type: 'string', multiple: true },
+			allow: { type: 'string', multiple: true },
+			'journey-budget': { type: 'string' },
+			'max-journeys': { type: 'string' },
+			'journey-depth': { type: 'string' },
+			'server-clock': { type: 'boolean' },
+			concurrency: { type: 'string' },
+		},
+	});
+	if (!values.old || !values.site || !values.targets || !values['layout-survey'] || !values.out) fail('original produce needs --old <origin> --site <name> --targets <site targets> --layout-survey <file> --out <dir>');
+	const id = values['original-id'] ?? '';
+	if (!/^[0-9a-f]{64}$/.test(id)) fail('original produce needs --original-id <the originalId, 64 hex>');
+	const shard = values.shard ? /^(\d+)\/(\d+)$/.exec(values.shard) : undefined;
+	if (values.shard && !shard) fail('--shard is <index>/<count>, from 0');
+	const routes = (JSON.parse(await readFile(resolve(values.targets), 'utf8')) as { routes: string[] }).routes;
+	const survey = surveyRows(parseLayoutSurvey(await readFile(resolve(values['layout-survey']), 'utf8'), values['layout-survey']), undefined, []);
+	// The routes the port serves change where exploring follows a stored mode: read from .migrate/switched.json, as check does.
+	const options = { oldOrigin: values.old, newOrigin: values.old, switched: (await readSwitched(cwd)).routes.map((r) => r.route), block: { add: values.block ?? [], allow: values.allow ?? [] }, journeys: journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']), ...(values['server-clock'] ? { serverClock: true } : {}) };
+	const part = await produceOriginal({
+		oldOrigin: values.old,
+		site: values.site,
+		originalId: id,
+		routes,
+		conditions: originalConditions(options),
+		survey,
+		out: resolve(values.out),
+		...(shard ? { shard: { index: Number(shard[1]), count: Number(shard[2]) } } : {}),
+		...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}),
+		log: (line) => out(`${line}\n`),
+	}).catch((error: Error) => fail(`original produce: ${error.message}`));
+	out(`Produced ${part.routes.length} routes into ${values.out} (shard ${part.shard}).\n`);
+	return 0;
 }
 
 /** `check judge`: the report a check's recorded observations give with today's judges, and, with --report, where it differs from the one the check wrote. */
@@ -1443,6 +1507,8 @@ async function main(argv: string[]): Promise<number> {
 			out(`${proxy.origin}\nSwitched to NEW (${values.new}): ${switched.join(', ') || 'none yet'}; everything else from OLD (${values.old}).\n`);
 			return -1;
 		}
+		case 'original':
+			return originalCommand(rest, cwd);
 		case 'cache':
 			return cacheCommand(rest, cwd, out);
 		case 'config': {

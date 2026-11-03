@@ -5,6 +5,7 @@
 // `--canary <diff.json>` is the canary diff (scripts/original-dataset.ts canary) that proves a digest-only change left rows alike.
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
+import type { CanaryResult } from '../src/data/original/canary.ts';
 import { TABLES, type Table } from '../src/data/original/dataset.ts';
 import { drift, LOCK_FILE, producerClosures, readLock, writeLock, type Lock } from '../src/data/original/lock.ts';
 
@@ -46,7 +47,11 @@ if (!values.canary) {
 	process.stderr.write(`datasets.lock: ${unproved.join(', ')} changed code with the same version: the canary must show their rows alike (pass --canary <diff.json>)\n`);
 	process.exit(2);
 }
-const canary = JSON.parse(await readFile(values.canary, 'utf8')) as { readonly tables: Readonly<Record<string, { readonly same: boolean; readonly summary: string }>> };
+const canary = JSON.parse(await readFile(values.canary, 'utf8')) as CanaryResult;
+if (canary.nondeterministic.length) {
+	process.stderr.write(`datasets.lock: the canary cannot prove ${unproved.join(', ')} alike, because the producers are not deterministic in ${canary.nondeterministic.map((n) => `${n.table} ${n.family}`).join(', ')}: bump their versions, or make those families deterministic\n`);
+	process.exit(1);
+}
 const differ = unproved.filter((t) => !canary.tables[t]?.same);
 if (differ.length) {
 	process.stderr.write(`datasets.lock: the canary's rows differ for ${differ.map((t) => `${t} (${canary.tables[t]?.summary ?? 'not produced'})`).join('; ')}: bump their versions in datasets.lock\n`);
