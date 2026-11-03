@@ -106,7 +106,7 @@ export interface RouteContext {
 	/** Writes are sent on a side: forced states and journeys run one after the other. */
 	readonly writes: { readonly old: { readonly sendWrites?: boolean }; readonly new: { readonly sendWrites?: boolean } };
 	readonly oldRouting?: OldRouting;
-	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean };
+	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
 	/** Live: names the part of the check running, for the report's step times and a stopped route's message. */
 	readonly span?: <T>(part: string, work: () => Promise<T>) => Promise<T>;
 	/** The result as far as the check has got: what a route stopped at its deadline still reports. */
@@ -290,12 +290,12 @@ async function journeysCheck(o: Observe, ctx: RouteContext, result: RouteResult,
 	const improvements: string[] = [];
 	// A page to arrive from that does not load is no reason to drop the route's own result: those journeys are reported as not compared, and the route stays red.
 	const arrivedFailures = explored.arrival
-		? await span(ctx, 'arrival journeys', () => arrivalCheck(o, route, plain, explored.arrival!, owner, improvements)).catch((error: unknown): Failure[] => {
+		? await span(ctx, 'arrival journeys', () => arrivalCheck(o, route, plain, explored.arrival!, owner, improvements, Boolean(ctx.stages.original))).catch((error: unknown): Failure[] => {
 				if (stops(ctx, error)) throw error;
 				return [{ route, dimension: 'behaviour', check: `journeys after arriving from ${explored.arrival!.entry} by ${describeTarget(explored.arrival!.link)}`, expected: 'the route\'s journeys compared after arriving in place', actual: `not compared: ${(error as Error).message.split('\n')[0]}`, hint: HINTS.coverage }];
 			})
 		: [];
-	const mainFailures = await retime(o, 'main', journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), olds, [...next, ...newRisky]);
+	const mainFailures = await retime(o, 'main', journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), olds, [...next, ...newRisky], Boolean(ctx.stages.original));
 	if (dark.length && !row.dark) throw new Error(`the journeys row has no dark-mode replays of ${route}'s theme cycles`);
 	const darkFailures = dark.length ? compareJourneys(route, row.dark!.olds, inDarkMode(dark), row.dark!.next, owner, doorErrors, improvements) : [];
 	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
@@ -323,14 +323,14 @@ export function arrivalJourneys(plain: readonly RecordedJourney[], arrival: NonN
  * followed (the router swaps the page in place), then the journey's steps run. Twice on old and once on new, compared alike;
  * a part that only works on a fresh load (one whose script runs once, at load) is red here.
  */
-async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[]): Promise<Failure[]> {
+async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[], fresh: boolean): Promise<Failure[]> {
 	const journeys = arrivalJourneys(plain, arrival);
 	if (!journeys.length) return [];
 	// A page the new app does not serve (a port of only some routes) has no link to arrive by: that page's own check reports it, not this route's journeys.
 	const seen = await o('arrival', { entry: arrival.entry, journeys });
 	if (!seen) return [];
 	const { a, b, next } = seen;
-	return retime(o, 'arrival', journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next);
+	return retime(o, 'arrival', journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next, fresh);
 }
 
 // The candidates a route confirms at a time, the largest first: five old and four new samples in all (the replays producer
@@ -342,8 +342,11 @@ const RETIMED = 5;
  * old then new, since a busy machine slows whichever side it happens to. It stands only when the samples say so beyond chance,
  * the route's candidates sharing one significance, and an answer only by more than the route's own old runs differ.
  */
-async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Journey[], failures: Failure[], olds: readonly Runs[], next: Runs): Promise<Failure[]> {
+async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Journey[], failures: Failure[], olds: readonly Runs[], next: Runs, fresh = false): Promise<Failure[]> {
+	// Stored old runs were timed on another machine at another time: with them, they only pick the candidates (`fresh`).
 	const floor = Math.max(100, answerFloor(olds));
+	const freshOld: StepResult[][][] = [];
+	const judgedFloor = () => (fresh ? Math.max(100, answerFloor(freshOld)) : floor);
 	const effect = (f: Failure) => {
 		const { journey, step, views, cadence } = timedOnly.get(f)!;
 		if (views || cadence) return Infinity;
@@ -364,25 +367,28 @@ async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Jo
 		const failure = candidates[i]!;
 		const { journey, step, views, cadence } = timedOnly.get(failure)!;
 		const first = olds.map((x) => x[journey]?.[step]).filter((r): r is StepResult => Boolean(r));
-		const rounds = (await roundsOf(journey)).map((r) => ({ old: r.old[step], next: r.next[step] }));
+		const got = await roundsOf(journey);
+		if (fresh) got.forEach((r, k) => ((freshOld[k] ??= [])[journey] = [...r.old]));
+		const rounds = got.map((r) => ({ old: r.old[step], next: r.next[step] }));
 		const mine = next[journey]?.[step];
 		if (views || cadence) {
 			const shows = (r: StepResult | undefined) => (r?.reaction?.views ? (cadence ? choppier(first, r) : interimViews(first, r)) !== undefined : undefined);
 			const ox = rounds.map((r) => shows(r.old)), nx = rounds.map((r) => shows(r.next));
 			if ([...ox, ...nx].some((x) => x === undefined)) unconfirmed.add(failure);
-			return { kind: 'shown', old: [...first.map(() => false), ...ox.map(Boolean)], next: [true, ...nx.map(Boolean)] };
+			return fresh ? { kind: 'shown', old: ox.map(Boolean), next: nx.map(Boolean) } : { kind: 'shown', old: [...first.map(() => false), ...ox.map(Boolean)], next: [true, ...nx.map(Boolean)] };
 		}
 		const ox = rounds.map((r) => r.old?.reaction?.answeredMs), nx = rounds.map((r) => r.next?.reaction?.answeredMs);
 		if ([...ox, ...nx].some((x) => x === undefined)) unconfirmed.add(failure);
+		if (fresh) return { kind: 'answer', old: ox.map((x) => x ?? 0), next: nx.map((x) => x ?? 0) };
 		return { kind: 'answer', old: [...first.map((r) => r.reaction?.answeredMs ?? 0), ...ox.map((x) => x ?? 0)], next: [mine?.reaction?.answeredMs ?? 0, ...nx.map((x) => x ?? 0)] };
 	};
-	const verdicts = await judgeInTurn(candidates.length, RETIMED, sample, (batch) => judgeTiming(batch, floor));
+	const verdicts = await judgeInTurn(candidates.length, RETIMED, sample, (batch) => judgeTiming(batch, judgedFloor()));
 	const stands = new Map<Failure, string>();
 	for (const [i, { samples: s, judged: v, among }] of verdicts.entries()) {
 		const failure = candidates[i]!;
 		// A step that could not be timed again keeps its failure, unconfirmed, as before.
 		if (unconfirmed.has(failure)) stands.set(failure, '; it could not be timed again one side at a time');
-		else if (v.stands) stands.set(failure, s.kind === 'answer' ? `; timed again one side at a time: old ${s.old.join(', ')} ms, new ${s.next.join(', ')} ms (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${floor} ms here)` : `; timed again one side at a time: the new page showed it in ${s.next.filter(Boolean).length} of ${s.next.length} runs, the old in ${s.old.filter(Boolean).length} of ${s.old.length} (p = ${v.p.toFixed(3)})`);
+		else if (v.stands) stands.set(failure, s.kind === 'answer' ? `; timed again one side at a time: old ${s.old.join(', ')} ms, new ${s.next.join(', ')} ms (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${judgedFloor()} ms here)` : `; timed again one side at a time: the new page showed it in ${s.next.filter(Boolean).length} of ${s.next.length} runs, the old in ${s.old.filter(Boolean).length} of ${s.old.length} (p = ${v.p.toFixed(3)})`);
 	}
 	return failures.filter((f) => !timedOnly.has(f) || stands.has(f)).map((f) => (stands.has(f) ? { ...f, actual: `${f.actual}${stands.get(f)}` } : f));
 }

@@ -240,6 +240,11 @@ export async function adoptAnswers(answers: readonly StoredAnswer[]): Promise<bo
 	return true;
 }
 
+/** Gives the original's stored third-party answers to every load of the run, before any route is checked. */
+export function offerAnswers(answers: readonly StoredAnswer[]): void {
+	for (const { url, ...answer } of answers) assets.set(url, Promise.resolve({ ...answer, body: Buffer.from(answer.body) }));
+}
+
 /** The run's one answer for a GET to another origin, fetched the first time anything asks for it (a page, or the cache checking whether the old page changed). */
 export function sharedAnswer(url: string, headers: Record<string, string> = {}): Promise<SharedAnswer | undefined> {
 	let hit = assets.get(url);

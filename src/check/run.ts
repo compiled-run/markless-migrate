@@ -5,7 +5,11 @@ import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { chromium, firefox, webkit, type Browser } from 'playwright';
 import { Relauncher } from '../convert/relaunch.ts';
+import { digest } from '../data/codec.ts';
 import { recording, RouteLog, type Producers } from '../data/rows.ts';
+import { conditionsId, type Conditions } from '../data/original/dataset.ts';
+import { originalAnswers, originalJourneys, originalLoads, originalRoute, type OriginalJourneys } from '../data/original/read.ts';
+import { DatasetError, type Dataset } from '../data/original/store.ts';
 import { GuardedObservations, type Observations } from '../data/observations.ts';
 import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { matchRoute } from '../source/pattern.ts';
@@ -16,7 +20,7 @@ import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type P
 import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, compareLogin, loginRoutes, saveState, saysDenied, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { detectChallenge } from './blocked.ts';
-import { adoptAnswers, DEFINITE, defaultEnv, isLoopback, LAUNCH, probeWall, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type SideEnv, type StorageState, type StoredAnswer, type WallHit } from './browser.ts';
+import { adoptAnswers, DEFINITE, defaultEnv, isLoopback, LAUNCH, offerAnswers, probeWall, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type SideEnv, type StorageState, type StoredAnswer, type WallHit } from './browser.ts';
 import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
 import { OldCache } from './cache.ts';
 import { captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
@@ -104,7 +108,7 @@ export interface CheckOptions {
 	/** Routes checked at once; default half the cores, at most 4. */
 	readonly concurrency?: number;
 	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
-	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
+	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys' | 'maxDepth'>;
 	/** Routes served by the new app (`.migrate/switched.json`): a journey on NEW that reaches any other page gets the old app's, as through the front door. */
 	readonly switched?: readonly string[];
 	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
@@ -144,6 +148,8 @@ export interface CheckOptions {
 	readonly oldRouting?: OldRouting;
 	/** Where every observation the check makes is written as it is made, for `check judge` to judge again with no browser. */
 	readonly observations?: Observations;
+	/** The original's dataset (`--original`): the old side's loads and journeys are read from it by route, not observed; timing stays live and paired. */
+	readonly original?: Dataset;
 }
 
 
@@ -168,6 +174,7 @@ interface Run {
 	readonly oldCache?: OldCache;
 	/** Which route exercises each shared layout control, as the journeys cache keys it. */
 	readonly owners?: readonly (readonly [string, string])[];
+	readonly original?: Dataset;
 	readonly new: SideEnv;
 	readonly frozen: boolean;
 	readonly source?: SourceFacts;
@@ -227,8 +234,43 @@ async function negotiate(env: SideEnv, route: string, locales: readonly string[]
 	return out;
 }
 
+/** A row the check reads from the original's dataset; one it lacks stops the route as not checked, never observed live instead. */
+function fromDataset<T>(route: string, read: () => T): T {
+	try {
+		return read();
+	} catch (error) {
+		if (!(error instanceof DatasetError)) throw error;
+		throw new InfrastructureError({ cause: 'not in the original dataset', message: `${route}: ${error.message}` });
+	}
+}
+
+const originalRouteRow = (dataset: Dataset, route: string) => fromDataset(route, () => originalRoute(dataset, route));
+
+/** What the run's conditions are, as an original's dataset names those it was produced under. */
+export function originalConditions(options: Pick<CheckOptions, 'viewports' | 'freeze' | 'block' | 'journeys' | 'switched' | 'oldRouting' | 'serverClock' | 'oldOrigin' | 'newOrigin' | 'staging'>, role: string | null = null): Conditions {
+	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
+	return {
+		viewports: options.viewports ?? VIEWPORTS,
+		freeze,
+		block: { add: options.block?.add ?? [], allow: options.block?.allow ?? [] },
+		sendWrites: writesAllowed(options),
+		serverClock: Boolean(options.serverClock && freeze),
+		journeys: { ...(options.journeys?.budgetMs !== undefined ? { budgetMs: options.journeys.budgetMs } : {}), ...(options.journeys?.maxJourneys !== undefined ? { maxJourneys: options.journeys.maxJourneys } : {}), ...(options.journeys?.maxDepth !== undefined ? { maxDepth: options.journeys.maxDepth } : {}) },
+		switched: [...(options.switched ?? [])].sort(),
+		...(options.oldRouting ? { routing: options.oldRouting } : {}),
+		role,
+	};
+}
+
 /** Two loads of OLD and one of NEW, and a third of OLD after NEW when the first two differ; OLD's from the cache when nothing it loaded changed since. */
 async function loadBoth(browser: Browser, run: Run, route: string, viewports: readonly Viewport[]): Promise<{ olds: RouteCapture[]; next: RouteCapture; loads: readonly string[] }> {
+	const stored = run.original && !originalRouteRow(run.original, route).live?.loads ? fromDataset(route, () => originalLoads(run.original!, route, viewports)) : undefined;
+	if (stored) {
+		for (const page of stored.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], run.old.origin);
+		if (run.new.liveCounts) await learnLiveCounts(stored.olds, run.new.liveCounts);
+		const olds = [...stored.olds];
+		return { olds, loads: stored.loads, next: await steadyWeight(browser, run, route, viewports, olds, await captureRoute(browser, run.new.origin, route, viewports, run.new)) };
+	}
 	const key = { route, viewports };
 	const cached = await run.oldCache?.read<{ olds: RouteCapture[]; loads: string[]; answers?: StoredAnswer[] }>('captures', run.old, key);
 	// The new page gets the third-party answers the cached old page read; one this run already got differently means the old page is loaded again.
@@ -282,6 +324,8 @@ export async function servesPage(env: SideEnv, path: string): Promise<boolean> {
 }
 
 const RETIMES = 3;
+// With the old side stored, every timing sample is a fresh round: five a side is the fewest a one-sided exact test can reject at.
+const FRESH_RETIMES = 5;
 
 /** What each stage of one route's check observes, with the browser and both apps. */
 function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readonly old: readonly WallHit[]; readonly new: readonly WallHit[] }, route: string, viewports: readonly Viewport[], logins: readonly string[], seen: { loaded?: RouteStages['load']['value'] } = {}): Producers {
@@ -320,13 +364,18 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 		journeys: () => observeJourneys(browser, watched, route, viewport, front, load().loads),
 		arrival: async ({ entry, journeys }) => {
 			if (!(await servesPage(watched.new, entry))) return null;
+			if (watched.original && !originalRouteRow(watched.original, route).live?.journeys) {
+				const stored = fromDataset(route, () => originalJourneys(watched.original!, route)).arrival;
+				if (!stored || digest(stored.journeys) !== digest(journeys)) throw new InfrastructureError({ cause: 'not in the original dataset', message: `${route}: the original's dataset holds no replays of the journeys after arriving from ${entry} that this check builds` });
+				return { a: stored.runs[0]!, b: stored.runs[1]!, next: await replayAll(browser, watched.new, route, viewport, journeys) };
+			}
 			const [a, b, next] = await Promise.all([replayAll(browser, watched.old, route, viewport, journeys), replayAll(browser, watched.old, route, viewport, journeys), replayAll(browser, watched.new, route, viewport, journeys)]);
 			return { a, b, next };
 		},
 		retime: async ({ set, journey }) => {
 			const other = set === 'main' ? front : watched.new;
 			const rounds: { old: RunResults[number]; next: RunResults[number] }[] = [];
-			for (let i = 0; i < RETIMES; i++) {
+			for (let i = 0; i < (watched.original ? FRESH_RETIMES : RETIMES); i++) {
 				const old = await replay(browser, watched.old, route, viewport, journey).catch(() => []);
 				rounds.push({ old, next: await replay(browser, other, route, viewport, journey).catch(() => []) });
 			}
@@ -368,6 +417,7 @@ async function observeRouteStates(browser: Browser, run: Run, route: string, vie
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
 async function observeJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, front: SideEnv, loads: readonly string[]): Promise<JourneysRow> {
+	if (run.original && !originalRouteRow(run.original, route).live?.journeys) return storedJourneys(browser, run, route, viewport, front, fromDataset(route, () => originalJourneys(run.original!, route)));
 	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
@@ -399,6 +449,24 @@ async function observeJourneys(browser: Browser, run: Run, route: string, viewpo
 	return { explored, runs, next, oldRisky, oldRiskyAgain, newRisky, reachable, doorErrors, ...(darkRuns ? { dark: { olds: darkRuns[0], next: darkRuns[1] } } : {}) };
 }
 
+/** The new side's half of the journeys row, against the original's stored exploration and replays. */
+async function storedJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, front: SideEnv, stored: OriginalJourneys): Promise<JourneysRow> {
+	const { explored, runs, oldRisky, oldRiskyAgain } = stored;
+	if (explored.incomplete) throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the original's dataset holds an exploration the time cap ended, so ${route} is not checked` });
+	const plain = explored.journeys;
+	const next = await profiled(route, `replay ${plain.length} journeys new`, () => replayAll(browser, front, route, viewport, plain));
+	const risky = explored.deferred.map((d) => d.journey);
+	const newRisky = risky.length ? await replayDestructive(browser, front, route, viewport, risky) : [];
+	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
+	const tried = unreachableTried(elements);
+	const reachable = await profiled(route, 'unreachable on new', async () => (tried.length ? unreachableAlike(elements, await replayAll(browser, front, route, viewport, tried.map((e) => e.unreachable!.journey))) : []));
+	const doorErrors = [...(await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]))];
+	const dark = themed(plain);
+	if (dark.length && !stored.dark) throw new InfrastructureError({ cause: 'not in the original dataset', message: `${route}: the original's dataset has no dark-mode replays of its theme cycles` });
+	const darkNext = dark.length ? await replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark) : undefined;
+	return { explored, runs: [...runs], next, oldRisky, oldRiskyAgain, newRisky, reachable, doorErrors, ...(darkNext ? { dark: { olds: [...stored.dark!], next: darkNext } } : {}) };
+}
+
 /** What the judge reads of the run's configuration for one route. */
 function routeContext(run: Run, route: string, role: string | undefined, options: Pick<CheckOptions, 'viewports' | 'locales'>, light: boolean): RouteContext {
 	return {
@@ -420,7 +488,7 @@ function routeContext(run: Run, route: string, role: string | undefined, options
 	};
 }
 
-const routeStages = (run: Run): RouteContext['stages'] => ({ probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds) });
+const routeStages = (run: Run): RouteContext['stages'] => ({ ...(run.original ? { original: { originalId: run.original.manifest.originalId, conditionsId: run.original.manifest.conditionsId } } : {}), probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds) });
 
 /** OLD's captures of the route, so a record run can save what OLD fetched. */
 const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
@@ -633,14 +701,21 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const dataHosts = clientHosts(options.source?.clients ?? []);
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
-	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
+	const oldCache = options.cacheDir && !options.original ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
 	const webkitBrowser = options.controls?.webkit ? await webkit.launch().catch((error: Error) => {
 		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
 	}) : undefined;
 	const laneBrowsers = options.busyCpu ? await Promise.all([firefox.launch(), webkitBrowser ?? webkit.launch()]).catch((error: Error) => {
 		throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
 	}) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	if (options.original) {
+		const role = options.auth ? undefined : null;
+		if (role === undefined) throw new Error('--original reads an anonymous original: leave out --auth');
+		const want = conditionsId(originalConditions(options));
+		if (options.original.manifest.conditionsId !== want) throw new Error(`the original's dataset was produced under other conditions than this check's (${options.original.manifest.conditionsId.slice(0, 12)}, this check ${want.slice(0, 12)})`);
+		offerAnswers(originalAnswers(options.original, options.routes));
+	}
+	const base: Run = { ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];

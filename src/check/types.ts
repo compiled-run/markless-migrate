@@ -363,7 +363,7 @@ export interface Blocked {
 	readonly message: string;
 }
 
-export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout' | 'incomplete' | 'old page broken' | 'not measured';
+export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout' | 'incomplete' | 'old page broken' | 'not measured' | 'not in the original dataset';
 
 export interface Infrastructure {
 	readonly side?: 'old' | 'new';
