@@ -905,7 +905,8 @@ export function readReaction(): { changes: string[]; affected: string[]; scrolle
 		}
 	}
 	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
-	const transitions = [...new Set(watch.runs.filter((r) => r.el.isConnected).map((r) => {
+	// Only nodes the router kept can morph from the previous page's look; what it put in (a chart iframe fading in once loaded) is the new page's own.
+	const transitions = [...new Set(watch.runs.filter((r) => r.el.isConnected && !fresh(r.el)).map((r) => {
 		const at = anchorOf(r.el);
 		return `${at === r.el || !at ? (at ? describe(at) : r.el.localName) : `${r.el.localName} in ${describe(at)}`} ${r.what}`;
 	}))].sort();
