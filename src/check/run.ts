@@ -108,7 +108,7 @@ export interface CheckOptions {
 	/** Routes checked at once; default half the cores, at most 4. */
 	readonly concurrency?: number;
 	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
-	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
+	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys' | 'maxDepth'>;
 	/** Routes served by the new app (`.migrate/switched.json`): a journey on NEW that reaches any other page gets the old app's, as through the front door. */
 	readonly switched?: readonly string[];
 	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
@@ -255,7 +255,7 @@ export function originalConditions(options: Pick<CheckOptions, 'viewports' | 'fr
 		block: { add: options.block?.add ?? [], allow: options.block?.allow ?? [] },
 		sendWrites: writesAllowed(options),
 		serverClock: Boolean(options.serverClock && freeze),
-		journeys: { ...(options.journeys?.budgetMs !== undefined ? { budgetMs: options.journeys.budgetMs } : {}), ...(options.journeys?.maxJourneys !== undefined ? { maxJourneys: options.journeys.maxJourneys } : {}) },
+		journeys: { ...(options.journeys?.budgetMs !== undefined ? { budgetMs: options.journeys.budgetMs } : {}), ...(options.journeys?.maxJourneys !== undefined ? { maxJourneys: options.journeys.maxJourneys } : {}), ...(options.journeys?.maxDepth !== undefined ? { maxDepth: options.journeys.maxDepth } : {}) },
 		switched: [...(options.switched ?? [])].sort(),
 		...(options.oldRouting ? { routing: options.oldRouting } : {}),
 		role,

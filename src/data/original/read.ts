@@ -23,7 +23,9 @@ export interface OriginalJourneys {
 }
 
 export function originalRoute(dataset: Dataset, route: string): RouteRow {
-	return dataset.row<RouteRow>('routes', route, keys.route(route));
+	const row = dataset.row<RouteRow | { readonly failed: string }>('routes', route, keys.route(route));
+	if ('failed' in row) throw new DatasetError(`the original could not be observed on ${route} when its dataset was produced (${row.failed})`);
+	return row;
 }
 
 /** The route's three loads; a light page's at its first viewport alone, as the check loads it. */

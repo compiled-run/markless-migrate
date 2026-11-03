@@ -53,10 +53,10 @@ test("a check reading the original's dataset finds what a check observing the or
 		const conditions = originalConditions(options);
 		const versions = (await readLock()).producers;
 		const env = defaultEnv(oldOrigin, { sendWrites: writesAllowed(options) });
-		const writer = new DatasetWriter(dir, { originalId: '0'.repeat(64), conditions, versions, runner: 'test' });
+		const writer = new DatasetWriter(dir, { site: 'corpus', originalId: '0'.repeat(64), conditions, versions, routes, runner: 'test' });
 		for (const route of routes) await writeRoute(writer, route, await observeOriginal(browser, env, route, { viewports: VIEWPORTS, explore: { serves: (path) => isSwitched([route], path) } }));
 		await writer.close();
-		await commitDataset(dir, { site: 'corpus', originalId: '0'.repeat(64), conditions, versions, routes });
+		await commitDataset(dir);
 		const original = await openOriginal(dir);
 		for (const route of routes) {
 			// One route a run: a run of several deals their shared layout controls out among them, which the dataset's producer did not.
