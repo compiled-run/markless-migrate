@@ -66,3 +66,22 @@ test('an alternate on the page\'s own origin compares by path; one on another or
 	assert.ok(!own.has(originIn('https://fr.harbour.example/')!), 'another origin is not the page\'s own');
 	assert.equal(originIn('{origin}/fr'), 'http://origin.invalid');
 });
+
+test('a port whose alternate on another origin names the wrong domain with the right path is red; the same alternate is green', async () => {
+	const { createServer } = await import('node:http');
+	const { chromium } = await import('playwright');
+	const { runCheck } = await import('../src/check/run.ts');
+	const page = (fr: string) => `<!doctype html><html lang="en"><head><title>Docs</title><meta property="og:url" content="https://harbour.example/docs"><link rel="canonical" href="https://harbour.example/docs"><link rel="alternate" hreflang="fr" href="${fr}/docs"></head><body><main><h1>Docs</h1><p>Read the guide.</p></main></body></html>`;
+	const serve = (html: string) => new Promise<import('node:http').Server>((done) => { const s = createServer((req, res) => res.writeHead(req.url === '/docs' ? 200 : 404, { 'content-type': 'text/html' }).end(html)); s.listen(0, '127.0.0.1', () => done(s)); });
+	const at = (s: import('node:http').Server) => `http://127.0.0.1:${(s.address() as import('node:net').AddressInfo).port}`;
+	const browser = await chromium.launch();
+	const servers = [await serve(page('https://fr.harbour.example')), await serve(page('https://fr.harbour.example')), await serve(page('https://fr.wrong.example'))];
+	try {
+		const seo = async (next: import('node:http').Server) => (await runCheck({ oldOrigin: at(servers[0]!), newOrigin: at(next), routes: ['/docs'], viewports: [{ name: 'desktop', width: 1280, height: 800, isMobile: false }], browser, journeys: { budgetMs: 1 } })).routes[0]!.failures.filter((f) => f.dimension === 'seo').map((f) => `${f.check}: ${f.expected} -> ${f.actual}`);
+		assert.deepEqual(await seo(servers[1]!), []);
+		assert.deepEqual(await seo(servers[2]!), ['hreflang:fr: "https://fr.harbour.example/docs" -> "https://fr.wrong.example/docs"']);
+	} finally {
+		await browser.close();
+		for (const s of servers) s.close();
+	}
+});
