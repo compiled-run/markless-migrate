@@ -1,0 +1,226 @@
+name: Original gate
+
+# Gate (c) of the original's dataset (design §6): the original checked against itself three times on one sample, live,
+# live again and from a dataset produced in this run; the stored run must differ from each live one by no more than the two
+# live runs differ from each other (scripts/original-gate.ts). The dataset stays an artifact of the run, never a release.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: The sample, a targets file in the repository
+        default: deploy/shadcn-ui/check-targets-same-site-sample.json
+      shards:
+        description: Runners per run
+        default: '4'
+      flags:
+        description: Check flags of all three runs (the stages the dataset does not hold are left out, since they run live either way)
+        default: '--no-motion --no-probes --no-embeds --no-responsiveness --no-load --no-navigation --no-cache'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SITE: shadcn-ui
+  OLD: http://localhost:4000
+  NEW: http://127.0.0.1:3000
+  TARGETS: ${{ inputs.targets }}
+
+jobs:
+  original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      id: ${{ steps.resolve.outputs.id }}
+      shards: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: resolve
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: resolve
+          token: ${{ github.token }}
+      - id: shards
+        env:
+          ID: ${{ steps.resolve.outputs.id }}
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          [[ "$ID" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no original is published for this recipe"; exit 1; }
+          echo "matrix=$(node -e "console.log(JSON.stringify([...Array(Number(process.env.SHARDS)).keys()]))")" >> "$GITHUB_OUTPUT"
+
+  survey:
+    needs: original
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
+      - run: bash "deploy/$SITE/ci-serve.sh" old
+      - run: node src/cli.ts check --old "$OLD" --new "$OLD" --targets "$TARGETS" --site-targets "$TARGETS" --write-layout-survey "$RUNNER_TEMP/layout-survey.json" --no-cache
+      - run: node scripts/check-shards.ts split "$TARGETS" "${{ inputs.shards }}" "$RUNNER_TEMP/shards" > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate-plan
+          path: |
+            ${{ runner.temp }}/layout-survey.json
+            ${{ runner.temp }}/shards
+          retention-days: 7
+
+  produce:
+    needs: [original, survey]
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.original.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
+      - run: bash "deploy/$SITE/ci-serve.sh" old
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate-plan
+          path: ${{ runner.temp }}/plan
+      - env:
+          ID: ${{ needs.original.outputs.id }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ inputs.shards }}
+        run: node src/cli.ts original produce --old "$OLD" --site "$SITE" --original-id "$ID" --targets "$TARGETS" --layout-survey "$RUNNER_TEMP/plan/layout-survey.json" --out "$RUNNER_TEMP/dataset" --shard "$SHARD/$SHARDS" --concurrency 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate-part-${{ matrix.shard }}
+          path: ${{ runner.temp }}/dataset
+          retention-days: 7
+
+  commit:
+    needs: produce
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gate-part-*
+          path: ${{ runner.temp }}/dataset
+          merge-multiple: true
+      - run: node src/cli.ts original commit "$RUNNER_TEMP/dataset" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate-dataset
+          path: ${{ runner.temp }}/dataset
+          retention-days: 7
+
+  check:
+    needs: [original, survey, commit]
+    if: ${{ !cancelled() && needs.survey.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        run: [live, live-again, stored]
+        shard: ${{ fromJSON(needs.original.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
+      - run: bash "deploy/$SITE/ci-serve.sh" old
+      # The original against itself: a second server of the same build, so each side has its own process and origin.
+      - run: |
+          PORT=3000 nohup bash "deploy/$SITE/serve-old.sh" > "$RUNNER_TEMP/new-serve.log" 2>&1 &
+          for _ in $(seq 1 240); do curl -s -o /dev/null "$NEW/" && exit 0; sleep 0.5; done
+          echo "no answer from $NEW" >&2; tail -n 40 "$RUNNER_TEMP/new-serve.log"; exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate-plan
+          path: ${{ runner.temp }}/plan
+      - if: matrix.run == 'stored'
+        uses: actions/download-artifact@v4
+        with:
+          name: gate-dataset
+          path: ${{ runner.temp }}/dataset
+      - env:
+          SHARD: ${{ matrix.shard }}
+          FLAGS: ${{ inputs.flags }}
+          DATASET: ${{ matrix.run == 'stored' && format('--original {0}/dataset', runner.temp) || '' }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/app" && cd "$RUNNER_TEMP/app"
+          status=0
+          # shellcheck disable=SC2086
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/plan/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --layout-survey "$RUNNER_TEMP/plan/layout-survey.json" --concurrency 2 $DATASET $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          tail -n 30 "$RUNNER_TEMP/check.txt"
+          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate-report-${{ matrix.run }}-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/app/.migrate/report.json
+            ${{ runner.temp }}/check.txt
+          include-hidden-files: true
+          retention-days: 7
+
+  compare:
+    needs: check
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gate-report-*
+          path: ${{ runner.temp }}/reports
+      - run: |
+          set -euo pipefail
+          r="$RUNNER_TEMP/reports"
+          args=()
+          for f in "$r"/gate-report-live-[0-9]*/app/.migrate/report.json; do args+=(--live "$f"); done
+          for f in "$r"/gate-report-live-again-*/app/.migrate/report.json; do args+=(--live-again "$f"); done
+          for f in "$r"/gate-report-stored-*/app/.migrate/report.json; do args+=(--stored "$f"); done
+          node scripts/original-gate.ts compare "${args[@]}" --out "$RUNNER_TEMP/gate.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate-result
+          path: ${{ runner.temp }}/gate.json
+          retention-days: 30
