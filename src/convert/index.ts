@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { CONVERT_INPUTS, type ConvertInputs } from './inputs.ts';
+import { WORKERS_COMPATIBILITY_DATE } from './workers.ts';
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium, type Browser } from 'playwright';
@@ -178,7 +179,9 @@ export default defineConfig({
 		modules: [{ name: 'markless-migrate:once', setup: (nitro: { options: Record<string, unknown> }) => nitroOnce(nitro.options) }${trailing.cloudflare ? ", { name: 'markless-migrate:cloudflare-redirects', setup: cloudflareRedirects }" : ''}],
 		// The old app's redirects, rewrites and route handlers answer before the pages.
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
-		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],${traceConfig(packages)}${trailing.vercel.length ? `\n\t\t// The old site's trailing-slash redirect, ahead of Vercel's static files.\n\t\tvercel: { config: { routes: ${JSON.stringify(trailing.vercel)} } },` : ''}
+		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],
+		// A build names the runtime date the deploy names, not its build day, which a local workerd may not know yet.
+		compatibilityDate: '${WORKERS_COMPATIBILITY_DATE}',${traceConfig(packages)}${trailing.vercel.length ? `\n\t\t// The old site's trailing-slash redirect, ahead of Vercel's static files.\n\t\tvercel: { config: { routes: ${JSON.stringify(trailing.vercel)} } },` : ''}
 	},
 	// \`markless-migrate dev\` turns off the dev server's execution log: it writes <html> attributes on every interaction.
 	plugins: [markless(process.env.MARKLESS_MIGRATE_DEV ? { executionLog: 'never' } : {}), router()],

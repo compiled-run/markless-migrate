@@ -9,7 +9,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$DIR/.."
 WRANGLER="${WRANGLER:-npx --yes wrangler@4.156.0}"
-COMPATIBILITY_DATE=2026-10-27
+COMPATIBILITY_DATE="$(node --input-type=module -e "import { WORKERS_COMPATIBILITY_DATE } from '$ROOT/src/convert/workers.ts'; console.log(WORKERS_COMPATIBILITY_DATE)")"
 
 exists() { $WRANGLER deployments status --name "$1" > /dev/null 2>&1; }
 

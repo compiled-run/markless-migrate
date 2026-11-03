@@ -238,3 +238,10 @@ test("the generated config keeps one of each Nitro handler and server asset dire
 	once(bare);
 	assert.deepEqual(bare, { handlers: [] });
 });
+
+test('the generated config names the Workers runtime date the deploy names, so a build is the same whichever day it is made', async () => {
+	const { viteConfig } = await import('../src/convert/index.ts');
+	const { WORKERS_COMPATIBILITY_DATE } = await import('../src/convert/workers.ts');
+	assert.match(WORKERS_COMPATIBILITY_DATE, /^\d{4}-\d{2}-\d{2}$/);
+	assert.ok(viteConfig([]).includes(`compatibilityDate: '${WORKERS_COMPATIBILITY_DATE}',`));
+});
