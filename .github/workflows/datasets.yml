@@ -52,7 +52,10 @@ jobs:
           git worktree add "$RUNNER_TEMP/base" "$BASE"
           (cd "$RUNNER_TEMP/base" && pnpm install --frozen-lockfile)
           cp scripts/datasets-canary.ts "$RUNNER_TEMP/base/scripts/"
-          (cd "$RUNNER_TEMP/base" && node scripts/datasets-canary.ts produce "$RUNNER_TEMP/canary-base")
-          node scripts/datasets-canary.ts produce "$RUNNER_TEMP/canary-head"
-          node scripts/datasets-canary.ts diff "$RUNNER_TEMP/canary-base" "$RUNNER_TEMP/canary-head" --out "$RUNNER_TEMP/canary.json"
+          # Two runs a side: what differs between a side's own runs is named as nondeterministic, never taken for a change.
+          for run in 1 2; do
+            (cd "$RUNNER_TEMP/base" && node scripts/datasets-canary.ts produce "$RUNNER_TEMP/canary-base-$run")
+            node scripts/datasets-canary.ts produce "$RUNNER_TEMP/canary-head-$run"
+          done
+          node scripts/datasets-canary.ts diff "$RUNNER_TEMP"/canary-base-{1,2} "$RUNNER_TEMP"/canary-head-{1,2} --out "$RUNNER_TEMP/canary.json" || true
           node scripts/datasets-lint.ts --base "$RUNNER_TEMP/base.lock" --canary "$RUNNER_TEMP/canary.json"

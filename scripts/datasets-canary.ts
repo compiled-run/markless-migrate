@@ -3,8 +3,9 @@
 // of pages, so two checkouts' rows can be compared and a producer change told apart from a change of what it records.
 //   node scripts/datasets-canary.ts produce <dir> [--old <origin> --targets <file>]
 //       without --old, the bug corpus's micro-site, served here
-//   node scripts/datasets-canary.ts diff <a> <b> [--out <diff.json>]
-//       per table: alike, or the rows only one holds and the first facts that differ (real-clock fields left out)
+//   node scripts/datasets-canary.ts diff <base 1> <base 2> <head 1> <head 2> [--out <diff.json>]
+//       two runs a side: a field family differing within a side is named as nondeterministic and fails the canary; one alike
+//       within each side and different between them is a change that sticks, which needs a version bump
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -15,8 +16,8 @@ import { chromium } from 'playwright';
 import { defaultEnv, LAUNCH } from '../src/check/browser.ts';
 import { originalConditions, writesAllowed } from '../src/check/run.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
-import { diffTable, same } from '../src/data/original/canary.ts';
-import { TABLES } from '../src/data/original/dataset.ts';
+import { canary } from '../src/data/original/canary.ts';
+import { TABLES, type Table } from '../src/data/original/dataset.ts';
 import { readLock } from '../src/data/original/lock.ts';
 import { observeOriginal, writeRoute } from '../src/data/original/produce.ts';
 import { commitDataset, Dataset, DatasetWriter } from '../src/data/original/store.ts';
@@ -58,23 +59,21 @@ if (command === 'produce') {
 	}
 	process.stdout.write(`canary: ${routes.length} routes produced into ${dir}\n`);
 } else if (command === 'diff') {
-	const open = async (dir: string) => {
-		const lock = await readLock();
-		return Dataset.open(resolve(dir), { versions: lock.producers, tables: [] });
-	};
-	const [a, b] = await Promise.all([open(positionals[0]!), open(positionals[1]!)]);
-	const tables: Record<string, { same: boolean; summary: string }> = {};
-	const origins = [a.manifest.routes, b.manifest.routes];
-	if (JSON.stringify(origins[0]) !== JSON.stringify(origins[1])) throw new Error('the two canaries hold other routes');
-	for (const t of TABLES) {
-		const rows = (d: Dataset) => new Map(d.manifest.routes.flatMap((r) => (t === 'layout_survey' ? [] : d.rows(t, r).map((row) => [row.key, row.value] as const))));
-		const diff = diffTable(rows(a), rows(b));
-		tables[t] = { same: same(diff), summary: same(diff) ? 'alike' : `${diff.onlyA.length} rows only before, ${diff.onlyB.length} only after, ${diff.differing.length} differing${diff.differing[0] ? `, first ${diff.differing[0].key.split('\u0000').join(' | ')} at ${diff.differing[0].differences.slice(0, 3).map((d) => d.path).join(', ')}` : ''}` };
-	}
-	const text = `${JSON.stringify({ tables }, null, '\t')}\n`;
+	if (positionals.length !== 4) throw new Error('diff <base run 1> <base run 2> <head run 1> <head run 2>');
+	const lock = await readLock();
+	const [b0, b1, h0, h1] = await Promise.all(positionals.map((dir) => Dataset.open(resolve(dir), { versions: lock.producers, tables: [] })));
+	const routes = b0!.manifest.routes;
+	if ([b1, h0, h1].some((d) => JSON.stringify(d!.manifest.routes) !== JSON.stringify(routes))) throw new Error('the four canaries hold other routes');
+	const datasets = { base: [b0!, b1!], head: [h0!, h1!] };
+	const result = canary(TABLES.filter((t) => t !== 'layout_survey'), (side, run, table) => new Map(routes.flatMap((r) => datasets[side][run]!.rows(table as Table, r).map((row) => [row.key, row.value] as const))));
+	const text = `${JSON.stringify(result, null, '\t')}\n`;
 	if (values.out) await writeFile(resolve(values.out), text);
 	process.stdout.write(text);
+	if (result.nondeterministic.length) {
+		process.stderr.write(`canary: the producers are not deterministic in ${result.nondeterministic.length} field families, so no change there can be told from noise:\n${result.nondeterministic.map((n) => `  ${n.table} ${n.family} (${n.side}, ${n.rows} rows)`).join('\n')}\n`);
+		process.exit(1);
+	}
 } else {
-	process.stderr.write('usage: datasets-canary.ts produce <dir> [--old <origin> --targets <file>] | diff <a> <b> [--out <diff.json>]\n');
+	process.stderr.write('usage: datasets-canary.ts produce <dir> [--old <origin> --targets <file>] | diff <base 1> <base 2> <head 1> <head 2> [--out <diff.json>]\n');
 	process.exit(2);
 }
