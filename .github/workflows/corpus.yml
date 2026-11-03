@@ -32,9 +32,10 @@ env:
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
 
+# On main every commit's run lands its score (they queue); on a branch a newer push replaces the run in progress.
 concurrency:
   group: corpus-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   plan:
