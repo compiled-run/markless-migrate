@@ -291,6 +291,16 @@ function importance(place: { region: string; table: boolean; form: boolean; dial
 
 export const isLayout = (c: Pick<Candidate, 'region'>) => LAYOUT.has(c.region);
 
+/** A read of an element that is only slow is made again with more patience, so a busy machine never reads a control as nameless, disabled or gone; undefined when it is gone. */
+export async function readPatiently<T>(locator: Locator, read: (timeout: number) => Promise<T>): Promise<T | undefined> {
+	try {
+		return await read(STEP_TIMEOUT);
+	} catch {
+		if (!(await locator.count().catch(() => 0))) return undefined;
+		return read(PATIENCE).catch(() => undefined);
+	}
+}
+
 async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 	const out: Candidate[] = [];
 	const inRegion = new Map<string, number>();
@@ -304,13 +314,13 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 	for (const role of ROLES) {
 		const seen = new Map<string, number>();
 		for (const locator of await page.getByRole(role).all()) {
-			const line = (await locator.ariaSnapshot({ timeout: STEP_TIMEOUT }).catch(() => '')).split('\n')[0] ?? '';
+			const line = ((await readPatiently(locator, (timeout) => locator.ariaSnapshot({ timeout }))) ?? '').split('\n')[0] ?? '';
 			const name = snapshotName(line);
 			const key = name.replace(/\s+/g, '');
 			const nth = seen.get(key) ?? 0;
 			seen.set(key, nth + 1);
-			if (!(await locator.isVisible().catch(() => false)) || (await locator.isDisabled().catch(() => true))) continue;
-			const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
+			if (!(await locator.isVisible().catch(() => false)) || ((await readPatiently(locator, (timeout) => locator.isDisabled({ timeout }))) ?? true)) continue;
+			const info = await readPatiently(locator, (timeout) => locator.evaluate(describeElement, undefined, { timeout }));
 			if (!info) continue;
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
