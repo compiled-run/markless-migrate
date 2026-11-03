@@ -71,8 +71,15 @@ export function focusFirst(container: HTMLElement): void {
 
 const raised = new WeakMap<Layer, () => void>();
 function raise(layer: Layer): void {
-	const undo = raiseOver(layer.nodes, open.flatMap((o) => o.nodes));
+	const undo = raiseOver(layer.nodes, open.slice(0, open.indexOf(layer)).flatMap((o) => o.nodes));
 	if (undo) raised.set(layer, undo);
+}
+
+// Placing and stacking read styles: run once the opener has written the whole open state, so it restyles the page once.
+function settled(layer: Layer, run: () => void): void {
+	queueMicrotask(() => {
+		if (open.includes(layer)) run();
+	});
 }
 
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
@@ -91,10 +98,11 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 	const layer: Layer = { key, trigger, nodes, content, wrapper, modal: options.modal === true, cleanup: [] };
 	if (wrapper) {
 		wrapper.style.transform = 'translate(0px, -200%)';
-		layer.stop = place(options.anchor ?? trigger, wrapper, optionsOf(wrapper, content));
+		const anchor = options.anchor ?? trigger;
+		settled(layer, () => (layer.stop = place(anchor, wrapper, optionsOf(wrapper, content))));
 	}
 	content.setAttribute('data-state', 'open');
-	raise(layer);
+	settled(layer, () => raise(layer));
 	if (layer.modal) {
 		if (!open.some((l) => l.modal)) {
 			bodyPointerEvents = document.body.style.pointerEvents;
