@@ -191,6 +191,13 @@ function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement |
 	return tabbablesIn(document.body).find((el) => !portal.contains(el) && !trigger.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
 }
 
+// Placing and stacking read styles: run once the opener has written the whole open state, so it restyles the page once.
+function settled(p: Popup, run: () => void): void {
+	queueMicrotask(() => {
+		if (open.includes(p)) run();
+	});
+}
+
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
 // pressable: data-pressed on the trigger while open (pressableTriggerOpenStateMapping); lockScroll: modal; tabOut: Tab leaves.
 export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly fallbackAxisSide?: 'end' | 'none'; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly anchorOf?: (popup: HTMLElement) => Element | null | undefined; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean; readonly portal?: HTMLElement; readonly shown?: boolean; readonly triggerOutside?: boolean }): Popup | undefined {
@@ -223,7 +230,8 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 		const opts: BaseOptions = { side: positioner.getAttribute('data-mm-side') ?? popup.getAttribute('data-side') ?? 'bottom', align: positioner.getAttribute('data-mm-align') ?? popup.getAttribute('data-align') ?? positioner.getAttribute('data-align') ?? 'center', sideOffset: Number(popup.dataset.mmSideOffset ?? portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(popup.dataset.mmAlignOffset ?? portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute', ...(options.fallbackAxisSide ? { fallbackAxisSide: options.fallbackAxisSide } : {}) };
 		// A Positioner given another anchor than its trigger (an element ref): the portal names that element.
 		const named = portal.dataset.mmAnchor ? document.getElementById(portal.dataset.mmAnchor) : null;
-		p.stop = place(options.anchor ?? options.anchorOf?.(popup) ?? named ?? trigger, positioner, popup, opts);
+		const anchor = options.anchor ?? options.anchorOf?.(popup) ?? named ?? trigger;
+		settled(p, () => (p.stop = place(anchor, positioner!, popup, opts)));
 	}
 	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
 	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
@@ -237,7 +245,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	}
 	showCompanions(key, true);
 	const stacked = (q: HTMLElement) => [...q.children].filter((c): c is HTMLElement => c instanceof HTMLElement);
-	p.lower = raiseOver(stacked(portal), open.flatMap((o) => stacked(o.portal)));
+	settled(p, () => (p.lower = raiseOver(stacked(portal), open.slice(0, open.indexOf(p)).flatMap((o) => stacked(o.portal)))));
 	open.push(p);
 	if (options.lockScroll ?? popup.matches('[role="menu"]')) p.cleanup.push(acquireScrollLock());
 	const onKey = (event: KeyboardEvent) => {
