@@ -62,6 +62,8 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 			return [s('used three times in a row, then the pointer resting on what it showed', [{ op: 'click' }, { op: 'click' }, { op: 'click' }, { op: 'point at toasts' }, { op: 'leave' }])];
 		case 'tab stops':
 			return [s('Tab in, arrows each way, Space, Tab out and back', [{ op: 'tab in' }, key('ArrowRight'), key('ArrowDown'), key('Space'), key('Tab'), key('Shift+Tab'), key('ArrowLeft'), key('ArrowUp')])];
+		case 'switch':
+			return [s('open it, point at the next trigger, ArrowRight to the one after, ArrowLeft back, Escape', [{ op: 'click' }, { op: 'next trigger' }, key('ArrowRight'), key('ArrowLeft'), key('Escape')])];
 	}
 }
 
@@ -143,6 +145,11 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			if (!found) throw new Error('nothing open has a list that scrolls');
 			await found.hover({ timeout: STEP_TIMEOUT });
 			return page.mouse.wheel(0, 240);
+		}
+		case 'next trigger': {
+			const found = await aim('next trigger');
+			if (!found) throw new Error('no next trigger');
+			return found.hover({ timeout: STEP_TIMEOUT });
 		}
 		case 'submenu': {
 			const found = await aim('submenu');

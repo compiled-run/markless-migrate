@@ -222,7 +222,7 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | 'submenu' | 'scroller' | `item ${number}`): boolean {
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | 'submenu' | 'scroller' | 'next trigger' | `item ${number}`): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -232,7 +232,11 @@ export function installProbe(): void {
 				found = top && [...top.querySelectorAll('button, [role="button"]')].filter(shown).find((b) => /\b(close|cancel|dismiss|done)\b/i.test(`${b.getAttribute('aria-label') ?? ''} ${text(b)}`));
 			} else if (what.startsWith('item ')) found = items()[Number(what.slice(5))];
 			else if (what === 'scroller') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [p, ...p.querySelectorAll('*')]).find((e) => shown(e) && e.scrollHeight > e.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(e).overflowY));
-			else if (what === 'submenu') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [...p.querySelectorAll(ITEM)]).find((i) => shown(i) && /^(true|menu)$/.test(i.getAttribute('aria-haspopup') ?? ''));
+			else if (what === 'next trigger' && el) {
+				const bar = el.closest('[role="menubar"], nav, [role="navigation"]');
+				const triggers = bar ? [...bar.querySelectorAll('[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded][aria-controls]')].filter((t) => shown(t) && !t.closest('[role="menu"]')) : [];
+				found = triggers[triggers.indexOf(el) + 1];
+			} else if (what === 'submenu') found = [...document.querySelectorAll(POPUP)].filter(shown).flatMap((p) => [...p.querySelectorAll(ITEM)]).find((i) => shown(i) && /^(true|menu)$/.test(i.getAttribute('aria-haspopup') ?? ''));
 			else if (what === 'popup') found = [...document.querySelectorAll(POPUP)].filter(shown).pop();
 			else if (what === 'toaster') found = [...document.querySelectorAll('[data-sonner-toaster], [aria-live]:not([aria-live="off"]), [role="region"][aria-label*="otification" i]')].find((t) => t.querySelector('*') && shown(t.querySelector('[data-sonner-toast], li, [role="status"]') ?? t));
 			else if (what === 'thumb') found = el && ([el, ...el.querySelectorAll('[role="slider"], input[type="range"]')].find((t) => t.matches('[role="slider"], input[type="range"]') && shown(t)) ?? el);
@@ -344,6 +348,10 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 		if (menu) classes.push('context menu');
 		if (/^(checkbox|switch)$/.test(role) || (role === 'button' && e.hasAttribute('aria-pressed'))) classes.push('toggle');
 		if (role === 'button' && notify.includes(accessibleName(e))) classes.push('repeat');
+		// The first trigger of a menubar or a navigation menu: moving from its open menu to the next one is a step of its own.
+		const bar = e.closest('[role="menubar"], nav, [role="navigation"]');
+		const triggers = bar && (popup ? popup !== 'false' : e.hasAttribute('aria-expanded') && e.hasAttribute('aria-controls')) ? [...bar.querySelectorAll('[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded][aria-controls]')].filter((t) => !t.closest('[role="menu"]')) : [];
+		if (triggers.length >= 2 && triggers[0] === e) classes.push('switch');
 		if (/^(tablist|radiogroup|toolbar|menubar|grid|treegrid|tree)$/.test(role) || (role === 'group' && e.querySelectorAll(ITEMS).length >= 2 && [...e.querySelectorAll('[aria-pressed], [role="radio"], [role="checkbox"]')].length >= 2)) {
 			if (!e.parentElement?.closest(COMPOSITE) || /^(tablist|radiogroup|toolbar|menubar)$/.test(role)) classes.push('tab stops');
 		}
