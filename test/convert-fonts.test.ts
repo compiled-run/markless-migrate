@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { LATE_FONT } from '../parts/late-fonts.ts';
 import { capturePage } from '../src/convert/capture.ts';
 import { attr, parseDocument, walk } from '../src/convert/dom.ts';
-import { applyLateFonts, swapFontPreloadsLow, fontPreloads, fontPreloadsInFirstScreen, withoutFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
+import { applyLateFonts, swapFontPreloadsAfterStylesheets, fontPreloads, fontPreloadsInFirstScreen, withoutFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
 
 const PAGE = (head = '', mark = '') => `<!doctype html><html><head>${head}<style>
 @font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+2014}
@@ -181,18 +181,19 @@ h3{font-family:Auto}
 	}
 });
 
-test('a swap font\'s preloads go after the last stylesheet at low priority, the page\'s own and the added ones; an icon font\'s stays where it was', () => {
+// Held at low priority, a swap font arrives after the first paint, and its text reflows wherever the fallback face's local() font is missing (Linux, Android).
+test('a swap font\'s preloads go after the last stylesheet at the browser\'s own priority, the page\'s own and the added ones; an icon font\'s stays where it was', () => {
 	const o = 'https://site.example';
 	const font = (href: string) => ({ tag: 'link' as const, attrs: { rel: 'preload', href, as: 'font', crossorigin: '' } as Record<string, string> });
 	const sheet = (href: string) => ({ tag: 'link' as const, attrs: { rel: 'stylesheet', href } as Record<string, string> });
 	const charset = { tag: 'meta' as const, attrs: { charset: 'utf-8' } as Record<string, string> };
 	const icons = font('/icons.woff2');
 	const tags = [charset, icons, font('/sans.woff2'), sheet('/a.css'), sheet('/b.css'), { tag: 'title' as const, attrs: {} as Record<string, string> }];
-	const out = swapFontPreloadsLow(tags, [`${o}/sans.woff2`], o, [font('/mono.woff2')]);
+	const out = swapFontPreloadsAfterStylesheets(tags, [`${o}/sans.woff2`], o, [font('/mono.woff2')]);
 	assert.deepEqual(
 		out.map((t) => [t.attrs.href ?? t.tag, t.attrs.fetchpriority]),
-		[['meta', undefined], ['/icons.woff2', undefined], ['/a.css', undefined], ['/b.css', undefined], ['/sans.woff2', 'low'], ['/mono.woff2', 'low'], ['title', undefined]],
+		[['meta', undefined], ['/icons.woff2', undefined], ['/a.css', undefined], ['/b.css', undefined], ['/sans.woff2', undefined], ['/mono.woff2', undefined], ['title', undefined]],
 	);
-	assert.equal(tags[2]!.attrs.fetchpriority, undefined, 'the given tags are not changed');
-	assert.deepEqual(swapFontPreloadsLow([charset, font('/sans.woff2')], [`${o}/sans.woff2`], o).map((t) => t.attrs.fetchpriority), [undefined, 'low'], 'with no stylesheet, last');
+	assert.deepEqual(tags.map((t) => t.attrs.href ?? t.tag), ['meta', '/icons.woff2', '/sans.woff2', '/a.css', '/b.css', 'title'], 'the given tags are not changed');
+	assert.deepEqual(swapFontPreloadsAfterStylesheets([charset, font('/sans.woff2')], [`${o}/sans.woff2`], o).map((t) => t.attrs.href ?? t.tag), ['meta', '/sans.woff2'], 'with no stylesheet, last');
 });

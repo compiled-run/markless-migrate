@@ -1,4 +1,4 @@
-// A converted page's head: a font-display: swap font's preloads come after its stylesheets at low priority, an icon font's stay first.
+// A converted page's head: a font-display: swap font's preloads come after its stylesheets, an icon font's stay first.
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -19,7 +19,7 @@ const CSS = `@font-face{font-family:Sans;src:url(/sans.woff2) format("woff2");fo
 @font-face{font-family:Text;src:url(/text.woff2) format("woff2")}
 body{font-family:Sans,sans-serif}i{font-family:Icons}code{font-family:Mono,monospace}p{font-family:Text,serif}`;
 
-test('a swap font is preloaded after the stylesheets at low priority, whether the old page preloaded it or convert adds it; an icon font keeps its place', async () => {
+test('a swap font is preloaded after the stylesheets at the browser\'s own priority, whether the old page preloaded it or convert adds it; an icon font keeps its place', async () => {
 	const server = createServer((req, res) => {
 		if (req.url === '/') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE);
 		if (req.url === '/site.css') return void res.writeHead(200, { 'content-type': 'text/css' }).end(CSS);
@@ -41,7 +41,7 @@ test('a swap font is preloaded after the stylesheets at low priority, whether th
 		const links = ids.map((i) => tags[i]!).filter((t) => t.tag === 'link').map((t) => [t.attrs.href!.replace(/^\/_converted\/styles\/[^.]+/, '/cut'), t.attrs.rel, t.attrs.fetchpriority]);
 		assert.deepEqual(
 			links.filter(([href]) => href!.endsWith('.woff2') || href!.endsWith('.css')).map(([href, rel, p]) => `${href} ${rel}${p ? ` ${p}` : ''}`),
-			['/text.woff2 preload', '/icons.woff2 preload', '/site.css stylesheet', '/sans.woff2 preload low', '/mono.woff2 preload low'],
+			['/text.woff2 preload', '/icons.woff2 preload', '/site.css stylesheet', '/sans.woff2 preload', '/mono.woff2 preload'],
 			heads,
 		);
 	} finally {

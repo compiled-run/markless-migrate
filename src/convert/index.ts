@@ -41,7 +41,7 @@ import type { CalendarMessages } from '../../parts/react-aria/calendar.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { framesAsServed, nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
-import { applyLateFonts, swapFontPreloadsLow, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
+import { applyLateFonts, swapFontPreloadsAfterStylesheets, fontPreloads, lateFaces, withoutFontPreloads } from './fonts.ts';
 import { usedStylesheets } from './used-css.ts';
 import { importIntoDocument, importStylesheets } from './stylesheet-imports.ts';
 import { scrollSpyAsServed } from './served-marks.ts';
@@ -1257,7 +1257,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		fontPreloadCount += fonts.length;
 	}
 	const swapFonts = fontPreloads(capture.swapFirstScreenFonts ?? [], origin, 0).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
-	tags.splice(0, tags.length, ...swapFontPreloadsLow(tags, capture.swapFontPreloads ?? [], origin, swapFonts));
+	tags.splice(0, tags.length, ...swapFontPreloadsAfterStylesheets(tags, capture.swapFontPreloads ?? [], origin, swapFonts));
 	fontPreloadCount += swapFonts.length;
 	const idle = (capture.offscreenFontPreloads ?? []).map((u) => {
 		const url = new URL(u, origin);
