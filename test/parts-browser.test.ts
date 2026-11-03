@@ -35,8 +35,8 @@ after(async () => {
 // `deliver`: also hand every event to the parts from the body's or the window's capture phase, as a Markless page delegates
 // them, before the event reaches the document listener.
 // `head`: what the app's Document puts in the head before any module (the inline theme toggle).
-async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = '', timezoneId?: string): Promise<Page> {
-	const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, ...(timezoneId ? { timezoneId } : {}) });
+async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = '', timezoneId?: string, hasTouch = false): Promise<Page> {
+	const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, ...(timezoneId ? { timezoneId } : {}), ...(hasTouch ? { hasTouch } : {}) });
 	// `site`: the shadcn-ui port's own site parts (lib/site/parts.ts), which import the ports as the app's lib/parts.
 	const registry = registryModule(ports.filter((p) => p !== 'site'), '.', ports.includes('site') ? './site.ts' : undefined);
 	await page.route('http://parts.test/**', async (route) => {
@@ -236,6 +236,34 @@ test('Radix Tooltip: keyboard focus opens it instant-open; the pointer opens it 
 	await fresh.getByText('Print', { exact: true }).hover();
 	assert.equal(await fresh.locator('#b').getAttribute('data-state'), 'instant-open');
 	await fresh.close();
+});
+
+const baseLayer = (key: string, slot: string, text: string) => `<div data-base-ui-portal hidden data-mm-layer="${key}"><div role="presentation" data-side="top" data-align="center" style="position:fixed" data-closed><div data-slot="${slot}" data-side="top" data-closed>${text}</div></div></div>`;
+const pointerOver = (page: Page, selector: string, pointerType: string) => page.locator(selector).evaluate((el, type) => el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: type })), pointerType);
+const layerShown = (page: Page, key: string) => page.locator(`[data-mm-layer="${key}"]`).evaluate((el) => !(el as HTMLElement).hidden);
+
+test('Base UI Tooltip opens for a mouse, never a touch (its hover is mouseOnly); Base UI PreviewCard opens on keyboard focus, never on a press that focuses its trigger', async () => {
+	const page = await open(
+		`<main style="padding:200px"><button id="t" data-slot="tooltip-trigger">Save</button> <a id="h" href="#h" data-slot="hover-card-trigger" data-mm-delay="0">@nextjs</a></main>${baseLayer('t', 'tooltip-content', 'Save file')}${baseLayer('h', 'hover-card-content', 'The React Framework')}`,
+		['base-ui/tooltip', 'base-ui/preview-card'],
+		undefined,
+		'',
+		undefined,
+		true,
+	);
+	await pointerOver(page, '#t', 'touch');
+	assert.equal(await layerShown(page, 't'), false, 'a touch does not open the tooltip');
+	await pointerOver(page, '#t', 'mouse');
+	assert.equal(await layerShown(page, 't'), true, 'a mouse does');
+	await page.locator('#h').tap();
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'h');
+	await page.waitForTimeout(50);
+	assert.equal(await layerShown(page, 'h'), false, 'focus after a press is not focus-visible: the card stays closed');
+	await page.locator('#h').evaluate((el) => (el as HTMLElement).blur());
+	await page.keyboard.press('Shift+Tab');
+	await page.keyboard.press('Tab');
+	await page.waitForFunction(() => !(document.querySelector('[data-mm-layer="h"]') as HTMLElement).hidden, undefined, { timeout: 2000 });
+	await page.close();
 });
 
 // The site's Document as convert writes it for ui.shadcn.com: next-themes' options and the toggle controls.json names.
