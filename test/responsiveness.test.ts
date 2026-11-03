@@ -8,7 +8,7 @@ import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
 import { chromium } from 'playwright';
 import { cpuMultiplier } from '../src/check/load.ts';
-import { controlsToMeasure, fetchKind, judge, likelyCause, machineIndex, speeds, speedTiming, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { controlsToMeasure, fetchKind, judge, likelyCause, machineIndex, speeds, timeOf, speedTiming, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
 import { headlines, summarizeResponsiveness, worstLine } from '../src/check/responsiveness-summary.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
 import { recordResults, status, summarizeStatus } from '../src/status.ts';
@@ -162,4 +162,16 @@ test('the phone speed stands for Lighthouse\'s 4x device on any machine: its slo
 		await browser.close();
 	}
 	assert.ok(cpuMultiplier(2000) > cpuMultiplier(1000), 'a faster machine is slowed more');
+});
+
+test('a link whose next page did not show inside the window on the old side was not timed there: its event time is not compared with the new side\'s navigation', () => {
+	const [, throttled] = speeds(4);
+	const none = sample({ result: 'none', ms: 56 });
+	assert.equal(timeOf('navigation', none), undefined);
+	assert.equal(timeOf('in-page', none), 56, 'an in-page control that shows nothing still has its handler time');
+	const t = speedTiming(throttled!, 'navigation', [none, sample({ result: 'none', ms: 112 })], [sample({ result: 'navigated', ms: 731 }), sample({ result: 'navigated', ms: 966 })], 200);
+	assert.deepEqual([t.ok, t.problems], [true, []]);
+	assert.equal(t.oldMs, undefined);
+	const timed = speedTiming(throttled!, 'navigation', [sample({ result: 'navigated', ms: 400 }), sample({ result: 'navigated', ms: 420 })], [sample({ result: 'navigated', ms: 731 }), sample({ result: 'navigated', ms: 966 })], 200);
+	assert.equal(timed.ok, false, 'a navigation the old side did time is still judged');
 });
