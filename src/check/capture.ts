@@ -155,6 +155,8 @@ export async function settle(page: Page): Promise<void> {
 	});
 }
 
+const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 // A finite animation (an entrance effect) is still running or already done depending on how long the page took to
 // settle, so computed styles are read at its end. What was moving (`seen`: also while the load settled) is kept first for the reduced-motion check.
 export async function finishAnimations(page: Page, seen: readonly string[] = []): Promise<void> {
@@ -285,7 +287,8 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			const build = path && !runtimes.has(local) ? builds.find((b) => b.path.test(path)) : undefined;
 			if (build) runtimes.set(local, `${build.framework} build`);
 		}
-		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}), ...(libraries.has(a.url) ? { libraries: libraries.get(a.url)! } : {}) }));
+		// In address order, not the order responses happened to arrive in, so two loads of the same page record the same rows.
+		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}), ...(libraries.has(a.url) ? { libraries: libraries.get(a.url)! } : {}) })).sort((a, b) => byText(a.url, b.url) || byText(a.type, b.type) || a.status - b.status || a.bytes - b.bytes);
 		const internals = await page.evaluate(frameworkMarkup).catch(() => []);
 		const embeds = await page.evaluate(thirdPartyEmbeds).catch(() => []);
 		const served = runtimeMarkers(html, 'served');
@@ -306,7 +309,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				content: createHash('sha256').update(entry.source ?? '').digest('hex').slice(0, 16),
 			})),
 			...[...scriptBytes].filter(([url]) => !ran.some((entry) => entry.url === url)).map(([url, size]) => ({ url: toLocal(url, origin), bytes: size.bytes, source: size.source, executed: 0 })),
-		];
+		].sort((a, b) => byText(a.url, b.url) || a.bytes - b.bytes);
 		const inline = coverage.filter((entry) => entry.url === pageUrl);
 		const inlineExecuted = inline.reduce((sum, entry) => sum + executedBytes(entry.source ?? '', entry.functions), 0);
 		await log.settled();
