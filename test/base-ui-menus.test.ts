@@ -227,6 +227,28 @@ test("a Base UI menu opened by a mouse press shows no focus ring: the press focu
 	await page.close();
 });
 
+test("an open Base UI menu shows the focus guards convert renders beside its trigger: focus reaching the one after it from the menu closes it onto what follows the trigger, the one before it onto what precedes", async () => {
+	const guard = (type = '') => `<span${type ? ` data-type="${type}"` : ''} aria-hidden="true" tabindex="0" data-base-ui-focus-guard hidden data-mm-shown-with="dd" style="position:fixed;width:1px;height:1px"></span>`;
+	const page = await open(menu(['Profile', 'Billing']).replace('<button type="button" id="dd"', `${guard()}<button type="button" id="dd"`).replace('Open</button>', `Open</button>${guard()}${guard('outside')}${guard('outside')}`), ['base-ui/menu']);
+	const stops = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('main *')].filter((e) => e.tabIndex >= 0 && !e.closest('[hidden]') && e.getClientRects().length > 0).length);
+	assert.equal(await stops(), 3);
+	await page.locator('#dd').click();
+	await settled(page);
+	assert.equal(await stops(), 7, 'Before, the pre guard, the trigger, the post guard and the two outside guards, After');
+	await page.evaluate(() => document.querySelectorAll<HTMLElement>('main [data-base-ui-focus-guard]')[1]!.focus());
+	await settled(page);
+	assert.equal(await state(page), 'false focus=After highlighted=-');
+	await page.waitForTimeout(200);
+	await page.locator('#dd').click();
+	await settled(page);
+	await page.evaluate(() => document.querySelector<HTMLElement>('main [data-base-ui-focus-guard]')!.focus());
+	await settled(page);
+	assert.equal(await state(page), 'false focus=Before highlighted=-');
+	await page.waitForTimeout(200);
+	assert.equal(await stops(), 3);
+	await page.close();
+});
+
 test('the pointer leaving a Base UI menu item for the menu around it unhighlights it and focuses the menu', async () => {
 	const page = await open(menu(['Profile', 'Billing']).replace('data-slot="dropdown-menu-content"', 'data-slot="dropdown-menu-content" style="padding:20px"'), ['base-ui/menu']);
 	await page.locator('#dd').click();
