@@ -368,10 +368,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			return urls.map((url, i) => [url, found[i]!] as const);
 		},
 		negotiate: ({ languages }) => Promise.all([negotiate(watched.old, route, languages), negotiate(watched.old, route, languages), negotiate(watched.new, route, languages)]),
-		selfUrls: () => {
-			const { olds, next } = load();
-			return selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, watched.new, { seo: Object.values(olds[0]!.pages)[0]?.seo ?? {}, origin: watched.old.origin });
-		},
+		selfUrls: () => selfUrlFailures(route, Object.values(load().next.pages)[0]?.seo ?? {}, watched.new),
 		states: (asked) => observeRouteStates(browser, watched, route, viewports, load().olds, asked),
 		journeys: () => {
 			const sides = steady();
