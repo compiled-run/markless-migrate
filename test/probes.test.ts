@@ -19,6 +19,8 @@ const hoverCard = (never: boolean) => `<p><a id="h" href="#profile" data-state="
 const slider = (stuck: boolean) => `<div id="s" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="position:relative;width:400px;height:20px;background:#ddd;margin:40px"><span id="k" style="position:absolute;left:50%;width:16px;height:20px;background:#333"></span></div><script>const set = (v) => { v = Math.max(0, Math.min(100, Math.round(v))); s.setAttribute('aria-valuenow', String(v)); k.style.left = v + '%'; }; s.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') set(+s.getAttribute('aria-valuenow') + 1); }); ${stuck ? '' : "s.addEventListener('pointerdown', (e) => { s.setPointerCapture(e.pointerId); const move = (m) => set(((m.clientX - s.getBoundingClientRect().left) / 400) * 100); s.addEventListener('pointermove', move); s.addEventListener('pointerup', () => s.removeEventListener('pointermove', move), { once: true }); });"}</script>`;
 // A button whose toasts stack, newest in front; `replace` shows only the last one.
 const toasts = (replace: boolean) => `<button id="n">Notify</button><ol aria-live="polite" id="l"></ol><script>let i = 0; n.onclick = () => { i++; ${replace ? "l.textContent = '';" : ''} for (const t of l.children) t.setAttribute('data-front', 'false'); const li = document.createElement('li'); li.setAttribute('role', 'status'); li.setAttribute('data-sonner-toast', ''); li.setAttribute('data-front', 'true'); li.textContent = 'Saved ' + i; l.prepend(li); };</script>`;
+// A button whose toasts each leave after `ms`, as sonner's do after their duration.
+const expiring = (ms: number) => `<button id="n">Notify</button><ol aria-live="polite" id="l"></ol><script>let i = 0; n.onclick = () => { i++; const li = document.createElement('li'); li.setAttribute('role', 'status'); li.setAttribute('data-sonner-toast', ''); li.textContent = 'Saved ' + i; l.prepend(li); setTimeout(() => li.remove(), ${ms}); };</script>`;
 // A radio group with one tab stop that moves with the arrows; `every` leaves every radio a tab stop.
 const radios = (every: boolean) => `<button>Before</button><div role="radiogroup" aria-label="Size" id="g"><div role="radio" aria-checked="true" tabindex="0">Small</div><div role="radio" aria-checked="false" tabindex="${every ? 0 : -1}">Medium</div><div role="radio" aria-checked="false" tabindex="${every ? 0 : -1}">Large</div></div><button>After</button><script>const items = [...g.querySelectorAll('[role=radio]')]; g.addEventListener('keydown', (e) => { const i = items.indexOf(document.activeElement); if (i < 0) return; const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0; if (!d) return; e.preventDefault(); const n = items[(i + d + items.length) % items.length]; for (const r of items) { r.setAttribute('aria-checked', String(r === n)); ${every ? '' : "r.tabIndex = r === n ? 0 : -1;"} } n.focus(); });</script>`;
 
@@ -79,6 +81,11 @@ const SHARED: Record<string, { old: string; bad: string }> = {
 };
 
 // The same select, the new demo also holding markup it keeps hidden; on /hidden-stale the new select leaves its input as it was.
+const LIFETIME: Record<string, { old: string; bad: string }> = {
+	'/lifetime-same': { old: expiring(1500), bad: expiring(1500) },
+	'/lifetime-short': { old: expiring(3500), bad: expiring(1500) },
+};
+
 const HIDDEN: Record<string, { old: string; bad: string }> = {
 	'/hidden-same': { old: chooser(false, false), bad: chooser(false, true) },
 	'/hidden-stale': { old: chooser(false, false), bad: chooser(true, true) },
@@ -90,8 +97,8 @@ let bad: string;
 const servers: Server[] = [];
 before(async () => {
 	browser = await chromium.launch();
-	const a = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.old]), ...Object.entries(SHARED).map(([k, v]) => [k, v.old]), ...Object.entries(HIDDEN).map(([k, v]) => [k, v.old])]));
-	const b = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.bad]), ...Object.entries(SHARED).map(([k, v]) => [k, v.bad]), ...Object.entries(HIDDEN).map(([k, v]) => [k, v.bad])]));
+	const a = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.old]), ...Object.entries(SHARED).map(([k, v]) => [k, v.old]), ...Object.entries(HIDDEN).map(([k, v]) => [k, v.old]), ...Object.entries(LIFETIME).map(([k, v]) => [k, v.old])]));
+	const b = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.bad]), ...Object.entries(SHARED).map(([k, v]) => [k, v.bad]), ...Object.entries(HIDDEN).map(([k, v]) => [k, v.bad]), ...Object.entries(LIFETIME).map(([k, v]) => [k, v.bad])]));
 	servers.push(a.server, b.server);
 	old = a.origin;
 	bad = b.origin;
@@ -118,7 +125,7 @@ const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	discovered: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	hover: { check: /^hover probe of link "@ada": pointer resting on it.* \(step 1 of 4: point at it\)$/, detail: /open: tooltip "Ada Lovelace"/ },
 	drag: { check: /^drag probe of slider "Volume": dragged by the pointer both ways \(step 1 of 3: drag it 40 px right\)$/, detail: /aria-valuenow=60/ },
-	repeat: { check: /^repeat probe of button "Notify": used three times in a row.* \(step 2 of 5: click it\)$/, detail: /toasts: 2 shown/ },
+	repeat: { check: /^repeat probe of button "Notify": used three times in a row.* \(step 2 of 6: click it\)$/, detail: /toasts: 2 shown/ },
 	'tab stops': { check: /^tab stops probe of radiogroup "Size": Tab in, arrows each way.* \(step 1 of 8: Tab to it from the control before it\)$/, detail: /tab stops: 1: radio "Small"/ },
 };
 
@@ -189,4 +196,15 @@ test('the probes\' budget is counted in steps in queue order, so the same sequen
 	assert.equal(probeSteps(10, 2), 300);
 	assert.equal(probeSteps(1, 2), 120);
 	assert.equal(probeSteps(100, 2), 1200);
+});
+
+test('toasts stay for their lifetime once the probe lets its held timeouts go: a port whose toasts leave sooner than the original\'s is red, one whose leave as soon is green', async () => {
+	const sides = { old: defaultEnv(old), new: defaultEnv(bad) };
+	const journeys = notified('Notify');
+	const [same, short] = await Promise.all(['/lifetime-same', '/lifetime-short'].map((route) => checkProbes(browser, sides, route, VIEWPORTS[0]!, journeys)));
+	const left = (r: Awaited<ReturnType<typeof checkProbes>>) => r.failures.filter((f) => /^repeat probe of button "Notify".*step 6 of 6: wait for what it showed to leave/.test(f.check));
+	assert.deepEqual(left(same!).map((f) => [f.expected, f.actual]), []);
+	assert.equal(left(short!).length, 1, JSON.stringify(short!.failures.map((f) => [f.check, f.expected, f.actual])));
+	assert.match(left(short!)[0]!.expected, /toasts left: after 3\d{3} ms/);
+	assert.match(left(short!)[0]!.actual, /toasts left: after 1\d{3} ms/);
 });
