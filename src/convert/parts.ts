@@ -79,7 +79,8 @@ const base = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-base-
 // Radix writes data-state on its parts (a closed tooltip's trigger carries nothing else); Base UI, cmdk and React Aria never do.
 const radix = (el: Element) => /^radix-/.test(generated.get(el) ?? '') || el.attrs.some((a) => a.name.startsWith('data-radix-') || a.name === 'data-state' || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
 
-const ids = (el: Element) => [generated.get(el) ?? '', ...el.attrs.filter((a) => a.name === 'id' || a.name.startsWith('aria-')).map((a) => a.value)].join(' ');
+// Base UI's ScrollArea writes its generated id only as data-id, on the viewport and scrollbars.
+const ids = (el: Element) => [generated.get(el) ?? '', ...el.attrs.filter((a) => a.name === 'id' || a.name === 'data-id' || a.name.startsWith('aria-')).map((a) => a.value)].join(' ');
 // The markup each library writes on every part it renders, so a part of one is never taken for another's.
 const SIGNATURES: Readonly<Record<string, (el: Element) => boolean>> = {
 	cmdk: (el) => el.attrs.some((a) => a.name.startsWith('cmdk-')),
