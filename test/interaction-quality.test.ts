@@ -189,6 +189,12 @@ test("content that morphs from the previous page's look while the router changes
 	assert.match(nav!.actual, /moves while the page changes: .*background-color/);
 });
 
+test('what a router puts in while it changes pages is the new page\'s own, not a morph: a chart iframe that fades in once it loads is green whenever it loads', async () => {
+	// The /charts pages' iframes fade in when they load, so whether that fade starts while the step is read follows the network.
+	const framed = (fade: boolean) => (path: string) => (path === '/frame' ? '<!doctype html><title>Chart</title><p>Chart</p>' : badges(false)(path)?.replace('</main>', path === '/badge' ? `<iframe src="/frame" title="Chart" ${fade ? 'style="opacity: 0; transition: opacity 300ms" onload="this.style.opacity = 1"' : ''}></iframe></main>` : '</main>'));
+	assert.deepEqual(open(await check(framed(false), framed(true))).filter((f) => /^click link "Badge"/.test(f.check)).map((f) => f.actual), []);
+});
+
 test('a page that changes on its own every 3 s (a demo toggling a loading state) is the same page whatever phase each step lands on', async () => {
 	const cycling = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Indicator</title></head><body><main><h1>Indicator</h1><button id="post" type="button">Post It!</button><img id="spin" alt="Loading..." hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><script>setInterval(() => { document.getElementById('spin').hidden = !document.getElementById('spin').hidden; }, 3000);</script></main></body></html>`;
 	const same = await check(cycling, cycling);
