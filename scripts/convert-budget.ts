@@ -32,9 +32,10 @@ const SIDEBAR_LINKS = 400;
  * And the most it may take: the convert process's own CPU time, and matchMs. Measured on a Mac, each tree run 5 times:
  *   6ac0281a (#636 gave ui.shadcn.com 75 such components)  matching 3816-3858 ms (each component walked every page again)
  *   this tree                                               matching 19-24 ms; convert CPU 29-33 s
- * matchMs is about ten times the fixed tree's figure on a GitHub runner, cpuSeconds about 1.3 times.
+ * and on ubuntu-latest (#656's run) this tree's matching took 82 ms and its convert 92 s of CPU. matchMs is about five times
+ * that figure (the regression is about forty times over it), cpuSeconds about 1.3 times.
  */
-export const BUDGET = { liveMb: 190, heapMb: 330, cpuSeconds: 999, matchMs: 250 } as const;
+export const BUDGET = { liveMb: 190, heapMb: 330, cpuSeconds: 120, matchMs: 400 } as const;
 
 // Shaped as shadcn's SliderControlled: a div around a label and the value's text, beside a slider.
 const stateComponents = Array.from({ length: STATE_COMPONENTS }, (_, i): StateComponent => ({
