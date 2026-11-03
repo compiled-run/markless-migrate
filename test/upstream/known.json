@@ -255,30 +255,6 @@
 			"why": "some runs leave <body style=\"pointer-events: none\"> after the dialog closes, so the next press on the trigger is refused (parts/radix/dialog-engine.ts, DismissableLayer's body pointer-events); about half the port runs, quarantined in docs/ci-process.md",
 			"racy": "it passes on most runs; the failure is the defect, a pass is not its fix"
 		},
-		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > should move to next menu using right arrow and previous menu with left arrow": {
-			"class": "convert",
-			"why": "needs React state conversion (queued): the test ticks the story's Loop checkbox halfway, the story's own React state (Menubar.Root's loop), which convert does not port",
-			"owner": "thejackshelton",
-			"expires": "2026-11-22"
-		},
-		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > with portals enabled > should move to next menu using right arrow and previous menu with left arrow": {
-			"class": "convert",
-			"why": "needs React state conversion (queued): the test ticks the story's Loop checkbox halfway, the story's own React state (Menubar.Root's loop), which convert does not port",
-			"owner": "thejackshelton",
-			"expires": "2026-11-22"
-		},
-		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > with RTL enabled > should move to next menu using right arrow and previous menu with left arrow": {
-			"class": "convert",
-			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
-			"owner": "thejackshelton",
-			"expires": "2026-11-22"
-		},
-		"cypress/e2e/Menubar.cy.ts > electron > Menubar > given a keyboard user > with RTL enabled > should open submenu and focus first item when pressing left arrow key but close when pressing right arrow key": {
-			"class": "convert",
-			"why": "needs React state conversion (queued): the test first ticks the story's Right-to-left checkbox, the story's own React state (the dir it gives the menu), which convert does not port",
-			"owner": "thejackshelton",
-			"expires": "2026-11-22"
-		},
 		"cypress/e2e/Dialog.cy.ts > electron > Dialog > given a non-modal dialog > can be open/closed with a pointer": {
 			"class": "convert",
 			"why": "outside conversion first: the test ticks the story's modal checkbox, then expects a press on count up outside the open dialog to count and close it, and parts/radix/dialog-engine.ts runs every Radix dialog modal (it traps focus and sets pointer-events: none on the body), with no non-modal path a modal prop could switch. convert also refuses the component: Dialog.Root's modal has no attribute a port reads, and the Content's className and destroy me button read state inside the dialog's layer, a separate component the page's state does not reach",
