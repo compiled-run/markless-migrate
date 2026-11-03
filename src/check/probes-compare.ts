@@ -12,7 +12,7 @@ import type { Dimension, Failure } from './types.ts';
 export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle';
 
 export type Op =
-	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
+	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' | 'toasts leave' }
 	/** The n-th item of the list that is open: pointed at or clicked. */
 	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click' }
 	/** The first item of what is open that opens a menu of its own: pointed at, or focused and given ArrowRight. */
@@ -65,6 +65,8 @@ export function describeOp(op: Op): string {
 			return "click the open dialog's close button";
 		case 'point at toasts':
 			return 'point at the toasts';
+		case 'toasts leave':
+			return 'wait for what it showed to leave';
 		case 'key':
 			return `press ${op.key}`;
 		case 'type':
@@ -110,7 +112,8 @@ const near = (a: string, b: string, tolerance: number) => {
 // Fields that read a library's own markup, which a port may write another way at load; focus, tab stops and what is open are the visitor's.
 const MARKUP = new Set(['control', 'widget', 'widget text', 'around', 'hovered', 'moved', 'form']);
 const skeleton = (line: string) => line.replace(/\d+/g, '#');
-const TOLERANCE: Record<string, number> = { moved: 2, scroll: 40 };
+// How long toasts stay once the probe lets their timers go is read in real time: within half a second is the same lifetime.
+const TOLERANCE: Record<string, number> = { moved: 2, scroll: 40, 'toasts left': 500 };
 const same = (field: string, a: string, b: string) => a === b || (TOLERANCE[field] !== undefined && near(a, b, TOLERANCE[field]!));
 const minus = (field: string, a: readonly string[], b: readonly string[]) => a.filter((x) => !b.some((y) => same(field, x, y)));
 

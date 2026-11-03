@@ -59,7 +59,7 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 					? [s('dragged by the pointer both ways', [{ op: 'drag', dx: 40, dy: 0 }, { op: 'drag', dx: -90, dy: 0 }, { op: 'leave' }])]
 					: [s('swiped by the pointer both ways', [{ op: 'drag', dx: -260, dy: 0 }, { op: 'drag', dx: 260, dy: 0 }, { op: 'leave' }])];
 		case 'repeat':
-			return [s('used three times in a row, then the pointer resting on what it showed', [{ op: 'click' }, { op: 'click' }, { op: 'click' }, { op: 'point at toasts' }, { op: 'leave' }])];
+			return [s('used three times in a row, then the pointer resting on what it showed', [{ op: 'click' }, { op: 'click' }, { op: 'click' }, { op: 'point at toasts' }, { op: 'leave' }, { op: 'toasts leave' }])];
 		case 'tab stops':
 			return [s('Tab in, arrows each way, Space, Tab out and back', [{ op: 'tab in' }, key('ArrowRight'), key('ArrowDown'), key('Space'), key('Tab'), key('Shift+Tab'), key('ArrowLeft'), key('ArrowUp')])];
 	}
@@ -112,7 +112,10 @@ async function mark(page: Page, control: ProbeControl, again = false): Promise<b
 	return (await page.locator(MARK).count().catch(() => 0)) > 0;
 }
 
-async function perform(side: Side, control: ProbeControl, op: Op): Promise<void> {
+const TOASTS_LEAVE_MS = 12_000;
+
+/** Does one step; a step that measures something returns it as fields of its reading. */
+async function perform(side: Side, control: ProbeControl, op: Op): Promise<Reading | void> {
 	const page = side.page;
 	if (!(await mark(page, control)) && ON_CONTROL.has(op.op)) throw new Error('the control is not on the page');
 	const target = page.locator(MARK).first();
@@ -182,6 +185,14 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			if (!toaster) throw new Error('nothing shown to point at');
 			return toaster.hover({ timeout: STEP_TIMEOUT });
 		}
+		case 'toasts leave': {
+			// The timeouts the steps set were held from the first step: let go now, each runs its full delay, so how long the toasts stay is their lifetime.
+			await page.evaluate(() => (globalThis as { __markless_migrate_hold_timers__?: (on: boolean) => void }).__markless_migrate_hold_timers__?.(false));
+			const from = Date.now();
+			const shown = () => page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.read().toasts ?? 'none').catch(() => 'none');
+			while ((await shown()) !== 'none' && Date.now() - from < TOASTS_LEAVE_MS) await page.waitForTimeout(50);
+			return { 'toasts left': (await shown()) === 'none' ? `after ${Date.now() - from} ms` : `still shown after ${TOASTS_LEAVE_MS} ms` };
+		}
 		case 'key':
 			return page.keyboard.press(op.key, { delay: HOLD_MS });
 		case 'type':
@@ -217,15 +228,16 @@ async function runSequence(side: Side, origin: string, route: string, control: P
 	await page.evaluate(() => (globalThis as { __markless_migrate_hold_timers__?: (on: boolean, long?: boolean) => void }).__markless_migrate_hold_timers__?.(true, true)).catch(() => {});
 	for (const op of sequence.ops) {
 		let failed: string | undefined;
+		let measured: Reading | void = undefined;
 		try {
-			await perform(side, control, op);
+			measured = await perform(side, control, op);
 		} catch (error) {
 			failed = (error as Error).message.split('\n')[0]!.slice(0, 160);
 		}
 		await settle(side);
 		// A step that loaded another document leaves the probe behind: it is put back to read the page it landed on.
 		await page.evaluate(installProbe).catch(() => {});
-		const reading = await read(page);
+		const reading = { ...(await read(page)), ...(measured ?? {}) };
 		out.push(failed ? { ...reading, step: `could not ${describeOp(op)}: ${failed}` } : reading);
 		if (states) states.push(await readState(page, states.at(-1)));
 		if (parts.length) for (const file of await page.evaluate(matchParts, parts).catch(() => [] as string[])) found.add(file);
