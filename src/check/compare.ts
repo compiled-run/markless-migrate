@@ -20,7 +20,7 @@ import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts
 import { storageFailure } from './storage.ts';
 import { samePath } from './svg-path.ts';
 import { residueFailures } from './residue.ts';
-import { isSelfUrl, selfPath } from './self-url-fields.ts';
+import { isSelfUrl, originIn, ownOrigins, selfPath } from './self-url-fields.ts';
 
 const LIMIT = 20;
 // lang and dir are compared as internationalisation, not SEO.
@@ -347,12 +347,17 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	failures.push(...images.failures);
 
 	const desktop = Object.keys(oldA.pages)[0]!;
-	// A page's addresses for itself are compared by path: each site names its own origin (the original whatever its build names,
-	// the port its public URL), and the port's origin is selfUrlFailures' to judge.
-	const withoutLocale = (seo: Readonly<Record<string, string>>) => Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)).map(([key, value]) => [key, isSelfUrl(key) ? selfPath(value) : value]));
+	// A page's addresses on its own origin are compared by path: each site names its own origin (the original whatever its build
+	// names, the port its public URL), and the port's origin is selfUrlFailures' to judge. An alternate on another origin keeps its whole address.
+	const withoutLocale = (seo: Readonly<Record<string, string>>) => {
+		const own = ownOrigins(seo);
+		return Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)).map(([key, value]) => [key, isSelfUrl(key) && own.has(originIn(value) ?? '') ? selfPath(value) : value]));
+	};
 	const seo = diffFields(fieldTemplates(withoutLocale(oldA.pages[desktop]!.seo), ...others.map((o) => withoutLocale(o.pages[desktop]!.seo))), withoutLocale(next.pages[desktop]?.seo ?? {}));
 	if (next.pages[desktop]) failures.push(...compareI18n(route, desktop, oldA.pages[desktop]!, others.map((o) => o.pages[desktop]!), next.pages[desktop]!));
-	for (const d of seo) failures.push({ route, dimension: 'seo', check: d.key, expected: fmt(d.expected), actual: fmt(d.actual), hint: seoHint(d.key) });
+	// Reported as each side wrote it: the path is what was compared, the address is what a visitor's tools read.
+	const shown = (seo: Readonly<Record<string, string>> | undefined, key: string, compared: string | undefined) => (compared !== undefined && isSelfUrl(key) && seo?.[key] !== undefined ? seo[key] : compared);
+	for (const d of seo) failures.push({ route, dimension: 'seo', check: d.key, expected: fmt(shown(oldA.pages[desktop]!.seo, d.key, d.expected)), actual: fmt(shown(next.pages[desktop]?.seo, d.key, d.actual)), hint: seoHint(d.key) });
 
 	const stableIn = others.map((o) => new Set(uniqueAssets(o).map((a) => a.url)));
 	const newAssets = new Map(uniqueAssets(next).map((a) => [a.url, a]));

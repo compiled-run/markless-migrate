@@ -58,3 +58,11 @@ test("self-addresses compare by path: the port on its public origin against an o
 		for (const s of servers) s.close();
 	}
 });
+
+test('an alternate on the page\'s own origin compares by path; one on another origin keeps its whole address', async () => {
+	const { originIn, ownOrigins } = await import('../src/check/self-url-fields.ts');
+	const own = ownOrigins({ 'meta:og:url': 'https://harbour.example/en', 'hreflang:fr': 'https://fr.harbour.example/' });
+	assert.ok(own.has('https://harbour.example') && own.has('http://origin.invalid'));
+	assert.ok(!own.has(originIn('https://fr.harbour.example/')!), 'another origin is not the page\'s own');
+	assert.equal(originIn('{origin}/fr'), 'http://origin.invalid');
+});
