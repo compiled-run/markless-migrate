@@ -23,7 +23,9 @@ function hide(trigger: HTMLElement): void {
 	closePopup(p, false);
 	trigger.removeAttribute('aria-expanded');
 }
-export function pointerover(target: Element): boolean {
+// Base UI's trigger hovers with mouseOnly: a touch never opens it.
+export function pointerover(target: Element, event: PointerEvent): boolean {
+	if (event.pointerType === 'touch') return false;
 	const trigger = triggerOf(target);
 	return trigger && !trigger.hasAttribute('data-state') ? show(trigger) : false;
 }

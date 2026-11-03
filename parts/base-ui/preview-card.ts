@@ -51,9 +51,10 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 	schedule(trigger, false);
 	return true;
 }
+// Base UI's useFocus opens on :focus-visible only, so a press that focuses the trigger does not.
 export function focusin(target: Element): boolean {
 	const trigger = triggerOf(target);
-	if (!trigger) return false;
+	if (!trigger || !(target as HTMLElement).matches(':focus-visible')) return false;
 	schedule(trigger, true);
 	return true;
 }
