@@ -100,7 +100,7 @@ test('a dataset is read only by a check of the same original, conditions and pro
 		const v = await versions();
 		await assert.rejects(Dataset.open(dir, { originalId: 'b'.repeat(64), conditions, versions: v, tables: ['loads'] }), /original aaaaaaaaaaaa, not bbbbbbbbbbbb/);
 		await assert.rejects(Dataset.open(dir, { conditions: { ...conditions, sendWrites: false }, versions: v, tables: ['loads'] }), /other conditions .*sendWrites/);
-		await assert.rejects(Dataset.open(dir, { conditions, versions: { ...v, loads: { ...v.loads, version: v.loads.version + 1 } }, tables: ['loads'] }), /producer version 1; this checker reads version 2/);
+		await assert.rejects(Dataset.open(dir, { conditions, versions: { ...v, loads: { ...v.loads, version: v.loads.version + 1 } }, tables: ['loads'] }), new RegExp(`producer version ${v.loads.version}; this checker reads version ${v.loads.version + 1}`));
 		await rm(join(dir, 'manifest.json'));
 		await assert.rejects(Dataset.open(dir, { conditions, versions: v, tables: ['loads'] }), /no committed dataset/);
 		const writer = new DatasetWriter(dir, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes: ['/', '/docs'], runner: 'test', shard: 'late' });
