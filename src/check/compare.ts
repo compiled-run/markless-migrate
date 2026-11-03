@@ -20,7 +20,7 @@ import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts
 import { storageFailure } from './storage.ts';
 import { samePath } from './svg-path.ts';
 import { residueFailures } from './residue.ts';
-import { isSelfUrl, selfPath } from './self-urls.ts';
+import { isSelfUrl, selfPath } from './self-url-fields.ts';
 
 const LIMIT = 20;
 // lang and dir are compared as internationalisation, not SEO.

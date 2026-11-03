@@ -1,20 +1,9 @@
 // A page's addresses for itself must be ones the public can open: one on a loopback host is the build machine's.
 import { appHeaders, type SideEnv } from './browser.ts';
 import type { Failure } from './types.ts';
+import { isSelfUrl } from './self-url-fields.ts';
 
 const HINT = 'This address for the page points at a loopback host (the machine the page was built or captured on), so a link preview, a search engine or a language switch sends visitors nowhere. Build the page with its public origin, or derive these tags from the request.';
-
-/** The SEO fields that name the page's own address. */
-export const isSelfUrl = (key: string): boolean => {
-	const base = key.replace(/#\d+$/, '');
-	return base === 'meta:og:url' || base === 'meta:twitter:url' || base === 'canonical' || base.startsWith('hreflang:') || (base.startsWith('jsonld[') && /\.(url|@id)$/.test(base));
-};
-
-/** A self-address by its path, query and fragment: `{origin}/docs`, `https://ui.shadcn.com/docs` and `/docs` are one address of the page. */
-export function selfPath(value: string): string {
-	const url = URL.parse(value.split('{origin}').join('http://origin.invalid'));
-	return url && /^https?:$/.test(url.protocol) ? `${url.pathname}${url.search}${url.hash}` : value;
-}
 
 export const isLoopback = (host: string): boolean => /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1|0\.0\.0\.0)$/i.test(host);
 
