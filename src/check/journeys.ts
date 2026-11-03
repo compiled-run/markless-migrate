@@ -1387,12 +1387,12 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 			// The wheel brings the section to the top, as a reader scrolls, so what follows the scroll position (a contents list's current link) answers.
 			return void (await reach(page, target, (t, timeout) => t.evaluate((el) => el.scrollIntoView({ block: 'start' }), undefined, { timeout }), false, patience));
 		case 'race': {
-			// What the first click asks for is held until the second action has been answered, so its page arrives after it on
-			// every run and both sides, however fast the server: a race the machine's speed decides is a coin toss.
+			// What a router fetches for the first click is held until the second action has been answered, so its page arrives after
+			// it on every run and both sides, however fast the server. A document load is not held: the page cannot be used while one is pending.
 			const first: Route[] = [];
 			const second: Route[] = [];
 			let bucket: Route[] | undefined = first;
-			const hold = (route: Route) => (bucket ? void bucket.push(route) : route.fallback().catch(() => {}));
+			const hold = (route: Route) => (bucket && !route.request().isNavigationRequest() ? void bucket.push(route) : route.fallback().catch(() => {}));
 			await page.route('**/*', hold);
 			try {
 				await reach(page, target, (t, timeout) => clickOnce(t, { timeout, noWaitAfter: true }), true, patience);
