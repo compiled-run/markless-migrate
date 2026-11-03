@@ -32,7 +32,7 @@ function markTrigger(trigger: HTMLElement, on: boolean): void {
 	if (!on) trigger.removeAttribute('aria-controls');
 }
 
-const tabbablesIn = (root: Element) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0);
+const tabbablesIn = (root: Element) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && !el.matches(':disabled') && el.getClientRects().length > 0);
 const rtl = (el: Element) => getComputedStyle(el).direction === 'rtl';
 
 // A switch keeps one popup on screen, as Base UI's single popup does: the new one starts where the old one stood, at its

@@ -197,6 +197,7 @@ test('Base UI menu typeahead: a letter moves to the next item starting with it, 
 test('a Base UI menu opened by a press focuses its popup with nothing highlighted, each time; ArrowDown then highlights the first item', async () => {
 	const page = await open(menu(['Profile', 'Billing', 'Settings']), ['base-ui/menu']);
 	await page.locator('#dd').click();
+	await settled(page);
 	assert.equal(await state(page), 'true focus=popup highlighted=-');
 	await page.getByText('Billing').hover();
 	assert.equal(await state(page), 'true focus=Billing highlighted=Billing');
@@ -204,9 +205,25 @@ test('a Base UI menu opened by a press focuses its popup with nothing highlighte
 	await settled(page);
 	assert.equal(await state(page), 'false focus=trigger:Open highlighted=-');
 	await page.locator('#dd').click();
+	await settled(page);
 	assert.equal(await state(page), 'true focus=popup highlighted=-');
 	await press(page, 'ArrowDown');
 	assert.equal(await state(page), 'true focus=Profile highlighted=Profile');
+	await page.close();
+});
+
+test("a Base UI menu opened by a mouse press shows no focus ring: the press focuses its trigger, as useClick's mousedown leaves it to, and the popup takes focus after it", async () => {
+	const page = await open(menu(['Profile', 'Billing', 'Settings']), ['base-ui/menu']);
+	const focused = () => page.evaluate(() => (window as unknown as { log: string[] }).log);
+	await page.evaluate(() => {
+		const log: string[] = ((window as unknown as { log: string[] }).log = []);
+		document.addEventListener('focusin', (e) => log.push((e.target as Element).id || (e.target as Element).getAttribute('role')!), true);
+	});
+	await page.locator('#dd').click();
+	await settled(page);
+	assert.deepEqual(await focused(), ['dd', 'menu']);
+	assert.equal(await state(page), 'true focus=popup highlighted=-');
+	assert.equal(await page.evaluate(() => document.activeElement!.matches(':focus-visible')), false);
 	await page.close();
 });
 
@@ -559,6 +576,24 @@ test("a left click in a Base UI context menu's trigger area while its menu is op
 	await page.mouse.click(550, 250);
 	await page.waitForTimeout(300);
 	assert.equal(await st(), 'open=false pressed=false focus=BODY');
+	await page.close();
+});
+
+test("an open Base UI context menu hides the page from assistive technology and marks it, as its modal focus manager's markOthers does, leaving its submenu's portal alone; its trigger area carries data-popup-open", async () => {
+	const page = await open(
+		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main><div aria-live="polite" id="live"></div>
+		<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px"><div role="menuitem" tabindex="-1" data-slot="context-menu-item">Back</div><div role="menuitem" tabindex="-1" id="sub1" aria-haspopup="menu" aria-expanded="false" data-mm-key="ctx-sub-1" data-slot="context-menu-sub-trigger">More Tools</div></div></div></div>
+		<div data-base-ui-portal hidden data-mm-layer="ctx-sub-1"><div data-side="right" data-align="start" data-nested role="presentation" style="position:absolute;left:400px;top:0" data-closed><div tabindex="-1" role="menu" data-nested aria-labelledby="sub1" data-slot="context-menu-sub-content" data-closed style="width:200px"><div role="menuitem" tabindex="-1" data-slot="context-menu-item">Save Page</div></div></div></div>`,
+		['base-ui/context-menu'],
+	);
+	const marks = () => page.evaluate(() => ['main', '#live', '[data-mm-layer="ctx"]', '[data-mm-layer="ctx-sub-1"]'].map((s) => { const el = document.querySelector(s)!; return `${el.getAttribute('aria-hidden') ?? '-'}${el.hasAttribute('data-base-ui-inert') ? ' inert' : ''}`; }).join(', ') + ` | ${document.querySelector('[data-slot="context-menu-trigger"]')!.hasAttribute('data-popup-open')}`);
+	assert.equal(await marks(), '-, -, -, - | false');
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	assert.equal(await marks(), 'true inert, - inert, -, - | true');
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await marks(), '-, -, -, - | false');
 	await page.close();
 });
 

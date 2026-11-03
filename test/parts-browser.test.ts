@@ -266,6 +266,25 @@ test('Base UI Tooltip opens for a mouse, never a touch (its hover is mouseOnly);
 	await page.close();
 });
 
+test("the pointer inside an open Radix sheet whose layer also holds a tooltip's content leaves the sheet open: the sheet's content is no tooltip trigger", async () => {
+	// As convert renders /charts/bar's View Code: the Copy button's tooltip, revealed inside the sheet, is a layer under the sheet's key.
+	const page = await open(
+		`<main style="padding:40px"><button data-slot="sheet-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="sheet" data-state="closed">View Code</button></main>
+		<div data-mm-layer="sheet" hidden data-radix-popper-content-wrapper style="position:fixed"><div data-slot="tooltip-content" data-state="closed">Copy code</div></div>
+		<div data-mm-layer="sheet" hidden data-slot="sheet-overlay" data-state="closed"></div>
+		<div data-mm-layer="sheet" hidden role="dialog" id="sheet" data-slot="sheet-content" data-state="closed" tabindex="-1" style="position:fixed;right:0;top:0;width:400px;height:400px"><p id="code" style="padding:40px">const chartData = []</p><button data-slot="tooltip-trigger" data-state="closed">Copy</button></div>`,
+		['radix/dialog', 'radix/tooltip'],
+	);
+	await page.getByText('View Code').click();
+	const box = (await page.locator('#code').boundingBox())!;
+	await page.mouse.move(box.x + 20, box.y + box.height / 2, { steps: 3 });
+	await page.mouse.move(10, 300, { steps: 3 });
+	await page.waitForTimeout(100);
+	assert.equal(await page.locator('#sheet').getAttribute('data-state'), 'open');
+	assert.equal(await page.locator('#sheet').isVisible(), true);
+	await page.close();
+});
+
 // The site's Document as convert writes it for ui.shadcn.com: next-themes' options and the toggle controls.json names.
 const EARLY_THEME = `<script>${earlyThemeScript({ attribute: 'class', storageKey: 'theme', defaultTheme: 'system', themes: ['light', 'dark'], enableSystem: true, enableColorScheme: true, disableTransitionOnChange: true }, { name: 'Toggle theme', key: 'd' })}</script>`;
 const themeFlips = (page: Page) => page.evaluate(() => (window as unknown as { flips?: number }).flips ?? 0);

@@ -72,7 +72,8 @@ function highlight(p: Popup, item: HTMLElement | undefined, keyboard = false): v
 const first = (list: readonly HTMLElement[], skip = (_: HTMLElement) => false) => list.find((i) => visible(i) && !skip(i));
 const last = (list: readonly HTMLElement[], skip = (_: HTMLElement) => false) => list.findLast((i) => visible(i) && !skip(i));
 
-function openMenu(trigger: HTMLElement, focus: 'first' | 'last' | 'popup'): boolean {
+// `pressed`: a mouse press opened it, whose own mousedown focuses the trigger; FloatingFocusManager's focus comes after.
+function openMenu(trigger: HTMLElement, focus: 'first' | 'last' | 'popup', pressed = false): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="menu"]', tabOut: true, fallbackAxisSide: 'none', onDismiss: (x) => close(x) });
 	if (!p) return false;
 	typing.set(p, newTyping());
@@ -83,7 +84,8 @@ function openMenu(trigger: HTMLElement, focus: 'first' | 'last' | 'popup'): bool
 	if (to) {
 		highlight(p, to);
 		requestAnimationFrame(() => to.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
-	} else p.popup.focus({ preventScroll: true });
+	} else if (pressed) setTimeout(() => popupFor(trigger) === p && !p.popup.contains(document.activeElement) && p.popup.focus({ preventScroll: true }));
+	else p.popup.focus({ preventScroll: true });
 	return true;
 }
 function close(p: Popup, returnFocus = true): void {
@@ -231,11 +233,10 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	activate(target.closest<HTMLElement>(ITEM));
 	const trigger = triggerOf(target);
 	if (!trigger || event.button !== 0) return false;
-	// The press's own focus would land on the trigger after the menu took it.
-	event.preventDefault();
 	const p = popupFor(trigger);
+	if (p || event.pointerType !== 'mouse') event.preventDefault();
 	if (p) close(p);
-	else openMenu(trigger, 'popup');
+	else openMenu(trigger, 'popup', event.pointerType === 'mouse');
 	return true;
 }
 export function click(target: Element, event?: MouseEvent): boolean {

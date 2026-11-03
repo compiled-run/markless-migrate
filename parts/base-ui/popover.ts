@@ -9,7 +9,7 @@ const keyOf = (trigger: HTMLElement) => trigger.id || layerKey(trigger);
 const positioned = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal') && n.querySelector(':scope > [role="presentation"][data-side]'));
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
 // PopoverPopup's default initialFocus is its first tabbable element, else the popup.
-const tabbablesIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0);
+const tabbablesIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && !el.matches(':disabled') && el.getClientRects().length > 0);
 
 export function click(target: Element): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);

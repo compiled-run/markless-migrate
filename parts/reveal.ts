@@ -111,7 +111,8 @@ export function layerSlot(el: Element): string {
 	if (key) {
 		const served = document.querySelector<HTMLTemplateElement>(`${LAYER_SOURCE}[data-mm-layer-keys~="${CSS.escape(key)}"]`);
 		const nodes = [...document.querySelectorAll(`[data-mm-layer="${CSS.escape(key)}"]`), ...(served?.content.querySelectorAll(`[data-mm-layer="${CSS.escape(key)}"]`) ?? [])];
-		for (const n of nodes) {
+		// What its own key's layer holds (a sheet's content, keyed by its id) is that layer, not the control that opens it.
+		for (const n of nodes.some((n) => n.contains(el)) ? [] : nodes) {
 			const content = n.matches(CONTENT) ? n : n.querySelector(CONTENT);
 			const slot = content?.getAttribute('data-slot');
 			if (slot) {
