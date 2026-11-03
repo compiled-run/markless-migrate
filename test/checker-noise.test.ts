@@ -389,6 +389,23 @@ test('a child\'s transition that an ancestor\'s transition starts again and agai
 	}
 });
 
+test('a transition that starts and ends inside one long task is still motion: no frame sees it, its run event and declared timing name it (a combobox border on Escape while a busy runner blocks for 300 ms)', async () => {
+	const { armMotion } = await import('../src/check/motion.ts');
+	const site = await serve(() => ({ body: html('<button id="go">Close</button><div id="box">Box</div>', "<style>#box { border: 2px solid rgb(0, 0, 0); transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1); } #box.open { border-color: rgb(200, 0, 0); }</style><script>addEventListener('DOMContentLoaded', () => (document.getElementById('go').onclick = () => requestAnimationFrame(() => { const box = document.getElementById('box'); box.classList.toggle('open'); getComputedStyle(box).borderColor; const until = performance.now() + 300; while (performance.now() < until) {} })));</script>") }));
+	const page = await browser.newPage({ reducedMotion: 'no-preference' });
+	try {
+		await page.goto(site);
+		await page.evaluate(armMotion, false);
+		await page.click('#go');
+		await page.waitForTimeout(400);
+		const records = await page.evaluate(() => (window as unknown as { __mmMotionRecorder: { records(): { tag: string; name: string; duration: number; easing: string }[] } }).__mmMotionRecorder.records());
+		assert.deepEqual(records.filter((r) => r.tag === 'div').map((r) => r.name).sort(), ['border-bottom-color', 'border-left-color', 'border-right-color', 'border-top-color']);
+		assert.ok(records.filter((r) => r.tag === 'div').every((r) => r.duration === 150 && r.easing === 'cubic-bezier(0.4, 0, 0.2, 1)'), JSON.stringify(records));
+	} finally {
+		await page.close();
+	}
+});
+
 test('what a poll\'s own follow-up timer changed is undone with the poll when it is held, so a page captured at another phase of it looks the same', async () => {
 	const { openPage } = await import('../src/check/browser.ts');
 	const { holdLoops } = await import('../src/check/loops.ts');
