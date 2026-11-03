@@ -403,7 +403,11 @@ export function focusout(target: Element, event: FocusEvent): boolean {
 }
 
 const mounting = new WeakMap<Element, MutationObserver>();
+// Markless lists a node's handlers in its m:on attribute.
+const rendersAgain = (root: Element) => (root.getAttribute('m:on') ?? '').split(';').some((h) => h.startsWith('mmunmount:'));
+
 function unmount(root: HTMLElement): void {
+	if (!rendersAgain(root)) return reset(root);
 	commands.delete(root);
 	mounting.get(root)?.disconnect();
 	const gone = new MutationObserver(() => {
@@ -415,4 +419,35 @@ function unmount(root: HTMLElement): void {
 	gone.observe(root, { childList: true, subtree: true });
 	mounting.set(root, gone);
 	root.dispatchEvent(new CustomEvent('mmunmount'));
+}
+
+// A Command the page cannot render again (its items read state from inside it) is put back as cmdk mounts it, by hand.
+function reset(root: HTMLElement): void {
+	const field = root.querySelector<HTMLInputElement>('[cmdk-input]');
+	if (field) field.value = '';
+	const c = commandOf(root);
+	for (const [container, order] of c.original) c.order.set(container, [...order]);
+	apply(root, '');
+	for (const i of root.querySelectorAll(`${ITEM}[aria-selected="true"]`)) {
+		i.setAttribute('aria-selected', 'false');
+		i.setAttribute('data-selected', 'false');
+	}
+	setDescendant(root, undefined);
+	const scroller = root.querySelector<HTMLElement>('[cmdk-list]');
+	const layer = root.closest<HTMLElement>('[data-mm-layer]');
+	if (scroller && layer) toTopOnShow(scroller, layer);
+}
+
+// A display:none list ignores a scrollTop write and shows its old offset again, where cmdk's remounted list starts at the top.
+const rewinding = new WeakSet<Element>();
+function toTopOnShow(scroller: HTMLElement, layer: HTMLElement): void {
+	if (rewinding.has(scroller)) return;
+	rewinding.add(scroller);
+	const watch = new MutationObserver(() => {
+		if (layer.hidden) return;
+		watch.disconnect();
+		rewinding.delete(scroller);
+		scroller.scrollTop = 0;
+	});
+	watch.observe(layer, { attributes: true, attributeFilter: ['hidden'] });
 }

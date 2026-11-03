@@ -498,6 +498,7 @@ async function remountOnClose(page: Page): Promise<void> {
 		(window as unknown as { mounts: string[] }).mounts = log;
 		for (const root of document.querySelectorAll('[data-mm-layer] [cmdk-root]')) {
 			const fresh = root.innerHTML;
+			root.setAttribute('m:on', 'mmunmount:0;mmmount:1');
 			root.addEventListener('mmunmount', () => (log.push('unmount'), root.replaceChildren()));
 			root.addEventListener('mmmount', () => (log.push('mount'), (root.innerHTML = fresh)));
 		}
@@ -560,6 +561,23 @@ test('cmdk: once its layer has closed, a command has the page take what it holds
 	assert.equal(await chosen(), 'i0', 'the first item is selected');
 	await page.locator('[cmdk-list]').hover();
 	assert.equal(await chosen(), pointed, 'the pointer lands on the item it landed on the first time');
+	await page.close();
+});
+
+test('cmdk: a command in a layer the page does not render again is put back by hand: no search, its first item selected and nothing active', async () => {
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('bil');
+	await page.keyboard.press('ArrowDown');
+	// Focus leaves as an outside press starts closing the layer: what it shows stays while it animates out, as React's does.
+	await page.locator('#trigger').focus();
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), 'bil');
+	assert.equal((await commandState(page)).selected, 'bil');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = true);
+	await page.waitForFunction(() => (document.querySelector('[cmdk-input]') as HTMLInputElement).value === '');
+	await page.evaluate(() => (document.querySelector('[data-mm-layer]') as HTMLElement).hidden = false);
+	await page.locator('[cmdk-input]').focus();
+	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
 	await page.close();
 });
 

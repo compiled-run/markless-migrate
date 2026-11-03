@@ -809,7 +809,9 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const hollow = hollowOf(kept);
 	const copies = layerChoices[reveal.key];
 	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies) || scrollBinding(x, copies)));
-	const commands = kept.flatMap((top) => [top, ...walkAll(top)]).filter((x) => attr(x, 'cmdk-root') !== undefined && !siteComponentOf(x, siteComponents));
+	// A Command whose items a state plan binds (a table's facet filter) reads that state from inside the @if, which Markless cannot render again.
+	const stateBound = (x: Element) => [x, ...walkAll(x)].some((d) => racLayer?.plan.bind(d) || pickers?.bind(d) || tableMenu?.bind(d));
+	const commands = kept.flatMap((top) => [top, ...walkAll(top)]).filter((x) => attr(x, 'cmdk-root') !== undefined && !siteComponentOf(x, siteComponents) && !stateBound(x));
 	const emit = (shell: boolean) =>
 		kept
 			.map((top) =>
