@@ -35,6 +35,12 @@ export interface FailedRoute {
 	readonly failed: string;
 }
 
+/** Why a route could not be observed: the error's first line and where in the checker it was thrown. */
+function failure(error: Error): string {
+	const at = error.stack?.split('\n').find((line) => /\/src\//.test(line))?.trim().replace(/^at /, '');
+	return `${error.message.split('\n')[0]!}${at ? ` (at ${at.replace(/^.*\/src\//, 'src/').replace(/\)$/, '')})` : ''}`;
+}
+
 export async function produceOriginal(options: ProduceOptions): Promise<Part> {
 	const lock = await readLock();
 	const moved = await drift(lock);
@@ -53,7 +59,7 @@ export async function produceOriginal(options: ProduceOptions): Promise<Part> {
 	const one = async (route: string) => {
 		const started = Date.now();
 		const explore = { ...c.journeys, owner: (signature: string) => owners.get(signature.split(' > ')[0]!), serves: (path: string) => isSwitched([route, ...c.switched], path) };
-		const got = await relaunched.retried(route, (browser) => observeOriginal(browser, env, route, { viewports: c.viewports, explore }), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0]! }));
+		const got = await relaunched.retried(route, (browser) => observeOriginal(browser, env, route, { viewports: c.viewports, explore }), async () => {}).catch((error: Error) => ({ failed: failure(error) }));
 		let row: RouteRow | FailedRoute;
 		if ('value' in got) row = await writeRoute(writer, route, got.value);
 		else {
