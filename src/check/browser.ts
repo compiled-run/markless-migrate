@@ -9,7 +9,7 @@ import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
 import { at, writeHandler, type WriteFact } from './source-facts.ts';
 import { blockedResult, detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
-import { trackLoops } from './loops.ts';
+import { skipHeldTimers, trackLoops } from './loops.ts';
 import type { TimedNetwork } from './timing-network.ts';
 import { registerStructure } from './structure.ts';
 import type { Blocked, Viewport } from './types.ts';
@@ -47,6 +47,8 @@ export interface SideEnv {
 	readonly signIn?: () => Promise<StorageState>;
 	/** What the visitor's prefers-reduced-motion says; `reduce` unless motion is being recorded. */
 	readonly reducedMotion?: 'reduce' | 'no-preference';
+	/** Timeouts a capture of the page held as loops, by hash (`PageCapture.timers`): never run in this side's pages. */
+	readonly skipTimers?: readonly string[];
 	/** The OS colour scheme the page sees (light unless set). */
 	readonly colorScheme?: 'light' | 'dark';
 	/** Hosts the old app's source reads its data from (its API clients): a journey's GETs there are answered from the run's one copy. */
@@ -394,6 +396,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
 	if (options.loops) await context.addInitScript(trackLoops, options.loops === true ? [] : [...options.loops.known]);
+	else if (env.skipTimers?.length) await context.addInitScript(skipHeldTimers, [...env.skipTimers]);
 	await context.addInitScript(trackEmbedSlots, SLOTS.map((s) => ({ ...s })));
 	await context.addInitScript(trackCanvasDraws);
 	if (env.liveCounts?.size) await context.addInitScript(pinLiveCounts, [...env.liveCounts]);

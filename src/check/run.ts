@@ -343,7 +343,14 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 	};
 	const door = { old: watched.old.origin, serves: (path: string) => isSwitched([route, ...(watched.switched ?? [])], path), ...(watched.old.storageState ? { storageState: watched.old.storageState } : {}), ...(watched.old.signIn ? { signIn: watched.old.signIn } : {}) };
 	// A hash-routed old server only ever serves its shell, so no request of its pages can be handed to the new app.
-	const front: SideEnv = watched.old.routing === 'hash' ? watched.new : { ...watched.new, frontDoor: door };
+	const frontOf = (next: SideEnv): SideEnv => (watched.old.routing === 'hash' ? next : { ...next, frontDoor: door });
+	// What a capture of each side held as a loop (an autoplaying carousel) stays held on every page a journey opens.
+	const timersOf = (captures: readonly RouteCapture[]) => [...new Set(captures.flatMap((c) => Object.values(c.pages).flatMap((p) => p.timers ?? [])))].sort();
+	const held = (env: SideEnv, timers: readonly string[]): SideEnv => (timers.length ? { ...env, skipTimers: timers } : env);
+	const steady = () => {
+		const { olds, next } = load();
+		return { old: held(watched.old, timersOf(olds)), new: held(watched.new, timersOf([next])) };
+	};
 	return {
 		wall: async () => {
 			const [old, next] = await Promise.all([probeWall(run.old, route, 'old'), probeWall(run.new, route, 'new')]);
@@ -366,22 +373,27 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			return selfUrlFailures(route, Object.values(next.pages)[0]?.seo ?? {}, watched.new, { seo: Object.values(olds[0]!.pages)[0]?.seo ?? {}, origin: watched.old.origin });
 		},
 		states: (asked) => observeRouteStates(browser, watched, route, viewports, load().olds, asked),
-		journeys: () => observeJourneys(browser, watched, route, viewport, front, load().loads),
+		journeys: () => {
+			const sides = steady();
+			return observeJourneys(browser, { ...watched, old: sides.old, new: sides.new }, route, viewport, frontOf(sides.new), load().loads);
+		},
 		arrival: async ({ entry, journeys }) => {
 			if (!(await servesPage(watched.new, entry))) return null;
+			const sides = steady();
 			if (watched.original && !originalRouteRow(watched.original, route).live?.journeys) {
 				const stored = fromDataset(route, () => originalJourneys(watched.original!, route)).arrival;
 				if (!stored || digest(stored.journeys) !== digest(journeys)) throw new InfrastructureError({ cause: 'not in the original dataset', message: `${route}: the original's dataset holds no replays of the journeys after arriving from ${entry} that this check builds` });
-				return { a: stored.runs[0]!, b: stored.runs[1]!, next: await replayAll(browser, watched.new, route, viewport, journeys) };
+				return { a: stored.runs[0]!, b: stored.runs[1]!, next: await replayAll(browser, sides.new, route, viewport, journeys) };
 			}
-			const [a, b, next] = await Promise.all([replayAll(browser, watched.old, route, viewport, journeys), replayAll(browser, watched.old, route, viewport, journeys), replayAll(browser, watched.new, route, viewport, journeys)]);
+			const [a, b, next] = await Promise.all([replayAll(browser, sides.old, route, viewport, journeys), replayAll(browser, sides.old, route, viewport, journeys), replayAll(browser, sides.new, route, viewport, journeys)]);
 			return { a, b, next };
 		},
 		retime: async ({ set, journey }) => {
-			const other = set === 'main' ? front : watched.new;
+			const sides = steady();
+			const other = set === 'main' ? frontOf(sides.new) : sides.new;
 			const rounds: { old: RunResults[number]; next: RunResults[number] }[] = [];
 			for (let i = 0; i < (watched.original ? FRESH_RETIMES : RETIMES); i++) {
-				const old = await replay(browser, watched.old, route, viewport, journey).catch(() => []);
+				const old = await replay(browser, sides.old, route, viewport, journey).catch(() => []);
 				rounds.push({ old, next: await replay(browser, other, route, viewport, journey).catch(() => []) });
 			}
 			return rounds.map((r) => ({ old: [...r.old], next: [...r.next] }));
@@ -423,7 +435,7 @@ async function observeRouteStates(browser: Browser, run: Run, route: string, vie
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
 async function observeJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, front: SideEnv, loads: readonly string[]): Promise<JourneysRow> {
 	if (run.original && !originalRouteRow(run.original, route).live?.journeys) return storedJourneys(browser, run, route, viewport, front, fromDataset(route, () => originalJourneys(run.original!, route)));
-	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
+	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched, skipTimers: run.old.skipTimers ?? [] };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
 	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
 	if (explored.incomplete) throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the machine ran far slower than the journeys need, so ${route} is not checked rather than compared on fewer of them` });
