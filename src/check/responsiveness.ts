@@ -1,11 +1,13 @@
+import { pageFunctions } from 'lighthouse/core/lib/page-functions.js';
 import type { Browser, Page, Request, Response } from 'playwright';
 import { appHeaders, openPage, type SideEnv } from './browser.ts';
 import { request as fetchApp } from './http.ts';
 import { locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import { describeStep, describeTarget } from './journeys-compare.ts';
 import type { Failure, Viewport } from './types.ts';
-import { failuresOf, SLACK_MS, SLACK_RATIO, speeds, speedTiming, verdictFor, worstOf } from './responsiveness-compare.ts';
+import { failuresOf, SLACK_MS, SLACK_RATIO, speeds, speedTiming, timeOf, verdictFor, worstOf } from './responsiveness-compare.ts';
 import { loadPage } from './infrastructure.ts';
+import { cpuMultiplier } from './load.ts';
 import { judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
 import { DEFAULT_BUDGET_MS, DEFAULT_CPU, msText } from './responsiveness-summary.ts';
@@ -22,7 +24,7 @@ export interface Speed {
 export interface ResponsivenessOptions {
 	/** First in-page interaction at the throttled speed must answer within this; default 200 ms. */
 	readonly budgetMs?: number;
-	/** CPU slowdown of the mobile speed; default 4. */
+	/** CPU slowdown of the mobile speed, applied as given; by default the slowdown that makes this machine stand for Lighthouse's 4x device, from its benchmarkIndex measured on each route. */
 	readonly cpu?: number;
 	/** At most this many controls measured per route, in-page controls first; default 16. */
 	readonly maxControls?: number;
@@ -118,6 +120,9 @@ export interface Worst {
 export interface Responsiveness {
 	readonly budgetMs: number;
 	readonly cpu: number;
+	/** The slowdown applied at the throttled speed, and the benchmarkIndex it was calibrated from. */
+	readonly rate?: number;
+	readonly benchmarkIndex?: number;
 	/** The fixed latency every response had on both sides. */
 	readonly latencyMs?: number;
 	readonly controls: readonly ControlTiming[];
@@ -506,12 +511,28 @@ export function controlsToMeasure(journeys: readonly RecordedJourney[], options:
 	return { steps: [...takeInPage, ...takeLinks], notMeasured };
 }
 
+/** This machine's speed as Lighthouse measures it (benchmarkIndex), the median of three reads on a blank page, unthrottled. */
+export async function machineIndex(browser: Browser): Promise<number> {
+	const context = await browser.newContext();
+	try {
+		const page = await context.newPage();
+		const reads: number[] = [];
+		for (let i = 0; i < 3; i++) reads.push(await page.evaluate(pageFunctions.computeBenchmarkIndex));
+		return reads.sort((a, b) => a - b)[1]!;
+	} finally {
+		await context.close();
+	}
+}
+
 /** Times every pointer control and internal link the journeys exercised, on a fresh load, at desktop speed and on a throttled phone. */
 export async function checkResponsiveness(browser: Browser, envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string, journeys: readonly RecordedJourney[], options: ResponsivenessOptions = {}): Promise<{ responsiveness: Responsiveness; failures: Failure[] }> {
 	const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
 	const cpu = options.cpu ?? DEFAULT_CPU;
 	const picked = controlsToMeasure(journeys, options);
-	const all = speeds(cpu);
+	// Runners differ in speed by up to 2x (A/A runs 41480429505 and 41553969320), which a fixed slowdown carries into the budget.
+	const benchmarkIndex = options.cpu === undefined && picked.steps.length ? await machineIndex(browser) : undefined;
+	const rate = benchmarkIndex !== undefined ? Math.round(cpuMultiplier(benchmarkIndex) * 100) / 100 : cpu;
+	const all = speeds(cpu, rate);
 	const controls: ControlTiming[] = new Array(picked.steps.length);
 	const notMeasured = [...picked.notMeasured];
 	const latencyMs = options.latencyMs ?? DEFAULT_LATENCY_MS;
@@ -526,7 +547,7 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 				const timings: SpeedTiming[] = [];
 				for (const speed of all) {
 					let first = await pair(speed, step);
-					if (first.o.cold || first.n.cold) first = await pair(speed, step);
+					if (first.o.cold || first.n.cold || (navigates && (timeOf(kind, first.o) === undefined) !== (timeOf(kind, first.n) === undefined))) first = await pair(speed, step);
 					const olds = [first.o];
 					const news = [first.n];
 					if (verdictFor(kind, speed, olds, news, budgetMs).rerun) {
@@ -543,7 +564,7 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	const measured = controls.filter(Boolean);
 	await addVariance(measured, picked.steps, all, pair, budgetMs);
 	await confirmSlower(measured, picked.steps, all, pair);
-	const responsiveness: Responsiveness = { budgetMs, cpu, latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
+	const responsiveness: Responsiveness = { budgetMs, cpu, ...(benchmarkIndex !== undefined ? { rate, benchmarkIndex: Math.round(benchmarkIndex) } : {}), latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
 	return { responsiveness, failures: failuresOf(route, measured, all, budgetMs) };
 }
 
@@ -584,8 +605,8 @@ const SLOWER = 'slower than the old';
  * significance (Holm), and only by more than the route's own old runs differ: a busy machine slows whichever run it happens to.
  */
 async function confirmSlower(controls: ControlTiming[], steps: readonly { step: Step }[], all: readonly Speed[], pair: (speed: Speed, step: Step) => Promise<{ o: Sample; n: Sample }>): Promise<void> {
-	const ms = (samples: readonly Sample[]) => samples.flatMap((x) => (x.ms !== undefined ? [x.ms] : []));
-	const spreads = controls.flatMap((c) => c.speeds.flatMap((t) => (ms(t.old).length > 1 ? [Math.max(...ms(t.old)) - Math.min(...ms(t.old))] : []))).sort((a, b) => a - b);
+	const ms = (samples: readonly Sample[], kind: ControlTiming['kind']) => samples.flatMap((x) => (timeOf(kind, x) !== undefined ? [timeOf(kind, x)!] : []));
+	const spreads = controls.flatMap((c) => c.speeds.flatMap((t) => (ms(t.old, c.kind).length > 1 ? [Math.max(...ms(t.old, c.kind)) - Math.min(...ms(t.old, c.kind))] : []))).sort((a, b) => a - b);
 	const floor = spreads.length ? spreads[Math.min(spreads.length - 1, Math.floor(0.95 * spreads.length))]! : 0;
 	const candidates = controls.flatMap((c, i) => c.speeds.flatMap((t, at) => (t.problems.some((x) => x.startsWith(SLOWER)) ? [{ i, at, effect: (t.newMs ?? 0) - (t.oldMs ?? 0), oldMs: t.oldMs ?? 0 }] : [])));
 	const tested = candidates.filter((c) => c.effect > Math.max(SLACK_MS, c.oldMs * SLACK_RATIO, floor)).sort((a, b) => b.effect - a.effect);
@@ -594,19 +615,21 @@ async function confirmSlower(controls: ControlTiming[], steps: readonly { step: 
 		const c = tested[k]!;
 		const t = controls[c.i]!.speeds[c.at]!;
 		const speed = all.find((x) => x.name === t.speed)!;
+		const kind = controls[c.i]!.kind;
 		const olds = [...t.old], news = [...t.new];
-		while (olds.length < CONFIRM_RUNS || news.length < CONFIRM_RUNS) {
+		// A run with no visible result has no time, so runs go on until each side has five times (directory's "1" in run 41553969320 had two).
+		for (let tries = 0; (ms(olds, kind).length < CONFIRM_RUNS || ms(news, kind).length < CONFIRM_RUNS) && tries < CONFIRM_RUNS * 2; tries++) {
 			const again = await pair(speed, steps[c.i]!.step);
 			olds.push(again.o);
 			news.push(again.n);
 		}
 		runs[k] = { olds, news };
-		return { kind: 'answer', old: ms(olds), next: ms(news) };
+		return { kind: 'answer', old: ms(olds, kind), next: ms(news, kind) };
 	};
 	const verdicts = await judgeInTurn(tested.length, CONFIRMED, sample, (batch) => judgeTiming(batch, floor, (o, n) => n - o > Math.max(SLACK_MS, o * SLACK_RATIO, floor)));
 	const stands = new Map<string, string>();
 	for (const [k, { judged: v, among }] of verdicts.entries()) {
-		if (v.stands) stands.set(`${tested[k]!.i}|${tested[k]!.at}`, `; runs again in turn: old ${ms(runs[k]!.olds).map(msText).join(', ')}, new ${ms(runs[k]!.news).map(msText).join(', ')} (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${msText(floor)} here)`);
+		if (v.stands) stands.set(`${tested[k]!.i}|${tested[k]!.at}`, `; runs again in turn: old ${ms(runs[k]!.olds, controls[tested[k]!.i]!.kind).map(msText).join(', ')}, new ${ms(runs[k]!.news, controls[tested[k]!.i]!.kind).map(msText).join(', ')} (p = ${v.p.toFixed(3)}, under the ${v.alpha.toFixed(4)} its rank among the ${among} judged with it needs; old runs differ by up to ${msText(floor)} here)`);
 	}
 	for (const c of candidates) {
 		const t = controls[c.i]!.speeds[c.at]!;

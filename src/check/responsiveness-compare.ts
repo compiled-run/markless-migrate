@@ -7,12 +7,17 @@ import type { Failure } from './types.ts';
 export const SLACK_MS = 16;
 export const SLACK_RATIO = 0.1;
 
-/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `cpu`. */
-export function speeds(cpu: number): Speed[] {
+/** A mid-range phone: Lighthouse's mobile viewport, touch input, the CPU slowed by `rate` to stand for Lighthouse's `cpu`x device. */
+export function speeds(cpu: number, rate = cpu): Speed[] {
 	return [
 		{ name: 'desktop', label: 'desktop', cpu: 1, viewport: { name: 'desktop', width: 1280, height: 800, isMobile: false } },
-		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
+		{ name: 'throttled', label: `${cpu}x CPU, mobile`, cpu: rate, viewport: { name: 'mobile', width: 412, height: 823, isMobile: true } },
 	];
+}
+
+/** A run's time, when it can be compared: a link whose next page did not show inside the window was not timed, whatever its event took. */
+export function timeOf(kind: ControlTiming['kind'], s: Sample): number | undefined {
+	return kind === 'navigation' && s.result === 'none' ? undefined : s.ms;
 }
 
 export interface Verdict {
@@ -93,12 +98,13 @@ export function speedTiming(speed: Speed, kind: ControlTiming['kind'], olds: rea
 }
 
 export function verdictFor(kind: ControlTiming['kind'], speed: Speed, olds: readonly Sample[], news: readonly Sample[], budgetMs: number): Verdict {
-	if (olds.some((s) => s.heldBack) || news.some((s) => s.heldBack)) return { ...judge(olds.map((s) => s.ms), news.map((s) => s.ms)), ok: true, rerun: false, slower: false, overBudget: false };
+	const time = (s: Sample) => timeOf(kind, s);
+	if (olds.some((s) => s.heldBack) || news.some((s) => s.heldBack)) return { ...judge(olds.map(time), news.map(time)), ok: true, rerun: false, slower: false, overBudget: false };
 	// Navigation is held to the old app at the throttled speed only; the desktop figures are reported.
-	if (kind === 'navigation' && speed.name !== 'throttled') return { ...judge(olds.map((s) => s.ms), news.map((s) => s.ms)), ok: true, rerun: false, slower: false, overBudget: false };
+	if (kind === 'navigation' && speed.name !== 'throttled') return { ...judge(olds.map(time), news.map(time)), ok: true, rerun: false, slower: false, overBudget: false };
 	return judge(
-		olds.map((s) => s.ms),
-		news.map((s) => s.ms),
+		olds.map(time),
+		news.map(time),
 		kind === 'in-page' && speed.name === 'throttled' ? budgetMs : undefined,
 	);
 }
@@ -206,5 +212,5 @@ export function judgeResponsiveness(route: string, recorded: { readonly responsi
 	const r = recorded.responsiveness;
 	const controls = r.controls.map((c) => ({ ...c, speeds: c.speeds.map((t) => held(c.kind, t, r.budgetMs)) }));
 	if (controls.every((c, i) => c.speeds.every((t, k) => t === r.controls[i]!.speeds[k]))) return { responsiveness: r, failures: [...recorded.failures] };
-	return { responsiveness: { ...r, controls, worst: worstOf(controls) }, failures: failuresOf(route, controls, speeds(r.cpu), r.budgetMs) };
+	return { responsiveness: { ...r, controls, worst: worstOf(controls) }, failures: failuresOf(route, controls, speeds(r.cpu, r.rate ?? r.cpu), r.budgetMs) };
 }
