@@ -132,3 +132,49 @@ export default function Fruit() {
 	assert.match(out, /onClick=\{\(\) => \(items_0 = \[\]\)\}/);
 	await compiles(declarations, out);
 });
+
+test("a state a slider's value takes and its text reads follows the slider: the slider's root runs the callback on each value its port announces", async () => {
+	const list = await facts({
+		'package.json': JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.0.0' } }),
+		'components/ui/slider.tsx': 'import { Slider as P } from "radix-ui"\nexport function Slider(props: any) {\n\treturn <P.Root data-slot="slider" {...props} />\n}\n',
+		'app/page.tsx': `import * as React from "react"
+import { Slider } from "../components/ui/slider"
+export default function Range() {
+  const [value, setValue] = React.useState([200, 800])
+  return <div data-range=""><span data-low="">{value[0]}</span><Slider value={value} onValueChange={(v) => setValue(v as [number, number])} /></div>
+}
+`,
+	});
+	const { found, out, declarations } = convert(list, '<div data-range=""><span data-low="">200</span><span data-slot="slider" dir="ltr" data-orientation="horizontal"><span data-slot="slider-track"><span data-slot="slider-range"></span></span><span><span role="slider" aria-valuenow="200" data-slot="slider-thumb"></span></span><span><span role="slider" aria-valuenow="800" data-slot="slider-thumb"></span></span></span></div>');
+	assert.equal(found, 1);
+	assert.deepEqual(declarations, ['let value_0 = state([200,800]);']);
+	assert.match(out, /<span data-low="">\{value_0\[0\]\}<\/span>/);
+	assert.match(out, /<span data-slot="slider" dir="ltr" data-orientation="horizontal" onMmvalue=\{\(mmEvent\) => \(\(v\) => \(value_0 = v\)\)\(\(mmEvent as CustomEvent\)\.detail\)\}>/);
+	await compiles(declarations, out);
+});
+
+test("a state a part's controlled prop only mirrors is not declared; the component's other state is, renumbered", async () => {
+	const list = await facts({
+		'package.json': JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.0.0' } }),
+		'app/page.tsx': `import * as React from "react"
+import { Checkbox } from "radix-ui"
+export default function Mixed() {
+  const [on, setOn] = React.useState(true)
+  const [count, setCount] = React.useState(0)
+  return (
+    <div data-mixed="">
+      <Checkbox.Root checked={on} onCheckedChange={setOn} />
+      <button type="button" onClick={() => setCount(count + 1)}>Add one</button>
+      <span data-count={count}>{count}</span>
+    </div>
+  )
+}
+`,
+	});
+	const { found, out, declarations } = convert(list, '<div data-mixed=""><button type="button" role="checkbox" aria-checked="true" data-state="checked" value="on"></button><button type="button">Add one</button><span data-count="0">0</span></div>');
+	assert.equal(found, 1);
+	assert.deepEqual(declarations, ['let count_0 = state(0);']);
+	assert.ok(out.includes('<button type="button" role="checkbox" aria-checked="true" data-state="checked" value="on"></button>'), out);
+	assert.ok(out.includes('onClick={() => (count_0 = count_0 + 1)}'), out);
+	await compiles(declarations, out);
+});

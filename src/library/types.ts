@@ -252,6 +252,8 @@ export interface StateComponent {
 	readonly refused?: string;
 	/** Each effect it runs (useEffect, useLayoutEffect), by line, and why it is not converted. */
 	readonly effects?: readonly { readonly line: number; readonly reason: string }[];
+	/** States that only mirror a library part's controlled prop: the part keeps them itself, as its port does, so they are not declared. */
+	readonly partState?: readonly { readonly state: string; readonly part: string; readonly prop: string }[];
 	readonly routes?: string[];
 }
 

@@ -1044,6 +1044,27 @@ test('a Radix vertical slider steps up with ArrowUp and follows the pointer from
 	await page.close();
 });
 
+test('a slider announces its values on its root after each change (mmvalue), as the library calls onValueChange, and not when a key leaves them as they were', async () => {
+	const thumb = (left: number, value: number, label: string) =>
+		`<span style="position:absolute;left:calc(${left}% + 0px)"><span role="slider" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${value}" tabindex="0" data-slot="slider-thumb" style="display:block;width:16px;height:16px"></span></span>`;
+	const page = await open(
+		`<div style="padding:50px"><span data-slot="slider" data-orientation="horizontal" data-mm-step="5" style="position:relative;display:block;width:200px;height:20px"><span data-slot="slider-track"><span data-slot="slider-range" style="position:absolute;left:25%;right:0%"></span></span>${thumb(25, 25, 'Minimum')}${thumb(100, 100, 'Maximum')}</span></div><script>window.announced = []; document.querySelector('[data-slot="slider"]').addEventListener('mmvalue', (e) => window.announced.push(e.detail.join(',')));</script>`,
+		['slider'],
+	);
+	const announced = () => page.evaluate(() => (window as unknown as { announced: string[] }).announced);
+	await page.locator('[aria-label="Minimum"]').focus();
+	await page.keyboard.press('ArrowRight');
+	await page.locator('[aria-label="Maximum"]').focus();
+	await page.keyboard.press('End');
+	assert.deepEqual(await announced(), ['30,100'], 'End on the thumb already at the max changes nothing and announces nothing');
+	const box = (await page.locator('[data-slot="slider"]').boundingBox())!;
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.up();
+	assert.deepEqual(await announced(), ['30,100', '50,100']);
+	await page.close();
+});
+
 test('a React Aria range slider: each thumb is bounded by its neighbour and the slider\'s ends, Page Up steps a tenth of the range', async () => {
 	const thumb = (left: number, min: number, max: number, value: number, k: number) =>
 		`<div data-slot="slider-thumb" style="position:absolute;left:${left}%;width:12px;height:12px" data-rac=""><div><input tabindex="0" id="t-${k}" type="range" min="${min}" max="${max}" step="5" aria-valuetext="${value}" value="${value}"></div></div>`;

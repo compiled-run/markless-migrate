@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { attr, childrenOf, elementChildren, walk, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
 import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
+import { SLIDER_VALUE_EVENT } from '../../parts/slider.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
@@ -32,6 +33,11 @@ export interface Port {
 	readonly events: readonly PartEvent[];
 	/** DOM events whose library answer the port announces with an event of its own once the library would call the app (a questionnaire's checked submit). */
 	readonly announces?: Readonly<Record<string, string>>;
+	/**
+	 * Controlled props whose every change the port announces with an event of its own on the part's element, its detail
+	 * the library's next value; `list`: the values as a list, which a library given one value calls back with the first of.
+	 */
+	readonly changes?: Readonly<Record<string, { readonly event: string; readonly list?: true }>>;
 	/**
 	 * Among the parts the source renders with an element's `data-slot`, whether this element is this library's: the markup
 	 * contract tells Radix's tab from Base UI's when a site renders both. The source decides the part; this only places it.
@@ -109,9 +115,9 @@ export const PORTS: readonly Port[] = [
 	{ module: 'base-ui/menu', library: '@base-ui/react', exports: ['Menu.Root', 'Menu.Trigger', 'Menu.Popup', 'Menu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/tooltip', library: '@base-ui/react', exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Popup'], events: ['pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'radix/select', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Content', 'Select.Viewport', 'Select.Item', 'Select.ItemText', 'Select.ItemIndicator', 'Select.Group', 'Select.Label', 'Select.Separator', 'Select.Icon', 'Select.Portal', 'Select.ScrollUpButton', 'Select.ScrollDownButton'], events: ['pointerdown', 'click', 'keydown'], locate: (el) => radix(el) },
-	{ module: 'slider', library: 'radix-ui', exports: ['Slider.Root', 'Slider.Track', 'Slider.Range', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => radix(el) || attr(el, 'data-slot')?.startsWith('slider') === true },
-	{ module: 'slider', library: 'react-aria-components', exports: ['Slider', 'SliderTrack', 'SliderThumb', 'SliderFill'], events: ['pointerdown', 'keydown'], locate: () => true },
-	{ module: 'slider', library: '@base-ui/react', exports: ['Slider.Root', 'Slider.Control', 'Slider.Track', 'Slider.Indicator', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => base(el) || el.attrs.some((a) => a.name.startsWith('data-base-ui-slider')) },
+	{ module: 'slider', library: 'radix-ui', exports: ['Slider.Root', 'Slider.Track', 'Slider.Range', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], changes: { value: { event: SLIDER_VALUE_EVENT, list: true } }, locate: (el) => radix(el) || attr(el, 'data-slot')?.startsWith('slider') === true },
+	{ module: 'slider', library: 'react-aria-components', exports: ['Slider', 'SliderTrack', 'SliderThumb', 'SliderFill'], events: ['pointerdown', 'keydown'], changes: { value: { event: SLIDER_VALUE_EVENT, list: true } }, locate: () => true },
+	{ module: 'slider', library: '@base-ui/react', exports: ['Slider.Root', 'Slider.Control', 'Slider.Track', 'Slider.Indicator', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], changes: { value: { event: SLIDER_VALUE_EVENT, list: true } }, locate: (el) => base(el) || el.attrs.some((a) => a.name.startsWith('data-base-ui-slider')) },
 	{ module: 'radix/tooltip', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Content', 'Tooltip.Portal', 'Tooltip.Provider', 'Tooltip.Arrow'], events: ['pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'tooltip-trigger' },
 	{ module: 'resizable', library: 'react-resizable-panels', exports: ['Group', 'Panel', 'Separator', 'PanelGroup', 'PanelResizeHandle'], events: ['keydown', 'pointerdown', 'pointerover', 'pointerout'], locate: (el) => el.attrs.some((a) => a.name === 'data-group' || a.name === 'data-panel' || a.name === 'data-separator') },
 	{ module: 'shadcn/message-scroller', library: '@shadcn/react', exports: ['MessageScroller.Provider', 'MessageScroller.Root', 'MessageScroller.Viewport', 'MessageScroller.Content', 'MessageScroller.Item', 'MessageScroller.Button'], events: ['click', 'keydown'], locate: (el) => slot(el).startsWith('message-scroller') },
@@ -285,6 +291,11 @@ export function portFor(el: Element): string | undefined {
 	if (!s || !resolver) return undefined;
 	const candidates = narrow(el, resolver.candidates(s));
 	return PORTS.find((port) => candidates.some((c) => c.library === port.library && port.exports.includes(c.export)) && port.locate(el))?.module;
+}
+
+/** The event a port announces a library part's controlled prop's changes with, if one does. */
+export function announcedChange(library: string, exportName: string, prop: string): { readonly event: string; readonly list?: true } | undefined {
+	return PORTS.find((p) => p.library === library && p.exports.includes(exportName) && p.changes?.[prop])?.changes![prop];
 }
 
 /** The event the port of an element announces for a DOM event, when it checks it before the library calls the app. */

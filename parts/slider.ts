@@ -18,6 +18,9 @@ interface Slider {
 }
 
 const ROOT = '[data-slot="slider"]';
+/** Announced on the root after each change, its detail the values in thumb order, as the library would call onValueChange. */
+export const SLIDER_VALUE_EVENT = 'mmvalue';
+const announce = (s: Slider, values: readonly number[]) => s.root.dispatchEvent(new CustomEvent<number[]>(SLIDER_VALUE_EVENT, { detail: [...values] }));
 
 function sliderOf(el: Element): Slider | undefined {
 	const root = el.closest<HTMLElement>(ROOT);
@@ -53,13 +56,16 @@ function set(s: Slider, i: number, v: number): number {
 		const at = next.indexOf(value);
 		if (String(next) === String(values)) return at;
 		render(s, next);
+		announce(s, next);
 		s.thumbs[at]!.focus();
 		return at;
 	}
+	const was = String(values);
 	const lo = i > 0 ? values[i - 1]! : s.min;
 	const hi = i < values.length - 1 ? values[i + 1]! : s.max;
 	values[i] = Math.min(hi, Math.max(lo, snap(s, v)));
 	render(s, values);
+	if (String(values) !== was) announce(s, values);
 	return i;
 }
 
