@@ -60,7 +60,7 @@ after(async () => {
 	}
 });
 
-function serve(body: string | ((path: string) => string | undefined)): Promise<string> {
+function serve(body: string | ((path: string) => string | undefined), arriveMs?: number): Promise<string> {
 	const server = createServer((req, res) => {
 		const url = new URL(req.url ?? '/', 'http://x');
 		if (url.pathname === '/find') {
@@ -72,15 +72,15 @@ function serve(body: string | ((path: string) => string | undefined)): Promise<s
 		if (page === undefined) return void res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title><h1>Not found</h1>');
 		const answer = () => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page);
 		// Ada's page is slow to arrive by the router, so a second click lands before it.
-		if (req.headers['sec-fetch-dest'] === 'empty') setTimeout(answer, url.pathname === '/ada' ? 700 : 40);
+		if (req.headers['sec-fetch-dest'] === 'empty') setTimeout(answer, arriveMs ?? (url.pathname === '/ada' ? 700 : 40));
 		else answer();
 	});
 	servers.push(server);
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
 }
 
-async function check(old: string | ((path: string) => string | undefined), next: string | ((path: string) => string | undefined)): Promise<Report> {
-	const [a, b] = await Promise.all([serve(old), serve(next)]);
+async function check(old: string | ((path: string) => string | undefined), next: string | ((path: string) => string | undefined), arrive?: { old: number; new: number }): Promise<Report> {
+	const [a, b] = await Promise.all([serve(old, arrive?.old), serve(next, arrive?.new)]);
 	return runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1 });
 }
 
@@ -131,4 +131,12 @@ test('Back pressed before a router has added the page to history leaves the app 
 	const report = await check(late(true), late(false));
 	assert.ok(names(report).includes('click link "Ada", then go back before its page has arrived'), JSON.stringify(names(report)));
 	assert.deepEqual(failures(report).filter((f) => /could not be used/.test(f.actual)).map((f) => [f.check, f.actual]), []);
+});
+
+test('a race is decided by the steps, not by how fast the server answers: a page that arrives in 5 ms on one side and 300 ms on the other is held past the second action on both', async () => {
+	// The router keeps a trace of every page it shows, as Next.js's docs write their sidebar's scroll to session storage.
+	const traced = (path: string) => people(true)(path)?.replace("document.querySelector('main').innerHTML = new DOMParser()", "sessionStorage.setItem('shown', (sessionStorage.getItem('shown') ?? '') + ' ' + new URL(href, location.href).pathname); document.querySelector('main').innerHTML = new DOMParser()");
+	const report = await check(traced, traced, { old: 5, new: 300 });
+	assert.ok(names(report).some((n) => /then go back before its page has arrived/.test(n)), JSON.stringify(names(report)));
+	assert.deepEqual(failures(report).filter((f) => /before (its|the first one's) page has arrived/.test(f.check)).map((f) => [f.check, f.expected, f.actual]), []);
 });
