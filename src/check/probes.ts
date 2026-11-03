@@ -233,8 +233,8 @@ async function runSequence(side: Side, origin: string, route: string, control: P
 }
 
 export interface ProbeOptions {
-	/** Wall-clock time the probes of one route may take; controls not probed by then are reported as not exercised. */
-	readonly budgetMs?: number;
+	/** Steps the probes of one route may take, each sequence's page load counting as one: sequences past them are reported as not exercised. */
+	readonly maxSteps?: number;
 	/** At most this many controls a route, one of each kind per class first. */
 	readonly maxControls?: number;
 	/** Control pairs (an old and a new page each) probed at once. */
@@ -258,6 +258,24 @@ const MIN_BUDGET_MS = 60_000;
 // A popup control's two sequences, with the old side's second run, take about 30 s one pair at a time.
 const PER_CONTROL_MS = 30_000;
 const MAX_BUDGET_MS = 600_000;
+// A step takes one pair 0.7 to 1.3 s by the runner (A/A runs 41480429505 and 41553969320), so the budget is counted in steps, never timed.
+const STEP_MS = 1_000;
+const stepsOf = (sequence: Sequence) => sequence.ops.length + 1;
+
+/** Which sequences, in queue order, fit in what is left of the allowance: decided before any is driven, so however long each takes. */
+export function admitSteps(sequences: readonly Sequence[], allowance: number, spent = 0): { admitted: boolean[]; spent: number } {
+	const admitted = sequences.map((sequence) => {
+		if (spent + stepsOf(sequence) > allowance) return false;
+		spent += stepsOf(sequence);
+		return true;
+	});
+	return { admitted, spent };
+}
+
+/** How many steps a route's probes may take: about the time its controls were given, by the time a step takes. */
+export function probeSteps(controls: number, pairs: number): number {
+	return Math.round((Math.min(MAX_BUDGET_MS, Math.max(MIN_BUDGET_MS, (controls * PER_CONTROL_MS) / pairs)) * pairs) / STEP_MS);
+}
 
 /** Probes the route's controls, class by class, old against new, and judges what they read (probes-compare.ts). */
 export async function checkProbes(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys?: readonly RecordedJourney[], options: ProbeOptions = {}): Promise<ProbeResult> {
@@ -296,7 +314,6 @@ export async function observeProbes(browser: Browser, sides: { readonly old: Sid
 	} finally {
 		await Promise.all([scan.close(), scanNew?.then((side) => side.close(), () => {})]);
 	}
-	const probing = Date.now();
 	const listed: ProbesRow['listed'][number][] = [];
 	const work: { control: ProbeControl; sequence: Sequence }[] = [];
 	const kinds = new Map<string, number>();
@@ -335,18 +352,21 @@ export async function observeProbes(browser: Browser, sides: { readonly old: Sid
 		}
 	}
 	const pairs = Math.max(1, options.concurrency ?? 2);
-	const budget = options.budgetMs ?? Math.min(MAX_BUDGET_MS, Math.max(MIN_BUDGET_MS, (probed.size * PER_CONTROL_MS) / pairs));
+	const allowance = options.maxSteps ?? probeSteps(probed.size, pairs);
+	let spent = 0;
 	const items: ProbeItem[] = [];
 	const drive = async (phase: ProbeItem['phase'], queued: readonly { control: ProbeControl; sequence: Sequence }[]) => {
 		if (!queued.length) return;
-		const queue = queued.map((item, at) => ({ ...item, at }));
+		const admitted = admitSteps(queued.map((q) => q.sequence), allowance, spent);
+		spent = admitted.spent;
+		const queue = queued.map((item, at) => ({ ...item, at, admitted: admitted.admitted[at]! }));
 		const worker = async () => {
 			const sides2 = { old: await openSide(browser, sides.old, viewport), new: await openSide(browser, sides.new, viewport) };
 			try {
 				for (let item = queue.shift(); item; item = queue.shift()) {
 					const { control, sequence, at } = item;
-					if (Date.now() - probing > budget) {
-						items.push({ phase, queue: at, control, sequence, read: { leftOut: `left out: the probes' ${Math.round(budget / 1000)} s budget ran out` } });
+					if (!item.admitted) {
+						items.push({ phase, queue: at, control, sequence, read: { leftOut: `left out: the probes' ${allowance}-step budget ran out` } });
 						continue;
 					}
 					const files = new Set<string>();
