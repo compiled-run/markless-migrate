@@ -102,8 +102,8 @@ export default function DirectoryList() @{
 					<div style="display: contents">
 					<div data-slot="item" data-variant="default" data-size="default" class="group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted border-transparent py-2.5 group/item relative gap-6 px-0">
 						<div data-slot="item-media" data-variant="image" class="flex shrink-0 items-center justify-center gap-2 group-has-data-[slot=item-description]/item:translate-y-0.5 group-has-data-[slot=item-description]/item:self-start [&_svg]:pointer-events-none size-10 overflow-hidden rounded-sm group-data-[size=sm]/item:size-8 group-data-[size=xs]/item:size-6 [&_img]:size-full [&_img]:object-cover grayscale *:[svg]:size-8 *:[svg]:fill-foreground">
-							<svg xmlns="http://www.w3.org/2000/svg" viewBox={row.viewBox} hidden={row.noLogo}>
-								<use href={row.logo} />
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox={row.viewBox} hidden={row.noLogo} fill={row.svg["fill"]} stroke={row.svg["stroke"]} stroke-width={row.svg["stroke-width"]} stroke-linecap={row.svg["stroke-linecap"]} stroke-linejoin={row.svg["stroke-linejoin"]} fill-rule={row.svg["fill-rule"]} width={row.svg["width"]} height={row.svg["height"]} x={row.svg["x"]} y={row.svg["y"]} preserveAspectRatio={row.svg["preserveAspectRatio"]} shape-rendering={row.svg["shape-rendering"]} enable-background={row.svg["enable-background"]} style={row.svg["style"]} class={row.svg["class"]} id={row.svg["id"]} version={row.svg["version"]} role={row.svg["role"]} aria-label={row.svg["aria-label"]} aria-labelledby={row.svg["aria-labelledby"]} aria-hidden={row.svg["aria-hidden"]} data-name={row.svg["data-name"]}>
+								<use href={row.logo} x={row.box.x} y={row.box.y} width={row.box.width} height={row.box.height} />
 							</svg>
 						</div>
 						<div data-slot="item-content" class="flex flex-1 flex-col gap-1 group-data-[size=xs]/item:gap-0 [&+[data-slot=item-content]]:flex-none">

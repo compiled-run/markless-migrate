@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><symbol id="logo" viewBox="0 0 190 190"><g >
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><symbol id="logo" viewBox="0 0 190 190">
 <g filter="url(#filter0_ii_1415_4245)">
 <rect width="190" height="190" rx="44" fill="url(#paint0_linear_1415_4245)"/>
 <circle cx="50" cy="50" r="44.6" stroke="black" stroke-opacity="0.1" stroke-width="0.8" stroke-dasharray="1.6 1.6"/>
@@ -144,4 +144,4 @@
 <stop offset="1" stop-color="#808080"/>
 </linearGradient>
 </defs>
-</g></symbol></svg>
+</symbol></svg>

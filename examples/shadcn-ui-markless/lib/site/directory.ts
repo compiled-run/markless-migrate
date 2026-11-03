@@ -10,7 +10,12 @@ export interface DirectoryEntry {
 	/** The logo's symbol file (directory/logos), and its viewBox; empty for a registry with no logo. */
 	readonly logo: string;
 	readonly viewBox: string;
+	/** The logo's root <svg> attributes but viewBox, which the drawing <svg> carries as the original's inline logo does. */
+	readonly svg?: Readonly<Record<string, string>>;
 }
+
+/** The root <svg> attributes of the registries' logos that the drawing <svg> renders (directory-list.tsrx names each). */
+export const LOGO_ATTRIBUTES: readonly string[] = ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'fill-rule', 'width', 'height', 'x', 'y', 'preserveAspectRatio', 'shape-rendering', 'enable-background', 'style', 'class', 'id', 'version', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'data-name'];
 
 interface Health {
 	readonly status: string;
@@ -97,6 +102,9 @@ export interface Row {
 	readonly description: string;
 	readonly logo: string;
 	readonly viewBox: string;
+	readonly svg: Readonly<Record<string, string>>;
+	/** The <use> box: the viewBox's own origin and size, so a symbol whose viewBox does not start at 0 0 lands where the inline logo draws. */
+	readonly box: { readonly x: string; readonly y: string; readonly width: string; readonly height: string };
 	/** The one registry with a blank logo shows an empty media box; its row keeps the hidden drawing so rows share one shape. */
 	readonly noLogo: boolean;
 	readonly last: boolean;
@@ -147,6 +155,11 @@ const step = (href: string, pad: string): Step => (href ? { href, disabled: unde
 const squash = (v: string) => v.toLowerCase().replaceAll(' ', '').replaceAll('@', '');
 
 /** What the list shows for a query and page: lib/registry-health/directory.ts's getRegistryDirectoryPage. */
+function useBox(viewBox: string): Row['box'] {
+	const [x = '0', y = '0', width = '0', height = '0'] = viewBox.trim().split(/[\s,]+/);
+	return { x, y, width, height };
+}
+
 export function directoryView(ranked: readonly Ranked[], logos: Readonly<Record<string, string>>, pathname: string, query: string, page: number): View {
 	const q = squash(query);
 	const found = q ? ranked.filter((r) => [r.name, r.description].some((v) => squash(v).includes(q))) : ranked;
@@ -154,7 +167,7 @@ export function directoryView(ranked: readonly Ranked[], logos: Readonly<Record<
 	const current = Math.max(1, Math.min(page, totalPages));
 	const shown = found.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 	return {
-		rows: shown.map((r, i) => ({ name: r.name, href: homepageUrl(r.homepage), description: r.description, logo: r.logo ? `${logos[r.logo] ?? ''}#logo` : '', viewBox: r.viewBox || '0 0 1 1', noLogo: !r.logo, last: i === shown.length - 1 })),
+		rows: shown.map((r, i) => ({ name: r.name, href: homepageUrl(r.homepage), description: r.description, logo: r.logo ? `${logos[r.logo] ?? ''}#logo` : '', viewBox: r.viewBox || '0 0 1 1', svg: r.svg ?? {}, box: useBox(r.viewBox || '0 0 1 1'), noLogo: !r.logo, last: i === shown.length - 1 })),
 		count: found.length,
 		countLabel: found.length === 1 ? 'registry' : 'registries',
 		page: current,

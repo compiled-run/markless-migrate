@@ -88,3 +88,39 @@ test('the address carries the query as nuqs writes it: commas kept, spaces as +,
 	assert.equal(address('/docs/directory', 'a+b&c', 2), '/docs/directory?q=a%2Bb%26c&page=2');
 	assert.equal(address('/docs/directory', '', 1), '/docs/directory');
 });
+
+test("a registry's logo is drawn by an <svg> with the logo root's own attributes, as the original renders the logo inline; the symbol draws its children bare", async () => {
+	const { readFileSync } = await import('node:fs');
+	const index = JSON.parse(readFileSync(new URL('../examples/shadcn-ui-markless/lib/site/directory/index.json', import.meta.url), 'utf8')) as DirectoryEntry[];
+	const viewer = index.find((r) => r.name === '@3d-viewer')!;
+	// registry/directory.json: <svg xmlns viewBox='0 0 24 24' fill='none' stroke='var(--foreground)' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'>
+	assert.deepEqual(viewer.svg, { fill: 'none', stroke: 'var(--foreground)', 'stroke-width': '1.75', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+	assert.deepEqual(index.find((r) => r.name === '@000h-cojeev')!.svg, { fill: 'var(--foreground)' });
+	const symbol = readFileSync(new URL('../examples/shadcn-ui-markless/lib/site/directory/logos/3d-viewer.svg', import.meta.url), 'utf8');
+	assert.match(symbol, /<symbol id="logo" viewBox="0 0 24 24"><path /);
+	const [row] = directoryView([viewer], { '3d-viewer': '/l/3d-viewer.svg' }, '/docs/directory', '', 1).rows;
+	assert.deepEqual(row!.svg, viewer.svg);
+	// A viewBox off the origin: the symbol's viewport is placed at the <use>'s x and y, not at the viewBox's own origin.
+	const [shifted] = directoryView([index.find((r) => r.name === '@componentry')!], { componentry: '/l/c.svg' }, '/docs/directory', '', 1).rows;
+	assert.deepEqual(shifted!.box, { x: '120', y: '120', width: '272', height: '272' });
+});
+
+test('every logo file is well-formed XML, as a <use>-referenced SVG document must be (a repeated attribute or an unclosed element draws nothing)', async () => {
+	const { readdirSync, readFileSync } = await import('node:fs');
+	const { chromium } = await import('playwright');
+	const dir = new URL('../examples/shadcn-ui-markless/lib/site/directory/logos/', import.meta.url);
+	const files = Object.fromEntries(readdirSync(dir).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')]));
+	const browser = await chromium.launch();
+	const page = await browser.newPage();
+	const bad = await page.evaluate((files) => Object.keys(files).filter((f) => new DOMParser().parseFromString(files[f]!, 'image/svg+xml').querySelector('parsererror')), files);
+	await browser.close();
+	assert.deepEqual(bad, []);
+});
+
+test('the index holds only logo attributes the drawing <svg> renders', async () => {
+	const { readFileSync } = await import('node:fs');
+	const { LOGO_ATTRIBUTES } = await import('../examples/shadcn-ui-markless/lib/site/directory.ts');
+	const index = JSON.parse(readFileSync(new URL('../examples/shadcn-ui-markless/lib/site/directory/index.json', import.meta.url), 'utf8')) as DirectoryEntry[];
+	const used = new Set(index.flatMap((r) => Object.keys(r.svg ?? {})));
+	assert.deepEqual([...used].filter((n) => !LOGO_ATTRIBUTES.includes(n)), []);
+});
