@@ -140,7 +140,7 @@ export interface CheckOptions {
 	readonly partial?: { readonly total: number | null };
 	/** Above TEMPLATE_THRESHOLD pages, visual, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
 	readonly templates?: false | { readonly patterns?: readonly string[]; /** Above how many pages templates are grouped (default TEMPLATE_THRESHOLD). */ readonly threshold?: number; /** Every page of the site when this run checks a shard of it: groups are made over all of them, so a group's representative may be another shard's page. */ readonly site?: readonly string[] };
-	/** The site's layout survey (`check --write-layout-survey`), read instead of surveying: every shard of a site's check reads the same one. Without it the pages of `templates.site`, or else this run's pages, are surveyed. */
+	/** The site's layout survey (`check --write-layout-survey`), read instead of surveying this run's pages: every shard of a site's check reads the same one, and the merge of the shards gives each route its shared controls' verdicts. */
 	readonly layoutSurvey?: LayoutSurvey;
 	/** Survey the site's shared layout controls and hand the survey here, checking nothing. */
 	readonly writeLayoutSurvey?: (survey: LayoutSurvey) => Promise<void>;
@@ -737,6 +737,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		...(options.partial ? { partial: options.partial } : {}),
 		cache: Boolean(oldCache),
 		auth: Boolean(auth),
+		...(options.layoutSurvey ? { sharedLater: true as const } : {}),
 	};
 	const observed = options.observations && new GuardedObservations(options.observations, (line) => void process.stderr.write(line));
 	await observed?.header(header);
@@ -766,10 +767,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		const coverages: RouteCoverage[] = [];
 		const wasteReferences: WasteReport[] = [];
 		const navigation: NavigationResult[] = [];
-		const sitePages = (options.templates !== false && options.templates?.site ? options.templates.site : allPages).filter((route) => !light(route) && !endpoints.has(route) && !redirects.has(route));
+		const full = allPages.filter((route) => !light(route));
 		const layoutOf = async (env: Run, role: string | undefined): Promise<readonly SurveyRow[]> => {
-			if (options.layoutSurvey) return surveyRows(options.layoutSurvey, role, allPages.filter((route) => !light(route)));
-			return sitePages.length > 1 ? surveyLayout(browser, env, sitePages, options) : [];
+			if (options.layoutSurvey) return surveyRows(options.layoutSurvey, role, full);
+			return full.length > 1 ? surveyLayout(browser, env, full, options) : [];
 		};
 		const surveys: { role: string | null; routes: readonly SurveyRow[] }[] = [];
 		for (const role of roles) {
@@ -784,7 +785,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			// A widget is shared only among one role's routes: a signed-in visitor may meet another one behind the same markup.
 			if (roleRun.probes) roleRun = { ...roleRun, probes: { ...roleRun.probes, shared: new Map<string, SharedProbe>() } };
 			if (options.writeLayoutSurvey) {
-				surveys.push({ role: role ?? null, routes: await surveyLayout(browser, roleRun, sitePages, options) });
+				surveys.push({ role: role ?? null, routes: await surveyLayout(browser, roleRun, full, options) });
 				continue;
 			}
 			if (options.only === 'load') {
@@ -872,7 +873,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				navigation.push(navigated);
 				await event({ kind: 'navigation', result: navigated });
 			}
-			const compared = roleCompared(checked, navigated);
+			const compared = roleCompared(checked, navigated, Boolean(options.layoutSurvey));
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
 			for (const route of endpoints) {
 				const result = await checkEndpoint(roleRun, route).catch(unreachable(route));

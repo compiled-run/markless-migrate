@@ -45,6 +45,8 @@ export interface RunHeader {
 	readonly partial?: { readonly total: number | null };
 	readonly cache: boolean;
 	readonly auth: boolean;
+	/** A shard of a site's run, its shared layout controls left to the merge (`shareLayoutLater`). */
+	readonly sharedLater?: true;
 }
 
 /** The run's own observations, in the order the run made them; a route's result is judged from its own rows. */
@@ -137,9 +139,44 @@ export function applyNavigation(results: readonly RouteResult[], nav: Navigation
 	});
 }
 
-/** One role's pages after the run-wide comparisons over them: shared layouts, then in-place navigation. */
-export function roleCompared(checked: readonly RouteResult[], navigated: NavigationResult | undefined): RouteResult[] {
-	return navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked);
+/** One role's pages after the run-wide comparisons over them: shared layouts, then in-place navigation. A shard of a site's run (`later`) leaves shared layouts to the merge of every shard, where each owner's results are. */
+export function roleCompared(checked: readonly RouteResult[], navigated: NavigationResult | undefined, later = false): RouteResult[] {
+	const shared = later ? checked.map((r) => (r.coverage?.elements.some((e) => e.shared) ? { ...r, sharedLater: true as const } : r)) : shareLayout(checked);
+	return navigated ? applyNavigation(shared, navigated) : shared;
+}
+
+/** What `shareLayoutLater` reads and writes of a route: a run's result or its JSON in a shard's report. */
+type Sharing = Pick<RouteResult, 'route' | 'role' | 'ok' | 'failures' | 'coverage' | 'dimensions' | 'sharedLater'> & { readonly state?: string };
+
+/**
+ * The merge of a site's shards: each route that left its shared layout controls to their owners carries the owners' verdicts,
+ * whichever shard each owner was checked in, as `shareLayout` does within one run. A copy keeps the owner's acceptance.
+ */
+export function shareLayoutLater<R extends Sharing>(routes: readonly R[]): R[] {
+	const key = (role: string | undefined, route: string) => `${role ?? ANONYMOUS}\u0000${route}`;
+	const byRoute = new Map(routes.map((r) => [key(r.role, r.route), r]));
+	return routes.map((r) => {
+		if (!r.sharedLater) return r;
+		const { sharedLater: _, ...rest } = r;
+		const added: Failure[] = [];
+		let exercised = r.coverage!.exercised;
+		for (const e of r.coverage!.elements.filter((x) => x.shared)) {
+			const owner = byRoute.get(key(r.role, e.shared!));
+			const theirs = owner?.coverage?.elements.find((o) => o.signature === e.signature);
+			if (!theirs || !theirs.by) {
+				added.push(notExercised(r.route, `${e.element}, shared with ${e.shared}`, theirs?.reason ?? `${e.shared} was not compared, so its shared controls were not exercised`));
+				continue;
+			}
+			exercised++;
+			const names = theirs.journeys ?? [];
+			for (const { id: _id, ...f } of owner!.failures) if (names.some((n) => f.check === n || f.check.startsWith(`${n} (step `))) added.push({ ...f, route: r.route, check: `${f.check}, in the layout shared with ${e.shared}` });
+		}
+		const open = added.filter((f) => !f.accepted);
+		const dimensions = { ...r.dimensions };
+		for (const f of open) if (f.dimension in dimensions) dimensions[f.dimension as Dimension] = 'fail';
+		const out = { ...rest, coverage: { ...r.coverage!, exercised }, failures: [...r.failures, ...added], dimensions, ok: r.ok && open.length === 0 } as unknown as R;
+		return r.state === undefined ? out : ({ ...out, state: routeState(out as unknown as RouteResult) } as R);
+	});
 }
 
 const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
