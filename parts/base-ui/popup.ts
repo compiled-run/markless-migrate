@@ -190,6 +190,7 @@ const tabbablesIn = (root: Element) => [...root.querySelectorAll<HTMLElement>(TA
 function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement | undefined {
 	return tabbablesIn(document.body).find((el) => !portal.contains(el) && !trigger.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
 }
+const tabbableBefore = (el: Element, portal: HTMLElement) => tabbablesIn(document.body).findLast((t) => !portal.contains(t) && Boolean(el.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_PRECEDING));
 
 // Placing and stacking read styles: run once the opener has written the whole open state, so it restyles the page once.
 function settled(p: Popup, run: () => void): void {
@@ -285,12 +286,32 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 			pressedOutside = undefined;
 		}
 	};
+	// useTriggerFocusGuards and FloatingPortal's guards beside the trigger (convert's companions).
+	const onGuard = (event: FocusEvent) => {
+		const guard = event.target;
+		if (!(guard instanceof HTMLElement) || !guard.hasAttribute('data-base-ui-focus-guard') || guard.dataset.mmShownWith !== key || top() !== p) return;
+		const before = Boolean(guard.compareDocumentPosition(trigger) & Node.DOCUMENT_POSITION_FOLLOWING);
+		if (!before && !(event.relatedTarget instanceof Node && portal.contains(event.relatedTarget))) {
+			(tabbablesIn(popup)[0] ?? popup).focus({ preventScroll: true });
+			return;
+		}
+		const to = before ? tabbableBefore(guard, portal) : tabbableAfter(trigger, portal);
+		tabbedOut = p;
+		try {
+			options.onDismiss(p, 'tab');
+		} finally {
+			tabbedOut = undefined;
+		}
+		to?.focus();
+	};
 	const timer = options.outsidePress === false ? undefined : setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
 	document.addEventListener('keydown', onKey, true);
+	document.addEventListener('focusin', onGuard, true);
 	p.cleanup.push(() => {
 		clearTimeout(timer);
 		document.removeEventListener('pointerdown', onDown, true);
 		document.removeEventListener('keydown', onKey, true);
+		document.removeEventListener('focusin', onGuard, true);
 	});
 	return p;
 }

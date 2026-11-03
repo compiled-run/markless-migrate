@@ -40,6 +40,8 @@ test('the same layer captured twice (two parts of one reveal, two viewports) kee
 test("what Floating UI puts beside an open trigger keeps its aria-owns span, named after that trigger's own portal", () => {
 	const beside = besideTrigger('<span data-type="outside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard=""></span><span aria-owns="_r_0_"></span><span data-type="outside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard=""></span>');
 	assert.deepEqual(beside.map((e) => e.attrs.map((a) => a.name).join(',')), ['aria-owns']);
+	const shown = besideTrigger('<span aria-hidden="true" tabindex="0" data-base-ui-focus-guard=""></span><span data-type="outside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard=""></span><span aria-owns="_r_0_"></span><span tabindex="0" data-radix-focus-guard=""></span>', true);
+	assert.deepEqual(shown.map((e) => e.attrs.map((a) => a.name).join(',')), ['aria-hidden,tabindex,data-base-ui-focus-guard', 'data-type,aria-hidden,tabindex,data-base-ui-focus-guard', 'aria-owns'], "with its guards: Base UI's own, never another library's");
 	const first = layer('base-ui-_R_a_', '<div id="_r_0_" data-base-ui-portal=""><div id="base-ui-_R_a_-list" role="listbox"></div></div>');
 	const second = layer('base-ui-_R_b_', '<div id="_r_0_" data-base-ui-portal=""><div id="base-ui-_R_b_-list" role="listbox"></div></div>');
 	const names = layerNames([first, second]);
