@@ -230,13 +230,14 @@ export function withoutFontPreloads<T extends { readonly tag: string; readonly a
 }
 
 /**
- * The head with the font preloads of the given files (absolute URLs), and `added`, after its last stylesheet at low
- * priority: a `font-display: swap` font's text paints in a fallback, so the first paint does not wait for the file.
+ * The head with the font preloads of the given files (absolute URLs), and `added`, after its last stylesheet at the
+ * browser's own priority: a `font-display: swap` font's text paints in a fallback, so the first paint does not wait for
+ * the file, but a low priority holds it until the body and it lands after that paint, shifting the text it redraws.
  */
-export function swapFontPreloadsLow<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], files: readonly string[], origin: string, added: readonly T[] = []): T[] {
+export function swapFontPreloadsAfterStylesheets<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], files: readonly string[], origin: string, added: readonly T[] = []): T[] {
 	const swap = new Set(files);
 	const isSwap = (t: T) => t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && !!t.attrs.href && swap.has(new URL(t.attrs.href, origin).href);
-	const moved = [...tags.filter(isSwap), ...added].map((t) => ({ ...t, attrs: { ...t.attrs, fetchpriority: 'low' } }) as T);
+	const moved = [...tags.filter(isSwap), ...added];
 	const rest = tags.filter((t) => !isSwap(t));
 	const last = rest.findLastIndex((t) => t.tag === 'link' && /\bstylesheet\b/.test(t.attrs.rel ?? ''));
 	rest.splice(last < 0 ? rest.length : last + 1, 0, ...moved);
