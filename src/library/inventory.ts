@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { scanSource } from '../source/index.ts';
 import { createContext } from '../source/context.ts';
-import { isConfigFile, isScript, isTestFile, openProject, resolveImport, type Project } from '../source/files.ts';
+import { isConfigFile, matchesAlias, isScript, isTestFile, openProject, resolveImport, type Project } from '../source/files.ts';
 import { functionOf, isFunction, keyName, localInit, memberName, parseJsonc, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
 import type { Component, SourceRoute } from '../source/types.ts';
 import { catalogEntry, engineTraits, wrappedEngine, type CatalogEntry } from './catalog.ts';
@@ -272,7 +272,7 @@ async function kitDir(project: Project): Promise<{ dir: string; name: string } |
 	const aliasDir = (spec: string | undefined): string | undefined => {
 		if (!spec) return undefined;
 		for (const alias of project.aliases) {
-			if (!spec.startsWith(alias.prefix)) continue;
+			if (!matchesAlias(alias, spec)) continue;
 			for (const target of alias.targets) {
 				const dir = posix.normalize(target + spec.slice(alias.prefix.length)).replace(/^\.\//, '').replace(/\/$/, '');
 				if (has(dir)) return dir;
@@ -381,7 +381,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 			const spec = String(stmt.source.value);
 			const line = mod.line(stmt.start);
 			let library: string | undefined;
-			const target = spec.startsWith('.') || !packageName(spec) || project.aliases.some((a) => spec.startsWith(a.prefix)) ? resolveImport(project, file, spec) : undefined;
+			const target = spec.startsWith('.') || !packageName(spec) || project.aliases.some((a) => matchesAlias(a, spec)) ? resolveImport(project, file, spec) : undefined;
 			if (target) importers.set(target, [...(importers.get(target) ?? []), file]);
 			if (target) {
 				if (kit && inKit(target) && !inKit(file)) library = kit.name;
@@ -498,7 +498,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 			}
 			if (n.type === 'Identifier') {
 				const imp = mod.imports.get(n.name);
-				if (imp && (imp.source.startsWith('.') || !packageName(imp.source) || project.aliases.some((a) => imp.source.startsWith(a.prefix)))) importedFns.push({ exp, path, file, spec: imp.source, imported: imp.imported });
+				if (imp && (imp.source.startsWith('.') || !packageName(imp.source) || project.aliases.some((a) => matchesAlias(a, imp.source)))) importedFns.push({ exp, path, file, spec: imp.source, imported: imp.imported });
 				return leaf(literal(n, mod));
 			}
 			if (n.type === 'ArrayExpression') {

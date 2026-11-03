@@ -12,7 +12,8 @@ export interface Project {
 	readonly files: readonly string[];
 	readonly has: (file: string) => boolean;
 	readonly read: (file: string) => Promise<string>;
-	readonly aliases: readonly { prefix: string; targets: string[] }[];
+	/** tsconfig paths and the stacks' own aliases: a key ending in `*` matches by its prefix, one without (`exact`) only as it is. */
+	readonly aliases: readonly { prefix: string; targets: string[]; exact?: true }[];
 	readonly packageJson: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
 	readonly deps: Readonly<Record<string, string>>;
 }
@@ -57,14 +58,14 @@ export async function openProject(root: string): Promise<Project> {
 }
 
 async function readAliases(files: Set<string>, read: (f: string) => Promise<string>): Promise<Project['aliases']> {
-	const aliases: { prefix: string; targets: string[] }[] = [];
+	const aliases: { prefix: string; targets: string[]; exact?: true }[] = [];
 	for (const name of ['tsconfig.json', 'jsconfig.json']) {
 		const text = await read(name);
 		if (!text) continue;
 		const config = parseJsonc(text) as { compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } } | undefined;
 		const base = config?.compilerOptions?.baseUrl ?? '.';
 		for (const [key, targets] of Object.entries(config?.compilerOptions?.paths ?? {})) {
-			aliases.push({ prefix: key.replace(/\*$/, ''), targets: targets.map((t) => posix.normalize(posix.join(base, t.replace(/\*$/, ''))).replace(/^\.\/?/, '')) });
+			aliases.push({ prefix: key.replace(/\*$/, ''), targets: targets.map((t) => posix.normalize(posix.join(base, t.replace(/\*$/, ''))).replace(/^\.\/?/, '')), ...(key.endsWith('*') ? {} : { exact: true as const }) });
 		}
 	}
 	const src = [...files].some((f) => f.startsWith('src/')) ? 'src/' : '';
@@ -72,6 +73,9 @@ async function readAliases(files: Set<string>, read: (f: string) => Promise<stri
 	aliases.push({ prefix: '@/', targets: [src, ''] }, { prefix: '~/', targets: [app, src, ''] }, { prefix: '~~/', targets: [''] }, { prefix: '$lib/', targets: ['src/lib/'] }, { prefix: '$lib', targets: ['src/lib'] });
 	return aliases;
 }
+
+/** Whether an alias names an import specifier. */
+export const matchesAlias = (alias: Project['aliases'][number], spec: string) => (alias.exact ? spec === alias.prefix : spec.startsWith(alias.prefix));
 
 const EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.vue', '.svelte', '.astro', '/index.ts', '/index.tsx', '/index.js', '/index.jsx', '/index.mjs'];
 
@@ -81,7 +85,7 @@ export function resolveImport(project: Project, from: string, spec: string): str
 	if (spec.startsWith('.')) candidates.push(posix.normalize(posix.join(posix.dirname(from), spec)));
 	else {
 		for (const alias of project.aliases) {
-			if (!spec.startsWith(alias.prefix)) continue;
+			if (!matchesAlias(alias, spec)) continue;
 			for (const target of alias.targets) candidates.push(posix.normalize(target + spec.slice(alias.prefix.length)).replace(/^\.\//, ''));
 		}
 	}

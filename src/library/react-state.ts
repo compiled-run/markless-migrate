@@ -1,5 +1,6 @@
 import { isFunction, patternNames, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
-import type { Compositions } from './composition.ts';
+import { announcedChange } from '../convert/parts.ts';
+import type { Compositions, PartRef } from './composition.ts';
 import { cancelOf, freeNames, GLOBALS, HOOK, Refused, TS_EXPRESSIONS, WRAPPERS, type Handlers } from './handlers.ts';
 import type { BoundAttribute, StateCode, StateComponent, StateNode, StateSlot } from './types.ts';
 
@@ -18,6 +19,16 @@ const PART_EVENTS = /^on(Click|DoubleClick|ContextMenu|KeyDown|KeyUp|Focus|Blur|
 // React Aria's components answer presses and changes through their own callbacks, not DOM events.
 const CALLBACK_LIBRARIES = new Set(['react-aria-components', 'react-aria']);
 const TEXT_INPUT = /^(input|textarea)$/;
+// Each library's controlled props, by the callback it calls with the value it would take next (its documented API).
+const CONTROLLED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+	'radix-ui': { open: 'onOpenChange', value: 'onValueChange', checked: 'onCheckedChange', pressed: 'onPressedChange' },
+	'@base-ui/react': { open: 'onOpenChange', value: 'onValueChange', checked: 'onCheckedChange', pressed: 'onPressedChange' },
+	'react-aria-components': { isOpen: 'onOpenChange', isExpanded: 'onExpandedChange', expandedKeys: 'onExpandedChange', selectedKey: 'onSelectionChange', selectedKeys: 'onSelectionChange', isSelected: 'onChange', value: 'onChange', inputValue: 'onInputChange' },
+	cmdk: { value: 'onValueChange' },
+	vaul: { open: 'onOpenChange' },
+	'input-otp': { value: 'onChange' },
+};
+const controlledProps = (library: string) => CONTROLLED[/^@radix-ui\/react-/.test(library) ? 'radix-ui' : library];
 // React's props for DOM events; any other on* prop is a library's callback (onOpenChange), which no DOM event fires.
 const DOM_EVENTS = /^on(Click|DoubleClick|ContextMenu|Input|Change|Submit|Reset|Invalid|KeyDown|KeyUp|Focus|Blur|(Mouse|Pointer)(Down|Up|Enter|Leave|Move|Over|Out)|Touch(Start|End|Move|Cancel)|Wheel|Scroll|Drag(Start|End|Enter|Leave|Over)?|Drop|Copy|Cut|Paste|Toggle|Load|Error)$/;
 
@@ -81,6 +92,18 @@ interface Local {
 	readonly fn?: N;
 }
 
+/** A state given as it is to a library part's controlled prop beside the callback that sets it to the part's next value. */
+interface ControlledPair {
+	readonly tag: string;
+	readonly part: PartRef;
+	readonly prop: string;
+	/** Its value's state and its callback's setter, where they name the state. */
+	readonly uses: N[];
+	readonly change: N;
+	/** The part's element in the render, once it is placed; none where convert cannot find it on the page. */
+	node?: { events?: Record<string, StateCode> };
+}
+
 interface Scope {
 	readonly mod: Module;
 	readonly component: N;
@@ -92,6 +115,10 @@ interface Scope {
 	/** Names whose value the page already shows and keeps (useId). */
 	readonly kept: Set<string>;
 	readonly props: Set<string>;
+	/** Each state's declarator, by slot. */
+	readonly declarators: Map<number, N>;
+	/** Each state a part's controlled prop takes, with the nodes that name it there (its value's state, its callback's setter). */
+	readonly controlled: Map<number, ControlledPair[]>;
 }
 
 const isReference = (n: N, parent: N | undefined) =>
@@ -288,9 +315,9 @@ export class StateComponents {
 		return out;
 	}
 
-	private async component(mod: Module, fn: N, body: N[], effects: { line: number; reason: string }[]): Promise<Pick<StateComponent, 'slots' | 'nodes'>> {
+	private async component(mod: Module, fn: N, body: N[], effects: { line: number; reason: string }[]): Promise<Pick<StateComponent, 'slots' | 'nodes' | 'partState'>> {
 		const props = new Set((fn.params as N[]).flatMap((p) => patternNames(p)));
-		const scope: Scope = { mod, component: fn, slots: [], index: new Map(), setters: new Map(), dispatchers: new Map(), locals: new Map(), kept: new Set(), props };
+		const scope: Scope = { mod, component: fn, slots: [], index: new Map(), setters: new Map(), dispatchers: new Map(), locals: new Map(), kept: new Set(), props, declarators: new Map(), controlled: new Map() };
 		let returned: N | undefined;
 		for (const [i, st] of body.entries()) {
 			if (st.type === 'ReturnStatement') {
@@ -315,7 +342,38 @@ export class StateComponents {
 		}
 		if (!returned || !isJsx(returned)) throw new Refused('renders something other than JSX');
 		const nodes = await this.nodes(scope, returned.type === 'JSXFragment' ? (returned.children as N[]) : [returned]);
-		return { slots: scope.slots.map(({ name, kind, init }) => ({ name, kind, init })), nodes };
+		const partState: { state: string; part: string; prop: string }[] = [];
+		const mirrored = new Set<number>();
+		for (const [slot, pairs] of scope.controlled) {
+			const { name, value } = scope.slots[slot]!;
+			const pair = pairs[0]!;
+			const { tag, part, prop, uses } = pair;
+			if (pairs.length > 1) throw new Refused(`passes its state ${name} to the ${prop} of more than one part`);
+			const own = scope.declarators.get(slot)!;
+			const setters = [...scope.setters].filter(([, i]) => i === slot).map(([setter]) => setter);
+			const elsewhere = (names: readonly string[]) => names.some((n) => references(fn.body, n, own).some((r) => !uses.includes(r)));
+			if (elsewhere(setters)) throw new Refused(`passes its state ${name} to <${tag}>'s ${prop} and sets it elsewhere, which needs <${tag}> to follow it`);
+			if (!elsewhere([name])) {
+				mirrored.add(slot);
+				partState.push({ state: name, part: `${part.library} ${part.export}`, prop });
+				continue;
+			}
+			// Read elsewhere: the state follows the part, its callback run on each change the part's port announces.
+			const announced = announcedChange(part.library, part.export, prop);
+			if (!announced) throw new Refused(`passes its state ${name} to <${tag}>'s ${prop} and reads it elsewhere, which needs <${tag}> to announce its changes`);
+			if (!pair.node) throw new Refused(`its state reaches <${tag}>, which convert cannot find on the page`);
+			const first = announced.list && !Array.isArray(value) ? '[0]' : '';
+			pair.node.events = { ...pair.node.events, [`on${announced.event[0]!.toUpperCase()}${announced.event.slice(1)}`]: tidy(['(mmEvent) => (', ...rewrite(scope, pair.change), `)((mmEvent as CustomEvent).detail${first})`]) };
+		}
+		if (!partState.length) return { slots: scope.slots.map(({ name, kind, init }) => ({ name, kind, init })), nodes };
+		// The part keeps a mirrored state itself; the others are renumbered past it (nothing but the part's props named it).
+		const renumber = new Map<number, number>();
+		scope.slots.forEach((_, i) => {
+			if (!mirrored.has(i)) renumber.set(i, renumber.size);
+		});
+		const code = (c: StateCode): StateCode => c.map((x) => (typeof x === 'number' ? renumber.get(x)! : x));
+		const slots = scope.slots.filter((_, i) => renumber.has(i)).map(({ name, kind, init }) => ({ name, kind, init: code(init) }));
+		return { slots, nodes: nodes.map((n) => renumbered(n, code)), partState };
 	}
 
 	private async declare(scope: Scope, st: N, d: N): Promise<void> {
@@ -343,6 +401,7 @@ export class StateComponents {
 			const literal = initial === undefined ? 'undefined' : JSON.stringify(initial);
 			if (literal === undefined || (initial !== undefined && JSON.stringify(JSON.parse(literal)) !== literal) || (typeof initial === 'object' && initial !== null && Object.getPrototypeOf(initial) !== Object.prototype && !Array.isArray(initial))) throw new Refused(`starts ${value.name} at a value that is not plain data`);
 			const slot = add({ name: value.name, kind: 'state', init: [literal], value: initial });
+			scope.declarators.set(slot, d);
 			if (set?.type === 'Identifier') {
 				if (hook === 'useState') scope.setters.set(set.name, slot);
 				else {
@@ -488,7 +547,9 @@ export class StateComponents {
 		const attrs: Record<string, string> = {};
 		const bound: Record<string, BoundAttribute> = {};
 		const events: Record<string, StateCode> = {};
+		const controlled = host ? { attrs: new Set<N>(), pairs: [] } : await this.controlledPairs(scope, opening, name, tag.part);
 		for (const a of opening.attributes as N[]) {
+			if (controlled.attrs.has(a)) continue;
 			if (a.type === 'JSXSpreadAttribute') {
 				if (reads(scope, a.argument)) throw new Refused(`spreads its state onto <${name}>`);
 				continue;
@@ -543,6 +604,7 @@ export class StateComponents {
 			if (stateInside || node.bound || node.events) throw new Refused(`its state reaches <${name}>, which convert cannot find on the page`);
 			return { kind: 'opaque' };
 		}
+		for (const pair of controlled.pairs) pair.node = node;
 		const passes = host ? true : await this.composer.passesChildren(mod, el);
 		if (!passes && !stateInside) return node;
 		const children = await this.nodes(scope, el.children as N[]);
@@ -556,6 +618,37 @@ export class StateComponents {
 		node.children = children;
 		if (!passes) node.loose = true;
 		return node;
+	}
+
+	/**
+	 * A library part's controlled props given a state as it is (`open={open}`, `checked={on ?? false}`) beside the
+	 * callback that sets it to the part's next value (`onOpenChange={setOpen}`, `(v) => setOpen(v)`): recorded for the
+	 * component to decide whether the part keeps that state itself; the attributes it takes.
+	 */
+	private async controlledPairs(scope: Scope, opening: N, name: string, part: PartRef | undefined): Promise<{ attrs: Set<N>; pairs: ControlledPair[] }> {
+		const out = new Set<N>();
+		const found: ControlledPair[] = [];
+		const props = part && controlledProps(part.library);
+		if (!props) return { attrs: out, pairs: found };
+		const attrs = new Map((opening.attributes as N[]).filter((a) => a.type === 'JSXAttribute' && a.name.type === 'JSXIdentifier').map((a) => [a.name.name as string, a]));
+		const exprOf = (a: N | undefined) => (a?.value?.type === 'JSXExpressionContainer' ? unwrap(a.value.expression) : undefined);
+		for (const [prop, callback] of Object.entries(props)) {
+			const value = exprOf(attrs.get(prop));
+			const change = exprOf(attrs.get(callback));
+			if (!value || !change) continue;
+			// `on ?? false`: the part's callback never gives a nullish value, so a state that starts set is shown as it is.
+			const read = value.type === 'LogicalExpression' && value.operator === '??' && unwrap(value.right)?.type === 'Literal' ? unwrap(value.left) : value;
+			const slot = read?.type === 'Identifier' ? scope.index.get(read.name) : undefined;
+			if (slot === undefined || scope.slots[slot]!.kind !== 'state' || (read !== value && scope.slots[slot]!.value == null)) continue;
+			const setter = setterCall(change, (n) => scope.setters.get(n) === slot);
+			if (!setter || !(await this.composer.passesOn(scope.mod, opening.name, [prop, callback]))) continue;
+			const pairs = scope.controlled.get(slot) ?? scope.controlled.set(slot, []).get(slot)!;
+			const pair: ControlledPair = { tag: name, part, prop, uses: [read!, setter], change };
+			pairs.push(pair);
+			found.push(pair);
+			out.add(attrs.get(prop)!).add(attrs.get(callback)!);
+		}
+		return { attrs: out, pairs: found };
 	}
 
 	/** A handler that reads or sets state: its setter calls as assignments, the component functions it calls inside it. */
@@ -669,6 +762,54 @@ export class StateComponents {
 		};
 		await emit(node);
 		return tidy(out);
+	}
+}
+
+/** The setter a callback is or calls with its one parameter alone (`setOpen`, `(v) => setOpen(v)`, `(v) => { setOpen(v) }`): its name's node. */
+function setterCall(fn: N, isSetter: (name: string) => boolean): N | undefined {
+	if (fn.type === 'Identifier') return isSetter(fn.name) ? fn : undefined;
+	if (!isFunction(fn) || fn.params.length !== 1 || fn.params[0].type !== 'Identifier') return undefined;
+	const param: string = fn.params[0].name;
+	const body = fn.body.type === 'BlockStatement' ? (fn.body.body.length === 1 && fn.body.body[0].type === 'ExpressionStatement' ? unwrap(fn.body.body[0].expression) : undefined) : unwrap(fn.body);
+	const args = (body?.arguments ?? []) as N[];
+	const arg = unwrap(args[0]);
+	return body?.type === 'CallExpression' && body.callee.type === 'Identifier' && isSetter(body.callee.name) && args.length === 1 && arg?.type === 'Identifier' && arg.name === param ? body.callee : undefined;
+}
+
+/** The nodes in a component's body that read `name` as its own binding: not a parameter or a declaration of the same name, nor `own`'s declaration of it. */
+function references(body: N, name: string, own: N): N[] {
+	const out: N[] = [];
+	walk(body, (n, ancestors) => {
+		if (n.type !== 'Identifier' || n.name !== name || !isReference(n, ancestors.at(-1))) return;
+		const inside = (x: N) => n.start >= x.start && n.end <= x.end;
+		if (inside(own.id)) return;
+		if (ancestors.some((a) => isFunction(a) && (a.params as N[]).some((p) => inside(p) || patternNames(p).includes(name)))) return;
+		out.push(n);
+	});
+	return out;
+}
+
+/** A node with each state code's slot numbers mapped. */
+function renumbered(node: StateNode, code: (c: StateCode) => StateCode): StateNode {
+	const bound = (b: BoundAttribute): BoundAttribute => ({ ...b, code: code(b.code) });
+	const each = (list: readonly StateNode[]) => list.map((n) => renumbered(n, code));
+	switch (node.kind) {
+		case 'element':
+			return {
+				...node,
+				...(node.bound ? { bound: Object.fromEntries(Object.entries(node.bound).map(([k, b]) => [k, bound(b)])) } : {}),
+				...(node.events ? { events: Object.fromEntries(Object.entries(node.events).map(([k, c]) => [k, code(c)])) } : {}),
+				...(node.text ? { text: bound(node.text) } : {}),
+				...(node.children ? { children: each(node.children) } : {}),
+			};
+		case 'text':
+			return node.bound ? { ...node, bound: bound(node.bound) } : node;
+		case 'opaque':
+			return node;
+		case 'if':
+			return { ...node, test: code(node.test), then: each(node.then), else: each(node.else), ...(node.markup ? { markup: code(node.markup) } : {}) };
+		case 'for':
+			return { ...node, list: code(node.list), key: code(node.key), markup: code(node.markup) };
 	}
 }
 

@@ -307,3 +307,174 @@ export default function Labelled() {
 	assert.equal(only(list, 'Group').refused, "passes its state to <RadioGroup.Root>'s value, a prop convert does not port yet");
 	assert.equal(only(list, 'Labelled').refused, undefined);
 });
+
+const RADIX = JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.0.0' } });
+const COLLAPSIBLE = 'import { Collapsible as P } from "radix-ui"\nexport function Collapsible(props: any) {\n\treturn <P.Root data-slot="collapsible" {...props} />\n}\nexport function CollapsibleTrigger(props: any) {\n\treturn <P.CollapsibleTrigger data-slot="collapsible-trigger" {...props} />\n}\n';
+
+test("a state a part's controlled prop only mirrors (its value and its change callback alone) is the part's own: dropped, the rest renumbered", async () => {
+	const list = await scan({
+		'package.json': RADIX,
+		'components/ui/collapsible.tsx': COLLAPSIBLE,
+		'app/page.tsx': `import * as React from "react"
+import { Checkbox } from "radix-ui"
+import { Collapsible, CollapsibleTrigger } from "../components/ui/collapsible"
+export function Demo() {
+  const [isOpen, setIsOpen] = React.useState(false)
+  return <Collapsible open={isOpen} onOpenChange={setIsOpen}><CollapsibleTrigger>Toggle</CollapsibleTrigger><p>Order details</p></Collapsible>
+}
+export default function Mixed() {
+  const [on, setOn] = React.useState(true)
+  const [count, setCount] = React.useState(0)
+  return (
+    <div data-mixed="">
+      <Checkbox.Root checked={on ?? false} onCheckedChange={(v) => setOn(v)} />
+      <button type="button" onClick={() => setCount(count + 1)}>Add one</button>
+      <span data-count={count}>{count}</span>
+    </div>
+  )
+}
+`,
+	});
+	const demo = only(list, 'Demo');
+	assert.equal(demo.refused, undefined);
+	assert.deepEqual(demo.slots, []);
+	assert.deepEqual(demo.partState, [{ state: 'isOpen', part: 'radix-ui Collapsible.Root', prop: 'open' }]);
+	const mixed = only(list, 'Mixed');
+	assert.equal(mixed.refused, undefined);
+	assert.deepEqual(mixed.slots, [{ name: 'count', kind: 'state', init: ['0'] }]);
+	assert.deepEqual(mixed.partState, [{ state: 'on', part: 'radix-ui Checkbox.Root', prop: 'checked' }]);
+	const [div] = mixed.nodes!;
+	if (div?.kind !== 'element') throw new Error('shape');
+	const [, button, span] = div.children!;
+	if (button?.kind !== 'element' || span?.kind !== 'element') throw new Error('shape');
+	assert.equal(code(button.events!.onClick), '() => (s0 = s0 + 1)');
+	assert.equal(code(span.text!.code), 's0');
+});
+
+test("a part's controlled state the app also reads or writes elsewhere, or that two parts share, is not the part's own and is refused with why", async () => {
+	const list = await scan({
+		'package.json': RADIX,
+		'components/ui/collapsible.tsx': COLLAPSIBLE,
+		'app/page.tsx': `import * as React from "react"
+import { Collapsible, CollapsibleTrigger } from "../components/ui/collapsible"
+export function Reads() {
+  const [open, setOpen] = React.useState(false)
+  return <Collapsible open={open} onOpenChange={setOpen}><CollapsibleTrigger>Toggle</CollapsibleTrigger><p>{open ? "Shown" : "Hidden"}</p></Collapsible>
+}
+export function Writes() {
+  const [open, setOpen] = React.useState(false)
+  return <div data-writes=""><button type="button" onClick={() => setOpen(true)}>Open it</button><Collapsible open={open} onOpenChange={setOpen}><p>Body text</p></Collapsible></div>
+}
+export function Shared() {
+  const [open, setOpen] = React.useState(false)
+  return <div data-shared=""><Collapsible open={open} onOpenChange={setOpen}><p>One</p></Collapsible><Collapsible open={open} onOpenChange={setOpen}><p>Two</p></Collapsible></div>
+}
+export default function Handled() {
+  const [open, setOpen] = React.useState(false)
+  return <Collapsible open={open} onOpenChange={(o) => { setOpen(o); console.log(o) }}><p>Body text</p></Collapsible>
+}
+`,
+	});
+	assert.equal(only(list, 'Reads').refused, "passes its state open to <Collapsible>'s open and reads it elsewhere, which needs <Collapsible> to announce its changes");
+	assert.equal(only(list, 'Writes').refused, "passes its state open to <Collapsible>'s open and sets it elsewhere, which needs <Collapsible> to follow it");
+	assert.equal(only(list, 'Shared').refused, "passes its state open to the open of more than one part");
+	assert.equal(only(list, 'Handled').refused, "passes its state to <Collapsible>'s open, a prop convert does not port yet");
+});
+
+test("a controlled prop is the part's only where each wrapper passes it on as given: in its spread props, or by its own name without a default", async () => {
+	const list = await scan({
+		'package.json': RADIX,
+		'components/ui/parts.tsx': `import { Checkbox as C, Collapsible as P } from "radix-ui"
+export function Named({ checked, className, ...props }: any) {
+  return <C.Root data-slot="named" className={className} checked={checked} {...props} />
+}
+export function Defaulted({ open = true, ...props }: any) {
+  return <P.Root data-slot="defaulted" open={open} {...props} />
+}
+export function Overridden(props: any) {
+  return <P.Root data-slot="overridden" {...props} open={false} />
+}
+`,
+		'app/page.tsx': `import * as React from "react"
+import { Named, Defaulted, Overridden } from "../components/ui/parts"
+export function UsesNamed() {
+  const [on, setOn] = React.useState(false)
+  return <Named checked={on} onCheckedChange={(v: boolean) => setOn(v as boolean)} />
+}
+export function UsesDefaulted() {
+  const [open, setOpen] = React.useState(false)
+  return <Defaulted open={open} onOpenChange={setOpen}><p>Body text</p></Defaulted>
+}
+export default function UsesOverridden() {
+  const [open, setOpen] = React.useState(false)
+  return <Overridden open={open} onOpenChange={setOpen}><p>Body text</p></Overridden>
+}
+`,
+	});
+	assert.equal(only(list, 'UsesNamed').refused, undefined);
+	assert.deepEqual(only(list, 'UsesNamed').partState, [{ state: 'on', part: 'radix-ui Checkbox.Root', prop: 'checked' }]);
+	assert.equal(only(list, 'UsesDefaulted').refused, "passes its state to <Defaulted>'s open, a prop convert does not port yet");
+	assert.equal(only(list, 'UsesOverridden').refused, "passes its state to <Overridden>'s open, a prop convert does not port yet");
+});
+
+test("a part's controlled state the app reads elsewhere follows the part where its port announces the prop's changes: the callback runs on the announced value", async () => {
+	const list = await scan({
+		'package.json': JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.0.0', 'react-aria-components': '1.0.0' } }),
+		'components/ui/slider.tsx': 'import { Slider as P } from "radix-ui"\nexport function Slider(props: any) {\n\treturn <P.Root data-slot="slider" {...props} />\n}\n',
+		'components/ui/aria-slider.tsx': 'import { Slider as S } from "react-aria-components"\nexport function AriaSlider(props: any) {\n\treturn <S data-slot="slider" {...props} />\n}\n',
+		'components/ui/select.tsx': 'import { Select as P } from "radix-ui"\nexport function Select(props: any) {\n\treturn <P.Root {...props} />\n}\n',
+		'app/page.tsx': `import * as React from "react"
+import { Slider } from "../components/ui/slider"
+import { AriaSlider } from "../components/ui/aria-slider"
+import { Select } from "../components/ui/select"
+export function Range() {
+  const [value, setValue] = React.useState([200, 800])
+  return <div data-range=""><span data-low="">{value[0]}</span><Slider value={value} onValueChange={(v) => setValue(v as [number, number])} /></div>
+}
+export function One() {
+  const [v, setV] = React.useState(50)
+  return <div data-one=""><span data-at="">{v}</span><AriaSlider value={v} onChange={setV} /></div>
+}
+export default function Currency() {
+  const [currency, setCurrency] = React.useState("$")
+  return <div data-currency=""><span data-sign="">{currency}</span><Select value={currency} onValueChange={setCurrency} /></div>
+}
+`,
+	});
+	const range = only(list, 'Range');
+	assert.equal(range.refused, undefined);
+	assert.deepEqual(range.slots, [{ name: 'value', kind: 'state', init: ['[200,800]'] }]);
+	assert.equal(range.partState, undefined);
+	const [div] = range.nodes!;
+	if (div?.kind !== 'element') throw new Error('shape');
+	const [low, slider] = div.children!;
+	if (low?.kind !== 'element' || slider?.kind !== 'element') throw new Error('shape');
+	assert.equal(code(low.text!.code), 's0[0]');
+	assert.deepEqual(slider.slots, ['slider']);
+	assert.equal(code(slider.events!.onMmvalue), '(mmEvent) => ((v) => (s0 = v))((mmEvent as CustomEvent).detail)');
+	const one = only(list, 'One');
+	assert.equal(one.refused, undefined);
+	const [oneDiv] = one.nodes!;
+	if (oneDiv?.kind !== 'element') throw new Error('shape');
+	const aria = oneDiv.children![1]!;
+	if (aria.kind !== 'element') throw new Error('shape');
+	// React Aria calls onChange with one number where the slider was given one: the first of the announced values.
+	assert.equal(code(aria.events!.onMmvalue), '(mmEvent) => (((v) => (s0 = typeof v === "function" ? v(s0) : v)))((mmEvent as CustomEvent).detail[0])');
+	assert.equal(only(list, 'Currency').refused, "passes its state currency to <Select>'s value and reads it elsewhere, which needs <Select> to announce its changes");
+});
+
+test("a tsconfig path without a star names that import alone: react's types path leaves react-aria-components a package, so its parts' controlled props are read", async () => {
+	const list = await scan({
+		'package.json': JSON.stringify({ name: 'state', dependencies: { next: '16.0.0', react: '19.0.0', 'react-aria-components': '1.0.0' } }),
+		'tsconfig.json': JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { react: ['node_modules/@types/react'], '@/*': ['./*'] } } }),
+		'components/ui/slider.tsx': 'import { Slider as S } from "react-aria-components"\nexport function Slider(props: any) {\n\treturn <S data-slot="slider" {...props} />\n}\n',
+		'app/page.tsx': `import * as React from "react"
+import { Slider } from "@/components/ui/slider"
+export default function Volume() {
+  const [v, setV] = React.useState(50)
+  return <Slider value={v} onChange={setV} />
+}
+`,
+	});
+	assert.deepEqual(only(list, 'Volume').partState, [{ state: 'v', part: 'react-aria-components Slider', prop: 'value' }]);
+});

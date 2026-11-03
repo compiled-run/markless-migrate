@@ -1,5 +1,5 @@
 import type { Context } from '../source/context.ts';
-import { resolveImport } from '../source/files.ts';
+import { matchesAlias, resolveImport } from '../source/files.ts';
 import { functionOf, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
 import type { Composition } from './types.ts';
 
@@ -107,7 +107,7 @@ function propsNames(fn: N): Set<string> {
 	return names;
 }
 
-const isPackage = (spec: string, ctx: Context) => !spec.startsWith('.') && !ctx.project.aliases.some((a) => spec.startsWith(a.prefix)) && !!packageOf(spec);
+const isPackage = (spec: string, ctx: Context) => !spec.startsWith('.') && !ctx.project.aliases.some((a) => matchesAlias(a, spec)) && !!packageOf(spec);
 
 function packageOf(spec: string): string | undefined {
 	if (/^(node:|virtual:|~|\/|#|bun:|data:)/.test(spec)) return undefined;
@@ -217,6 +217,51 @@ export class Compositions {
 			return { library: part.library, export: part.export, ...(slot ? { slot } : {}) };
 		}
 		return undefined;
+	}
+
+	/**
+	 * Whether props given to a tag reach the library part it renders as they are: each wrapper on the way passes them in
+	 * the props it spreads onto the next (none set after the spread), or by their own name (`checked={checked}`) without
+	 * a default of its own.
+	 */
+	async passesOn(mod: Module, name: N, props: readonly string[]): Promise<boolean> {
+		const { part, component } = await this.tag(mod, name);
+		if (!part) return false;
+		return !component || this.reaches(component, props, 1);
+	}
+
+	private async reaches({ mod, fn }: Component, props: readonly string[], depth: number): Promise<boolean> {
+		if (depth > MAX_DEPTH) return false;
+		const raw = (fn.params as N[])[0];
+		const param = raw?.type === 'AssignmentPattern' ? raw.left : raw;
+		const spread = propsNames(fn);
+		// Each prop's name in the body: its own binding where the parameter takes it out, else undefined (in the spread props).
+		const own = new Map<string, string>();
+		if (param?.type === 'ObjectPattern')
+			for (const p of param.properties as N[]) {
+				if (p.type !== 'Property' || p.computed || !props.includes(p.key.name ?? p.key.value)) continue;
+				if (p.value.type !== 'Identifier') return false;
+				own.set(p.key.name ?? p.key.value, p.value.name);
+			}
+		else if (param?.type !== 'Identifier') return false;
+		const openings: N[] = [];
+		walk(fn, (n) => {
+			if (n.type === 'JSXOpeningElement' && (n.attributes as N[]).some((a) => a.type === 'JSXSpreadAttribute' && a.argument.type === 'Identifier' && spread.has(a.argument.name))) openings.push(n);
+		});
+		for (const opening of openings) {
+			const { part, component } = await this.tag(mod, opening.name, depth);
+			if (!part) continue;
+			const attrs = opening.attributes as N[];
+			const at = attrs.findIndex((a) => a.type === 'JSXSpreadAttribute' && a.argument.type === 'Identifier' && spread.has(a.argument.name));
+			for (const prop of props) {
+				const local = own.get(prop);
+				const i = attrs.findIndex((a) => a.type === 'JSXAttribute' && a.name.type === 'JSXIdentifier' && a.name.name === prop);
+				const given = i < 0 ? undefined : unwrap(attrs[i]!.value?.expression);
+				if (local === undefined ? i > at : given?.type !== 'Identifier' || given.name !== local) return false;
+			}
+			return !component || this.reaches(component, props, depth + 1);
+		}
+		return false;
 	}
 
 	/** The data-slot values an element can render with: its own literal, the part's, the slot its component's root writes. */
