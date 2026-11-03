@@ -13,7 +13,7 @@ import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
 import { LOAD_TIMEOUT_MS, loadPage, servedHtml } from './infrastructure.ts';
-import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
+import { heldTimers, holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
 import { routeLinks, routePath, shellRoute } from './hash-routes.ts';
 import { runtimeMarkers } from './residue.ts';
@@ -259,6 +259,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const marked = await page.evaluate(liveEmbeds, true).catch(() => [] as LiveEmbed[]);
 		const collected = await readPage(page, { origin, full: true });
 		const loops = await page.evaluate(loopEffects).catch(() => [] as LoopEffect[]);
+		const timers = await page.evaluate(heldTimers).catch(() => [] as string[]);
 		const embedTrees = marked.length ? await Promise.all((await page.locator('[data-markless-migrate-embed]').all()).map((l) => l.ariaSnapshot({ timeout: 2000 }).catch(() => ''))) : [];
 		const aria = withoutEmbeds(routeLinks(await page.locator('body').ariaSnapshot(), env.routing).split(origin).join('').split('\n'), embedTrees.map((t) => t.split(origin).join('').split('\n')));
 		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }), marked);
@@ -335,6 +336,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			...(embeds.length ? { embeds } : {}),
 			...(live.length ? { liveEmbeds: live } : {}),
 			...(loops.length ? { loops } : {}),
+			...(timers.length ? { timers } : {}),
 			...(residue.length ? { residue } : {}),
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),
