@@ -379,6 +379,18 @@ async function reload(open: Open, load: () => Promise<Open>): Promise<Open> {
 /** The candidate found on a page loaded since `of` was found there: by its own key, else by what it is and its place among its likes. */
 const foundAgain = (found: readonly Candidate[], of: Candidate): Candidate | undefined => (of.key.startsWith('p:') ? undefined : found.find((c) => c.key === of.key && c.action === of.action)) ?? found.find((c) => c.sig === of.sig && c.nth === of.nth && c.action === of.action);
 
+// A page loaded again can be read before its client marks its controls (Base UI's aria-expanded comes with hydration).
+const LATE_MARKS_MS = 5000;
+async function waitFound(page: Page, find: (found: readonly Candidate[]) => Candidate | undefined, extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[]): Promise<{ found: Candidate[]; candidate: Candidate | undefined }> {
+	const until = Date.now() + LATE_MARKS_MS;
+	for (;;) {
+		const found = await candidates(page, extra, controls);
+		const candidate = find(found);
+		if (candidate?.visible || Date.now() >= until) return { found, candidate };
+		await page.waitForTimeout(200);
+	}
+}
+
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
 export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
@@ -409,9 +421,14 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			// A page loaded again can lay itself out differently, so each control is found again on it rather than reached by its old path.
 			let current = found;
+			let waited = false;
 			for (const first of found) {
 				if (!first.visible || done.has(first.key)) continue;
-				const candidate = current === found ? first : foundAgain(current, first);
+				let candidate = current === found ? first : foundAgain(current, first);
+				if (!candidate?.visible && current !== found && !waited) {
+					waited = true;
+					({ found: current, candidate } = await waitFound(open.page, (now) => foundAgain(now, first), extra, pass.controls));
+				}
 				if (!candidate?.visible) {
 					skipped.push(`${first.key} (${viewport.name}): not found on the page loaded again`);
 					continue;
@@ -420,6 +437,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 				if (!used.clean) {
 					open = await reload(open, load);
 					current = await candidates(open.page, extra, pass.controls);
+					waited = false;
 				}
 				const added = used.added;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
@@ -447,13 +465,20 @@ async function retake(browser: Browser, origin: string, route: string, stale: re
 		let open = await load();
 		try {
 			let found = await candidates(open.page, extra, controls);
+			let reloaded = false;
 			for (const old of stale.filter((r) => r.viewport === viewport.name)) {
-				const candidate = found.find((c) => c.key === old.key && c.action === old.action) ?? found.find((c) => c.sig === old.sig && c.nth === old.nth && c.action === old.action);
+				const find = (now: readonly Candidate[]) => now.find((c) => c.key === old.key && c.action === old.action) ?? now.find((c) => c.sig === old.sig && c.nth === old.nth && c.action === old.action);
+				let candidate = find(found);
+				if (!candidate?.visible && reloaded) {
+					reloaded = false;
+					({ found, candidate } = await waitFound(open.page, find, extra, controls));
+				}
 				if (!candidate?.visible) continue;
 				const used = await useCandidate(open, candidate);
 				if (!used.clean) {
 					open = await reload(open, load);
 					found = await candidates(open.page, extra, controls);
+					reloaded = true;
 				}
 				if (typeof used.added !== 'string' && used.added.length) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added });
 			}

@@ -88,3 +88,35 @@ test('a route whose page cannot be loaded again fails its pass instead of cachin
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+// Base UI's menubar triggers get aria-expanded only once React hydrates: on a slow runner a reload was read before that,
+// and every trigger after the first was skipped as not found (shadcn's Base UI menubar shipped 2 of 16 menus).
+const late = `<!doctype html><html><body>
+<div role="menubar"><button id="file">File</button><button id="edit">Edit</button><button id="view">View</button></div>
+<script>
+const mark = () => { for (const b of document.querySelectorAll('[role=menubar] button')) b.setAttribute('aria-expanded', 'false'); };
+if (LATE) setTimeout(mark, 1500); else mark();
+for (const b of document.querySelectorAll('[role=menubar] button')) b.addEventListener('click', (event) => {
+	for (const o of document.querySelectorAll('[role=menubar] button')) o.tabIndex = o === event.currentTarget ? 0 : -1;
+	event.currentTarget.setAttribute('aria-expanded', 'true');
+	document.body.append(Object.assign(document.createElement('div'), { role: 'menu', textContent: event.currentTarget.id + ' menu' }));
+});
+</script></body></html>`;
+
+test('a reload read before its page marks its controls waits for them, so each is still used', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'reveal-survives-'));
+	let lateLoads = 0;
+	const lateServer = createServer((request, res) => {
+		if (request.url !== '/') return void res.writeHead(404).end();
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(late.replace('LATE', String(++lateLoads > 1)));
+	});
+	await new Promise<void>((done) => lateServer.listen(0, '127.0.0.1', done));
+	try {
+		const capture = await captureReveals(browser, `http://127.0.0.1:${(lateServer.address() as AddressInfo).port}`, '/', dir, [{ name: 'desktop', width: 1280, height: 800, isMobile: false }]);
+		assert.deepEqual(shown(capture.reveals), { file: '<div role="menu">file menu</div>', edit: '<div role="menu">edit menu</div>', view: '<div role="menu">view menu</div>' });
+		assert.deepEqual(capture.skipped, []);
+	} finally {
+		lateServer.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
