@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combine, costsOf, joinKept, joinOld, lostUploads, reports, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
+import { accounts, combine, profiled, costsOf, datasets, joinKept, joinOld, lostUploads, phases, reports, routeTimes, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -120,6 +120,60 @@ test("shards are packed longest first by each route's time in an earlier run, so
 	// Dealt in turn, as before, the two slow pages would share a runner with others.
 	assert.deepEqual(split(targets, 3).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']]);
 	assert.deepEqual(split(targets, 3, costsOf([{ route: '/a', ok: true, timing: { ms: 1 } }] as never)).map((s) => s.routes), [['/a', '/d'], ['/b', '/e'], ['/c', '/f']], 'times for under half the routes are not used');
+});
+
+test("a shard's route times come from its progress files when it stopped before its report", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'times-'));
+	const dir = join(root, '.migrate/check-progress/abc');
+	await mkdir(dir, { recursive: true });
+	await writeFile(join(dir, '1.json'), JSON.stringify({ route: '/a', result: { route: '/a', ok: true, failures: [], timing: { ms: 1234, steps: [{ name: 'explore', ms: 1000 }] } } }));
+	await writeFile(join(dir, '2.json'), JSON.stringify({ route: '/b', result: { route: '/b', ok: false, failures: [], infrastructure: { message: 'incomplete: timed out after 60 s, ...' } } }));
+	await writeFile(join(dir, '3.json'), JSON.stringify({ route: '/c', result: { route: '/c', ok: false, failures: [], infrastructure: { message: 'no answer' } } }));
+	const times = await routeTimes(join(root, '.migrate'));
+	assert.deepEqual(times.sort((x, y) => (x.route < y.route ? -1 : 1)), [{ route: '/a', timing: { ms: 1234 } }, { route: '/b', infrastructure: { message: 'timed out after 60 s' } }]);
+});
+
+test('the merged summary tells the runner time of each part of the check, the original served and the old-side store counts', async () => {
+	const routes = [
+		{ route: '/a', ok: true, timing: { ms: 3_600_000, steps: [{ name: 'explore old', ms: 1_800_000 }, { name: 'motion', ms: 900_000 }] } },
+		{ route: '/b', ok: true, timing: { ms: 3_600_000, steps: [{ name: 'explore old', ms: 1_800_000 }] } },
+		{ route: '/c', ok: false, infrastructure: { cause: 'shard not finished' } },
+	];
+	const { phases: parts, routeMs, timed } = phases(routes as never);
+	assert.deepEqual(parts, [{ name: 'explore old', ms: 3_600_000, routes: 2 }, { name: 'motion', ms: 900_000, routes: 1 }]);
+	assert.equal(routeMs, 7_200_000);
+	assert.equal(timed, 2);
+	const root = await mkdtemp(join(tmpdir(), 'datasets-'));
+	for (const [n, cache] of [[1, { hit: 1, miss: 3, changed: 0, 'stale-checker': 0 }], [2, { hit: 0, miss: 2, changed: 1, 'stale-checker': 1 }]] as const) {
+		await mkdir(join(root, `check-${n}/app/.migrate`), { recursive: true });
+		await writeFile(join(root, `check-${n}/app/.migrate/report.json`), JSON.stringify({ routes: [], cache }));
+	}
+	await mkdir(join(root, 'check-3/app/.migrate/check-progress/x'), { recursive: true });
+	await mkdir(join(root, 'check-times-1'), { recursive: true });
+	const data = await datasets(root, 'f'.repeat(64));
+	assert.deepEqual(data, { original: 'f'.repeat(64), shards: { reported: 2, progressOnly: 1 }, store: { hit: 1, miss: 5, changed: 1, 'stale-checker': 1, shards: 2 } });
+	const text = summary(routes as never, data);
+	assert.match(text, /\| Original \(originalId\) \| `ffffffffffff` \|/);
+	assert.match(text, /\| Old-side store entries reused \(hit\) \| 1 of 8, over 2 shards \|/);
+	assert.match(text, /\| Routes timed \(finished, or stopped at their deadline\) \| 2 of 3 \|/);
+	assert.match(text, /2\.0 runner-hours over 2 routes/);
+	assert.match(text, /\| explore old \| 1\.0 \| 50% \| 2 \|/);
+	assert.deepEqual(accounts([{ route: '/a', ok: true }] as never), [], 'nothing to tell without times or data');
+});
+
+test("a route stopped at its deadline still counts each part it finished, from its shard's profile lines, with counts left out of the part's name", async () => {
+	const root = await mkdtemp(join(tmpdir(), 'profile-'));
+	await mkdir(join(root, 'check-1/_temp'), { recursive: true });
+	await writeFile(join(root, 'check-1/_temp/check.txt'), ['[profile] /a explore old: 1800.0 s', '[profile] /a replay 303 journeys old and new: 900.5 s', 'other output', '[profile] /b replay 12 journeys old and new: 99.5 s', ''].join('\n'));
+	const profile = await profiled(root);
+	const routes = [
+		{ route: '/a', ok: false, infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 3600 s, steps done 2 of 3' } },
+		{ route: '/b', ok: true, timing: { ms: 100_000, steps: [{ name: 'ignored when profiled', ms: 1 }] } },
+	];
+	const { phases: parts, routeMs, timed } = phases(routes as never, profile);
+	assert.deepEqual(parts, [{ name: 'explore old', ms: 1_800_000, routes: 1 }, { name: 'replay N journeys old and new', ms: 1_000_000, routes: 2 }]);
+	assert.equal(routeMs, 3_700_000);
+	assert.equal(timed, 2);
 });
 
 test("every shard's old-side cache entries and the earlier joined ones become one cache", async () => {
