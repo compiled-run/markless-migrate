@@ -893,7 +893,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 }
 
 /** `original produce` writes one shard of the original's dataset; `original commit` writes its manifest over every shard's part. */
-async function originalCommand(args: readonly string[]): Promise<number> {
+async function originalCommand(args: readonly string[], cwd: string): Promise<number> {
 	const [sub, ...rest] = args;
 	if (sub === 'commit') {
 		const [dir] = rest;
@@ -929,7 +929,8 @@ async function originalCommand(args: readonly string[]): Promise<number> {
 	if (values.shard && !shard) fail('--shard is <index>/<count>, from 0');
 	const routes = (JSON.parse(await readFile(resolve(values.targets), 'utf8')) as { routes: string[] }).routes;
 	const survey = surveyRows(parseLayoutSurvey(await readFile(resolve(values['layout-survey']), 'utf8'), values['layout-survey']), undefined, []);
-	const options = { oldOrigin: values.old, newOrigin: values.old, block: { add: values.block ?? [], allow: values.allow ?? [] }, journeys: journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']), ...(values['server-clock'] ? { serverClock: true } : {}) };
+	// The routes the port serves change where exploring follows a stored mode: read from .migrate/switched.json, as check does.
+	const options = { oldOrigin: values.old, newOrigin: values.old, switched: (await readSwitched(cwd)).routes.map((r) => r.route), block: { add: values.block ?? [], allow: values.allow ?? [] }, journeys: journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']), ...(values['server-clock'] ? { serverClock: true } : {}) };
 	const part = await produceOriginal({
 		oldOrigin: values.old,
 		site: values.site,
@@ -1507,7 +1508,7 @@ async function main(argv: string[]): Promise<number> {
 			return -1;
 		}
 		case 'original':
-			return originalCommand(rest);
+			return originalCommand(rest, cwd);
 		case 'cache':
 			return cacheCommand(rest, cwd, out);
 		case 'config': {
