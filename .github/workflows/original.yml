@@ -1,0 +1,149 @@
+name: Original dataset
+
+# Records the frozen original once as data (design §1.2): each route's loads, exploration and replays, as rows by route
+# bucket, published beside the original's build in its release, for check --original to read by originalId.
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: The deploy/<site> folder
+        default: shadcn-ui
+      original:
+        description: The originalId (64 hex); empty names the one published for this recipe
+        default: ''
+      targets:
+        description: The site's targets file, under deploy/<site>/
+        default: check-targets.json
+      shards:
+        description: Producer shards (at most 64, one or more route buckets each)
+        default: '16'
+      flags:
+        description: Journey flags, as check takes them (--journey-budget, --max-journeys, --journey-depth)
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  SITE: ${{ inputs.site }}
+  TARGETS: deploy/${{ inputs.site }}/${{ inputs.targets }}
+  OLD: http://localhost:4000
+
+jobs:
+  original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      id: ${{ inputs.original || steps.resolve.outputs.id }}
+      shards: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: resolve
+        if: inputs.original == ''
+        uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: resolve
+          token: ${{ github.token }}
+      - id: shards
+        env:
+          ID: ${{ inputs.original || steps.resolve.outputs.id }}
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          [[ "$ID" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no original is published for this recipe: run the check workflow once to publish it"; exit 1; }
+          echo "matrix=$(node -e "console.log(JSON.stringify([...Array(Number(process.env.SHARDS)).keys()]))")" >> "$GITHUB_OUTPUT"
+
+  # Which route exercises each shared layout control, decided once over the whole site, as every check deals them.
+  survey:
+    needs: original
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
+      - run: bash "deploy/$SITE/ci-serve.sh" old
+      - run: node src/cli.ts check --old "$OLD" --new "$OLD" --targets "$TARGETS" --site-targets "$TARGETS" --write-layout-survey "$RUNNER_TEMP/layout-survey.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: original-survey
+          path: ${{ runner.temp }}/layout-survey.json
+          retention-days: 7
+
+  produce:
+    needs: [original, survey]
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        shard: ${{ fromJSON(needs.original.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/old-site
+        with:
+          site: ${{ env.SITE }}
+          step: restore
+          id: ${{ needs.original.outputs.id }}
+          token: ${{ github.token }}
+      - run: bash "deploy/$SITE/ci-serve.sh" old
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-survey
+          path: ${{ runner.temp }}
+      - name: Produce
+        timeout-minutes: 330
+        env:
+          ID: ${{ needs.original.outputs.id }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ inputs.shards }}
+          FLAGS: ${{ inputs.flags }}
+        run: |
+          # shellcheck disable=SC2086
+          node src/cli.ts original produce --old "$OLD" --site "$SITE" --original-id "$ID" --targets "$TARGETS" --layout-survey "$RUNNER_TEMP/layout-survey.json" --out "$RUNNER_TEMP/dataset" --shard "$SHARD/$SHARDS" $FLAGS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: original-part-${{ matrix.shard }}
+          path: ${{ runner.temp }}/dataset
+          include-hidden-files: true
+          retention-days: 7
+
+  # The manifest is written over every shard's part and uploaded last: the dataset is readable once it is up.
+  commit:
+    needs: [original, produce]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: original-part-*
+          path: ${{ runner.temp }}/dataset
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ needs.original.outputs.id }}
+        run: |
+          set -euo pipefail
+          node src/cli.ts original commit "$RUNNER_TEMP/dataset" | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/original-dataset.ts upload "$RUNNER_TEMP/dataset" --tag "original-$SITE-${ID:0:12}" | tee -a "$GITHUB_STEP_SUMMARY"
