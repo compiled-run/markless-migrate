@@ -1343,10 +1343,10 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 	}
 	if (found.kind === 'missing' || found.kind === 'disabled') throw new UnreachableError(found.kind, found.detail);
 	if (throughLabel && (found.kind === 'hidden' || found.kind === 'occluded')) {
-		// A radio or checkbox drawn by its label (code-group tabs, custom toggles) is used through the label, as a person does.
+		// A radio or checkbox drawn by its label (code-group tabs, custom toggles, a field card over its indicator) is used through the label, as a person does.
 		const mark = `${Date.now()}-${Math.random()}`;
 		const labelled = await target.evaluate((el, value) => {
-			const label = el instanceof HTMLInputElement ? el.labels?.[0] : undefined;
+			const label = (el instanceof HTMLInputElement ? el.labels?.[0] : undefined) ?? el.closest('label') ?? undefined;
 			label?.setAttribute('data-markless-migrate-label', value);
 			return Boolean(label);
 		}, mark).catch(() => false);
