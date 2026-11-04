@@ -60,6 +60,8 @@ function stringSize(text: string, style: { fontSize: string; letterSpacing: stri
 	Object.assign(measure.parentElement!.style, { position: 'absolute', top: '-20000px', left: 0, padding: 0, margin: 0, border: 'none', whiteSpace: 'pre' }, style);
 	measure.data = text;
 	const rect = measure.parentElement!.getBoundingClientRect();
+	// The page keeps recharts' own span, with the old page's last text; this one reads as nothing.
+	measure.data = '';
 	const size = { width: rect.width, height: rect.height };
 	sizes.set(key, size);
 	return size;
@@ -256,6 +258,7 @@ export function drawTicks(svg: SVGSVGElement, axis: Axis, nth: number, labels: r
 		const label = labelsNow[i]!;
 		label.removeAttribute('display');
 		const text = label.querySelector('text.recharts-cartesian-axis-tick-value')!;
+		text.removeAttribute('display');
 		const span = text.querySelector('tspan')!;
 		set(text, 'x', place.text.x);
 		set(text, 'y', place.text.y);
@@ -272,7 +275,7 @@ export function drawTicks(svg: SVGSVGElement, axis: Axis, nth: number, labels: r
 		linesNow[i]?.removeAttribute('display');
 		if (line) for (const [k, v] of Object.entries(place.line)) set(line, k, v);
 	});
-	for (const extra of labelsNow.slice(shown.length)) extra.setAttribute('display', 'none');
+	for (const extra of labelsNow.slice(shown.length)) for (const el of [extra, ...extra.querySelectorAll('text')]) el.setAttribute('display', 'none');
 	for (const extra of linesNow.slice(shown.length)) extra.setAttribute('display', 'none');
 }
 

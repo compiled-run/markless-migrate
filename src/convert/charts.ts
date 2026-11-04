@@ -1430,6 +1430,8 @@ export function spare(svg: Tree, counts: ReadonlyMap<string, number>): void {
 			for (let n = kids.length; n < (counts.get(`${cls}#${i}`) ?? 0); n++) {
 				const copy = elementChildren(svgTree(outer(first)))[0]!;
 				setAttr(copy, 'display', 'none');
+				// Chromium's innerText reads SVG text under a display="none" group: the text is hidden itself.
+				for (const text of walk(copy)) if (text.tagName === 'text') setAttr(text, 'display', 'none');
 				copy.parentNode = g;
 				childrenOf(g).push(copy);
 			}
