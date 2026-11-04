@@ -205,6 +205,10 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 	const homed = new Map<string, boolean>();
 	// Whether some route of the port shares a word with the file's path: the page that component or example is for.
 	const homes = (file: string) => homed.get(file) ?? homed.set(file, allRoutes.some((r) => affinity(file, r) > 0)).get(file)!;
+	// Pages of the site this app was not converted for (no redirect): a file's own page may be one of them.
+	const unconverted = (inventory?.routes ?? []).filter((r) => r.status === 200 && !r.redirectsTo && !pages.has(r.route)).map((r) => r.route);
+	const closest = new Map<string, number>();
+	const elsewhere = (file: string) => closest.get(file) ?? closest.set(file, Math.max(0, ...unconverted.map((r) => affinity(file, r)))).get(file)!;
 	options.log?.(`ledger: ${sites.length} handler sites in the source, ${port.size} modules in the port`);
 	const entries: LedgerEntry[] = [];
 	const trials = new Map<HandlerSite, Trial[]>();
@@ -233,11 +237,13 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 			const astray = anchor.anchor === 'inside' && !!site.slot && bySlot.has(site.slot) && !owned.length;
 			if (!all.length) continue;
 			const strong = new Set(candidates(anchor, bySlot, site.context, port));
+			// A control the source shows only in a layer, found as itself outside every layer of the port, is another component's that looks alike.
+			const outside = !!site.overlay && anchor.anchor !== 'near';
 			// Each element's first route before any element's second, so the cap keeps every element in.
-			const placed = all.flatMap((el) => routesFor(el, port, roots, pages).map((at, n) => ({ el, at, n, weak: astray || !strong.has(el) })));
+			const placed = all.flatMap((el) => routesFor(el, port, roots, pages).map((at, n) => ({ el, at, n, weak: astray || !strong.has(el) || (outside && !el.layer) })));
 			const scored = placed.map((c) => ({ ...c, score: affinity(site.file, c.at.route) })).sort((a, b) => Number(a.weak) - Number(b.weak) || b.score - a.score || a.n - b.n);
 			// The routes sharing the most words with the source's path are its own; on any other it may be another component's: weak there.
-			const best = Math.max(0, ...scored.map((c) => c.score));
+			const best = Math.max(0, ...scored.map((c) => c.score), elsewhere(site.file));
 			// A page's own component or an example (app/, examples/, registry/) found only on routes sharing no word with it, while a route that does exists, is a guess.
 			const unplacedPage = best === 0 && PAGE_OWN.test(site.file) && homes(site.file);
 			const files = new Set<string>();

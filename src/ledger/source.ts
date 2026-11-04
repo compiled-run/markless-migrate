@@ -25,6 +25,8 @@ export interface HandlerSite {
 	readonly in?: string;
 	/** Words the component shows around it: the port element it is found as must sit among most of them. */
 	readonly context: readonly string[];
+	/** Rendered inside a portaled layer's content (a popover's, a dialog's, a menu's): the port shows it only in a layer. */
+	readonly overlay?: true;
 }
 
 /** An element of the source as a rendered page shows it: data-slot (or tag), literal attributes, static text. */
@@ -48,6 +50,7 @@ const IDENTIFYING = ['placeholder', 'aria-label', 'title', 'name', 'id', 'href',
 const HANDLER = /^on[A-Z][A-Za-z]*$/;
 // Library parts whose own press does something (closes, opens, chooses): answered by the library's port alone.
 const ACTING_PART = /(Close|Trigger|Cancel|^AlertDialogAction|MenuItem|CheckboxItem|RadioItem|SelectItem|ComboboxItem|ToggleGroupItem|CarouselNext|CarouselPrevious)$/;
+const OVERLAY_CONTENT = /^(\w*\.)?(Popover|Dialog|AlertDialog|Drawer|Sheet|DropdownMenu|ContextMenu|Menubar|HoverCard|Select|Combobox|Tooltip|Menu)\.?(Content|Popup|Portal)$/;
 const POPUP_ROOT = /^(\w*\.)?(Picker|Select|DropdownMenu|ContextMenu|Popover|Dialog|AlertDialog|Drawer|Sheet|Combobox|Menu|Menubar|HoverCard|Collapsible)(\.Root|Root)?$/;
 // Layout parts named like acting ones (a sidebar's menu item is an <li>).
 const LAYOUT_PART = /^(SidebarMenu|NavigationMenuItem$)/;
@@ -381,7 +384,8 @@ export async function handlerSites(root: string): Promise<HandlerSite[]> {
 			const sig = await anchorsOf(scan, file, el, ancestors);
 			const props = part ? ['part'] : handlers.map((h) => h.prop);
 			const handler: HandlerClass = part ? 'effect' : handlers.some((h) => h.cls === 'effect') ? 'effect' : handlers.some((h) => h.cls === 'mirror') ? 'mirror' : 'noop';
-			out.push({ file, line: mod.line(el.start), element, props, kind: part ? 'part' : 'app', handler, ...sig, ...(comp ? { in: `${file}#${comp.name}` } : {}), context: comp ? contextOf(comp.fn, sig.anchors) : [] });
+			const overlay = ancestors.some((a) => a.type === 'JSXElement' && OVERLAY_CONTENT.test(jsxName(a.openingElement.name) ?? ''));
+			out.push({ file, line: mod.line(el.start), element, props, kind: part ? 'part' : 'app', handler, ...sig, ...(comp ? { in: `${file}#${comp.name}` } : {}), context: comp ? contextOf(comp.fn, sig.anchors) : [], ...(overlay ? { overlay: true as const } : {}) });
 		}
 	}
 	return out;
