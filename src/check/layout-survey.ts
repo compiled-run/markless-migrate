@@ -52,3 +52,24 @@ export function parseLayoutSurvey(text: string, from: string): LayoutSurvey {
 	if (survey.version !== LAYOUT_SURVEY_VERSION) throw new Error(`${from} is a layout survey of version ${String(survey.version)}, not ${LAYOUT_SURVEY_VERSION}: make it again with check --write-layout-survey`);
 	return survey;
 }
+
+/** Surveys of slices of one site's routes as the one survey of every route, its rows in the site's order, since owners follow that order. */
+export function joinSurveys(parts: readonly LayoutSurvey[], order: readonly string[]): LayoutSurvey {
+	if (!parts.length) throw new Error('no layout surveys to join');
+	const roles = parts[0]!.roles.map((r) => r.role);
+	for (const part of parts) if (JSON.stringify(part.roles.map((r) => r.role)) !== JSON.stringify(roles)) throw new Error(`the layout surveys were made with different roles (${JSON.stringify(roles)} and ${JSON.stringify(part.roles.map((r) => r.role))}): make every slice with the same --auth`);
+	const at = new Map(order.map((route, i) => [route, i]));
+	return {
+		version: LAYOUT_SURVEY_VERSION,
+		roles: roles.map((role) => {
+			const rows = parts.flatMap((part) => part.roles.find((r) => r.role === role)!.routes);
+			const seen = new Set<string>();
+			for (const row of rows) {
+				if (!at.has(row.route)) throw new Error(`the layout survey row for ${row.route} is not a route of the site's targets`);
+				if (seen.has(row.route)) throw new Error(`${row.route} is in more than one layout survey slice`);
+				seen.add(row.route);
+			}
+			return { role, routes: [...rows].sort((a, b) => at.get(a.route)! - at.get(b.route)!) };
+		}),
+	};
+}
