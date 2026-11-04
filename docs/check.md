@@ -388,6 +388,10 @@ minutes, and the result is the report a fresh check would give on the same pages
 .migrate/report.json` compares the two route by route and exits 6 on any difference; `--out <dir>` writes
 the judged report.json and report.html.
 
+The check workflow uploads each shard's observations as `check-observations-<shard>`: one
+`observations.tar.zst`, kept for 3 days. Unpack it into a folder and judge that folder:
+`mkdir obs && zstd -d --long=27 -c observations.tar.zst | tar -xf - -C obs`.
+
 ## Command-line tools
 
 When the product includes a command-line tool (a scaffolder, a code generator, shadcn's `shadcn add`),
