@@ -146,6 +146,8 @@ export interface LoadRun {
 	readonly cpuMultiplier?: number;
 	readonly metrics?: Metrics;
 	readonly error?: string;
+	/** A load with nothing that qualifies as its largest paint (NO_LCP): its other times, which have no score without an LCP. */
+	readonly noLcp?: Omit<Metrics, 'score' | 'lcp'>;
 	readonly detail?: LoadDetail;
 }
 
@@ -184,6 +186,8 @@ export interface RouteLoad {
 	readonly new: LoadSide;
 	readonly verdicts: readonly LoadVerdict[];
 	readonly ok: boolean;
+	/** A side whose page has nothing that qualifies as a largest paint (NO_LCP) on some run: LCP and the score that needs it are not compared. */
+	readonly noLcp?: { readonly old: boolean; readonly new: boolean };
 	/** Why the route has no verdict: a side never finished a run. */
 	readonly skipped?: string;
 	/** PageSpeed Insights on the deployments: when it answered, its verdicts gate the route instead of the lab's. */
@@ -222,8 +226,8 @@ export function clusters(values: readonly number[]): number[][] | undefined {
  * noise. Significance is shared by the route's metrics (Holm's step-down), so identical pages go red at most `SIGNIFICANCE` of
  * the time however many metrics are compared. A paint time on a side whose runs fall in clusters is red as inconclusive.
  */
-export function judgeLoad(old: readonly Metrics[], next: readonly Metrics[]): LoadVerdict[] {
-	const verdicts = LOAD_METRICS.map((metric) => {
+export function judgeLoad(old: readonly Metrics[], next: readonly Metrics[], metrics: readonly LoadMetric[] = LOAD_METRICS): LoadVerdict[] {
+	const verdicts = metrics.map((metric) => {
 		const o = old.map((m) => m[metric]);
 		const n = next.map((m) => m[metric]);
 		const higherIsBetter = metric === 'score';
@@ -277,8 +281,12 @@ export function readRun(lhr: Lhr, origin: string): LoadRun {
 	const value = (id: string) => a[id]?.numericValue;
 	const values = { fcp: value('first-contentful-paint'), lcp: value('largest-contentful-paint'), si: value('speed-index'), tbt: value('total-blocking-time'), cls: value('cumulative-layout-shift') };
 	const score = lhr.categories.performance?.score;
-	// A page with nothing that qualifies as its largest paint has none on every load: Lighthouse's code for it names the run's error.
-	if (/\(NO_LCP\)/.test(a['largest-contentful-paint']?.errorMessage ?? '')) return { error: `NO_LCP: ${a['largest-contentful-paint']!.errorMessage!.replace(/ \(NO_LCP\)$/, '')}` };
+	// A page with nothing that qualifies as its largest paint has none on every load: its other times still compare.
+	if (/\(NO_LCP\)/.test(a['largest-contentful-paint']?.errorMessage ?? '')) {
+		const { lcp: _, ...rest } = values;
+		const error = `NO_LCP: ${a['largest-contentful-paint']!.errorMessage!.replace(/ \(NO_LCP\)$/, '')}`;
+		return Object.values(rest).some((v) => v === undefined) ? { error } : { error, noLcp: rest as Omit<Metrics, 'score' | 'lcp'> };
+	}
 	if (score == null || Object.values(values).some((v) => v === undefined)) return { error: 'Lighthouse returned no performance metrics' };
 	const metrics = { score: Math.round(score * 100), ...(values as Record<Exclude<LoadMetric, 'score'>, number>) };
 	const observedRaw = a.metrics?.details?.items?.[0] ?? {};
@@ -443,11 +451,19 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	return out;
 }
 
+/** The metrics both sides' runs can be judged on: all of them, or, where a side's page has no largest paint, its other times without the score that needs it. */
+export function judged(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): { old: Metrics[]; new: Metrics[]; metrics: readonly LoadMetric[]; noLcp?: { readonly old: boolean; readonly new: boolean } } {
+	const full = (runs: readonly LoadRun[]) => runs.flatMap((r) => (r.metrics ? [r.metrics] : []));
+	const lacks = (runs: readonly LoadRun[]) => runs.some((r) => r.noLcp);
+	if (!lacks(oldRuns) && !lacks(newRuns)) return { old: full(oldRuns), new: full(newRuns), metrics: LOAD_METRICS };
+	const partial = (runs: readonly LoadRun[]) => runs.flatMap((r) => (r.metrics ?? r.noLcp ? [{ score: NaN, lcp: NaN, ...(r.metrics ?? r.noLcp)! } as Metrics] : []));
+	return { old: partial(oldRuns), new: partial(newRuns), metrics: LOAD_METRICS.filter((m) => m !== 'score' && m !== 'lcp'), noLcp: { old: lacks(oldRuns), new: lacks(newRuns) } };
+}
+
 /** A metric worse than its floor whose runs do not yet tell it from noise: worth as many runs again before judging. */
 export function undecided(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): boolean {
-	const o = oldRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
-	const n = newRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
-	return o.length > 0 && n.length > 0 && judgeLoad(o, n).some((v) => !v.bimodal && v.worse > v.floor && v.p >= (v.alpha ?? SIGNIFICANCE));
+	const { old: o, new: n, metrics } = judged(oldRuns, newRuns);
+	return o.length > 0 && n.length > 0 && judgeLoad(o, n, metrics).some((v) => !v.bimodal && v.worse > v.floor && v.p >= (v.alpha ?? SIGNIFICANCE));
 }
 
 /** A route whose load was not measured, with why; never red. */
@@ -458,12 +474,12 @@ export function unmeasured(reason: string): RouteLoad {
 export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): RouteLoad {
 	const old = side(oldRuns);
 	const next = side(newRuns);
-	const oldGood = oldRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
-	const newGood = newRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
+	const { old: oldGood, new: newGood, metrics, noLcp } = judged(oldRuns, newRuns);
 	if (!oldGood.length) return { runs, old, new: next, verdicts: [], ok: true, skipped: `no Lighthouse run of the old page finished (${oldRuns[0]?.error ?? 'no run'})` };
 	if (!newGood.length) return { runs, old, new: next, verdicts: [], ok: false, skipped: `no Lighthouse run of the new page finished (${newRuns[0]?.error ?? 'no run'})` };
-	const verdicts = judgeLoad(oldGood, newGood);
-	const ok = verdicts.every((v) => v.ok);
+	const verdicts = judgeLoad(oldGood, newGood, metrics);
+	// The new page losing the largest paint the old page has is red; one the old page lacks is reported, never red.
+	const ok = verdicts.every((v) => v.ok) && !(noLcp?.new && !noLcp.old);
 	const browser = [...oldRuns, ...newRuns].find((r) => r.browser)?.browser;
 	const all = [...oldRuns, ...newRuns];
 	const indexes = all.flatMap((r) => (r.benchmarkIndex ? [r.benchmarkIndex] : []));
@@ -473,6 +489,6 @@ export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: re
 		if (old.detail) delete old.detail.filmstrip;
 		if (next.detail) delete next.detail.filmstrip;
 	}
-	return { runs, ...(browser ? { browser } : {}), ...machine, old, new: next, verdicts, ok };
+	return { runs, ...(browser ? { browser } : {}), ...machine, old, new: next, verdicts, ok, ...(noLcp ? { noLcp } : {}) };
 }
 
