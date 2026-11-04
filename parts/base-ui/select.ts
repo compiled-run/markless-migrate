@@ -111,8 +111,11 @@ function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): vo
 	// the Root's items' label, which convert recorded where it is not the option's own text.
 	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: option.dataset.mmText ?? label }));
 	selectedValue.set(trigger, label);
-	const input = trigger.nextElementSibling;
+	let input = trigger.nextElementSibling;
+	while (input instanceof HTMLElement && (input.hasAttribute('data-mm-shown-with') || input.hasAttribute('data-base-ui-focus-guard'))) input = input.nextElementSibling;
 	const value = option.dataset.mmValue;
+	// SelectTrigger and SelectValue carry data-placeholder while the value is null (recorded as an empty data-mm-value).
+	if (value !== undefined) for (const el of [trigger, trigger.querySelector('[data-slot="select-value"]')]) el?.toggleAttribute('data-placeholder', value === '');
 	if (input instanceof HTMLInputElement && input.getAttribute('aria-hidden') === 'true' && value !== undefined) {
 		input.value = value;
 		input.setAttribute('value', value);
@@ -246,6 +249,17 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		const typed = typeahead(typingOf(trigger), event, list, -1, (i) => !enabled(list[i]!), false, selected < 0 ? null : selected);
 		if (typed === undefined || !portal) return false;
 		select(trigger, portal, list[typed]!);
+		return true;
+	}
+	// useListNavigation on the open select's trigger: an arrow focuses the active item without moving it, else the selected one.
+	if (trigger && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+		const q = popupFor(trigger)!;
+		const list = options(q);
+		const to = list.find((o) => o.hasAttribute('data-highlighted')) ?? list.find((o) => o.getAttribute('aria-selected') === 'true') ?? enabledOptions(q)[0];
+		if (!to) return false;
+		event.preventDefault();
+		highlight(q, to, true);
+		keysMove();
 		return true;
 	}
 	const p = popupOf(target);
