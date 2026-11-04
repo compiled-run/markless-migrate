@@ -332,7 +332,10 @@ function trap(dialog: Dialog): void {
 
 // A menu, select or popover opened from the dialog sits outside it in the page; presses, focus and Escape there are its.
 const isInnerLayer = (node: EventTarget | null) => node instanceof Element && node.closest(POPPER) !== null;
-const innerLayerShown = () => [...document.querySelectorAll<HTMLElement>(POPPER)].some((el) => !el.hidden && !el.closest('[hidden]'));
+const shownLayers = () => [...document.querySelectorAll<HTMLElement>(POPPER)].filter((el) => !el.hidden && !el.closest('[hidden]'));
+const innerLayerShown = () => shownLayers().length > 0;
+// A tooltip never disables outside pointer events in Radix: a press outside dismisses it and the dialog both.
+const innerLayerHoldsPresses = () => shownLayers().some((el) => !el.querySelector('[role="tooltip"]'));
 
 function dismiss(content: HTMLElement): void {
 	content.dispatchEvent(new CustomEvent('radixdismiss', { bubbles: false }));
@@ -378,7 +381,7 @@ function mountContent(dialog: Dialog): void {
 			return;
 		}
 		const outside = () => {
-			if (layers.indexOf(content) !== layers.length - 1 || innerLayerShown()) return;
+			if (layers.indexOf(content) !== layers.length - 1 || innerLayerHoldsPresses()) return;
 			const isRightClick = event.button === 2 || (event.button === 0 && event.ctrlKey);
 			if (isRightClick || dialog.alert) return;
 			dismiss(content);
