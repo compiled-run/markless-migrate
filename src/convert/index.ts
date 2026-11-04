@@ -18,7 +18,7 @@ import { RuntimeScripts } from '../client/builds.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored, type SharedComponent } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
-import { hollowOf, layerNames } from './layer-ids.ts';
+import { authorIdNames, hollowOf, layerNames, renameAuthorIds } from './layer-ids.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
@@ -1051,6 +1051,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	renameIds([...walk(root)], names.page);
+	const authored = authorIdNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept })), walk(root));
+	for (const [i, l] of pendingLayers.entries()) for (const top of l.kept) renameAuthorIds([top, ...walkAll(top)], authored[i]!);
 	comboboxIndicatorFallback = comboboxIndicatorIn(pendingLayers.flatMap((l) => l.kept)) ?? comboboxIndicatorFallback;
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
