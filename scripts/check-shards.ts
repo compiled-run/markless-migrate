@@ -5,7 +5,8 @@
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
 // routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
 // results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago; `times <.migrate dir>
-// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline). The merged summary also tells the
+// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline); `survey-join <site targets.json>
+// <out.json> <slice survey.json>...` joins the layout surveys of the site's slices in the site's order. The merged summary also tells the
 // original served, the old-side store's counts and the runner time of each part of the check.
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -367,6 +368,15 @@ async function main(): Promise<void> {
 		console.log(JSON.stringify(shards.map((_, i) => i + 1)));
 		return;
 	}
+	if (command === 'survey-join' && a && b && c) {
+		const { joinSurveys, parseLayoutSurvey } = await import('../src/check/layout-survey.ts');
+		const files = process.argv.slice(5);
+		const parts = await Promise.all(files.map(async (f) => parseLayoutSurvey(await readFile(f, 'utf8'), f)));
+		const joined = joinSurveys(parts, (JSON.parse(await readFile(a, 'utf8')) as Targets).routes);
+		await writeFile(b, `${JSON.stringify(joined)}\n`);
+		console.log(`${joined.roles.map((r) => r.routes.length).join(', ')} surveyed routes from ${files.length} slices`);
+		return;
+	}
 	if (command === 'times' && a && b) {
 		const routes = await routeTimes(a);
 		await writeFile(b, `${JSON.stringify({ routes })}\n`);
@@ -441,7 +451,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir>');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
 	process.exit(2);
 }
 

@@ -250,12 +250,17 @@ jobs:
         run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
 
   # Shared header and sidebar controls are each exercised by one route of the site, chosen from this survey of every page:
-  # every shard reads the same one, so a route explores the same journeys whichever shard it is dealt to.
-  survey:
+  # every shard reads the same one, so a route explores the same journeys whichever shard it is dealt to. Each slice surveys
+  # the routes dealt to it in turn, one at a time as a single survey would, and `survey` joins them in the site's order.
+  survey-slice:
     needs: original
     if: ${{ !cancelled() && needs.original.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      matrix:
+        slice: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -271,16 +276,52 @@ jobs:
           token: ${{ github.token }}
       - name: Serve the old site
         run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Survey the site's layout
+      - name: Survey the site's layout, one slice
         env:
           FLAGS: ${{ inputs.flags }}
           CONCURRENCY: ${{ inputs.concurrency }}
+          SLICE: ${{ matrix.slice }}
         run: |
           set -euo pipefail
+          node scripts/check-shards.ts split "$TARGETS" 4 "$RUNNER_TEMP/slices" > /dev/null
+          # A site of fewer pages than slices leaves a slice with none: it has nothing to survey.
+          node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).routes.length ? 0 : 1)' "$RUNNER_TEMP/slices/shard-$SLICE.json" || exit 0
           cd "$APP"
           mkdir -p "$RUNNER_TEMP/survey"
           # shellcheck disable=SC2086
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$OLD" --targets "$GITHUB_WORKSPACE/$TARGETS" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --write-layout-survey "$RUNNER_TEMP/survey/layout-survey.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY") $FLAGS --no-cache
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$OLD" --targets "$RUNNER_TEMP/slices/shard-$SLICE.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --write-layout-survey "$RUNNER_TEMP/survey/layout-survey-$SLICE.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY") $FLAGS --no-cache
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check-layout-survey-${{ matrix.slice }}
+          path: ${{ runner.temp }}/survey
+          retention-days: 14
+
+  survey:
+    needs: survey-slice
+    if: ${{ !cancelled() && needs.survey-slice.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: check-layout-survey-*
+          path: ${{ runner.temp }}/slices
+          merge-multiple: true
+      - name: Join the slices
+        run: |
+          mkdir -p "$RUNNER_TEMP/survey"
+          node scripts/check-shards.ts survey-join "$TARGETS" "$RUNNER_TEMP/survey/layout-survey.json" "$RUNNER_TEMP"/slices/layout-survey-*.json
       - uses: actions/upload-artifact@v4
         with:
           name: check-layout-survey
