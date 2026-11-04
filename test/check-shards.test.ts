@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { constants } from 'node:buffer';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accounts, combine, profiled, costsOf, datasets, joinKept, joinOld, lostUploads, phases, reports, routeTimes, split, summary, unfinished, unreported, estimatesOf, MAX_SLICES, SLICED_SHARD, sliceLong } from '../scripts/check-shards.ts';
+import { accounts, combine, profiled, costsOf, datasets, joinKept, joinOld, lostUploads, phases, readReport, reports, routeTimes, split, summary, unfinished, unreported, estimatesOf, MAX_SLICES, SLICED_SHARD, sliceLong, writeReport } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -243,4 +244,31 @@ test('a route the earlier run says takes longer than its timeout is taken out of
 	assert.deepEqual(kept.routes, ['/a', '/c', '/e']);
 	assert.deepEqual(kept.endpoints, ['/x']);
 	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/d', slices: MAX_SLICES }]);
+});
+
+test('a written report reads back as it was, and a report.json written whole still reads', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'report-'));
+	const report = { routes: [{ route: '/a', ok: true, failures: [] }, { route: '/b', ok: false, failures: [{ dimension: 'css', check: 'line\nbreak ]' }] }], datasets: { original: 'x' }, phases: [{ name: 'explore', ms: 1 }] };
+	await writeReport(join(dir, 'report.json'), report);
+	assert.deepEqual(await readReport(join(dir, 'report.json')), report);
+	await writeReport(join(dir, 'empty.json'), { routes: [] });
+	assert.deepEqual(await readReport(join(dir, 'empty.json')), { routes: [] });
+	await writeFile(join(dir, 'whole.json'), JSON.stringify(report, null, '\t'));
+	assert.deepEqual(await readReport(join(dir, 'whole.json')), report);
+	assert.deepEqual((await reports(dir)).find((r) => r.path.endsWith('report.json'))?.routes, report.routes);
+	await rm(dir, { recursive: true });
+});
+
+test('a merged report larger than the longest string JavaScript can hold is written and read back', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'report-'));
+	const text = 'x'.repeat(2 ** 25);
+	const n = Math.ceil(constants.MAX_STRING_LENGTH / text.length) + 1;
+	const routes = Array.from({ length: n }, (_, i) => ({ route: `/r${i}`, ok: false, failures: [{ dimension: 'rendered', check: 'visible text', actual: text }] }));
+	assert.throws(() => JSON.stringify({ routes }), RangeError);
+	await writeReport(join(dir, 'report.json'), { routes });
+	assert.ok((await stat(join(dir, 'report.json'))).size > constants.MAX_STRING_LENGTH);
+	const back = await readReport(join(dir, 'report.json'));
+	assert.deepEqual(back.routes?.map((r) => r.route), routes.map((r) => r.route));
+	assert.equal((back.routes?.[n - 1]?.failures?.[0] as { actual?: string } | undefined)?.actual?.length, text.length);
+	await rm(dir, { recursive: true });
 });
