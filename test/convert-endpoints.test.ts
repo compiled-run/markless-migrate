@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -237,4 +238,14 @@ test("the generated config keeps one of each Nitro handler and server asset dire
 	const bare: Record<string, unknown> = { handlers: [] };
 	once(bare);
 	assert.deepEqual(bare, { handlers: [] });
+});
+
+test('the generated config names the Workers runtime date the deploy names, so a build is the same whichever day it is made', async () => {
+	const { viteConfig } = await import('../src/convert/index.ts');
+	const { WORKERS_COMPATIBILITY_DATE } = await import('../src/convert/workers.ts');
+	assert.match(WORKERS_COMPATIBILITY_DATE, /^\d{4}-\d{2}-\d{2}$/);
+	assert.ok(viteConfig([]).includes(`compatibilityDate: '${WORKERS_COMPATIBILITY_DATE}',`));
+	const fromWrangler = createRequire(createRequire(import.meta.url).resolve('wrangler'));
+	const { compatibilityDate: newest } = (await import(fromWrangler.resolve('workerd'))) as { compatibilityDate: string };
+	assert.ok(WORKERS_COMPATIBILITY_DATE <= newest, `the local workerd ${newest} refuses a Worker dated ${WORKERS_COMPATIBILITY_DATE}`);
 });

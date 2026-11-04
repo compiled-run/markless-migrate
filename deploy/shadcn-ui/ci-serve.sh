@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # Serves one side of the ui.shadcn.com check on a CI runner, never a Vercel deployment:
 #   ci-serve.sh old          builds the old site (fetch-old.sh) and serves it on http://localhost:4000
-#   ci-serve.sh new <url>    serves a built port (a .tar.gz of .vercel/output, or of .output: node-server, or cloudflare-module in workerd) on http://127.0.0.1:3000
-# Both start in the background and return once the site answers.
+#   ci-serve.sh new <url>    serves a built port (a .tar.gz of .vercel/output, or of .output: node-server, or cloudflare-module in workerd) on http://127.0.0.1:$PORT (3000)
+# Both start in the background and return once the site answers. PRESET=vercel|node-server|cloudflare-module fails unless the archive holds that build.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-wait_for() { for _ in $(seq 1 240); do curl -s -o /dev/null "$1" && return 0; sleep 0.5; done; echo "no answer from $1" >&2; return 1; }
+# Polls until $1 answers; with a pid file as $2, stops as soon as that server has exited.
+wait_for() {
+	local until=$((SECONDS + 120))
+	while [ "$SECONDS" -lt "$until" ]; do curl -s -m 30 -o /dev/null "$1" && return 0; [ -z "${2:-}" ] || kill -0 "$(cat "$2")" 2> /dev/null || break; sleep 0.5; done
+	echo "no answer from $1" >&2
+	return 1
+}
+# Runs a command in the background in a folder, as the pid it writes to new-serve.pid, holding none of this script's output.
+start() { local dir="$1"; shift; (cd "$dir" && exec nohup "$@") < /dev/null > "$RUNNER_TEMP/new-serve.log" 2>&1 & echo $! > "$RUNNER_TEMP/new-serve.pid"; }
 case "${1:-}" in
 	old)
 		# A build restored from an earlier job (check.yml caches deploy/shadcn-ui/old) is served as it is, so every shard and every
@@ -21,6 +29,7 @@ case "${1:-}" in
 		;;
 	new)
 		dest="$RUNNER_TEMP/new"
+		port="${PORT:-3000}"
 		mkdir -p "$dest"
 		curl -fsSL "${2:?usage: ci-serve.sh new URL}" | tar -xz -C "$dest"
 		# A Vercel build (.vercel/output, what the deployment serves) runs through serve-vercel-output.mjs; a node-server build runs itself.
@@ -28,10 +37,13 @@ case "${1:-}" in
 		vercel=""
 		if [ -d "$dest/.vercel/output" ]; then vercel="$dest/.vercel/output"; elif [ -f "$dest/config.json" ] && [ -d "$dest/functions" ]; then vercel="$dest"; fi
 		if [ -n "$vercel" ]; then
-			server="$vercel/functions/__server.func"
+			server="$vercel/functions/__server.func" preset=vercel
+		elif [ -f "$dest/.output/server/wrangler.json" ]; then
+			server="$dest/.output/server" preset=cloudflare-module
 		else
-			server="$dest/.output/server"
+			server="$dest/.output/server" preset=node-server
 		fi
+		[ -z "${PRESET:-}" ] || [ "$PRESET" = "$preset" ] || { echo "PRESET=$PRESET, but the archive holds a $preset build" >&2; exit 1; }
 		# Built on macOS: the traced sharp (for @vercel/og) gets its Linux binaries beside the macOS ones.
 		if [ -d "$server/node_modules/sharp" ]; then
 			version=$(node -p "require('$server/node_modules/sharp/package.json').version")
@@ -39,16 +51,17 @@ case "${1:-}" in
 			npm install --prefix "$RUNNER_TEMP/sharp" --no-audit --no-fund "@img/sharp-linux-x64@$version" "@img/sharp-libvips-linux-x64@$libvips" > /dev/null
 			cp -R "$RUNNER_TEMP/sharp/node_modules/@img/." "$server/node_modules/@img/"
 		fi
-		if [ -n "$vercel" ]; then
-			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
-		elif [ -f "$dest/.output/server/wrangler.json" ]; then
+		if [ "$preset" = vercel ]; then
+			start "$dest" node "$DIR/serve-vercel-output.mjs" "$vercel" "$port"
+		elif [ "$preset" = cloudflare-module ]; then
 			# A cloudflare-module build runs in workerd, as Workers runs it, with no account and nothing sent to Cloudflare.
 			# Local workerd holds a compressed streamed response until it ends, where the edge flushes it: late @pending arms show late here.
-			(cd "$dest/.output/server" && CI=1 WRANGLER_SEND_METRICS=false nohup npx --yes wrangler@4.156.0 dev --config wrangler.json --ip 127.0.0.1 --port 3000 --local --show-interactive-dev-session=false > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+			start "$server" env CI=1 WRANGLER_SEND_METRICS=false node "$DIR/serve-cloudflare-output.mjs" wrangler.json "$port"
 		else
-			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+			start "$dest" env PORT="$port" HOST=127.0.0.1 node .output/server/index.mjs
 		fi
-		wait_for http://127.0.0.1:3000/
+		wait_for "http://127.0.0.1:$port/" "$RUNNER_TEMP/new-serve.pid" || { tail -n 40 "$RUNNER_TEMP/new-serve.log" >&2; exit 1; }
+		grep -E '^(serving|compatibility_date)' "$RUNNER_TEMP/new-serve.log" || true
 		;;
 	*) echo "usage: $0 old | new <url of the built port's .tar.gz>" >&2; exit 1 ;;
 esac
