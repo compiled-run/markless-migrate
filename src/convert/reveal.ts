@@ -40,6 +40,8 @@ export interface Revealed {
 	readonly html: string;
 	/** `clipboard`: the label (aria-label) the control took once it had copied, where it changed. */
 	readonly label?: string;
+	/** The key of its own trigger, which another subtree the same use added holds (a tooltip a sheet's opening focus showed). */
+	readonly layer?: string;
 }
 
 export interface Reveal {
@@ -269,7 +271,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		return kept ? [{ into: 'replace', before: kept.depth, html: kept.html }] : [];
 	}
 	await markAdded(page);
-	return page.evaluate(() => {
+	return page.evaluate((key) => {
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmObserver?.disconnect();
 		const pathOf = (el: Element): number[] => {
@@ -278,12 +280,44 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			return out;
 		};
 		const added = (w.__mmAdded ?? []).filter((a) => a.node.isConnected && !(w.__mmAdded ?? []).some((b) => b !== a && b.node.contains(a.node)));
+		// A tooltip whose trigger another added subtree holds is that trigger's layer: the trigger is marked with its key
+		// and read as it was before the tooltip showed.
+		const copies = new Map<Element, Element>();
+		const layers = new Map<Element, string>();
+		for (const a of added) {
+			const text = a.parent === document.body ? a.node.querySelector('[role="tooltip"][id]') : null;
+			if (!text) continue;
+			const described = `[aria-describedby~="${CSS.escape(text.id)}"]`;
+			const holder = added.find((b) => b !== a && b.node.querySelector(described))?.node;
+			if (!holder) continue;
+			const trigger = holder.querySelector(described)!;
+			const copy = copies.get(holder) ?? copies.set(holder, holder.cloneNode(true) as Element).get(holder)!;
+			let mark = copy;
+			for (const i of pathOf(trigger).slice(pathOf(holder).length)) mark = mark.children[i]!;
+			const layer = trigger.id || `${key}-tip-${layers.size}`;
+			mark.setAttribute('data-mm-key', layer);
+			if (mark.hasAttribute('data-state')) mark.setAttribute('data-state', 'closed');
+			const rest = mark.getAttribute('aria-describedby')!.split(/\s+/).filter((t) => t && t !== text.id);
+			if (rest.length) mark.setAttribute('aria-describedby', rest.join(' '));
+			else mark.removeAttribute('aria-describedby');
+			layers.set(a.node, layer);
+		}
 		return added.map((a) => {
 			const siblings = [...a.parent.children].filter((c) => !added.some((x) => x.node === c));
 			const at = a.next ? siblings.indexOf(a.next) : -1;
-			return { into: a.parent === document.body ? ('body' as const) : pathOf(a.parent), before: at, html: a.node.outerHTML };
+			const layer = layers.get(a.node);
+			return { into: a.parent === document.body ? ('body' as const) : pathOf(a.parent), before: at, html: (copies.get(a.node) ?? a.node).outerHTML, ...(layer ? { layer } : {}) };
 		});
-	});
+	}, candidate.key);
+}
+
+/** A reveal with each layer of a trigger inside it (Revealed.layer) split out, as a reveal of that trigger's opened from it. */
+export function ownLayers(reveal: Reveal): Reveal[] {
+	if (!reveal.added.some((a) => a.layer)) return [reveal];
+	return [
+		{ ...reveal, added: reveal.added.filter((a) => !a.layer) },
+		...reveal.added.flatMap(({ layer, ...a }) => (layer ? [{ key: layer, path: [-1], action: 'hover' as const, viewport: reveal.viewport, added: [a], from: reveal.key }] : [])),
+	];
 }
 
 /** Waits until the page has not scrolled for three frames (a smooth scroll has finished). */
@@ -544,7 +578,7 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	const { own, listed, base, keys, wide, dismissed, dismissedOpens } = first;
 	const more = [...child.reveals, ...(dismissed?.reveals ?? []), ...(dismissedOpens?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
 	const lost = [own, listed, child, opened, scroll, wide, dismissed, dismissedOpens].flatMap((c) => c?.lost ?? []);
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], ...(lost.length ? { lost } : {}), skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))].flatMap(ownLayers), ...(lost.length ? { lost } : {}), skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
