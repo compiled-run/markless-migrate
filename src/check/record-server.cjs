@@ -5,6 +5,8 @@ const http = require('node:http');
 const https = require('node:https');
 
 const CONTROL = '/__markless-migrate/';
+// MARKLESS_MIGRATE_RECORDER=clock: a tagged load renders at its frozen time, and nothing is recorded or answered.
+const CLOCK_ONLY = process.env.MARKLESS_MIGRATE_RECORDER === 'clock';
 const HEADER = 'x-markless-migrate';
 const MAX_BODY = 256 * 1024;
 const MAX_LOADS = 500;
@@ -74,7 +76,7 @@ class RecorderDate extends RealDate {
 
 const realFetch = globalThis.fetch;
 // Node 16 has no fetch; giving the app one would change what it does.
-if (realFetch) globalThis.fetch = async function recordedFetch(input, init) {
+if (realFetch && !CLOCK_ONLY) globalThis.fetch = async function recordedFetch(input, init) {
 	const tag = store.getStore();
 	if (!tag) return realFetch(input, init);
 	let request;
@@ -111,7 +113,7 @@ if (realFetch) globalThis.fetch = async function recordedFetch(input, init) {
 };
 
 // node:http(s) clients (axios, got, SDKs, node-fetch): method, URL, request body and status; the response is the app's to read.
-for (const mod of [http, https]) {
+for (const mod of CLOCK_ONLY ? [] : [http, https]) {
 	const protocol = mod === https ? 'https:' : 'http:';
 	for (const name of ['request', 'get']) {
 		const real = mod[name];
@@ -211,7 +213,7 @@ for (const Server of [http.Server, https.Server]) {
 	Server.prototype.emit = function recordedEmit(event, ...args) {
 		if (event !== 'request') return emit.call(this, event, ...args);
 		const [req, res] = args;
-		if (req.url?.startsWith(CONTROL)) {
+		if (req.url?.startsWith(CONTROL) && !CLOCK_ONLY) {
 			control(req, res);
 			return true;
 		}

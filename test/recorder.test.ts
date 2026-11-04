@@ -146,6 +146,23 @@ test('with --server-clock a page load check tags reads the frozen clock on the s
 	}
 });
 
+test('a server loading the recorder in clock mode renders a tagged load at the frozen time, records nothing and does not answer as a recorder', async () => {
+	const app = spawn(process.execPath, ['--input-type=module', '-e', APP], { env: { ...process.env, CMS_URL: cms.origin, ...recorderEnv(''), MARKLESS_MIGRATE_RECORDER: 'clock' }, stdio: ['ignore', 'pipe', 'inherit'] });
+	const clock = spawn(process.execPath, ['-e', CLOCK_APP], { env: { ...process.env, ...recorderEnv(''), MARKLESS_MIGRATE_RECORDER: 'clock' }, stdio: ['ignore', 'pipe', 'inherit'] });
+	try {
+		const [at, clockAt] = await Promise.all([app, clock].map((p) => new Promise<string>((resolve) => p.stdout!.once('data', (chunk) => resolve(String(chunk).trim())))));
+		const env = defaultEnv(clockAt!, { serverClock: true });
+		const frozen = await (await fetch(clockAt!, { headers: { [RECORDER_HEADER]: recorderTag(env, 'clock') } })).json();
+		const time = env.freeze ? env.freeze.time : 0;
+		assert.ok(frozen.now >= time && frozen.now - time < 1000, 'the render reads the frozen clock');
+		await (await fetch(at!, { headers: { [RECORDER_HEADER]: 'load=quiet' } })).text();
+		assert.equal(await serverRecords(defaultEnv(at!), 'quiet'), undefined, 'no recorder answers, so check compares no server requests');
+	} finally {
+		app.kill();
+		clock.kill();
+	}
+});
+
 test('with --server-clock a write a journey sends runs on the real clock, so what it stores does not expire the moment the next untagged request reads it', async () => {
 	const app = spawn(process.execPath, ['-e', CLOCK_APP], { env: { ...process.env, ...recorderEnv('') }, stdio: ['ignore', 'pipe', 'inherit'] });
 	try {
