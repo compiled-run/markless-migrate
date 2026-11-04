@@ -385,7 +385,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			const [a, b, next] = await Promise.all([replayAll(browser, sides.old, route, viewport, journeys), replayAll(browser, sides.old, route, viewport, journeys), replayAll(browser, sides.new, route, viewport, journeys)]);
 			return { a, b, next };
 		},
-		retime: async ({ set, journey }) => {
+		retime: ({ set, journey }) => profiled(route, `retime ${set}`, async () => {
 			const sides = steady();
 			const other = set === 'main' ? frontOf(sides.new) : sides.new;
 			const rounds: { old: RunResults[number]; next: RunResults[number] }[] = [];
@@ -394,7 +394,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 				rounds.push({ old, next: await replay(browser, other, route, viewport, journey).catch(() => []) });
 			}
 			return rounds.map((r) => ({ old: [...r.old], next: [...r.next] }));
-		},
+		}),
 		clock: () => checkClock(browser, sides, route, viewport),
 		probes: ({ notify }) => observeProbes(browser, sides, route, viewport, notify, watched.probes),
 		parity: ({ film, webkit }) => observeControlParity(browser, sides, route, viewport, { ...watched.controls, webkit: webkit ? watched.controls?.webkit : undefined, film }),
@@ -447,9 +447,9 @@ async function observeJourneys(browser: Browser, run: Run, route: string, viewpo
 		runs.push(plain.map((_, j) => (differing.includes(j) ? third[differing.indexOf(j)]! : again[j]!)));
 	}
 	const risky = explored.deferred.map((d) => d.journey);
-	const [oldRisky, newRisky] = risky.length ? await Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
+	const [oldRisky, newRisky] = risky.length ? await profiled(route, 'session-ending replays', () => Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)])) : [[], []];
 	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
-	const oldRiskyAgain = cached ? cached.oldRiskyAgain : risky.length && !run.old.sendWrites ? await replayDestructive(browser, run.old, route, viewport, risky) : oldRisky;
+	const oldRiskyAgain = cached ? cached.oldRiskyAgain : risky.length && !run.old.sendWrites ? await profiled(route, 'session-ending replays', () => replayDestructive(browser, run.old, route, viewport, risky)) : oldRisky;
 	const mine: OldJourneys = { explored, runs, oldRisky, oldRiskyAgain };
 	if (!cached && loads.length && clientOnly(mine)) await run.oldCache?.write('journeys', run.old, key, loads, mine);
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
@@ -459,7 +459,7 @@ async function observeJourneys(browser: Browser, run: Run, route: string, viewpo
 	// A theme toggle starts from the OS colour scheme: its cycles run again with the OS in dark mode, twice on old (what varies there may vary) and once on new.
 	const dark = themed(plain);
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
-	const darkRuns = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : undefined;
+	const darkRuns = dark.length ? await profiled(route, 'dark-mode replays', () => Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)])) : undefined;
 	return { explored, runs, next, oldRisky, oldRiskyAgain, newRisky, reachable, doorErrors, ...(darkRuns ? { dark: { olds: darkRuns[0], next: darkRuns[1] } } : {}) };
 }
 
@@ -470,14 +470,14 @@ async function storedJourneys(browser: Browser, run: Run, route: string, viewpor
 	const plain = explored.journeys;
 	const next = await profiled(route, `replay ${plain.length} journeys new`, () => replayAll(browser, front, route, viewport, plain));
 	const risky = explored.deferred.map((d) => d.journey);
-	const newRisky = risky.length ? await replayDestructive(browser, front, route, viewport, risky) : [];
+	const newRisky = risky.length ? await profiled(route, 'session-ending replays', () => replayDestructive(browser, front, route, viewport, risky)) : [];
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
 	const tried = unreachableTried(elements);
 	const reachable = await profiled(route, 'unreachable on new', async () => (tried.length ? unreachableAlike(elements, await replayAll(browser, front, route, viewport, tried.map((e) => e.unreachable!.journey))) : []));
 	const doorErrors = [...(await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]))];
 	const dark = themed(plain);
 	if (dark.length && !stored.dark) throw new InfrastructureError({ cause: 'not in the original dataset', message: `${route}: the original's dataset has no dark-mode replays of its theme cycles` });
-	const darkNext = dark.length ? await replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark) : undefined;
+	const darkNext = dark.length ? await profiled(route, 'dark-mode replays', () => replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)) : undefined;
 	return { explored, runs: [...runs], next, oldRisky, oldRiskyAgain, newRisky, reachable, doorErrors, ...(darkNext ? { dark: { olds: [...stored.dark!], next: darkNext } } : {}) };
 }
 
@@ -546,8 +546,13 @@ export async function profiled<T>(route: string, part: string, work: () => Promi
 	} finally {
 		steps.running.delete(part);
 		steps.done.push({ name: part, ms: Date.now() - started });
-		if (process.env.MARKLESS_MIGRATE_PROFILE) process.stderr.write(`[profile] ${route} ${part}: ${((Date.now() - started) / 1000).toFixed(1)} s\n`);
+		profileLine(route, part, Date.now() - started);
 	}
+}
+
+/** A part timed outside the route's own check (Lighthouse, slow network), as a profile line only. */
+function profileLine(route: string, part: string, ms: number): void {
+	if (process.env.MARKLESS_MIGRATE_PROFILE) process.stderr.write(`[profile] ${route} ${part}: ${(ms / 1000).toFixed(1)} s\n`);
 }
 
 /** What OLD's journeys recorded: the exploration and every replay of it. */
@@ -905,6 +910,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			// The bypass token goes to the two apps' origins alone; PageSpeed Insights, which cannot carry it, is left out.
 			const bypass = bypassed ? { origins: [options.oldOrigin, options.newOrigin], ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}) } : undefined;
 			const loads = await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load, ...(bypass ? { bypass } : {}) });
+			for (const [route, load] of loads) if (load.ms !== undefined) profileLine(route, 'Lighthouse', load.ms);
 			const psiOptions = options.load?.psi;
 			if (psiOptions !== false && !bypassed) {
 				const key = psiOptions?.key ?? psiKey();
@@ -915,6 +921,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				// The proxy cannot add a bypass token to https requests it only tunnels.
 				const measured = bypassed ? undefined : await measureRoutesNetwork({ old: options.oldOrigin, new: options.newOrigin }, [...loads.keys()], { afterAnswerMs: CHECK_AFTER_ANSWER_MS, timeoutMs: CHECK_RUN_TIMEOUT_MS, ...networkOptions });
 				for (const [route, load] of loads) loads.set(route, { ...load, network: measured?.get(route) ?? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } });
+				for (const [route, network] of measured ?? []) if (network.ms) profileLine(route, 'slow network', network.ms);
 			}
 			const wasteOptions = options.load?.waste;
 			if (wasteOptions) {

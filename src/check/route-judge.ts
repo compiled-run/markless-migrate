@@ -248,7 +248,7 @@ export async function routeCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 /** One viewport's http, rendered, seo, assets, css, a11y, i18n, network, weight and behaviour checks: what a page gets when its template group's representative carries visual, responsiveness and motion. Every page's own controls are used and compared, whatever its template: two pages alike in layout can hold different widgets. */
 export async function lightCheck(o: Observe, ctx: RouteContext): Promise<RouteResult> {
 	const { route } = ctx;
-	const { olds, next } = await o('load', { light: true });
+	const { olds, next } = await span(ctx, 'load one viewport', () => o('load', { light: true }));
 	const broken = brokenOld(route, olds);
 	if (broken) return broken;
 	const oldA = olds[0]!;
@@ -259,9 +259,9 @@ export async function lightCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
 	const owner = storageOwner(olds.flatMap((x) => Object.values(x.pages)), Object.values(next.pages));
 	reach(ctx, skipped);
-	const journeyed = reach(ctx, await journeysCheck(o, ctx, skipped, owner));
+	const journeyed = reach(ctx, await span(ctx, 'journeys', () => journeysCheck(o, ctx, skipped, owner)));
 	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
-	const probed = ctx.stages.probes ? await probeCheck(o, ctx, journeyed, false, false) : journeyed;
+	const probed = ctx.stages.probes ? await span(ctx, 'widget probes', () => probeCheck(o, ctx, journeyed, false, false)) : journeyed;
 	const located = await locateCheck(o, probed);
 	return oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 }
@@ -397,8 +397,8 @@ async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Jo
 /** The widget probes of the route's controls, the moved-clock look and control parity, old against new, on top of what the journeys found; pop-up motion is filmed on routes that carry motion. */
 export async function probeCheck(o: Observe, ctx: RouteContext, result: RouteResult, film: boolean, webkit: boolean): Promise<RouteResult> {
 	const { route } = ctx;
-	const clock = await o('clock', {});
-	const out = judgeProbes(route, await o('probes', { notify: notifiers(result.journeys) }));
+	const clock = await span(ctx, 'moved clock', () => o('clock', {}));
+	const out = judgeProbes(route, await span(ctx, 'probe sequences', () => o('probes', { notify: notifiers(result.journeys) })));
 	const parity = ctx.stages.controls
 		? await span(ctx, 'control parity', () => o('parity', { film: film && Boolean(ctx.stages.motion), webkit }).then((row) => judgeControlParity(route, row))).catch((error: Error): ControlParityResult => {
 				if (error instanceof Unobserved) throw error;

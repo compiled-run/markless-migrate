@@ -188,6 +188,8 @@ export interface RouteLoad {
 	readonly skipped?: string;
 	/** PageSpeed Insights on the deployments: when it answered, its verdicts gate the route instead of the lab's. */
 	readonly psi?: PsiResult;
+	/** How long the route's Lighthouse runs took. */
+	readonly ms?: number;
 	/** Cold loads over slow networks, old and new: shown beside the rest, not a verdict. */
 	readonly network?: RouteNetwork | { readonly unavailable: string };
 	/** The new page's first-click waste: shown beside the rest, a warning when over budget, never red. */
@@ -416,13 +418,14 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 			return result;
 		};
 		for (const route of routes) {
+			const started = Date.now();
 			const taken: { old: LoadRun[]; new: LoadRun[] } = { old: [], new: [] };
 			const take = async (from: number) => {
 				for (let i = from; i < from + runs; i++) for (const which of i % 2 ? (['new', 'old'] as const) : (['old', 'new'] as const)) taken[which].push(await once(which, route));
 			};
 			await take(0);
 			if (undecided(taken.old, taken.new)) await take(runs);
-			out.set(route, routeLoad(taken.old.length, taken.old, taken.new));
+			out.set(route, { ...routeLoad(taken.old.length, taken.old, taken.new), ms: Date.now() - started });
 		}
 	} finally {
 		unbypass?.();
