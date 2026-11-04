@@ -134,19 +134,22 @@ export function trackLoops(known: readonly string[] = []): void {
 			if (candidates.has(key)) timing.set(key, { kind: 'animation frame', every: 0 });
 			const from = ancestry;
 			const scheduled = epoch;
+			// Frames are numbered apart from timers: a held timer's number must never hold a frame that shares it.
+			let slot = '';
 			const id = realRaf((time: number) => {
-				pending.delete(id);
-				lineage.delete(id);
-				if (heldIds.delete(id)) return;
+				pending.delete(slot);
+				lineage.delete(slot);
+				if (heldIds.delete(slot)) return;
 				run(key, callback as (...a: unknown[]) => unknown, g, [time], from, scheduled);
 			});
-			pending.set(id, key);
-			lineage.set(id, from);
+			slot = `frame ${id}`;
+			pending.set(slot, key);
+			lineage.set(slot, from);
 			return id;
 		};
 		g.cancelAnimationFrame = function (id: number) {
-			pending.delete(id);
-			lineage.delete(id);
+			pending.delete(`frame ${id}`);
+			lineage.delete(`frame ${id}`);
 			return realCancelRaf(id);
 		};
 	}
