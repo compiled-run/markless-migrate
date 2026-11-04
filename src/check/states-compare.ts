@@ -95,7 +95,7 @@ export type OldStateRun =
 			readonly s2: readonly ElementSnapshot[];
 			/** By `s1` element id: the cascade behind each property the state changed on it. */
 			readonly answers: ReadonlyMap<number, CascadeAnswers>;
-			/** Taken whenever a new page differing could make the state shot: page-wide, changed something, or forced on targets. */
+			/** Every state is shot on both old pages, as a new page's difference could ask for any; the new page is shot wherever they were. */
 			readonly images?: readonly [readonly ImageRecord[], readonly ImageRecord[]];
 			readonly shots?: readonly [Buffer, Buffer];
 	  };
@@ -122,7 +122,7 @@ export function newSkip(run: Extract<OldStateRun, { s1: unknown }>, pairs: Reado
 
 /**
  * A stored state and the new page's half in it, as one state run: what is explained is chosen by the same diff a live run
- * makes, from the cascade the old page answered when the state was produced. `shotN` takes the new page's shot with the clip.
+ * makes, from the cascade the old page answered when the state was produced. `shotN` shoots the new page with a clip.
  */
 export async function joinState(rules: readonly CssRule[], stored: ForcedStatesRow, run: Extract<OldStateRun, { s1: unknown }>, baseN: readonly ElementSnapshot[], sn: readonly ElementSnapshot[], shotN: (clip: Box | undefined) => Promise<{ readonly images: readonly ImageRecord[]; readonly shot: Buffer }>): Promise<StateRun> {
 	const { changedBoxes, differing } = stateDiff(stored.base1, baseN, run.s1, run.s2, sn, stored.noise);
@@ -131,10 +131,11 @@ export async function joinState(rules: readonly CssRule[], stored: ForcedStatesR
 		return found ? explanationOf(rules, found, props) : undefined;
 	});
 	const base = { label: run.label, kind: run.kind, targets: run.targets, s1: run.s1, s2: run.s2, sn, explanations };
-	const { shoot, clip } = stateShot(run.kind, changedBoxes, differing.length, run.targets, stored.base1);
+	const { shoot } = stateShot(run.kind, changedBoxes, differing.length, run.targets, stored.base1);
+	// A shot changes how the page lays out after it, so the new page is shot wherever the old pages were, with their clip.
+	const n = run.shots ? await shotN(stateShot(run.kind, changedBoxes, 1, run.targets, stored.base1).clip) : undefined;
 	if (!shoot) return base;
-	if (!run.images || !run.shots) throw new Error(`the original's forced states hold no screenshots of ${run.label}, which changed what shows`);
-	const n = await shotN(clip);
+	if (!run.images || !run.shots || !n) throw new Error(`the original's forced states hold no screenshots of ${run.label}, which changed what shows`);
 	return { ...base, images: [run.images[0], run.images[1], n.images], shots: [run.shots[0], run.shots[1], n.shot] };
 }
 

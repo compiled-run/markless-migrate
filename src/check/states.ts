@@ -324,62 +324,116 @@ export interface OldStatesInput {
 	readonly rules: readonly CssRule[];
 }
 
+/** What one old page shows in a forced state, and its images and shot, taken right after the state settles as a live run takes them. */
+interface OldSeen {
+	readonly elements: ElementSnapshot[];
+	readonly images: ImageRecord[];
+	readonly shot: Buffer;
+	readonly clip?: Box;
+}
+
+/** Forces each state on `side` in turn, on the elements `ids` names (undefined: not forced), shooting every one, then `after` while it still holds. */
+async function oldPass(side: Side, states: readonly CssState[], ids: readonly (readonly number[] | undefined)[], viewport: Viewport, origin: string, clipOf: (k: number, elements: readonly ElementSnapshot[]) => Box | undefined, after: (k: number, elements: readonly ElementSnapshot[]) => Promise<void> = async () => {}): Promise<(OldSeen | undefined)[]> {
+	const out: (OldSeen | undefined)[] = [];
+	for (const [k, state] of states.entries()) {
+		const on = ids[k];
+		if (!on) {
+			out.push(undefined);
+			continue;
+		}
+		await force(side, state, viewport, on, true);
+		try {
+			const elements = await collect(side, origin);
+			const clip = clipOf(k, elements);
+			const images = await drawnImages(side.page);
+			const shot = await screenshot(side.page, clip);
+			out.push({ elements, images, shot, ...(clip ? { clip } : {}) });
+			await after(k, elements);
+		} finally {
+			await force(side, state, viewport, on, false);
+		}
+	}
+	return out;
+}
+
+/** The properties of each element `elements` shows otherwise than `base` did, by element id. */
+function changedOn(base: readonly ElementSnapshot[], elements: readonly ElementSnapshot[]): { readonly el: ElementSnapshot; readonly props: string[] }[] {
+	const before = new Map(base.map((el) => [el.id, el]));
+	return elements.flatMap((el) => {
+		const was = before.get(el.id);
+		const props = Object.keys(el.style).filter((p) => p !== 'font-family' && (!was || was.style[p] !== el.style[p]));
+		return props.length ? [{ el, props }] : [];
+	});
+}
+
 /**
- * The original's half of the forced states, with no new page in the room: each state forced on two old pages, what every
- * element shows in it, the cascade behind each property it changed, and the shots a new page's difference could ask for.
+ * The original's half of the forced states, with no new page in the room. Each state is forced on one old page, then on a
+ * second opened after the first is done, so what varies with time differs between the two as it does between loads. Every
+ * state is shot, since a new page's difference could ask for any; the cascade is read for each property a state changed.
  */
 export async function observeOldStates(input: OldStatesInput): Promise<Pick<ForcedStatesRow, 'viewport' | 'base1' | 'states'>> {
 	const { browser, env, route, viewport } = input;
-	const [o1, o2] = await Promise.all([open(browser, env, route, viewport), open(browser, env, route, viewport)]);
+	const states = input.states.slice(0, MAX_STATES);
+	const o1 = await open(browser, env, route, viewport);
+	const base1 = o1.base;
+	const plan: ({ readonly targets: number[]; readonly containers: number[] } | { readonly skipped: string })[] = [];
+	const answers: Map<number, CascadeAnswers>[] = [];
+	let first: (OldSeen | undefined)[];
 	try {
-		const runs: OldStateRun[] = [];
-		const m12 = matchElements(o1.base, o2.base);
-		for (const state of input.states.slice(0, MAX_STATES)) {
-			let targets: number[] = [];
+		for (const state of states) {
 			if (state.kind === 'pseudo' || state.kind === 'property') {
 				const ids = new Set(await o1.page.evaluate(matchingIds, state.target));
-				targets = o1.base.flatMap((el, i) => (ids.has(el.id) ? [i] : [])).filter((i) => m12.has(i)).slice(0, TARGETS_PER_STATE);
-				if (!targets.length) {
-					runs.push({ label: state.label, kind: state.kind, skipped: `${state.label}: no visible element on the page matches it on both sides` });
-					continue;
-				}
-			}
-			const containers = state.kind === 'container' ? containersOf(state, o1.base).filter((i) => m12.has(i)) : [];
-			if (state.kind === 'container' && !containers.length) {
-				runs.push({ label: state.label, kind: state.kind, skipped: `${state.label}: no size container on the page` });
-				continue;
-			}
-			const on = state.kind === 'container' ? containers : targets;
-			const apply = (lifted: boolean) => Promise.all([force(o1, state, viewport, on.map((i) => o1.base[i]!.id), lifted), force(o2, state, viewport, on.map((i) => o2.base[m12.get(i)!]!.id), lifted)]);
-			await apply(true);
-			try {
-				const [s1, s2] = await Promise.all([collect(o1, env.origin), collect(o2, env.origin)]);
-				const before = new Map(o1.base.map((el) => [el.id, el]));
-				const changed = s1.flatMap((el) => {
-					const was = before.get(el.id);
-					const props = Object.keys(el.style).filter((p) => p !== 'font-family' && (!was || was.style[p] !== el.style[p]));
-					return props.length ? [{ id: el.id, props }] : [];
-				});
-				const found = await cascade(o1, input.rules, changed);
-				const answers = new Map<number, CascadeAnswers>(changed.map(({ id }, k) => [id, found[k]!]));
-				const changedIds = new Set(changed.map((c) => c.id));
-				const changedBoxes = s1.flatMap((el) => (changedIds.has(el.id) ? [el.box] : []));
-				// The new page's difference alone can make a quiet state shot, so its clip is taken whenever one could be.
-				const { shoot, clip } = stateShot(state.kind, changedBoxes, 1, targets, o1.base);
-				if (!shoot) {
-					runs.push({ label: state.label, kind: state.kind, state, targets, containers, s1, s2, answers });
-					continue;
-				}
-				const images = await Promise.all([drawnImages(o1.page), drawnImages(o2.page)]);
-				const shots = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip)]);
-				runs.push({ label: state.label, kind: state.kind, state, targets, containers, s1, s2, answers, images, shots });
-			} finally {
-				await apply(false);
-			}
+				const targets = base1.flatMap((el, i) => (ids.has(el.id) ? [i] : [])).slice(0, TARGETS_PER_STATE);
+				plan.push(targets.length ? { targets, containers: [] } : { skipped: `${state.label}: no visible element on the page matches it on both sides` });
+			} else if (state.kind === 'container') {
+				const containers = containersOf(state, base1);
+				plan.push(containers.length ? { targets: [], containers } : { skipped: `${state.label}: no size container on the page` });
+			} else plan.push({ targets: [], containers: [] });
 		}
-		return { viewport: viewport.name, base1: o1.base, states: runs };
+		const forcedOn = (p: (typeof plan)[number]) => ('skipped' in p ? undefined : [...p.targets, ...p.containers]);
+		first = await oldPass(
+			o1,
+			states,
+			plan.map((p) => forcedOn(p)?.map((i) => base1[i]!.id)),
+			viewport,
+			env.origin,
+			(k, elements) => {
+				const p = plan[k]!;
+				return stateShot(states[k]!.kind, changedOn(base1, elements).map((c) => c.el.box), 1, 'skipped' in p ? [] : p.targets, base1).clip;
+			},
+			async (k, elements) => {
+				const changed = changedOn(base1, elements);
+				const found = await cascade(o1, input.rules, changed.map(({ el, props }) => ({ id: el.id, props })));
+				answers[k] = new Map(changed.map(({ el }, j) => [el.id, found[j]!]));
+			},
+		);
+		const o2 = await open(browser, env, route, viewport);
+		try {
+			const m12 = matchElements(base1, o2.base);
+			const second = await oldPass(
+				o2,
+				states,
+				plan.map((p, k) => {
+					const on = forcedOn(p);
+					return first[k] && on?.every((i) => m12.has(i)) ? on.map((i) => o2.base[m12.get(i)!]!.id) : undefined;
+				}),
+				viewport,
+				env.origin,
+				(k) => first[k]!.clip,
+			);
+			const runs = states.map((state, k): OldStateRun => {
+				const p = plan[k]!;
+				const [a, b] = [first[k], second[k]];
+				if ('skipped' in p) return { label: state.label, kind: state.kind, skipped: p.skipped };
+				if (!a || !b) return { label: state.label, kind: state.kind, skipped: `${state.label}: no visible element on the page matches it on both sides` };
+				return { label: state.label, kind: state.kind, state, targets: p.targets, containers: p.containers, s1: a.elements, s2: b.elements, answers: answers[k]!, images: [a.images, b.images], shots: [a.shot, b.shot] };
+			});
+			return { viewport: viewport.name, base1, states: runs };
+		} finally {
+			await o2.context.close();
+		}
 	} finally {
-		await Promise.all([o1, o2].map((side) => side.context.close()));
+		await o1.context.close();
 	}
 }
 

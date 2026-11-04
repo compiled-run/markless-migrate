@@ -63,12 +63,12 @@ test("the old side's noise comes from the stored row, not from loads taken elsew
 	assert.equal(styles(judgeStates('/', result, plan, olds, [viewport], { viewports: [{ ...seen, noise: [{ element: base1[0]!, props: new Set(['color']) }] }] })), 0, "a property the dataset's loads varied in is masked");
 });
 
-test('a quiet stored state stays unshot when the new page agrees, and is skipped when the new page has none of its targets', async () => {
+test('a quiet stored state is shot on the new page as on the old ones, judged unshot, and skipped when the new page has none of its targets', async () => {
 	const quiet: typeof stored = { ...stored, s1: base1, s2: base1, answers: new Map() };
-	let shot = false;
-	const same = await joinState(rules, row([quiet]), quiet, baseN, baseN, async () => ((shot = true), { images: [], shot: newShot }));
-	assert.equal(shot, false);
-	assert.equal('shots' in same, false);
+	let clipped: unknown;
+	const same = await joinState(rules, row([quiet]), quiet, baseN, baseN, async (clip) => ((clipped = clip), { images: [], shot: newShot }));
+	assert.deepEqual(clipped, { x: 10, y: 10, width: 80, height: 30 }, "the old pages' clip: the state's target");
+	assert.equal('shots' in same, false, 'nothing differs, so the judge has no shot to compare');
 	assert.equal(newSkip(stored, new Map()), `${hover.label}: no visible element on the page matches it on both sides`);
 	assert.equal(newSkip(stored, new Map([[0, 0]])), undefined);
 });
