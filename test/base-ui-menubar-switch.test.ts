@@ -53,3 +53,19 @@ for (const dir of ['ltr', 'rtl'] as const) {
 		await page.close();
 	});
 }
+
+test("with Radix's menu part loaded too, as on a site that ships both, a Base UI menubar trigger is never marked highlighted", async () => {
+	const page = await open(markup('ltr'), ['base-ui/menu', 'radix/dropdown-menu']);
+	const marked = () => page.evaluate(() => [...document.querySelectorAll('[data-slot="menubar-trigger"][data-highlighted]')].map((t) => t.textContent).join(',') || 'none');
+	await page.locator('#m1').focus();
+	await press(page, 'ArrowRight');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Edit');
+	assert.equal(await marked(), 'none', 'moving along the bar');
+	await page.locator('#m1').click();
+	await settled(page);
+	await page.mouse.click(900, 700);
+	await settled(page);
+	assert.equal(await expanded(page), 'File:false Edit:false View:false');
+	assert.equal(await marked(), 'none', 'closed by a click outside');
+	await page.close();
+});
