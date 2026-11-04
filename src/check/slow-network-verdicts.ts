@@ -74,8 +74,10 @@ export interface NetworkVerdict {
 	readonly reason?: string;
 }
 
-// A run that stopped waiting for its answer counts it at that moment: an old page's answer is no sooner than that.
-const values = (runs: readonly NetworkRun[], metric: RunMetric) => runs.map((r) => runMetric(r, metric) ?? (metric === 'answered' && !r.error ? r.answeredAfter : undefined)).filter((v): v is number => v !== undefined);
+/** When a run stopped before showing a gated time: it came no sooner than this, if at all. */
+export const stoppedAt = (r: NetworkRun, metric: RunMetric): number | undefined => (r.error ? undefined : metric === 'answered' ? r.answeredAfter : metric === 'firstFrame' ? r.firstFrameAfter : metric === 'lcp' ? r.lcpAfter : undefined);
+// A run that stopped before a gated time counts it at that moment: an old page's time is no sooner than that.
+const values = (runs: readonly NetworkRun[], metric: RunMetric) => runs.map((r) => runMetric(r, metric) ?? stoppedAt(r, metric)).filter((v): v is number => v !== undefined);
 const unanswered = (r: NetworkRun) => Boolean(r.error && /never answered/.test(r.error));
 
 /** Each gated time old against new in one browser and network. */
@@ -126,13 +128,38 @@ function medianWith(known: readonly number[], missing: number, fill: number): nu
 	return median([...known, ...Array.from({ length: Math.max(0, missing) }, () => fill)]);
 }
 
-/** The latest the new page's median answer can come, whatever answers its missing runs bring; undefined while it can still be any time. */
-export function latestAnswer(next: readonly NetworkRun[], runs: number): number | undefined {
-	if (next.some((r) => r.error)) return undefined;
-	const answers = values(next, 'answered');
-	if (answers.length !== next.length) return undefined;
-	const latest = medianWith(answers, runs - next.length, Infinity);
-	return Number.isFinite(latest) ? latest : undefined;
+/**
+ * How late the old page's run may still show each gated time and matter: the new page's latest so far and two of the
+ * instrument's steps. Undefined while no new run has finished, so nothing is known; null for a time no finished new run
+ * showed, which then has no verdict to wait for.
+ */
+export function stopBounds(next: readonly NetworkRun[]): Readonly<Record<'firstFrame' | 'lcp' | 'answered', number | null>> | undefined {
+	const done = next.filter((r) => !r.error);
+	if (!done.length || done.length !== next.length) return undefined;
+	const bound = (metric: 'firstFrame' | 'lcp' | 'answered') => {
+		const got = done.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+		return got.length ? Math.max(...got) + 2 * Math.max(resolution(metric), PAINT_FRAME_MS) : null;
+	};
+	return { firstFrame: bound('firstFrame'), lcp: bound('lcp'), answered: bound('answered') };
+}
+
+/**
+ * Whether old runs that stopped early must be taken again in full before the cell is judged. A stopped time only ever counts
+ * sooner than it came, which makes the old page look faster: a verdict stands without the rest of the run when it is green
+ * by its p alone (later old times only raise p), or when every stopped time is later than every new one (the same p) and
+ * the new median is within the bands that the old runs' spread does not set (later old times only widen them).
+ */
+export function retakeStopped(old: NetworkCell, next: NetworkCell): boolean {
+	for (const v of networkVerdicts(old, next)) {
+		const stopped = old.runs.map((r) => (runMetric(r, v.metric) === undefined ? stoppedAt(r, v.metric) : undefined)).filter((t): t is number => t !== undefined);
+		if (!stopped.length || v.reason) continue;
+		if (v.p >= SIGNIFICANCE) continue;
+		const latestNew = Math.max(...values(next.runs, v.metric));
+		const above = stopped.every((t) => t > latestNew);
+		if (above && v.ok && v.worse <= Math.max(resolution(v.metric), minWorse(v.old ?? 0))) continue;
+		return true;
+	}
+	return false;
 }
 
 /**
