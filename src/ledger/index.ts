@@ -4,6 +4,8 @@ import { dirname, join, posix } from 'node:path';
 import { handlerSites, type Anchor, type HandlerSite } from './source.ts';
 import { pageOf, readPort, type PortElement, type PortFile } from './port.ts';
 import { DOCUMENT, enough, runJobs, type Result, type RouteJob } from './trials.ts';
+import { readInventory } from '../status.ts';
+import { plannedRoutes } from '../plan/inventory.ts';
 
 /** How one site of the original is answered on the port, or why it is not. */
 export interface LedgerEntry {
@@ -190,7 +192,7 @@ interface Trial {
 /** Every handler the original wires, each mapped to what answers it on the port, or reported. */
 export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 	const started = Date.now();
-	const [sites, port] = await Promise.all([handlerSites(options.source), readPort(options.app)]);
+	const [sites, port, inventory] = await Promise.all([handlerSites(options.source), readPort(options.app), readInventory(options.app)]);
 	const bySlot = new Map<string, PortElement[]>();
 	for (const pf of port.values()) for (const el of pf.elements) {
 		const key = el.attrs['data-slot'] ?? el.tag;
@@ -198,7 +200,8 @@ export async function buildLedger(options: LedgerOptions): Promise<Ledger> {
 	}
 	const roots = rootsRendering(port);
 	const pages = pageOf(port);
-	const allRoutes = [...pages.keys()];
+	// An app converted for a few routes (dev) holds few pages: the site's routes say which page a component is for.
+	const allRoutes = [...new Set([...pages.keys(), ...(inventory ? plannedRoutes(inventory) : [])])];
 	const homed = new Map<string, boolean>();
 	// Whether some route of the port shares a word with the file's path: the page that component or example is for.
 	const homes = (file: string) => homed.get(file) ?? homed.set(file, allRoutes.some((r) => affinity(file, r) > 0)).get(file)!;
