@@ -9,7 +9,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { atRest } from './at-rest.ts';
-import { captureRouteReveals, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { applyQwikFloating, captureQwikFloating, type QwikFloating } from './qwik-floating.ts';
@@ -1616,6 +1616,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (reveal && routes.includes(route)) {
 				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
 				const own = await captureRouteReveals(browser, options.old, route, (await atFor(route, 'reveals')), { extra, opens, loadDialog }, limit);
+				const incomplete = incompleteCapture(own);
+				if (incomplete) throw new Error(incomplete);
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
 				for (const why of own.skipped.filter((s) => s.startsWith('the route: '))) log(`  controls on ${route} not used: ${why.slice('the route: '.length)}`);
 				await scenesRead;

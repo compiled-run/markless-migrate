@@ -60,6 +60,8 @@ export interface RevealCapture {
 	readonly route: string;
 	readonly reveals: readonly Reveal[];
 	readonly skipped: readonly string[];
+	/** Controls found on the first load and not on the page loaded again, as `key (viewport)`: the capture is incomplete, so it is never stored. */
+	readonly lost?: readonly string[];
 	/** The version of each mark written on what the gestures added (addedMarks): a reveal lacking one that applies to it is taken again. */
 	readonly marks?: Marked;
 	/** Before marks: COMMAND_EMPTY when the commands' empty states were kept. */
@@ -395,7 +397,8 @@ async function waitFound(page: Page, find: (found: readonly Candidate[]) => Cand
 export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
-	if (cached && cached.route === route) {
+	// Stored before an incomplete capture was refused, a control lost on a reload was kept among the skips.
+	if (cached && cached.route === route && !cached.lost?.length && !cached.skipped.some((s) => s.endsWith(LOST))) {
 		// A capture under the reveal:2 key and later had its text values marked.
 		const marked = markedOf(cached, { [textValuesMark.id]: 1 });
 		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
@@ -408,6 +411,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	}
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
+	const lost: string[] = [];
 	const done = new Set<string>(taken);
 	let hidden = true;
 	for (const viewport of viewports) {
@@ -430,7 +434,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 					({ found: current, candidate } = await waitFound(open.page, (now) => foundAgain(now, first), extra, pass.controls));
 				}
 				if (!candidate?.visible) {
-					skipped.push(`${first.key} (${viewport.name}): not found on the page loaded again`);
+					lost.push(`${first.key} (${viewport.name})`);
 					continue;
 				}
 				const used = await useCandidate(open, candidate);
@@ -450,10 +454,18 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 			await open.context.close().catch(() => {});
 		}
 	}
+	if (lost.length) return { route, reveals, skipped, lost };
 	const capture: RevealCapture = { route, reveals, skipped, marks: marksOf(marks) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+const LOST = ': not found on the page loaded again';
+
+/** Why a route's capture fails when it lost controls on a reload, naming them; none when it is whole. */
+export function incompleteCapture(capture: Pick<RevealCapture, 'lost'>): string | undefined {
+	return capture.lost?.length ? `capture incomplete: ${capture.lost.join(', ')} not found on the page loaded again, so their reveals are missing` : undefined;
 }
 
 // The cached reveals' controls used again on a fresh load at each one's viewport, found by key and else by tag, slot, text
@@ -531,7 +543,8 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	]);
 	const { own, listed, base, keys, wide, dismissed, dismissedOpens } = first;
 	const more = [...child.reveals, ...(dismissed?.reveals ?? []), ...(dismissedOpens?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
+	const lost = [own, listed, child, opened, scroll, wide, dismissed, dismissedOpens].flatMap((c) => c?.lost ?? []);
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], ...(lost.length ? { lost } : {}), skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
