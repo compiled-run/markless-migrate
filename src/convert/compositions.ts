@@ -3,6 +3,7 @@ import { attr, elementChildren, isElement, setAttr, textContent, walk, type Elem
 /** What plan's libraries.json says of one part the source renders through its child (src/library/composition.ts). */
 export interface CompositionFact {
 	readonly part: string;
+	readonly via?: 'asChild' | 'render' | 'direct';
 	readonly slots: readonly string[];
 	readonly text?: string;
 	readonly label?: string;
@@ -27,12 +28,14 @@ interface Indexed {
 	readonly bySlot: ReadonlyMap<string, readonly CompositionFact[]>;
 	/** Sites whose element carries no slot the source names: known by their label. */
 	readonly labelled: readonly CompositionFact[];
+	/** The part's own element, which the source gives no slot: known by its text or label where the source puts it. */
+	readonly direct: readonly CompositionFact[];
 }
 
 const index = (facts: readonly CompositionFact[]): Indexed => {
 	const bySlot = new Map<string, CompositionFact[]>();
 	for (const c of facts) for (const s of c.slots) (bySlot.get(s) ?? bySlot.set(s, []).get(s)!).push(c);
-	return { bySlot, labelled: facts.filter((c) => !c.slots.length && c.label !== undefined) };
+	return { bySlot, labelled: facts.filter((c) => c.via !== 'direct' && !c.slots.length && c.label !== undefined), direct: facts.filter((c) => c.via === 'direct' && !c.slots.length) };
 };
 
 let current: Indexed = index([]);
@@ -47,6 +50,13 @@ const nearestSlot = (el: Element): string | undefined => {
 		if (s) return s;
 	}
 	return undefined;
+};
+
+// A direct site's text is its descendants' too: it is the control showing it, outermost first.
+const control = (el: Element): boolean => el.tagName === 'button' || el.tagName === 'a' || attr(el, 'role') !== undefined || attr(el, 'tabindex') !== undefined;
+const markedAbove = (el: Element): boolean => {
+	for (let p = el.parentNode as Element | null; p && isElement(p) && !attr(p, 'data-slot'); p = p.parentNode as Element | null) if (attr(p, PART_MARK)) return true;
+	return false;
 };
 
 /**
@@ -72,8 +82,8 @@ function fits(el: Element, c: CompositionFact, shown: ReadonlySet<string>): numb
  * in and, where the source fixes the row it stands in, it stands at its place in that row.
  */
 export function markCompositions(roots: readonly Element[], facts: readonly CompositionFact[] | Indexed = current): number {
-	const { bySlot, labelled } = Array.isArray(facts) ? index(facts) : (facts as Indexed);
-	if (!bySlot.size && !labelled.length) return 0;
+	const { bySlot, labelled, direct } = Array.isArray(facts) ? index(facts) : (facts as Indexed);
+	if (!bySlot.size && !labelled.length && !direct.length) return 0;
 	const shown = new Set<string>();
 	const all = roots.flatMap((r) => [...walk(r)]);
 	for (const el of all) {
@@ -84,7 +94,7 @@ export function markCompositions(roots: readonly Element[], facts: readonly Comp
 	for (const el of all) {
 		if (attr(el, PART_MARK)) continue;
 		const slot = attr(el, 'data-slot');
-		const candidates = slot ? (bySlot.get(slot) ?? []) : attr(el, 'aria-label') !== undefined ? labelled : [];
+		const candidates = slot ? (bySlot.get(slot) ?? []) : [...(attr(el, 'aria-label') !== undefined ? labelled : []), ...(direct.length && control(el) && !markedAbove(el) ? direct : [])];
 		// Sites of different parts that fit equally well leave it unmarked.
 		let parts = new Set<string>();
 		let best = 0;

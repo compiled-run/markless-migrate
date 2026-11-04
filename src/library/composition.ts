@@ -284,19 +284,38 @@ export class Compositions {
 		return root?.type === 'JSXElement' ? this.slotsOf(component.mod, root, depth) : [];
 	}
 
-	/** Every composition site in a module, its routes left to the caller. */
+	private fromPackage(mod: Module, name: N): boolean {
+		const tag = jsxName(name);
+		const imp = tag && mod.imports.get(tag.root);
+		return !!imp && isPackage(imp.source, this.ctx) && packageOf(imp.source) !== 'react';
+	}
+
+	/**
+	 * Every composition site in a module, its routes left to the caller. A part straight off the package that the source
+	 * gives no data-slot (new-york-v4 sheet's corner Close) is one too: its element carries no slot to know it by.
+	 */
 	async sites(mod: Module): Promise<Omit<Composition, 'routes'>[]> {
-		const found: { opening: N; element: N; ancestors: N[] }[] = [];
+		const found: { opening: N; element: N; ancestors: N[]; direct: boolean }[] = [];
 		walk(mod.program, (n, ancestors) => {
 			if (n.type !== 'JSXOpeningElement') return;
 			const element = ancestors[ancestors.length - 1];
 			if (element?.type !== 'JSXElement') return;
-			if (isTrue(n, 'asChild') || renderElement(n)) found.push({ opening: n, element, ancestors: ancestors.slice(0, -1) });
+			if (isTrue(n, 'asChild') || renderElement(n)) found.push({ opening: n, element, ancestors: ancestors.slice(0, -1), direct: false });
+			else if (!attribute(n, 'data-slot') && this.fromPackage(mod, n.name)) found.push({ opening: n, element, ancestors: ancestors.slice(0, -1), direct: true });
 		});
 		const out: Omit<Composition, 'routes'>[] = [];
-		for (const { opening, element, ancestors } of found) {
+		for (const { opening, element, ancestors, direct } of found) {
 			const { part } = await this.tag(mod, opening.name);
 			if (!part) continue;
+			if (direct) {
+				// A compound part (Dialog.Close), not a package's own component (next/link) or a motion element.
+				if (!/^[A-Z]\w*\.[A-Z]\w*$/.test(part.export)) continue;
+				const text = jsxText(element, mod);
+				const label = literalAttr(opening, 'aria-label', mod);
+				const within = text !== undefined || label !== undefined ? (await this.within(mod, ancestors))?.slot : undefined;
+				if (within) out.push({ library: part.library, export: part.export, part: partRole(part.library, part.export), via: 'direct', slots: [], ...(text ? { text } : {}), ...(label ? { label } : {}), within, file: mod.file, line: mod.line(opening.start) });
+				continue;
+			}
 			const via = isTrue(opening, 'asChild') ? 'asChild' : 'render';
 			const child = via === 'asChild' ? onlyChild(element) : renderElement(opening);
 			if (!child) continue;

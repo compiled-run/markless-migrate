@@ -57,3 +57,15 @@ test('an element two parts\' sites fit equally well is left unmarked', () => {
 	assert.deepEqual(marks(html, [sheet, menu]), []);
 	assert.deepEqual(marks(html, [sheet, { ...sheet, text: 'Open' }]), ['button Open dialog-trigger']);
 });
+
+test('a part the source names straight off the package with no data-slot is marked on the control showing its text, inside the element the source puts it in', () => {
+	// new-york-v4 sheet.tsx: <SheetPrimitive.Close className=...><XIcon /><span className="sr-only">Close</span></SheetPrimitive.Close>.
+	const facts: CompositionFact[] = [{ part: 'dialog-close', via: 'direct', slots: [], text: 'Close', within: 'sheet-content' }];
+	const page = '<main><button>Close</button></main><div role="dialog" data-slot="sheet-content"><div data-slot="sheet-header"><h2>Code</h2></div><button type="button" class="absolute top-4 right-4"><svg></svg><span class="sr-only">Close</span></button></div>';
+	assert.deepEqual(marks(page, facts), ['undefined Close dialog-close']);
+	const root = body(parseDocument(page));
+	markCompositions([root], facts);
+	const marked = [...walk(root)].filter((el) => attr(el, PART_MARK));
+	assert.deepEqual(marked.map((el) => el.tagName), ['button'], 'the button, not its sr-only text');
+	assert.equal(attr(marked[0]!, 'class'), 'absolute top-4 right-4', 'the page\'s own Close outside the sheet stays unmarked');
+});
