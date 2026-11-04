@@ -1,0 +1,26 @@
+{
+	"routes": [
+		"/colors",
+		"/docs/ai-sdk-ui/chatbot-tool-usage",
+		"/docs/components/aria/calendar",
+		"/docs/components/aria/code-block",
+		"/docs/components/aria/field",
+		"/docs/components/aria/message-scroller",
+		"/docs/components/aria/questionnaire",
+		"/docs/components/base/calendar",
+		"/docs/components/base/data-table",
+		"/docs/components/radix/calendar",
+		"/docs/components/radix/code-block",
+		"/docs/components/radix/data-table",
+		"/docs/components/radix/questionnaire",
+		"/docs/react/questionnaire",
+		"/view/new-york-v4/chart-bar-label-custom",
+		"/view/new-york-v4/chart-radial-grid",
+		"/view/new-york-v4/chart-radial-simple",
+		"/view/new-york-v4/sidebar-06",
+		"/view/new-york-v4/sidebar-11"
+	],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}
