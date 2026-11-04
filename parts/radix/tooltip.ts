@@ -3,7 +3,7 @@ import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Tooltip under shadcn's TooltipProvider delayDuration={0}: the pointer entering the trigger shows the content
 // (data-state "delayed-open", "instant-open" while another tooltip is open or closed within Radix's 300 ms skip
-// delay); keyboard focus shows it "instant-open". aria-describedby names its hidden role="tooltip" text; leaving,
+// delay); focus not from a press on it shows it "instant-open". aria-describedby names its hidden role="tooltip" text; leaving,
 // blurring, a press on the trigger or Escape hides it. The content never takes focus.
 const TRIGGER = ':is([data-slot="tooltip-trigger"], [data-mm-part="tooltip-trigger"])[data-state]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
@@ -11,6 +11,8 @@ const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? c
 const SKIP_DELAY = 300;
 const shown = new Map<HTMLElement, Layer>();
 let lastClosed = 0;
+// Radix's isPointerDownRef: the trigger a press is on until the pointer is released, whose focus opens nothing.
+let pressed: HTMLElement | undefined;
 
 const keyOf = (t: HTMLElement) => layerKey(t);
 
@@ -56,6 +58,10 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 
 export function pointerdown(target: Element): boolean {
 	const trigger = triggerOf(target);
+	if (trigger) {
+		pressed = trigger;
+		document.addEventListener('pointerup', () => (pressed = undefined), { once: true, capture: true });
+	}
 	if (!trigger || !shown.has(trigger)) return false;
 	hide(trigger);
 	return false;
@@ -63,7 +69,7 @@ export function pointerdown(target: Element): boolean {
 
 export function focusin(target: Element): boolean {
 	const trigger = triggerOf(target);
-	return trigger && (target as HTMLElement).matches(':focus-visible') ? show(trigger, true) : false;
+	return trigger && trigger !== pressed ? show(trigger, true) : false;
 }
 
 export function focusout(target: Element): boolean {

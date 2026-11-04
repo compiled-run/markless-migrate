@@ -247,6 +247,24 @@ test('Radix Tooltip: keyboard focus opens it instant-open; the pointer opens it 
 	await fresh.close();
 });
 
+test("Radix Tooltip: focus a script moves onto the trigger after a mouse press elsewhere opens it (a sheet's opening focus on Copy); focus from pressing the trigger does not", async () => {
+	const page = await open(
+		`<main style="padding:200px"><button id="go" type="button" onclick="document.getElementById('a').focus()">View Code</button> <button id="a" data-slot="tooltip-trigger" data-state="closed">Copy</button> <button id="b" data-slot="tooltip-trigger" data-state="closed">Print</button></main>${tooltipLayer('a', 'Copy code')}${tooltipLayer('b', 'Print file')}`,
+		['radix/tooltip'],
+	);
+	await page.locator('#go').click();
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'a');
+	assert.equal(await page.locator('#a').getAttribute('data-state'), 'instant-open');
+	assert.equal(await page.locator('#a').getAttribute('aria-describedby'), 'a-text');
+	await page.locator('#b').hover();
+	await page.mouse.down();
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'b');
+	await page.mouse.up();
+	await page.waitForTimeout(50);
+	assert.equal(await page.locator('#b').getAttribute('data-state'), 'closed', 'a press on the trigger closes it, and the focus it gives does not open it again');
+	await page.close();
+});
+
 const baseLayer = (key: string, slot: string, text: string) => `<div data-base-ui-portal hidden data-mm-layer="${key}"><div role="presentation" data-side="top" data-align="center" style="position:fixed" data-closed><div data-slot="${slot}" data-side="top" data-closed>${text}</div></div></div>`;
 const pointerOver = (page: Page, selector: string, pointerType: string) => page.locator(selector).evaluate((el, type) => el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: type })), pointerType);
 const layerShown = (page: Page, key: string) => page.locator(`[data-mm-layer="${key}"]`).evaluate((el) => !(el as HTMLElement).hidden);
@@ -291,6 +309,40 @@ test("the pointer inside an open Radix sheet whose layer also holds a tooltip's 
 	await page.waitForTimeout(100);
 	assert.equal(await page.locator('#sheet').getAttribute('data-state'), 'open');
 	assert.equal(await page.locator('#sheet').isVisible(), true);
+	await page.close();
+});
+
+test("an outside press closes an open Radix sheet while the tooltip its opening focus showed is open, as a tooltip never holds the page's presses; Escape closes only the tooltip", async () => {
+	// As convert renders /charts/area's View Code: the Copy tooltip a layer of its own trigger, which the sheet's autofocus lands on.
+	const page = await open(
+		`<main style="padding:40px"><button data-slot="sheet-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="sheet" data-state="closed">View Code</button></main>
+		<div data-mm-layer="sheet" hidden data-slot="sheet-overlay" data-state="closed"></div>
+		<div data-mm-layer="sheet" hidden role="dialog" id="sheet" data-slot="sheet-content" data-state="closed" tabindex="-1" style="position:fixed;right:0;top:0;width:400px;height:400px"><button data-slot="tooltip-trigger" data-state="closed" data-mm-key="copy">Copy</button><p style="padding:40px">const chartData = []</p></div>
+		${tooltipLayer('copy', 'Copy code')}`,
+		['radix/dialog', 'radix/tooltip'],
+		undefined,
+		// shadcn's tooltip content fades out as it closes.
+		'<style>[data-slot="tooltip-content"][data-state="closed"]{animation:out .2s}@keyframes out{to{opacity:0}}</style>',
+	);
+	const opened = async () => {
+		await page.getByText('View Code').click();
+		await page.waitForFunction(() => document.querySelector('[data-mm-key="copy"]')?.getAttribute('data-state') === 'instant-open', undefined, { timeout: 2000 });
+	};
+	await opened();
+	await page.keyboard.press('Escape');
+	await page.waitForFunction(() => (document.querySelector('[data-mm-layer="copy"]') as HTMLElement).hidden, undefined, { timeout: 2000 });
+	assert.equal(await page.locator('[data-mm-key="copy"]').getAttribute('data-state'), 'closed');
+	assert.equal(await page.locator('#sheet').getAttribute('data-state'), 'open', 'Escape goes to the tooltip, the topmost layer');
+	await page.keyboard.press('Escape');
+	await page.waitForFunction(() => document.querySelector('#sheet')?.getAttribute('data-state') === 'closed', undefined, { timeout: 2000 });
+	await opened();
+	// The dialog listens for outside presses from the task after it opens, as Radix's DismissableLayer does.
+	await page.waitForTimeout(50);
+	await page.mouse.click(20, 300);
+	await page.waitForFunction(() => document.querySelector('#sheet')?.getAttribute('data-state') === 'closed', undefined, { timeout: 2000 }).catch(() => {});
+	assert.equal(await page.locator('#sheet').getAttribute('data-state'), 'closed', 'the outside press closes the sheet');
+	await page.waitForTimeout(400);
+	assert.equal(await page.locator('[data-mm-layer="copy"]').evaluate((el) => (el as HTMLElement).hidden), true, 'and its tooltip');
 	await page.close();
 });
 
