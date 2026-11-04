@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { applyAccepted, failureId } from '../src/check/accepted.ts';
 import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
-import { controlsToMeasure, fetchKind, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { confirmBudget, controlsToMeasure, fetchKind, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
 import { judge, likelyCause, speeds, speedTiming, timeOf, worstOf } from '../src/check/responsiveness-compare.ts';
 import { headlines, summarizeResponsiveness, worstLine } from '../src/check/responsiveness-summary.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
@@ -27,6 +27,25 @@ test('NEW fails only when every run exceeds the slower OLD run by max(16 ms, 10%
 	assert.deepEqual(judge([40, 44], [90, 50]), { ok: true, rerun: false, newMs: 50, slower: false, overBudget: false, oldMs: 44, allowedMs: 60 }, 'one run over: noise, the run within is kept');
 	assert.deepEqual(judge([250, 260], [262, 270], 200), { ok: false, rerun: false, newMs: 270, slower: false, overBudget: true, oldMs: 260, allowedMs: 286 }, 'the budget is flagged even when the old app was as slow: judgeResponsiveness then holds the new app to the old');
 	assert.equal(judge([30], [undefined]).ok, true, 'no visible result is not a time');
+});
+
+test('a phone-speed first interaction with a run over the budget on either side is timed until five runs a side; one with none is not', async () => {
+	const all = speeds(4);
+	const [desktop, throttled] = all;
+	const control = (name: string, olds: number[], news: number[]): ControlTiming => ({
+		control: `button "${name}"`,
+		step: `click button "${name}"`,
+		kind: 'in-page',
+		speeds: [speedTiming(desktop!, 'in-page', [sample({ ms: 30 })], [sample({ ms: 30 })], 200), speedTiming(throttled!, 'in-page', olds.map((ms) => sample({ ms })), news.map((ms) => sample({ ms })), 200)],
+	});
+	const controls = [control('Subscription', [654, 106], [249, 182]), control('Fast', [120, 130], [140, 150])];
+	const steps = controls.map((_, k) => ({ step: click('button', k ? 'Fast' : 'Subscription') }));
+	const timed: string[] = [];
+	await confirmBudget(controls, steps, all, async (speed, step) => (timed.push(`${speed.name} ${step.target.name}`), { o: sample({ ms: 150 }), n: sample({ ms: 260 }) }), 200);
+	assert.deepEqual(timed, ['throttled Subscription', 'throttled Subscription', 'throttled Subscription']);
+	const t = controls[0]!.speeds[1]!;
+	assert.deepEqual([t.old.length, t.new.length, t.ok, t.problems], [5, 5, false, ['over the 200 ms budget']]);
+	assert.equal(controls[1]!.speeds[1]!.new.length, 2);
 });
 
 const journey = (name: string, steps: RecordedJourney['steps'], expected: StepResult[] = [step()]): RecordedJourney => ({ name, steps, expected });

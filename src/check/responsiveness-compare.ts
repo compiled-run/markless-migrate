@@ -31,7 +31,7 @@ export interface Verdict {
 	readonly allowedMs?: number;
 }
 
-/** NEW fails only when every one of its runs exceeds the slower OLD run by max(16 ms, 10%, how much OLD's own runs varied), or the budget; one run over asks for another. */
+/** NEW fails when every one of its runs exceeds the slower OLD run by max(16 ms, 10%, how much OLD's own runs varied) or the budget, or when most of them exceed the budget; one run over asks for another. */
 export function judge(old: readonly (number | undefined)[], next: readonly (number | undefined)[], budgetMs?: number): Verdict {
 	const olds = old.filter((n): n is number => n !== undefined);
 	const news = next.filter((n): n is number => n !== undefined);
@@ -44,9 +44,14 @@ export function judge(old: readonly (number | undefined)[], next: readonly (numb
 	const exceeds = (n: number) => slow(n) || over(n);
 	const all = news.every(exceeds);
 	if (all && news.length < 2) return { ok: false, rerun: true, newMs: news[0]!, slower: slow(news[0]!), overBudget: over(news[0]!), ...(oldMs !== undefined ? { oldMs, allowedMs: allowedMs! } : {}) };
-	const newMs = all ? Math.max(...news) : Math.min(...news.filter((n) => !exceeds(n)));
-	return { ok: !all, rerun: false, newMs, slower: all && news.every(slow), overBudget: all && news.every(over), ...(oldMs !== undefined ? { oldMs, allowedMs: allowedMs! } : {}) };
+	const overBudget = most(news, over);
+	const newMs = all ? Math.max(...news) : overBudget ? middle(news) : Math.min(...news.filter((n) => !exceeds(n)));
+	return { ok: !all && !overBudget, rerun: false, newMs, slower: all && news.every(slow), overBudget, ...(oldMs !== undefined ? { oldMs, allowedMs: allowedMs! } : {}) };
 }
+
+/** More than half the runs: both of two, three of five. */
+export const most = (runs: readonly number[], test: (ms: number) => boolean): boolean => runs.filter(test).length * 2 > runs.length;
+const middle = (runs: readonly number[]) => [...runs].sort((a, b) => a - b)[Math.floor(runs.length / 2)]!;
 
 const kB = (bytes: number) => `${(bytes / 1024).toFixed(1)} kB`;
 
@@ -183,8 +188,8 @@ export function failuresOf(route: string, controls: readonly ControlTiming[], al
 const timed = (samples: readonly Sample[]) => samples.flatMap((s) => (s.ms !== undefined ? [s.ms] : []));
 
 /**
- * One control's recorded verdict as the check holds it now. The 4x budget holds where the old app meets it; where every old run
- * misses it the new one is held to the old alone, by the slower-than test and its confirming runs. Code counts only when the
+ * One control's recorded verdict as the check holds it now. The 4x budget holds where the old app meets it; where most old runs
+ * miss it the new one is held to the old alone, by the slower-than test and its confirming runs. Code counts only when the
  * interaction caused it.
  */
 function held(kind: ControlTiming['kind'], t: SpeedTiming, budgetMs: number): SpeedTiming {
@@ -192,7 +197,7 @@ function held(kind: ControlTiming['kind'], t: SpeedTiming, budgetMs: number): Sp
 	let note: string | undefined;
 	let newMs = t.newMs;
 	const olds = timed(t.old);
-	if (kind === 'in-page' && t.speed === 'throttled' && olds.length && olds.every((ms) => ms > budgetMs)) {
+	if (kind === 'in-page' && t.speed === 'throttled' && most(olds, (ms) => ms > budgetMs)) {
 		problems = problems.filter((p) => p !== `over the ${budgetMs} ms budget`);
 		// The run kept is the one the old-only verdict keeps: the faster within the old app's margin, else the slower.
 		newMs = judge(olds, timed(t.new)).newMs ?? newMs;
