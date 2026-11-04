@@ -148,6 +148,8 @@ export interface LoadRun {
 	readonly error?: string;
 	/** A load with nothing that qualifies as its largest paint (NO_LCP): its other times, which have no score without an LCP. */
 	readonly noLcp?: Omit<Metrics, 'score' | 'lcp'>;
+	/** A load whose network never went quiet within Lighthouse's wait (NO_TTI_NETWORK_IDLE_PERIOD): its other times; TBT has no end to count to. */
+	readonly noTbt?: Omit<Metrics, 'score' | 'tbt'>;
 	readonly detail?: LoadDetail;
 }
 
@@ -188,6 +190,8 @@ export interface RouteLoad {
 	readonly ok: boolean;
 	/** A side whose page has nothing that qualifies as a largest paint (NO_LCP) on some run: LCP and the score that needs it are not compared. */
 	readonly noLcp?: { readonly old: boolean; readonly new: boolean };
+	/** A side whose network never went quiet within Lighthouse's wait on some run: TBT is not compared, and the side counts as the slower there. */
+	readonly noTbt?: { readonly old: boolean; readonly new: boolean };
 	/** A side whose first run hung on all of its attempts (PAGE_HUNG), with Lighthouse's reason: its other runs were not taken. */
 	readonly hung?: { readonly old?: string; readonly new?: string };
 	/** Why the route has no verdict: a side never finished a run. */
@@ -288,6 +292,12 @@ export function readRun(lhr: Lhr, origin: string): LoadRun {
 		const { lcp: _, ...rest } = values;
 		const error = `NO_LCP: ${a['largest-contentful-paint']!.errorMessage!.replace(/ \(NO_LCP\)$/, '')}`;
 		return Object.values(rest).some((v) => v === undefined) ? { error } : { error, noLcp: rest as Omit<Metrics, 'score' | 'lcp'> };
+	}
+	// A page whose network never went quiet within Lighthouse's wait has no end to its load: TBT is left without one.
+	if (/\(NO_TTI_NETWORK_IDLE_PERIOD\)/.test(a['total-blocking-time']?.errorMessage ?? '')) {
+		const { tbt: _, ...rest } = values;
+		const error = `NO_TTI_NETWORK_IDLE_PERIOD: ${a['total-blocking-time']!.errorMessage!.replace(/ \(NO_TTI_NETWORK_IDLE_PERIOD\)$/, '')}`;
+		return Object.values(rest).some((v) => v === undefined) ? { error } : { error, noTbt: rest as Omit<Metrics, 'score' | 'tbt'> };
 	}
 	if (score == null || Object.values(values).some((v) => v === undefined)) return { error: 'Lighthouse returned no performance metrics' };
 	const metrics = { score: Math.round(score * 100), ...(values as Record<Exclude<LoadMetric, 'score'>, number>) };
@@ -429,29 +439,34 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	const browser = await startChromium();
 	const unbypass = options.bypass ? await bypassForOrigins(browser.port, options.bypass) : undefined;
 	try {
-		const once = async (which: 'old' | 'new', route: string): Promise<LoadRun & { hungEvery?: true }> => {
+		const once = async (which: 'old' | 'new', route: string, idleOnce = false): Promise<LoadRun & { hungEvery?: true; idleEvery?: true }> => {
 			const origin = origins[which];
 			const url = new URL(route, origin).href;
 			let result: LoadRun = { error: 'not run' };
 			let hangs = 0;
-			for (let attempt = 0; attempt <= RETRIES && !result.metrics && !result.error?.startsWith('NO_LCP'); attempt++) {
+			let idle = 0;
+			for (let attempt = 0; attempt <= RETRIES && !result.metrics && !result.error?.startsWith('NO_LCP') && !(idleOnce && result.error?.startsWith('NO_TTI_NETWORK_IDLE_PERIOD')); attempt++) {
 				result = await run(url, browser.port, blocked, cpu, options.throttle).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
 				if (result.error?.startsWith('PAGE_HUNG')) hangs++;
+				if (result.error?.startsWith('NO_TTI_NETWORK_IDLE_PERIOD')) idle++;
 			}
-			return hangs > RETRIES ? { ...result, hungEvery: true } : result;
+			return hangs > RETRIES ? { ...result, hungEvery: true } : idle > RETRIES ? { ...result, idleEvery: true } : result;
 		};
 		for (const route of routes) {
 			const started = Date.now();
 			const taken: { old: LoadRun[]; new: LoadRun[] } = { old: [], new: [] };
 			// A side whose first run hung on every attempt hangs on every load: its other runs are not taken.
 			const hung: { old?: string; new?: string } = {};
+			// A side whose first run never went quiet on every attempt does the same on every load: its later runs are taken once each.
+			const neverIdle = { old: false, new: false };
 			const take = async (from: number) => {
 				for (let i = from; i < from + runs; i++)
 					for (const which of i % 2 ? (['new', 'old'] as const) : (['old', 'new'] as const)) {
 						if (hung[which]) continue;
-						const { hungEvery, ...got } = await once(which, route);
+						const { hungEvery, idleEvery, ...got } = await once(which, route, neverIdle[which]);
 						taken[which].push(got);
 						if (i === 0 && hungEvery) hung[which] = got.error!;
+						if (i === 0 && idleEvery) neverIdle[which] = true;
 					}
 			};
 			await take(0);
@@ -465,13 +480,21 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	return out;
 }
 
-/** The metrics both sides' runs can be judged on: all of them, or, where a side's page has no largest paint, its other times without the score that needs it. */
-export function judged(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): { old: Metrics[]; new: Metrics[]; metrics: readonly LoadMetric[]; noLcp?: { readonly old: boolean; readonly new: boolean } } {
+/**
+ * The metrics both sides' runs can be judged on: all of them, or, where a side's page has no largest paint (NO_LCP) or its
+ * network never went quiet (NO_TTI_NETWORK_IDLE_PERIOD, no TBT), the times both sides have, without the score that needs them all.
+ */
+export function judged(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): { old: Metrics[]; new: Metrics[]; metrics: readonly LoadMetric[]; noLcp?: { readonly old: boolean; readonly new: boolean }; noTbt?: { readonly old: boolean; readonly new: boolean } } {
 	const full = (runs: readonly LoadRun[]) => runs.flatMap((r) => (r.metrics ? [r.metrics] : []));
-	const lacks = (runs: readonly LoadRun[]) => runs.some((r) => r.noLcp);
-	if (!lacks(oldRuns) && !lacks(newRuns)) return { old: full(oldRuns), new: full(newRuns), metrics: LOAD_METRICS };
-	const partial = (runs: readonly LoadRun[]) => runs.flatMap((r) => (r.metrics ?? r.noLcp ? [{ score: NaN, lcp: NaN, ...(r.metrics ?? r.noLcp)! } as Metrics] : []));
-	return { old: partial(oldRuns), new: partial(newRuns), metrics: LOAD_METRICS.filter((m) => m !== 'score' && m !== 'lcp'), noLcp: { old: lacks(oldRuns), new: lacks(newRuns) } };
+	const lacks = (runs: readonly LoadRun[], kind: 'noLcp' | 'noTbt') => runs.some((r) => r[kind]);
+	const noLcp = { old: lacks(oldRuns, 'noLcp'), new: lacks(newRuns, 'noLcp') };
+	const noTbt = { old: lacks(oldRuns, 'noTbt'), new: lacks(newRuns, 'noTbt') };
+	const anyLcp = noLcp.old || noLcp.new;
+	const anyTbt = noTbt.old || noTbt.new;
+	if (!anyLcp && !anyTbt) return { old: full(oldRuns), new: full(newRuns), metrics: LOAD_METRICS };
+	const partial = (runs: readonly LoadRun[]) => runs.flatMap((r) => (r.metrics ?? r.noLcp ?? r.noTbt ? [{ score: NaN, lcp: NaN, tbt: NaN, ...(r.metrics ?? r.noLcp ?? r.noTbt)! } as Metrics] : []));
+	const metrics = LOAD_METRICS.filter((m) => m !== 'score' && !(m === 'lcp' && anyLcp) && !(m === 'tbt' && anyTbt));
+	return { old: partial(oldRuns), new: partial(newRuns), metrics, ...(anyLcp ? { noLcp } : {}), ...(anyTbt ? { noTbt } : {}) };
 }
 
 /** A metric worse than its floor whose runs do not yet tell it from noise: worth as many runs again before judging. */
@@ -490,15 +513,16 @@ export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: re
 	const next = side(newRuns);
 	// A page that hangs is slower than any that loads: the port passes an original that hung only by finishing every run of its own.
 	if (hung.old || hung.new) {
-		const finished = !hung.new && newRuns.length >= runs && newRuns.every((r) => r.metrics || r.noLcp);
+		const finished = !hung.new && newRuns.length >= runs && newRuns.every((r) => r.metrics || r.noLcp || r.noTbt);
 		return { runs: newRuns.length, old, new: next, verdicts: [], ok: Boolean(hung.old) && finished, hung };
 	}
-	const { old: oldGood, new: newGood, metrics, noLcp } = judged(oldRuns, newRuns);
+	const { old: oldGood, new: newGood, metrics, noLcp, noTbt } = judged(oldRuns, newRuns);
 	if (!oldGood.length) return { runs, old, new: next, verdicts: [], ok: true, skipped: `no Lighthouse run of the old page finished (${oldRuns[0]?.error ?? 'no run'})` };
 	if (!newGood.length) return { runs, old, new: next, verdicts: [], ok: false, skipped: `no Lighthouse run of the new page finished (${newRuns[0]?.error ?? 'no run'})` };
 	const verdicts = judgeLoad(oldGood, newGood, metrics);
 	// The new page losing the largest paint the old page has is red; one the old page lacks is reported, never red.
-	const ok = verdicts.every((v) => v.ok) && !(noLcp?.new && !noLcp.old);
+	// An original that never goes quiet is slower than any port that does; a port that never does is red, whatever the original.
+	const ok = verdicts.every((v) => v.ok) && !(noLcp?.new && !noLcp.old) && !noTbt?.new;
 	const browser = [...oldRuns, ...newRuns].find((r) => r.browser)?.browser;
 	const all = [...oldRuns, ...newRuns];
 	const indexes = all.flatMap((r) => (r.benchmarkIndex ? [r.benchmarkIndex] : []));
@@ -508,6 +532,6 @@ export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: re
 		if (old.detail) delete old.detail.filmstrip;
 		if (next.detail) delete next.detail.filmstrip;
 	}
-	return { runs, ...(browser ? { browser } : {}), ...machine, old, new: next, verdicts, ok, ...(noLcp ? { noLcp } : {}) };
+	return { runs, ...(browser ? { browser } : {}), ...machine, old, new: next, verdicts, ok, ...(noLcp ? { noLcp } : {}), ...(noTbt ? { noTbt } : {}) };
 }
 

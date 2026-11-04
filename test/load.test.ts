@@ -280,3 +280,41 @@ test('a side that hangs only on a later run is judged on its runs that finished,
 	assert.equal(load.hung, undefined);
 	assert.equal(load.verdicts.length, 6);
 });
+
+const NEVER_IDLE = 'Your page took too long to load. Please follow the opportunities in the report to reduce your page load time, and then try re-running Lighthouse. (NO_TTI_NETWORK_IDLE_PERIOD)';
+const neverIdleLhr = { ...lhr, categories: { performance: { score: null } }, audits: { ...lhr.audits, 'total-blocking-time': { errorMessage: NEVER_IDLE } } };
+const neverIdleRun = (fcp: number): LoadRun => ({ error: 'NO_TTI_NETWORK_IDLE_PERIOD: Your page took too long to load', noTbt: { fcp, lcp: fcp + 200, si: fcp + 100, cls: 0 } });
+
+test('a load whose network never went quiet within Lighthouse\'s wait names that, and keeps its FCP, LCP, SI and CLS', () => {
+	const run = readRun(neverIdleLhr, 'https://vite-dev-markless.vercel.app');
+	assert.match(run.error ?? '', /^NO_TTI_NETWORK_IDLE_PERIOD: Your page took too long to load/);
+	assert.deepEqual(run.noTbt, { fcp: lhr.audits['first-contentful-paint'].numericValue, lcp: lhr.audits['largest-contentful-paint'].numericValue, si: lhr.audits['speed-index'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue });
+});
+
+test('once a side\'s first run never goes idle on all three attempts, its later runs are not tried again for it, and every run is still taken', async () => {
+	let oldCalls = 0;
+	const load = (await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async (url) => (url.startsWith('http://old.test') ? (oldCalls++, neverIdleLhr) : lhr))).get('/')!;
+	assert.equal(oldCalls, 3 + 3, 'three attempts of the first run, then one of each of the other three');
+	assert.equal(load.old.runs.length, 4);
+	assert.equal(load.hung, undefined, 'not a hang: the runs have times');
+});
+
+test('an original that never goes idle is judged on FCP, LCP, SI and CLS; its TBT counts as worse than the port\'s, so the port passes it', () => {
+	const load = routeLoad(5, [2000, 2010, 1990, 2005, 1995].map(neverIdleRun), [1500, 1510, 1490, 1505, 1495].map((f) => ({ metrics: { score: 90, fcp: f, lcp: f + 200, si: f + 100, tbt: 40, cls: 0 } })));
+	assert.equal(load.skipped, undefined);
+	assert.deepEqual(load.verdicts.map((v) => v.metric), ['fcp', 'lcp', 'si', 'cls']);
+	assert.deepEqual(load.noTbt, { old: true, new: false });
+	assert.equal(load.ok, true);
+	assert.deepEqual(loadFailures('/', load), []);
+	assert.match(loadLine(load), /TBT never \(the original's network never went quiet\) -> 40 ms/);
+});
+
+test('a port that never goes idle is red for TBT, whether or not its original went idle', () => {
+	const port = [2000, 2010, 1990, 2005, 1995].map(neverIdleRun);
+	const both = routeLoad(5, [2000, 2010, 1990, 2005, 1995].map(neverIdleRun), port);
+	assert.equal(both.ok, false);
+	assert.deepEqual(loadFailures('/', both).map((f) => f.check), ['page load: Total Blocking Time (Lighthouse, mobile)']);
+	const only = routeLoad(5, [2000, 2010, 1990, 2005, 1995].map((f) => ({ metrics: { score: 90, fcp: f, lcp: f + 200, si: f + 100, tbt: 40, cls: 0 } })), port);
+	assert.equal(only.ok, false);
+	assert.match(loadFailures('/', only)[0]!.actual, /never went quiet/);
+});

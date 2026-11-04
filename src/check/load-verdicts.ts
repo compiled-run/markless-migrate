@@ -66,7 +66,9 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 		return [{ route, dimension: 'load', check: check('the page'), viewport: 'mobile', expected: load.hung.old && !load.hung.new ? 'every run of the new page finishes, where the old page hung' : 'the new page loads without hanging', actual, hint: HINTS.load }];
 	}
 	const lostLcp: Failure[] = load.noLcp?.new && !load.noLcp.old ? [{ route, dimension: 'load', check: check(METRIC_LABEL.lcp), viewport: 'mobile', expected: `a largest paint, as the old page has in all of its ${load.old.runs.length} runs (median ${load.old.median ? formatMetric('lcp', load.old.median.lcp) : '?'})`, actual: `none in ${load.new.runs.filter((r) => 'error' in r && r.error.startsWith('NO_LCP')).length} of the new page's ${load.new.runs.length} runs: nothing on it qualifies as a Largest Contentful Paint (NO_LCP)`, hint: HINTS.load }] : [];
-	return [...lostLcp, ...load.verdicts
+	const neverIdle = load.new.runs.filter((r) => 'error' in r && r.error.startsWith('NO_TTI_NETWORK_IDLE_PERIOD')).length;
+	const lostTbt: Failure[] = load.noTbt?.new ? [{ route, dimension: 'load', check: check(METRIC_LABEL.tbt), viewport: 'mobile', expected: load.noTbt.old ? 'a load that goes quiet, so its blocking time has an end, which the old page did not reach either: neither can be measured' : `a load that goes quiet, as the old page's does (median TBT ${load.old.median ? formatMetric('tbt', load.old.median.tbt) : '?'})`, actual: `the new page's network never went quiet within Lighthouse's wait in ${neverIdle} of its ${load.new.runs.length} runs (NO_TTI_NETWORK_IDLE_PERIOD)`, hint: HINTS.load }] : [];
+	return [...lostLcp, ...lostTbt, ...load.verdicts
 		.filter((v) => !v.ok)
 		.map((v) => {
 			const paint = v.metric === 'lcp' || v.metric === 'fcp' || v.metric === 'si' || v.metric === 'score';
@@ -98,6 +100,7 @@ export function loadLine(load: RouteLoad): string {
 	}
 	const parts = load.verdicts.map((v) => `${v.metric === 'score' ? 'score' : v.metric.toUpperCase()} ${formatMetric(v.metric, v.old)} -> ${formatMetric(v.metric, v.new)}${v.ok ? '' : ' (worse)'}`);
 	const lcp = (side: 'old' | 'new') => (load.noLcp?.[side] ? 'none' : load[side].median ? formatMetric('lcp', load[side].median!.lcp) : '?');
+	if (load.noTbt) parts.push(`TBT ${load.noTbt.old ? "never (the original's network never went quiet)" : load.old.median ? formatMetric('tbt', load.old.median.tbt) : '?'} -> ${load.noTbt.new ? 'never (worse)' : load.new.median ? formatMetric('tbt', load.new.median.tbt) : '?'}`);
 	if (load.noLcp) parts.push(`LCP ${lcp('old')} -> ${lcp('new')}${load.noLcp.old ? ` (none on the original${load.noLcp.new ? ' or the port' : ''}: score and LCP not compared)` : ' (worse)'}`);
 	const cpu = load.cpuMultiplier ? `, ${load.cpuMultiplier}x CPU${load.benchmarkIndex ? ` for benchmarkIndex ${load.benchmarkIndex}` : ''}` : '';
 	return `page load, PageSpeed-equivalent (lab; Lighthouse mobile, median of ${load.runs}${load.browser ? `, ${load.browser}` : ''}${cpu}): ${parts.join(', ')}`;
