@@ -537,8 +537,9 @@ async function forms(page: Page, origin: string, found: readonly Candidate[]): P
 	const steps: Step[] = [];
 	const all = await page.locator('form').all();
 	for (const form of all) {
-		const action = await form.evaluate((f: HTMLFormElement) => f.action).catch(() => '');
-		if (action && new URL(action).origin !== origin) continue;
+		// Read through the prototype: a control named "action" shadows `form.action` (DOM clobbering).
+		const action = await form.evaluate((f: HTMLFormElement) => String(Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'action')!.get!.call(f))).catch(() => '');
+		if (action && URL.parse(action)?.origin !== origin) continue;
 		const fields: { target: Target; value: string; check?: boolean }[] = [];
 		let submit: Target | undefined;
 		for (const c of found) {
