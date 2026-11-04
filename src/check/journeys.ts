@@ -2006,7 +2006,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const size = () => {
 		const sized = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, controls * BUDGET_PER_CONTROL_MS) + patterns * PATTERN_BUDGET_MS);
 		if (options.maxJourneys === undefined) cap = Math.max(cap, Math.round(sized / NOMINAL_JOURNEY_MS));
-		// Each journey loads the page afresh: a page that takes 15 s to load (ten chart frames) needs that much more per journey.
+		// Each journey loads the page afresh: on a 4-vCPU runner a 450-journey page took 17 s a journey (radix calendar) and 8.3 s (/colors), past 2 s.
 		if (options.budgetMs === undefined) budget = Math.max(budget, Math.max(sized, cap * (NOMINAL_JOURNEY_MS + loadMs)) * TIME_CAP_FACTOR);
 	};
 	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
