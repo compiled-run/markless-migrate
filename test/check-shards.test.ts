@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accounts, combine, profiled, costsOf, datasets, joinKept, joinOld, lostUploads, phases, reports, routeTimes, split, summary, unfinished, unreported } from '../scripts/check-shards.ts';
+import { accounts, combine, profiled, costsOf, datasets, joinKept, joinOld, lostUploads, phases, reports, routeTimes, split, summary, unfinished, unreported, estimatesOf, MAX_SLICES, SLICED_SHARD, sliceLong } from '../scripts/check-shards.ts';
 
 test('targets are dealt across shards in turn, with nothing lost or repeated', () => {
 	const routes = Array.from({ length: 10 }, (_, i) => `/r${i}`);
@@ -227,4 +227,20 @@ test('a route whose only failures say what was not verified is incomplete, never
 	assert.match(text, /^1 red, 2 incomplete, of 3/);
 	assert.match(text, /\| `\/calendar` \| incomplete \|/);
 	assert.match(text, /\| `\/menu` \| red \|/);
+});
+
+test('a route the earlier run says takes longer than its timeout is taken out of the shards and checked in slices, one per timeout of its estimate', () => {
+	const earlier = [
+		{ route: '/a', ok: true, timing: { ms: 600_000 } },
+		{ route: '/b', ok: false, timing: { ms: 4_000_000 }, infrastructure: { cause: 'incomplete', message: 'exploring stopped at its time cap (3600 s) after 210 of its 450 journeys: the machine ran far slower' } },
+		{ route: '/c', ok: false, infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 7200 s, steps done 3 of 9' } },
+		{ route: '/d', ok: true, timing: { ms: 100_000_000 } },
+	];
+	const estimates = estimatesOf(earlier);
+	assert.equal(Math.round(estimates.get('/b')!), Math.round((4_000_000 * 450) / 210));
+	assert.equal(estimates.get('/c'), 7_200_000);
+	const { kept, sliced } = sliceLong({ routes: ['/a', '/b', '/c', '/d', '/e'], endpoints: ['/x'] }, estimates, 7_200_000);
+	assert.deepEqual(kept.routes, ['/a', '/c', '/e']);
+	assert.deepEqual(kept.endpoints, ['/x']);
+	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/d', slices: MAX_SLICES }]);
 });

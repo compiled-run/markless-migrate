@@ -184,6 +184,9 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           shows it and has room. --write-layout-survey <file> surveys every page of --targets for those controls
           and checks nothing; --layout-survey <file> makes a shard of a site's run read that survey, so owners are
           the site's whichever shard a route lands in, and leaves the owners' verdicts to check-shards.ts merge.
+          A route too long for one job is checked in parts that share --slice-dir <dir>: --slices explore
+          explores it, --slices replay --slice <i>/<n> replays every n-th of its journeys, and --slices finish
+          joins the replays by journey index and checks the rest, the report and observations an unsliced check makes.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
           journeys are explored main content first (tables, forms), until each element is used or
@@ -947,6 +950,17 @@ async function originalCommand(args: readonly string[], cwd: string): Promise<nu
 	return 0;
 }
 
+/** `--slices explore|replay|finish --slice-dir <dir> [--slice <i>/<n>]`: one part of a route checked across jobs. */
+function sliceOptions(mode: string | undefined, dir: string | undefined, slice: string | undefined, cwd: string): CheckOptions['slicing'] {
+	if (mode === undefined && dir === undefined && slice === undefined) return undefined;
+	if (mode !== 'explore' && mode !== 'replay' && mode !== 'finish') fail('--slices takes explore, replay or finish');
+	if (!dir) fail('--slices needs --slice-dir <dir>, where its parts are written and read');
+	const m = /^(\d+)\/(\d+)$/.exec(slice ?? '');
+	if (mode === 'replay' && !(m && Number(m[1]) >= 1 && Number(m[1]) <= Number(m[2]))) fail('--slices replay needs --slice <i>/<n>, i from 1 to n');
+	if (mode !== 'replay' && slice !== undefined) fail('--slice names the journeys a replay part replays: pass it with --slices replay');
+	return { mode, dir: resolve(cwd, dir), ...(mode === 'replay' ? { slice: { at: Number(m![1]), of: Number(m![2]) } } : {}) };
+}
+
 /** `check judge`: the report a check's recorded observations give with today's judges, and, with --report, where it differs from the one the check wrote. */
 async function judgeCheck(args: readonly string[], cwd: string): Promise<number> {
 	const { values, positionals } = parseArgs({ args: [...args], allowPositionals: true, options: { report: { type: 'string' }, out: { type: 'string' }, json: { type: 'boolean' } } });
@@ -1031,11 +1045,15 @@ async function main(argv: string[]): Promise<number> {
 					'site-targets': { type: 'string' },
 					'layout-survey': { type: 'string' },
 					'write-layout-survey': { type: 'string' },
+					slices: { type: 'string' },
+					'slice-dir': { type: 'string' },
+					slice: { type: 'string' },
 					...TIMING_FLAGS,
 				},
 			});
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
+			const slicing = sliceOptions(values.slices, values['slice-dir'], values.slice, cwd);
 			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load' && values.only !== 'embeds' && values.only !== 'probes') fail('--only takes coverage (whether every route of the old site exists on the new app), load (page load alone), embeds (the embed step alone) or probes (the widget probes alone)');
 			if (values.only === 'probes' && values['no-probes']) fail('--only probes and --no-probes leave nothing to check');
 			const coverageOnly = values.only === 'coverage';
@@ -1171,6 +1189,7 @@ async function main(argv: string[]): Promise<number> {
 				artifactsDir: join(cwd, STATE_DIR),
 				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
 				...(layoutSurvey ? { layoutSurvey } : {}),
+				...(slicing ? { slicing } : {}),
 				...(surveyTo ? { writeLayoutSurvey: (survey: LayoutSurvey) => writeFile(surveyTo, `${JSON.stringify(survey, null, '\t')}\n`) } : {}),
 			});
 			if (surveyTo) {
