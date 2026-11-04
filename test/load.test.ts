@@ -122,6 +122,15 @@ test('a run that errors is taken again, so a paint the machine skipped does not 
 	assert.ok(loads.get('/')!.old.runs.every((r) => !('error' in r)));
 });
 
+test('a page with no largest paint is run once, not again: it has none however often it loads', async () => {
+	const noLcp = { ...lhr, categories: { performance: { score: null } }, audits: { ...lhr.audits, 'largest-contentful-paint': { errorMessage: 'The page did not display content that qualifies as a Largest Contentful Paint (LCP). Ensure the page has a valid LCP element and then try again. (NO_LCP)' } } };
+	let calls = 0;
+	const loads = await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async (url) => (calls++, url.startsWith('http://old.test') ? noLcp : lhr));
+	assert.equal(calls, 8, 'four old runs, each taken once, and four new');
+	const first = loads.get('/')!.old.runs[0]!;
+	assert.match('error' in first ? first.error : '', /^NO_LCP: The page did not display content/);
+});
+
 test('a metric worse than its floor but within noise after the first runs gets as many runs again, and is judged on all of them', async () => {
 	let calls = 0;
 	const at = (lcp: number) => ({ ...lhr, audits: { ...lhr.audits, 'largest-contentful-paint': { numericValue: lcp } } });

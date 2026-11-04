@@ -100,7 +100,7 @@ export async function bypassForOrigins(port: number, bypass: AppBypass): Promise
 }
 
 export const DEFAULT_LOAD_RUNS = 5;
-/** A run that errors (on a busy machine headless Chromium can skip painting, NO_FCP) is taken again, at most this many times. */
+/** A run that errors (on a busy machine headless Chromium can skip painting, NO_FCP) is taken again, at most this many times; a page with no largest paint (NO_LCP) has none however often it loads. */
 const RETRIES = 2;
 
 /** How much worse the new median may be before it matters, whatever the noise: a score point is a rounding, 5% of a paint time is below what a person notices. */
@@ -252,6 +252,7 @@ export function judgeLoad(old: readonly Metrics[], next: readonly Metrics[]): Lo
 // Lighthouse result shapes this module reads; the package's own types cover the whole report.
 interface Audit {
 	readonly numericValue?: number;
+	readonly errorMessage?: string;
 	readonly details?: { readonly items?: readonly any[] };
 }
 interface Lhr {
@@ -262,6 +263,12 @@ interface Lhr {
 	readonly audits: Readonly<Record<string, Audit | undefined>>;
 }
 
+/**
+ * The audits readRun reads, and two whose gatherers instrument the load itself (JsUsage's coverage, ConsoleMessages), so the
+ * trace every judged time comes from is recorded as with the whole performance category; what this leaves out runs after the load.
+ */
+export const LIGHTHOUSE_AUDITS = ['first-contentful-paint', 'largest-contentful-paint', 'speed-index', 'total-blocking-time', 'cumulative-layout-shift', 'metrics', 'largest-contentful-paint-element', 'lcp-breakdown-insight', 'network-requests', 'render-blocking-insight', 'render-blocking-resources', 'mainthread-work-breakdown', 'bootup-time', 'screenshot-thumbnails', 'script-treemap-data', 'no-document-write'] as const;
+
 const shortUrl = (url: string, origin: string) => (url.startsWith(origin) ? url.slice(origin.length) || '/' : url).slice(0, 120);
 
 export function readRun(lhr: Lhr, origin: string): LoadRun {
@@ -270,6 +277,8 @@ export function readRun(lhr: Lhr, origin: string): LoadRun {
 	const value = (id: string) => a[id]?.numericValue;
 	const values = { fcp: value('first-contentful-paint'), lcp: value('largest-contentful-paint'), si: value('speed-index'), tbt: value('total-blocking-time'), cls: value('cumulative-layout-shift') };
 	const score = lhr.categories.performance?.score;
+	// A page with nothing that qualifies as its largest paint has none on every load: Lighthouse's code for it names the run's error.
+	if (/\(NO_LCP\)/.test(a['largest-contentful-paint']?.errorMessage ?? '')) return { error: `NO_LCP: ${a['largest-contentful-paint']!.errorMessage!.replace(/ \(NO_LCP\)$/, '')}` };
 	if (score == null || Object.values(values).some((v) => v === undefined)) return { error: 'Lighthouse returned no performance metrics' };
 	const metrics = { score: Math.round(score * 100), ...(values as Record<Exclude<LoadMetric, 'score'>, number>) };
 	const observedRaw = a.metrics?.details?.items?.[0] ?? {};
@@ -414,7 +423,7 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 			const origin = origins[which];
 			const url = new URL(route, origin).href;
 			let result: LoadRun = { error: 'not run' };
-			for (let attempt = 0; attempt <= RETRIES && !result.metrics; attempt++) result = await run(url, browser.port, blocked, cpu, options.throttle).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
+			for (let attempt = 0; attempt <= RETRIES && !result.metrics && !result.error?.startsWith('NO_LCP'); attempt++) result = await run(url, browser.port, blocked, cpu, options.throttle).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
 			return result;
 		};
 		for (const route of routes) {
