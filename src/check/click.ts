@@ -16,11 +16,35 @@ export async function clickOnce(target: Locator, options: Parameters<Locator['cl
 		})
 		.catch(() => {});
 	const before = await seen();
+	const position = options.position ?? (await drawnPoint(target));
 	try {
-		await target.click(options);
+		await target.click({ ...options, ...(position ? { position } : {}) });
 	} catch (error) {
 		const after = await seen();
 		if (before !== undefined && after !== undefined && after > before) return;
 		throw error;
 	}
 }
+
+/** Where to click a control whose box centre is a gap between what it draws (an axis' tick labels): the centre of its first drawn part the pointer reaches. */
+async function drawnPoint(target: Locator): Promise<{ x: number; y: number } | undefined> {
+	if ((await target.count().catch(() => 0)) !== 1) return undefined;
+	return target
+		.evaluate((el) => {
+			const box = el.getBoundingClientRect();
+			const reaches = (x: number, y: number) => {
+				const hit = document.elementFromPoint(x, y);
+				return Boolean(hit && (hit === el || el.contains(hit)));
+			};
+			if (!box.width || !box.height || reaches(box.x + box.width / 2, box.y + box.height / 2)) return undefined;
+			for (const part of [el, ...el.querySelectorAll('*')])
+				for (const r of part.getClientRects()) {
+					const x = r.x + r.width / 2;
+					const y = r.y + r.height / 2;
+					if (r.width >= 1 && r.height >= 1 && reaches(x, y)) return { x: x - box.x, y: y - box.y };
+				}
+			return undefined;
+		}, undefined, { timeout: 1_000 })
+		.catch(() => undefined);
+}
+
