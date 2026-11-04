@@ -489,11 +489,12 @@ test('a held loop scheduling a bound method stays held, and a frame callback sch
 	}
 });
 
-test('--journey-depth lets exploring go past four steps, so a link revealed by a fourth click (categories nested four deep) is used', async () => {
+test('a link revealed by a fourth click (categories nested four deep) is used along a path that keeps revealing; --journey-depth 4 stops short of it', async () => {
 	const nested = (n: number): string => (n === 0 ? '<a href="#deep">Deepest link</a>' : `<div><button type="button" onclick="this.nextElementSibling.hidden=false">Level ${n}</button><div hidden>${nested(n - 1)}</div></div>`);
 	const site = await serve(() => ({ body: html(nested(4)) }));
 	const reach = async (maxDepth?: number) => (await explore(browser, defaultEnv(site), '/', desktop[0]!, { budgetMs: 30_000, ...(maxDepth ? { maxDepth } : {}) })).elements.find((e) => e.element.startsWith('link "Deepest link"'));
-	assert.match((await reach())?.reason ?? '', /deeper than check explores: raise --journey-depth/);
+	assert.match((await reach(4))?.reason ?? '', /deeper than check explores: raise --journey-depth/);
+	assert.ok((await reach())?.by, 'used by a journey at depth 5 by default');
 	assert.ok((await reach(5))?.by, 'used by a journey at depth 5');
 });
 

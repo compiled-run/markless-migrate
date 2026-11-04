@@ -173,6 +173,8 @@ const MAX_ADAPTIVE_BUDGET_MS = 900_000;
 const NOMINAL_JOURNEY_MS = 2_000;
 const TIME_CAP_FACTOR = 4;
 const DEFAULT_MAX_DEPTH = 4;
+// A path that keeps revealing controls past DEFAULT_MAX_DEPTH goes this far (a reset that opens a confirmation that opens a picker).
+const REVEALING_MAX_DEPTH = 6;
 const CONCURRENCY = 8;
 // Journey sessions open at once in this process, across every pool (exploring, and the old and new replays side by side):
 // on a 4-core runner 16 sessions loaded a page of chart frames past its load timeout, and what a step shows varied with the load.
@@ -276,6 +278,8 @@ interface Candidate {
 	readonly kind?: string;
 	/** Rows, cells and tree items of one grid or tree: alike, so only the first few of a group are exercised. */
 	readonly group?: string;
+	/** The nearest group, toolbar, list, form or section holding it, numbered in page order: controls of one role in one holder are alike for their keyboard paths. */
+	readonly holder?: number;
 	/** It ends the session or deletes (its name or address says so). */
 	readonly destructive?: boolean;
 }
@@ -326,7 +330,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
 			// The items of one long list (a search palette's 450 options) answer through the list's one handler: a few of them stand for the rest.
-			const base = { target, kind: `${info.region || 'page'}|${role}|${name}|${info.kind}`, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : info.cellClass ? { group: `${role}|cell ${info.cellClass}` } : info.list >= 0 ? { group: `${role}|list ${info.list}` } : {}) };
+			const base = { target, kind: `${info.region || 'page'}|${role}|${name}|${info.kind}`, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.holder >= 0 ? { holder: info.holder } : {}), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : info.cellClass ? { group: `${role}|cell ${info.cellClass}` } : info.list >= 0 ? { group: `${role}|list ${info.list}` } : {}) };
 			if (role === 'link') {
 				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
 					add({ ...base, covered: 'its address is compared by the rendered check' });
@@ -402,6 +406,11 @@ function describeElement(el: Element) {
 		grid: Boolean(grid && /^(grid|treegrid|tree)$/.test(grid.getAttribute('role') ?? '')),
 		header: Boolean(el.querySelector('[role="columnheader"], th')),
 		container: grid ? [...document.querySelectorAll('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table')].indexOf(grid) : -1,
+		holder: (() => {
+			const holders = '[role="group"], [role="toolbar"], [role="radiogroup"], [role="menu"], [role="menubar"], [role="tablist"], [role="listbox"], fieldset, form, ul, ol, nav, aside, section, [role="region"], dialog, [role="dialog"]';
+			const at = el.parentElement?.closest(holders);
+			return at ? [...document.querySelectorAll(holders)].indexOf(at) : -1;
+		})(),
 		// A control in an interactive grid's cell (a calendar's day) is alike the others of its kind of grid in the same state:
 		// any month, and the same calendar in another locale, are one class.
 		cellClass: (() => {
@@ -1343,10 +1352,10 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 	}
 	if (found.kind === 'missing' || found.kind === 'disabled') throw new UnreachableError(found.kind, found.detail);
 	if (throughLabel && (found.kind === 'hidden' || found.kind === 'occluded')) {
-		// A radio or checkbox drawn by its label (code-group tabs, custom toggles) is used through the label, as a person does.
+		// A radio or checkbox drawn by its label (code-group tabs, custom toggles, a field card over its indicator) is used through the label, as a person does.
 		const mark = `${Date.now()}-${Math.random()}`;
 		const labelled = await target.evaluate((el, value) => {
-			const label = el instanceof HTMLInputElement ? el.labels?.[0] : undefined;
+			const label = (el instanceof HTMLInputElement ? el.labels?.[0] : undefined) ?? el.closest('label') ?? undefined;
 			label?.setAttribute('data-markless-migrate-label', value);
 			return Boolean(label);
 		}, mark).catch(() => false);
@@ -1864,6 +1873,8 @@ interface Item {
 	readonly left?: readonly Tracked[];
 	/** The widget whose WAI-ARIA keyboard journey this is. */
 	readonly keys?: KeyedWidget;
+	/** A keyboard path of a control: budgeted from the paths the controls have, not from the 1.5 a control. */
+	readonly keyboard?: true;
 }
 
 /** A widget given pattern journeys: how many of them ran on the old page, and why the rest did not. */
@@ -1995,10 +2006,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const size = () => {
 		const sized = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, controls * BUDGET_PER_CONTROL_MS) + patterns * PATTERN_BUDGET_MS);
 		if (options.maxJourneys === undefined) cap = Math.max(cap, Math.round(sized / NOMINAL_JOURNEY_MS));
-		// Each journey loads the page afresh: a page that takes 15 s to load (ten chart frames) needs that much more per journey.
+		// Each journey loads the page afresh: on a 4-vCPU runner a 450-journey page took 17 s a journey (radix calendar) and 8.3 s (/colors), past 2 s.
 		if (options.budgetMs === undefined) budget = Math.max(budget, Math.max(sized, cap * (NOMINAL_JOURNEY_MS + loadMs)) * TIME_CAP_FACTOR);
 	};
 	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
+	const revealingDepth = options.maxDepth ?? REVEALING_MAX_DEPTH;
 	const tracked: Tracked[] = [];
 	const known = new Set<string>();
 	const journeys: RecordedJourney[] = [];
@@ -2115,6 +2127,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		}
 		return fresh;
 	};
+	const alikeKeys = new Map<string, { t: Tracked; step: Step }[]>();
 	const itemsFor = (elements: readonly Tracked[], depth: number): { primary: Item[]; keyboard: Item[] } => {
 		const primary: Item[] = [];
 		const keyboard: Item[] = [];
@@ -2135,9 +2148,29 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			}
 			primary.push({ journey: { name: steps.map(describeStep).join(', then '), steps }, element: t, depth, expand: step.action === 'click' || step.action === 'fill' || step.action === 'select' });
 			for (const k of keyboardSteps(t.candidate)) {
+				// A link's Enter leaves the page, and a grid's keys move from where focus is: those are pressed alone.
+				const holder = SAMPLED.has(t.candidate.target.role) || t.candidate.target.role === 'columnheader' ? undefined : t.candidate.holder;
+				if (holder !== undefined && t.candidate.target.role !== 'link' && !t.candidate.href && k.action === 'press') {
+					const key = `${t.prefix.map(describeStep).join('>')}|${t.candidate.target.role}|${k.key}|holder ${holder}`;
+					(alikeKeys.get(key) ?? alikeKeys.set(key, []).get(key)!).push({ t, step: k });
+					continue;
+				}
 				const ks = [...t.prefix, k];
-				keyboard.push({ journey: { name: ks.map(describeStep).join(', then '), steps: ks }, depth, expand: false });
+				keyboard.push({ journey: { name: ks.map(describeStep).join(', then '), steps: ks }, depth, expand: false, keyboard: true });
 			}
+		}
+		// The same key on alike controls (one role in one holder) is pressed on each in turn in one journey, each compared, what one opens closed before the next.
+		for (const [key, members] of alikeKeys) {
+			alikeKeys.delete(key);
+			const prefix = members[0]!.t.prefix;
+			if (members.length === 1) {
+				const ks = [...prefix, members[0]!.step];
+				keyboard.push({ journey: { name: ks.map(describeStep).join(', then '), steps: ks }, depth, expand: false, keyboard: true });
+				continue;
+			}
+			const first = describeStep(members[0]!.step).replace(/ #\d+$/, '');
+			const name = `${first} and ${members.length - 1} more alike, each in turn (${members.map((m) => `#${m.t.candidate.target.nth + 1}`).join(', ')})`;
+			keyboard.push({ journey: { name: prefix.length ? `${prefix.map(describeStep).join(', then ')}, then ${name}` : name, steps: [...prefix, ...members.map((m) => m.step)] }, depth, expand: false, batch: members.map((m) => m.t), keyboard: true });
 		}
 		return { primary, keyboard };
 	};
@@ -2405,8 +2438,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			if (!r.revealed.length) continue;
 			const fresh = track(r.revealed, item.journey.steps, item.element);
 			controls += fresh.length;
-			if (depth >= maxDepth) {
-				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${maxDepth} steps, deeper than check explores: raise --journey-depth`;
+			if (depth >= revealingDepth) {
+				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `known uncovered: it appears only after ${depth} steps, deeper than check explores${options.maxDepth === undefined ? ` (${REVEALING_MAX_DEPTH} along a path that keeps revealing controls)` : ''}: raise --journey-depth`;
 				continue;
 			}
 			const items = itemsFor(fresh, depth + 1);
@@ -2419,9 +2452,12 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 
 	// Repeated use and closing sequences, then keyboard paths; a cycled journey takes the place of its plain one.
 	const ordered = [...sequences.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0)), ...later];
-	// --max-journeys counts journeys: a cycle that replaces its plain journey takes no slot.
+	// --max-journeys counts journeys: a cycle that replaces its plain journey takes no slot. Keyboard paths have room of their own, one each.
 	let room = Math.max(0, cap - journeys.length);
-	const fits = ordered.map((item) => item.discover || room-- > 0);
+	const paths = options.maxJourneys === undefined ? ordered.filter((item) => item.keyboard).length : 0;
+	cap += paths;
+	size();
+	const fits = ordered.map((item) => item.discover || (item.keyboard && paths > 0) || room-- > 0);
 	const extra = await pool(ordered, CONCURRENCY, async (item, i) => (fits[i] && !outOfBudget() ? runItem(item) : undefined));
 	let skipped = 0;
 	for (const [i, item] of ordered.entries()) {
