@@ -243,3 +243,40 @@ test('a port that loses the largest paint its original has is red for it, with i
 	assert.deepEqual(load.verdicts.map((v) => [v.metric, v.ok]), [['fcp', true], ['si', true], ['tbt', true], ['cls', true]]);
 	assert.deepEqual(loadFailures('/', load).map((f) => f.check), ['page load: Largest Contentful Paint (Lighthouse, mobile)']);
 });
+
+const hungLhr = { runtimeError: { code: 'PAGE_HUNG', message: 'Lighthouse was unable to reliably load the URL you requested because the page stopped responding.' }, categories: {}, audits: {} };
+
+test('an original that hangs on every attempt of its first run is not run again, and a port that finishes every run passes, with its own times shown', async () => {
+	let oldCalls = 0;
+	const loads = await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async (url) => (url.startsWith('http://old.test') ? (oldCalls++, hungLhr) : lhr));
+	const load = loads.get('/')!;
+	assert.equal(oldCalls, 3, 'the first run and its two retries');
+	assert.equal(load.new.runs.length, 4);
+	assert.match(load.hung?.old ?? '', /^PAGE_HUNG/);
+	assert.equal(load.ok, true);
+	assert.equal(load.skipped, undefined, 'measured: an original that hangs is slower than a port that loads');
+	assert.deepEqual(loadFailures('/', load), []);
+	assert.match(loadLine(load), /original hung \(PAGE_HUNG: .*\); port: score \d+, FCP /);
+});
+
+test('a port that hangs is red whether or not its original hung, and so is one that leaves runs unfinished where the original hung', async () => {
+	const both = (await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async () => hungLhr)).get('/')!;
+	assert.equal(both.ok, false);
+	assert.match(loadFailures('/', both)[0]!.actual, /the new page hung .*and so did the old page/);
+	const port = (await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async (url) => (url.startsWith('http://new.test') ? hungLhr : lhr))).get('/')!;
+	assert.equal(port.ok, false);
+	assert.match(loadFailures('/', port)[0]!.actual, /^the new page hung on every attempt of its first run/);
+	let n = 0;
+	// The new page's second run fails all three of its attempts.
+	const unfinished = (await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async (url) => (url.startsWith('http://old.test') ? hungLhr : ++n >= 2 && n <= 4 ? { ...lhr, runtimeError: { code: 'NO_FCP', message: 'The page did not paint any content.' } } : lhr))).get('/')!;
+	assert.equal(unfinished.new.runs.filter((r) => 'error' in r).length, 1);
+	assert.equal(unfinished.ok, false);
+	assert.match(loadFailures('/', unfinished)[0]!.actual, /the old page hung .*the new page finished 3 of its 4 runs/);
+});
+
+test('a side that hangs only on a later run is judged on its runs that finished, as before', async () => {
+	let oldRuns = 0;
+	const load = (await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async (url) => (url.startsWith('http://old.test') && ++oldRuns === 4 ? hungLhr : lhr))).get('/')!;
+	assert.equal(load.hung, undefined);
+	assert.equal(load.verdicts.length, 6);
+});

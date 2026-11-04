@@ -59,6 +59,12 @@ const runList = (runs: LoadSide['runs'], metric: LoadMetric) => runs.map((r) => 
 export function loadFailures(route: string, load: RouteLoad): Failure[] {
 	const check = (what: string) => `page load: ${what} (Lighthouse, mobile)`;
 	if (load.skipped) return load.ok ? [] : [{ route, dimension: 'load', check: check('the page'), viewport: 'mobile', expected: 'Lighthouse finishes a run of the new page, as it does of the old one', actual: load.skipped, hint: HINTS.load }];
+	if (load.hung) {
+		if (load.ok) return [];
+		const failed = load.new.runs.filter((r) => 'error' in r).length;
+		const actual = load.hung.new ? `the new page hung on every attempt of its first run (${load.hung.new})${load.hung.old ? `, and so did the old page (${load.hung.old}): neither could be measured` : ''}` : `the old page hung (${load.hung.old}); the new page finished ${load.new.runs.length - failed} of its ${load.new.runs.length} runs`;
+		return [{ route, dimension: 'load', check: check('the page'), viewport: 'mobile', expected: load.hung.old && !load.hung.new ? 'every run of the new page finishes, where the old page hung' : 'the new page loads without hanging', actual, hint: HINTS.load }];
+	}
 	const lostLcp: Failure[] = load.noLcp?.new && !load.noLcp.old ? [{ route, dimension: 'load', check: check(METRIC_LABEL.lcp), viewport: 'mobile', expected: `a largest paint, as the old page has in all of its ${load.old.runs.length} runs (median ${load.old.median ? formatMetric('lcp', load.old.median.lcp) : '?'})`, actual: `none in ${load.new.runs.filter((r) => 'error' in r && r.error.startsWith('NO_LCP')).length} of the new page's ${load.new.runs.length} runs: nothing on it qualifies as a Largest Contentful Paint (NO_LCP)`, hint: HINTS.load }] : [];
 	return [...lostLcp, ...load.verdicts
 		.filter((v) => !v.ok)
@@ -85,6 +91,11 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 /** One line per route: each metric old -> new, the medians of the runs. */
 export function loadLine(load: RouteLoad): string {
 	if (load.skipped) return `page load, PageSpeed-equivalent (lab): not compared, ${load.skipped}`;
+	if (load.hung) {
+		const m = load.new.median;
+		const port = m ? `; port: score ${formatMetric('score', m.score)}, FCP ${formatMetric('fcp', m.fcp)}, LCP ${formatMetric('lcp', m.lcp)}, SI ${formatMetric('si', m.si)}, TBT ${formatMetric('tbt', m.tbt)}, CLS ${formatMetric('cls', m.cls)}` : '';
+		return `page load, PageSpeed-equivalent (lab; Lighthouse mobile): ${load.hung.old ? `original hung (${load.hung.old})` : 'original measured'}${load.hung.new ? `, port hung (${load.hung.new})` : port}`;
+	}
 	const parts = load.verdicts.map((v) => `${v.metric === 'score' ? 'score' : v.metric.toUpperCase()} ${formatMetric(v.metric, v.old)} -> ${formatMetric(v.metric, v.new)}${v.ok ? '' : ' (worse)'}`);
 	const lcp = (side: 'old' | 'new') => (load.noLcp?.[side] ? 'none' : load[side].median ? formatMetric('lcp', load[side].median!.lcp) : '?');
 	if (load.noLcp) parts.push(`LCP ${lcp('old')} -> ${lcp('new')}${load.noLcp.old ? ` (none on the original${load.noLcp.new ? ' or the port' : ''}: score and LCP not compared)` : ' (worse)'}`);

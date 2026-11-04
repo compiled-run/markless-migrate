@@ -188,6 +188,8 @@ export interface RouteLoad {
 	readonly ok: boolean;
 	/** A side whose page has nothing that qualifies as a largest paint (NO_LCP) on some run: LCP and the score that needs it are not compared. */
 	readonly noLcp?: { readonly old: boolean; readonly new: boolean };
+	/** A side whose first run hung on all of its attempts (PAGE_HUNG), with Lighthouse's reason: its other runs were not taken. */
+	readonly hung?: { readonly old?: string; readonly new?: string };
 	/** Why the route has no verdict: a side never finished a run. */
 	readonly skipped?: string;
 	/** PageSpeed Insights on the deployments: when it answered, its verdicts gate the route instead of the lab's. */
@@ -427,22 +429,34 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	const browser = await startChromium();
 	const unbypass = options.bypass ? await bypassForOrigins(browser.port, options.bypass) : undefined;
 	try {
-		const once = async (which: 'old' | 'new', route: string): Promise<LoadRun> => {
+		const once = async (which: 'old' | 'new', route: string): Promise<LoadRun & { hungEvery?: true }> => {
 			const origin = origins[which];
 			const url = new URL(route, origin).href;
 			let result: LoadRun = { error: 'not run' };
-			for (let attempt = 0; attempt <= RETRIES && !result.metrics && !result.error?.startsWith('NO_LCP'); attempt++) result = await run(url, browser.port, blocked, cpu, options.throttle).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
-			return result;
+			let hangs = 0;
+			for (let attempt = 0; attempt <= RETRIES && !result.metrics && !result.error?.startsWith('NO_LCP'); attempt++) {
+				result = await run(url, browser.port, blocked, cpu, options.throttle).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
+				if (result.error?.startsWith('PAGE_HUNG')) hangs++;
+			}
+			return hangs > RETRIES ? { ...result, hungEvery: true } : result;
 		};
 		for (const route of routes) {
 			const started = Date.now();
 			const taken: { old: LoadRun[]; new: LoadRun[] } = { old: [], new: [] };
+			// A side whose first run hung on every attempt hangs on every load: its other runs are not taken.
+			const hung: { old?: string; new?: string } = {};
 			const take = async (from: number) => {
-				for (let i = from; i < from + runs; i++) for (const which of i % 2 ? (['new', 'old'] as const) : (['old', 'new'] as const)) taken[which].push(await once(which, route));
+				for (let i = from; i < from + runs; i++)
+					for (const which of i % 2 ? (['new', 'old'] as const) : (['old', 'new'] as const)) {
+						if (hung[which]) continue;
+						const { hungEvery, ...got } = await once(which, route);
+						taken[which].push(got);
+						if (i === 0 && hungEvery) hung[which] = got.error!;
+					}
 			};
 			await take(0);
 			if (undecided(taken.old, taken.new)) await take(runs);
-			out.set(route, { ...routeLoad(taken.old.length, taken.old, taken.new), ms: Date.now() - started });
+			out.set(route, { ...routeLoad(Math.max(taken.old.length, taken.new.length), taken.old, taken.new, hung), ms: Date.now() - started });
 		}
 	} finally {
 		unbypass?.();
@@ -471,9 +485,14 @@ export function unmeasured(reason: string): RouteLoad {
 	return { runs: 0, old: { runs: [] }, new: { runs: [] }, verdicts: [], ok: true, skipped: reason };
 }
 
-export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): RouteLoad {
+export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[], hung: { readonly old?: string; readonly new?: string } = {}): RouteLoad {
 	const old = side(oldRuns);
 	const next = side(newRuns);
+	// A page that hangs is slower than any that loads: the port passes an original that hung only by finishing every run of its own.
+	if (hung.old || hung.new) {
+		const finished = !hung.new && newRuns.length >= runs && newRuns.every((r) => r.metrics || r.noLcp);
+		return { runs: newRuns.length, old, new: next, verdicts: [], ok: Boolean(hung.old) && finished, hung };
+	}
 	const { old: oldGood, new: newGood, metrics, noLcp } = judged(oldRuns, newRuns);
 	if (!oldGood.length) return { runs, old, new: next, verdicts: [], ok: true, skipped: `no Lighthouse run of the old page finished (${oldRuns[0]?.error ?? 'no run'})` };
 	if (!newGood.length) return { runs, old, new: next, verdicts: [], ok: false, skipped: `no Lighthouse run of the new page finished (${newRuns[0]?.error ?? 'no run'})` };
