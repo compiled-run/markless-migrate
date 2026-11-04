@@ -86,10 +86,11 @@ test("a check reading the original's dataset finds what a check observing the or
 			assert.deepEqual(stored.routes[0]!.states, live.routes[0]!.states, `${route}: the same states checked and skipped`);
 			// A default-state style failure is traced to its old rule on an old page of its own: the hint, never the verdict.
 			const traced = live.routes[0]!.failures.some((f) => f.dimension === 'css' && f.check.startsWith('computed style of'));
-			if (!traced) assert.deepEqual(oldPages, [], `${route}: no old page is opened when the dataset holds the old side`);
+			// The pages new journeys went on to are opened on the old side for their errors (doorPageErrors), not the route's.
+			if (!traced) assert.deepEqual(oldPages.filter((path) => path === route), [], `${route}: the route's old page is not opened for its forced states`);
 		}
 		const bug = (await runCheck({ ...options, routes: ['/docs/states-bug'], browser, original })).routes[0]!;
-		assert.ok(bug.states?.checked.includes(':hover on .save') && bug.states.checked.includes('viewport width 700px'), bug.states?.checked.join(', '));
+		assert.ok(bug.states?.checked.includes(':hover on .save (desktop)') && bug.states.checked.includes('viewport width 700px (desktop)'), bug.states?.checked.join(', '));
 		const found = normalized(bug.failures);
 		assert.ok(found.some((f) => f.includes('computed style in :hover on .save') && f.includes('background-color')), found.join('\n'));
 		assert.ok(found.some((f) => f.includes('in viewport width 700px')), found.join('\n'));
