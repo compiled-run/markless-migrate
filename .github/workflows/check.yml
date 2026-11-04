@@ -482,15 +482,23 @@ jobs:
           path: ${{ runner.temp }}/slice
           if-no-files-found: error
           retention-days: 3
-      # Every check leaves rows a later judge change can be scored on offline (check judge, corpus.yml rows_from).
+      # Every check leaves rows a later judge change can be scored on offline (check judge); zstd's long window shrinks their
+      # near-alike text blobs about 3x past the artifact zip (docs/check.md).
+      - name: Pack the observations
+        if: always() && env.PARTIAL != 'true'
+        run: |
+          if [ -d "$APP/.migrate/observations" ]; then
+            mkdir -p "$RUNNER_TEMP/observations"
+            tar -cf - -C "$APP/.migrate/observations" . | zstd -q -T0 -3 --long=27 -o "$RUNNER_TEMP/observations/observations.tar.zst"
+          fi
       - uses: actions/upload-artifact@v4
         if: always() && env.PARTIAL != 'true'
         with:
           name: check-observations-${{ matrix.shard }}
-          path: ${{ env.APP }}/.migrate/observations
-          include-hidden-files: true
+          path: ${{ runner.temp }}/observations
           if-no-files-found: ignore
-          retention-days: 7
+          compression-level: 0
+          retention-days: 3
       # A few kB: each route's time, however the shard ended, kept apart from the shard's artifact so a later run can read only this.
       - name: Route times
         if: always()
