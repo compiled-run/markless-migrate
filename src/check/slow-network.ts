@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
-import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, GATED, latestAnswer, networkFailures, noiseBand, resolution, RUN_METRIC_LABEL, RUN_METRICS, runMetric, settledNotSlower, type RunMetric } from './slow-network-verdicts.ts';
+import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, GATED, networkFailures, noiseBand, resolution, retakeStopped, RUN_METRIC_LABEL, RUN_METRICS, runMetric, settledNotSlower, stopBounds, stoppedAt, type RunMetric } from './slow-network-verdicts.ts';
 import { criticalPathOf, networkGroups, type CriticalPath } from './slow-network-groups.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
@@ -41,8 +41,11 @@ export interface NetworkRun {
 	readonly firstClick?: number;
 	/** The frame after the control first changed state (aria-selected, aria-expanded, aria-pressed, aria-checked, data-state, open). */
 	readonly answered?: number;
-	/** The run stopped waiting for the answer this long after navigation start (`answerBy`): it came later, if at all. */
+	/** The run stopped waiting for the answer this long after navigation start (`answerBy`, `stopBy`): it came later, if at all. */
 	readonly answeredAfter?: number;
+	/** The run stopped (`stopBy`) this long after navigation start before anything was painted: the first frame and the largest paint came later. */
+	readonly firstFrameAfter?: number;
+	readonly lcpAfter?: number;
 	readonly clicks: number;
 	/** No control to click was on the page by the time it had loaded and the network gone quiet. */
 	readonly noControl?: boolean;
@@ -273,6 +276,8 @@ export interface NetworkRunOptions {
 	readonly timeoutMs?: number;
 	/** Stop waiting for the answer this long after navigation start, once the first frame is painted: the run records that it came later. */
 	readonly answerBy?: number;
+	/** Asked as the run goes: how late each gated time may still come and matter (stopBounds). The run stops once every one it has not shown is past its bound; null needs no wait. */
+	readonly stopBy?: () => Readonly<Record<'firstFrame' | 'lcp' | 'answered', number | null>> | undefined;
 	/** Host names the proxy connects elsewhere (tests). */
 	readonly hosts?: Readonly<Record<string, string>>;
 	/** Keep the document, each script's text and the coverage on the run (Chromium). */
@@ -350,6 +355,17 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 				cut = true;
 				break;
 			}
+			const bounds = options.stopBy?.();
+			if (bounds) {
+				const since = Date.now() - navigated;
+				const past = (bound: number | null) => bound === null || since > bound;
+				// The largest paint is final once a click has landed; before the first paint it is no sooner than now.
+				const lcpKnown = paintedYet ? clicks > 0 || bounds.lcp === null : past(bounds.lcp);
+				if ((paintedYet || past(bounds.firstFrame)) && lcpKnown && past(bounds.answered)) {
+					cut = true;
+					break;
+				}
+			}
 			const started = Date.now();
 			const box = await control.boundingBox({ timeout: CLICK_EVERY_MS }).catch(() => null);
 			if (!box && !seen && loaded && Date.now() - throttle.lastActivity() > QUIET_MS) {
@@ -411,6 +427,7 @@ async function measureOnce(url: string, profile: NetworkProfile, name: NetworkBr
 			...(capturing && entries ? { capture: { ...(document ? { document } : {}), scripts, coverage: entries } } : {}),
 			...(noControl ? { noControl } : {}),
 			...(cut && timings.answered === undefined ? { answeredAfter: Math.round(Date.now() - timings.origin) } : {}),
+			...(cut && firstFrame === undefined && options.firstFrame !== false ? { firstFrameAfter: Math.round(Date.now() - timings.origin), lcpAfter: Math.round(Date.now() - timings.origin) } : {}),
 			...(timings.answered === undefined && !noControl && !cut ? { error: seen ? `the control (${options.control ?? 'first unselected tab or closed disclosure'}) never answered a click within ${Math.round(timeoutMs / 1000)} s` : `no control (${options.control ?? 'first unselected tab or closed disclosure'}) showed, and the page had not finished loading, within ${Math.round(timeoutMs / 1000)} s` } : {}),
 		};
 	} catch (error) {
@@ -494,11 +511,11 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 					cached.add(k(url, profile.name, b));
 				}
 			}
-	const job = (url: string, profile: NetworkProfile, b: NetworkBrowser) => async () => {
+	const job = (url: string, profile: NetworkProfile, b: NetworkBrowser, full?: true) => async () => {
 		const control = options.controls?.[url] ?? options.control;
-		// The old page's answer need not be waited for past the latest the new page's median answer can still come.
-		const latest = options.settle && url === options.settle.old ? latestAnswer(results.get(k(options.settle.new, profile.name, b)) ?? [], runs) : undefined;
-		const own = { ...options, ...(control ? { control } : {}), ...(latest !== undefined ? { answerBy: latest + 2 * CLICK_EVERY_MS } : {}) };
+		// The old page's run stops once nothing it has yet to show could come before the new page's latest so far.
+		const newOf = options.settle && url === options.settle.old ? options.settle.new : undefined;
+		const own = { ...options, ...(control ? { control } : {}), ...(newOf && full !== true && !cached.has(k(url, profile.name, b)) ? { stopBy: () => stopBounds(results.get(k(newOf, profile.name, b)) ?? []) } : {}) };
 		let run = await runner(url, profile, b, own);
 		for (let retake = 0; retake < RETAKES && run.stalledMs !== undefined && run.stalledMs >= STALL_MS; retake++) run = await runner(url, profile, b, own);
 		results.set(k(url, profile.name, b), [...(results.get(k(url, profile.name, b)) ?? []), run]);
@@ -535,6 +552,18 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 						});
 			}
 	await drain(jobs);
+	// A verdict that the old runs' stopped times could have decided differently takes those runs again in full.
+	if (options.settle) {
+		const { old, new: next } = options.settle;
+		for (const profile of profiles)
+			for (const b of browsers) {
+				const kept = results.get(k(old, profile.name, b)) ?? [];
+				if (!kept.some((r) => GATED.some((m) => runMetric(r, m) === undefined && stoppedAt(r, m) !== undefined))) continue;
+				if (!retakeStopped(summarizeCell(profile.name, b, kept), summarizeCell(profile.name, b, results.get(k(next, profile.name, b)) ?? []))) continue;
+				results.set(k(old, profile.name, b), kept.filter((r) => !GATED.some((m) => runMetric(r, m) === undefined && stoppedAt(r, m) !== undefined)));
+				for (let i = results.get(k(old, profile.name, b))!.length; i < kept.length; i++) await job(old, profile, b, true)();
+			}
+	}
 	const again: (() => Promise<void>)[] = [];
 	for (const key of [...cached]) {
 		const [url, name, b] = key.split('\n') as [string, string, NetworkBrowser];
@@ -549,7 +578,9 @@ export async function measureSlowNetwork(urls: readonly string[], options: SlowN
 	for (const profile of profiles)
 		for (const b of browsers)
 			for (const url of urls) {
-				const key = cached.has(k(url, profile.name, b)) || skipped(profile, b) ? undefined : cacheKey(url, profile, b);
+				// Runs stopped early hold times only as bounds against this new page: another check's new page needs them whole.
+				const stopped = (results.get(k(url, profile.name, b)) ?? []).some((r) => GATED.some((m) => runMetric(r, m) === undefined && stoppedAt(r, m) !== undefined));
+				const key = cached.has(k(url, profile.name, b)) || skipped(profile, b) || stopped ? undefined : cacheKey(url, profile, b);
 				if (key) await options.cache!.store.put(key, results.get(k(url, profile.name, b)) ?? [], settled.has(`${profile.name}\n${b}`));
 			}
 	return urls.map((url) => ({
@@ -585,7 +616,9 @@ export function networkTables(sides: readonly SideNetwork[], names: readonly str
 			const failed = c.runs.filter((r) => r.error);
 			if (failed.length) out.push(`  ${names[i]}: ${failed.length} of ${c.runs.length} runs failed (${[...new Set(failed.map((r) => r.error))].join('; ')})`);
 			const waited = c.runs.filter((r) => r.answeredAfter !== undefined);
-			if (waited.length) out.push(`  ${names[i]}: ${waited.length} of ${c.runs.length} runs stopped waiting for the answer after ${waited.map((r) => formatValue('answered', r.answeredAfter)).join(', ')} (later than the other page's median answer could come)`);
+			if (waited.length) out.push(`  ${names[i]}: ${waited.length} of ${c.runs.length} runs stopped waiting for the answer after ${waited.map((r) => formatValue('answered', r.answeredAfter)).join(', ')} (later than the other page's latest answer so far)`);
+			const unpainted = c.runs.filter((r) => r.firstFrameAfter !== undefined);
+			if (unpainted.length) out.push(`  ${names[i]}: ${unpainted.length} of ${c.runs.length} runs stopped before their first paint, after ${unpainted.map((r) => formatValue('firstFrame', r.firstFrameAfter)).join(', ')} (later than the other page's latest paint so far)`);
 		}
 		out.push('');
 	}

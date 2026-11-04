@@ -70,6 +70,16 @@ test('a run told to stop waiting for the answer records when it stopped, not an 
 	assert.ok(Date.now() - started < 20_000, `took ${Date.now() - started} ms`);
 });
 
+test('a run given stop bounds stops once every gated time it has not shown is past its bound, and records each as coming no sooner', async () => {
+	const started = Date.now();
+	const run = await networkRun(`${origin}/`, LINK, 'chromium', { timeoutMs: 30_000, stopBy: () => ({ firstFrame: 0, lcp: 0, answered: 1_500 }), control: '[role="tab"][aria-selected="true"]' });
+	assert.equal(run.error, undefined);
+	assert.equal(run.answered, undefined);
+	assert.ok(run.answeredAfter !== undefined && run.answeredAfter >= 1_400, `stopped after ${run.answeredAfter} ms`);
+	assert.ok(run.firstFrame !== undefined || run.firstFrameAfter !== undefined, 'the first frame is read or bounded');
+	assert.ok(Date.now() - started < 20_000, `took ${Date.now() - started} ms`);
+});
+
 const DESKTOP = [{ name: 'desktop', width: 1280, height: 800, isMobile: false }];
 
 test('check is red on the slow network when the new page answers later beyond the old page\'s own noise, naming the cell and what came first', async () => {
