@@ -751,7 +751,7 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 export function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string; unpainted?: true }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
@@ -769,11 +769,27 @@ export function watchReaction(): void {
 	for (const type of ['pointerdown', 'mousedown', 'keydown', 'click', 'input']) addEventListener(type, input, { capture: true, once: true });
 	const shift = { score: 0, x: 0, y: 0 };
 	// Transitions that start while the step runs: a router that reuses the previous page's nodes makes them morph (an animation starting on the new page is the motion check's).
-	const runs: { el: Element; what: string }[] = [];
+	const runs: { el: Element; what: string; pseudo: string; at: number; anim?: Animation; unpainted?: true }[] = [];
+	// One cancelled before the frame after its run painted never moved on screen (a router turning transitions off on the nodes it kept).
+	let paints = 0;
+	const afterPaint = new MessageChannel();
+	afterPaint.port1.onmessage = () => {
+		for (const r of runs) if (r.at === paints && r.anim?.playState === 'idle') r.unpainted = true;
+		paints++;
+	};
 	const ran = (event: Event) => {
-		if (runs.length < 200 && event.target instanceof Element) runs.push({ el: event.target, what: (event as TransitionEvent).propertyName });
+		const t = event as TransitionEvent;
+		if (runs.length >= 200 || !(t.target instanceof Element)) return;
+		const anim = t.target.getAnimations().find((a) => a instanceof CSSTransition && a.transitionProperty === t.propertyName && ((a.effect as KeyframeEffect | null)?.pseudoElement ?? '') === t.pseudoElement);
+		runs.push({ el: t.target, what: t.propertyName, pseudo: t.pseudoElement, at: paints, ...(anim ? { anim } : {}) });
+	};
+	const cancelled = (event: Event) => {
+		const t = event as TransitionEvent;
+		const r = runs.findLast((x) => x.el === t.target && x.what === t.propertyName && x.pseudo === t.pseudoElement);
+		if (r && !r.anim && r.at === paints) r.unpainted = true;
 	};
 	addEventListener('transitionrun', ran, { capture: true });
+	addEventListener('transitioncancel', cancelled, { capture: true });
 	// The text a visitor sees, read once a frame after something changed: a state that lasts less than a frame is never painted.
 	const views: { at: number; text: string }[] = [];
 	const painted = () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim();
@@ -791,6 +807,7 @@ export function watchReaction(): void {
 			const text = painted();
 			if (text !== views[views.length - 1]!.text) views.push({ at: performance.now(), text });
 		}
+		afterPaint.port2.postMessage(0);
 		frame = requestAnimationFrame(sampleFrame);
 	};
 	frame = requestAnimationFrame(sampleFrame);
@@ -845,12 +862,12 @@ export function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, lists, detached, edited, spilled, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, lists, detached, edited, spilled, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); removeEventListener('transitioncancel', cancelled, { capture: true }); afterPaint.port1.close(); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
 export function readReaction(): { changes: string[]; affected: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[]; spanMs: number; longestGapMs: number }; tweened: string[] } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string; unpainted?: true }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
 	if (!watch) return { changes: [], affected: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [], tweened: [] };
@@ -964,7 +981,7 @@ export function readReaction(): { changes: string[]; affected: string[]; scrolle
 	}
 	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
 	// Only nodes the router kept can morph from the previous page's look; what it put in (a chart iframe fading in once loaded) is the new page's own.
-	const transitions = [...new Set(watch.runs.filter((r) => r.el.isConnected && !fresh(r.el)).map((r) => {
+	const transitions = [...new Set(watch.runs.filter((r) => !r.unpainted && r.el.isConnected && !fresh(r.el)).map((r) => {
 		const at = anchorOf(r.el);
 		return `${at === r.el || !at ? (at ? describe(at) : r.el.localName) : `${r.el.localName} in ${describe(at)}`} ${r.what}`;
 	}))].sort();

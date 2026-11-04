@@ -38,7 +38,14 @@ export function installProbe(): void {
 		else if (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || e instanceof HTMLSelectElement) out.push(`value=${e.value.slice(0, 40)}`);
 		return out.sort().join(' ');
 	};
-	const control = () => document.querySelector(`[${MARK}]`);
+	const held = globalThis as { __markless_migrate_probe_control__?: Element };
+	// A router that keeps the element but resets its attributes to the next page's markup (Markless's morph) drops the mark, not the control.
+	const control = () => {
+		const marked = document.querySelector(`[${MARK}]`);
+		if (marked || !held.__markless_migrate_probe_control__?.isConnected) return marked;
+		held.__markless_migrate_probe_control__.setAttribute(MARK, '');
+		return held.__markless_migrate_probe_control__;
+	};
 	// Every element that scrolled since the last reading, its name taken as it scrolled: a list that jumps while its pop-up fades out is gone by the reading.
 	const g = globalThis as { __markless_migrate_probe_scrolled__?: Set<string> };
 	if (!g.__markless_migrate_probe_scrolled__) {
@@ -155,6 +162,7 @@ export function installProbe(): void {
 		mark(el: Element): void {
 			for (const o of document.querySelectorAll(`[${MARK}]`)) o.removeAttribute(MARK);
 			el.setAttribute(MARK, '');
+			held.__markless_migrate_probe_control__ = el;
 		},
 		/** What a visitor meets now: one entry per field, each a line or a list. */
 		read(): Record<string, string | string[]> {
@@ -297,6 +305,7 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 	const ITEMS = '[role="tab"], [role="radio"], input[type="radio"], [aria-pressed], [role="checkbox"], [role="menuitem"], [role="gridcell"], [role="row"], [role="treeitem"], button';
 	const out: ProbeControl[] = [];
 	const seen = new Map<string, number>();
+	if (mark !== undefined) delete (globalThis as { __markless_migrate_probe_control__?: Element }).__markless_migrate_probe_control__;
 	const add = (e: Element, role: string, classes: string[]) => {
 		// Counted among shown controls only: a port that keeps hidden copies of a layer must not move which one is the n-th.
 		if (!shown(e) || e.closest('[aria-hidden="true"], [inert], template')) return;
@@ -305,7 +314,10 @@ export function probeControls({ notify, mark, found = {}, prints }: { readonly n
 		const nth = seen.get(key) ?? 0;
 		seen.set(key, nth + 1);
 		if (mark !== undefined) {
-			if (`${key}|${nth}` === mark) e.setAttribute('data-markless-migrate-probe', '');
+			if (`${key}|${nth}` === mark) {
+				e.setAttribute('data-markless-migrate-probe', '');
+				(globalThis as { __markless_migrate_probe_control__?: Element }).__markless_migrate_probe_control__ = e;
+			}
 			return;
 		}
 		if (prints) {

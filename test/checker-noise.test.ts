@@ -406,6 +406,34 @@ test('a transition that starts and ends inside one long task is still motion: no
 	}
 });
 
+test('a transition cancelled before the next frame paints is not motion: a router turning transitions off on the nodes it kept', async () => {
+	const { armMotion } = await import('../src/check/motion.ts');
+	const site = await serve(() => ({ body: html('<button id="go">Go</button><div id="box">Box</div>', "<style>#box { border: 2px solid rgb(0, 0, 0); transition: border-color 150ms ease; } #box.open { border-color: rgb(200, 0, 0); }</style><script>addEventListener('DOMContentLoaded', () => (document.getElementById('go').onclick = () => { const box = document.getElementById('box'); box.classList.toggle('open'); getComputedStyle(box).borderColor; requestAnimationFrame(() => { for (const t of document.getAnimations()) if (t instanceof CSSTransition) t.cancel(); }); }));</script>") }));
+	const page = await browser.newPage({ reducedMotion: 'no-preference' });
+	try {
+		await page.goto(site);
+		await page.evaluate(armMotion, false);
+		await page.click('#go');
+		await page.waitForTimeout(400);
+		const records = await page.evaluate(() => (window as unknown as { __mmMotionRecorder: { records(): { tag: string; name: string }[] } }).__mmMotionRecorder.records());
+		assert.deepEqual(records.filter((r) => r.tag === 'div').map((r) => r.name), []);
+	} finally {
+		await page.close();
+	}
+	const late = await serve(() => ({ body: html('<button id="go">Go</button><div id="box">Box</div>', "<style>#box { border: 2px solid rgb(0, 0, 0); transition: border-color 150ms ease; } #box.open { border-color: rgb(200, 0, 0); }</style><script>addEventListener('DOMContentLoaded', () => (document.getElementById('go').onclick = () => { const box = document.getElementById('box'); box.classList.toggle('open'); getComputedStyle(box).borderColor; let n = 0; const later = () => (++n < 4 ? requestAnimationFrame(later) : document.getAnimations().forEach((t) => t.cancel())); requestAnimationFrame(later); }));</script>") }));
+	const shown = await browser.newPage({ reducedMotion: 'no-preference' });
+	try {
+		await shown.goto(late);
+		await shown.evaluate(armMotion, false);
+		await shown.click('#go');
+		await shown.waitForTimeout(400);
+		const records = await shown.evaluate(() => (window as unknown as { __mmMotionRecorder: { records(): { tag: string; name: string }[] } }).__mmMotionRecorder.records());
+		assert.deepEqual(records.filter((r) => r.tag === 'div').map((r) => r.name).sort(), ['border-bottom-color', 'border-left-color', 'border-right-color', 'border-top-color'], 'cancelled after frames painted it: it moved');
+	} finally {
+		await shown.close();
+	}
+});
+
 test('what a poll\'s own follow-up timer changed is undone with the poll when it is held, so a page captured at another phase of it looks the same', async () => {
 	const { openPage } = await import('../src/check/browser.ts');
 	const { holdLoops } = await import('../src/check/loops.ts');
