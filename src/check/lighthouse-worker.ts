@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
 import lighthouse from 'lighthouse';
 import { throttling } from 'lighthouse/core/config/constants.js';
-import { cpuMultiplier, type LighthouseJob } from './load.ts';
+import { cpuMultiplier, LIGHTHOUSE_AUDITS, type LighthouseJob } from './load.ts';
 
 async function run({ url, port, blocked, cpu, throttle }: LighthouseJob): Promise<unknown> {
-	const flags = { port, output: 'json' as const, onlyCategories: ['performance'], logLevel: 'error' as const, blockedUrlPatterns: [...blocked] };
+	const flags = { port, output: 'json' as const, onlyAudits: [...LIGHTHOUSE_AUDITS], disableFullPageScreenshot: true, logLevel: 'error' as const, blockedUrlPatterns: [...blocked] };
 	if (cpu !== 'calibrated') {
 		// Throttled for real, not simulated: on a loopback load the fonts and images race the first paint, and the simulation adds
 		// each one that won to the paint it predicts, so the same page's first paint landed at 2.0, 2.4, 2.6, 2.9 or 3.0 s by chance.
