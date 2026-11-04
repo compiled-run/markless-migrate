@@ -177,7 +177,7 @@ the two pages already had at load in a library's markup is the rendered check's,
 it on one side only; when the first old and new runs differ, the old side runs again, and what differs
 between its two runs is noise there (a line may then vary only in its digits); offsets a drag leaves
 agree within 2 px or 2%, scroll positions within 40 px, and fractional values (a panel at 65.7%) are
-read to the whole unit. A widget that several routes render alike (the same control markup, the four
+read to the whole unit. A control a fresh page hides (behind a first-visit dialog that a step dismisses) is probed after the steps the journeys took to reach it, on both pages alike. A widget that several routes render alike (the same control markup, the four
 elements around it, its label and what it opens, on both pages, with the ids and handler numbers a
 page derives for itself numbered by first use) is probed once a run, on the first route that has it,
 and its result counts for each of those routes: the report says where it was driven (`probed on

@@ -1411,7 +1411,7 @@ async function stepTarget(page: Page, step: Step): Promise<Locator> {
 	return (step.action === 'key' || step.action === 'outside') && (await marked.count().catch(() => 0)) ? marked : locate(page, step.target);
 }
 
-async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
+export async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
 	if (step.action === 'live') {
 		const databases = sessionDatabases(page.context());
 		for (let i = 0; i < step.updates; i++) if (!databases.some((db) => db.next(step.away))) throw new Error('the recording has no more updates');

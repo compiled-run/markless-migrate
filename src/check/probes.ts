@@ -3,13 +3,13 @@ import { openPage, type SideEnv } from './browser.ts';
 import { pageRouting, shownUrl } from './hash-routes.ts';
 import { markHandlers } from './handlers.ts';
 import { loadPage } from './infrastructure.ts';
-import { quiet, type RecordedJourney } from './journeys.ts';
+import { perform as performStep, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import { installProbe, probeControls, type ProbeControl } from './probe-page.ts';
 import { matchParts, partSelectors, type PartSelectors } from './probe-parts.ts';
 import type { Failure, Viewport } from './types.ts';
 import { clickOnce } from './click.ts';
 import { armStateReader, compareStates, readState, type StateReading } from './state-probe.ts';
-import { compareRuns, controlKey, describeControl, describeOp, handedOver, itemId, judgeProbes, lines, notifiers, type BorrowedProbe, type Op, type ProbeClass, type ProbeItem, type ProbeResult, type ProbesRow, type Reading, type Sequence } from './probes-compare.ts';
+import { compareRuns, controlKey, describeControl, describeOp, handedOver, itemId, journeyPrefixes, judgeProbes, lines, notifiers, prefixFor, type BorrowedProbe, type Op, type ProbeClass, type ProbeItem, type ProbeResult, type ProbesRow, type Reading, type Sequence } from './probes-compare.ts';
 
 const key = (k: string): Op => ({ op: 'key', key: k });
 const item = (n: number, how: 'hover' | 'click'): Op => ({ op: 'item', n, how });
@@ -221,13 +221,20 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<Readi
 }
 
 /** Runs one sequence on one side from a fresh load of the route; stops after a step that leaves the page. */
-async function runSequence(side: Side, origin: string, route: string, control: ProbeControl, sequence: Sequence, parts: readonly PartSelectors[], found: Set<string>, states?: StateReading[]): Promise<Reading[]> {
+async function runSequence(side: Side, origin: string, route: string, control: ProbeControl, sequence: Sequence, parts: readonly PartSelectors[], found: Set<string>, states?: StateReading[], prefix?: readonly Step[]): Promise<Reading[]> {
 	const page = side.page;
 	await loadPage(page, new URL(route, origin).href);
 	await settle(side);
 	await page.evaluate(installProbe);
 	await page.mouse.move(1, 1);
-	if (!(await mark(page, control))) return [{ control: 'not on the page' }];
+	if (!(await mark(page, control))) {
+		if (!prefix?.length) return [{ control: 'not on the page' }];
+		// A control a fresh page hides (behind a first-visit dialog) is reached by the steps the journeys took to it, alike on both sides.
+		for (const step of prefix) await performStep(page, step).catch(() => {});
+		await settle(side);
+		await page.evaluate(installProbe).catch(() => {});
+		if (!(await mark(page, control, true))) return [{ control: 'not on the page' }];
+	}
 	if (states) await armStateReader(page);
 	const out: Reading[] = [await read(page)];
 	if (states) states.push(await readState(page));
@@ -300,11 +307,13 @@ export function probeSteps(controls: number, pairs: number): number {
 
 /** Probes the route's controls, class by class, old against new, and judges what they read (probes-compare.ts). */
 export async function checkProbes(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys?: readonly RecordedJourney[], options: ProbeOptions = {}): Promise<ProbeResult> {
-	return judgeProbes(route, await observeProbes(browser, sides, route, viewport, notifiers(journeys), options));
+	return judgeProbes(route, await observeProbes(browser, sides, route, viewport, notifiers(journeys), options, journeyPrefixes(journeys)));
 }
 
 /** Drives the route's controls, class by class, on the old and the new page and reads each step; the old side runs twice where the first runs differ. */
-export async function observeProbes(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, notify: readonly string[], options: ProbeOptions = {}): Promise<ProbesRow> {
+export async function observeProbes(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, notify: readonly string[], options: ProbeOptions = {}, prefixes: readonly (readonly [string, readonly Step[]])[] = []): Promise<ProbesRow> {
+	const reached = new Map(prefixes);
+	const prefixOf = (control: ProbeControl) => prefixFor(reached, control);
 	const started = Date.now();
 	const parts = await partSelectors();
 	const scanNew = options.shared ? openSide(browser, sides.new, viewport).then(async (side) => {
@@ -394,14 +403,14 @@ export async function observeProbes(browser: Browser, sides: { readonly old: Sid
 					const began = Date.now();
 					const oldStates: StateReading[] = [];
 					const newStates: StateReading[] = [];
-					const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, control, sequence, [], new Set(), oldStates), runSequence(sides2.new, sides.new.origin, route, control, sequence, parts, files, newStates)]);
+					const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, control, sequence, [], new Set(), oldStates, prefixOf(control)), runSequence(sides2.new, sides.new.origin, route, control, sequence, parts, files, newStates, prefixOf(control))]);
 					options.onStates?.(oldStates, newStates);
 					let again: Reading[] | undefined;
 					let againStates: StateReading[] | undefined;
 					const leftNew = old[0]?.control !== 'not on the page' && next[0]?.control === 'not on the page';
 					if (!leftNew && (compareRuns(old, next).some((d) => d.length) || compareStates(oldStates, newStates).some((d) => d.length))) {
 						againStates = [];
-						again = await runSequence(sides2.old, sides.old.origin, route, control, sequence, [], new Set(), againStates);
+						again = await runSequence(sides2.old, sides.old.origin, route, control, sequence, [], new Set(), againStates, prefixOf(control));
 					}
 					items.push({ phase, queue: at, control, sequence, read: { old, next, oldStates, newStates, ...(again ? { again, againStates } : {}), files: [...files], ms: Date.now() - began } });
 				}

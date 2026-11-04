@@ -396,7 +396,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			return rounds.map((r) => ({ old: [...r.old], next: [...r.next] }));
 		}),
 		clock: () => checkClock(browser, sides, route, viewport),
-		probes: ({ notify }) => observeProbes(browser, sides, route, viewport, notify, watched.probes),
+		probes: ({ notify, prefixes }) => observeProbes(browser, sides, route, viewport, notify, watched.probes, prefixes),
 		parity: ({ film, webkit }) => observeControlParity(browser, sides, route, viewport, { ...watched.controls, webkit: webkit ? watched.controls?.webkit : undefined, film }),
 		busy: () => checkBusyCpu(watched.busyCpu!.browsers, sides, route, viewport, watched.busyCpu),
 		motion: ({ journeys }) => observeMotion(browser, sides, route, viewport, journeys, { ...watched.motion, rules: motionRules(parseRules(load().olds[0]!.pages[viewport.name]?.stylesheets ?? [])) }),
