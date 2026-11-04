@@ -339,7 +339,6 @@ const FRESH_RETIMES = 5;
 /** What each stage of one route's check observes, with the browser and both apps. */
 function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readonly old: readonly WallHit[]; readonly new: readonly WallHit[] }, route: string, viewports: readonly Viewport[], logins: readonly string[], seen: { loaded?: RouteStages['load']['value'] } = {}): Producers {
 	const viewport = viewports[0]!;
-	const sides = { old: watched.old, new: watched.new };
 	let loaded: RouteStages['load']['value'] | undefined;
 	let loadReq = '';
 	let slicedRow: Promise<JourneysRow> | undefined;
@@ -354,13 +353,15 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 	const door = { old: watched.old.origin, serves: (path: string) => isSwitched([route, ...(watched.switched ?? [])], path), ...(watched.old.storageState ? { storageState: watched.old.storageState } : {}), ...(watched.old.signIn ? { signIn: watched.old.signIn } : {}) };
 	// A hash-routed old server only ever serves its shell, so no request of its pages can be handed to the new app.
 	const frontOf = (next: SideEnv): SideEnv => (watched.old.routing === 'hash' ? next : { ...next, frontDoor: door });
-	// What a capture of each side held as a loop (an autoplaying carousel) stays held on every page a journey opens.
+	// What a capture of each side held as a loop (an autoplaying carousel) stays held on every page the route opens after it.
 	const timersOf = (captures: readonly RouteCapture[]) => [...new Set(captures.flatMap((c) => Object.values(c.pages).flatMap((p) => p.timers ?? [])))].sort();
 	const held = (env: SideEnv, timers: readonly string[]): SideEnv => (timers.length ? { ...env, skipTimers: timers } : env);
 	const steady = () => {
 		const { olds, next } = load();
 		return { old: held(watched.old, timersOf(olds)), new: held(watched.new, timersOf([next])) };
 	};
+	// A stage a run takes without the page load (--only probes) has no capture to hold loops from.
+	const later = () => (loaded ? steady() : { old: watched.old, new: watched.new });
 	return {
 		wall: async () => {
 			const [old, next] = await Promise.all([probeWall(run.old, route, 'old'), probeWall(run.new, route, 'new')]);
@@ -389,7 +390,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 		negotiate: ({ languages }) => Promise.all([negotiate(watched.old, route, languages), negotiate(watched.old, route, languages), negotiate(watched.new, route, languages)]),
 		selfUrls: () => selfUrlFailures(route, Object.values(load().next.pages)[0]?.seo ?? {}, watched.new),
 		// Forced states are the joining part's: the exploring and replaying parts end with their journeys part, whichever stage asks first.
-		states: (asked) => (watched.slicing && watched.slicing.mode !== 'finish' ? sliced().then((): never => { throw new SliceDone(watched.slicing!.mode, route); }) : observeRouteStates(browser, watched, route, viewports, load().olds, asked)),
+		states: (asked) => (watched.slicing && watched.slicing.mode !== 'finish' ? sliced().then((): never => { throw new SliceDone(watched.slicing!.mode, route); }) : observeRouteStates(browser, { ...watched, ...later() }, route, viewports, load().olds, asked)),
 		journeys: () => {
 			if (watched.slicing) return sliced();
 			const sides = steady();
@@ -416,14 +417,14 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			}
 			return rounds.map((r) => ({ old: [...r.old], next: [...r.next] }));
 		}),
-		clock: () => checkClock(browser, sides, route, viewport),
-		probes: ({ notify, prefixes }) => observeProbes(browser, sides, route, viewport, notify, watched.probes, prefixes),
-		parity: ({ film, webkit }) => observeControlParity(browser, sides, route, viewport, { ...watched.controls, webkit: webkit ? watched.controls?.webkit : undefined, film }),
-		busy: () => checkBusyCpu(watched.busyCpu!.browsers, sides, route, viewport, watched.busyCpu),
-		motion: ({ journeys }) => observeMotion(browser, sides, route, viewport, journeys, { ...watched.motion, rules: motionRules(parseRules(load().olds[0]!.pages[viewport.name]?.stylesheets ?? [])) }),
-		responsiveness: ({ journeys }) => checkResponsiveness(browser, sides, route, journeys, watched.responsiveness),
+		clock: () => checkClock(browser, later(), route, viewport),
+		probes: ({ notify, prefixes }) => observeProbes(browser, later(), route, viewport, notify, watched.probes, prefixes),
+		parity: ({ film, webkit }) => observeControlParity(browser, later(), route, viewport, { ...watched.controls, webkit: webkit ? watched.controls?.webkit : undefined, film }),
+		busy: () => checkBusyCpu(watched.busyCpu!.browsers, later(), route, viewport, watched.busyCpu),
+		motion: ({ journeys }) => observeMotion(browser, later(), route, viewport, journeys, { ...watched.motion, rules: motionRules(parseRules(load().olds[0]!.pages[viewport.name]?.stylesheets ?? [])) }),
+		responsiveness: ({ journeys }) => checkResponsiveness(browser, later(), route, journeys, watched.responsiveness),
 		embeds: async () => {
-			const out = await checkEmbeds(browser, sides, route, viewports, watched.embeds!);
+			const out = await checkEmbeds(browser, later(), route, viewports, watched.embeds!);
 			return { failures: out.failures, shots: out.shots };
 		},
 		locate: async ({ failures }) => {
