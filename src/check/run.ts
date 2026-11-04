@@ -16,6 +16,7 @@ import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
 import type { Status } from '../status.ts';
 import type { Accept } from './accepted.ts';
+import { joinRounds, plannedLoad, readParts, readPlan, sliceJourneys, SliceDone, writePart, writePlan, type Slicing } from './journey-slices.ts';
 import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
 import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, compareLogin, loginRoutes, saveState, saysDenied, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
@@ -134,6 +135,8 @@ export interface CheckOptions {
 	readonly busyCpu?: BusyCpuOptions;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
+	/** One part of a route checked across jobs (journey-slices.ts): exploring it, replaying a slice of its journeys, or joining the slices and checking the rest. */
+	readonly slicing?: Slicing;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
 	readonly coverage?: readonly string[];
 	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
@@ -192,6 +195,7 @@ interface Run {
 	readonly probes?: ProbeOptions;
 	readonly controls?: ControlParityOptions;
 	readonly busyCpu?: BusyCpuOptions & { readonly browsers: { readonly chromium: Browser; readonly firefox: Browser; readonly webkit: Browser } };
+	readonly slicing?: Slicing;
 }
 
 /** The hosts the old app's API clients name in absolute URLs. */
@@ -337,6 +341,12 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 	const viewport = viewports[0]!;
 	const sides = { old: watched.old, new: watched.new };
 	let loaded: RouteStages['load']['value'] | undefined;
+	let loadReq = '';
+	let slicedRow: Promise<JourneysRow> | undefined;
+	const sliced = () => {
+		const sides = steady();
+		return (slicedRow ??= slicedJourneys(browser, { ...watched, old: sides.old, new: sides.new }, route, viewport, frontOf(sides.new), watched.slicing!, { req: loadReq, value: load() }));
+	};
 	const load = () => {
 		if (!loaded) throw new Error(`${route} was not loaded before a stage that reads its page loads`);
 		return loaded;
@@ -362,15 +372,26 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			const decided = accessFailures(route, role, a, n, logins, guarded);
 			return decided.comparable ? { comparable: true, failures: decided.failures } : { comparable: false, failures: [...httpFailures(route, [a, b], n), ...decided.failures] };
 		},
-		load: async ({ light }) => (seen.loaded = loaded = await loadBoth(browser, watched, route, light ? viewports.slice(0, 1) : viewports)),
+		load: async (request) => {
+			loadReq = digest(request);
+			if (watched.slicing && watched.slicing.mode !== 'explore') {
+				const given = plannedLoad(await readPlan(watched.slicing.dir), request);
+				for (const page of given.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], watched.old.origin);
+				if (watched.new.liveCounts) await learnLiveCounts(given.olds, watched.new.liveCounts);
+				return (seen.loaded = loaded = given);
+			}
+			return (seen.loaded = loaded = await loadBoth(browser, watched, route, request.light ? viewports.slice(0, 1) : viewports));
+		},
 		assets: async ({ urls }) => {
 			const found = await pool(urls, 8, (url) => probe(watched.new, url));
 			return urls.map((url, i) => [url, found[i]!] as const);
 		},
 		negotiate: ({ languages }) => Promise.all([negotiate(watched.old, route, languages), negotiate(watched.old, route, languages), negotiate(watched.new, route, languages)]),
 		selfUrls: () => selfUrlFailures(route, Object.values(load().next.pages)[0]?.seo ?? {}, watched.new),
-		states: (asked) => observeRouteStates(browser, watched, route, viewports, load().olds, asked),
+		// Forced states are the joining part's: the exploring and replaying parts end with their journeys part, whichever stage asks first.
+		states: (asked) => (watched.slicing && watched.slicing.mode !== 'finish' ? sliced().then((): never => { throw new SliceDone(watched.slicing!.mode, route); }) : observeRouteStates(browser, watched, route, viewports, load().olds, asked)),
 		journeys: () => {
+			if (watched.slicing) return sliced();
 			const sides = steady();
 			return observeJourneys(browser, { ...watched, old: sides.old, new: sides.new }, route, viewport, frontOf(sides.new), load().loads);
 		},
@@ -446,12 +467,17 @@ async function observeJourneys(browser: Browser, run: Run, route: string, viewpo
 		const third = await profiled(route, `third old replay of ${differing.length} journeys`, () => replayAll(browser, run.old, route, viewport, differing.map((j) => plain[j]!)));
 		runs.push(plain.map((_, j) => (differing.includes(j) ? third[differing.indexOf(j)]! : again[j]!)));
 	}
+	return journeysTail(browser, run, route, viewport, front, explored, runs, next, cached, (mine) => (!cached && loads.length && clientOnly(mine) ? run.oldCache?.write('journeys', run.old, key, loads, mine) : undefined));
+}
+
+/** The journeys that end the session or delete, the unreachable controls, the pages the new journeys reached and the theme cycles in dark mode, after the replays. */
+async function journeysTail(browser: Browser, run: Run, route: string, viewport: Viewport, front: SideEnv, explored: Exploration, runs: RunResults[], next: RunResults, cached?: OldJourneys, keep?: (mine: OldJourneys) => Promise<void> | undefined): Promise<JourneysRow> {
+	const plain = explored.journeys;
 	const risky = explored.deferred.map((d) => d.journey);
 	const [oldRisky, newRisky] = risky.length ? await profiled(route, 'session-ending replays', () => Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)])) : [[], []];
 	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
 	const oldRiskyAgain = cached ? cached.oldRiskyAgain : risky.length && !run.old.sendWrites ? await profiled(route, 'session-ending replays', () => replayDestructive(browser, run.old, route, viewport, risky)) : oldRisky;
-	const mine: OldJourneys = { explored, runs, oldRisky, oldRiskyAgain };
-	if (!cached && loads.length && clientOnly(mine)) await run.oldCache?.write('journeys', run.old, key, loads, mine);
+	await keep?.({ explored, runs, oldRisky, oldRiskyAgain });
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
 	const tried = unreachableTried(elements);
 	const reachable = await profiled(route, 'unreachable on new', async () => (tried.length ? unreachableAlike(elements, await replayAll(browser, front, route, viewport, tried.map((e) => e.unreachable!.journey))) : []));
@@ -461,6 +487,36 @@ async function observeJourneys(browser: Browser, run: Run, route: string, viewpo
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
 	const darkRuns = dark.length ? await profiled(route, 'dark-mode replays', () => Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)])) : undefined;
 	return { explored, runs, next, oldRisky, oldRiskyAgain, newRisky, reachable, doorErrors, ...(darkRuns ? { dark: { olds: darkRuns[0], next: darkRuns[1] } } : {}) };
+}
+
+
+/** A part of a sliced route's journeys (journey-slices.ts): the exploration, one slice's replays, or the slices joined by journey index and the rest observed as an unsliced check does. */
+async function slicedJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, front: SideEnv, slicing: Slicing, loaded: { req: string; value: RouteStages['load']['value'] }): Promise<JourneysRow> {
+	if (run.oldCache || run.original) throw new Error(`${route}: a sliced check reads no old-side store or dataset`);
+	if (slicing.mode === 'explore') {
+		const explored = await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) }));
+		await writePlan(slicing.dir, { route, loadReq: loaded.req, load: loaded.value, explored });
+		throw new SliceDone('explore', route);
+	}
+	const { explored } = await readPlan(slicing.dir);
+	if (explored.incomplete) {
+		if (slicing.mode === 'replay') throw new SliceDone('replay', route);
+		throw new InfrastructureError({ cause: 'incomplete', message: `${explored.incomplete}: the machine ran far slower than the journeys need, so ${route} is not checked rather than compared on fewer of them` });
+	}
+	const plain = explored.journeys;
+	if (slicing.mode === 'replay') {
+		const { at, of } = slicing.slice!;
+		const journeys = sliceJourneys(plain.length, at, of);
+		const mine = journeys.map((j) => plain[j]!);
+		const [again, next] = await profiled(route, `replay ${mine.length} journeys old and new`, () => Promise.all([replayAll(browser, run.old, route, viewport, mine), replayAll(browser, front, route, viewport, mine)]));
+		const differing = mine.flatMap((j, i) => (JSON.stringify(j.expected, unframed) !== JSON.stringify(again[i], unframed) ? [i] : []));
+		const third = differing.length ? await profiled(route, `third old replay of ${differing.length} journeys`, () => replayAll(browser, run.old, route, viewport, differing.map((i) => mine[i]!))) : [];
+		await writePart(slicing.dir, { route, at, of, journeys, again, next, third: differing.map((i, k) => [journeys[i]!, third[k]!] as const) });
+		throw new SliceDone('replay', route);
+	}
+	const rounds = joinRounds(plain.length, await readParts(slicing.dir));
+	const runs: RunResults[] = [plain.map((j) => j.expected), rounds.again, ...(rounds.third ? [rounds.third] : [])];
+	return journeysTail(browser, run, route, viewport, front, explored, runs, rounds.next);
 }
 
 /** The new side's half of the journeys row, against the original's stored exploration and replays. */
@@ -706,7 +762,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const dataHosts = clientHosts(options.source?.clients ?? []);
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
-	const oldCache = options.cacheDir && !options.original ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
+	const oldCache = options.cacheDir && !options.original && !options.slicing ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
 	const webkitBrowser = options.controls?.webkit && !options.writeLayoutSurvey ? await webkit.launch().catch((error: Error) => {
 		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
 	}) : undefined;
@@ -720,12 +776,15 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		if (options.original.manifest.conditionsId !== want) throw new Error(`the original's dataset was produced under other conditions than this check's (${options.original.manifest.conditionsId.slice(0, 12)}, this check ${want.slice(0, 12)})`);
 		offerAnswers(originalAnswers(options.original, options.routes));
 	}
-	const base: Run = { ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	if (options.slicing && (options.routes.length !== 1 || options.original || options.auth || options.data)) throw new Error('a sliced check checks one route, anonymous, with no --original or --data');
+	const base: Run = { ...(options.slicing ? { slicing: options.slicing } : {}), ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
 	const loginPaths = auth ? loginRoutes(auth) : [];
-	const loadPhase = Boolean(options.load && options.only !== 'embeds') || options.only === 'load';
+	// Only the joining part of a sliced route measures its page load and navigation: the other parts end at the journeys.
+	const partial = Boolean(options.slicing && options.slicing.mode !== 'finish');
+	const loadPhase = !partial && (Boolean(options.load && options.only !== 'embeds') || options.only === 'load');
 	const header: RunHeader = {
 		old: options.oldOrigin,
 		new: options.newOrigin,
@@ -881,7 +940,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				options.onRoute?.(kept);
 				return kept;
 			});
-			const navRun = options.navigation ? await navigationRun(roleRun, data, pages) : undefined;
+			const navRun = options.navigation && !partial ? await navigationRun(roleRun, data, pages) : undefined;
 			const navigated = navRun ? await checkNavigation(browser, navRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: navRun.old, ...options.navigation }) : undefined;
 			if (navigated) {
 				navigation.push(navigated);

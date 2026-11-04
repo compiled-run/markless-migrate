@@ -150,6 +150,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
+      sliced: ${{ steps.split.outputs.sliced }}
+      replays: ${{ steps.split.outputs.replays }}
       build: ${{ steps.build.outputs.build }}
     steps:
       # A build named by its release key, never a fixed archive, so the default cannot fall behind what was deployed.
@@ -201,8 +203,20 @@ jobs:
           for run in $(gh run list -R "$GITHUB_REPOSITORY" --workflow check.yml --status success -L 10 --json databaseId --jq '.[].databaseId'); do
             if gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$RUNNER_TEMP/earlier" 2>/dev/null; then echo "route times from run $run"; break; fi
           done
+      # A route the last check says takes longer than a route may (--timeout) is checked in parts: one job explores it, its
+      # journeys are replayed in slices by others, and a last job joins them by journey index and checks the rest.
       - id: split
-        run: echo "matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json")" >> "$GITHUB_OUTPUT"
+        env:
+          TIMEOUT: ${{ inputs.timeout }}
+        run: |
+          set -euo pipefail
+          over="${TIMEOUT:-$(node --input-type=module -e "import('./src/check/ci-settings.ts').then((m) => console.log(m.SHARD_CHECK.timeoutSeconds))")}"
+          matrix=$(node scripts/check-shards.ts split "${{ inputs.only-artifact != '' && format('{0}/only/targets.json', runner.temp) || env.TARGETS }}" "$SHARDS" shards "$RUNNER_TEMP/earlier/report.json" --slice-over "$over")
+          {
+            echo "matrix=$matrix"
+            echo "sliced=$(node -p "JSON.stringify(require('./shards/sliced.json').map((r) => r.shard))")"
+            echo "replays=$(node -p "JSON.stringify({ include: require('./shards/sliced.json').flatMap((r) => Array.from({ length: r.slices }, (_, i) => ({ shard: r.shard, at: i + 1, of: r.slices }))) })")"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: check-shards
@@ -345,7 +359,7 @@ jobs:
       max-parallel: ${{ fromJSON(inputs.max_parallel || '10') }}
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    steps:
+    steps: &shard-steps
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -412,6 +426,14 @@ jobs:
           key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
           restore-keys: check-reuse-${{ env.SITE }}-
       # The original's dataset, by its id: the buckets of this shard's routes only.
+      # A part of a sliced route reads what the parts before it wrote: the exploration, and for the joining part every slice.
+      - name: The sliced route's earlier parts
+        if: env.SLICE_IN != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.SLICE_IN }}
+          path: ${{ runner.temp }}/slice
+          merge-multiple: true
       - name: The original's dataset
         if: inputs.dataset == 'true'
         env:
@@ -438,20 +460,31 @@ jobs:
           # Wherever the preset put it: .vercel/output/.markless/static/, or under .output/ for node-server and cloudflare-module.
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           [ -z "$REUSE" ] || REUSE="$REUSE --closures ${closures:-$RUNNER_TEMP/new/.vercel/output/.markless/static/interaction-closures.json}"
+          # A part of a sliced route holds that route alone, so the job's own limit, not a route's --timeout, bounds it.
+          if [ -n "${SLICES:-}" ]; then REUSE=""; TIMEOUT="$SLICE_TIMEOUT"; SLICES="$SLICES --slice-dir $RUNNER_TEMP/slice"; fi
           status=0
           # Template groups and layout owners are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, and each shared control on one route of it.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
           # shellcheck disable=SC2086
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --layout-survey "$RUNNER_TEMP/survey/layout-survey.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY" "$TIMEOUT") $REUSE $DATASET $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --layout-survey "$RUNNER_TEMP/survey/layout-survey.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY" "$TIMEOUT") $REUSE $DATASET ${SLICES:-} $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/check.txt"
           # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
           [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
       # The rows the check recorded, judged again with no browser: a report they do not give back fails the shard (exit 6).
       - name: Judge again from the recorded observations
+        if: env.PARTIAL != 'true'
         run: node src/cli.ts check judge "$APP/.migrate/observations" --report "$APP/.migrate/report.json"
+      - name: What this part of the sliced route wrote
+        if: always() && env.SLICE_OUT != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SLICE_OUT }}
+          path: ${{ runner.temp }}/slice
+          if-no-files-found: error
+          retention-days: 3
       # Every check leaves rows a later judge change can be scored on offline (check judge, corpus.yml rows_from).
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.PARTIAL != 'true'
         with:
           name: check-observations-${{ matrix.shard }}
           path: ${{ env.APP }}/.migrate/observations
@@ -465,7 +498,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/times"
           node scripts/check-shards.ts times "$APP/.migrate" "$RUNNER_TEMP/times/route-times.json" || true
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.PARTIAL != 'true'
         with:
           name: check-times-${{ matrix.shard }}
           path: ${{ runner.temp }}/times
@@ -477,7 +510,7 @@ jobs:
         if: always()
         run: find "$APP/.migrate/cache/old" "$APP/.migrate/slow-network" -type f ! -newer "$RUNNER_TEMP/old-placed" -delete 2>/dev/null || true
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.PARTIAL != 'true'
         with:
           name: check-${{ matrix.shard }}
           path: |
@@ -494,8 +527,57 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # A sliced route's parts, each on a runner of its own with the check job's steps: explore, replay each slice, then join.
+  slice-explore:
+    needs: [plan, original, survey]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' && needs.plan.outputs.sliced != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.sliced) }}
+    env:
+      PARTIAL: 'true'
+      SLICES: --slices explore
+      SLICE_OUT: slice-${{ matrix.shard }}-plan
+      SLICE_TIMEOUT: '18000'
+    steps: *shard-steps
+
+  slice-replay:
+    needs: [plan, original, survey, slice-explore]
+    if: ${{ !cancelled() && needs.slice-explore.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '10') }}
+      matrix: ${{ fromJSON(needs.plan.outputs.replays) }}
+    env:
+      PARTIAL: 'true'
+      SLICES: --slices replay --slice ${{ matrix.at }}/${{ matrix.of }}
+      SLICE_IN: slice-${{ matrix.shard }}-plan
+      SLICE_OUT: slice-${{ matrix.shard }}-part-${{ matrix.at }}
+      SLICE_TIMEOUT: '18000'
+    steps: *shard-steps
+
+  slice-finish:
+    needs: [plan, original, survey, slice-replay]
+    if: ${{ !cancelled() && needs.slice-replay.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.sliced) }}
+    env:
+      SLICES: --slices finish
+      SLICE_IN: slice-${{ matrix.shard }}-*
+      SLICE_TIMEOUT: '18000'
+    steps: *shard-steps
+
   merge:
-    needs: [plan, original, check]
+    needs: [plan, original, check, slice-finish]
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
