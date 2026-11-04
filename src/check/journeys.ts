@@ -1806,6 +1806,12 @@ export interface ElementCoverage {
 	readonly unreachable?: { readonly journey: Journey; readonly kind: Unreachability };
 }
 
+/** Which earlier step of a journey stopped it, and why, for a control the journey never reached. */
+export function stoppedBy(steps: readonly Step[], expected: readonly StepResult[]): string {
+	const at = expected.findIndex((r) => r.failed);
+	return at < 0 ? 'the journey stopped before it' : `the journey stopped before it, at step ${at + 1} (${describeStep(steps[at]!)}): ${expected[at]!.failed}`;
+}
+
 export interface Exploration {
 	readonly journeys: RecordedJourney[];
 	readonly elements: readonly ElementCoverage[];
@@ -1963,6 +1969,16 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	let budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS * TIME_CAP_FACTOR;
 	let cap = options.maxJourneys ?? Math.round(DEFAULT_JOURNEY_BUDGET_MS / NOMINAL_JOURNEY_MS);
 	let timedOut = false;
+	let controls = 0;
+	let patterns = 0;
+	let loadMs = 0;
+	// 1.5 journeys per control and the time they take, bounded: at load, and again as steps reveal more (what a first-visit dialog uncovers).
+	const size = () => {
+		const sized = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, controls * BUDGET_PER_CONTROL_MS) + patterns * PATTERN_BUDGET_MS);
+		if (options.maxJourneys === undefined) cap = Math.max(cap, Math.round(sized / NOMINAL_JOURNEY_MS));
+		// Each journey loads the page afresh: a page that takes 15 s to load (ten chart frames) needs that much more per journey.
+		if (options.budgetMs === undefined) budget = Math.max(budget, Math.max(sized, cap * (NOMINAL_JOURNEY_MS + loadMs)) * TIME_CAP_FACTOR);
+	};
 	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const tracked: Tracked[] = [];
 	const known = new Set<string>();
@@ -2111,7 +2127,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 
 	const opened = Date.now();
 	const start = await openSession(browser, env, route, viewport);
-	const loadMs = Date.now() - opened;
+	loadMs = Date.now() - opened;
 	let wave: Item[];
 	let navLink: Target | undefined;
 	let entries: string[] = [];
@@ -2149,10 +2165,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		formSteps = await forms(start.page, host, found);
 		const keys = keyItems(await findWidgets(start.page, tracked.filter((t) => !t.prefix.length), true), [], 1);
 		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused; exploring ends sooner when its journeys run out.
-		const sized = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS) + keys.length * PATTERN_BUDGET_MS);
-		if (options.maxJourneys === undefined) cap = Math.round(sized / NOMINAL_JOURNEY_MS);
-		// Each journey loads the page afresh: a page that takes 15 s to load (ten chart frames) needs that much more per journey.
-		if (options.budgetMs === undefined) budget = Math.max(sized, cap * (NOMINAL_JOURNEY_MS + loadMs)) * TIME_CAP_FACTOR;
+		controls = found.length;
+		patterns = keys.length;
+		if (options.maxJourneys === undefined) cap = 0;
+		if (options.budgetMs === undefined) budget = 0;
+		size();
 		// The keyboard patterns of the page's widgets run first: they are few, and a page whose other controls spend the budget must not leave them out.
 		wave = [...keys, ...first.primary, ...batches(1), ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
 		later.push(...first.keyboard);
@@ -2313,13 +2330,13 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				if (step && !step.failed && (left === -1 || k <= left)) t.by = item.journey.name;
 				else if (left !== -1 && k > left && leavers.length >= SAMPLES) t.by = `alike: ${leavers.map((x) => describeTarget(x.candidate.target)).join(' and ')} each left the page`;
 				else if (left !== -1 && k > left) again.push(t);
-				else t.reason = `it could not be used on the old page: ${step?.failed ?? 'the journey stopped before it'}`;
+				else t.reason = `it could not be used on the old page: ${step?.failed ?? stoppedBy(item.journey.steps, r.expected)}`;
 			}
 			if (again.length) next.push({ ...alikeTurn(again, depth), left: leavers });
 			if (item.element) {
 				if (r.done) item.element.by = item.journey.name;
 				else {
-					item.element.reason = `it could not be used on the old page: ${r.failed ?? 'the journey stopped before it'}`;
+					item.element.reason = `it could not be used on the old page: ${r.failed && r.expected.length === item.journey.steps.length ? r.failed : stoppedBy(item.journey.steps, r.expected)}`;
 					if (r.unreachable) item.element.unreachable = { journey: item.journey, kind: r.unreachable };
 				}
 			}
@@ -2332,6 +2349,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			}
 			if (!r.revealed.length) continue;
 			const fresh = track(r.revealed, item.journey.steps, item.element);
+			controls += fresh.length;
 			if (depth >= maxDepth) {
 				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${maxDepth} steps, deeper than check explores: raise --journey-depth`;
 				continue;
@@ -2341,6 +2359,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			later.push(...items.keyboard);
 		}
 		wave = next;
+		size();
 	}
 
 	// Repeated use and closing sequences, then keyboard paths; a cycled journey takes the place of its plain one.
