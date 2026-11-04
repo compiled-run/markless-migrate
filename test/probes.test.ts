@@ -91,6 +91,10 @@ const HIDDEN: Record<string, { old: string; bad: string }> = {
 	'/hidden-stale': { old: chooser(false, false), bad: chooser(true, true) },
 };
 
+// The same menu; on the new page choosing an item resets the trigger's attributes to its markup, as Markless's morph does on a page change.
+const reset = "for (const a of [...m.attributes]) if (!['id', 'aria-haspopup', 'aria-expanded'].includes(a.name)) m.removeAttribute(a.name);";
+HIDDEN['/morphed'] = { old: menu(false), bad: menu(false).replace('i.onclick = close;', `i.onclick = () => { close(); ${reset} };`) };
+
 let browser: Browser;
 let old: string;
 let bad: string;
@@ -186,6 +190,11 @@ test('the widget around a control is read from what its demo renders: markup the
 	assert.ok(chosen, JSON.stringify(stale!.failures, null, 1));
 	assert.match(chosen.expected, /widget: input #1: aria-hidden=true tabindex=-1 value=en/);
 	assert.match(chosen.actual, /value=ar/);
+});
+
+test('a control whose attributes a router resets to its markup is still the control: the probe holds the element, not only its mark', async () => {
+	const result = await checkProbes(browser, { old: defaultEnv(old), new: defaultEnv(bad) }, '/morphed', VIEWPORTS[0]!);
+	assert.deepEqual(result!.failures.map((f) => `${f.check}: ${f.actual}`), []);
 });
 
 test('the probes\' budget is counted in steps in queue order, so the same sequences are driven however fast the machine is', () => {
