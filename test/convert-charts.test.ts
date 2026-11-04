@@ -130,6 +130,8 @@ test('each drawing carries hidden copies of its first tick and grid line, up to 
 	assert.equal(kids.length, 12);
 	assert.deepEqual(kids.map((k) => attr(k, 'display') ?? ''), [...Array(4).fill(''), ...Array(8).fill('none')]);
 	assert.equal(textContent(kids[11]!), 'Apr 1', 'a copy of the first');
+	const texts = (k: (typeof kids)[number]) => [...walk(k)].filter((el) => el.tagName === 'text');
+	assert.deepEqual(kids.map((k) => texts(k).map((t) => attr(t, 'display') ?? '').join()), [...Array(4).fill(''), ...Array(8).fill('none')], 'a copy\'s text is hidden itself: Chromium\'s innerText reads SVG text under a display="none" group');
 	const grid = find(narrow, (el) => (attr(el, 'class') ?? '').includes('recharts-cartesian-grid-horizontal'))!;
 	assert.equal([...walk(grid)].filter((el) => el.tagName === 'line').length, 8);
 });

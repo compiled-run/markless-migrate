@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
-import { chartModel } from '../src/convert/charts.ts';
+import { chartModel, spare, spareCounts } from '../src/convert/charts.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { earlyThemeScript } from '../parts/next-themes.ts';
 import { registryModule } from '../src/convert/parts.ts';
@@ -2434,7 +2434,7 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="184" text-anchor="middle" fill="#666" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${labels[i]}</tspan></text></g>`;
 	const line = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick"><line class="recharts-cartesian-axis-tick-line" x1="${coords[i]}" y1="176" x2="${coords[i]}" y2="170"></line></g>`;
 	// Convert's spare ticks: copies of the first, hidden, which the part shows when more ticks fit.
-	const spares = (html: string) => html.replace('<g class="recharts-layer', '<g display="none" class="recharts-layer').repeat(4);
+	const spares = (html: string) => html.replace('<g class="recharts-layer', '<g display="none" class="recharts-layer').replace('<text ', '<text display="none" ').repeat(4);
 	const body = `<div data-slot="chart" data-mm-clock='[{"*":2024}]' style="width:300px;font:12px monospace"><div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"><g class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"><g class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines">${shown.map(line).join('')}${spares(line(shown[0]!))}</g></g></g><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${shown.map(tick).join('')}${spares(tick(shown[0]!))}</g></g></svg><div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div></div>`;
 	const read = (page: Page) =>
 		page.evaluate(() => ({
@@ -2456,7 +2456,9 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 		const span = document.createElement('span');
 		Object.assign(span.style, { position: 'absolute', top: '-20000px', whiteSpace: 'pre', fontSize: '12px' });
 		document.body.appendChild(span);
-		return texts.map((t) => ((span.textContent = t), span.getBoundingClientRect().width));
+		const out = texts.map((t) => ((span.textContent = t), span.getBoundingClientRect().width));
+		span.remove();
+		return out;
 	}, west);
 	const expected = preserveEnd(coords, widths, 0, 300, 8);
 	assert.notDeepEqual(expected.map((e) => e.i), shown, 'the west dates keep other ticks');
@@ -2466,6 +2468,28 @@ test('recharts: behind UTC, the axis shows the ticks recharts keeps for the date
 	const seen = await read(page);
 	assert.deepEqual(seen.labels, expected.map((e) => `${west[e.i]}@${e.at}`));
 	assert.deepEqual(seen.lines, expected.map((e) => String(coords[e.i])), 'each kept tick\'s line at its coordinate');
+	assert.deepEqual(await page.evaluate(() => document.body.innerText.split('\n').filter(Boolean)), expected.map((e) => west[e.i]), 'the page reads the kept ticks, spares shown included, and nothing else');
+	await page.close();
+});
+
+test('recharts: a drawing\'s spare ticks and the part\'s measuring span add no text to the page, as recharts\' own drawing has none', async () => {
+	const labels = ['Jan', 'Feb', 'Mar', 'Apr'];
+	const coords = labels.map((_, i) => 20 + i * 80);
+	const axis = { t: 'xAxis', o: 'bottom', box: [10, 170, 280, 30], vb: [0, 0, 300, 200], gap: 5, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c: coords, l: labels };
+	const facts = JSON.stringify({ w: 300, h: 200, v: [10, 0, 280, 170], m: 'x', g: [], p: [], a: [axis] });
+	const tick = (i: number) => `<g class="recharts-layer recharts-cartesian-axis-tick-label"><text class="recharts-text recharts-cartesian-axis-tick-value" x="${coords[i]}" y="184" text-anchor="middle" style="font-size:12px"><tspan x="${coords[i]}" dy="0.71em">${labels[i]}</tspan></text></g>`;
+	const svg = (n: number) => `<svg class="recharts-surface" width="300" height="200" viewBox="0 0 300 200" data-mm-facts='${facts}'><g class="recharts-zIndex-layer_2000"><g class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels">${labels.slice(0, n).map((_, i) => tick(i)).join('')}</g></g></svg>`;
+	// The drawing as convert writes it: spares up to a wider drawing's ticks and three more.
+	const tree = (html: string) => [...walk(bodyOf(parseDocument(`<body>${html}</body>`)))].find((el) => el.tagName === 'svg')!;
+	const drawn = tree(svg(4));
+	spare(drawn, spareCounts([drawn, tree(svg(4))]));
+	const page = await open(`<div class="recharts-wrapper" style="position:relative;width:300px;height:200px" data-mm-chart="1">${outer(drawn)}<div class="recharts-tooltip-wrapper" style="visibility:hidden"></div></div>`, ['recharts']);
+	const text = () => page.evaluate(() => document.body.innerText.split('\n').filter(Boolean));
+	assert.deepEqual(await text(), labels, 'before the part mounts');
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.waitForTimeout(300);
+	assert.equal(await page.locator('.recharts-xAxis-tick-labels > g[display="none"]').count(), 3, 'the spares are there');
+	assert.deepEqual(await text(), labels, 'after the part lays the axis out');
 	await page.close();
 });
 
