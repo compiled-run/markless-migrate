@@ -18,20 +18,20 @@
 			"closure": "HMdMD4VjZujWylWfaJzKQM"
 		},
 		"layout_survey": {
-			"version": 3,
-			"closure": "wrnoz5MWDx05kl-vEt2ylF"
+			"version": 4,
+			"closure": "Ego55Fgrt-HxmhlyJu8Zq5"
 		},
 		"controls": {
-			"version": 3,
-			"closure": "OJj4wQ0vcalLSLce8AJ7Q7"
+			"version": 4,
+			"closure": "C0ux0yrKMqzVSEsb7lBZEq"
 		},
 		"journeys": {
-			"version": 3,
-			"closure": "OJj4wQ0vcalLSLce8AJ7Q7"
+			"version": 4,
+			"closure": "C0ux0yrKMqzVSEsb7lBZEq"
 		},
 		"replays": {
-			"version": 3,
-			"closure": "OJj4wQ0vcalLSLce8AJ7Q7"
+			"version": 4,
+			"closure": "C0ux0yrKMqzVSEsb7lBZEq"
 		},
 		"forced_states": {
 			"version": 2,
