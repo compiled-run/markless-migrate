@@ -18,7 +18,8 @@ const TRIGGER = '[aria-haspopup="menu"]:is([data-slot$="menu-trigger"], [data-mm
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="menu"][data-state]', (slot) => /menu-trigger$/.test(slot));
 const BAR = '[role="menubar"]';
-const BAR_TRIGGER = '[role="menuitem"]';
+// Radix's MenubarTrigger always carries data-state; Base UI's (base-ui/menu.ts) never does.
+const BAR_TRIGGER = '[role="menuitem"][data-state]';
 const barTriggers = (bar: Element) => [...bar.querySelectorAll<HTMLElement>(BAR_TRIGGER)].filter((t) => t.closest(BAR) === bar);
 const barOf = (trigger: Element) => (trigger.matches(BAR_TRIGGER) ? trigger.closest<HTMLElement>(BAR) : null);
 // Menubar's loop (true by default), as convert read it off the instance.
