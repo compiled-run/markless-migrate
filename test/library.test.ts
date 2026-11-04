@@ -586,6 +586,30 @@ test('a part rendered through its child (Radix asChild, Base UI render) is recor
 	await rm(dir, { recursive: true, force: true });
 });
 
+test('a part straight off the package that the source gives no data-slot is a composition by its text, where the source puts it', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-compose-direct-'));
+	const put = async (rel: string, text: string) => {
+		await mkdir(join(dir, rel, '..'), { recursive: true });
+		await writeFile(join(dir, rel), text);
+	};
+	await put('package.json', JSON.stringify({ name: 'compose', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.4.3', 'lucide-react': '0.400.0' } }));
+	await put('tsconfig.json', JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['./*'] } } }));
+	await put('ui/sheet.tsx', [
+		'import { XIcon } from "lucide-react"',
+		'import Link from "next/link"',
+		'import { Dialog as SheetPrimitive } from "radix-ui"',
+		'function Sheet({ ...props }) {\n\treturn <SheetPrimitive.Root data-slot="sheet" {...props} />\n}',
+		'function SheetContent({ children, ...props }) {\n\treturn (\n\t\t<SheetPrimitive.Portal>\n\t\t\t<SheetPrimitive.Content data-slot="sheet-content" {...props}>\n\t\t\t\t{children}\n\t\t\t\t<Link href="/docs">Docs</Link>\n\t\t\t\t<SheetPrimitive.Close className="absolute top-4 right-4">\n\t\t\t\t\t<XIcon />\n\t\t\t\t\t<span className="sr-only">Close</span>\n\t\t\t\t</SheetPrimitive.Close>\n\t\t\t</SheetPrimitive.Content>\n\t\t</SheetPrimitive.Portal>\n\t)\n}',
+		'export { Sheet, SheetContent }',
+		'',
+	].join('\n'));
+	await put('app/page.tsx', 'import { Sheet, SheetContent } from "../ui/sheet"\nexport default function Page() {\n\treturn <Sheet><SheetContent>Hi</SheetContent></Sheet>\n}\n');
+	const file = await scanLibraries(dir);
+	const found = (file.compositions ?? []).map((c) => [c.file, c.line, c.library, c.export, c.part, c.via, c.slots, c.text ?? null, c.within ?? null]);
+	assert.deepEqual(found, [['ui/sheet.tsx', 13, 'radix-ui', 'Dialog.Close', 'dialog-close', 'direct', [], 'Close', 'sheet-content']], 'the Close, not the slotted parts, the icon or next/link');
+	await rm(dir, { recursive: true, force: true });
+});
+
 test('a kit wrapper rendered with asChild is a composition of the part it wraps', async () => {
 	const file = await scanLibraries(react);
 	const close = (file.compositions ?? []).filter((c) => c.file === 'src/features/delete-user.tsx').map((c) => [c.export, c.part, c.slots, c.text, c.routes]);

@@ -292,7 +292,8 @@ export interface Composition {
 	readonly export: string;
 	/** The part's role, named as its slots are: `dialog-close`, `alert-dialog-cancel`, `popover-trigger`. */
 	readonly part: string;
-	readonly via: 'asChild' | 'render';
+	/** `direct`: the part's own element, which the source gives no data-slot (new-york-v4's sheet corner Close). */
+	readonly via: 'asChild' | 'render' | 'direct';
 	/** Every data-slot the rendered element can carry: the part's own (from its wrappers) and its child's. Which one wins depends on how the props merge. */
 	readonly slots: string[];
 	/** The text it shows, as the source writes it. */
