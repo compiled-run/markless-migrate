@@ -548,6 +548,7 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	);
 	const measured = controls.filter(Boolean);
 	await addVariance(measured, picked.steps, all, pair, budgetMs);
+	await confirmBudget(measured, picked.steps, all, pair, budgetMs);
 	await confirmSlower(measured, picked.steps, all, pair);
 	const responsiveness: Responsiveness = { budgetMs, cpu, latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
 	return { responsiveness, failures: failuresOf(route, measured, all, budgetMs) };
@@ -576,6 +577,27 @@ async function addVariance(controls: ControlTiming[], steps: readonly { step: St
 		const speedsCopy = [...c.speeds];
 		speedsCopy[at] = speedTiming(speed, c.kind, olds, news, budgetMs);
 		controls[worst] = { ...c, speeds: speedsCopy };
+	}
+}
+
+/** A phone-speed first interaction any run of which is over the budget, on either side, is timed until five runs a side, so most runs decide the budget, not two. */
+export async function confirmBudget(controls: ControlTiming[], steps: readonly { step: Step }[], all: readonly Speed[], pair: (speed: Speed, step: Step) => Promise<{ o: Sample; n: Sample }>, budgetMs: number): Promise<void> {
+	const speed = all.find((x) => x.name === 'throttled');
+	if (!speed) return;
+	const times = (samples: readonly Sample[]) => samples.flatMap((x) => (x.ms !== undefined ? [x.ms] : []));
+	for (const [i, c] of controls.entries()) {
+		const at = c.speeds.findIndex((x) => x.speed === speed.name);
+		const t = c.speeds[at];
+		if (c.kind !== 'in-page' || !t || [...t.old, ...t.new].some((x) => x.heldBack) || ![...times(t.old), ...times(t.new)].some((ms) => ms > budgetMs)) continue;
+		const olds = [...t.old], news = [...t.new];
+		for (let tries = 0; (times(olds).length < CONFIRM_RUNS || times(news).length < CONFIRM_RUNS) && tries < CONFIRM_RUNS * 2; tries++) {
+			const again = await pair(speed, steps[i]!.step);
+			olds.push(again.o);
+			news.push(again.n);
+		}
+		const speedsCopy = [...c.speeds];
+		speedsCopy[at] = speedTiming(speed, c.kind, olds, news, budgetMs);
+		controls[i] = { ...c, speeds: speedsCopy };
 	}
 }
 

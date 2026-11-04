@@ -40,6 +40,17 @@ test('an original that meets the budget in one of its runs holds the port to the
 	assert.deepEqual([timing.ok, timing.problems], [false, ['over the 200 ms budget']]);
 });
 
+test('with five runs a side the budget is decided by most runs, both for the port and for an original over it too', () => {
+	const runs = (...ms: number[]) => ms.map((n) => sample(n));
+	const over = judged(runs(654, 106, 150, 170, 160), runs(308, 314, 190, 320, 330)).timing;
+	assert.deepEqual([over.ok, over.problems, over.newMs], [false, ['over the 200 ms budget'], 314], 'four of five runs over the budget: red, its middle run kept');
+	const under = judged(runs(150, 160, 170, 180, 190), runs(249, 182, 190, 195, 186)).timing;
+	assert.deepEqual([under.ok, under.problems], [true, []], 'one run of five over: noise');
+	const held = judged(runs(272, 227, 106, 240, 260), runs(249, 182, 260, 250, 255)).timing;
+	assert.deepEqual([held.ok, held.problems], [true, []], 'the original is over the budget in most runs: the port is held to the original');
+	assert.match(held.note ?? '', /^the old app is over the 200 ms budget too/);
+});
+
 test('code a link hint already in the document at the input is not code the interaction fetched; an import the handler made is', () => {
 	const prefetched: Fetch = { url: '/build/chunk-idle.js', kind: 'code', bytes: 400_000, startMs: -30, hint: true };
 	const imported: Fetch = { url: '/build/chunk-tab.js', kind: 'code', bytes: 2048, startMs: 4 };
