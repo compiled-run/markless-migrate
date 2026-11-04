@@ -106,18 +106,35 @@ export function armMotion(pause: boolean): void {
 	};
 	// A transition that starts and ends inside one long task (an Escape handler blocking a busy runner for 300 ms) is gone before
 	// any frame can see it; its run event still names it, and its declared timing is read from the element's style.
-	const ran: { el: Element; property: string; pseudo: string }[] = [];
+	const ran: { el: Element; property: string; pseudo: string; at: number; anim?: Animation; unpainted?: true }[] = [];
+	// A transition cancelled before the frame after its run painted never moved on screen (a router turning transitions off on the nodes it kept).
+	const unpainted = new Set<Animation>();
+	let paints = 0;
+	const afterPaint = new MessageChannel();
+	afterPaint.port1.onmessage = () => {
+		for (const r of ran) if (r.at === paints && r.anim?.playState === 'idle' && !r.unpainted) (r.unpainted = true), unpainted.add(r.anim);
+		paints++;
+	};
 	const onRun = (e: Event) => {
 		scan();
 		const t = e as TransitionEvent;
-		if (t.target instanceof Element && ran.length < 500) ran.push({ el: t.target, property: t.propertyName, pseudo: t.pseudoElement });
+		if (!(t.target instanceof Element) || ran.length >= 500) return;
+		const anim = t.target.getAnimations().find((a) => typeof CSSTransition !== 'undefined' && a instanceof CSSTransition && a.transitionProperty === t.propertyName && ((a.effect as KeyframeEffect | null)?.pseudoElement ?? '') === t.pseudoElement);
+		ran.push({ el: t.target, property: t.propertyName, pseudo: t.pseudoElement, at: paints, ...(anim ? { anim } : {}) });
+	};
+	const onCancel = (e: Event) => {
+		const t = e as TransitionEvent;
+		const r = ran.findLast((x) => x.el === t.target && x.property === t.propertyName && x.pseudo === t.pseudoElement);
+		if (r && !r.anim && r.at === paints) r.unpainted = true;
 	};
 	addEventListener('transitionrun', onRun, true);
+	addEventListener('transitioncancel', onCancel, true);
 	addEventListener('animationstart', scan, true);
 	const tick = () => {
 		if (stopped) return;
 		frame++;
 		scan();
+		afterPaint.port2.postMessage(0);
 		requestAnimationFrame(tick);
 	};
 	requestAnimationFrame(tick);
@@ -150,7 +167,7 @@ export function armMotion(pause: boolean): void {
 			const chained = new Map<Element, Map<string, { at: number; until: number }>>();
 			for (const a of found) {
 				const effect = a.effect as KeyframeEffect | null;
-				if (!effect) continue;
+				if (!effect || unpainted.has(a)) continue;
 				const timing = effect.getComputedTiming();
 				const duration = typeof timing.duration === 'number' ? timing.duration : 0;
 				const iterations = timing.iterations ?? 1;
@@ -202,7 +219,7 @@ export function armMotion(pause: boolean): void {
 			}
 			for (const r of ran) {
 				const key = `${r.property}|${r.pseudo}`;
-				if (filmed.get(r.el)?.has(key)) continue;
+				if (r.unpainted || filmed.get(r.el)?.has(key)) continue;
 				filmed.set(r.el, (filmed.get(r.el) ?? new Set<string>()).add(key));
 				const cs = getComputedStyle(r.el, r.pseudo || undefined);
 				const list = (v: string) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
@@ -297,6 +314,8 @@ export function armMotion(pause: boolean): void {
 			stopped = true;
 			observer.disconnect();
 			removeEventListener('transitionrun', onRun, true);
+			removeEventListener('transitioncancel', onCancel, true);
+			afterPaint.port1.close();
 			removeEventListener('animationstart', scan, true);
 			removeEventListener('play', onPlay, true);
 		},
