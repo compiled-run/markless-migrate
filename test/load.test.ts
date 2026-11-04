@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { blockedPatterns, clusters, judgeLoad, measureLoad, readRun, routeLoad, unmeasured, type LoadRun } from '../src/check/load.ts';
 import { loadFailures, loadLine, type Metrics } from '../src/check/load-verdicts.ts';
+import { routeLoad as judgeRoute } from '../src/check/load.ts';
 import { mannWhitneyGreater } from '../src/check/stats.ts';
 
 const runs = (lcps: readonly number[], over: Partial<Metrics> = {}): Metrics[] => lcps.map((lcp) => ({ score: 80, fcp: 1800, lcp, si: 1900, tbt: 50, cls: 0.001, ...over }));
@@ -211,4 +212,34 @@ test("on identical pages a route's lab metrics are red at most 5% of the time, a
 	assert.ok(identical <= 0.05, `identical pages red on ${identical * 100}% of routes`);
 	const later = red(181, 2000);
 	assert.ok(later >= 0.99, `a first paint 181 ms later red on ${later * 100}% of routes`);
+});
+
+const NO_LCP_MESSAGE = 'The page did not display content that qualifies as a Largest Contentful Paint (LCP). Ensure the page has a valid LCP element and then try again. (NO_LCP)';
+const noLcpRun = (fcp: number): LoadRun => ({ error: 'NO_LCP: The page did not display content', noLcp: { fcp, si: fcp + 100, tbt: 40, cls: 0 } });
+const fullRun = (fcp: number, lcp: number): LoadRun => ({ metrics: { score: 90, fcp, lcp, si: fcp + 100, tbt: 40, cls: 0 } });
+
+test('a Lighthouse report with no largest paint still gives the other four times, as no-LCP metrics', () => {
+	const run = readRun({ ...lhr, categories: { performance: { score: null } }, audits: { ...lhr.audits, 'largest-contentful-paint': { errorMessage: NO_LCP_MESSAGE } } }, 'https://vite-dev-markless.vercel.app');
+	assert.equal(run.metrics, undefined);
+	assert.match(run.error ?? '', /^NO_LCP: /);
+	assert.deepEqual(run.noLcp, { fcp: lhr.audits['first-contentful-paint'].numericValue, si: lhr.audits['speed-index'].numericValue, tbt: lhr.audits['total-blocking-time'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue });
+});
+
+test('an original with no largest paint is still measured: FCP, SI, TBT and CLS are judged on both sides, and LCP shows as none on the original', () => {
+	const load = judgeRoute(5, [2000, 2010, 1990, 2005, 1995].map(noLcpRun), [1500, 1510, 1490, 1505, 1495].map((f) => fullRun(f, f + 200)));
+	assert.equal(load.skipped, undefined);
+	assert.deepEqual(load.verdicts.map((v) => v.metric), ['fcp', 'si', 'tbt', 'cls']);
+	assert.equal(load.ok, true);
+	assert.deepEqual(load.noLcp, { old: true, new: false });
+	assert.deepEqual(loadFailures('/', load), []);
+	assert.match(loadLine(load), /LCP none -> 1\.70 s \(none on the original: score and LCP not compared\)/);
+	const slower = judgeRoute(5, [2000, 2010, 1990, 2005, 1995].map(noLcpRun), [3000, 3010, 2990, 3005, 2995].map((f) => fullRun(f, f + 200)));
+	assert.equal(slower.verdicts.find((v) => v.metric === 'fcp')!.ok, false, 'a later first paint is red whether or not the original has a largest paint');
+});
+
+test('a port that loses the largest paint its original has is red for it, with its other times still judged', () => {
+	const load = judgeRoute(5, [2000, 2010, 1990, 2005, 1995].map((f) => fullRun(f, f + 200)), [2000, 2010, 1990, 2005, 1995].map(noLcpRun));
+	assert.equal(load.ok, false);
+	assert.deepEqual(load.verdicts.map((v) => [v.metric, v.ok]), [['fcp', true], ['si', true], ['tbt', true], ['cls', true]]);
+	assert.deepEqual(loadFailures('/', load).map((f) => f.check), ['page load: Largest Contentful Paint (Lighthouse, mobile)']);
 });

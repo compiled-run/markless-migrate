@@ -59,7 +59,8 @@ const runList = (runs: LoadSide['runs'], metric: LoadMetric) => runs.map((r) => 
 export function loadFailures(route: string, load: RouteLoad): Failure[] {
 	const check = (what: string) => `page load: ${what} (Lighthouse, mobile)`;
 	if (load.skipped) return load.ok ? [] : [{ route, dimension: 'load', check: check('the page'), viewport: 'mobile', expected: 'Lighthouse finishes a run of the new page, as it does of the old one', actual: load.skipped, hint: HINTS.load }];
-	return load.verdicts
+	const lostLcp: Failure[] = load.noLcp?.new && !load.noLcp.old ? [{ route, dimension: 'load', check: check(METRIC_LABEL.lcp), viewport: 'mobile', expected: `a largest paint, as the old page has in all of its ${load.old.runs.length} runs (median ${load.old.median ? formatMetric('lcp', load.old.median.lcp) : '?'})`, actual: `none in ${load.new.runs.filter((r) => 'error' in r && r.error.startsWith('NO_LCP')).length} of the new page's ${load.new.runs.length} runs: nothing on it qualifies as a Largest Contentful Paint (NO_LCP)`, hint: HINTS.load }] : [];
+	return [...lostLcp, ...load.verdicts
 		.filter((v) => !v.ok)
 		.map((v) => {
 			const paint = v.metric === 'lcp' || v.metric === 'fcp' || v.metric === 'si' || v.metric === 'score';
@@ -78,13 +79,15 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 				actual: `${formatMetric(v.metric, v.new)}, the median of ${load.runs} (runs ${runList(load.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)}${v.alpha !== undefined && v.alpha < SIGNIFICANCE ? `, under the ${v.alpha.toFixed(4)} its rank among the route's metrics needs` : ''})${paint ? `; new: ${describe(load.new.detail)}` : ''}`,
 				hint: HINTS.load,
 			};
-		});
+		})];
 }
 
 /** One line per route: each metric old -> new, the medians of the runs. */
 export function loadLine(load: RouteLoad): string {
 	if (load.skipped) return `page load, PageSpeed-equivalent (lab): not compared, ${load.skipped}`;
 	const parts = load.verdicts.map((v) => `${v.metric === 'score' ? 'score' : v.metric.toUpperCase()} ${formatMetric(v.metric, v.old)} -> ${formatMetric(v.metric, v.new)}${v.ok ? '' : ' (worse)'}`);
+	const lcp = (side: 'old' | 'new') => (load.noLcp?.[side] ? 'none' : load[side].median ? formatMetric('lcp', load[side].median!.lcp) : '?');
+	if (load.noLcp) parts.push(`LCP ${lcp('old')} -> ${lcp('new')}${load.noLcp.old ? ` (none on the original${load.noLcp.new ? ' or the port' : ''}: score and LCP not compared)` : ' (worse)'}`);
 	const cpu = load.cpuMultiplier ? `, ${load.cpuMultiplier}x CPU${load.benchmarkIndex ? ` for benchmarkIndex ${load.benchmarkIndex}` : ''}` : '';
 	return `page load, PageSpeed-equivalent (lab; Lighthouse mobile, median of ${load.runs}${load.browser ? `, ${load.browser}` : ''}${cpu}): ${parts.join(', ')}`;
 }
