@@ -43,6 +43,7 @@ export class ReactStatePlan {
 	private n = 0;
 	private taken: (el: Element) => boolean = () => false;
 	private opens: (el: Element) => boolean = () => false;
+	private kidsOf: (el: Element) => readonly Element[] = elementChildren;
 	/** Instances found, by component. */
 	readonly counts = new Map<string, number>();
 
@@ -66,14 +67,12 @@ export class ReactStatePlan {
 	add(root: Element, taken: (el: Element) => boolean = () => false, opens: (el: Element) => boolean = () => false): number {
 		this.taken = taken;
 		this.opens = opens;
+		const page = new PageIndex(root);
+		this.kidsOf = (el) => page.kids(el);
 		let found = 0;
 		for (const fact of this.facts) {
-			for (const start of walk(root)) {
+			for (const { el: start, parent, kids, at } of page.starts(fact.nodes![0]!)) {
 				if (this.used.has(start)) continue;
-				const parent = start.parentNode as Element | null;
-				if (!parent || !isElement(parent)) continue;
-				const kids = elementChildren(parent);
-				const at = kids.indexOf(start);
 				const seq = this.sequence(fact.nodes!, 0, kids, at, parent, false, { steps: 0 });
 				if (!seq || seq.end === at || seq.evidence < MIN_EVIDENCE || !seq.state) continue;
 				const consumed = consumedOf(seq.found);
@@ -84,6 +83,7 @@ export class ReactStatePlan {
 				found++;
 			}
 		}
+		this.kidsOf = elementChildren;
 		return found;
 	}
 
@@ -163,7 +163,7 @@ export class ReactStatePlan {
 		}
 		if (node.loose) {
 			for (const p of walk(el)) {
-				const kids = elementChildren(p);
+				const kids = this.kidsOf(p);
 				for (let j = 0; j <= kids.length; j++) {
 					const seq = this.sequence(node.children, 0, kids, j, p, false, budget);
 					if (seq && (seq.end > j || seq.state)) return { found: seq.found, evidence: evidence + seq.evidence, state: state + seq.state };
@@ -171,7 +171,7 @@ export class ReactStatePlan {
 			}
 			return undefined;
 		}
-		const seq = this.sequence(node.children, 0, elementChildren(el), 0, el, true, budget);
+		const seq = this.sequence(node.children, 0, this.kidsOf(el), 0, el, true, budget);
 		return seq && { found: seq.found, evidence: evidence + seq.evidence, state: state + seq.state };
 	}
 
@@ -235,6 +235,60 @@ export class ReactStatePlan {
 		};
 		visit(found);
 	}
+}
+
+interface Start {
+	readonly el: Element;
+	readonly parent: Element;
+	readonly kids: readonly Element[];
+	readonly at: number;
+	/** Its place in document order. */
+	readonly n: number;
+}
+
+/** One page's elements read once for every component: each with its parent's element children, and by the tag and slot a render's first node can ask for. */
+class PageIndex {
+	private readonly all: Start[] = [];
+	private readonly children = new Map<Element, readonly Element[]>();
+	private readonly byTag = new Map<string, Start[]>();
+	private readonly bySlot = new Map<string, Start[]>();
+
+	constructor(root: Element) {
+		const at = new Map<Element, number>();
+		for (const parent of walk(root)) {
+			const kids = elementChildren(parent);
+			this.children.set(parent, kids);
+			kids.forEach((el, i) => at.set(el, i));
+		}
+		for (const el of walk(root)) {
+			const parent = el.parentNode as Element | null;
+			if (!parent || !isElement(parent)) continue;
+			const kids = this.kids(parent);
+			const s: Start = { el, parent, kids, at: at.get(el) ?? kids.indexOf(el), n: this.all.length };
+			this.all.push(s);
+			push(this.byTag, el.tagName, s);
+			push(this.bySlot, attr(el, 'data-slot') ?? '', s);
+		}
+	}
+
+	kids(el: Element): readonly Element[] {
+		return this.children.get(el) ?? elementChildren(el);
+	}
+
+	/** The elements a render whose first node is `first` can start at, in document order: any other fails that node. */
+	starts(first: StateNode): readonly Start[] {
+		if (first.kind !== 'element') return this.all;
+		if (first.tag !== undefined) return this.byTag.get(first.tag) ?? [];
+		const lists = (first.slots ?? []).map((s) => this.bySlot.get(s) ?? []);
+		if (lists.length < 2) return lists[0] ?? [];
+		return [...new Set(lists.flat())].sort((a, b) => a.n - b.n);
+	}
+}
+
+function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+	const list = map.get(key);
+	if (list) list.push(value);
+	else map.set(key, [value]);
 }
 
 /** Whether an element's class is what a state-read class shows at load: the source's classes all present. */
