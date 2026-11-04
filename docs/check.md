@@ -102,6 +102,15 @@ a link red. Responses reach the page whole, so a streamed page gets no head star
 The new app is timed on its own, not through the front door; a link into a page it
 answers with 404 is reported, not timed.
 
+Every press is timed before the page's idle work, as a visitor who presses early meets it: from the
+start of each timed load, idle callbacks (`requestIdleCallback`) and background tasks
+(`scheduler.postTask` at `background` priority) are held on both sides, and they run only once the press
+has been timed (the warm second press comes after them). So code a press needs that the page would
+otherwise import only once idle (a deferred part, a router's idle prefetch) is code the press fetched,
+on every run, whatever the machine's speed. Journey steps follow the opposite rule, for the opposite
+purpose: they compare behaviour on a settled page, so before each step check waits for one background
+task and one idle callback (at most about a second) and then for the network to go quiet.
+
 A first interaction is red when it is slower than the old app's slower run by more than max(16 ms, 10%,
 how much the old runs differed) at either
 speed, over `--interaction-budget` (200 ms) at 4x, or fetches code (an interaction never fetches code in

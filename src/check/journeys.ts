@@ -10,6 +10,7 @@ import { originInQuery } from './capture.ts';
 import { signInCookies, storageKeys } from './storage.ts';
 import type { Box, Viewport, WriteLine } from './types.ts';
 import { changedRegions } from './visual.ts';
+import { idleBarrier } from './idle.ts';
 import { loadPage } from './infrastructure.ts';
 import { availableParallelism } from 'node:os';
 import { STRUCTURE_ENGINE, type Structure } from './structure.ts';
@@ -1578,6 +1579,9 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			await used.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }), undefined, { timeout: QUICK }).catch(() => {});
 			await quiet(page, inflight, navigations);
 		}
+		// Idle work the page queued (a prefetch, a deferred import) has run before the step, so the step starts from a settled page.
+		await idleBarrier(page);
+		if (inflight() > 0) await quiet(page, inflight, navigations);
 		documentLoaded = false;
 		const before = await snapshot(page, hosts);
 		const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);

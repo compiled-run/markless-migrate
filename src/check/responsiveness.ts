@@ -5,6 +5,7 @@ import { locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import { describeStep, describeTarget } from './journeys-compare.ts';
 import type { Failure, Viewport } from './types.ts';
 import { failuresOf, SLACK_MS, SLACK_RATIO, speeds, speedTiming, timeOf, verdictFor, worstOf } from './responsiveness-compare.ts';
+import { holdIdleWork } from './idle.ts';
 import { loadPage } from './infrastructure.ts';
 import { judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
@@ -317,6 +318,7 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 			downAt ??= at;
 		});
 		await context.addInitScript(responsivenessProbe);
+		await context.addInitScript(holdIdleWork);
 		if (speed.cpu > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: speed.cpu });
 		page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
 		context.on('page', (popup) => (popup !== page ? popup.close().catch(() => {}) : undefined));
@@ -395,8 +397,12 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 				} else if (eventMs !== undefined) ms = eventMs;
 			}
 		}
+		const pressed = watched ?? [];
+		watched = undefined;
+		// The press is timed: the idle work it was pressed ahead of runs now, before the second press.
+		await page.evaluate(() => (globalThis as { __markless_migrate_release_idle__?: () => void }).__markless_migrate_release_idle__?.()).catch(() => {});
 		const settled = await Promise.all(
-			(watched ?? []).filter((r) => !r.failure()).map(async (r) => {
+			pressed.filter((r) => !r.failure()).map(async (r) => {
 				// A request still open when the timing ends (a stream, a stalled CDN) never settles its response.
 				const response = await Promise.race([r.response().catch(() => null), new Promise<null>((done) => setTimeout(() => done(null), 5000))]);
 				const sizes = response ? await Promise.race([r.sizes().catch(() => ({ responseBodySize: 0 })), new Promise<{ responseBodySize: number }>((done) => setTimeout(() => done({ responseBodySize: 0 }), 5000))]) : { responseBodySize: 0 };
