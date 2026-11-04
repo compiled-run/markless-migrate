@@ -117,3 +117,47 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 	});
 	return { page, each, of: (key) => each[layers.findIndex((l) => l.key === key)] ?? page };
 }
+
+// The attributes whose tokens name other elements by id.
+const ID_REFERENCES = new Set(['for', 'form', 'list', 'headers', 'popovertarget', 'commandfor', 'anchor', 'aria-activedescendant', 'aria-controls', 'aria-describedby', 'aria-details', 'aria-errormessage', 'aria-flowto', 'aria-labelledby', 'aria-owns']);
+
+/**
+ * New names for the ids an author wrote that a layer holds and an earlier layer of the page holds too (two popover
+ * demos' `width` fields): the port keeps every layer in the page, so each later copy names its own (`width-2`).
+ */
+export function authorIdNames(layers: readonly CapturedLayer[], page: Iterable<Element>): Map<string, string>[] {
+	const used = new Set<string>();
+	for (const el of page) if (attr(el, 'id')) used.add(attr(el, 'id')!);
+	const own = layers.map((l) => {
+		const ids = new Set<string>();
+		for (const top of l.kept) for (const el of walk(top)) if (attr(el, 'id')) ids.add(attr(el, 'id')!);
+		for (const id of ids) used.add(id);
+		return [...ids].filter((id) => id !== l.key && !GENERATED_ID.test(id));
+	});
+	const held = new Set<string>();
+	return own.map((ids) => {
+		const names = new Map<string, string>();
+		for (const id of ids) {
+			if (!held.has(id)) {
+				held.add(id);
+				continue;
+			}
+			let name = id;
+			for (let n = 2; used.has(name); n++) name = `${id}-${n}`;
+			used.add(name);
+			names.set(id, name);
+		}
+		return names;
+	});
+}
+
+/** Gives elements the ids `rename` names, and the id references beside them (`for`, `aria-*`, `href="#…"`) follow. */
+export function renameAuthorIds(els: Iterable<Element>, rename: ReadonlyMap<string, string>): void {
+	if (!rename.size) return;
+	for (const el of els)
+		for (const a of el.attrs) {
+			if (a.name === 'id') a.value = rename.get(a.value) ?? a.value;
+			else if (ID_REFERENCES.has(a.name)) a.value = a.value.split(/(\s+)/).map((t) => rename.get(t) ?? t).join('');
+			else if ((a.name === 'href' || a.name === 'xlink:href') && a.value.startsWith('#') && rename.has(a.value.slice(1))) a.value = `#${rename.get(a.value.slice(1))}`;
+		}
+}
