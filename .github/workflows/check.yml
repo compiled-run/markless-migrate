@@ -580,7 +580,8 @@ jobs:
     needs: [plan, original, check, slice-finish]
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # A 90-shard merge took 1.7 min (run 41487965270); a 240-shard one reads about 3 GB of shard artifacts.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -593,10 +594,15 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Only the shard reports and shard files; the merge never reads check-observations-* (about 1 GB a shard).
       - uses: actions/download-artifact@v4
         with:
-          pattern: check-*
+          pattern: check-[0-9]*
           path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          name: check-shards
+          path: shards/check-shards
       - name: Merge
         env:
           BUILD: ${{ needs.plan.outputs.build || format('artifact {0}', inputs.build-artifact) }}

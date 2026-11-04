@@ -9,8 +9,10 @@
 // <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline); `survey-join <site targets.json>
 // <out.json> <slice survey.json>...` joins the layout surveys of the site's slices in the site's order. The merged summary also tells the
 // original served, the old-side store's counts and the runner time of each part of the check.
+import { createReadStream, createWriteStream } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { shareLayoutLater } from '../src/check/report-judge.ts';
 import { routeState } from '../src/check/route-state.ts';
 
@@ -96,7 +98,7 @@ export async function reports(dir: string): Promise<{ path: string; routes: Repo
 			if (entry.name === 'check-progress') {
 				if (!hasReport) out.push(...(await finished(path)));
 			} else if (entry.name !== 'check-merged') out.push(...(await reports(path)));
-		} else if (entry.name === 'report.json') out.push({ path, routes: (JSON.parse(await readFile(path, 'utf8')) as { routes?: ReportRoute[] }).routes ?? [] });
+		} else if (entry.name === 'report.json') out.push({ path, routes: (await readReport(path)).routes ?? [] });
 	}
 	return out;
 }
@@ -112,10 +114,44 @@ async function finished(dir: string): Promise<{ path: string; routes: ReportRout
 	return routes.length ? [{ path: join(dir, 'report.json'), routes }] : [];
 }
 
+// A whole site's merged report is larger than one JavaScript string can hold (389 MB of shard reports, run 41715646237).
+const ROUTES_OPEN = '{"routes":[';
+
+/** Writes a report one route a line, so its size is bounded by the disk, never by the longest string. */
+export async function writeReport(file: string, report: { readonly routes: readonly unknown[] } & Readonly<Record<string, unknown>>): Promise<void> {
+	const out = createWriteStream(file);
+	const put = (text: string) => new Promise<void>((done, fail) => (out.write(text, (error) => (error ? fail(error) : undefined)) ? done() : out.once('drain', done)));
+	await put(`${ROUTES_OPEN}\n`);
+	for (const [i, route] of report.routes.entries()) await put(`${JSON.stringify(route)}${i < report.routes.length - 1 ? ',' : ''}\n`);
+	await put(']');
+	for (const [key, value] of Object.entries(report)) if (key !== 'routes' && value !== undefined) await put(`,${JSON.stringify(key)}:${JSON.stringify(value)}`);
+	await put('}\n');
+	await new Promise<void>((done, fail) => out.end((error?: Error | null) => (error ? fail(error) : done())));
+}
+
+/** Reads a report writeReport wrote line by line, and any other report.json whole. */
+export async function readReport(file: string): Promise<{ routes?: ReportRoute[] } & Record<string, unknown>> {
+	const lines = createInterface({ input: createReadStream(file, 'utf8'), crlfDelay: Infinity });
+	const routes: ReportRoute[] = [];
+	let first = true;
+	let rest: Record<string, unknown> = {};
+	for await (const line of lines) {
+		if (first) {
+			first = false;
+			if (line !== ROUTES_OPEN) {
+				lines.close();
+				return JSON.parse(await readFile(file, 'utf8')) as { routes?: ReportRoute[] };
+			}
+		} else if (line.startsWith(']')) rest = JSON.parse(`{${line.slice(2, -1)}}`) as Record<string, unknown>;
+		else if (line) routes.push(JSON.parse(line.endsWith(',') ? line.slice(0, -1) : line) as ReportRoute);
+	}
+	return { routes, ...rest };
+}
+
 async function write(dir: string, routes: readonly ReportRoute[], data?: Datasets, profile?: ReadonlyMap<string, readonly Part[]>): Promise<void> {
 	await mkdir(dir, { recursive: true });
 	const { phases: parts } = phases(routes, profile);
-	await writeFile(join(dir, 'report.json'), `${JSON.stringify({ routes, ...(data ? { datasets: data } : {}), ...(parts.length ? { phases: parts } : {}) }, null, '\t')}\n`);
+	await writeReport(join(dir, 'report.json'), { routes, ...(data ? { datasets: data } : {}), ...(parts.length ? { phases: parts } : {}) });
 	const text = summary(routes, data, profile);
 	await writeFile(join(dir, 'summary.md'), text);
 	console.log(text.split('\n')[0]);
@@ -398,8 +434,8 @@ async function main(): Promise<void> {
 		const at = process.argv.indexOf('--slice-over');
 		const over = at > 0 ? Number(process.argv[at + 1]) : undefined;
 		if (at > 0 && !(over! > 0)) throw new Error(`split: --slice-over takes the seconds a route may take, got ${process.argv[at + 1]}`);
-		const earlier = d && d !== '--slice-over' ? await readFile(d, 'utf8').catch(() => undefined) : undefined;
-		const earlierRoutes = earlier ? ((JSON.parse(earlier) as { routes?: ReportRoute[] }).routes ?? []) : [];
+		const earlier = d && d !== '--slice-over' ? await readReport(d).catch(() => undefined) : undefined;
+		const earlierRoutes = earlier?.routes ?? [];
 		const costs = earlier ? costsOf(earlierRoutes) : undefined;
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
 		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(earlierRoutes), over * 1000) : { kept: targets, sliced: [] };
@@ -475,7 +511,7 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === 'gate' && a) {
-		const { routes } = JSON.parse(await readFile(join(a, 'report.json'), 'utf8')) as { routes: ReportRoute[] };
+		const routes = (await readReport(join(a, 'report.json'))).routes ?? [];
 		const left = unfinished(routes);
 		for (const r of left) console.log(`${r.route}${r.role ? ` as ${r.role}` : ''}: ${r.infrastructure?.message ?? 'incomplete at --timeout'}`);
 		console.log(`${left.length} of ${routes.length} routes not checked to the end`);
