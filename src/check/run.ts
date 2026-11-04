@@ -8,7 +8,7 @@ import { Relauncher } from '../convert/relaunch.ts';
 import { digest } from '../data/codec.ts';
 import { recording, RouteLog, type Producers } from '../data/rows.ts';
 import { conditionsId, type Conditions } from '../data/original/dataset.ts';
-import { originalAnswers, originalJourneys, originalLoads, originalRoute, type OriginalJourneys } from '../data/original/read.ts';
+import { originalAnswers, originalJourneys, originalLoads, originalRoute, originalStates, type OriginalJourneys } from '../data/original/read.ts';
 import { DatasetError, type Dataset } from '../data/original/store.ts';
 import { GuardedObservations, type Observations } from '../data/observations.ts';
 import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
@@ -59,7 +59,7 @@ import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } fro
 import type { ClientFact, SourceFacts } from './source-facts.ts';
 import { mapRules } from './sourcemap.ts';
 import { stateNoise, type StatesRequest, type StatesRow, type StatesViewportRow } from './states-compare.ts';
-import { observeStates } from './states.ts';
+import { explainDefaults, observeStates, observeStatesAgainst } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
 import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
 import { blocker, type BlockList } from './trackers.ts';
@@ -443,9 +443,14 @@ async function observeRouteStates(browser: Browser, run: Run, route: string, vie
 	const states = discoverStates(sources);
 	const rules = asked.viewports.length ? await mapRules(parseRules(sources), sources, run.old.origin, run.sourceDirs?.old) : [];
 	const out: StatesViewportRow[] = [];
+	// With the old loads stored, the old half of every state is too: its shots, styles and noise come from one producer run.
+	const stored = run.original && !originalRouteRow(run.original, route).live?.loads;
 	for (const { name, forced, explain } of asked.viewports) {
 		const viewport = viewports.find((v) => v.name === name)!;
-		out.push(await observeStates({ browser, envs: { old: run.old, new: run.new }, route, viewport, states: forced ? states : [], rules, noise: stateNoise(olds, name), explain }));
+		const envs = { old: run.old, new: run.new };
+		if (!stored) out.push(await observeStates({ browser, envs, route, viewport, states: forced ? states : [], rules, noise: stateNoise(olds, name), explain }));
+		else if (forced) out.push(await observeStatesAgainst({ browser, envs, route, viewport, stored: fromDataset(route, () => originalStates(run.original!, route, name, sources)), rules, explain }));
+		else out.push({ viewport: name, explained: await explainDefaults(browser, run.old, route, viewport, rules, explain), base1: [], baseN: [], states: [] });
 	}
 	return { viewports: out };
 }

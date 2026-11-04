@@ -94,5 +94,8 @@ export const keys = {
  */
 export type ReplayMode = 'plain' | 'risky' | 'dark' | 'arrival';
 
+/** A forced_states row's key: its own binding, so the other tables' producers do not read it. */
+export const statesKey = (route: string, viewport: string) => `${route}\u0000states\u0000${viewport}`;
+
 /** Samples of the original each kind of observation keeps. */
 export const SAMPLES = { loads: 3, plain: 3, risky: 2, dark: 2, arrival: 2 } as const;

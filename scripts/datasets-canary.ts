@@ -19,7 +19,7 @@ import { VIEWPORTS } from '../src/check/types.ts';
 import { canary } from '../src/data/original/canary.ts';
 import { TABLES, type Table } from '../src/data/original/dataset.ts';
 import { readLock } from '../src/data/original/lock.ts';
-import { observeOriginal, writeRoute } from '../src/data/original/produce.ts';
+import * as produce from '../src/data/original/produce.ts';
 import { commitDataset, Dataset, DatasetWriter } from '../src/data/original/store.ts';
 import { isSwitched } from '../src/switch/state.ts';
 import { ORIGINAL } from '../test/corpus/site.ts';
@@ -50,7 +50,9 @@ if (command === 'produce') {
 	const env = defaultEnv(origin, { sendWrites: writesAllowed(options) });
 	const browser = await chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] });
 	try {
-		for (const route of routes) await writeRoute(writer, route, await observeOriginal(browser, env, route, { viewports: VIEWPORTS, explore: { serves: (path) => isSwitched([route], path) } }));
+		// This script runs in the base checkout too, whose producers may predate writeObserved.
+		const write = (produce as { writeObserved?: typeof produce.writeRoute }).writeObserved ?? produce.writeRoute;
+		for (const route of routes) await write(writer, route, await produce.observeOriginal(browser, env, route, { viewports: VIEWPORTS, explore: { serves: (path) => isSwitched([route], path) } }));
 		await writer.close();
 		await commitDataset(dir);
 	} finally {
