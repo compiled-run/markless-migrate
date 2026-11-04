@@ -13,7 +13,7 @@ import { choppier, compareJourneys, describeTarget, inDarkMode, interimViews, MA
 import type { ElementCoverage, Exploration, Journey, RecordedJourney, Run as Runs, Step, StepResult } from './journeys.ts';
 import { NOT_EXERCISED } from './locate.ts';
 import { judgeMotion, motionRules, type MotionOptions, type MotionRow } from './motion-compare.ts';
-import { judgeProbes, notifiers, type ProbesRow } from './probes-compare.ts';
+import { journeyPrefixes, judgeProbes, notifiers, type ProbesRow } from './probes-compare.ts';
 import type { Responsiveness } from './responsiveness.ts';
 import { judgeResponsiveness } from './responsiveness-compare.ts';
 import type { SourceFacts } from './source-facts.ts';
@@ -70,7 +70,7 @@ export interface RouteStages {
 	readonly arrival: { readonly request: { readonly entry: string; readonly journeys: readonly Journey[] }; readonly value: { readonly a: Runs; readonly b: Runs; readonly next: Runs } | null };
 	readonly retime: { readonly request: { readonly set: 'main' | 'arrival'; readonly journey: Journey }; readonly value: readonly RetimeRound[] };
 	readonly clock: { readonly request: Record<string, never>; readonly value: readonly Failure[] };
-	readonly probes: { readonly request: { readonly notify: readonly string[] }; readonly value: ProbesRow };
+	readonly probes: { readonly request: { readonly notify: readonly string[]; readonly prefixes?: readonly (readonly [string, readonly Step[]])[] }; readonly value: ProbesRow };
 	readonly parity: { readonly request: { readonly film: boolean; readonly webkit: boolean }; readonly value: ParityRow };
 	readonly busy: { readonly request: Record<string, never>; readonly value: { readonly failures: readonly Failure[]; readonly ms: number } };
 	readonly motion: { readonly request: { readonly journeys: readonly RecordedJourney[] }; readonly value: MotionRow };
@@ -398,7 +398,8 @@ async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Jo
 export async function probeCheck(o: Observe, ctx: RouteContext, result: RouteResult, film: boolean, webkit: boolean): Promise<RouteResult> {
 	const { route } = ctx;
 	const clock = await span(ctx, 'moved clock', () => o('clock', {}));
-	const out = judgeProbes(route, await span(ctx, 'probe sequences', () => o('probes', { notify: notifiers(result.journeys) })));
+	const prefixes = journeyPrefixes(result.journeys, result.coverage?.elements);
+	const out = judgeProbes(route, await span(ctx, 'probe sequences', () => o('probes', { notify: notifiers(result.journeys), ...(prefixes.length ? { prefixes } : {}) })));
 	const parity = ctx.stages.controls
 		? await span(ctx, 'control parity', () => o('parity', { film: film && Boolean(ctx.stages.motion), webkit }).then((row) => judgeControlParity(route, row))).catch((error: Error): ControlParityResult => {
 				if (error instanceof Unobserved) throw error;

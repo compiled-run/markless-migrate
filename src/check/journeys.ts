@@ -1411,7 +1411,7 @@ async function stepTarget(page: Page, step: Step): Promise<Locator> {
 	return (step.action === 'key' || step.action === 'outside') && (await marked.count().catch(() => 0)) ? marked : locate(page, step.target);
 }
 
-async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
+export async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
 	if (step.action === 'live') {
 		const databases = sessionDatabases(page.context());
 		for (let i = 0; i < step.updates; i++) if (!databases.some((db) => db.next(step.away))) throw new Error('the recording has no more updates');
@@ -1448,7 +1448,8 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 			return page.keyboard.press(step.key);
 		}
 		case 'outside': {
-			const point = await target.evaluate(outsidePoint, undefined, { timeout: patience }).catch(() => null);
+			// A target the open layer hides from the accessibility tree (a row under its modal menu) leaves the point outside every pop-up shown.
+			const point = (await target.count().catch(() => 0)) ? await target.evaluate(outsidePoint, undefined, { timeout: patience }).catch(() => null) : ((await page.evaluate(overlays).catch(() => undefined))?.outside ?? null);
 			if (!point) throw new UnreachableError('missing', 'no point outside it and what it opened holds no control');
 			return page.mouse.click(point.x, point.y);
 		}
@@ -2240,6 +2241,41 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			let opened: string[] = [];
 			let outside: { x: number; y: number } | null = null;
 			let historyGrew = false;
+			// Alike members used in turn: what one opens (a row's menu hiding the page) is closed before the next, by Escape where that
+			// closes it on this side, else by a click outside after it, and the journey keeps the steps it took so both sides replay them.
+			const memberAt: number[] = [];
+			const taken: Step[] = [];
+			let ran: readonly Step[] = item.journey.steps;
+			let closing = '';
+			if (item.batch && item.batch.length > 1) {
+				const members = item.journey.steps.slice(-item.batch.length);
+				ran = taken;
+				for (const step of item.journey.steps.slice(0, -item.batch.length)) {
+					taken.push(step);
+					const result = await session.run(step, false, item.journey.patience);
+					expected.push(result);
+					if (result.failed) break;
+				}
+				if (!expected.at(-1)?.failed)
+					for (const [k, member] of members.entries()) {
+						const before = k < members.length - 1 ? await page.evaluate(overlays).catch(() => undefined) : undefined;
+						memberAt.push(taken.length);
+						taken.push(member);
+						const result = await session.run(member, false, item.journey.patience);
+						expected.push(result);
+						if (result.failed) break;
+						if (!before) continue;
+						const open = async () => ((await page.evaluate(overlays).catch(() => undefined))?.keys ?? []).some((key) => !before.keys.includes(key));
+						if (!(await open())) continue;
+						for (const close of [{ action: 'key', key: 'Escape', target: member.target }, { action: 'outside', target: member.target }] as const) {
+							taken.push(close);
+							expected.push(await session.run(close, false, item.journey.patience));
+							if (close.action === 'outside') closing = ', each closed by a click outside (Escape did not close it)';
+							else if (!closing) closing = ', each closed by Escape';
+							if (!(await open())) break;
+						}
+					}
+			} else
 			for (const [i, step] of item.journey.steps.entries()) {
 				const watch = primary && i === item.journey.steps.length - 1;
 				const before = watch ? await page.evaluate(overlays).catch(() => undefined) : undefined;
@@ -2254,7 +2290,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				historyGrew = (await page.evaluate(() => history.length).catch(() => 0)) > historyBefore;
 			}
 			const last = expected.at(-1)!;
-			const done = expected.length === item.journey.steps.length && !last.failed;
+			const done = expected.length === ran.length && !last.failed;
 			const stayed = done && new URL(shownUrl(page)).pathname === new URL(route, origin).pathname && !last.navigated;
 			// The control just used, renamed by its use ("currently light mode"), is the same control, not one it revealed.
 			const renamed = item.expand && stayed ? await retarget(page, item.journey.steps.at(-1)!.target) : undefined;
@@ -2266,7 +2302,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const opener = item.expand && stayed && (expanded || opened.length > 0) && item.depth < maxDepth;
 			const widgets = opener ? await findWidgets(page, revealed.filter((c) => !known.has(`${c.target.role}|${c.target.name}|${c.target.nth}`)).map((candidate) => ({ candidate })), false) : [];
 			const sequences: Item[] = [];
-			let journey: Journey = item.journey;
+			let journey: Journey = ran === item.journey.steps ? item.journey : { ...item.journey, name: `${item.journey.name}${closing}`, steps: ran };
 			if ((item.discover || item.journey.cycle) && stayed) {
 				const { cycle: _, ...plain } = item.journey;
 				const cycle = await runCycle(session, steps, expected, item.journey.cycle);
@@ -2282,7 +2318,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				for (const close of closes) sequences.push({ journey: { name: `${item.journey.name}, closed by ${closedBy(close)}`, steps, cycle: [close, 'again'] }, depth: item.depth, expand: false, rank: 2, of: item.element });
 				if (stored && navLink) sequences.push({ journey: { name: `${item.journey.name}, then follow ${describeTarget(navLink)}`, steps, cycle: [{ navigate: navLink }, 'again', 'reload'] }, depth: item.depth, expand: false, rank: URGENT, of: item.element });
 			}
-			return { item: { ...item, journey }, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, widgets, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length };
+			return { item: { ...item, journey }, expected, memberAt, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, widgets, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length };
 		} finally {
 			await session.close();
 		}
@@ -2340,11 +2376,12 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const batch = item.batch ?? [];
 			// A member that left the page (a signed-out "hide" sending the visitor to log in) ends the turn: the rest start again from the
 			// page, and once two of them have left it the same way, those two stand for the rest, as the first few of a grid do.
-			const left = batch.findIndex((t, k) => r.expected[t.prefix.length + k]?.navigated);
+			const at = (t: Tracked, k: number) => r.memberAt[k] ?? t.prefix.length + k;
+			const left = batch.findIndex((t, k) => r.expected[at(t, k)]?.navigated);
 			const leavers = left === -1 ? (item.left ?? []) : [...(item.left ?? []), batch[left]!];
 			const again: Tracked[] = [];
 			for (const [k, t] of batch.entries()) {
-				const step = r.expected[t.prefix.length + k];
+				const step = r.expected[at(t, k)];
 				if (step && !step.failed && (left === -1 || k <= left)) t.by = item.journey.name;
 				else if (left !== -1 && k > left && leavers.length >= SAMPLES) t.by = `alike: ${leavers.map((x) => describeTarget(x.candidate.target)).join(' and ')} each left the page`;
 				else if (left !== -1 && k > left) again.push(t);

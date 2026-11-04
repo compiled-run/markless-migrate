@@ -1,5 +1,5 @@
 // The widget probes, judged from the readings probes.ts took on the old page and the new one: nothing here drives a page.
-import type { RecordedJourney } from './journeys.ts';
+import type { RecordedJourney, Step } from './journeys.ts';
 import type { ProbeControl } from './probe-page.ts';
 import { compareStates, firstDiffs, stateHint, stateSpread, type StateDiff, type StateReading } from './state-probe.ts';
 import type { Dimension, Failure } from './types.ts';
@@ -327,6 +327,52 @@ export function judgeProbes(route: string, row: ProbesRow): ProbeResult {
 }
 
 /** Buttons whose click announced something in a live region in the recorded journeys: they get the repeated-use probe. */
+/** Steps a prefix may hold: what a visitor does to reach a control, not a race, a typed search or a submitted form. */
+const REACHING = new Set<Step['action']>(['click', 'press', 'key', 'outside', 'fill', 'select', 'hover', 'scroll']);
+
+/** For each control the journeys reach only after earlier steps (behind a first-visit dialog), the shortest such steps, by control key:
+ * from the journeys that used it, and for one tracked but not used (a link leaving the app), from the journey to what revealed it. */
+export function journeyPrefixes(journeys: readonly RecordedJourney[] | undefined, elements: readonly { readonly signature: string }[] = []): [string, readonly Step[]][] {
+	const atLoad = new Set<string>();
+	const best = new Map<string, readonly Step[]>();
+	const offer = (key: string, prefix: readonly Step[]) => {
+		if (prefix.every((s) => REACHING.has(s.action)) && (best.get(key)?.length ?? Infinity) > prefix.length) best.set(key, prefix);
+	};
+	for (const j of journeys ?? [])
+		j.steps.forEach((step, i) => {
+			if (step.target.structure) return;
+			const key = controlKey(step.target);
+			if (i === 0) atLoad.add(key);
+			else offer(key, j.steps.slice(0, i));
+		});
+	// A signature names the chain that revealed a control: "page|button|Get Started|0 > link|127k|0".
+	const target = (segment: string) => {
+		const parts = segment.split('|');
+		const [role, name, nth] = parts.length >= 4 ? parts.slice(-3) : parts;
+		return { role: role ?? '', name: name ?? '', nth: Number(nth) };
+	};
+	for (const { signature } of elements) {
+		const chain = signature.split(' > ').map(target);
+		if (chain.length < 2) continue;
+		const parent = chain.slice(0, -1);
+		const to = (journeys ?? []).find((j) => j.steps.length === parent.length && j.steps.every((s, i) => controlKey(s.target) === controlKey(parent[i]!)));
+		if (to) offer(controlKey(chain.at(-1)!), to.steps);
+	}
+	return [...best].filter(([key]) => !atLoad.has(key)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** The prefix for a probe's control: by its key, else by its role and place with one name the start of the other (a key hint read into one name). */
+export function prefixFor(prefixes: ReadonlyMap<string, readonly Step[]>, control: Pick<ProbeControl, 'role' | 'name' | 'nth'>): readonly Step[] | undefined {
+	const exact = prefixes.get(controlKey(control));
+	if (exact) return exact;
+	const own = control.name.replace(/\s+/g, '');
+	for (const [key, steps] of prefixes) {
+		const [role, name = '', nth] = key.split('|');
+		if (role === control.role && Number(nth) === control.nth && name && own && (own.startsWith(name) || name.startsWith(own))) return steps;
+	}
+	return undefined;
+}
+
 export function notifiers(journeys: readonly RecordedJourney[] | undefined): string[] {
 	const out = new Set<string>();
 	for (const j of journeys ?? []) {
