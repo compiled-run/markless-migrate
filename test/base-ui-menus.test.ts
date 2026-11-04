@@ -825,3 +825,48 @@ test("a Base UI select opened by a press shows no focus ring as the pointer leav
 	assert.equal(await ring(page), 'Select a fruit false');
 	await page.close();
 });
+
+test("choosing a Base UI select option writes the hidden input past the focus guards kept beside its trigger, as Base UI's form value follows the choice", async () => {
+	const guards = select.replace('</button><input id="base-ui-x-hidden-input"', '</button><span data-type="outside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard="" hidden data-mm-shown-with="base"></span><span aria-owns="base-popup" hidden data-mm-shown-with="base"></span><input id="base-ui-x-hidden-input"').replace(/data-slot="select-item"><div>(\w+)</g, (_, f: string) => `data-slot="select-item" data-mm-value="${f.toLowerCase()}"><div>${f}<`);
+	const page = await open(guards, ['base-ui/select']);
+	await withValue(page);
+	await page.locator('#base').click();
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	await settled(page);
+	assert.equal(await selectState(page), 'Banana input=banana');
+	await page.close();
+});
+
+test('an arrow on an open Base UI select trigger focuses the highlighted option without moving it, else the selected one, as useListNavigation does', async () => {
+	const page = await open(select.replace('data-slot="select-item"><div>Banana', 'data-slot="select-item" aria-selected="true"><div>Banana').replace('aria-selected="false" tabindex="-1" data-slot="select-item" aria-selected="true"', 'aria-selected="true" tabindex="-1" data-slot="select-item"'), ['base-ui/select']);
+	await page.locator('#base').click();
+	await settled(page);
+	await page.locator('[role="option"]', { hasText: 'Grapes' }).hover();
+	await page.locator('#base').focus();
+	await press(page, 'ArrowDown');
+	assert.equal(await state(page), 'true focus=Grapes highlighted=Grapes');
+	await press(page, 'Escape');
+	await page.locator('#base').click();
+	await settled(page);
+	await page.locator('[role="option"]', { hasText: 'Grapes' }).hover();
+	await page.mouse.move(1, 1);
+	await page.locator('#base').focus();
+	await press(page, 'ArrowUp');
+	assert.equal(await state(page), 'true focus=Banana highlighted=Banana');
+	await page.close();
+});
+
+test('choosing a Base UI select option drops data-placeholder from its trigger and value, and choosing the null item puts it back, as Base UI marks a null value', async () => {
+	const placeholder = select.replace('data-slot="select-trigger"><span data-slot="select-value">', 'data-slot="select-trigger" data-placeholder=""><span data-slot="select-value" data-placeholder="">').replace(/data-slot="select-item"><div>(\w+)</g, (_, f: string) => `data-slot="select-item" data-mm-value="${f === 'Apple' ? '' : f.toLowerCase()}"><div>${f}<`);
+	const page = await open(placeholder, ['base-ui/select']);
+	const marks = () => page.evaluate(() => ['[data-slot="select-trigger"]', '[data-slot="select-value"]'].map((s) => document.querySelector(s)!.hasAttribute('data-placeholder')).join(','));
+	await page.locator('#base').click();
+	await page.locator('[role="option"]', { hasText: 'Banana' }).click();
+	await settled(page);
+	assert.equal(await marks(), 'false,false');
+	await page.locator('#base').click();
+	await page.getByRole('option', { name: 'Apple', exact: true }).click();
+	await settled(page);
+	assert.equal(await marks(), 'true,true');
+	await page.close();
+});
