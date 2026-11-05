@@ -93,6 +93,13 @@ on:
         required: false
         default: ''
       preset: { type: string, required: false, default: '' }
+      build: { type: string, required: false, default: '' }
+      timeout: { type: string, required: false, default: '' }
+      artifacts:
+        description: A prefix for every artifact this run uploads and reads, so several calls in one workflow run keep theirs apart
+        type: string
+        required: false
+        default: ''
   # Never on pull requests: a change to this workflow is tried with `gh workflow run check.yml --ref <branch>`.
 
 permissions:
@@ -202,10 +209,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           i=0
-          runs=$( { for wf in check.yml pipeline.yml; do gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" -L 30 --json databaseId,createdAt,status --jq '.[] | select(.status == "completed") | "\(.createdAt) \(.databaseId)"'; done; } | sort -r | cut -d' ' -f2)
+          runs=$( { for wf in check.yml pipeline.yml corpus.yml; do gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" -L 30 --json databaseId,createdAt,status --jq '.[] | select(.status == "completed") | "\(.createdAt) \(.databaseId)"'; done; } | sort -r | cut -d' ' -f2)
           for run in $runs; do
             dir="$RUNNER_TEMP/earlier/$i"
-            if gh run download "$run" -R "$GITHUB_REPOSITORY" -p 'check-times-*' -D "$dir" 2>/dev/null && [ -n "$(find "$dir" -name route-times.json)" ]; then
+            if gh run download "$run" -R "$GITHUB_REPOSITORY" -p '*check-times-*' -D "$dir" 2>/dev/null && [ -n "$(find "$dir" -name route-times.json)" ]; then
               # shellcheck disable=SC2046
               node -e 'const fs=require("fs");const [out,...files]=process.argv.slice(1);fs.writeFileSync(out,JSON.stringify({routes:files.flatMap(f=>JSON.parse(fs.readFileSync(f,"utf8")).routes)}))' "$dir/report.json" $(find "$dir" -name route-times.json)
             elif ! gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$dir" 2>/dev/null; then rm -rf "$dir"; continue; fi
@@ -230,7 +237,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: check-shards
+          name: ${{ inputs.artifacts }}check-shards
           path: shards
           retention-days: 3
 
@@ -322,7 +329,7 @@ jobs:
           node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$OLD" --targets "$RUNNER_TEMP/slices/shard-$SLICE.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --write-layout-survey "$RUNNER_TEMP/survey/layout-survey-$SLICE.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY") $FLAGS --no-cache
       - uses: actions/upload-artifact@v4
         with:
-          name: check-layout-survey-${{ matrix.slice }}
+          name: ${{ inputs.artifacts }}check-layout-survey-${{ matrix.slice }}
           path: ${{ runner.temp }}/survey
           retention-days: 14
 
@@ -345,7 +352,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
-          pattern: check-layout-survey-*
+          pattern: ${{ inputs.artifacts }}check-layout-survey-*
           path: ${{ runner.temp }}/slices
           merge-multiple: true
       - name: Join the slices
@@ -354,7 +361,7 @@ jobs:
           node scripts/check-shards.ts survey-join "$TARGETS" "$RUNNER_TEMP/survey/layout-survey.json" "$RUNNER_TEMP"/slices/layout-survey-*.json
       - uses: actions/upload-artifact@v4
         with:
-          name: check-layout-survey
+          name: ${{ inputs.artifacts }}check-layout-survey
           path: ${{ runner.temp }}/survey
           retention-days: 14
 
@@ -382,11 +389,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/download-artifact@v4
         with:
-          name: check-shards
+          name: ${{ inputs.artifacts }}check-shards
           path: ${{ runner.temp }}/shards
       - uses: actions/download-artifact@v4
         with:
-          name: check-layout-survey
+          name: ${{ inputs.artifacts }}check-layout-survey
           path: ${{ runner.temp }}/survey
       # The original the original job named: a Next.js build differs from the last in every file name, so one published build is
       # what keeps every shard serving the same original.
@@ -505,7 +512,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && env.PARTIAL != 'true'
         with:
-          name: check-observations-${{ matrix.shard }}
+          name: ${{ inputs.artifacts }}check-observations-${{ matrix.shard }}
           path: ${{ runner.temp }}/observations
           if-no-files-found: ignore
           compression-level: 0
@@ -519,7 +526,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && env.PARTIAL != 'true'
         with:
-          name: check-times-${{ matrix.shard }}
+          name: ${{ inputs.artifacts }}check-times-${{ matrix.shard }}
           path: ${{ runner.temp }}/times
           if-no-files-found: ignore
           retention-days: 30
@@ -531,7 +538,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && env.PARTIAL != 'true'
         with:
-          name: check-${{ matrix.shard }}
+          name: ${{ inputs.artifacts }}check-${{ matrix.shard }}
           path: |
             ${{ env.APP }}/.migrate/report.json
             ${{ env.APP }}/.migrate/check-progress
@@ -559,7 +566,7 @@ jobs:
     env:
       PARTIAL: 'true'
       SLICES: --slices explore
-      SLICE_OUT: slice-${{ matrix.shard }}-plan
+      SLICE_OUT: ${{ inputs.artifacts }}slice-${{ matrix.shard }}-plan
       SLICE_TIMEOUT: '18000'
     steps: *shard-steps
 
@@ -575,8 +582,8 @@ jobs:
     env:
       PARTIAL: 'true'
       SLICES: --slices replay --slice ${{ matrix.at }}/${{ matrix.of }}
-      SLICE_IN: slice-${{ matrix.shard }}-plan
-      SLICE_OUT: slice-${{ matrix.shard }}-part-${{ matrix.at }}
+      SLICE_IN: ${{ inputs.artifacts }}slice-${{ matrix.shard }}-plan
+      SLICE_OUT: ${{ inputs.artifacts }}slice-${{ matrix.shard }}-part-${{ matrix.at }}
       SLICE_TIMEOUT: '18000'
     steps: *shard-steps
 
@@ -591,7 +598,7 @@ jobs:
         shard: ${{ fromJSON(needs.plan.outputs.sliced) }}
     env:
       SLICES: --slices finish
-      SLICE_IN: slice-${{ matrix.shard }}-*
+      SLICE_IN: ${{ inputs.artifacts }}slice-${{ matrix.shard }}-*
       SLICE_TIMEOUT: '18000'
     steps: *shard-steps
 
@@ -616,11 +623,11 @@ jobs:
       # Only the shard reports and shard files; the merge never reads check-observations-* (about 1 GB a shard).
       - uses: actions/download-artifact@v4
         with:
-          pattern: check-[0-9]*
+          pattern: ${{ inputs.artifacts }}check-[0-9]*
           path: shards
       - uses: actions/download-artifact@v4
         with:
-          name: check-shards
+          name: ${{ inputs.artifacts }}check-shards
           path: shards/check-shards
       - name: Merge
         env:
@@ -659,7 +666,7 @@ jobs:
           key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         with:
-          name: check-merged
+          name: ${{ inputs.artifacts }}check-merged
           path: merged
           retention-days: 30
       - name: Every route checked to the end

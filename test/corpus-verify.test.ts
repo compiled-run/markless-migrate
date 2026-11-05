@@ -33,3 +33,13 @@ test('every bug of bugs.json names its micro-site case, and every matcher compil
 		if (b.build) assert.ok(corpus.builds[b.build], `${b.id}: no build ${b.build}`);
 	}
 });
+
+test('each kept build has a targets file of its bug routes, the routes corpus.yml checks it on through check.yml', async () => {
+	const corpus = JSON.parse(await readFile('deploy/shadcn-ui/corpus/bugs.json', 'utf8')) as { builds: Record<string, string>; bugs: { build: string | null; route: string }[] };
+	for (const build of Object.keys(corpus.builds)) {
+		const routes = [...new Set(corpus.bugs.filter((b) => b.build === build).map((b) => b.route))];
+		if (!routes.length) continue;
+		const file = JSON.parse(await readFile(`deploy/shadcn-ui/corpus/targets-${build}.json`, 'utf8')) as { routes: string[] };
+		assert.deepEqual(file.routes, routes, `deploy/shadcn-ui/corpus/targets-${build}.json: run node scripts/corpus.ts targets deploy/shadcn-ui/corpus/bugs.json ${build} deploy/shadcn-ui/corpus/targets-${build}.json`);
+	}
+});

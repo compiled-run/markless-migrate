@@ -483,7 +483,7 @@ async function main(): Promise<void> {
 		const reported = new Map<number, Set<string>>();
 		for (const { path, routes: got } of await reports(a)) {
 			routes.push(...got);
-			const shard = /(?:^|\/)check-(\d+)\//.exec(path)?.[1];
+			const shard = /(?:^|[\/-])check-(\d+)\//.exec(path)?.[1];
 			if (shard) reported.set(Number(shard), new Set([...(reported.get(Number(shard)) ?? []), ...got.map((r) => r.route)]));
 		}
 		if (c && c !== '--original') {

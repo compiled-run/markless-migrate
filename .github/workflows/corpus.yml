@@ -2,10 +2,10 @@ name: Corpus
 
 # The bugs the owner found by hand in the ui.shadcn.com port (deploy/shadcn-ui/corpus/bugs.json), checked on the kept port
 # builds that still have them, against the old site built from its source: a check change that stops reporting any of them
-# is red. Each runner checks one route as check.yml's shards do, with the flags a site's run uses, page load left out (no
-# corpus bug is a load bug), then judges it again from the observations it recorded: the report must come out the same. The
-# micro-site corpus (test/e2e/corpus.test.ts) runs in ci.yml's merge queue instead. With rows_from, no build is checked: an
-# earlier run's recorded observations are judged again by this commit's judges and scored, in minutes and with no browser.
+# is red. Each build's bug routes are checked through check.yml, as a site's run checks them (one route a shard, a route
+# longer than its timeout sliced, page load left out: no corpus bug is a load bug), each shard judged again from the
+# observations it recorded. The micro-site corpus (test/e2e/corpus.test.ts) runs in ci.yml's merge queue instead. With
+# rows_from, no build is checked: an earlier run's recorded observations are judged again by this commit's judges and scored.
 on:
   push:
     branches: [main]
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
+      builds: ${{ steps.plan.outputs.builds }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,107 +52,29 @@ jobs:
         with:
           node-version: 24
       - id: plan
-        run: echo "matrix=$(node scripts/corpus.ts matrix deploy/shadcn-ui/corpus/bugs.json)" >> "$GITHUB_OUTPUT"
+        run: echo "builds=$(node scripts/corpus.ts builds deploy/shadcn-ui/corpus/bugs.json)" >> "$GITHUB_OUTPUT"
 
-  # The original every runner serves, by id (.github/actions/old-site), published first when there is none.
-  original:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    permissions:
-      contents: write
-    outputs:
-      id: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - id: resolve
-        uses: ./.github/actions/old-site
-        with:
-          site: ${{ env.SITE }}
-          step: resolve
-          token: ${{ github.token }}
-      - if: steps.resolve.outputs.id == ''
-        uses: pnpm/action-setup@v4
-        with:
-          version: 12.14.0
-      - if: steps.resolve.outputs.id == ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - if: steps.resolve.outputs.id == ''
-        uses: oven-sh/setup-bun@v2
-      - name: Build the old site
-        if: steps.resolve.outputs.id == ''
-        run: bash "deploy/$SITE/ci-serve.sh" old
-      - id: publish
-        if: steps.resolve.outputs.id == ''
-        uses: ./.github/actions/old-site
-        with:
-          site: ${{ env.SITE }}
-          step: publish
-          token: ${{ github.token }}
-      - env:
-          ID: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
-        run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
-
+  # A fresh old side every run (no reuse): what the corpus measures is today's check, not a kept result.
   check:
-    needs: [plan, original]
-    name: ${{ matrix.build }} ${{ matrix.route }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    needs: plan
     strategy:
       fail-fast: false
-      max-parallel: 10
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          browsers: chromium firefox webkit
-      - uses: oven-sh/setup-bun@v2
-      - name: The original
-        uses: ./.github/actions/old-site
-        with:
-          site: ${{ env.SITE }}
-          step: restore
-          id: ${{ needs.original.outputs.id }}
-          token: ${{ github.token }}
-      - name: Serve the old site
-        run: bash "deploy/$SITE/ci-serve.sh" old
-      - name: Serve the port build that has the bug
-        run: bash "deploy/$SITE/ci-serve.sh" new "$URL"
-        env:
-          URL: ${{ matrix.url }}
-      - name: Check
-        env:
-          ROUTE: ${{ matrix.route }}
-        run: |
-          set -uo pipefail
-          cd "$APP"
-          status=0
-          # A fresh old side every run (--no-cache): what the corpus measures is today's check, not a kept result.
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --route "$ROUTE" --site-targets ../../deploy/shadcn-ui/check-targets.json --control-webkit --busy-cpu --no-load --no-cache --timeout 7200 > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
-          tail -n 40 "$RUNNER_TEMP/check.txt"
-          # 1 is red and 4 a partial run, the results; 3 is a route not checked, which verify reports as such.
-          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
-      # The judges read only what the check recorded: judged again from its rows, the report is the one it wrote.
-      - name: Judge again from the recorded observations
-        run: node src/cli.ts check judge "$APP/.migrate/observations" --report "$APP/.migrate/report.json"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: corpus-${{ matrix.key }}
-          path: |
-            ${{ env.APP }}/.migrate/report.json
-            ${{ env.APP }}/.migrate/observations
-            ${{ runner.temp }}/check.txt
-          include-hidden-files: true
-          if-no-files-found: warn
-          retention-days: 14
+        include: ${{ fromJSON(needs.plan.outputs.builds) }}
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/check.yml
+    with:
+      site: shadcn-ui
+      app: examples/shadcn-ui-markless
+      targets: deploy/shadcn-ui/corpus/targets-${{ matrix.build }}.json
+      shards: ${{ matrix.shards }}
+      build: ${{ matrix.url }}
+      flags: --no-load --no-cache
+      timeout: '7200'
+      reuse: ${{ 'false' }}
+      artifacts: corpus-${{ matrix.build }}-
 
   verify:
     needs: [plan, check]
@@ -168,13 +90,13 @@ jobs:
           node-version: 24
       - uses: actions/download-artifact@v4
         with:
-          pattern: corpus-*
+          pattern: corpus-*-check-merged
           path: reports
       - name: Every corpus bug is reported
         run: |
           set -euo pipefail
-          # Each build's reports under reports/<build>/, as verify reads them.
-          for dir in reports/corpus-*; do build="${dir#reports/corpus-}"; build="${build%-*}"; mkdir -p "by-build/$build"; mv "$dir" "by-build/$build/"; done
+          # Each build's merged report under by-build/<build>/, as verify reads it.
+          for dir in reports/corpus-*-check-merged; do build="${dir#reports/corpus-}"; build="${build%-check-merged}"; mkdir -p "by-build/$build"; mv "$dir" "by-build/$build/"; done
           status=0
           node scripts/corpus.ts verify deploy/shadcn-ui/corpus/bugs.json by-build > table.md || status=$?
           cat table.md >> "$GITHUB_STEP_SUMMARY"
@@ -201,17 +123,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN: ${{ inputs.rows_from }}
-        run: gh run download "$RUN" -R "$GITHUB_REPOSITORY" -p 'corpus-*' -D recorded
+        run: gh run download "$RUN" -R "$GITHUB_REPOSITORY" -p 'corpus-*-check-observations-*' -D recorded
       - name: Every corpus bug is reported, judged from the recorded observations
         env:
           RUN: ${{ inputs.rows_from }}
         run: |
           set -euo pipefail
           # Each artifact's observations judged by this commit, its report under by-build/<build>/<artifact>/, as verify reads them.
-          for dir in recorded/corpus-*; do
-            name="${dir#recorded/}"; build="${name#corpus-}"; build="${build%-*}"
-            observations=$(find "$dir" -type d -name observations | head -n 1)
-            if [ -z "$observations" ]; then echo "::warning::$name holds no observations"; continue; fi
+          for dir in recorded/corpus-*-check-observations-*; do
+            name="${dir#recorded/}"; build="${name#corpus-}"; build="${build%-check-observations-*}"
+            if [ ! -f "$dir/observations.tar.zst" ]; then echo "::warning::$name holds no observations"; continue; fi
+            observations="$dir/observations"
+            mkdir -p "$observations"
+            zstd -q -d --long=27 -c "$dir/observations.tar.zst" | tar -xf - -C "$observations"
             # 1 is a red report, which is what the judged routes of a corpus build are.
             judged=0; node src/cli.ts check judge "$observations" --out "by-build/$build/$name" || judged=$?
             [ "$judged" -le 1 ] || exit "$judged"
