@@ -461,7 +461,7 @@ async function main(): Promise<void> {
 		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000) : { kept: targets, sliced: [] };
 		const shards = split(kept, Number(b), costs);
 		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${earlier.length} earlier runs`);
-		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier runs say it takes ${Math.round(estimatesOf(newest).get(r.route)! / 1000)} s, over its ${over} s`);
+		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier runs say it takes ${Math.round(estimatesOf(newest).get(r.route)! / 1000)} s, past three quarters of its ${over} s`);
 		await mkdir(c, { recursive: true });
 		for (const [i, shard] of shards.entries()) await writeFile(join(c, `shard-${i + 1}.json`), `${JSON.stringify(shard)}\n`);
 		for (const r of sliced) await writeFile(join(c, `shard-${r.shard}.json`), `${JSON.stringify({ routes: [r.route], endpoints: [], redirects: [], unchecked: [] })}\n`);
