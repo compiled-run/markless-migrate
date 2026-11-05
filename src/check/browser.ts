@@ -505,8 +505,10 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		}
 		// The page load's id goes only on the page and its API calls: framework prefetches render other routes, whose fetches are not this page's.
 		const own = request.isNavigationRequest() || (['fetch', 'xhr'].includes(request.resourceType()) && !frameworkTransport(request, url));
+		// A route the router fetches still renders at the frozen time (--server-clock), under a load id of its own.
+		const other: Record<string, string> = !own && env.serverClock && env.freeze && frameworkTransport(request, url) ? { [RECORDER_HEADER]: recorderTag(env, randomUUID()) } : {};
 		if (timed) {
-			const headers = { ...request.headers(), ...extra, ...(own ? { [RECORDER_HEADER]: tag } : {}) };
+			const headers = { ...request.headers(), ...extra, ...(own ? { [RECORDER_HEADER]: tag } : other) };
 			const data = ['fetch', 'xhr'].includes(request.resourceType());
 			if (!['GET', 'HEAD'].includes(request.method())) timed.network.wrote = true;
 			else if (request.method() === 'GET' && STORED_TYPES.has(request.resourceType()) && !(data && timed.network.wrote)) return timed.network.answer(route, headers, timed.miss);
@@ -514,7 +516,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 			return route.continue({ headers });
 		}
 		if (own) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: tag } });
-		if (env.replay) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: recorderTag(env, randomUUID()) } });
+		if (env.replay || RECORDER_HEADER in other) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: recorderTag(env, randomUUID()) } });
 		return env.headers ? route.continue({ headers: { ...request.headers(), ...extra } }) : route.continue();
 	}
 	const finish = (request: Request) => {
