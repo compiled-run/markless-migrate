@@ -80,7 +80,7 @@ on:
       build-runner:
         description: The runner label the build runs on (a larger runner's label when the port needs more than 16 GB)
         required: false
-        default: ubuntu-latest
+        default: ubuntu-24.04
       build-heap:
         description: The build's Node heap in MB (the live heap of a full shadcn build peaks at 6 to 7 GB)
         required: false
@@ -137,7 +137,7 @@ jobs:
   # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     permissions:
       contents: read
@@ -166,7 +166,7 @@ jobs:
   # The original every job serves, by id: published once (.github/actions/old-site), so no job or branch builds its own.
   original:
     needs: gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: write
@@ -210,7 +210,7 @@ jobs:
   prepare:
     needs: [gate, original]
     if: inputs.build-url == '' && inputs.converted-from == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     outputs:
       capture: ${{ steps.records.outputs.matrix }}
@@ -351,7 +351,7 @@ jobs:
   capture:
     needs: [prepare, original]
     if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -410,7 +410,7 @@ jobs:
   emit:
     needs: [prepare, capture, original]
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
       # A pull request's run proves a kept converted app (and its parts copied again) equal to a convert of the same inputs.
@@ -554,7 +554,7 @@ jobs:
   build:
     needs: [gate, prepare, emit]
     if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.emit.result == 'success' || inputs.build-url != '' || inputs.converted-from != '') }}
-    runs-on: ${{ inputs.build-runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.build-runner || 'ubuntu-24.04' }}
     timeout-minutes: 120
     outputs:
       key: ${{ steps.key.outputs.key }}
@@ -718,7 +718,7 @@ jobs:
   check-select:
     needs: [build, original]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.original.result == 'success' && needs.build.outputs.run != 'mac' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
       shards: ${{ steps.select.outputs.shards }}
@@ -821,7 +821,7 @@ jobs:
   deploy:
     needs: [build, check]
     if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -854,7 +854,7 @@ jobs:
   report:
     needs: [prepare, capture, emit, build, check-select, check, deploy]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

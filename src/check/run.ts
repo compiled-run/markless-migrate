@@ -757,9 +757,25 @@ async function surveyLayout(browser: Browser, run: Run, routes: readonly string[
 	);
 }
 
+async function launchedTogether(launches: [Promise<Browser>, Promise<Browser>], kept?: Browser): Promise<[Browser, Browser]> {
+	const settled = await Promise.allSettled(launches);
+	const failed = settled.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+	if (!failed) return settled.map((r) => (r as PromiseFulfilledResult<Browser>).value) as [Browser, Browser];
+	await Promise.all(settled.map((r) => (r.status === 'fulfilled' && r.value !== kept ? r.value.close() : undefined)));
+	throw failed.reason;
+}
+
 export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
 	resetSharedAnswers();
+	if (options.original) {
+		const role = options.auth ? undefined : null;
+		if (role === undefined) throw new Error('--original reads an anonymous original: leave out --auth');
+		const want = conditionsId(originalConditions(options));
+		if (options.original.manifest.conditionsId !== want) throw new Error(`the original's dataset was produced under other conditions than this check's (${options.original.manifest.conditionsId.slice(0, 12)}, this check ${want.slice(0, 12)})`);
+		offerAnswers(originalAnswers(options.original, options.routes));
+	}
+	if (options.slicing && (options.routes.length !== 1 || options.original || options.auth || options.data)) throw new Error('a sliced check checks one route, anonymous, with no --original or --data');
 	// A browser of the check's own is launched again if it dies, and the route it died under checked once more; a given one is the caller's.
 	const relaunched = options.browser ? undefined : await new Relauncher<Browser>(() => chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }), (line) => void process.stderr.write(`${line}\n`)).start();
 	const browser = options.browser ?? relaunched!.shared;
@@ -769,20 +785,21 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir && !options.original && !options.slicing ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const webkitBrowser = options.controls?.webkit && !options.writeLayoutSurvey ? await webkit.launch().catch((error: Error) => {
-		throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
-	}) : undefined;
-	const laneBrowsers = options.busyCpu && !options.writeLayoutSurvey ? await Promise.all([firefox.launch(), webkitBrowser ?? webkit.launch()]).catch((error: Error) => {
-		throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
-	}) : undefined;
-	if (options.original) {
-		const role = options.auth ? undefined : null;
-		if (role === undefined) throw new Error('--original reads an anonymous original: leave out --auth');
-		const want = conditionsId(originalConditions(options));
-		if (options.original.manifest.conditionsId !== want) throw new Error(`the original's dataset was produced under other conditions than this check's (${options.original.manifest.conditionsId.slice(0, 12)}, this check ${want.slice(0, 12)})`);
-		offerAnswers(originalAnswers(options.original, options.routes));
+	// A browser that did not start closes the ones that did, or they keep the process alive after the error.
+	let webkitBrowser: Browser | undefined;
+	let laneBrowsers: [Browser, Browser] | undefined;
+	try {
+		webkitBrowser = options.controls?.webkit && !options.writeLayoutSurvey ? await webkit.launch().catch((error: Error) => {
+			throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
+		}) : undefined;
+		laneBrowsers = options.busyCpu && !options.writeLayoutSurvey ? await launchedTogether([firefox.launch(), webkitBrowser ? Promise.resolve(webkitBrowser) : webkit.launch()], webkitBrowser).catch((error: Error) => {
+			throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
+		}) : undefined;
+	} catch (error) {
+		await relaunched?.close();
+		await webkitBrowser?.close();
+		throw error;
 	}
-	if (options.slicing && (options.routes.length !== 1 || options.original || options.auth || options.data)) throw new Error('a sliced check checks one route, anonymous, with no --original or --data');
 	const base: Run = { ...(options.slicing ? { slicing: options.slicing } : {}), ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
