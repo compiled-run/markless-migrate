@@ -6,7 +6,7 @@ import { cssTargets, noisyStyles, withFailures } from './compare.ts';
 import { HINTS } from './hints.ts';
 import { carry, failureElements, failureRules } from './locate.ts';
 import { describe, matchElements } from './match.ts';
-import type { CssRule, CssState } from './stylesheet.ts';
+import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, ImageRecord, PageCapture, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 
@@ -58,6 +58,85 @@ export interface StatesViewportRow {
 	readonly base1: readonly ElementSnapshot[];
 	readonly baseN: readonly ElementSnapshot[];
 	readonly states: readonly StateRun[];
+	/** The old side's noise, when its half came from the original's dataset: what varied across the loads produced with it. */
+	readonly noise?: StateNoise;
+}
+
+/** The OLD page's cascade for one element: per property, the index of the rule that sets it, its value, and the rule behind a var() it reads. */
+export type CascadeAnswers = Readonly<Record<string, { readonly rule: number; readonly value: string; readonly variable?: { readonly name: string; readonly rule: number; readonly value: string } } | null>>;
+
+/** The line naming the OLD rules behind `props`, from the page's cascade answers. */
+export function explanationOf(rules: readonly CssRule[], found: CascadeAnswers, props: readonly string[]): Explanation | undefined {
+	const lines = new Set<string>();
+	let first: CssRule | undefined;
+	for (const prop of props) {
+		const hit = found[prop];
+		if (!hit) continue;
+		const rule = rules[hit.rule]!;
+		first ??= rule;
+		let line = `${describeRule(rule)} sets ${prop} with \`${hit.value}\``;
+		if (hit.variable) line += `, reading ${hit.variable.name} from ${describeRule(rules[hit.variable.rule]!)} (\`${hit.variable.value}\`)`;
+		lines.add(line);
+	}
+	return lines.size ? { line: [...lines].join('; '), ...(first ? { rule: first } : {}) } : undefined;
+}
+
+/** One forced state on the OLD page alone, twice: what the new side's half is read against. */
+export type OldStateRun =
+	| { readonly label: string; readonly kind: CssState['kind']; readonly skipped: string }
+	| {
+			readonly label: string;
+			readonly kind: CssState['kind'];
+			readonly state: CssState;
+			/** Indices into `base1` the state was forced on: the pseudo and property state's targets, or the size containers. */
+			readonly targets: readonly number[];
+			readonly containers: readonly number[];
+			readonly s1: readonly ElementSnapshot[];
+			readonly s2: readonly ElementSnapshot[];
+			/** By `s1` element id: the cascade behind each property the state changed on it. */
+			readonly answers: ReadonlyMap<number, CascadeAnswers>;
+			/** Every state is shot on both old pages, as a new page's difference could ask for any; the new page is shot wherever they were. */
+			readonly images?: readonly [readonly ImageRecord[], readonly ImageRecord[]];
+			readonly shots?: readonly [Buffer, Buffer];
+	  };
+
+/** The forced_states row of the original's dataset: the first viewport's states on the old page alone, and its noise. */
+export interface ForcedStatesRow {
+	readonly viewport: string;
+	/** Digest of the stylesheets the states were found in: a check whose old loads hold others reads no row of these. */
+	readonly sources: string;
+	readonly base1: readonly ElementSnapshot[];
+	readonly noise: StateNoise;
+	readonly states: readonly OldStateRun[];
+}
+
+/** The ids of `base1` elements on the new page, or none when it shows none of them. */
+export const newIds = (indices: readonly number[], pairs: ReadonlyMap<number, number>, baseN: readonly ElementSnapshot[]): number[] => indices.flatMap((i) => (pairs.has(i) ? [baseN[pairs.get(i)!]!.id] : []));
+
+/** Why a stored state is not forced on the new page: none of the elements it was forced on are there. */
+export function newSkip(run: Extract<OldStateRun, { s1: unknown }>, pairs: ReadonlyMap<number, number>): string | undefined {
+	if ((run.kind === 'pseudo' || run.kind === 'property') && !run.targets.some((i) => pairs.has(i))) return `${run.label}: no visible element on the page matches it on both sides`;
+	if (run.kind === 'container' && !run.containers.some((i) => pairs.has(i))) return `${run.label}: no size container on the page`;
+	return undefined;
+}
+
+/**
+ * A stored state and the new page's half in it, as one state run: what is explained is chosen by the same diff a live run
+ * makes, from the cascade the old page answered when the state was produced. `shotN` shoots the new page with a clip.
+ */
+export async function joinState(rules: readonly CssRule[], stored: ForcedStatesRow, run: Extract<OldStateRun, { s1: unknown }>, baseN: readonly ElementSnapshot[], sn: readonly ElementSnapshot[], shotN: (clip: Box | undefined) => Promise<{ readonly images: readonly ImageRecord[]; readonly shot: Buffer }>): Promise<StateRun> {
+	const { changedBoxes, differing } = stateDiff(stored.base1, baseN, run.s1, run.s2, sn, stored.noise);
+	const explanations = differing.slice(0, ELEMENTS_PER_STATE).map(({ el, props }) => {
+		const found = run.answers.get(el.id);
+		return found ? explanationOf(rules, found, props) : undefined;
+	});
+	const base = { label: run.label, kind: run.kind, targets: run.targets, s1: run.s1, s2: run.s2, sn, explanations };
+	const { shoot } = stateShot(run.kind, changedBoxes, differing.length, run.targets, stored.base1);
+	// A shot changes how the page lays out after it, so the new page is shot wherever the old pages were, with their clip.
+	const n = run.shots ? await shotN(stateShot(run.kind, changedBoxes, 1, run.targets, stored.base1).clip) : undefined;
+	if (!shoot) return base;
+	if (!run.images || !run.shots || !n) throw new Error(`the original's forced states hold no screenshots of ${run.label}, which changed what shows`);
+	return { ...base, images: [run.images[0], run.images[1], n.images], shots: [run.shots[0], run.shots[1], n.shot] };
 }
 
 export interface StatesRow {
@@ -254,7 +333,7 @@ export function judgeStates(route: string, result: RouteResult, plan: ReturnType
 	plan.forEach(({ viewport, explain }, k) => {
 		const seen = row.viewports[k];
 		if (!seen || seen.viewport !== viewport.name) throw new Error(`the forced states row has no ${viewport.name} viewport where the judge asks for one`);
-		const out = judgeStateViewport(route, viewport, seen, explain, stateNoise(olds, viewport.name));
+		const out = judgeStateViewport(route, viewport, seen, explain, seen.noise ?? stateNoise(olds, viewport.name));
 		failures.push(...out.failures);
 		for (const [from, to] of out.explained) explained.set(from, to);
 		shots.push(...out.shots);

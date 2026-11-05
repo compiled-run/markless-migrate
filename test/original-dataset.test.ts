@@ -6,9 +6,10 @@ import test from 'node:test';
 import { canary, differences, diffTable, families, same } from '../src/data/original/canary.ts';
 import { bucketOf, conditionsId, keys, SAMPLES, type Conditions } from '../src/data/original/dataset.ts';
 import { readLock } from '../src/data/original/lock.ts';
-import { writeRoute, type RouteObservation } from '../src/data/original/produce.ts';
-import { originalAnswers, originalJourneys, originalLoads, originalRoute } from '../src/data/original/read.ts';
-import { commitDataset, Dataset, DatasetWriter, filesFor, MissingRow, type ProducerVersions } from '../src/data/original/store.ts';
+import { writeObserved, writeRoute, type RouteObservation } from '../src/data/original/produce.ts';
+import { digest } from '../src/data/codec.ts';
+import { CHECK_READS, originalAnswers, originalJourneys, originalLoads, originalRoute, originalStates } from '../src/data/original/read.ts';
+import { commitDataset, Dataset, DatasetError, DatasetWriter, filesFor, MissingRow, type ProducerVersions } from '../src/data/original/store.ts';
 
 const conditions: Conditions = {
 	viewports: [
@@ -32,6 +33,8 @@ const step = (line: string, ms: number) => ({ url: '/', added: [line], removed: 
 function observation(route: string): RouteObservation {
 	const page = (n: number) => ({ aria: `tree ${route}`, text: [`text ${n % 2}`], screenshot: Buffer.from(`png ${route} ${n}`), elements: [], seo: {}, fonts: [], weight: { downloaded: 1, source: 1, executed: n } });
 	const capture = (n: number) => ({ origin: 'http://old', http: { status: 200, chain: [{ url: route, status: 200 }] }, pages: { desktop: page(n), mobile: page(n + 10) } });
+	const button = { id: 1, role: 'button', name: 'A', tag: 'button', text: 'A', path: 'button "A"', box: { x: 0, y: 0, width: 10, height: 10 }, style: { color: 'red' } };
+	const hovered = { ...button, style: { color: 'green' } };
 	const plain = [
 		{ name: 'click A', steps: [{ action: 'click', target: { role: 'button', name: 'A' } }], expected: [step('a', 10)] },
 		{ name: 'click Theme', steps: [{ action: 'click', target: { role: 'button', name: 'Theme' } }], cycle: [], expected: [step('theme', 12)] },
@@ -41,6 +44,16 @@ function observation(route: string): RouteObservation {
 		route: { kind: 'page', status: 200, contentType: 'text/html', chain: [{ url: route, status: 200 }] },
 		served: { http: { status: 200, chain: [{ url: route, status: 200 }] }, html: Buffer.from(`<html>${route}</html>`) },
 		viewports: ['desktop', 'mobile'],
+		states: {
+			viewport: 'desktop',
+			sources: digest([]),
+			base1: [button],
+			noise: [{ element: button, props: new Set(['color']) }],
+			states: [
+				{ label: ':hover on button', kind: 'pseudo', state: { kind: 'pseudo', pseudo: 'hover', target: 'button', label: ':hover on button' }, targets: [0], containers: [], s1: [hovered], s2: [hovered], answers: new Map([[1, { color: { rule: 0, value: 'green' } }]]), images: [[], []], shots: [Buffer.from(`hover ${route} 1`), Buffer.from(`hover ${route} 2`)] },
+				{ label: ':checked on input', kind: 'property', skipped: ':checked on input: no visible element on the page matches it on both sides' },
+			],
+		},
 		loads: { samples: [capture(1), capture(2), capture(3)], loads: [`http://old${route}`], answers: [{ url: 'https://api.github.com/repos/x', status: 200, headers: { 'content-type': 'application/json' }, body: Buffer.from('{"stars":1}') }] },
 		journeys: {
 			explored: { journeys: plain, elements: [{ element: 'button "A"', signature: 'main|button|A|0', layout: false, by: 'click A' }], skipped: 0, deferred: [{ journey: { name: 'delete', steps: [] }, signature: 'main|button|Delete|0' }], arrival: { entry: '/docs', link: { role: 'link', name: route } } },
@@ -56,7 +69,7 @@ async function produced(routes: readonly string[]): Promise<string> {
 	const half = Math.ceil(routes.length / 2);
 	for (const [shard, part] of [routes.slice(0, half), routes.slice(half)].entries()) {
 		const writer = new DatasetWriter(dir, { site: 'test', originalId: ORIGINAL, conditions, versions: v, routes, runner: 'test', shard: String(shard) });
-		for (const route of part) await writeRoute(writer, route, observation(route));
+		for (const route of part) await writeObserved(writer, route, observation(route));
 		await writer.close();
 	}
 	await commitDataset(dir);
@@ -67,7 +80,7 @@ test("a route's observations of the original read back as the old half a live ch
 	const routes = ['/', '/docs', '/docs/components/button', '/blocks'];
 	const dir = await produced(routes);
 	try {
-		const dataset = await Dataset.open(dir, { originalId: ORIGINAL, conditions, versions: await versions(), tables: ['loads', 'journeys', 'replays'] });
+		const dataset = await Dataset.open(dir, { originalId: ORIGINAL, conditions, versions: await versions(), tables: ['loads', 'journeys', 'replays', 'forced_states'] });
 		for (const route of routes) {
 			const seen = observation(route);
 			assert.equal(originalRoute(dataset, route).kind, 'page');
@@ -86,7 +99,13 @@ test("a route's observations of the original read back as the old half a live ch
 			assert.deepEqual([journeys.oldRisky, journeys.oldRiskyAgain], seen.journeys.replays.risky);
 			assert.deepEqual(journeys.dark, seen.journeys.replays.dark);
 			assert.deepEqual(journeys.arrival, { journeys: seen.journeys.arrival, runs: seen.journeys.replays.arrival });
+			const states = originalStates(dataset, route, 'desktop', []);
+			assert.deepEqual(states, seen.states);
+			assert.ok(states.noise[0]!.props instanceof Set, 'the noise reads back as a set of properties');
+			assert.ok(Buffer.isBuffer(states.states[0] && 'shots' in states.states[0] ? states.states[0].shots![0] : undefined), "a state's shot is bytes again");
+			assert.throws(() => originalStates(dataset, route, 'desktop', [{ url: '/other.css', text: 'a {}' }]), DatasetError, 'states found in other stylesheets than the stored loads hold are not read');
 		}
+		assert.ok(CHECK_READS.includes('forced_states'), "a check refuses a dataset whose forced states are another producer version's");
 		assert.equal(originalAnswers(dataset, routes).length, 1, 'one third-party answer, however many routes read it');
 		assert.throws(() => dataset.row('loads', '/nowhere', keys.load('/nowhere', ['desktop', 'mobile'], 0)), MissingRow);
 	} finally {

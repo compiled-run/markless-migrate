@@ -9,7 +9,7 @@ import { blocker } from '../../check/trackers.ts';
 import { isSwitched } from '../../switch/state.ts';
 import { bucketOf, BUCKETS, keys, type Conditions } from './dataset.ts';
 import { drift, readLock } from './lock.ts';
-import { observeOriginal, writeRoute, type RouteRow } from './produce.ts';
+import { observeOriginal, writeObserved, type RouteRow } from './produce.ts';
 import { DatasetWriter, type Part } from './store.ts';
 
 export interface ProduceOptions {
@@ -61,7 +61,7 @@ export async function produceOriginal(options: ProduceOptions): Promise<Part> {
 		const explore = { ...c.journeys, owner: (signature: string) => owners.get(signature.split(' > ')[0]!), serves: (path: string) => isSwitched([route, ...c.switched], path) };
 		const got = await relaunched.retried(route, (browser) => observeOriginal(browser, env, route, { viewports: c.viewports, explore }), async () => {}).catch((error: Error) => ({ failed: failure(error) }));
 		let row: RouteRow | FailedRoute;
-		if ('value' in got) row = await writeRoute(writer, route, got.value);
+		if ('value' in got) row = await writeObserved(writer, route, got.value);
 		else {
 			row = { failed: got.failed };
 			await writer.add('routes', keys.route(route), route, row);

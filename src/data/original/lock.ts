@@ -22,7 +22,7 @@ export const PRODUCERS: Readonly<Record<Table, readonly { readonly file: string;
 	controls: [{ file: here('produce.ts'), names: ['observeJourneys', 'writeRoute'] }],
 	journeys: [{ file: here('produce.ts'), names: ['observeJourneys', 'writeRoute'] }],
 	replays: [{ file: here('produce.ts'), names: ['observeJourneys', 'writeRoute'] }],
-	forced_states: [],
+	forced_states: [{ file: here('produce.ts'), names: ['observeForcedStates', 'writeForcedStates'] }],
 };
 
 // The old server runs the request recorder when its start command preloads it; what it records is part of every row.

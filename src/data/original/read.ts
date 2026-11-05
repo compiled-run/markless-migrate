@@ -1,8 +1,11 @@
 // The original's rows put back into the shapes a check's old half has, so the judges read a stored original as a live one.
 import type { StoredAnswer } from '../../check/browser.ts';
 import type { ElementCoverage, Exploration, Journey, RecordedJourney, Run } from '../../check/journeys.ts';
+import type { ForcedStatesRow } from '../../check/states-compare.ts';
+import type { StyleSource } from '../../check/stylesheet.ts';
 import type { RouteCapture, Viewport } from '../../check/types.ts';
-import { keys, SAMPLES, type ReplayMode } from './dataset.ts';
+import { digest } from '../codec.ts';
+import { keys, SAMPLES, statesKey, type ReplayMode } from './dataset.ts';
 import type { RouteRow } from './produce.ts';
 import { readLock } from './lock.ts';
 import { Dataset, DatasetError } from './store.ts';
@@ -84,8 +87,15 @@ export function originalJourneys(dataset: Dataset, route: string): OriginalJourn
 	};
 }
 
+/** The route's forced states on `viewport`, found in the same stylesheets as the check's old loads hold. */
+export function originalStates(dataset: Dataset, route: string, viewport: string, sources: readonly StyleSource[]): ForcedStatesRow {
+	const row = dataset.row<ForcedStatesRow>('forced_states', route, statesKey(route, viewport));
+	if (row.sources !== digest(sources)) throw new DatasetError(`the original's forced states of ${route} were found in other stylesheets than its stored loads hold`);
+	return row;
+}
+
 /** The tables a check reads of the original. */
-export const CHECK_READS = ['routes', 'responses', 'loads', 'controls', 'journeys', 'replays'] as const;
+export const CHECK_READS = ['routes', 'responses', 'loads', 'controls', 'journeys', 'replays', 'forced_states'] as const;
 
 /** Opens the dataset a check names, refusing one of producer versions other than datasets.lock's. */
 export async function openOriginal(dir: string): Promise<Dataset> {

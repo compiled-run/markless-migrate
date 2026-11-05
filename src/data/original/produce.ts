@@ -8,8 +8,12 @@ import { request } from '../../check/http.ts';
 import { themed } from '../../check/journeys-compare.ts';
 import { explore, replayAll, replayDestructive, type Exploration, type ExploreOptions, type Journey, type Run } from '../../check/journeys.ts';
 import { arrivalJourneys } from '../../check/route-judge.ts';
+import { stateNoise, type ForcedStatesRow } from '../../check/states-compare.ts';
+import { observeOldStates } from '../../check/states.ts';
+import { discoverStates, parseRules } from '../../check/stylesheet.ts';
 import type { HttpCapture, RouteCapture, Viewport } from '../../check/types.ts';
-import { keys, SAMPLES, type ReplayMode } from './dataset.ts';
+import { digest } from '../codec.ts';
+import { keys, SAMPLES, statesKey, type ReplayMode } from './dataset.ts';
 import type { DatasetWriter } from './store.ts';
 
 export interface RouteRow {
@@ -53,6 +57,18 @@ export async function observeLoads(browser: Browser, env: SideEnv, route: string
 	const loads = [...new Set(pages.flatMap((p) => pageLoads.get(p) ?? []))];
 	const answers = await storedAnswers([...new Set(pages.flatMap((p) => thirdPartyLoads.get(p) ?? []))]);
 	return { samples, loads, answers };
+}
+
+/** The states the old stylesheets style, forced on the first viewport as a check forces them, with the noise of the loads produced beside them. */
+export async function observeForcedStates(browser: Browser, env: SideEnv, route: string, viewport: Viewport, samples: readonly RouteCapture[]): Promise<ForcedStatesRow> {
+	const sources = samples[0]!.pages[viewport.name]?.stylesheets ?? [];
+	const states = discoverStates(sources);
+	const old = states.length ? await observeOldStates({ browser, env, route, viewport, states, rules: parseRules(sources) }) : { viewport: viewport.name, base1: [], states: [] };
+	return { ...old, sources: digest(sources), noise: stateNoise(samples, viewport.name) };
+}
+
+export async function writeForcedStates(writer: DatasetWriter, path: string, row: ForcedStatesRow): Promise<void> {
+	await writer.add('forced_states', statesKey(path, row.viewport), path, row);
 }
 
 export interface JourneysOriginal {
@@ -108,6 +124,7 @@ export interface RouteObservation {
 	readonly served: ServedRow;
 	readonly viewports: readonly string[];
 	readonly loads: LoadsRow;
+	readonly states?: ForcedStatesRow;
 	readonly journeys: JourneysOriginal;
 }
 
@@ -116,13 +133,21 @@ export async function observeOriginal(browser: Browser, env: SideEnv, route: str
 	const seen = await observeRoute(env, route);
 	if (!seen.served) return seen.route;
 	const loads = await observeLoads(browser, env, route, options.viewports);
+	// Before the journeys, as a check forces states before journeys that send writes: what a journey writes could show in a state.
+	const states = await observeForcedStates(browser, env, route, options.viewports[0]!, loads.samples);
 	// What the original's loads held as loops (an autoplaying carousel) stays held in every page its journeys open, as a check holds it.
 	const timers = [...new Set(loads.samples.flatMap((c) => Object.values(c.pages).flatMap((p) => p.timers ?? [])))].sort();
 	const journeys = await observeJourneys(browser, timers.length ? { ...env, skipTimers: timers } : env, route, options.viewports[0]!, options.explore);
-	return { route: seen.route, served: seen.served, viewports: options.viewports.map((v) => v.name), loads, journeys };
+	return { route: seen.route, served: seen.served, viewports: options.viewports.map((v) => v.name), loads, states, journeys };
 }
 
-/** The rows of one route's observations, its routes row last, so a route with a routes row is whole. */
+/** Every row of one route's observations, its routes row last, so a route with a routes row is whole. */
+export async function writeObserved(writer: DatasetWriter, path: string, seen: RouteObservation | Omit<RouteRow, 'live'>): Promise<RouteRow> {
+	if ('served' in seen && seen.states) await writeForcedStates(writer, path, seen.states);
+	return writeRoute(writer, path, seen);
+}
+
+/** The rows of one route's observations but its forced states, its routes row last. */
 export async function writeRoute(writer: DatasetWriter, path: string, seen: RouteObservation | Omit<RouteRow, 'live'>): Promise<RouteRow> {
 	if (!('served' in seen)) {
 		await writer.add('routes', keys.route(path), path, seen);
