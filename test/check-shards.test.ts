@@ -258,6 +258,8 @@ test('a route the earlier run says takes longer than its timeout, or that stoppe
 	assert.equal(estimates.get('/c'), (7_200_000 * 9) / 3, 'stopped at its deadline after 3 of 9 steps: it takes about three deadlines');
 	const { kept, sliced } = sliceLong({ routes: ['/a', '/b', '/c', '/d', '/e'], endpoints: ['/x'] }, estimates, 7_200_000);
 	assert.deepEqual(kept.routes, ['/a', '/e']);
+	const near = sliceLong({ routes: ['/near', '/far'] }, new Map([['/near', 7_005_000], ['/far', 5_000_000]]), 7_200_000);
+	assert.deepEqual([near.kept.routes, near.sliced.map((r) => [r.route, r.slices])], [['/far'], [['/near', 2]]], 'a route that finished just under its timeout is sliced: on a slower runner it would stop');
 	assert.deepEqual(kept.endpoints, ['/x']);
 	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/c', slices: 3 }, { shard: SLICED_SHARD + 3, route: '/d', slices: MAX_SLICES }]);
 });

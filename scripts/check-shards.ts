@@ -200,8 +200,11 @@ export interface SlicedRoute {
  * The routes an earlier run says take longer than `overMs` (a route's own --timeout), taken out of the shards: each is checked
  * in parts (journey-slices.ts), its journeys replayed in one slice per `overMs` of its estimate, at least 2.
  */
+// A route whose estimate comes this close to its timeout is sliced too: one that took 7005 s of 7200 finishes on one runner and stops on a slower one.
+const SLICE_MARGIN = 0.75;
+
 export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, number>, overMs: number): { kept: Targets; sliced: SlicedRoute[] } {
-	const long = targets.routes.filter((r) => (estimates.get(r) ?? 0) > overMs);
+	const long = targets.routes.filter((r) => (estimates.get(r) ?? 0) > overMs * SLICE_MARGIN);
 	const sliced = long.map((route, k) => ({ shard: SLICED_SHARD + k + 1, route, slices: Math.min(MAX_SLICES, Math.max(2, Math.ceil(estimates.get(route)! / overMs))) }));
 	return { kept: { ...targets, routes: targets.routes.filter((r) => !long.includes(r)) }, sliced };
 }
