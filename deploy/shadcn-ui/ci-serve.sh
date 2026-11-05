@@ -14,6 +14,9 @@ wait_for() {
 }
 # Runs a command in the background in a folder, as the pid it writes to new-serve.pid, holding none of this script's output.
 start() { local dir="$1"; shift; (cd "$dir" && exec nohup "$@") < /dev/null > "$RUNNER_TEMP/new-serve.log" 2>&1 & echo $! > "$RUNNER_TEMP/new-serve.pid"; }
+# Both servers render a load check tags at the page's frozen time (check --server-clock), recording nothing.
+CLOCK="--require=$(cd "$DIR/../.." && pwd)/src/check/record-server.cjs"
+export MARKLESS_MIGRATE_RECORDER=clock
 case "${1:-}" in
 	old)
 		# A build restored from an earlier job (check.yml caches deploy/shadcn-ui/old) is served as it is, so every shard and every
@@ -23,7 +26,7 @@ case "${1:-}" in
 			ORIGIN=http://localhost:4000 "$DIR/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
 			echo "$built" > "$DIR/old/.ci-built"
 		fi
-		nohup "$DIR/serve-old.sh" > "$RUNNER_TEMP/old-serve.log" 2>&1 &
+		NODE_OPTIONS="$CLOCK${NODE_OPTIONS:+ $NODE_OPTIONS}" nohup "$DIR/serve-old.sh" > "$RUNNER_TEMP/old-serve.log" 2>&1 &
 		wait_for http://localhost:4000/
 		for path in / /blocks /view/new-york-v4/dashboard-01; do curl -s -o /dev/null -w "old $path: %{http_code} in %{time_total} s\n" "http://localhost:4000$path"; done
 		;;
@@ -52,13 +55,13 @@ case "${1:-}" in
 			cp -R "$RUNNER_TEMP/sharp/node_modules/@img/." "$server/node_modules/@img/"
 		fi
 		if [ "$preset" = vercel ]; then
-			start "$dest" node "$DIR/serve-vercel-output.mjs" "$vercel" "$port"
+			start "$dest" env NODE_OPTIONS="$CLOCK${NODE_OPTIONS:+ $NODE_OPTIONS}" node "$DIR/serve-vercel-output.mjs" "$vercel" "$port"
 		elif [ "$preset" = cloudflare-module ]; then
 			# A cloudflare-module build runs in workerd, as Workers runs it, with no account and nothing sent to Cloudflare.
 			# Local workerd holds a compressed streamed response until it ends, where the edge flushes it: late @pending arms show late here.
 			start "$server" env CI=1 WRANGLER_SEND_METRICS=false node "$DIR/serve-cloudflare-output.mjs" wrangler.json "$port"
 		else
-			start "$dest" env PORT="$port" HOST=127.0.0.1 node .output/server/index.mjs
+			start "$dest" env PORT="$port" HOST=127.0.0.1 NODE_OPTIONS="$CLOCK${NODE_OPTIONS:+ $NODE_OPTIONS}" node .output/server/index.mjs
 		fi
 		wait_for "http://127.0.0.1:$port/" "$RUNNER_TEMP/new-serve.pid" || { tail -n 40 "$RUNNER_TEMP/new-serve.log" >&2; exit 1; }
 		grep -E '^(serving|compatibility_date)' "$RUNNER_TEMP/new-serve.log" || true

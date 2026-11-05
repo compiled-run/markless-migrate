@@ -1,5 +1,5 @@
 /** What check.yml gives each shard's `check` besides its routes, origins and site targets: `dev --verdict` runs the same. */
-export const SHARD_CHECK = { concurrency: 1, timeoutSeconds: 3600, flags: ['--control-webkit', '--busy-cpu'] } as const;
+export const SHARD_CHECK = { concurrency: 1, timeoutSeconds: 3600, flags: ['--control-webkit', '--busy-cpu', '--server-clock'] } as const;
 
 export type ProbeEngine = 'chromium' | 'webkit';
 

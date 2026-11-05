@@ -489,6 +489,22 @@ test('a held loop scheduling a bound method stays held, and a frame callback sch
 	}
 });
 
+test('a frame callback scheduled after a held timer loop runs, whatever number the browser gave it (a timer and a frame can share an id)', async () => {
+	const { openPage } = await import('../src/check/browser.ts');
+	const { holdLoops } = await import('../src/check/loops.ts');
+	const site = await serve(() => ({ body: html('<p id="n">0</p><script>const tick = () => { document.getElementById("n").textContent = String(Number(document.getElementById("n").textContent) + 1); setTimeout(tick, 200); }; setTimeout(tick, 200);</script>') }));
+	const { context, page } = await openPage(browser, defaultEnv(site), desktop[0]!, { loops: true });
+	try {
+		await page.goto(site);
+		await page.waitForTimeout(700);
+		assert.equal(await page.evaluate(holdLoops), 1);
+		const frames = await Promise.race([page.evaluate(() => new Promise<number>((done) => { let n = 0; const next = () => (++n < 40 ? requestAnimationFrame(next) : done(n)); requestAnimationFrame(next); })), new Promise<number>((done) => setTimeout(() => done(-1), 5000))]);
+		assert.equal(frames, 40, 'every frame callback ran');
+	} finally {
+		await context.close();
+	}
+});
+
 test('a link revealed by a fourth click (categories nested four deep) is used along a path that keeps revealing; --journey-depth 4 stops short of it', async () => {
 	const nested = (n: number): string => (n === 0 ? '<a href="#deep">Deepest link</a>' : `<div><button type="button" onclick="this.nextElementSibling.hidden=false">Level ${n}</button><div hidden>${nested(n - 1)}</div></div>`);
 	const site = await serve(() => ({ body: html(nested(4)) }));

@@ -219,6 +219,23 @@ setTimeout(play, 1200);
 	assert.deepEqual(open(report).filter((f) => f.dimension === 'behaviour' || f.dimension === 'a11y').map((f) => `${f.check}: ${f.actual}`), []);
 });
 
+test('a carousel that autoplays, checked against itself, is green in its forced states too: what the capture held as a loop stays held on every page the route opens after it', async () => {
+	const slides = ['One', 'Two', 'Three', 'Four'];
+	const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Carousel</title><style>#track > div { height: 80px } @media (min-width: 1000px) { #track > div { height: 96px } } button:hover { outline: 2px solid }</style></head><body><main><h1>Carousel</h1>
+<section role="region" aria-roledescription="carousel" aria-label="Gallery"><div style="overflow: hidden; width: 300px"><div id="track" style="display: flex">${slides.map((s) => `<div style="min-width: 300px">${s}</div>`).join('')}</div></div>
+<button id="next" type="button">Next slide</button></section>
+<script>
+let at = 0;
+const show = (i) => { at = (i + ${slides.length}) % ${slides.length}; document.getElementById('track').style.transform = 'translateX(' + -300 * at + 'px)'; };
+document.getElementById('next').onclick = () => show(at + 1);
+const play = () => { show(at + 1); setTimeout(play, 1200); };
+setTimeout(play, 1200);
+</script></main></body></html>`;
+	const report = await check(page, page);
+	assert.equal(report.routes[0]!.infrastructure, undefined, 'the route is checked to the end');
+	assert.deepEqual(open(report).filter((f) => f.dimension === 'css' || f.dimension === 'visual').map((f) => `${f.check}: ${f.actual}`), []);
+});
+
 test('a page that changes on its own every 3 s (a demo toggling a loading state) is the same page whatever phase each step lands on', async () => {
 	const cycling = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Indicator</title></head><body><main><h1>Indicator</h1><button id="post" type="button">Post It!</button><img id="spin" alt="Loading..." hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><script>setInterval(() => { document.getElementById('spin').hidden = !document.getElementById('spin').hidden; }, 3000);</script></main></body></html>`;
 	const same = await check(cycling, cycling);
