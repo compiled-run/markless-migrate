@@ -287,3 +287,16 @@ test('a merged report larger than the longest string JavaScript can hold is writ
 	assert.equal((back.routes?.[n - 1]?.failures?.[0] as { actual?: string } | undefined)?.actual?.length, text.length);
 	await rm(dir, { recursive: true });
 });
+
+test('a route\'s steps done count only its top-level stages, not the parts timed inside them, so a stopped route\'s estimate scales by what it had left', async () => {
+	const { profiled, stepsDone } = await import('../src/check/run.ts');
+	const route = `/steps-${Math.random()}`;
+	await Promise.all([
+		profiled(route, 'forced states', async () => {}),
+		profiled(route, 'journeys', async () => {
+			await profiled(route, 'explore old', async () => {});
+			await profiled(route, 'retime main', async () => {});
+		}),
+	]);
+	assert.match(stepsDone(route), /^steps done 2 of /);
+});
