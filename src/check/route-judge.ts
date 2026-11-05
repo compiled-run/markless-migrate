@@ -9,7 +9,7 @@ import { shellRoute, type OldRouting } from './hash-routes.ts';
 import { HINTS } from './hints.ts';
 import { negotiationFailures } from './i18n.ts';
 import { classify, InfrastructureError } from './infrastructure.ts';
-import { choppier, compareJourneys, describeTarget, inDarkMode, interimViews, MAX_ARRIVED, themed, timedOnly } from './journeys-compare.ts';
+import { choppier, compareJourneys, describeTarget, inDarkMode, interimViews, MAX_ARRIVED, STREAMED, themed, timedOnly } from './journeys-compare.ts';
 import type { ElementCoverage, Exploration, Journey, RecordedJourney, Run as Runs, Step, StepResult } from './journeys.ts';
 import { NOT_EXERCISED } from './locate.ts';
 import { judgeMotion, motionRules, type MotionOptions, type MotionRow } from './motion-compare.ts';
@@ -68,7 +68,9 @@ export interface RouteStages {
 	readonly journeys: { readonly request: Record<string, never>; readonly value: JourneysRow };
 	/** The route's journeys after arriving from another page: undefined when the new app does not serve that page. */
 	readonly arrival: { readonly request: { readonly entry: string; readonly journeys: readonly Journey[] }; readonly value: { readonly a: Runs; readonly b: Runs; readonly next: Runs } | null };
-	readonly retime: { readonly request: { readonly set: 'main' | 'arrival'; readonly journey: Journey }; readonly value: readonly RetimeRound[] };
+	readonly retime: { readonly request: { readonly set: 'main' | 'arrival' | 'throttled'; readonly journey: Journey }; readonly value: readonly RetimeRound[] };
+	/** Journeys whose old steps stream, replayed with the CPU slowed: twice on OLD and once on NEW. */
+	readonly throttled: { readonly request: { readonly journeys: readonly Journey[] }; readonly value: { readonly a: Runs; readonly b: Runs; readonly next: Runs } };
 	readonly clock: { readonly request: Record<string, never>; readonly value: readonly Failure[] };
 	readonly probes: { readonly request: { readonly notify: readonly string[]; readonly prefixes?: readonly (readonly [string, readonly Step[]])[] }; readonly value: ProbesRow };
 	readonly parity: { readonly request: { readonly film: boolean; readonly webkit: boolean }; readonly value: ParityRow };
@@ -297,9 +299,10 @@ async function journeysCheck(o: Observe, ctx: RouteContext, result: RouteResult,
 			})
 		: [];
 	const mainFailures = await retime(o, 'main', journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), olds, [...next, ...newRisky], Boolean(ctx.stages.original));
+	const throttledFailures = await throttledCheck(o, ctx, plain, olds, owner);
 	if (dark.length && !row.dark) throw new Error(`the journeys row has no dark-mode replays of ${route}'s theme cycles`);
 	const darkFailures = dark.length ? compareJourneys(route, row.dark!.olds, inDarkMode(dark), row.dark!.next, owner, doorErrors, improvements) : [];
-	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	const compared = withFailures(result, [...result.failures, ...mainFailures, ...throttledFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
 	return improvements.length ? { ...compared, improvements: [...(compared.improvements ?? []), ...improvements] } : compared;
 }
 
@@ -334,6 +337,26 @@ async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJ
 	return retime(o, 'arrival', journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next, fresh);
 }
 
+// Journeys a route replays with the CPU slowed, at most: the streaming ones, in journey order.
+const MAX_THROTTLED = 6;
+/** How many times slower the CPU is for the throttled replays: a mid-range phone, as responsiveness slows it. */
+export const THROTTLED_CPU = 4;
+
+/**
+ * A streamed answer can arrive smoothly on a fast CPU and in bursts on a slow one. The journeys whose old steps stream (a
+ * view in between every few frames, in both old runs) run again with the CPU slowed on both sides, and only how what they
+ * show arrives is judged, the same rule as at full speed; a burst there is timed again before it stands.
+ */
+async function throttledCheck(o: Observe, ctx: RouteContext, journeys: readonly RecordedJourney[], olds: readonly Runs[], owner?: StorageOwner): Promise<Failure[]> {
+	const streams = (j: number) => journeys[j]!.steps.some((_, k) => olds.every((run) => { const v = run[j]?.[k]?.reaction?.views; return Boolean(v && v.swaps >= STREAMED && (v.spanMs ?? 0) >= 300); }));
+	const picked = journeys.flatMap((j, i) => (!j.cycle && !j.destructive && streams(i) ? [j] : [])).slice(0, MAX_THROTTLED);
+	if (!picked.length) return [];
+	const row = await span(ctx, `journeys at ${THROTTLED_CPU}x CPU`, () => o('throttled', { journeys: picked }));
+	const cadence = compareJourneys(ctx.route, [row.a, row.b], picked, row.next, owner, undefined, undefined, new Set(['cadence']));
+	const stand = await retime(o, 'throttled', picked, cadence, [row.a, row.b], row.next);
+	return stand.map((f) => ({ ...f, check: `${f.check}, at ${THROTTLED_CPU}x CPU` }));
+}
+
 // The candidates a route confirms at a time, the largest first: five old and four new samples in all (the replays producer
 // takes three rounds of each), enough for a one-sided test to reach the share of 0.05 five candidates leave the first of them.
 const RETIMED = 5;
@@ -343,7 +366,7 @@ const RETIMED = 5;
  * old then new, since a busy machine slows whichever side it happens to. It stands only when the samples say so beyond chance,
  * the route's candidates sharing one significance, and an answer only by more than the route's own old runs differ.
  */
-async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Journey[], failures: Failure[], olds: readonly Runs[], next: Runs, fresh = false): Promise<Failure[]> {
+async function retime(o: Observe, set: 'main' | 'arrival' | 'throttled', journeys: readonly Journey[], failures: Failure[], olds: readonly Runs[], next: Runs, fresh = false): Promise<Failure[]> {
 	// Stored old runs were timed on another machine at another time: with them, they only pick the candidates (`fresh`).
 	const floor = Math.max(100, answerFloor(olds));
 	const freshOld: StepResult[][][] = [];

@@ -54,7 +54,7 @@ import { CheckProgress } from './progress.ts';
 import { measurePsi, psiKey } from './psi.ts';
 import { applyLoads, asRole, embedsOnly, finishReport, jsonReport, loadable, outOfPart, roleCompared, routeOutcome, templateGroups, withTemplate, type RunEvent, type RunHeader } from './report-judge.ts';
 import { checkResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
-import { deadlineResult, destructiveCoverage, loadTimeout, partialResult, probesOnly, roleCheck, stopped, unreachableAlike, unreachableTried, type Deadline, type JourneysRow, type RouteContext, type RouteStages } from './route-judge.ts';
+import { deadlineResult, destructiveCoverage, loadTimeout, partialResult, probesOnly, roleCheck, stopped, THROTTLED_CPU, unreachableAlike, unreachableTried, type Deadline, type JourneysRow, type RouteContext, type RouteStages } from './route-judge.ts';
 import { selfUrlFailures } from './self-urls.ts';
 import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
 import type { ClientFact, SourceFacts } from './source-facts.ts';
@@ -409,14 +409,21 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			return { a, b, next };
 		},
 		retime: ({ set, journey }) => profiled(route, `retime ${set}`, async () => {
-			const sides = steady();
-			const other = set === 'main' ? frontOf(sides.new) : sides.new;
+			const steadied = steady();
+			const sides = set === 'throttled' ? { old: { ...steadied.old, cpu: THROTTLED_CPU }, new: { ...steadied.new, cpu: THROTTLED_CPU } } : steadied;
+			const other = set === 'arrival' ? sides.new : frontOf(sides.new);
 			const rounds: { old: RunResults[number]; next: RunResults[number] }[] = [];
 			for (let i = 0; i < (watched.original ? FRESH_RETIMES : RETIMES); i++) {
 				const old = await replay(browser, sides.old, route, viewport, journey).catch(() => []);
 				rounds.push({ old, next: await replay(browser, other, route, viewport, journey).catch(() => []) });
 			}
 			return rounds.map((r) => ({ old: [...r.old], next: [...r.next] }));
+		}),
+		throttled: ({ journeys }) => profiled(route, 'throttled journeys', async () => {
+			const sides = steady();
+			const slow = (env: SideEnv): SideEnv => ({ ...env, cpu: THROTTLED_CPU });
+			const [a, b, next] = await Promise.all([replayAll(browser, slow(sides.old), route, viewport, journeys), replayAll(browser, slow(sides.old), route, viewport, journeys), replayAll(browser, slow(frontOf(sides.new)), route, viewport, journeys)]);
+			return { a, b, next };
 		}),
 		clock: () => checkClock(browser, later(), route, viewport),
 		probes: ({ notify, prefixes }) => observeProbes(browser, later(), route, viewport, notify, watched.probes, prefixes),

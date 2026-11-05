@@ -57,6 +57,8 @@ export interface SideEnv {
 	readonly routing?: OldRouting;
 	/** The new side's: repository star counts the old pages showed live (live-counts.ts), shown in this app's links to them too. */
 	readonly liveCounts?: Map<string, string>;
+	/** Each page's CPU slowed this many times (Chromium), as a phone runs it. */
+	readonly cpu?: number;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -538,6 +540,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	context.on('requestfinished', finish);
 	context.on('requestfailed', finish);
 	const page = await context.newPage();
+	if (env.cpu && env.cpu > 1 && browser.browserType().name() === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: env.cpu });
 	page.on('websocket', (socket) => {
 		if (!FIREBASE_SOCKET.test(socket.url())) return;
 		if (stopped) return;

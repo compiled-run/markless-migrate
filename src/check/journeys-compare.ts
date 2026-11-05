@@ -153,7 +153,7 @@ export function lostTweens(olds: readonly StepResult[], next: StepResult): strin
 	return [...(runs[0] ?? new Map())].filter(([what]) => runs.every((r) => (r.get(what)?.frames ?? 0) >= TWEEN_FRAMES) && (mine.get(what)?.frames ?? 0) <= 1).map(([what, t]) => `${what} over ${t.frames} frames (${t.ms} ms)`);
 }
 
-const STREAMED = 6;
+export const STREAMED = 6;
 
 /** Text every old run showed arriving in many small changes (a streamed reply) that the new page shows in a few large ones, or all at once. */
 export function choppier(olds: readonly StepResult[], next: StepResult): string | undefined {
@@ -298,7 +298,7 @@ export function ariaImprovements(olds: readonly StepResult[], next: StepResult):
 	return { step: notes.length ? { ...next, added, removed, focus } : next, notes };
 }
 
-export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>, improvements: string[] = []): Failure[] {
+export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>, improvements: string[] = [], only?: ReadonlySet<string>): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
 		const runs = olds.map((o) => o[j]!);
@@ -387,6 +387,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
 			if (!navigated && !reloaded && choppier(oldSteps as StepResult[], n)) parts.push('cadence');
 			if (n.stale?.length && !n.door && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
+			// A stage that judges one part (the cadence at a slowed CPU) leaves the rest to the stages that judge them.
+			if (only) parts.splice(0, parts.length, ...parts.filter((p) => only.has(p)));
 			const onTheWay = parts.every((p) => ON_THE_WAY.has(p));
 			if (parts.length && !(answered && onTheWay)) {
 				const dead = act || navigated || reloaded ? undefined : deadControl(oldSteps as StepResult[], n);
