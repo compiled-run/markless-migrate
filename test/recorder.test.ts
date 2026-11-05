@@ -217,3 +217,31 @@ test('writes are sent only when both apps are staging or on this machine', () =>
 	assert.equal(writesAllowed({ oldOrigin: 'https://staging.shop.example', newOrigin: 'http://127.0.0.1:5173', staging: { old: true } }), true);
 	assert.equal(writesAllowed({ oldOrigin: 'https://staging.shop.example', newOrigin: 'https://next.shop.example', staging: { old: true } }), false);
 });
+
+// A page whose router fetches the next page's region from the server, as Markless's fragment router does: the region shows the date it was rendered on.
+const FRAGMENT_APP = `
+require('node:http').createServer((req, res) => {
+	if (req.url.startsWith('/_markless/fragment/')) return res.writeHead(200, { 'content-type': 'text/html' }).end('<p id="day">' + new Date().toISOString().slice(0, 10) + '</p>');
+	res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><title>Home</title><main id="m"></main><script>fetch("/_markless/fragment/next", { headers: { "x-markless-fragment": "1" } }).then((r) => r.text()).then((t) => (document.getElementById("m").innerHTML = t));</script>');
+}).listen(0, '127.0.0.1', function () { console.log('http://127.0.0.1:' + this.address().port); });
+`;
+
+test('with --server-clock a page the router fetches from the server renders at the frozen time too, under its own load id', async () => {
+	const { chromium } = await import('playwright');
+	const { openPage } = await import('../src/check/browser.ts');
+	const { VIEWPORTS } = await import('../src/check/types.ts');
+	const app = spawn(process.execPath, ['-e', FRAGMENT_APP], { env: { ...process.env, ...recorderEnv(''), MARKLESS_MIGRATE_RECORDER: 'clock' }, stdio: ['ignore', 'pipe', 'inherit'] });
+	const browser = await chromium.launch();
+	try {
+		const at = await new Promise<string>((resolve) => app.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+		const env = defaultEnv(at, { serverClock: true });
+		const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
+		await page.goto(at);
+		await page.waitForSelector('#day');
+		assert.equal(await page.textContent('#day'), new Date(env.freeze ? env.freeze.time : 0).toISOString().slice(0, 10));
+		await context.close();
+	} finally {
+		await browser.close();
+		app.kill();
+	}
+});
