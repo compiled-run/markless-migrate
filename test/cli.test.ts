@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { chromium } from 'playwright';
 import { spawnNode } from './spawn-node.ts';
 
 const CLI = new URL('../src/cli.ts', import.meta.url).pathname;
@@ -61,6 +65,23 @@ test('check on CI stops before checking anything when a browser the slow network
 	const network = await spawnNode([CLI, 'network', 'http://127.0.0.1:1/', '--browser', 'firefox'], { env: { ...process.env, CI: 'true', PLAYWRIGHT_BROWSERS_PATH: '/nonexistent-playwright-browsers' }, timeoutMs: 60_000 });
 	assert.equal(network.status, 2);
 	assert.match(network.stderr, /firefox is not installed on this CI machine/);
+});
+
+test('a check whose WebKit or Firefox does not start exits with the reason, closing the browsers that did start', async () => {
+	const installed = dirname(chromium.executablePath()).split('/');
+	const root = installed.slice(0, installed.findIndex((part) => /^chromium-\d+$/.test(part))).join('/');
+	const chromiumOnly = mkdtempSync(join(tmpdir(), 'mm-chromium-only-'));
+	try {
+		for (const entry of readdirSync(root)) if (/^(chromium|ffmpeg|firefox)/.test(entry)) symlinkSync(join(root, entry), join(chromiumOnly, entry));
+		const env = { ...process.env, CI: '', PLAYWRIGHT_BROWSERS_PATH: chromiumOnly };
+		for (const [flag, reason] of [['--control-webkit', /control parity compares pop-up places in WebKit, which did not start/], ['--busy-cpu', /the busy-CPU lane uses Firefox and WebKit, which did not start/]] as const) {
+			const result = await spawnNode([CLI, 'check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--route', '/', flag], { env, timeoutMs: 60_000 });
+			assert.notEqual(result.status, 0);
+			assert.match(result.stderr, reason);
+		}
+	} finally {
+		rmSync(chromiumOnly, { recursive: true, force: true });
+	}
 });
 
 test('an unknown command is a usage error', async () => {
