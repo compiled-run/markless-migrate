@@ -368,7 +368,7 @@ jobs:
   check:
     needs: [plan, original, survey]
     # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' && needs.plan.outputs.matrix != '[]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:

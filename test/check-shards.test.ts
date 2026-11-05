@@ -303,3 +303,16 @@ test('a route\'s steps done count only its top-level stages, not the parts timed
 	]);
 	assert.match(stepsDone(route), /^steps done 2 of /);
 });
+
+test('a shard the slicing leaves with no routes is not dealt: every route sliced leaves no plain shard at all', async () => {
+	const { execFileSync } = await import('node:child_process');
+	const dir = await mkdtemp(join(tmpdir(), 'split-'));
+	await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/dashboard', '/date-picker', '/short'], endpoints: ['/api/x'], redirects: [] }));
+	await writeFile(join(dir, 'earlier.json'), JSON.stringify({ routes: [{ route: '/dashboard', ok: true, timing: { ms: 7_005_000 } }, { route: '/date-picker', ok: true, timing: { ms: 7_000_000 } }, { route: '/short', ok: true, timing: { ms: 60_000 } }] }));
+	const matrix = (shards: number) => JSON.parse(execFileSync(process.execPath, ['scripts/check-shards.ts', 'split', join(dir, 'targets.json'), String(shards), join(dir, `out-${shards}`), join(dir, 'earlier.json'), '--slice-over', '7200'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString()) as number[];
+	assert.deepEqual(matrix(3), [1], 'three shards for the one route left: one plain shard');
+	const one = JSON.parse(await readFile(join(dir, 'out-3', 'shard-1.json'), 'utf8')) as { routes: string[]; endpoints: string[] };
+	assert.deepEqual([one.routes, one.endpoints], [['/short'], ['/api/x']]);
+	await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/dashboard', '/date-picker'], endpoints: [], redirects: [] }));
+	assert.deepEqual(matrix(2), [], 'both routes sliced: no plain shard');
+});

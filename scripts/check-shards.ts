@@ -459,7 +459,10 @@ async function main(): Promise<void> {
 		const newest = earlier.flat().filter((r) => !seen.has(r.route) && seen.add(r.route));
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
 		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000) : { kept: targets, sliced: [] };
-		const shards = split(kept, Number(b), costs);
+		// A shard left with no routes once the long ones are sliced out checks nothing: its endpoints and redirects go to the first one with routes.
+		const dealt = split(kept, Number(b), costs);
+		const shards = dealt.filter((s) => s.routes.length);
+		if (shards.length) shards[0] = { ...shards[0]!, endpoints: [...new Set(dealt.flatMap((s) => s.endpoints ?? []))], redirects: [...new Set(dealt.flatMap((s) => s.redirects ?? []))] } as Targets;
 		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${earlier.length} earlier runs`);
 		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier runs say it takes ${Math.round(estimatesOf(newest).get(r.route)! / 1000)} s, past three quarters of its ${over} s`);
 		await mkdir(c, { recursive: true });
