@@ -218,13 +218,15 @@ export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<stri
 }
 
 /** Each route's time in a shard's .migrate folder (its report, or the progress files of a shard stopped before one), as a report of routes and timings only. */
-export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[]> {
-	const out: { route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[] = [];
+export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[]> {
+	const out: { route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[] = [];
 	for (const { routes } of await reports(dir)) {
 		for (const r of routes as Timed[]) {
 			const ms = tookMs(r);
 			if (ms === undefined) continue;
-			out.push(r.timing ? { route: r.route, timing: { ms } } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` } });
+			// How far a stopped or time-capped route got stays with its time, so the next run's estimate scales it up (estimatesOf).
+			const why = r.infrastructure ? { infrastructure: { ...(r.infrastructure.cause ? { cause: r.infrastructure.cause } : {}), message: r.infrastructure.message ?? `timed out after ${ms / 1000} s` } } : {};
+			out.push(r.timing ? { route: r.route, timing: { ms }, ...why } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` }, ...why });
 		}
 	}
 	return out;

@@ -142,11 +142,12 @@ test("a shard's route times come from its progress files when it stopped before 
 	const dir = join(root, '.migrate/check-progress/abc');
 	await mkdir(dir, { recursive: true });
 	await writeFile(join(dir, '1.json'), JSON.stringify({ route: '/a', result: { route: '/a', ok: true, failures: [], timing: { ms: 1234, steps: [{ name: 'explore', ms: 1000 }] } } }));
-	await writeFile(join(dir, '2.json'), JSON.stringify({ route: '/b', result: { route: '/b', ok: false, failures: [], infrastructure: { message: 'incomplete: timed out after 60 s, ...' } } }));
+	await writeFile(join(dir, '2.json'), JSON.stringify({ route: '/b', result: { route: '/b', ok: false, failures: [], infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 60 s, steps done 2 of 6 (load both sides, forced states; running: journeys)' } } }));
 	await writeFile(join(dir, '3.json'), JSON.stringify({ route: '/c', result: { route: '/c', ok: false, failures: [], infrastructure: { message: 'no answer' } } }));
 	const times = await routeTimes(join(root, '.migrate'));
-	assert.deepEqual(times.sort((x, y) => (x.route < y.route ? -1 : 1)), [{ route: '/a', timing: { ms: 1234 } }, { route: '/b', infrastructure: { message: 'timed out after 60 s' } }]);
+	assert.deepEqual(times.sort((x, y) => (x.route < y.route ? -1 : 1)), [{ route: '/a', timing: { ms: 1234 } }, { route: '/b', infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 60 s, steps done 2 of 6 (load both sides, forced states; running: journeys)' } }]);
 	assert.deepEqual([...costsOf(times as never)], [['/a', 1234], ['/b', 60_000]]);
+	assert.equal(estimatesOf(times as never).get('/b'), (60_000 * 6) / 2, 'how far the stopped route got stays with its time, so the next run scales it');
 });
 
 test('the merged summary tells the runner time of each part of the check, the original served and the old-side store counts', async () => {
