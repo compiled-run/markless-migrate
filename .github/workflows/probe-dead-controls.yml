@@ -30,7 +30,7 @@ jobs:
   # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     permissions:
       contents: read
@@ -68,7 +68,7 @@ jobs:
   # The run whose times pack the shards is chosen once: shards started hours apart must all pack the same way.
   old:
     needs: gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
       costs: ${{ steps.costs.outputs.run }}
@@ -86,7 +86,7 @@ jobs:
 
   probe:
     needs: [old, original]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 340
     strategy:
       fail-fast: false
@@ -168,7 +168,7 @@ jobs:
   keep:
     needs: probe
     if: always() && inputs.reuse != 'false' && needs.probe.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

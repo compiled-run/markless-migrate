@@ -53,7 +53,7 @@ jobs:
   # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     permissions:
       contents: read
@@ -90,7 +90,7 @@ jobs:
 
   measure:
     needs: original
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
       fail-fast: false

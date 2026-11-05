@@ -117,7 +117,7 @@ jobs:
   gate:
     name: full-site gate
     if: github.workflow == 'Check'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     permissions:
       contents: read
@@ -146,7 +146,7 @@ jobs:
   plan:
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
@@ -238,7 +238,7 @@ jobs:
   original:
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: write
@@ -285,7 +285,7 @@ jobs:
   survey-slice:
     needs: original
     if: ${{ !cancelled() && needs.original.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: true
@@ -329,7 +329,7 @@ jobs:
   survey:
     needs: survey-slice
     if: ${{ !cancelled() && needs.survey-slice.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -362,7 +362,7 @@ jobs:
     needs: [plan, original, survey]
     # The gate is skipped when the pipeline calls this workflow, and a skipped job upstream skips this one unless it says otherwise.
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -550,7 +550,7 @@ jobs:
   slice-explore:
     needs: [plan, original, survey]
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' && needs.plan.outputs.sliced != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -566,7 +566,7 @@ jobs:
   slice-replay:
     needs: [plan, original, survey, slice-explore]
     if: ${{ !cancelled() && needs.slice-explore.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -583,7 +583,7 @@ jobs:
   slice-finish:
     needs: [plan, original, survey, slice-replay]
     if: ${{ !cancelled() && needs.slice-replay.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -598,7 +598,7 @@ jobs:
   merge:
     needs: [plan, original, check, slice-finish]
     if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A 90-shard merge took 1.7 min (run 41487965270); a 240-shard one reads about 3 GB of shard artifacts.
     timeout-minutes: 20
     steps:

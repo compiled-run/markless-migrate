@@ -28,7 +28,7 @@ env:
 
 jobs:
   original:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       id: ${{ steps.resolve.outputs.id }}
@@ -53,7 +53,7 @@ jobs:
 
   survey:
     needs: original
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
@@ -84,7 +84,7 @@ jobs:
 
   produce:
     needs: [original, survey]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -120,7 +120,7 @@ jobs:
 
   commit:
     needs: produce
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -142,7 +142,7 @@ jobs:
   check:
     needs: [original, survey, commit]
     if: ${{ !cancelled() && needs.survey.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -204,7 +204,7 @@ jobs:
   compare:
     needs: check
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

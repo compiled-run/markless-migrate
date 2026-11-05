@@ -18,7 +18,7 @@ jobs:
   # No e2e suite reads examples/, deploy/ or docs/, so a pull request touching only those (or Markdown) skips them; main always runs every suite.
   changes:
     name: Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -52,7 +52,7 @@ jobs:
     name: Typecheck
     needs: changes
     if: needs.changes.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
     name: Unit tests (${{ matrix.shard }}/4)
     needs: changes
     if: needs.changes.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -90,7 +90,7 @@ jobs:
     name: E2E ${{ matrix.suite }}
     needs: changes
     if: needs.changes.outputs.e2e == 'true' && needs.changes.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -119,7 +119,7 @@ jobs:
     name: Check budget
     needs: changes
     if: github.event_name != 'push' && needs.changes.outputs.e2e == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -143,7 +143,7 @@ jobs:
     name: Convert budget
     needs: changes
     if: needs.changes.outputs.tested != 'true' && needs.changes.outputs.e2e == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -155,7 +155,7 @@ jobs:
     name: E2E ${{ matrix.suite }} (${{ matrix.shard }})
     needs: changes
     if: github.event_name != 'pull_request' && needs.changes.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -191,7 +191,7 @@ jobs:
     name: CI passed
     if: always()
     needs: [changes, typecheck, unit, e2e, budget, convert-budget, mutation]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           set -euo pipefail

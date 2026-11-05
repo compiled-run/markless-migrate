@@ -78,7 +78,7 @@ jobs:
   # rest wait here on one runner each instead of queueing their shards (docs/ci-process.md "Runners").
   gate:
     name: full-site gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     permissions:
       contents: read
@@ -117,7 +117,7 @@ jobs:
   prepare:
     needs: [gate, original]
     if: ${{ !inputs.converted-from }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
@@ -178,7 +178,7 @@ jobs:
 
   capture:
     needs: [prepare, original]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # GitHub stops a job at 6 h: the old site's build takes about 6 minutes, the shard the rest.
     timeout-minutes: 345
     strategy:
@@ -238,7 +238,7 @@ jobs:
     needs: [prepare, capture, original]
     # A shard that failed leaves its pages to be captured here.
     if: ${{ !cancelled() && !inputs.converted-from && needs.prepare.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
@@ -289,7 +289,7 @@ jobs:
   build:
     needs: emit
     if: ${{ !cancelled() && (github.event_name == 'pull_request' || inputs.build) && (inputs.converted-from || needs.emit.result == 'success') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4

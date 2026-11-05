@@ -34,7 +34,7 @@ env:
 
 jobs:
   original:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       id: ${{ inputs.original || steps.resolve.outputs.id }}
@@ -61,7 +61,7 @@ jobs:
   # Which route exercises each shared layout control, decided once over the whole site, as every check deals them.
   survey:
     needs: original
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +85,7 @@ jobs:
 
   produce:
     needs: [original, survey]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy:
       fail-fast: false
@@ -130,7 +130,7 @@ jobs:
   # The manifest is written over every shard's part and uploaded last: the dataset is readable once it is up.
   commit:
     needs: [original, produce]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: write
