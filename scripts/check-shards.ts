@@ -174,15 +174,18 @@ export const SLICED_SHARD = 1000;
 export const MAX_SLICES = 8;
 
 /**
- * Each route's estimated check time from an earlier report: what it took, or at least its deadline for one stopped there; a
- * route whose exploring stopped at its time cap, that time scaled up to all of its journeys.
+ * Each route's estimated check time from an earlier report: what it took; a route stopped at its deadline, that deadline scaled
+ * up to all of its steps; a route whose exploring stopped at its time cap, that time scaled up to all of its journeys.
  */
 export function estimatesOf(routes: readonly Timed[]): Map<string, number> {
 	return new Map(routes.flatMap((r) => {
 		const ms = tookMs(r);
 		if (ms === undefined) return [];
 		const capped = /after (\d+) of its (\d+) journeys/.exec(r.infrastructure?.cause === 'incomplete' ? (r.infrastructure.message ?? '') : '');
-		return [[r.route, capped && Number(capped[1]) > 0 ? (ms * Number(capped[2])) / Number(capped[1]) : ms] as const];
+		if (capped && Number(capped[1]) > 0) return [[r.route, (ms * Number(capped[2])) / Number(capped[1])] as const];
+		// Stopped at its deadline: it took longer than that, by the steps it had left.
+		const stopped = /timed out after \d+ s, steps done (\d+) of (\d+)/.exec(r.infrastructure?.message ?? '');
+		return [[r.route, stopped && Number(stopped[1]) > 0 ? (ms * Number(stopped[2])) / Number(stopped[1]) : ms] as const];
 	}));
 }
 

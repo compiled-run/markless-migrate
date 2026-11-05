@@ -245,7 +245,7 @@ test('a route whose only failures say what was not verified is incomplete, never
 	assert.match(text, /\| `\/menu` \| red \|/);
 });
 
-test('a route the earlier run says takes longer than its timeout is taken out of the shards and checked in slices, one per timeout of its estimate', () => {
+test('a route the earlier run says takes longer than its timeout, or that stopped at its deadline, is taken out of the shards and checked in slices, one per timeout of its estimate', () => {
 	const earlier = [
 		{ route: '/a', ok: true, timing: { ms: 600_000 } },
 		{ route: '/b', ok: false, timing: { ms: 4_000_000 }, infrastructure: { cause: 'incomplete', message: 'exploring stopped at its time cap (3600 s) after 210 of its 450 journeys: the machine ran far slower' } },
@@ -254,11 +254,11 @@ test('a route the earlier run says takes longer than its timeout is taken out of
 	];
 	const estimates = estimatesOf(earlier);
 	assert.equal(Math.round(estimates.get('/b')!), Math.round((4_000_000 * 450) / 210));
-	assert.equal(estimates.get('/c'), 7_200_000);
+	assert.equal(estimates.get('/c'), (7_200_000 * 9) / 3, 'stopped at its deadline after 3 of 9 steps: it takes about three deadlines');
 	const { kept, sliced } = sliceLong({ routes: ['/a', '/b', '/c', '/d', '/e'], endpoints: ['/x'] }, estimates, 7_200_000);
-	assert.deepEqual(kept.routes, ['/a', '/c', '/e']);
+	assert.deepEqual(kept.routes, ['/a', '/e']);
 	assert.deepEqual(kept.endpoints, ['/x']);
-	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/d', slices: MAX_SLICES }]);
+	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/c', slices: 3 }, { shard: SLICED_SHARD + 3, route: '/d', slices: MAX_SLICES }]);
 });
 
 test('a written report reads back as it was, and a report.json written whole still reads', async () => {
