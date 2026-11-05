@@ -70,6 +70,7 @@ jobs:
       app: examples/shadcn-ui-markless
       targets: deploy/shadcn-ui/corpus/targets-${{ matrix.build }}.json
       shards: ${{ matrix.shards }}
+      max_parallel: ${{ matrix.shards }}
       build: ${{ matrix.url }}
       flags: --no-load --no-cache
       timeout: '7200'
