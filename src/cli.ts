@@ -177,7 +177,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, responsiveness
           and motion, which run on one representative per template group (grouped by URL pattern,
-          page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
+          page layout, the kinds of control each page renders and the components it renders: the client
+          components and route chunks its HTML names); the report lists the groups. --every-dimension runs them on every page.
           --site-targets <targets.json> names every page of the site when this run checks a shard of it: groups,
           and page load, which runs on representatives too, are then made over the whole site, not the shard.
           Each shared header, nav or sidebar control is exercised by one route: the first page of the run that

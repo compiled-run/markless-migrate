@@ -10,7 +10,7 @@ import { chromium, type Browser } from 'playwright';
 import { acceptFailure } from '../src/check/accepted.ts';
 import { runCheck } from '../src/check/run.ts';
 import { summarize } from '../src/check/summary.ts';
-import { domSignature, urlPattern, widgetSignature } from '../src/check/templates.ts';
+import { componentSignature, domSignature, urlPattern, widgetSignature } from '../src/check/templates.ts';
 import { enumerateRoutes } from '../src/plan/enumerate.ts';
 import { plan } from '../src/plan/inventory.ts';
 import { recordResults, status } from '../src/status.ts';
@@ -201,6 +201,16 @@ test('template groups: URL pattern by source pattern or parent path, and the pag
 	assert.equal(accordion, 'button#accordion-trigger');
 	assert.equal(tooltip, 'button#tooltip-trigger');
 	assert.equal(widgetSignature('<main><button aria-expanded="true" data-slot="accordion-trigger">C</button><p>other text</p><script>"<div role=dialog>"</script></main>'), accordion, 'pages with the same kinds of control, whatever their text, stay one template');
+});
+
+test('template groups: what a page renders, by the client components and route chunks its HTML names, not only its URL pattern and controls', () => {
+	// Two chart pages of one /view/:name pattern, as Next's flight data names their client components: a line chart and an area chart.
+	const flight = (component: string) => `<main><svg role="application"></svg></main><script>self.__next_f.push([1,"d:I[771905,[\"/_next/static/chunks/a.js\"],\"default\",1]\n12:I[${component === 'line' ? 4101 : 4202},[\"/_next/static/chunks/a.js\",\"/_next/static/chunks/charts.js\"],\"${component === 'line' ? 'ChartLineInteractive' : 'ChartAreaAxes'}\"]\n"])</script>`;
+	assert.notEqual(componentSignature(flight('line')), componentSignature(flight('area')), 'a line chart and an area chart are not one template');
+	assert.equal(componentSignature(flight('line')), componentSignature(flight('line').replace('<main>', '<main><p>other text</p>')), 'the same components, whatever the text, are one template');
+	// A Vite app preloads each route's chunk.
+	const vite = (chunk: string) => `<head><link rel="modulepreload" href="/assets/${chunk}.js"><script type="module" src="/assets/index.js"></script></head><main></main>`;
+	assert.notEqual(componentSignature(vite('Accordion-1a')), componentSignature(vite('Tooltip-2b')));
 });
 
 test('above the threshold, every page gets http, rendered, seo and behaviour, and visual and responsiveness run on the template representative, said in the report', async () => {

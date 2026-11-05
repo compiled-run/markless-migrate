@@ -62,7 +62,20 @@ export function widgetSignature(html: string): string {
 	return [...kinds].sort().join(' ');
 }
 
-/** Groups pages by URL pattern, the old page's layout and the kinds of control it renders; each group's representative is its first page in sorted order. */
+/**
+ * What the page renders, as its HTML names it: the client components Next's flight data references (module and export,
+ * a line chart's and an area chart's differ though both draw an SVG), and the scripts and module preloads the page loads
+ * (a Vite route's own chunk). Pages of one URL pattern and one set of controls that render different components are not
+ * one template: motion, visual and responsiveness seen on one say nothing about the other.
+ */
+export function componentSignature(html: string): string {
+	const parts = new Set<string>();
+	for (const m of html.matchAll(/I\[(\d+),\[[^\]]*\],\\?"([^"\\]+)\\?"/g)) parts.add(`${m[1]}:${m[2]}`);
+	for (const m of html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*"([^"]+\.m?js)(?:\?[^"]*)?"/gi)) parts.add(new URL(m[1]!, 'http://x').pathname);
+	return [...parts].sort().join(' ');
+}
+
+/** Groups pages by URL pattern, the old page's layout, the kinds of control it renders and the components it renders; each group's representative is its first page in sorted order. */
 export async function groupTemplates(env: SideEnv, pages: readonly string[], patterns: readonly string[] = []): Promise<TemplateGroup[]> {
 	const signatures = new Map<string, string>();
 	let next = 0;
@@ -71,7 +84,7 @@ export async function groupTemplates(env: SideEnv, pages: readonly string[], pat
 		while (next < list.length) {
 			const route = list[next++]!;
 			const html = await request(new URL(route, env.origin), { headers: tagHeaders(env) }).then((r) => r.text()).catch(() => '');
-			signatures.set(route, `${domSignature(html)}\u0000${widgetSignature(html)}`);
+			signatures.set(route, `${domSignature(html)}\u0000${widgetSignature(html)}\u0000${componentSignature(html)}`);
 		}
 	}));
 	const groups = new Map<string, string[]>();
