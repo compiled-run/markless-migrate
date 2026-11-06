@@ -142,11 +142,12 @@ test("a shard's route times come from its progress files when it stopped before 
 	const dir = join(root, '.migrate/check-progress/abc');
 	await mkdir(dir, { recursive: true });
 	await writeFile(join(dir, '1.json'), JSON.stringify({ route: '/a', result: { route: '/a', ok: true, failures: [], timing: { ms: 1234, steps: [{ name: 'explore', ms: 1000 }] } } }));
-	await writeFile(join(dir, '2.json'), JSON.stringify({ route: '/b', result: { route: '/b', ok: false, failures: [], infrastructure: { message: 'incomplete: timed out after 60 s, ...' } } }));
+	await writeFile(join(dir, '2.json'), JSON.stringify({ route: '/b', result: { route: '/b', ok: false, failures: [], infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 60 s, steps done 2 of 6 (load both sides, forced states; running: journeys)' } } }));
 	await writeFile(join(dir, '3.json'), JSON.stringify({ route: '/c', result: { route: '/c', ok: false, failures: [], infrastructure: { message: 'no answer' } } }));
 	const times = await routeTimes(join(root, '.migrate'));
-	assert.deepEqual(times.sort((x, y) => (x.route < y.route ? -1 : 1)), [{ route: '/a', timing: { ms: 1234 } }, { route: '/b', infrastructure: { message: 'timed out after 60 s' } }]);
+	assert.deepEqual(times.sort((x, y) => (x.route < y.route ? -1 : 1)), [{ route: '/a', timing: { ms: 1234 } }, { route: '/b', infrastructure: { cause: 'check timeout', message: 'incomplete: timed out after 60 s, steps done 2 of 6 (load both sides, forced states; running: journeys)' } }]);
 	assert.deepEqual([...costsOf(times as never)], [['/a', 1234], ['/b', 60_000]]);
+	assert.equal(estimatesOf(times as never).get('/b'), (60_000 * 6) / 2, 'how far the stopped route got stays with its time, so the next run scales it');
 });
 
 test('the merged summary tells the runner time of each part of the check, the original served and the old-side store counts', async () => {
@@ -245,7 +246,7 @@ test('a route whose only failures say what was not verified is incomplete, never
 	assert.match(text, /\| `\/menu` \| red \|/);
 });
 
-test('a route the earlier run says takes longer than its timeout is taken out of the shards and checked in slices, one per timeout of its estimate', () => {
+test('a route the earlier run says takes longer than its timeout, or that stopped at its deadline, is taken out of the shards and checked in slices, one per timeout of its estimate', () => {
 	const earlier = [
 		{ route: '/a', ok: true, timing: { ms: 600_000 } },
 		{ route: '/b', ok: false, timing: { ms: 4_000_000 }, infrastructure: { cause: 'incomplete', message: 'exploring stopped at its time cap (3600 s) after 210 of its 450 journeys: the machine ran far slower' } },
@@ -254,11 +255,13 @@ test('a route the earlier run says takes longer than its timeout is taken out of
 	];
 	const estimates = estimatesOf(earlier);
 	assert.equal(Math.round(estimates.get('/b')!), Math.round((4_000_000 * 450) / 210));
-	assert.equal(estimates.get('/c'), 7_200_000);
+	assert.equal(estimates.get('/c'), (7_200_000 * 9) / 3, 'stopped at its deadline after 3 of 9 steps: it takes about three deadlines');
 	const { kept, sliced } = sliceLong({ routes: ['/a', '/b', '/c', '/d', '/e'], endpoints: ['/x'] }, estimates, 7_200_000);
-	assert.deepEqual(kept.routes, ['/a', '/c', '/e']);
+	assert.deepEqual(kept.routes, ['/a', '/e']);
+	const near = sliceLong({ routes: ['/near', '/far'] }, new Map([['/near', 7_005_000], ['/far', 5_000_000]]), 7_200_000);
+	assert.deepEqual([near.kept.routes, near.sliced.map((r) => [r.route, r.slices])], [['/far'], [['/near', 2]]], 'a route that finished just under its timeout is sliced: on a slower runner it would stop');
 	assert.deepEqual(kept.endpoints, ['/x']);
-	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/d', slices: MAX_SLICES }]);
+	assert.deepEqual(sliced, [{ shard: SLICED_SHARD + 1, route: '/b', slices: 2 }, { shard: SLICED_SHARD + 2, route: '/c', slices: 3 }, { shard: SLICED_SHARD + 3, route: '/d', slices: MAX_SLICES }]);
 });
 
 test('a written report reads back as it was, and a report.json written whole still reads', async () => {
@@ -286,4 +289,30 @@ test('a merged report larger than the longest string JavaScript can hold is writ
 	assert.deepEqual(back.routes?.map((r) => r.route), routes.map((r) => r.route));
 	assert.equal((back.routes?.[n - 1]?.failures?.[0] as { actual?: string } | undefined)?.actual?.length, text.length);
 	await rm(dir, { recursive: true });
+});
+
+test('a route\'s steps done count only its top-level stages, not the parts timed inside them, so a stopped route\'s estimate scales by what it had left', async () => {
+	const { profiled, stepsDone } = await import('../src/check/run.ts');
+	const route = `/steps-${Math.random()}`;
+	await Promise.all([
+		profiled(route, 'forced states', async () => {}),
+		profiled(route, 'journeys', async () => {
+			await profiled(route, 'explore old', async () => {});
+			await profiled(route, 'retime main', async () => {});
+		}),
+	]);
+	assert.match(stepsDone(route), /^steps done 2 of /);
+});
+
+test('a shard the slicing leaves with no routes is not dealt: every route sliced leaves no plain shard at all', async () => {
+	const { execFileSync } = await import('node:child_process');
+	const dir = await mkdtemp(join(tmpdir(), 'split-'));
+	await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/dashboard', '/date-picker', '/short'], endpoints: ['/api/x'], redirects: [] }));
+	await writeFile(join(dir, 'earlier.json'), JSON.stringify({ routes: [{ route: '/dashboard', ok: true, timing: { ms: 7_005_000 } }, { route: '/date-picker', ok: true, timing: { ms: 7_000_000 } }, { route: '/short', ok: true, timing: { ms: 60_000 } }] }));
+	const matrix = (shards: number) => JSON.parse(execFileSync(process.execPath, ['scripts/check-shards.ts', 'split', join(dir, 'targets.json'), String(shards), join(dir, `out-${shards}`), join(dir, 'earlier.json'), '--slice-over', '7200'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString()) as number[];
+	assert.deepEqual(matrix(3), [1], 'three shards for the one route left: one plain shard');
+	const one = JSON.parse(await readFile(join(dir, 'out-3', 'shard-1.json'), 'utf8')) as { routes: string[]; endpoints: string[] };
+	assert.deepEqual([one.routes, one.endpoints], [['/short'], ['/api/x']]);
+	await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/dashboard', '/date-picker'], endpoints: [], redirects: [] }));
+	assert.deepEqual(matrix(2), [], 'both routes sliced: no plain shard');
 });

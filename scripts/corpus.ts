@@ -1,6 +1,7 @@
 // The regression corpus of the shadcn port's hand-found bugs (deploy/shadcn-ui/corpus/bugs.json):
 //   matrix <bugs.json>                       one entry per kept build and route to check, for a workflow matrix
 //   targets <bugs.json> <build> <out.json>   the routes to check on that build, as a --targets file
+//   builds <bugs.json>                       one entry per kept build (its archive URL and a shard per route), for check.yml's calls
 //   verify <bugs.json> <reports dir>         every bug on a kept build must be named by a finding of its route; the
 //                                            dir holds <build>/**/report.json (check-shards merge output or shard reports)
 import { readdir, readFile, writeFile } from 'node:fs/promises';
@@ -78,6 +79,11 @@ if (import.meta.url === `file://${process.argv[1]}` && command && file) {
 		console.log(JSON.stringify(out));
 		process.exit(0);
 	}
+	if (command === 'builds') {
+		const out = Object.entries(corpus.builds).map(([build, url]) => ({ build, url, shards: String(new Set(corpus.bugs.filter((x) => x.build === build).map((x) => x.route)).size) })).filter((b) => b.shards !== '0');
+		console.log(JSON.stringify(out));
+		process.exit(0);
+	}
 	if (command === 'targets' && a && b) {
 		const routes = [...new Set(corpus.bugs.filter((x) => x.build === a).map((x) => x.route))];
 		await writeFile(b, `${JSON.stringify({ routes, endpoints: [], redirects: [], unchecked: [] }, null, '\t')}\n`);
@@ -100,6 +106,6 @@ if (import.meta.url === `file://${process.argv[1]}` && command && file) {
 	}
 }
 if (import.meta.url === `file://${process.argv[1]}`) {
-	console.error('usage: corpus.ts matrix <bugs.json> | targets <bugs.json> <build> <out.json> | verify <bugs.json> <reports dir>');
+	console.error('usage: corpus.ts matrix <bugs.json> | builds <bugs.json> | targets <bugs.json> <build> <out.json> | verify <bugs.json> <reports dir>');
 	process.exit(2);
 }

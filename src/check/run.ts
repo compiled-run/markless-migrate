@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
@@ -582,14 +583,16 @@ async function liveRouteCheck(browser: Browser, run: Run, route: string, role: s
 }
 
 /** The parts of each route's check that have finished, the ones running and how many it was going to run: what a timed-out route reports. */
-const routeSteps = new Map<string, { readonly done: { readonly name: string; readonly ms: number }[]; readonly running: Set<string>; total: number; latest?: RouteResult }>();
-const stepsOf = (route: string) => routeSteps.get(route) ?? routeSteps.set(route, { done: [], running: new Set(), total: 0 }).get(route)!;
+const routeSteps = new Map<string, { readonly done: { readonly name: string; readonly ms: number }[]; readonly running: Set<string>; total: number; stages: number; latest?: RouteResult }>();
+const stepsOf = (route: string) => routeSteps.get(route) ?? routeSteps.set(route, { done: [], running: new Set(), total: 0, stages: 0 }).get(route)!;
+// Which route's timed part encloses the code running now: a part timed inside another is not one of the route's stages.
+const enclosing = new AsyncLocalStorage<string>();
 
 /** How far a route's check got: "steps done 2 of 6 (load both sides, forced states; running: journeys)". */
 export function stepsDone(route: string): string {
 	const s = stepsOf(route);
 	const running = [...s.running];
-	return `steps done ${s.done.length} of ${Math.max(s.total, s.done.length + running.length)}${s.done.length || running.length ? ` (${s.done.map((d) => d.name).join(', ')}${running.length ? `${s.done.length ? '; ' : ''}running: ${running.join(', ')}` : ''})` : ''}`;
+	return `steps done ${s.stages} of ${Math.max(s.total, s.stages + running.length)}${s.done.length || running.length ? ` (${s.done.map((d) => d.name).join(', ')}${running.length ? `${s.done.length ? '; ' : ''}running: ${running.join(', ')}` : ''})` : ''}`;
 }
 
 /** The route's result as far as its check has got: what a route stopped at --timeout still reports. */
@@ -601,13 +604,15 @@ export function reached(route: string, result: RouteResult): RouteResult {
 // MARKLESS_MIGRATE_PROFILE=1 prints how long each part of a route's check took, on stderr.
 export async function profiled<T>(route: string, part: string, work: () => Promise<T>): Promise<T> {
 	const steps = stepsOf(route);
+	const stage = enclosing.getStore() !== route;
 	steps.running.add(part);
 	const started = Date.now();
 	try {
-		return await work();
+		return await enclosing.run(route, work);
 	} finally {
 		steps.running.delete(part);
 		steps.done.push({ name: part, ms: Date.now() - started });
+		if (stage) steps.stages++;
 		profileLine(route, part, Date.now() - started);
 	}
 }

@@ -174,15 +174,18 @@ export const SLICED_SHARD = 1000;
 export const MAX_SLICES = 8;
 
 /**
- * Each route's estimated check time from an earlier report: what it took, or at least its deadline for one stopped there; a
- * route whose exploring stopped at its time cap, that time scaled up to all of its journeys.
+ * Each route's estimated check time from an earlier report: what it took; a route stopped at its deadline, that deadline scaled
+ * up to all of its steps; a route whose exploring stopped at its time cap, that time scaled up to all of its journeys.
  */
 export function estimatesOf(routes: readonly Timed[]): Map<string, number> {
 	return new Map(routes.flatMap((r) => {
 		const ms = tookMs(r);
 		if (ms === undefined) return [];
 		const capped = /after (\d+) of its (\d+) journeys/.exec(r.infrastructure?.cause === 'incomplete' ? (r.infrastructure.message ?? '') : '');
-		return [[r.route, capped && Number(capped[1]) > 0 ? (ms * Number(capped[2])) / Number(capped[1]) : ms] as const];
+		if (capped && Number(capped[1]) > 0) return [[r.route, (ms * Number(capped[2])) / Number(capped[1])] as const];
+		// Stopped at its deadline: it took longer than that, by the steps it had left.
+		const stopped = /timed out after \d+ s, steps done (\d+) of (\d+)/.exec(r.infrastructure?.message ?? '');
+		return [[r.route, stopped && Number(stopped[1]) > 0 ? (ms * Number(stopped[2])) / Number(stopped[1]) : ms] as const];
 	}));
 }
 
@@ -197,8 +200,11 @@ export interface SlicedRoute {
  * The routes an earlier run says take longer than `overMs` (a route's own --timeout), taken out of the shards: each is checked
  * in parts (journey-slices.ts), its journeys replayed in one slice per `overMs` of its estimate, at least 2.
  */
+// A route whose estimate comes this close to its timeout is sliced too: one that took 7005 s of 7200 finishes on one runner and stops on a slower one.
+const SLICE_MARGIN = 0.75;
+
 export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, number>, overMs: number): { kept: Targets; sliced: SlicedRoute[] } {
-	const long = targets.routes.filter((r) => (estimates.get(r) ?? 0) > overMs);
+	const long = targets.routes.filter((r) => (estimates.get(r) ?? 0) > overMs * SLICE_MARGIN);
 	const sliced = long.map((route, k) => ({ shard: SLICED_SHARD + k + 1, route, slices: Math.min(MAX_SLICES, Math.max(2, Math.ceil(estimates.get(route)! / overMs))) }));
 	return { kept: { ...targets, routes: targets.routes.filter((r) => !long.includes(r)) }, sliced };
 }
@@ -215,13 +221,15 @@ export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<stri
 }
 
 /** Each route's time in a shard's .migrate folder (its report, or the progress files of a shard stopped before one), as a report of routes and timings only. */
-export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[]> {
-	const out: { route: string; timing?: { ms: number }; infrastructure?: { message?: string } }[] = [];
+export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[]> {
+	const out: { route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[] = [];
 	for (const { routes } of await reports(dir)) {
 		for (const r of routes as Timed[]) {
 			const ms = tookMs(r);
 			if (ms === undefined) continue;
-			out.push(r.timing ? { route: r.route, timing: { ms } } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` } });
+			// How far a stopped or time-capped route got stays with its time, so the next run's estimate scales it up (estimatesOf).
+			const why = r.infrastructure ? { infrastructure: { ...(r.infrastructure.cause ? { cause: r.infrastructure.cause } : {}), message: r.infrastructure.message ?? `timed out after ${ms / 1000} s` } } : {};
+			out.push(r.timing ? { route: r.route, timing: { ms }, ...why } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` }, ...why });
 		}
 	}
 	return out;
@@ -451,9 +459,12 @@ async function main(): Promise<void> {
 		const newest = earlier.flat().filter((r) => !seen.has(r.route) && seen.add(r.route));
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
 		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000) : { kept: targets, sliced: [] };
-		const shards = split(kept, Number(b), costs);
+		// A shard left with no routes once the long ones are sliced out checks nothing: its endpoints and redirects go to the first one with routes.
+		const dealt = split(kept, Number(b), costs);
+		const shards = dealt.filter((s) => s.routes.length);
+		if (shards.length) shards[0] = { ...shards[0]!, endpoints: [...new Set(dealt.flatMap((s) => s.endpoints ?? []))], redirects: [...new Set(dealt.flatMap((s) => s.redirects ?? []))] } as Targets;
 		if (costs?.size) console.error(`shards packed by ${costs.size} routes' times in ${earlier.length} earlier runs`);
-		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier runs say it takes ${Math.round(estimatesOf(newest).get(r.route)! / 1000)} s, over its ${over} s`);
+		for (const r of sliced) console.error(`${r.route} is checked in parts, its journeys in ${r.slices} slices: the earlier runs say it takes ${Math.round(estimatesOf(newest).get(r.route)! / 1000)} s, past three quarters of its ${over} s`);
 		await mkdir(c, { recursive: true });
 		for (const [i, shard] of shards.entries()) await writeFile(join(c, `shard-${i + 1}.json`), `${JSON.stringify(shard)}\n`);
 		for (const r of sliced) await writeFile(join(c, `shard-${r.shard}.json`), `${JSON.stringify({ routes: [r.route], endpoints: [], redirects: [], unchecked: [] })}\n`);
@@ -483,7 +494,7 @@ async function main(): Promise<void> {
 		const reported = new Map<number, Set<string>>();
 		for (const { path, routes: got } of await reports(a)) {
 			routes.push(...got);
-			const shard = /(?:^|\/)check-(\d+)\//.exec(path)?.[1];
+			const shard = /(?:^|[\/-])check-(\d+)\//.exec(path)?.[1];
 			if (shard) reported.set(Number(shard), new Set([...(reported.get(Number(shard)) ?? []), ...got.map((r) => r.route)]));
 		}
 		if (c && c !== '--original') {

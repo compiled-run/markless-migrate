@@ -56,7 +56,14 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 Every bug the owner found by hand in the ui.shadcn.com port is in `deploy/shadcn-ui/corpus/bugs.json`, with its route, the gesture that shows it and the finding check must report for it. Two gates keep check reporting them:
 
 - `test/e2e/corpus.test.ts` puts each bug back into a micro-site page built like the original's widget (`test/corpus/site.ts`) and runs the check CLI on it, as one page of a site larger than 20 pages, so the page is not its template's representative. It runs in the merge queue and on `main` (the mutation job). A case is caught only by a finding of its own class that names its control; a control the run never used names nothing. Cases listed as pending in the test are not caught yet and say which work takes them.
-- `.github/workflows/corpus.yml` checks the real routes on the kept port builds that still have the bugs (release assets, never redeployed), against the original built from source, on every push to `main` that changes the checker. `scripts/corpus.ts verify` fails the run when a bug's route was checked and no finding names it, or when the route could not be checked.
+- `.github/workflows/corpus.yml` checks the real routes on the kept port builds that still have the bugs (release assets, never redeployed), against the original built from source, on every push to `main` that changes the checker. It calls `check.yml` once per build on that build's bug routes (`deploy/shadcn-ui/corpus/targets-<build>.json`), so each route is checked as a site's run checks it, a route longer than its timeout sliced. `scripts/corpus.ts verify` fails the run when a bug's route was checked and no finding names it, or when the route could not be checked.
+
+A bug marked `pending` in `bugs.json` is listed by verify and does not fail it. Each pending bug has an owner and an expiry at most two weeks out; on the expiry date it is either caught or reviewed and renewed with what was learned.
+
+| Bug | Why it is not caught yet | Owner | Expires |
+|---|---|---|---|
+| combobox-check (base/combobox, RrorpvSy) | The missing check mark is lucide's check icon, which is aria-hidden: no accessibility-tree or state reading sees it, only pixels. Needs a structured state probe that reads the selected option's drawn mark. | thejackshelton (checker determinism) | 2026-11-19 |
+| date-typed (radix/date-picker, RrorpvSy) | Typing "May 28, 2025" into Subscription Date is never done: control parity types six fixed values per route and none reaches that field, and the role-model probe types generated dates. Needs a probe that types a date the field parses. | thejackshelton (checker determinism) | 2026-11-19 |
 
 A new hand-found bug goes into both: its route and build in `bugs.json`, and a case in `site.ts` that is red on the checker before the fix that catches it.
 
