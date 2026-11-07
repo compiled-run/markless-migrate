@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
-import { missingReaction } from '../src/check/journeys-compare.ts';
+import { lostWithin, missingReaction } from '../src/check/journeys-compare.ts';
 import type { StepResult } from '../src/check/journeys.ts';
 import { runCheck } from '../src/check/run.ts';
 
@@ -59,4 +59,10 @@ test('missingReaction: a change that only reaches into the region the original c
 	assert.deepEqual(missingReaction([step([panel]), step([panel])], step([underline])).regions, [panel]);
 	assert.deepEqual(missingReaction([step([panel]), step([panel])], step([{ ...panel, y: 100 }])).regions, []);
 	assert.deepEqual(missingReaction([step([panel]), step([panel])], step([{ x: 600, y: 96, width: 400, height: 256 }])).regions, []);
+});
+
+test('lostWithin: the original\'s main changed is answered by the port changing a region inside main; a panel the port leaves alone is not', () => {
+	const at = (...affected: string[]): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, reaction: { regions: [], changes: [], affected } });
+	assert.equal(lostWithin([at('main'), at('main')], at('listbox in main')), undefined);
+	assert.deepEqual(lostWithin([at('tabpanel "Picture" in main'), at('tabpanel "Picture" in main')], at('tablist "Views" in main')), ['tabpanel "Picture" in main']);
 });

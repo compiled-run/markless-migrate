@@ -105,6 +105,14 @@ export function lostRegions(olds: readonly StepResult[], next: StepResult): stri
 	return lost.length ? lost : undefined;
 }
 
+/** lostRegions, counting a region as changed when the new page changed a named region inside it (the original's `main`, the port's `listbox in main`). */
+export function lostWithin(olds: readonly StepResult[], next: StepResult): string[] | undefined {
+	const bare = (r: string) => r.replace(/ #\d+/g, '');
+	const mine = (next.reaction?.affected ?? []).map(bare);
+	const lost = lostRegions(olds, next)?.filter((r) => !mine.some((m) => m.endsWith(` in ${r}`)));
+	return lost?.length ? lost : undefined;
+}
+
 /** Failures that are a slower answer alone, or a view in between alone, with the journey and step to time again one side at a time before they stand. */
 export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number; readonly views?: true; readonly cadence?: true }>();
 
@@ -383,7 +391,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (errors.unexpected.length || errors.changed.length) parts.push('errors');
 			if (!navigated && !reloaded && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
 			// The old page answered the step and the new one did not: a control whose effect never happens is red whatever else matches.
-			const missing: { changes: string[]; regions: Box[]; lost?: string[] } = navigated || reloaded ? { changes: [], regions: [] } : { ...missingReaction(oldSteps as StepResult[], n), lost: lostRegions(oldSteps as StepResult[], n) };
+			const missing: { changes: string[]; regions: Box[]; lost?: string[] } = navigated || reloaded ? { changes: [], regions: [] } : { ...missingReaction(oldSteps as StepResult[], n), lost: lostWithin(oldSteps as StepResult[], n) };
 			if (missing.changes.length || missing.regions.length) parts.push('reaction');
 			// A control whose own state changes while the part it drives stays as it was (a tab selected, its panel not swapped).
 			if (missing.lost) parts.push('region');
