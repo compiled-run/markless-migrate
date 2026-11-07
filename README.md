@@ -21,16 +21,6 @@
 
 > Early preview. It changes often and isn't on npm yet.
 
-## Before you start
-
-Set up your editor so you can read and change the `.tsrx` pages it writes.
-
-- **VS Code:** install [TSRX Syntax for VS Code](https://marketplace.visualstudio.com/items?itemName=TSRX.tsrx-vscode-plugin) (`TSRX.tsrx-vscode-plugin`). It replaces the older `ripple-ts.ripple-ts-vscode-plugin`, so keep only one.
-- **Cursor, Windsurf and other VS Code forks:** install the same extension from [Open VSX](https://open-vsx.org/extension/TSRX/tsrx-vscode-plugin).
-- **Node 24.11 or newer** to run the CLI.
-
-The Markless TypeScript plugin is already set up in an app from `npm create markless`. More at [markless.dev/tooling/editor-setup](https://markless.dev/tooling/editor-setup).
-
 ## What it looks like
 
 ```bash
@@ -64,7 +54,7 @@ markless-migrate switch /pricing                                            # on
 
 **2. Record the old site.** Each old page is opened in a real browser and saved: how it looks once it has loaded, and what each button, menu and tab opens. A page is only recorded again when the page itself changes.
 
-**3. Convert and build: write the Markless version.** `convert` turns each recorded page into a Markless page. It reads the old code, not just the screen, to know what each element is. Things several pages share, like a header or a sidebar, are written once. Images, fonts and CSS are copied as they are. Widgets from UI libraries like Radix, Base UI and React Aria are handled by **parts**: small Markless versions of each widget, written once and reused on every site. Your agent writes whatever is left: the site's own code. Then the new app is built like any Markless app.
+**3. Convert and build: write the Markless version.** `convert` turns each recorded page into a Markless page. It reads the old code, not just the screen, to know what each element is. Things several pages share, like a header or a sidebar, are written once. Images, fonts and CSS are copied as they are. Widgets from UI libraries like Radix, Base UI and React Aria are handled by **parts**: small Markless versions of each widget, written once and reused on every site. Your agent writes whatever is left: the site's own code. The old app's README comes along too, with only the stack, the commands and the editor setup changed. Then the new app is built like any Markless app.
 
 **4. Check: compare old and new side by side.** `check` opens each page on both apps in a real browser and compares them. The clock, random numbers and the page's data are the same on both sides, so any difference is a real one. Each difference says what each side showed and, when it can, the file and line on each side. You get `.migrate/report.json` for your agent and `.migrate/report.html` with screenshots for you.
 
