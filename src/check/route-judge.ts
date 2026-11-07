@@ -19,6 +19,8 @@ import { judgeResponsiveness } from './responsiveness-compare.ts';
 import type { SourceFacts } from './source-facts.ts';
 import { judgeStates, statesPlan, statesRequest, type StatesRequest, type StatesRow } from './states-compare.ts';
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
+import { judgeScroll, type ScrollRow } from './scroll-motion-compare.ts';
+import { dialogJourneys, judgeDialogs, type DialogsRow } from './dialogs-compare.ts';
 import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DIMENSIONS, REPRESENTATIVE_ONLY, type Blocked, type Coverage, type Dimension, type Failure, type Infrastructure, type RouteCapture, type RouteResult, type Shot, type SourceLink, type Viewport } from './types.ts';
 import type { WallHit } from './browser.ts';
@@ -74,6 +76,10 @@ export interface RouteStages {
 	readonly parity: { readonly request: { readonly film: boolean; readonly webkit: boolean }; readonly value: ParityRow };
 	readonly busy: { readonly request: Record<string, never>; readonly value: { readonly failures: readonly Failure[]; readonly ms: number } };
 	readonly motion: { readonly request: { readonly journeys: readonly RecordedJourney[] }; readonly value: MotionRow };
+	/** What moves with the scroll position at each width, scrolling down and back up, old and new. */
+	readonly scroll: { readonly request: Record<string, never>; readonly value: ScrollRow };
+	/** Each dialog the journeys opened, at each width: its box once open, its opening and its closing, old and new. */
+	readonly dialogs: { readonly request: { readonly journeys: readonly RecordedJourney[] }; readonly value: DialogsRow };
 	readonly responsiveness: { readonly request: { readonly journeys: readonly RecordedJourney[] }; readonly value: { readonly responsiveness: Responsiveness; readonly failures: readonly Failure[] } };
 	readonly embeds: { readonly request: Record<string, never>; readonly value: { readonly failures: readonly Failure[]; readonly shots: readonly Shot[] } };
 	/** Where each failure's element comes from in the old and new source, index for index. */
@@ -236,7 +242,8 @@ export async function routeCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	const explored = reach(ctx, ctx.stages.probes ? await span(ctx, 'widget probes', () => probeCheck(o, ctx, journeyed, true, Boolean(ctx.stages.controls?.webkit))) : journeyed);
 	const busy = ctx.stages.busyCpu ? await span(ctx, 'busy CPU', () => o('busy', {})) : undefined;
 	const lane = reach(ctx, busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored);
-	const moved = reach(ctx, ctx.stages.motion && lane.journeys?.length ? await span(ctx, 'motion', () => motionCheck(o, ctx, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane);
+	const animated = reach(ctx, ctx.stages.motion && lane.journeys?.length ? await span(ctx, 'motion', () => motionCheck(o, ctx, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane);
+	const moved = reach(ctx, ctx.stages.motion ? await span(ctx, 'scroll and dialogs', () => scrollAndDialogs(o, ctx, animated)) : animated);
 	const timed = reach(ctx, ctx.stages.responsiveness && moved.journeys?.length ? await span(ctx, 'responsiveness', () => responsivenessCheck(o, ctx.route, moved)) : moved);
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
 	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
@@ -425,6 +432,15 @@ async function motionCheck(o: Observe, ctx: RouteContext, result: RouteResult, s
 	const journeys = result.journeys ?? [];
 	const moved = judgeMotion(ctx.route, ctx.viewports[0]!, journeys, { ...ctx.stages.motion, rules: motionRules(parseRules(sources)) }, await o('motion', { journeys }));
 	return withFailures(result, [...result.failures, ...moved.failures], { motion: moved.motion, ...(moved.filmstrips.length ? { filmstrips: moved.filmstrips } : {}) });
+}
+
+/** What moves with the scroll, and each dialog the journeys opened, at every width. */
+async function scrollAndDialogs(o: Observe, ctx: RouteContext, result: RouteResult): Promise<RouteResult> {
+	const scrolled = judgeScroll(ctx.route, await o('scroll', {}));
+	const journeys = dialogJourneys(result.journeys ?? []);
+	const dialogs = journeys.length ? judgeDialogs(ctx.route, await o('dialogs', { journeys })) : [];
+	const found = [...scrolled, ...dialogs];
+	return found.length ? withFailures(result, [...result.failures, ...found]) : result;
 }
 
 async function responsivenessCheck(o: Observe, route: string, result: RouteResult): Promise<RouteResult> {
