@@ -60,6 +60,7 @@ import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
 import { fragmentPath } from '../cache/apply.ts';
 import { queryVariants, variantValue, VARIANT_DECLARATIONS, variantPick, VARIANT_TABLE, type QueryVariants } from './query-variants.ts';
+import { writeMigratedReadme } from './readme.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // The rules the document's shared stylesheets hold, so a partial convert keeps them for the pages it does not write.
@@ -2641,6 +2642,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(manifestPath, `${JSON.stringify(manifest, null, '\t')}\n`);
 		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort(), routing.trailing));
 	}
+	const readme = await writeMigratedReadme({ app, ...(options.source ? { source: options.source } : {}), state });
+	if (readme !== 'unchanged') log(readme === 'written' ? 'README: the old README, with the stack, commands and editor setup changed for Markless' : 'README: kept, edited since convert last wrote it');
 	const report: ConvertReport = {
 		routes: out.map((r) => ({ ...r, ports: [...usedPorts.of([r.route])].sort() })),
 		dropped: Object.fromEntries(dropped),

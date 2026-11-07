@@ -15,7 +15,7 @@ import { request } from './http.ts';
 import { LOAD_TIMEOUT_MS, loadPage, servedHtml } from './infrastructure.ts';
 import { heldTimers, holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
-import { routeLinks, routePath, shellRoute } from './hash-routes.ts';
+import { routeLinks, routePath, shellRoute, type OldRouting } from './hash-routes.ts';
 import { runtimeMarkers } from './residue.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
@@ -35,6 +35,19 @@ export function routeFile(html: string): { routeFile?: string } {
 export function toLocal(url: string, origin: string): string {
 	const local = url.startsWith(origin) ? url.slice(origin.length) || '/' : url;
 	return local === url ? url : originInQuery(local, origin);
+}
+
+/** The app's own paths among a page's link addresses, as the port routes them, without their hash, once each. */
+export function ownLinks(hrefs: readonly string[], origin: string, routing?: OldRouting): string[] {
+	const own = new URL(origin).origin;
+	const out = new Set<string>();
+	for (const href of hrefs) {
+		const at = URL.parse(href);
+		if (!at || at.origin !== own || !/^https?:$/.test(at.protocol)) continue;
+		const routed = new URL(routePath(at.href, routing));
+		out.add(`${routed.pathname}${routed.search}`);
+	}
+	return [...out].sort();
 }
 
 export function originInQuery(path: string, origin: string): string {
@@ -325,6 +338,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			stylesheets,
 			decoded,
 			images: collected.images,
+			links: ownLinks(collected.links, origin, env.routing),
 			fonts: collected.fonts,
 			elements,
 			screenshot,

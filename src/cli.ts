@@ -43,6 +43,7 @@ import { VIEWPORTS } from './check/types.ts';
 import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
 import { plannedRoutes } from './plan/inventory.ts';
+import { inventoryRoutes } from './check/unlisted.ts';
 import { planCommand } from './plan/command.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
@@ -863,6 +864,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
+					...(inventory ? { inventory: inventoryRoutes(inventory) } : {}),
 					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
 				await recordResults(cwd, report);
@@ -1200,6 +1202,7 @@ async function main(argv: string[]): Promise<number> {
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
+				...(inventory && !probesOnly && !loadOnly && !embedsOnly ? { inventory: inventoryRoutes(inventory) } : {}),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
 				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [], ...(site ? { site } : {}) },
