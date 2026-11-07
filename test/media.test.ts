@@ -44,7 +44,7 @@ test('a picture broken on both sides, a video the port cannot play and another f
 	const next = await serve((path) => (path === '/' ? { type: 'text/html', body: page('400px') } : path === '/red.webm' ? { type: 'video/webm', body: 'not a video' } : files(path)));
 	const browser = await chromium.launch();
 	try {
-		const route = (await runCheck({ oldOrigin: old.origin, newOrigin: next.origin, routes: ['/'], viewports: [{ name: 'desktop', width: 1280, height: 800, isMobile: false }], browser, journeys: { maxJourneys: 0, budgetMs: 1 } })).routes[0]!;
+		const route = (await runCheck({ oldOrigin: old.origin, newOrigin: next.origin, routes: ['/'], viewports: [{ name: 'desktop', width: 1280, height: 800, isMobile: false }], browser, journeys: { maxJourneys: 0, budgetMs: 1 }, media: true })).routes[0]!;
 		const lines = route.failures.map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n');
 		assert.ok(route.failures.some((f) => f.check === 'image #2 /office-small.png: the file its srcset picks (every picture loaded)' && f.expected === 'office-small.png' && f.actual === 'office-large.png'), lines);
 		assert.ok(route.failures.some((f) => f.check === 'image #1 /gone.png (every picture loaded)' && /broken on both sides/.test(f.actual)), lines);

@@ -110,7 +110,7 @@ export interface RouteContext {
 	/** Writes are sent on a side: forced states and journeys run one after the other. */
 	readonly writes: { readonly old: { readonly sendWrites?: boolean }; readonly new: { readonly sendWrites?: boolean } };
 	readonly oldRouting?: OldRouting;
-	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
+	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; readonly media?: boolean; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
 	/** Live: names the part of the check running, for the report's step times and a stopped route's message. */
 	readonly span?: <T>(part: string, work: () => Promise<T>) => Promise<T>;
 	/** The result as far as the check has got: what a route stopped at its deadline still reports. */
@@ -443,7 +443,7 @@ async function embedsCheck(o: Observe, result: RouteResult): Promise<RouteResult
 
 /** Where the old page has pictures, every one of them once loaded, at each width: what the page load's capture read of them already is not said twice. */
 async function mediaCheck(o: Observe, ctx: RouteContext, olds: readonly RouteCapture[], result: RouteResult, viewports: readonly Viewport[]): Promise<RouteResult> {
-	if (!viewports.some((v) => olds[0]!.pages[v.name]?.images.length)) return result;
+	if (!ctx.stages.media || !viewports.some((v) => olds[0]!.pages[v.name]?.images.length)) return result;
 	const row = await span(ctx, 'pictures', () => o('media', { viewports: viewports.map((v) => v.name) }));
 	const said = new Set(result.failures.map((f) => `${f.viewport} ${f.check}`));
 	const found = judgeMedia(ctx.route, row).filter((f) => !said.has(`${f.viewport} ${f.check.replace(/ \(every picture loaded\)$/, '')}`));
