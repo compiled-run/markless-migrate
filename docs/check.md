@@ -210,6 +210,14 @@ route handlers, `robots.txt`, sitemaps (including those robots.txt names), feeds
 pages link to, and common `/.well-known` files, whenever the old app serves them as something other than
 HTML. Any `--route` whose old response is not HTML is compared the same way.
 
+A route the plan does not list is never skipped in silence. Each checked page's links to the old app's own
+paths, and the pages its journeys reached, are held against `.migrate/inventory.json` (its routes and the
+source's route patterns, `/blog/:slug`); each one it does not list (a file such as a PDF aside) is asked of
+the original, up to 40 a route, and one the original serves as a page on its own origin is red under
+`coverage` on the route that links to it (`a page the inventory does not list: /careers`), as are any left
+unasked past that limit. Run `plan` again so it is listed, give its dynamic segment a sample, or accept it
+with the reason it needs no port.
+
 `plan`'s link crawl follows pagination until nothing new turns up. Pagination that runs on past its last
 page (a "More" link on an empty list, `/news/18` linking to `/news/19` forever) ends where a page shows
 what an earlier page of the same route shows apart from its numbers and links on to the next one: that
