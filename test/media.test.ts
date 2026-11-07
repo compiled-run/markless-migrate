@@ -30,8 +30,8 @@ function serve(answer: (path: string, req: IncomingMessage) => Answer | undefine
 	});
 }
 
-// A picture below the first screen that loads lazily, an avatar whose host fails for both pages, and a video; the port serves the lazy picture and the video broken.
-const PAGE = `<!doctype html><html lang="en"><head><title>Team</title></head><body><main><h1>Team</h1><img src="/gone.png" alt="Avatar" width="40" height="40"><video src="/red.webm" preload="auto" muted width="160" height="90"></video><div style="height: 2400px">The story</div><img src="/below.png" alt="Office" loading="lazy" width="40" height="40"></main></body></html>`;
+// A picture below the first screen that a scroll listener loads as it comes into view (no capture scrolls, so none loads it), an avatar whose host fails for both pages, and a video; the port serves the picture and the video broken.
+const PAGE = `<!doctype html><html lang="en"><head><title>Team</title></head><body><main><h1>Team</h1><img src="/gone.png" alt="Avatar" width="40" height="40"><video src="/red.webm" preload="auto" muted width="160" height="90"></video><div style="height: 2400px">The story</div><img data-src="/below.png" alt="Office" width="40" height="40"></main><script>addEventListener("scroll", () => { for (const img of document.querySelectorAll("img[data-src]")) if (img.getBoundingClientRect().top < innerHeight) { img.src = img.dataset.src; img.removeAttribute("data-src"); } });</script></body></html>`;
 
 test('a lazy picture below the first screen the port fails to serve, a picture broken on both sides and a video the port cannot play are red', { timeout: 300_000 }, async () => {
 	const old = await serve((path) => (path === '/' ? { type: 'text/html', body: PAGE } : path === '/below.png' ? { type: 'image/png', body: PNG40 } : path === '/red.webm' ? { type: 'video/webm', body: WEBM } : undefined));
