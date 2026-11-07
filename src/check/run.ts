@@ -67,6 +67,7 @@ import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
 import { observeBehaviours } from './inventory-page.ts';
+import type { InventoryRoutes, Served } from './unlisted.ts';
 import { bodyText, request } from './http.ts';
 
 export interface CheckOptions {
@@ -137,6 +138,8 @@ export interface CheckOptions {
 	readonly busyCpu?: BusyCpuOptions;
 	/** The behaviour inventory: every handler, animation, scroll behaviour, :hover and :focus rule and media element of each old page, ported or red; with --source, each one the source holds accounted for by the run. */
 	readonly behaviours?: boolean;
+	/** Every route the plan lists and the source's route patterns: a page the original serves that a checked page links to, or its journeys reach, and that this does not list, is red. */
+	readonly inventory?: InventoryRoutes;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** One part of a route checked across jobs (journey-slices.ts): exploring it, replaying a slice of its journeys, or joining the slices and checking the rest. */
@@ -200,6 +203,7 @@ interface Run {
 	readonly controls?: ControlParityOptions;
 	readonly busyCpu?: BusyCpuOptions & { readonly browsers: { readonly chromium: Browser; readonly firefox: Browser; readonly webkit: Browser } };
 	readonly behaviours?: boolean;
+	readonly inventory?: InventoryRoutes;
 	readonly slicing?: Slicing;
 }
 
@@ -327,6 +331,16 @@ async function steadyWeight(browser: Browser, run: Run, route: string, viewports
 // Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
 const unframed = (key: string, value: unknown) => (key === 'regions' || key === 'answeredMs' || key === 'shift' ? undefined : value);
 
+/** How the old app answers each path: its status after redirects, whether it is an HTML page, and where it landed. */
+async function servedPaths(env: SideEnv, paths: readonly string[]): Promise<Served[]> {
+	return pool(paths, 8, async (path): Promise<Served> => {
+		const http = await captureRouteHttp(env, path, tagHeaders(env)).catch(() => undefined);
+		if (!http) return { path, status: 0, page: false, landed: path };
+		const landed = new URL(http.chain.at(-1)!.url, env.origin);
+		return { path, status: http.status, page: isPage(http.contentType), landed: landed.origin === new URL(env.origin).origin ? `${landed.pathname}${landed.search}` : landed.href };
+	});
+}
+
 export async function servesPage(env: SideEnv, path: string): Promise<boolean> {
 	try {
 		const response = await request(new URL(path, env.origin).href, { redirect: 'manual', headers: tagHeaders(env), signal: AbortSignal.timeout(15_000) });
@@ -439,6 +453,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 		},
 		hashLinks: () => hashLinkFailures(browser, run.new, route, viewport),
 		behaviours: () => observeBehaviours(browser, later(), route, viewport),
+		served: ({ paths }) => servedPaths(watched.old, paths),
 		walls: async () => ({ ...(walls.old[0] ? { old: walls.old[0] } : {}), ...(walls.new[0] ? { new: walls.new[0] } : {}) }),
 	};
 }
@@ -570,7 +585,7 @@ function routeContext(run: Run, route: string, role: string | undefined, options
 	};
 }
 
-const routeStages = (run: Run): RouteContext['stages'] => ({ ...(run.original ? { original: { originalId: run.original.manifest.originalId, conditionsId: run.original.manifest.conditionsId } } : {}), probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds), ...(run.behaviours ? { behaviours: true } : {}) });
+const routeStages = (run: Run): RouteContext['stages'] => ({ ...(run.original ? { original: { originalId: run.original.manifest.originalId, conditionsId: run.original.manifest.conditionsId } } : {}), probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds), ...(run.inventory ? { inventory: run.inventory } : {}), ...(run.behaviours ? { behaviours: true } : {}) });
 
 /** OLD's captures of the route, so a record run can save what OLD fetched. */
 const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
@@ -810,7 +825,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		await webkitBrowser?.close();
 		throw error;
 	}
-	const base: Run = { ...(options.slicing ? { slicing: options.slicing } : {}), ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.behaviours ? { behaviours: true } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { ...(options.slicing ? { slicing: options.slicing } : {}), ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.inventory ? { inventory: options.inventory } : {}), ...(options.behaviours ? { behaviours: true } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
