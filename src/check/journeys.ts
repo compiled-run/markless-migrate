@@ -458,6 +458,52 @@ function hoverSurfaces(): { tag: string; scope: string; index: number }[] {
 	});
 }
 
+/** Runs in the page: parts smaller than a surface that listen for the pointer coming over them (a tab whose mouseenter switches a preview, a card that reveals a caption), no link or form field, by their text where they have one, at most 12. */
+function hoverables({ frameworkMarkup, kept }: { frameworkMarkup: string; kept: number }): { name: string; nth: number; structure: { tag: string; scope: string; index: number } }[] {
+	const hover = (globalThis as { __markless_migrate_hover__?: WeakSet<Element> }).__markless_migrate_hover__;
+	if (!hover) return [];
+	// The same expression as labelled() and the same scope as the structure engine, written out because a page with a CSP may refuse eval.
+	const xpathFor = (name: string) => {
+		const v = name.includes("'") ? `concat('${name.split("'").join(`', "'", '`)}')` : `'${name}'`;
+		const is = (of: string) => (name.length >= kept ? `starts-with(${of}, ${v})` : `${of}=${v}`);
+		return `//body//*[(${is('normalize-space(.)')} and not(*[${is('normalize-space(.)')}])) or (normalize-space(.)='' and (${is('@aria-label')} or ${is('@title')}))]`;
+	};
+	const LANDMARK: Record<string, string> = { main: 'main', nav: 'navigation', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', dialog: 'dialog', figure: 'figure', svg: 'svg', ul: 'list', ol: 'list' };
+	const scopeOf = (el: Element) => {
+		const parts: string[] = [];
+		for (let at = el.parentElement; at; at = at.parentElement) {
+			const role = at.getAttribute('role') ?? LANDMARK[at.localName];
+			if (role && role !== 'presentation' && role !== 'none' && role !== 'generic') parts.unshift(role);
+		}
+		return parts.join('>');
+	};
+	// A link's pointer listener is its router's prefetch; a form field answers typing, which other journeys use.
+	const skipped = 'a[href], input, select, textarea, label';
+	const surface = (el: Element) => {
+		const r = el.getBoundingClientRect();
+		return r.width >= 120 && r.height >= 60;
+	};
+	const label = (el: Element) => ((el.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, kept);
+	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => hover.has(el) && !surface(el) && !el.closest(frameworkMarkup) && !el.matches(skipped) && !el.closest(skipped) && el.checkVisibility({ visibilityProperty: true }));
+	const outer = hits.filter((el) => !hits.some((other) => other !== el && other.contains(el))).slice(0, 12);
+	return outer.map((el) => {
+		const name = label(el);
+		let nth = 0;
+		if (name) {
+			const found = document.evaluate(xpathFor(name), document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+			for (let i = 0; i < found.snapshotLength; i++) {
+				const node = found.snapshotItem(i)!;
+				if (node === el || el.contains(node)) {
+					nth = i;
+					break;
+				}
+			}
+		}
+		const scope = scopeOf(el);
+		return { name, nth, structure: { tag: el.localName, scope, index: [...document.querySelectorAll(el.localName)].filter((other) => scopeOf(other) === scope && other.checkVisibility({ visibilityProperty: true })).indexOf(el) } };
+	});
+}
+
 /** A section of the page found by its id (the target of a contents list's link). */
 /** The target of a step that no control performs: the database sends it. */
 export const LIVE = 'database';
@@ -2231,6 +2277,12 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const target: Target = { role: 'surface', name: '', nth: 0, structure };
 			const steps = HOVER_POINTS.map((at): Step => ({ action: 'hover', target, at }));
 			wave.push({ journey: { name: `move the pointer across ${describeTarget(target)}`, steps }, depth: 1, expand: false });
+		}
+		// Smaller parts that answer the pointer coming over them, whether or not they take a click, are pointed at one after another: what each one's hover changes is compared.
+		const hovered = await start.page.evaluate(hoverables, { frameworkMarkup: FRAMEWORK_MARKUP_SELECTOR, kept: NAME_KEPT }).catch(() => []);
+		if (hovered.length) {
+			const steps = hovered.map((h): Step => ({ action: 'hover', target: h.name ? { role: CLICKABLE, name: h.name, nth: h.nth } : { role: 'surface', name: '', nth: 0, structure: h.structure }, at: 0.5 }));
+			wave.push({ journey: { name: `point at each of the ${steps.length} parts that answer the pointer coming over them`, steps }, depth: 1, expand: false });
 		}
 		const sections = await start.page.evaluate(contentsSections).catch(() => [] as string[]);
 		if (sections.length >= 2) {
