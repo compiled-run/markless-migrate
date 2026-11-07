@@ -56,7 +56,8 @@ const dialog = (port: boolean) => `<!doctype html><html lang="en"><head><title>P
 test('a dialog that opens and closes at once where the original animates it, and fills the phone where the original keeps a margin, is red', { timeout: 600_000 }, async () => {
 	const route = await check(dialog(false), dialog(true));
 	const found = route.failures.filter((f) => /: the dialog, /.test(f.check));
-	assert.ok(found.some((f) => f.viewport === 'mobile' && f.check.endsWith('the dialog, box once open') && /358x240/.test(f.expected) && /390x240/.test(f.actual)), lines(route.failures));
+	// The box with its 1 px border: 358 + 2 wide on the original's phone, 390 + 2 on the port's.
+	assert.ok(found.some((f) => f.viewport === 'mobile' && f.check.endsWith('the dialog, box once open') && /^360x242 /.test(f.expected) && /^392x242 /.test(f.actual)), lines(route.failures));
 	assert.ok(found.some((f) => f.check.endsWith('the dialog, opening') && f.actual === 'at once'), lines(route.failures));
 	assert.ok(found.some((f) => f.check.endsWith('the dialog, closing') && f.actual === 'at once'), lines(route.failures));
 });
