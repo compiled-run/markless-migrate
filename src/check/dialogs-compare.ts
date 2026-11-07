@@ -26,7 +26,11 @@ export interface DialogsRow {
 
 /** Journeys whose last step opens a dialog and stays on the page, the first few. */
 export function dialogJourneys(journeys: readonly RecordedJourney[]): RecordedJourney[] {
-	return journeys.filter((j) => !j.destructive && !j.start && !j.cycle?.length && j.expected.length === j.steps.length && !j.expected.at(-1)!.navigated && j.expected.at(-1)!.added.some((l) => /^- (dialog|alertdialog)\b/.test(l))).slice(0, MAX_DIALOGS);
+	const opens = (j: RecordedJourney) => {
+		const last = j.expected[j.steps.length - 1];
+		return Boolean(last && !last.failed && !last.navigated && last.added.some((l) => /^- (dialog|alertdialog)\b/.test(l.trim())));
+	};
+	return journeys.filter((j) => !j.destructive && !j.start && opens(j)).slice(0, MAX_DIALOGS);
 }
 
 const parse = (box: string): Box => {
