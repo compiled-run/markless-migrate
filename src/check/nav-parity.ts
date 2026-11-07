@@ -5,7 +5,7 @@ import { bodyText, request } from './http.ts';
 import { pool, quiet } from './journeys.ts';
 import { RUNTIME_MARKERS } from './residue.ts';
 import { maskedShot } from './embeds.ts';
-import { armThemeFrames, flashFailures, layoutFailures, readThemeFrames, recordSwapShots, themeFrameRecorder, type SwapShot, type ThemeRecording } from './swap-frames.ts';
+import { armThemeFrames, contentFailures, flashFailures, layoutFailures, readThemeFrames, recordSwapShots, themeFrameRecorder, type SwapShot, type ThemeRecording } from './swap-frames.ts';
 import type { Failure, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent, type VisualNoise } from './visual.ts';
 import { VIEWPORTS } from './types.ts';
@@ -735,6 +735,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				const layout = layoutFailures(job.to, way, viewport.name, frames, painted);
 				failures.push(...layout.failures);
 				shots.push(...layout.shots.map((shot) => ({ route: job.to, shot })));
+				failures.push(...contentFailures(job.to, way, viewport.name, frames));
 				// The destination's own controls again, as a visitor goes on using the page: a theme switch twice (on, then back), then one in the content.
 				const steps = destination ? await runSteps(tab, destination.steps.map((s) => s.control), 2) : [];
 				for (const [i, step] of steps.entries()) {
@@ -792,7 +793,23 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 			await tab.close();
 		}
 	}
-	return { fresh, pair, darkSwap };
+	/** The plain navigation again at this side's width, for what its frames show alone: the theme, the layout, blank regions and styles. */
+	async function swap(job: Job): Promise<Failure[]> {
+		const how = `in place from ${job.from} at ${viewport.width} px`;
+		opened();
+		const tab = await openTab(browser, env, viewport, job.from);
+		try {
+			const { inPlace, injected, frames, shots } = await follow(tab, job.to, env.origin, new URL(job.to, env.origin).href, true);
+			if (!inPlace) return [];
+			const way = injected ? `${how} (through a link the checker added: no page links here)` : how;
+			return [...flashFailures(job.to, way, frames).map((f) => ({ ...f, viewport: viewport.name })), ...layoutFailures(job.to, way, viewport.name, frames, shots).failures, ...contentFailures(job.to, way, viewport.name, frames)];
+		} catch (error) {
+			return [{ route: job.to, dimension: 'navigation', check: `${how}: following the link`, viewport: viewport.name, expected: `the link from ${job.from} shows ${job.to}`, actual: (error as Error).message.split('\n')[0]!.split(env.origin).join(''), hint: NAVIGATION_HINTS.url }];
+		} finally {
+			await tab.close();
+		}
+	}
+	return { fresh, pair, darkSwap, swap };
 }
 
 // The screenshot a navigation failure carries: the page reached for a screenshot check, the frame for a layout check.
@@ -878,6 +895,20 @@ export async function checkNavigation(browser: Browser, env: SideEnv, routes: re
 		// The old app flashing the same way reached the same way is its own.
 		const own = new Set(oldDark ? (await oldDark.darkSwap(job)).map(sameKey) : []);
 		failures.push(...flashed.filter((f) => !own.has(sameKey(f))));
+	}
+	// The swap's frames again at phone width: a layout that jumps, a region left blank or a page shown unstyled there only.
+	const phoneWidth = viewport.isMobile ? undefined : VIEWPORTS.find((v) => v.isMobile);
+	if (phoneWidth) {
+		const swapped = plan.destinations.flatMap((d) => done.find((o) => o.job.to === d.route && o.job.variant === 'plain' && o.pair.inPlace && !o.pair.swappedByPage)?.job ?? []);
+		const narrow = side(browser, env, phoneWidth, opened);
+		const oldNarrow = options.old && side(browser, options.old, phoneWidth, opened);
+		for (const { job, failures: framed } of await pool(swapped, concurrency, async (job) => ({ job, failures: await narrow.swap(job) }))) {
+			if (!framed.length) continue;
+			// What a frame shows depends on when it is painted: the old app's own swap is recorded up to three times before a difference counts as the port's.
+			const own = new Set<string>();
+			for (let i = 0; oldNarrow && i <= OLD_RETRIES && framed.some((f) => !own.has(sameKey(f))); i++) for (const f of await oldNarrow.swap(job)) own.add(sameKey(f));
+			failures.push(...framed.filter((f) => !own.has(sameKey(f))));
+		}
 	}
 	const kept = new Set(failures);
 	return {
