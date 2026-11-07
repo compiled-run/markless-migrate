@@ -65,4 +65,6 @@ test('lostWithin: the original\'s main changed is answered by the port changing 
 	const at = (...affected: string[]): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, reaction: { regions: [], changes: [], affected } });
 	assert.equal(lostWithin([at('main'), at('main')], at('listbox in main')), undefined);
 	assert.deepEqual(lostWithin([at('tabpanel "Picture" in main'), at('tabpanel "Picture" in main')], at('tablist "Views" in main')), ['tabpanel "Picture" in main']);
+	// The same list under another landmark is the landmark's difference (a11y), not this step's.
+	assert.equal(lostWithin([at('list in navigation "Main"'), at('list in navigation "Main"')], at('list in banner')), undefined);
 });

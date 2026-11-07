@@ -105,11 +105,15 @@ export function lostRegions(olds: readonly StepResult[], next: StepResult): stri
 	return lost.length ? lost : undefined;
 }
 
-/** lostRegions, counting a region as changed when the new page changed a named region inside it (the original's `main`, the port's `listbox in main`). */
+// The region itself without the landmark holding it: `list in navigation "Main"` is the list, whichever landmark the port wraps it in.
+const LANDMARK_TAIL = / in (main|navigation|complementary|banner|contentinfo|search|dialog|alertdialog)\b.*$/;
+const innerOf = (r: string) => r.replace(LANDMARK_TAIL, '');
+
+/** lostRegions, counting a region as changed when the new page changed a named region inside it (the original's `main`, the port's `listbox in main`) or the same region under another landmark (an a11y difference, not this step's). */
 export function lostWithin(olds: readonly StepResult[], next: StepResult): string[] | undefined {
 	const bare = (r: string) => r.replace(/ #\d+/g, '');
 	const mine = (next.reaction?.affected ?? []).map(bare);
-	const lost = lostRegions(olds, next)?.filter((r) => !mine.some((m) => m.endsWith(` in ${r}`)));
+	const lost = lostRegions(olds, next)?.filter((r) => !mine.some((m) => m.endsWith(` in ${r}`) || (LANDMARK_TAIL.test(r) && innerOf(m) === innerOf(r))));
 	return lost?.length ? lost : undefined;
 }
 
