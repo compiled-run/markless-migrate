@@ -67,24 +67,24 @@ jobs:
       - run: pnpm typecheck
 
   unit:
-    name: Unit tests (${{ matrix.shard }}/4)
+    name: Unit tests (${{ matrix.shard }}/5)
     needs: changes
     if: needs.changes.outputs.tested != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # With the five short e2e jobs, one pull request holds at most 10 of the org's 60 runners, for about 15 minutes.
-      max-parallel: 4
+      # With the five short e2e jobs, one pull request holds at most 11 of the org's 60 runners, for about 15 minutes.
+      max-parallel: 5
       matrix:
-        # Four shards: with journeys after in-place arrival and each route's 3.5 s look at what moves on its own, shard 1 of 3 measured 30 min, its whole budget.
-        shard: [1, 2, 3, 4]
+        # Five shards: with four, shard 1 measured 12 to 20 min in the 2026-11-07 runs and hit the 20 min watchdog whenever a new test file moved a heavier set of files into it (shard 1 of 3 had measured 30 min).
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       # The slowest unit test takes about 6 minutes on a runner; one stuck past 10 fails by name instead of holding the shard until it is cancelled.
       # A shard takes at most 15 minutes; one still running at 20 prints what each Node process under it is stuck on, then fails.
-      - run: bash scripts/ci-watchdog.sh node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/4 test/*.test.ts
+      - run: bash scripts/ci-watchdog.sh node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/5 test/*.test.ts
 
   e2e:
     name: E2E ${{ matrix.suite }}
