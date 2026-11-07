@@ -19,7 +19,7 @@ import { judgeResponsiveness } from './responsiveness-compare.ts';
 import type { SourceFacts } from './source-facts.ts';
 import { judgeStates, statesPlan, statesRequest, type StatesRequest, type StatesRow } from './states-compare.ts';
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
-import { judgeTouch, tappedControls, type TouchRow } from './touch.ts';
+import { judgeTouch, tappedControls, type TouchRow } from './touch-compare.ts';
 import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DIMENSIONS, REPRESENTATIVE_ONLY, type Blocked, type Coverage, type Dimension, type Failure, type Infrastructure, type RouteCapture, type RouteResult, type Shot, type SourceLink, type Viewport } from './types.ts';
 import type { WallHit } from './browser.ts';

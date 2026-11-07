@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { runCheck } from '../src/check/run.ts';
-import { judgeTouch, type Tap } from '../src/check/touch.ts';
+import { judgeTouch, type Tap } from '../src/check/touch-compare.ts';
 
 const page = (script: string) => `<!doctype html><html lang="en"><head><title>Touch</title><meta name="viewport" content="width=device-width"></head><body><main><h1>Plans</h1><button id="details">Show details</button><button id="both">Show price</button><p id="out"></p><p id="price"></p></main><script>${script}document.getElementById("both").addEventListener("click", () => { document.getElementById("price").textContent = "Price: 10 EUR"; });</script></body></html>`;
 // The port answers the mouse only: a pointerdown handler that ignores touch, so a finger's tap does nothing.

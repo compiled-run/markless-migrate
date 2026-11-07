@@ -74,8 +74,8 @@ test('a check whose WebKit or Firefox does not start exits with the reason, clos
 	try {
 		for (const entry of readdirSync(root)) if (/^(chromium|ffmpeg|firefox)/.test(entry)) symlinkSync(join(root, entry), join(chromiumOnly, entry));
 		const env = { ...process.env, CI: '', PLAYWRIGHT_BROWSERS_PATH: chromiumOnly };
-		for (const [flag, reason] of [['--control-webkit', /control parity compares pop-up places in WebKit, which did not start/], ['--busy-cpu', /the busy-CPU lane uses Firefox and WebKit, which did not start/]] as const) {
-			const result = await spawnNode([CLI, 'check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--route', '/', flag], { env, timeoutMs: 60_000 });
+		for (const [flags, reason] of [[['--control-webkit'], /control parity compares pop-up places in WebKit, which did not start/], [['--busy-cpu', '--no-touch'], /the busy-CPU lane uses Firefox and WebKit, which did not start/], [['--touch', 'iphone'], /taps are checked on an iPhone in WebKit, which did not start/]] as const) {
+			const result = await spawnNode([CLI, 'check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--route', '/', ...flags], { env, timeoutMs: 60_000 });
 			assert.notEqual(result.status, 0);
 			assert.match(result.stderr, reason);
 		}
@@ -122,7 +122,7 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	await mkdir(join(cwd, '.migrate'));
 	await writeFile(join(cwd, '.migrate', 'inventory.json'), JSON.stringify({ routes: [], routeUnion: [{ route: '/news/:slug', knownBy: ['source'], crawled: [], dynamic: true, kind: 'page', file: 'app/news/[slug]/page.tsx', line: 4 }] }));
 	// On CI each run takes at most 4 s; a route stalled past 60 s ends the check with what it waited on, and the process is killed at 120 s.
-	const check = (...extra: string[]) => spawnNode([CLI, 'check', '--old', old!, '--new', next!, '--all', '--no-load', '--timeout', '60', ...extra], { cwd, timeoutMs: 120_000 });
+	const check = (...extra: string[]) => spawnNode([CLI, 'check', '--old', old!, '--new', next!, '--all', '--no-load', '--no-touch', '--timeout', '60', ...extra], { cwd, timeoutMs: 120_000 });
 	try {
 		const strict = await check();
 		assert.equal(strict.status, 1, strict.stdout + strict.stderr);

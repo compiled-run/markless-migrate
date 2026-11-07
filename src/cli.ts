@@ -13,7 +13,7 @@ import { homedir } from 'node:os';
 import { PSI_KEY_ENV, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { TOUCH_PROFILES, type TouchOptions, type TouchProfileName } from './check/touch.ts';
+import { TOUCH_PROFILES, type TouchOptions, type TouchProfileName } from './check/touch-compare.ts';
 import { measureSlowNetwork, missingBrowsersError, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { networkHtml } from './check/slow-network-html.ts';

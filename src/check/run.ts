@@ -66,7 +66,8 @@ import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templa
 import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
-import { observeTouch, type TouchOptions } from './touch.ts';
+import { observeTouch } from './touch.ts';
+import type { TouchOptions } from './touch-compare.ts';
 import { bodyText, request } from './http.ts';
 
 export interface CheckOptions {
