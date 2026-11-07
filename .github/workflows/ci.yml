@@ -98,7 +98,7 @@ jobs:
         include:
           # Suites of 0 to 4 minutes share a runner, one file after another, instead of each paying its own setup.
           - { suite: quick, files: convert-compiles dev-builds markless-site proxy waste responsiveness nav-parity layout-owners }
-          - { suite: pages, files: motion page-load radix-dialog-port embeds original-dataset }
+          - { suite: pages, files: motion scroll-and-dialogs page-load radix-dialog-port embeds original-dataset }
           - { suite: networks, files: slow-network late-fonts busy-cpu state-engines, browsers: chromium firefox webkit }
           - { suite: shadcn, files: shadcn-typeset shadcn-create judge-offline, browsers: chromium webkit }
           - { suite: parity, files: control-parity, browsers: chromium webkit }
