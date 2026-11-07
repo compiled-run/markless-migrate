@@ -13,6 +13,7 @@ import { homedir } from 'node:os';
 import { PSI_KEY_ENV, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { TOUCH_PROFILES, type TouchOptions, type TouchProfileName } from './check/touch-compare.ts';
 import { measureSlowNetwork, missingBrowsersError, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { networkHtml } from './check/slow-network-html.ts';
@@ -154,7 +155,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-behaviours] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-behaviours] [--no-media] [--no-touch] [--touch iphone,android] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           [--observations <dir>] [--original <dir>]
@@ -260,6 +261,10 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           two old loads show, must be on the new page; with --source, each one the old app's source
           holds must show live on a checked page where the port has it too (full runs only). Anything
           else is red until accepted. --no-behaviours leaves it out.
+          Touch: every control a desktop journey clicked is tapped with a finger on a freshly loaded
+          page, on an iPhone in WebKit and an Android phone in Chromium (touch input, phone width), old
+          and new; a tap the original answers that the port answers with nothing, or with other content
+          or another page, is red. --touch iphone|android keeps one phone; --no-touch leaves it out.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -542,6 +547,9 @@ const TIMING_FLAGS = {
 	'control-webkit': { type: 'boolean' },
 	'busy-cpu': { type: 'boolean' },
 	'no-behaviours': { type: 'boolean' },
+	'no-media': { type: 'boolean' },
+	'no-touch': { type: 'boolean' },
+	touch: { type: 'string' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -576,6 +584,14 @@ function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: 
 	const entries = count('nav-entries');
 	const destinations = count('nav-destinations');
 	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
+}
+
+function touchOptions(flag: string | undefined): TouchOptions {
+	if (flag === undefined) return {};
+	const names = flag.split(',').map((n) => n.trim()).filter(Boolean);
+	const unknown = names.filter((n) => !TOUCH_PROFILES.some((p) => p.name === n));
+	if (!names.length || unknown.length) fail(`--touch takes ${TOUCH_PROFILES.map((p) => p.name).join(' and/or ')}, comma-separated${unknown.length ? `, not ${unknown.join(', ')}` : ''}`);
+	return { profiles: names as TouchProfileName[] };
 }
 
 function slowNetworkOptions(values: SlowNetworkFlags): SlowNetworkOptions | undefined {
@@ -851,6 +867,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(values['no-probes'] ? {} : { probes: {} }),
 					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 					...(values['no-behaviours'] || values.only ? {} : { behaviours: true }),
+					...(values['no-media'] || values.only ? {} : { media: true }),
+					...(values['no-touch'] || values.only ? {} : { touch: touchOptions(values.touch) }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
@@ -1189,6 +1207,8 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
 				...(values['no-behaviours'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { behaviours: true }),
+				...(values['no-media'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { media: true }),
+				...(values['no-touch'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { touch: touchOptions(values.touch) }),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),

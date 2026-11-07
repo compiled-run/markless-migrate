@@ -163,7 +163,7 @@ test('a third-party widget gets the same answer on every load of a run, so its A
 	const next = await serve(() => ({ body: page }));
 	const cwd = await mkdtemp(join(tmpdir(), 'mm-widget-'));
 	// Each run is its own process, as from the command line: the second shares nothing with the first but the cache.
-	const run = () => spawnNode([join(import.meta.dirname, '../src/cli.ts'), 'check', '--old', old, '--new', next, '--route', '/', '--no-responsiveness', '--no-load', '--no-motion', '--journey-budget', '20'], { cwd, timeoutMs: 180_000 }).then((r) => r.stdout);
+	const run = () => spawnNode([join(import.meta.dirname, '../src/cli.ts'), 'check', '--old', old, '--new', next, '--route', '/', '--no-responsiveness', '--no-load', '--no-touch', '--no-motion', '--journey-budget', '20'], { cwd, timeoutMs: 180_000 }).then((r) => r.stdout);
 	const first = await run();
 	assert.match(first, /pass +\/ /, first);
 	assert.equal(calls, 1, 'one fetch answered every load');
@@ -222,7 +222,7 @@ test('a file the new app does not answer at all (the connection times out) leave
 	const old = await serve((path) => (path === '/a.png' ? { type: 'image/png', body: png } : path === '/' ? { body: html('<img src="/a.png" width="1" height="1" alt="dot">') } : undefined));
 	const next = await serve((path) => (path === '/a.png' ? 'hang' : path === '/' ? { body: html('<img src="/a.png" width="1" height="1" alt="dot" loading="lazy" style="display: none">') } : undefined));
 	const cwd = await mkdtemp(join(tmpdir(), 'mm-probe-'));
-	const out = (await spawnNode([join(import.meta.dirname, '../src/cli.ts'), 'check', '--old', old, '--new', next, '--route', '/', '--no-responsiveness', '--no-load', '--no-motion', '--journey-budget', '5'], { cwd, env: { ...process.env, MARKLESS_MIGRATE_REQUEST_TIMEOUT_MS: '1500' }, timeoutMs: 180_000 })).stdout;
+	const out = (await spawnNode([join(import.meta.dirname, '../src/cli.ts'), 'check', '--old', old, '--new', next, '--route', '/', '--no-responsiveness', '--no-load', '--no-touch', '--no-motion', '--journey-budget', '5'], { cwd, env: { ...process.env, MARKLESS_MIGRATE_REQUEST_TIMEOUT_MS: '1500' }, timeoutMs: 180_000 })).stdout;
 	assert.match(out, /not checked/i, out);
 	assert.doesNotMatch(out, /assets.*\/a\.png/, out);
 });
