@@ -48,7 +48,7 @@ staging pass is sent as a header or cookie.
 `.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
 
 - `Typecheck`: `pnpm typecheck`.
-- `Unit tests (1/4)` to `(4/4)`: `test/*.test.ts` split in four with `node --test --test-shard`, since
+- `Unit tests (1/5)` to `(5/5)`: `test/*.test.ts` split in five with `node --test --test-shard`, since
   the unit tests drive Chromium.
 - `E2E <suite>`: one job per file in `test/e2e/`, each building its own fixtures. The largest
   suites are split across runners with `E2E_SHARD=i/n` (six for `next-app`, four for `vite-site`, four for `corpus`): a
