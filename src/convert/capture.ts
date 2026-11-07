@@ -23,7 +23,7 @@ export interface CapturedPage {
 	readonly settled: Readonly<Record<string, string>>;
 	/** The motion preference `settled` was taken under. */
 	readonly motion?: typeof CAPTURE_MOTION;
-	/** The same document for a visitor who asks for reduced motion, per viewport name: recorded beside `settled`, never written into the port. */
+	/** The same document for a visitor who asks for reduced motion, per viewport name, when the page's scripts asked for that preference (a page that never asks shows them the same document): recorded beside `settled`, never written into the port. */
 	readonly reducedMotion?: Readonly<Record<string, string>>;
 	/** Where each image was drawn, per viewport name; absent from a capture taken before it was recorded. */
 	readonly images?: Readonly<Record<string, ImageFacts>>;
@@ -106,7 +106,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
 	const marks = pageMarks();
-	if (cached && cached.route === route && cached.motion === CAPTURE_MOTION && cached.reducedMotion && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS) return cached;
+	if (cached && cached.route === route && cached.motion === CAPTURE_MOTION && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
@@ -120,6 +120,8 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	for (const viewport of viewports) {
 		const env = captureEnv(origin);
 		const { context, page } = await openPage(browser, env, viewport);
+		await context.addInitScript(watchMotionQuery);
+		let asked = true;
 		try {
 			const response = await loadPage(page, new URL(route, origin).href);
 			if (!server) {
@@ -134,6 +136,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
 			await page.evaluate(markInstanceProps, { specs: instanceSpecs(), added: false }).catch(() => {});
 			settled[viewport.name] = await page.evaluate(() => `<!DOCTYPE html>${document.documentElement.outerHTML}`);
+			asked = await page.evaluate(() => Boolean((window as unknown as { __mmAsksMotion?: boolean }).__mmAsksMotion)).catch(() => true);
 			images[viewport.name] = await page.evaluate(readImages);
 			if (viewport === viewports[0]) {
 				// A phone's first screen, by the same page at a phone's width: a face either first screen draws is not late.
@@ -157,12 +160,22 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		} finally {
 			await context.close().catch(() => {});
 		}
-		reducedMotion[viewport.name] = await reducedDocument(browser, origin, route, viewport);
+		if (asked) reducedMotion[viewport.name] = await reducedDocument(browser, origin, route, viewport);
 	}
-	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, reducedMotion, images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, ...(Object.keys(reducedMotion).length ? { reducedMotion } : {}), images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;
+}
+
+// Runs before the page's own scripts: notes whether any of them asks for the visitor's motion preference.
+function watchMotionQuery(): void {
+	const w = window as unknown as { __mmAsksMotion?: boolean };
+	const ask = window.matchMedia.bind(window);
+	window.matchMedia = (query: string) => {
+		if (query.includes('prefers-reduced-motion')) w.__mmAsksMotion = true;
+		return ask(query);
+	};
 }
 
 // The same settled document for a visitor who asks for reduced motion: kept beside the capture, so what differs for them is on record without the port being written from it.

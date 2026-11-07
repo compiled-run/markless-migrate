@@ -40,6 +40,21 @@ test('convert captures the page with motion allowed, and records the reduced-mot
 	}
 });
 
+test('a page whose scripts never ask for the motion preference is captured once: a reduced-motion visitor sees the same document', { timeout: 120_000 }, async () => {
+	const { server, origin } = await serve('<!doctype html><html lang="en"><head><title>Plain</title></head><body><main><h1>Plain</h1></main></body></html>');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-motion-capture-'));
+	const browser = await chromium.launch();
+	try {
+		const captured = await capturePage(browser, origin, '/', dir, [{ name: 'desktop', width: 1280, height: 800, isMobile: false }]);
+		assert.equal(captured.motion, 'no-preference');
+		assert.equal(captured.reducedMotion, undefined);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test('no convert module opens the old site with the check\'s own reduced-motion environment: every one runs through captureEnv', async () => {
 	const dir = new URL('../src/convert/', import.meta.url);
 	const offenders: string[] = [];
