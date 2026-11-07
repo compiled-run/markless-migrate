@@ -9,7 +9,14 @@ import { PNG } from 'pngjs';
 import { chromium } from 'playwright';
 import { accountSource, type Accounted, type SourceBehaviour } from '../src/check/inventory-compare.ts';
 import { runCheck } from '../src/check/run.ts';
+import { stateless } from '../src/check/inventory-page.ts';
 import { scanBehaviours } from '../src/source/behaviours.ts';
+
+test('stateless: a rule\'s selector without its :hover and :focus states and pseudo-elements, read from its syntax tree', () => {
+	assert.equal(stateless('.card:hover > .title'), '.card>.title');
+	assert.equal(stateless('a:focus-visible::after'), 'a');
+	assert.equal(stateless(':hover'), '*');
+});
 
 const PNG8 = (() => {
 	const p = new PNG({ width: 8, height: 8 });
@@ -18,7 +25,7 @@ const PNG8 = (() => {
 })();
 
 // A card with a :hover rule, a badge the page animates as it loads, a header the page shrinks on scroll and a picture; the port has the card and badge but none of what they do, and no picture.
-const page = (full: boolean) => `<!doctype html><html lang="en"><head><title>Inventory</title><style>.card { padding: 8px } ${full ? '.card:hover { background: #eef }' : ''} .tall { height: 2000px }</style></head><body><header id="top">Top</header><main><h1>Inventory</h1><div class="card">A card</div><span id="badge">New</span>${full ? '<img src="/a.png" alt="A" width="8" height="8">' : ''}<div class="tall"></div></main>${full ? '<script>document.getElementById("badge").animate([{ opacity: 0 }, { opacity: 1 }], 300); addEventListener("scroll", () => document.getElementById("top").classList.toggle("small", scrollY > 10));</script>' : ''}</body></html>`;
+const page = (full: boolean) => `<!doctype html><html lang="en"><head><title>Inventory</title><style>.card { padding: 8px } ${full ? '.card:hover { background: #eef } .gone:hover { color: red }' : ''} .tall { height: 2000px }</style></head><body><header id="top">Top</header><main><h1>Inventory</h1><div class="card">A card</div><span id="badge">New</span>${full ? '<img src="/a.png" alt="A" width="8" height="8">' : ''}<div class="tall"></div></main>${full ? '<script>document.getElementById("badge").animate([{ opacity: 0 }, { opacity: 1 }], 300); addEventListener("scroll", () => document.getElementById("top").classList.toggle("small", scrollY > 10));</script>' : ''}</body></html>`;
 
 function serve(html: string): Promise<{ server: Server; origin: string }> {
 	return new Promise((done) => {
@@ -37,6 +44,8 @@ test('every :hover rule, animated element, scroll listener and media element of 
 		const inventory = route.failures.filter((f) => f.check.startsWith('behaviour inventory: ')).map((f) => f.check);
 		for (const want of ['behaviour inventory: :hover rule .card:hover', 'behaviour inventory: animation <span> new', 'behaviour inventory: scroll behaviour a listener on the page scrolling', 'behaviour inventory: media element <img> /a.png']) assert.ok(inventory.includes(want), inventory.join('\n'));
 		assert.ok(route.behaviours?.some((b) => b.key === 'css|.card:hover' && b.status === 'missing'));
+		// A rule for an element this page does not have is another page's (a site-wide sheet, a port's per-page cut).
+		assert.ok(!route.behaviours?.some((b) => b.key === 'css|.gone:hover'), JSON.stringify(route.behaviours));
 		// The source's hover rule was seen and not ported; its animation and scroll hook are of kinds the page showed and the port lacks.
 		assert.deepEqual(report.inventory?.source.map((s) => s.status), ['missing', 'missing', 'missing']);
 		assert.equal(report.inventory?.failures.length, 3);

@@ -1,5 +1,7 @@
 // What a page does in the browser, read live: the elements it animates, what it does on scroll, the :hover and :focus rules its stylesheets hold and its media, on the old page twice and the new page once.
 import type { Browser } from 'playwright';
+import { parse } from 'yuku-css';
+import { generate } from 'yuku-css/codegen';
 import type { SideEnv } from './browser.ts';
 import type { LiveBehaviour, LiveRow } from './inventory-compare.ts';
 import { openSession } from './journeys.ts';
@@ -110,10 +112,30 @@ export async function readBehaviours(): Promise<LiveBehaviour[]> {
 	}
 }
 
+const STATES = new Set(['hover', 'focus', 'focus-visible', 'focus-within']);
+type CssNode = { type: string; name?: string; children?: CssNode[]; prelude?: CssNode };
+
+/** The selector without its :hover and :focus states and pseudo-elements, from its syntax tree: what the rule styles when the state holds. */
+export function stateless(selector: string): string | undefined {
+	const { ast } = parse(`${selector}{}`);
+	const rule = (ast.children as CssNode[])[0];
+	const first = rule?.type === 'Rule' && rule.prelude?.type === 'SelectorList' ? rule.prelude.children?.[0] : undefined;
+	if (!first?.children) return undefined;
+	const kept = first.children.filter((part) => !(part.type === 'PseudoClassSelector' && STATES.has(part.name ?? '')) && part.type !== 'PseudoElementSelector');
+	const text = kept.length ? generate({ ...first, children: kept } as Parameters<typeof generate>[0]) : '*';
+	return /(^|[\s>+~])$/.test(text) ? `${text}*` : text;
+}
+
 async function read(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<LiveBehaviour[]> {
 	const session = await openSession(browser, motionEnv(env, false), route, viewport, { initScripts: [watchBehaviours] });
 	try {
-		return await session.page.evaluate(readBehaviours);
+		const found = await session.page.evaluate(readBehaviours);
+		// A rule counts where it styles an element of this page: a site-wide stylesheet's rule for another page's element is that page's.
+		const rules = found.filter((b) => b.kind === 'hover-rule' || b.kind === 'focus-rule');
+		const bases = rules.map((b) => stateless(b.what) ?? '*');
+		const applies = await session.page.evaluate((list) => list.map((b) => { try { return document.querySelector(b) !== null; } catch { return true; } }), bases);
+		const off = new Set(rules.filter((_, i) => !applies[i]));
+		return found.filter((b) => !off.has(b));
 	} finally {
 		await session.close();
 	}
