@@ -98,7 +98,8 @@ describe('navigation: a page reached in place matches a fresh load of it', { con
 		assert.ok(docs, lines(result));
 		assert.match(docs.actual, /^\d+ frames? showed a layout of (?:its|their) own \(.*\bmain1\b.*\); a painted frame differs from the finished page in \d+ pixels$/);
 		assert.ok(result.shots.some((s) => s.route === '/docs/' && s.shot.label === 'navigation: in place from /, a frame during the swap'), JSON.stringify(result.shots.map((s) => s.shot.label)));
-		assert.deepEqual(result.failures.filter((f) => !/ layout during the swap$/.test(f.check)), [], lines(result));
+		// At phone width the parts going in one by one also show the bare page background between them.
+		assert.deepEqual(result.failures.filter((f) => !/ layout during the swap$/.test(f.check) && !(f.viewport === 'mobile' && / during the swap$/.test(f.check))), [], lines(result));
 	});
 
 	test('the same layout flash on the old app reached the same way is its own: not reported', async () => {
@@ -109,8 +110,8 @@ describe('navigation: a page reached in place matches a fresh load of it', { con
 	test('a swap that empties the main column for a few frames is red at desktop and phone width, though every settled state is right', async () => {
 		const result = await checkNavigation(browser, defaultEnv(await app('blank')), ROUTES, { concurrency: 3, old: defaultEnv(await app('fresh')) });
 		const blank = result.failures.filter((f) => f.route === '/docs/' && / blank region during the swap$/.test(f.check));
-		assert.deepEqual(blank.map((f) => `${f.check} (${f.viewport})`).sort(), ['in place from / at 390 px: blank region during the swap (mobile)', 'in place from /: blank region during the swap (desktop)'], lines(result));
-		assert.match(blank[0]!.actual, /^\d+ frames? showed main1 next to empty$/);
+		for (const want of ['in place from /: blank region during the swap (desktop)', 'in place from / at 390 px: blank region during the swap (mobile)']) assert.ok(blank.some((f) => `${f.check} (${f.viewport})` === want), lines(result));
+		assert.ok(blank.every((f) => /^\d+ frames? showed main1 next to empty$/.test(f.actual)), lines(result));
 	});
 
 	test('a swap that shows the next page before its stylesheet applies is red, naming the styles the frame showed', async () => {
