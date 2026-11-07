@@ -66,6 +66,7 @@ import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templa
 import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
+import { observeMedia } from './media.ts';
 import { bodyText, request } from './http.ts';
 
 export interface CheckOptions {
@@ -434,6 +435,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			return { patches: located.failures.map((f, i) => (f === failures[i] ? null : { ...(f.old ? { old: f.old } : {}), ...(f.new ? { new: f.new } : {}), where: f.where! })), ...(located.newFiles ? { newFiles: located.newFiles } : {}) };
 		},
 		hashLinks: () => hashLinkFailures(browser, run.new, route, viewport),
+		media: ({ viewports: names }) => observeMedia(browser, later(), route, viewports.filter((v) => names.includes(v.name))),
 		walls: async () => ({ ...(walls.old[0] ? { old: walls.old[0] } : {}), ...(walls.new[0] ? { new: walls.new[0] } : {}) }),
 	};
 }

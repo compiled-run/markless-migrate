@@ -271,7 +271,10 @@ function snapshotPage(args: { targets: string[]; props: string[] }): Snap {
 			const at = `${chain}>${label(child)}`;
 			// How a script was scheduled (async, defer) is the router's to choose when it runs a swapped-in page's scripts; whether a file ran is compared apart.
 			const shown = child.localName === 'script' ? attrs(child).filter((a) => !/^(async|defer)=/.test(a)) : attrs(child);
-			const extra = child.localName === 'style' ? ` {${hash(child.textContent ?? '')}}` : '';
+			// A video or picture the page reached in place never loaded (a router's parsed document whose media a browser refuses to load) reads the same in every line: its load is marked.
+			const media = child instanceof HTMLMediaElement && (child.networkState === HTMLMediaElement.NETWORK_NO_SOURCE || child.error !== null);
+			const broken = child instanceof HTMLImageElement && child.complete && child.naturalWidth === 0 && Boolean(child.getAttribute('src'));
+			const extra = child.localName === 'style' ? ` {${hash(child.textContent ?? '')}}` : media ? ' {source never loaded}' : broken ? ' {image broken}' : '';
 			dom.push(`${at}\t[${shown.join(' ')}]${extra}`);
 			if (child.localName !== 'svg') walk(child, at);
 		}
