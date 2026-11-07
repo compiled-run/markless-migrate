@@ -133,17 +133,19 @@ export function applyAccepted(report: Report, accepted: readonly Accept[], off: 
 		return { ...login, failures, ok: failures.every((f) => f.accepted) };
 	});
 	const coverage = report.coverage ? settleCoverage(report.coverage, report.coverage.failures.map(mark)) : undefined;
+	const inventory = report.inventory ? { ...report.inventory, failures: report.inventory.failures.map(mark) } : undefined;
 	// A run limited to some routes cannot tell that an entry whose glob reaches other routes matches nothing anywhere.
 	const judged = (a: Accept) => !report.partial || !/\*/.test(a.route);
 	const exercised = (a: Accept) => judged(a) && (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
 	const stale = accepted.filter((a) => !used.has(a) && exercised(a));
-	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures), ...(coverage?.failures ?? [])];
-	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.servedByOld?.length && !coverage?.unreachable.length;
+	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures), ...(coverage?.failures ?? []), ...(inventory?.failures ?? [])];
+	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.servedByOld?.length && !coverage?.unreachable.length && (inventory?.failures ?? []).every((f) => f.accepted);
 	return {
 		...report,
 		routes,
 		...(logins ? { logins } : {}),
 		...(coverage ? { coverage } : {}),
+		...(inventory ? { inventory } : {}),
 		checkedOk,
 		ok: checkedOk && !report.partial,
 		...(all.some((f) => f.accepted) ? { acceptedCount: all.filter((f) => f.accepted).length } : {}),

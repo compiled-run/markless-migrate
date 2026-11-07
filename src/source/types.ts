@@ -1,3 +1,4 @@
+import type { SourceBehaviour } from '../check/inventory-compare.ts';
 export interface Location {
 	readonly file: string;
 	readonly line: number;
@@ -87,6 +88,8 @@ export interface SourceFacts {
 	redirects?: Redirect[];
 	/** `hash` when the app's router keeps the route after `#`, so each route is reached at `/#<route>`. */
 	routing?: 'hash';
+	/** Every handler, animation, scroll hook, :hover and :focus rule and media element the source holds (behaviours.ts). */
+	behaviours?: SourceBehaviour[];
 }
 
 export interface Redirect {

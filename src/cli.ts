@@ -153,7 +153,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-behaviours] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           [--observations <dir>] [--original <dir>]
@@ -254,6 +254,11 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           group: a few of its controls and keys used while every CPU of the machine is kept busy, in
           Chromium, Firefox and WebKit; a control the port answers on an idle machine but not on a busy
           one, where the original still does, is red.
+          Behaviour inventory: each handler the journeys found, and each element the page animates,
+          scroll listener and IntersectionObserver, :hover and :focus rule and picture, video or audio
+          two old loads show, must be on the new page; with --source, each one the old app's source
+          holds must show live on a checked page where the port has it too (full runs only). Anything
+          else is red until accepted. --no-behaviours leaves it out.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -535,6 +540,7 @@ const TIMING_FLAGS = {
 	'no-control-parity': { type: 'boolean' },
 	'control-webkit': { type: 'boolean' },
 	'busy-cpu': { type: 'boolean' },
+	'no-behaviours': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -843,6 +849,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(values['no-probes'] ? {} : { probes: {} }),
 					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
+					...(values['no-behaviours'] || values.only ? {} : { behaviours: true }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
@@ -1179,6 +1186,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-probes'] ? {} : { probes: {} }),
 				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
+				...(values['no-behaviours'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { behaviours: true }),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),

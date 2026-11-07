@@ -17,6 +17,7 @@ import { webpackRoutes } from './routes/webpack.ts';
 import { wordpressRoutes } from './routes/wordpress.ts';
 import type { AuthGuard, SourceFacts, SourceRoute, Write } from './types.ts';
 import { scanWrites, settleWrites } from './writes.ts';
+import { scanBehaviours } from './behaviours.ts';
 
 export type * from './types.ts';
 export { matchRoute, specificity } from './pattern.ts';
@@ -86,6 +87,7 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 	const nondeterminism = await scanNondeterminism(ctx, framework);
 	const components = await scanComponents(ctx, merged);
 	const redirects = await scanRedirects(ctx);
+	const behaviours = await scanBehaviours(dir).catch(() => []);
 	for (const g of guards) {
 		for (const path of g.routes) {
 			for (const r of merged) {
@@ -117,5 +119,6 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 		limits: [...new Set(ctx.limits)].sort(),
 		...(redirects.length ? { redirects } : {}),
 		...(code.hash ? { routing: 'hash' as const } : {}),
+		...(behaviours.length ? { behaviours } : {}),
 	};
 }

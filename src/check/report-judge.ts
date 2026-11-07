@@ -1,5 +1,6 @@
 // A run's report from what it observed: each route's judged result, then the run's own rows (its plan, sign-ins, coverage,
 // navigation, endpoints and page loads). The live run and `check judge` both build the report here.
+import { accountSource } from './inventory-compare.ts';
 import { applyAccepted, type Accept } from './accepted.ts';
 import type { AutomaticRule } from './automatic.ts';
 import { withFailures } from './compare.ts';
@@ -204,6 +205,8 @@ export function finishReport(header: RunHeader, routes: readonly RouteResult[], 
 	const coverage = header.coverage ? mergeCoverage(coverages) : undefined;
 	const checkedCount = new Set([...header.routes, ...header.redirects, ...header.endpoints]).size;
 	const grouped = groups.filter((g) => g.members.length > 1 && g.members.some((m) => allPages.includes(m)));
+	// A run of some routes cannot tell a source behaviour no checked page showed from one on a page it left out.
+	const inventory = header.source?.behaviours?.length && header.stages.behaviours && !header.partial ? accountSource(header.source.behaviours, routes) : undefined;
 	return applyAccepted(
 		{
 			version: 1,
@@ -220,6 +223,7 @@ export function finishReport(header: RunHeader, routes: readonly RouteResult[], 
 			...(header.unchecked?.length ? { unchecked: header.unchecked } : {}),
 			...(header.responsiveness ? { responsiveness: summarizeResponsiveness(routes, header.responsiveness) } : {}),
 			...(coverage ? { coverage } : {}),
+			...(inventory ? { inventory: { source: inventory.items, failures: [...inventory.failures] } } : {}),
 			...(header.partial ? { partial: { checked: checkedCount, total: header.partial.total } } : {}),
 			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
 			...(footer.wasteReferences.length ? { wasteReferences: footer.wasteReferences } : {}),

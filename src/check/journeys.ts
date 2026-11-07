@@ -1545,9 +1545,11 @@ export interface Session {
 }
 
 /** `loops`: track loops so the caller can hold them (motion records what an interaction starts, not what a loop keeps doing). */
-export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> = {}): Promise<Session> {
+export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> & { readonly initScripts?: readonly (() => void)[] } = {}): Promise<Session> {
 	const origin = env.origin;
-	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...options });
+	const { initScripts, ...opening } = options;
+	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...opening });
+	for (const script of initScripts ?? []) await context.addInitScript(script);
 	const host = new URL(origin).origin;
 	const oldHost = env.frontDoor ? new URL(env.frontDoor.old).origin : undefined;
 	const hosts = oldHost && oldHost !== host ? [host, oldHost] : [host];
