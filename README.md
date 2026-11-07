@@ -21,6 +21,16 @@
 
 > Early preview. It changes often and isn't on npm yet.
 
+## Before you start
+
+Set up your editor so you can read and change the `.tsrx` pages it writes.
+
+- **VS Code:** install [TSRX Syntax for VS Code](https://marketplace.visualstudio.com/items?itemName=TSRX.tsrx-vscode-plugin) (`TSRX.tsrx-vscode-plugin`). It replaces the older `ripple-ts.ripple-ts-vscode-plugin`, so keep only one.
+- **Cursor, Windsurf and other VS Code forks:** install the same extension from [Open VSX](https://open-vsx.org/extension/TSRX/tsrx-vscode-plugin).
+- **Node 24.11 or newer** to run the CLI.
+
+The Markless TypeScript plugin is already set up in an app from `npm create markless`. More at [markless.dev/tooling/editor-setup](https://markless.dev/tooling/editor-setup).
+
 ## What it looks like
 
 ```bash
