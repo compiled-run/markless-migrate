@@ -20,6 +20,7 @@ import type { SourceFacts } from './source-facts.ts';
 import { judgeStates, statesPlan, statesRequest, type StatesRequest, type StatesRow } from './states-compare.ts';
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
 import { judgeMedia, type MediaRow } from './media-compare.ts';
+import { MAX_UNLISTED, unlistedCandidates, unlistedFailures, type InventoryRoutes, type Served } from './unlisted.ts';
 import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DIMENSIONS, REPRESENTATIVE_ONLY, type Blocked, type Coverage, type Dimension, type Failure, type Infrastructure, type RouteCapture, type RouteResult, type Shot, type SourceLink, type Viewport } from './types.ts';
 import type { WallHit } from './browser.ts';
@@ -82,6 +83,8 @@ export interface RouteStages {
 	/** Where each failure's element comes from in the old and new source, index for index. */
 	readonly locate: { readonly request: { readonly failures: readonly Failure[] }; readonly value: { readonly patches: readonly (LocatePatch | null)[]; readonly newFiles?: readonly string[] } };
 	readonly hashLinks: { readonly request: Record<string, never>; readonly value: readonly Failure[] };
+	/** How the old app answers paths its page links to that the inventory does not list. */
+	readonly served: { readonly request: { readonly paths: readonly string[] }; readonly value: readonly Served[] };
 	/** The first bot wall each side hit while the route was checked. */
 	readonly walls: { readonly request: Record<string, never>; readonly value: { readonly old?: WallHit; readonly new?: WallHit } };
 }
@@ -110,7 +113,7 @@ export interface RouteContext {
 	/** Writes are sent on a side: forced states and journeys run one after the other. */
 	readonly writes: { readonly old: { readonly sendWrites?: boolean }; readonly new: { readonly sendWrites?: boolean } };
 	readonly oldRouting?: OldRouting;
-	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; readonly media?: boolean; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
+	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; readonly media?: boolean; /** The plan's routes: a page the original serves that it does not list is red. */ readonly inventory?: InventoryRoutes; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
 	/** Live: names the part of the check running, for the report's step times and a stopped route's message. */
 	readonly span?: <T>(part: string, work: () => Promise<T>) => Promise<T>;
 	/** The result as far as the check has got: what a route stopped at its deadline still reports. */
@@ -244,7 +247,7 @@ export async function routeCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
 	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
 	const checked = ctx.stages.embeds && embedded ? await span(ctx, 'embeds', () => embedsCheck(o, timed)) : timed;
-	const located = await locateCheck(o, await mediaCheck(o, ctx, olds, checked, viewports));
+	const located = await locateCheck(o, await unlistedCheck(o, ctx, olds, await mediaCheck(o, ctx, olds, checked, viewports)));
 	return oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 }
 
@@ -265,7 +268,7 @@ export async function lightCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	const journeyed = reach(ctx, await span(ctx, 'journeys', () => journeysCheck(o, ctx, skipped, owner)));
 	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
 	const probed = ctx.stages.probes ? await span(ctx, 'widget probes', () => probeCheck(o, ctx, journeyed, false, false)) : journeyed;
-	const located = await locateCheck(o, await mediaCheck(o, ctx, olds, probed, ctx.viewports.slice(0, 1)));
+	const located = await locateCheck(o, await unlistedCheck(o, ctx, olds, await mediaCheck(o, ctx, olds, probed, ctx.viewports.slice(0, 1))));
 	return oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 }
 
@@ -447,6 +450,17 @@ async function mediaCheck(o: Observe, ctx: RouteContext, olds: readonly RouteCap
 	const row = await span(ctx, 'pictures', () => o('media', { viewports: viewports.map((v) => v.name) }));
 	const said = new Set(result.failures.map((f) => `${f.viewport} ${f.check}`));
 	const found = judgeMedia(ctx.route, row).filter((f) => !said.has(`${f.viewport} ${f.check.replace(/ \(every picture loaded\)$/, '')}`));
+	return found.length ? withFailures(result, [...result.failures, ...found]) : result;
+}
+
+/** The pages this route's old page links to, or its journeys reached, that the plan does not list: each asked of the original, and red where it serves one. */
+async function unlistedCheck(o: Observe, ctx: RouteContext, olds: readonly RouteCapture[], result: RouteResult): Promise<RouteResult> {
+	const inventory = ctx.stages.inventory;
+	if (!inventory) return result;
+	const candidates = unlistedCandidates(ctx.route, olds, result.journeys ?? [], inventory);
+	if (!candidates.length) return result;
+	const served = await o('served', { paths: candidates.slice(0, MAX_UNLISTED) });
+	const found = unlistedFailures(ctx.route, candidates, served, inventory);
 	return found.length ? withFailures(result, [...result.failures, ...found]) : result;
 }
 
