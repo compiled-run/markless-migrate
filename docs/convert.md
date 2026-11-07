@@ -85,6 +85,16 @@ answered, and the library parts no port implements yet. `--only <file>` converts
 `--fallthrough <old deployment>` makes a preview answer every other page from there, marked
 `x-markless-migrate-side: old`.
 
+The app's `README.md` is the old one (`--source`) with three things changed, edited through a Markdown parser so
+every other byte stays as written: a sentence or a stack list naming the old framework names Markless instead
+(`create-next-app` becomes `create-markless`); each command in a shell block or inline code runs the new app's
+script for the same job (`npm start` becomes `npm run preview`, `lint` becomes `check`), and a line for a script
+the new app has no counterpart for is dropped; and an "Editor setup" section names the TSRX Syntax extension
+(`TSRX.tsrx-vscode-plugin`, on the VS Code Marketplace and Open VSX), plus the Markless TypeScript plugin when
+the app's `tsconfig.json` does not load it. Deploy notes are left alone. Without an old README it writes a short
+one with the same sections. Once someone edits the README convert wrote, convert leaves it alone
+(`.migrate/convert/readme.json` holds the hash of what it wrote).
+
 ### How to iterate on a port
 
 Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the
