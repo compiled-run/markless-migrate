@@ -67,6 +67,12 @@ export const near = (a: Box, b: Box, pad = 16) => a.x - pad < b.x + b.width && b
 const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.25;
 const boxAt = (b: Box) => `(${b.x}, ${b.y}) ${b.width}x${b.height}`;
 
+const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+/** Share of a changed region the other side's changes must cover where they reach into it: a tab's underline sliding inside the region where the old page also swapped the panel below it is not that panel's answer. */
+const COVERED = 0.5;
+// Changes that reach into the region answer it only by covering most of it; elsewhere, one of about its size does (where it sits is the visual check's).
+const answers = (box: Box, mine: readonly Box[]) => (mine.some((o) => overlap(o, box) > 0) ? mine.reduce((n, o) => n + overlap(o, box), 0) >= COVERED * box.width * box.height : mine.some((o) => alike(o, box)));
+
 /** How every old run of a step answered that the new run did not: widget changes each old run made, and regions of the view each old run changed that the new page left as they were. */
 export function missingReaction(olds: readonly StepResult[], next: StepResult): { changes: string[]; regions: Box[] } {
 	const reactions = olds.map((o) => o.reaction);
@@ -76,7 +82,7 @@ export function missingReaction(olds: readonly StepResult[], next: StepResult): 
 	const changes = first!.changes.filter((c) => rest.every((r) => r.changes.includes(c)) && !mine.changes.includes(c));
 	if (first!.scrolled && rest.every((r) => r.scrolled) && !mine.scrolled) changes.push('the page scrolled');
 	const framed = !first!.scrolled && rest.every((r) => !r.scrolled) && !mine.scrolled;
-	const regions = framed ? first!.regions.filter((box) => rest.every((r) => r.regions.some((o) => alike(o, box))) && !mine.regions.some((o) => alike(o, box))) : [];
+	const regions = framed ? first!.regions.filter((box) => rest.every((r) => answers(box, r.regions)) && !answers(box, mine.regions)) : [];
 	return { changes, regions };
 }
 
@@ -190,7 +196,7 @@ function answered(r: StepResult, missing: { changes: string[]; regions: Box[] },
 const LISTED = 80;
 const listed = (lines: readonly string[]) => `${lines.slice(0, LISTED).join(' | ')}${lines.length > LISTED ? ` | … and ${lines.length - LISTED} more lines` : ''}`;
 
-function format(result: StepResult, parts: readonly string[], missing?: { changes: string[]; regions: Box[] }, old = false): string {
+function format(result: StepResult, parts: readonly string[], missing?: { changes: string[]; regions: Box[]; lost?: readonly string[] }, old = false): string {
 	const out: string[] = [];
 	if (parts.includes('failed') && result.failed) out.push(result.failed);
 	if (parts.includes('url')) out.push(`URL ${result.url}`);
@@ -207,6 +213,7 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
 	if (parts.includes('downloads')) out.push(`downloads: ${result.downloads?.join(', ') || '(nothing)'}`);
 	if (parts.includes('reaction') && missing) out.push(answered(result, missing, old));
+	if (parts.includes('region') && missing?.lost) out.push(old ? `changes ${missing.lost.join(', ')}` : `does not change ${missing.lost.join(', ')}${result.reaction?.affected?.length ? ` (it changes ${result.reaction.affected.join(', ')})` : ''}`);
 	const shifted = result.reaction?.shift;
 	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
 	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
@@ -376,8 +383,10 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (errors.unexpected.length || errors.changed.length) parts.push('errors');
 			if (!navigated && !reloaded && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
 			// The old page answered the step and the new one did not: a control whose effect never happens is red whatever else matches.
-			const missing = navigated || reloaded ? { changes: [], regions: [] } : missingReaction(oldSteps as StepResult[], n);
+			const missing: { changes: string[]; regions: Box[]; lost?: string[] } = navigated || reloaded ? { changes: [], regions: [] } : { ...missingReaction(oldSteps as StepResult[], n), lost: lostRegions(oldSteps as StepResult[], n) };
 			if (missing.changes.length || missing.regions.length) parts.push('reaction');
+			// A control whose own state changes while the part it drives stays as it was (a tab selected, its panel not swapped).
+			if (missing.lost) parts.push('region');
 			const jumped = navigated || reloaded ? undefined : extraShift(oldSteps as StepResult[], n);
 			if (jumped) parts.push('shift');
 			const slower = navigated || reloaded ? undefined : slowerAnswer(oldSteps as StepResult[], n);
