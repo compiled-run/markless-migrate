@@ -25,15 +25,14 @@ test('convert captures the page with motion allowed, and records the reduced-mot
 	const browser = await chromium.launch();
 	try {
 		const captured = await capturePage(browser, origin, '/', dir, [{ name: 'desktop', width: 1280, height: 800, isMobile: false }]);
-		assert.match(captured.settled.desktop!, /Moving hero/);
-		assert.doesNotMatch(captured.settled.desktop!, /Still hero/);
+		assert.match(captured.settled.desktop!, /<p id="hero">Moving hero<\/p>/);
 		assert.equal(captured.motion, 'no-preference');
-		assert.match(captured.reducedMotion?.desktop ?? '', /Still hero/);
+		assert.match(captured.reducedMotion?.desktop ?? '', /<p id="hero">Still hero<\/p>/);
 		// A capture made under another motion preference is not read back as this one.
 		const file = join(dir, (await readdir(dir))[0]!);
 		const stale = { ...JSON.parse(await readFile(file, 'utf8')), motion: undefined, settled: { desktop: '<p>Still hero</p>' } };
 		await import('node:fs/promises').then((fs) => fs.writeFile(file, JSON.stringify(stale)));
-		assert.match((await capturePage(browser, origin, '/', dir, [{ name: 'desktop', width: 1280, height: 800, isMobile: false }])).settled.desktop!, /Moving hero/);
+		assert.match((await capturePage(browser, origin, '/', dir, [{ name: 'desktop', width: 1280, height: 800, isMobile: false }])).settled.desktop!, /<p id="hero">Moving hero<\/p>/);
 	} finally {
 		await browser.close();
 		server.close();
