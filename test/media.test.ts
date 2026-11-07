@@ -16,7 +16,12 @@ const png = (size: number) => {
 	for (let i = 0; i < p.data.length; i += 4) p.data.set([200, 40, 40, 255], i);
 	return PNG.sync.write(p);
 };
-const PNG40 = png(40);
+// Two files of one size that draw the same: which one a srcset picks shows in no screenshot or decoded size.
+const SMALL = png(40);
+const LARGE = (() => {
+	const p = PNG.sync.read(SMALL);
+	return PNG.sync.write(p, { filterType: 4 });
+})();
 
 type Answer = { status?: number; type: string; body: string | Buffer };
 function serve(answer: (path: string, req: IncomingMessage) => Answer | undefined): Promise<{ server: Server; origin: string }> {
@@ -30,17 +35,18 @@ function serve(answer: (path: string, req: IncomingMessage) => Answer | undefine
 	});
 }
 
-// A picture below the first screen that a scroll listener loads as it comes into view (no capture scrolls, so none loads it), an avatar whose host fails for both pages, and a video; the port serves the picture and the video broken.
-const PAGE = `<!doctype html><html lang="en"><head><title>Team</title></head><body><main><h1>Team</h1><img src="/gone.png" alt="Avatar" width="40" height="40"><video src="/red.webm" preload="auto" muted width="160" height="90"></video><div style="height: 2400px">The story</div><img data-src="/below.png" alt="Office" width="40" height="40"></main><script>addEventListener("scroll", () => { for (const img of document.querySelectorAll("img[data-src]")) if (img.getBoundingClientRect().top < innerHeight) { img.src = img.dataset.src; img.removeAttribute("data-src"); } });</script></body></html>`;
+// An avatar whose host fails for both pages, a video, and a picture whose srcset the original sizes to its small file; the port serves the video broken and sizes the picture so the large file is picked.
+const page = (sizes: string) => `<!doctype html><html lang="en"><head><title>Team</title></head><body><main><h1>Team</h1><img src="/gone.png" alt="Avatar" width="40" height="40"><video src="/red.webm" preload="auto" muted width="160" height="90"></video><img srcset="/office-small.png 40w, /office-large.png 400w" sizes="${sizes}" alt="Office" width="40" height="40"></main></body></html>`;
 
-test('a lazy picture below the first screen the port fails to serve, a picture broken on both sides and a video the port cannot play are red', { timeout: 300_000 }, async () => {
-	const old = await serve((path) => (path === '/' ? { type: 'text/html', body: PAGE } : path === '/below.png' ? { type: 'image/png', body: PNG40 } : path === '/red.webm' ? { type: 'video/webm', body: WEBM } : undefined));
-	const next = await serve((path) => (path === '/' ? { type: 'text/html', body: PAGE } : path === '/below.png' ? { type: 'image/png', body: 'not a picture' } : path === '/red.webm' ? { type: 'video/webm', body: 'not a video' } : undefined));
+test('a picture broken on both sides, a video the port cannot play and another file of a srcset are red', { timeout: 300_000 }, async () => {
+	const files = (path: string) => (path === '/office-small.png' ? { type: 'image/png', body: SMALL } : path === '/office-large.png' ? { type: 'image/png', body: LARGE } : undefined);
+	const old = await serve((path) => (path === '/' ? { type: 'text/html', body: page('40px') } : path === '/red.webm' ? { type: 'video/webm', body: WEBM } : files(path)));
+	const next = await serve((path) => (path === '/' ? { type: 'text/html', body: page('400px') } : path === '/red.webm' ? { type: 'video/webm', body: 'not a video' } : files(path)));
 	const browser = await chromium.launch();
 	try {
 		const route = (await runCheck({ oldOrigin: old.origin, newOrigin: next.origin, routes: ['/'], viewports: [{ name: 'desktop', width: 1280, height: 800, isMobile: false }], browser, journeys: { maxJourneys: 0, budgetMs: 1 } })).routes[0]!;
 		const lines = route.failures.map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n');
-		assert.ok(route.failures.some((f) => f.check === 'image #2 /below.png (every picture loaded)' && f.expected === '40x40' && f.actual === 'broken'), lines);
+		assert.ok(route.failures.some((f) => f.check === 'image #2 /office-small.png: the file its srcset picks (every picture loaded)' && f.expected === 'office-small.png' && f.actual === 'office-large.png'), lines);
 		assert.ok(route.failures.some((f) => f.check === 'image #1 /gone.png (every picture loaded)' && /broken on both sides/.test(f.actual)), lines);
 		assert.ok(route.failures.some((f) => f.check === 'embed #1 <video>' && /its source never loaded/.test(f.actual) && !/never loaded/.test(f.expected)), lines);
 	} finally {
