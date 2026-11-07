@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { framesInPage } from '../check/settle.ts';
@@ -1034,7 +1035,7 @@ export async function captureTables(browser: Browser, origin: string, route: str
 	const tables: CapturedTable[] = [];
 	const skipped: string[] = [];
 	let notFound: string | undefined;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		const { found, ready } = await findWhenReady(page, expected);

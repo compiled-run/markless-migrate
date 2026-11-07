@@ -48,8 +48,11 @@ its test suite as downloads; those pass, listed as allowed, while a page that lo
 ## Converting pages
 
 `convert` writes the Markless app from the old site instead of leaving every page to the agent. Each HTML
-route is loaded the way `check` loads it, and the document a visitor's browser ends up with becomes the page's
-`.tsrx`: the old framework's runtime is left out (its scripts, its server state and streaming scripts, its
+route is loaded the way `check` loads it, but with motion allowed (`prefers-reduced-motion: no-preference`, as
+most visitors browse; every capture convert takes of the old site runs that way, through `captureEnv`), and the
+document a visitor's browser ends up with becomes the page's `.tsrx`. The same document under reduced motion is
+recorded beside it in the capture (`reducedMotion`), so what differs for those visitors is on record, and the port
+is never written from it: the old framework's runtime is left out (its scripts, its server state and streaming scripts, its
 marker attributes and elements), plain scripts and every other tag stay as they were, and inline `<style>`
 blocks become stylesheet files. Regions several pages render alike (a header, a docs sidebar) are written once
 as components that take the page's path; the current page's link and per-page values are expressions.

@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { CAPTURE_MOTION, captureEnv } from './capture-env.ts';
 import { finishAnimations, settle } from '../check/capture.ts';
 import { loadPage, servedHtml } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
@@ -18,8 +19,12 @@ export interface CapturedPage {
 	readonly status: number;
 	/** The HTML the old server answered with, before any script ran. */
 	readonly server: string;
-	/** The document after load, under the checker's frozen clock, seed and environment, per viewport name. */
+	/** The document after load, under the checker's frozen clock, seed and environment with motion allowed, per viewport name: what the port is written from. */
 	readonly settled: Readonly<Record<string, string>>;
+	/** The motion preference `settled` was taken under. */
+	readonly motion?: typeof CAPTURE_MOTION;
+	/** The same document for a visitor who asks for reduced motion, per viewport name: recorded beside `settled`, never written into the port. */
+	readonly reducedMotion?: Readonly<Record<string, string>>;
 	/** Where each image was drawn, per viewport name; absent from a capture taken before it was recorded. */
 	readonly images?: Readonly<Record<string, ImageFacts>>;
 	/** The web fonts (by the id their blocks carry in the desktop document) whose text no first screen shows, with the face each one is. */
@@ -101,10 +106,11 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
 	const marks = pageMarks();
-	if (cached && cached.route === route && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS) return cached;
+	if (cached && cached.route === route && cached.motion === CAPTURE_MOTION && cached.reducedMotion && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
+	const reducedMotion: Record<string, string> = {};
 	const images: Record<string, ImageFacts> = {};
 	let lateFonts: NonNullable<CapturedPage['lateFonts']>[number][] = [];
 	let firstScreenFonts: string[] = [];
@@ -112,7 +118,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	let offscreenFontPreloads: string[] = [];
 	let swapFontPreloads: string[] = [];
 	for (const viewport of viewports) {
-		const env = defaultEnv(origin);
+		const env = captureEnv(origin);
 		const { context, page } = await openPage(browser, env, viewport);
 		try {
 			const response = await loadPage(page, new URL(route, origin).href);
@@ -151,11 +157,25 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		} finally {
 			await context.close().catch(() => {});
 		}
+		reducedMotion[viewport.name] = await reducedDocument(browser, origin, route, viewport);
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, reducedMotion, images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;
+}
+
+// The same settled document for a visitor who asks for reduced motion: kept beside the capture, so what differs for them is on record without the port being written from it.
+async function reducedDocument(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<string> {
+	const { context, page } = await openPage(browser, captureEnv(origin, { reducedMotion: 'reduce' }), viewport);
+	try {
+		await loadPage(page, new URL(route, origin).href);
+		await settle(page);
+		await finishAnimations(page);
+		return await page.evaluate(() => `<!DOCTYPE html>${document.documentElement.outerHTML}`);
+	} finally {
+		await context.close().catch(() => {});
+	}
 }
 
 // The page resized to each measuring width, after its document was kept: what its images' boxes do between the captured viewports.

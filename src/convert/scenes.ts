@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { trackSettle } from './settle.ts';
@@ -285,7 +286,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 	const file = join(dir, `${createHash('sha256').update(`scenes:8:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const scenes: Scene[] = [];
 	const url = new URL(route, origin).href;
 	const PREVIEW = '[data-slot="preview"]';

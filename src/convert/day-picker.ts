@@ -6,7 +6,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Browser, Locator, Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
 import { loadPage } from '../check/infrastructure.ts';
@@ -108,7 +109,7 @@ export async function captureDayPickers(browser: Browser, origin: string, route:
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPickers, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const read = async (time: number, probe: boolean, ks: readonly (number | undefined)[] = [], timezone = DEFAULT_FREEZE.timezone): Promise<RawPicker[]> => {
-		const env = defaultEnv(origin, { freeze: { ...DEFAULT_FREEZE, time, timezone } });
+		const env = captureEnv(origin, { freeze: { ...DEFAULT_FREEZE, time, timezone } });
 		const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
 		try {
 			await loadPage(page, new URL(route, origin).href);

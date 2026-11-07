@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, walk, type Element as Markup } from './dom.ts';
@@ -35,7 +36,7 @@ export async function captureOtps(browser: Browser, origin: string, route: strin
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as OtpCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const fields: OtpField[] = [];
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});

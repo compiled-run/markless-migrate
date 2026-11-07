@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, setAttr, walk, type Element as Tree } from './dom.ts';
@@ -73,7 +74,7 @@ export async function captureQwikFloating(browser: Browser, origin: string, rout
 	const file = join(dir, `${createHash('sha256').update(`qwik-floating:v1:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as QwikFloatingCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const panels: QwikFloating[] = [];
 	try {
 		const url = new URL(route, origin).href;
