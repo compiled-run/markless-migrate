@@ -106,6 +106,33 @@ describe('navigation: a page reached in place matches a fresh load of it', { con
 		assert.deepEqual(result.failures.filter((f) => / layout during the swap$/.test(f.check)), [], lines(result));
 	});
 
+	test('a swap that empties the main column for a few frames is red at desktop and phone width, though every settled state is right', async () => {
+		const result = await checkNavigation(browser, defaultEnv(await app('blank')), ROUTES, { concurrency: 3, old: defaultEnv(await app('fresh')) });
+		const blank = result.failures.filter((f) => f.route === '/docs/' && / blank region during the swap$/.test(f.check));
+		assert.deepEqual(blank.map((f) => `${f.check} (${f.viewport})`).sort(), ['in place from / at 390 px: blank region during the swap (mobile)', 'in place from /: blank region during the swap (desktop)'], lines(result));
+		assert.match(blank[0]!.actual, /^\d+ frames? showed main1 next to empty$/);
+	});
+
+	test('a swap that shows the next page before its stylesheet applies is red, naming the styles the frame showed', async () => {
+		const result = await checkNavigation(browser, defaultEnv(await app('unstyled')), ROUTES, { concurrency: 3, old: defaultEnv(await app('fresh')) });
+		const unstyled = result.failures.find((f) => f.route === '/docs/' && f.check === 'in place from /: styles during the swap');
+		assert.ok(unstyled, lines(result));
+		assert.match(unstyled.actual, /^\d+ frames? showed /);
+		assert.ok(result.failures.some((f) => f.route === '/docs/' && f.check === 'in place from / at 390 px: styles during the swap'), lines(result));
+	});
+
+	test('a layout jump only a phone-width screen shows is red at phone width alone', async () => {
+		const result = await checkNavigation(browser, defaultEnv(await app('narrow-chunked')), ROUTES, { concurrency: 3, old: defaultEnv(await app('fresh')) });
+		const layout = result.failures.filter((f) => / layout during the swap$/.test(f.check));
+		assert.ok(layout.some((f) => f.route === '/docs/' && f.check === 'in place from / at 390 px: layout during the swap' && f.viewport === 'mobile'), lines(result));
+		assert.ok(!layout.some((f) => f.viewport === 'desktop'), lines(result));
+	});
+
+	test('the same blank frames on the old app reached the same way are its own: not reported', async () => {
+		const result = await checkNavigation(browser, defaultEnv(await app('blank')), ROUTES, { concurrency: 3, old: defaultEnv(await app('blank')) });
+		assert.deepEqual(result.failures.filter((f) => / during the swap$/.test(f.check)), [], lines(result));
+	});
+
 	test('a difference the old app shows too when reached the same way is its own: not reported', async () => {
 		const stale = await app('stale-html');
 		const result = await checkNavigation(browser, defaultEnv(await app('stale-html')), ROUTES, { concurrency: 3, old: defaultEnv(stale) });
