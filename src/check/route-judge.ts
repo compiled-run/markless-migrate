@@ -10,7 +10,7 @@ import { HINTS } from './hints.ts';
 import { negotiationFailures } from './i18n.ts';
 import { classify, InfrastructureError } from './infrastructure.ts';
 import { choppier, compareJourneys, describeTarget, inDarkMode, interimViews, MAX_ARRIVED, themed, timedOnly } from './journeys-compare.ts';
-import type { ElementCoverage, Exploration, Journey, RecordedJourney, Run as Runs, Step, StepResult } from './journeys.ts';
+import type { ElementCoverage, Exploration, Journey, RecordedJourney, Run as Runs, Step, StepResult, Target } from './journeys.ts';
 import { NOT_EXERCISED } from './locate.ts';
 import { judgeMotion, motionRules, type MotionOptions, type MotionRow } from './motion-compare.ts';
 import { journeyPrefixes, judgeProbes, notifiers, type ProbesRow } from './probes-compare.ts';
@@ -21,6 +21,7 @@ import { judgeStates, statesPlan, statesRequest, type StatesRequest, type States
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
 import { judgeScroll, type ScrollRow } from './scroll-motion-compare.ts';
 import { dialogJourneys, judgeDialogs, type DialogsRow } from './dialogs-compare.ts';
+import { judgeTouch, tappedControls, type TouchRow } from './touch-compare.ts';
 import { MAX_UNLISTED, unlistedCandidates, unlistedFailures, type InventoryRoutes, type Served } from './unlisted.ts';
 import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DIMENSIONS, REPRESENTATIVE_ONLY, type Blocked, type Coverage, type Dimension, type Failure, type Infrastructure, type RouteCapture, type RouteResult, type Shot, type SourceLink, type Viewport } from './types.ts';
@@ -81,6 +82,8 @@ export interface RouteStages {
 	readonly scroll: { readonly request: Record<string, never>; readonly value: ScrollRow };
 	/** Each dialog the journeys opened, at each width: its box once open, its opening and its closing, old and new. */
 	readonly dialogs: { readonly request: { readonly journeys: readonly RecordedJourney[] }; readonly value: DialogsRow };
+	/** Each control a desktop journey clicked, tapped with a finger on each phone, old and new. */
+	readonly touch: { readonly request: { readonly controls: readonly (readonly Target[])[] }; readonly value: TouchRow };
 	readonly responsiveness: { readonly request: { readonly journeys: readonly RecordedJourney[] }; readonly value: { readonly responsiveness: Responsiveness; readonly failures: readonly Failure[] } };
 	readonly embeds: { readonly request: Record<string, never>; readonly value: { readonly failures: readonly Failure[]; readonly shots: readonly Shot[] } };
 	/** Where each failure's element comes from in the old and new source, index for index. */
@@ -116,7 +119,7 @@ export interface RouteContext {
 	/** Writes are sent on a side: forced states and journeys run one after the other. */
 	readonly writes: { readonly old: { readonly sendWrites?: boolean }; readonly new: { readonly sendWrites?: boolean } };
 	readonly oldRouting?: OldRouting;
-	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; /** The plan's routes: a page the original serves that it does not list is red. */ readonly inventory?: InventoryRoutes; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
+	readonly stages: { readonly probes: boolean; readonly controls?: { readonly webkit: boolean }; readonly busyCpu: boolean; readonly motion?: MotionOptions; readonly responsiveness: boolean; readonly embeds: boolean; readonly touch?: boolean; /** The plan's routes: a page the original serves that it does not list is red. */ readonly inventory?: InventoryRoutes; /** The old side's loads and journeys come from this original's dataset: timing is judged from fresh paired rounds alone. */ readonly original?: { readonly originalId: string; readonly conditionsId: string } };
 	/** Live: names the part of the check running, for the report's step times and a stopped route's message. */
 	readonly span?: <T>(part: string, work: () => Promise<T>) => Promise<T>;
 	/** The result as far as the check has got: what a route stopped at its deadline still reports. */
@@ -227,7 +230,7 @@ export async function roleCheck(o: Observe, ctx: RouteContext): Promise<RouteRes
 /** Every viewport's checks of a page, then its forced states, journeys, widget probes, busy-CPU lane, motion, timings and embeds. */
 export async function routeCheck(o: Observe, ctx: RouteContext): Promise<RouteResult> {
 	const { route, viewports } = ctx;
-	ctx.total?.(3 + [ctx.stages.probes, ctx.stages.busyCpu, ctx.stages.motion, ctx.stages.responsiveness, ctx.stages.embeds].filter(Boolean).length);
+	ctx.total?.(3 + [ctx.stages.probes, ctx.stages.touch, ctx.stages.busyCpu, ctx.stages.motion, ctx.stages.responsiveness, ctx.stages.embeds].filter(Boolean).length);
 	const { olds, next } = await span(ctx, 'load both sides', () => o('load', { light: false }));
 	const broken = brokenOld(route, olds);
 	if (broken) return broken;
@@ -243,8 +246,9 @@ export async function routeCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	const owner = storageOwner(olds.flatMap((x) => Object.values(x.pages)), Object.values(next.pages));
 	const journeyed = reach(ctx, await statesAndJourneys(ctx.writes, result, (input) => span(ctx, 'forced states', () => statesCheck(o, ctx, olds, input)), (input) => span(ctx, 'journeys', () => journeysCheck(o, ctx, input, owner))));
 	const explored = reach(ctx, ctx.stages.probes ? await span(ctx, 'widget probes', () => probeCheck(o, ctx, journeyed, true, Boolean(ctx.stages.controls?.webkit))) : journeyed);
+	const tapped = reach(ctx, await touchCheck(o, ctx, explored));
 	const busy = ctx.stages.busyCpu ? await span(ctx, 'busy CPU', () => o('busy', {})) : undefined;
-	const lane = reach(ctx, busy?.failures.length ? withFailures(explored, [...explored.failures, ...busy.failures]) : explored);
+	const lane = reach(ctx, busy?.failures.length ? withFailures(tapped, [...tapped.failures, ...busy.failures]) : tapped);
 	const animated = reach(ctx, ctx.stages.motion && lane.journeys?.length ? await span(ctx, 'motion', () => motionCheck(o, ctx, lane, oldA.pages[viewports[0]!.name]?.stylesheets ?? [])) : lane);
 	const moved = reach(ctx, ctx.stages.motion ? await span(ctx, 'scroll and dialogs', () => scrollAndDialogs(o, ctx, animated)) : animated);
 	const timed = reach(ctx, ctx.stages.responsiveness && moved.journeys?.length ? await span(ctx, 'responsiveness', () => responsivenessCheck(o, ctx.route, moved)) : moved);
@@ -272,7 +276,7 @@ export async function lightCheck(o: Observe, ctx: RouteContext): Promise<RouteRe
 	const journeyed = reach(ctx, await span(ctx, 'journeys', () => journeysCheck(o, ctx, skipped, owner)));
 	// The second engine's pop-up places are compared on the template group's representative, as the other per-template checks are.
 	const probed = ctx.stages.probes ? await span(ctx, 'widget probes', () => probeCheck(o, ctx, journeyed, false, false)) : journeyed;
-	const located = await locateCheck(o, await unlistedCheck(o, ctx, olds, probed));
+	const located = await locateCheck(o, await unlistedCheck(o, ctx, olds, await touchCheck(o, ctx, probed)));
 	return oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 }
 
@@ -444,6 +448,15 @@ async function scrollAndDialogs(o: Observe, ctx: RouteContext, result: RouteResu
 	const dialogs = journeys.length ? judgeDialogs(ctx.route, await o('dialogs', { journeys })) : [];
 	const found = [...scrolled, ...dialogs];
 	return found.length ? withFailures(result, [...result.failures, ...found]) : result;
+}
+
+/** Every control a desktop journey clicked is tapped on each phone: one that answers a mouse but not a finger is red. */
+async function touchCheck(o: Observe, ctx: RouteContext, result: RouteResult): Promise<RouteResult> {
+	const controls = ctx.stages.touch ? tappedControls(result.journeys ?? []) : [];
+	if (!controls.length) return result;
+	const row = await span(ctx, 'touch', () => o('touch', { controls }));
+	const failures = judgeTouch(ctx.route, row);
+	return failures.length ? withFailures(result, [...result.failures, ...failures]) : result;
 }
 
 async function responsivenessCheck(o: Observe, route: string, result: RouteResult): Promise<RouteResult> {

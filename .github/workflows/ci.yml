@@ -101,7 +101,7 @@ jobs:
           - { suite: pages, files: motion scroll-and-dialogs page-load radix-dialog-port embeds original-dataset }
           - { suite: networks, files: slow-network late-fonts busy-cpu state-engines, browsers: chromium firefox webkit }
           - { suite: shadcn, files: shadcn-typeset shadcn-create judge-offline, browsers: chromium webkit }
-          - { suite: parity, files: control-parity, browsers: chromium webkit }
+          - { suite: parity, files: control-parity touch, browsers: chromium webkit }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
