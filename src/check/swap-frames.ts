@@ -13,6 +13,10 @@ export interface ThemeFrame {
 	readonly backdrop: readonly number[];
 	/** `name x,y,width,height` per region, `name -` for one not in the document. */
 	readonly layout?: readonly string[];
+	/** `name n` per region: how many characters of text it holds. */
+	readonly text?: readonly string[];
+	/** The computed styles a stylesheet sets on <body> and the first h1: font, colour, margin. */
+	readonly styled?: string;
 }
 
 export interface ThemeRecording {
@@ -77,12 +81,29 @@ export function themeFrameRecorder(): void {
 		boxes.push(`bottom ${Math.round(document.documentElement.scrollHeight - scrollY)}`);
 		return boxes;
 	};
+	const text = (): string[] => {
+		const seen = new Map<string, number>();
+		return [...document.querySelectorAll(landmarks)].slice(0, 16).map((e) => {
+			const name = e.getAttribute('role') ?? e.localName;
+			const n = (seen.get(name) ?? 0) + 1;
+			seen.set(name, n);
+			return `${name}${n} ${(e.textContent ?? '').replace(/\s+/g, '').length}`;
+		});
+	};
+	const styled = (): string => {
+		const read = (e: Element | null) => {
+			if (!e) return '-';
+			const c = getComputedStyle(e);
+			return [c.fontFamily, c.fontSize, c.fontWeight, c.color, c.margin].join(' ');
+		};
+		return `${read(document.body)} | ${read(document.querySelector('h1'))}`;
+	};
 	const snapshot = (): ThemeFrame => {
 		const root = document.documentElement;
 		const scheme = getComputedStyle(root).colorScheme;
 		const dark = /\bdark\b/.test(scheme) && !/\blight\b/.test(scheme);
 		const y = innerHeight / 2;
-		return { classes: [...root.classList].sort(), scheme, backdrop: [at(1, y, dark), at(innerWidth - 2, y, dark)], layout: layout() };
+		return { classes: [...root.classList].sort(), scheme, backdrop: [at(1, y, dark), at(innerWidth - 2, y, dark)], layout: layout(), text: text(), styled: styled() };
 	};
 	let recording: { before: ThemeFrame; frames: { frame: ThemeFrame; count: number; at: number }[] } | undefined;
 	let armed = 0;
@@ -306,4 +327,61 @@ export function layoutFailures(route: string, how: string, viewport: string, rec
 		],
 		shots: painted ? [{ label: `navigation: ${how}, a frame during the swap`, viewport, old: painted.after.png, new: painted.shot.png, ...(painted.diff.png ? { diff: painted.diff.png } : {}), regions: painted.diff.regions, ok: false }] : [],
 	};
+}
+
+/** A region holding at most this share of the text it holds on both pages is blank in that frame: content emptied before the next page's arrives. */
+const BLANK_SHARE = 0.1;
+/** Fewer characters than this on either page is no content a frame can be seen to lose. */
+const BLANK_FLOOR = 8;
+
+const countsOf = (text: readonly string[] = []) => new Map(text.map((entry) => { const at = entry.lastIndexOf(' '); return [entry.slice(0, at), Number(entry.slice(at + 1))] as const; }));
+
+/** Frames of the swap where a region both pages fill with text holds next to none of it, and the regions. */
+export function blankFrames(recording: ThemeRecording): { frames: number; regions: string[] } | undefined {
+	const before = countsOf(recording.before.text);
+	const after = countsOf(recording.after.text);
+	const regions = new Set<string>();
+	let frames = 0;
+	for (const f of recording.frames) {
+		const blank = [...countsOf(f.frame.text)].filter(([name, n]) => {
+			const least = Math.min(before.get(name) ?? 0, after.get(name) ?? 0);
+			return least >= BLANK_FLOOR && n <= least * BLANK_SHARE;
+		});
+		if (!blank.length) continue;
+		frames += f.count;
+		for (const [name] of blank) regions.add(name);
+	}
+	return frames ? { frames, regions: [...regions] } : undefined;
+}
+
+/** Frames of the swap whose <body> or heading carries styles neither page has: the next page shown before its stylesheet applied. */
+export function unstyledFrames(recording: ThemeRecording): { frames: number; frame: ThemeFrame } | undefined {
+	const { before, after } = recording;
+	if (before.styled === undefined || after.styled === undefined) return undefined;
+	// <body> and the heading are read apart: a frame between two pages may have no heading at all, which is no style of its own.
+	const parts = (styled: string) => styled.split(' | ');
+	const [bodyBefore, headBefore] = parts(before.styled);
+	const [bodyAfter, headAfter] = parts(after.styled);
+	const own = (styled: string) => {
+		const [body, head] = parts(styled);
+		return (body !== bodyBefore && body !== bodyAfter) || (head !== '-' && head !== headBefore && head !== headAfter);
+	};
+	const off = recording.frames.filter((f) => f.frame.styled !== undefined && own(f.frame.styled));
+	return off.length ? { frames: off.reduce((n, f) => n + f.count, 0), frame: off[0]!.frame } : undefined;
+}
+
+export const BLANK_HINT =
+	'For a few frames of the in-place navigation a region of the page was empty: the router took the leaving page\'s content out before the next page\'s was in (a blank main, an empty sidebar), which a fresh load never shows and the old app\'s navigation does not either. Keep the leaving content on screen until the next page is complete, then swap it in one frame. Never edit the converted output by hand.';
+export const UNSTYLED_HINT =
+	'For a few frames of the in-place navigation the page showed text in styles neither page has (the browser\'s default font, colour or margins): the next page\'s content was inserted before its stylesheet applied, or a stylesheet was removed and added again. Load the next page\'s stylesheets before swapping its content in, and keep the ones both pages share. Never edit the converted output by hand.';
+
+/** Failures for frames of the swap with a blank region or without the page's styles. */
+export function contentFailures(route: string, how: string, viewport: string, recording: ThemeRecording | undefined): Failure[] {
+	if (!recording) return [];
+	const out: Failure[] = [];
+	const blank = blankFrames(recording);
+	if (blank) out.push({ route, dimension: 'navigation', check: `${how}: blank region during the swap`, viewport, expected: 'every frame shows the content of the page before or the page after', actual: `${plural(blank.frames, 'frame')} showed ${blank.regions.join(', ')} next to empty`, hint: BLANK_HINT });
+	const unstyled = unstyledFrames(recording);
+	if (unstyled) out.push({ route, dimension: 'navigation', check: `${how}: styles during the swap`, viewport, expected: `every frame styled as the page before or the page after (${recording.after.styled})`, actual: `${plural(unstyled.frames, 'frame')} showed ${unstyled.frame.styled}`, hint: UNSTYLED_HINT });
+	return out;
 }

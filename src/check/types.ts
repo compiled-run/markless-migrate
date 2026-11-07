@@ -145,6 +145,8 @@ export interface PageCapture {
 	readonly stylesheets: readonly { readonly url: string; readonly text: string }[];
 	readonly decoded: Readonly<Record<string, { width: number; height: number }>>;
 	readonly images: readonly ImageRecord[];
+	/** The app's own paths the page links to, without their hash. */
+	readonly links?: readonly string[];
 	readonly fonts: readonly string[];
 	readonly elements: readonly ElementSnapshot[];
 	readonly screenshot: Buffer;

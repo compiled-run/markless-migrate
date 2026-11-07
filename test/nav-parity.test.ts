@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { withFailures } from '../src/check/compare.ts';
 import { compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult, requestFailures } from '../src/check/nav-parity.ts';
 import { applyNavigation } from '../src/check/report-judge.ts';
-import { flashFailures, layoutFailures, layoutFlash, themeFlashes } from '../src/check/swap-frames.ts';
+import { blankFrames, contentFailures, flashFailures, layoutFailures, layoutFlash, themeFlashes, unstyledFrames } from '../src/check/swap-frames.ts';
 import { DIMENSIONS, notCompared, type RouteResult } from '../src/check/types.ts';
 
 const ORIGIN = 'http://127.0.0.1:4000';
@@ -123,6 +123,21 @@ test('layoutFlash: a frame whose landmarks are where neither page has them, befo
 	const { failures } = layoutFailures('/docs/button', 'in place from /docs', 'desktop', { before, after, frames: at([before, partial, after]) }, []);
 	assert.equal(failures[0]?.check, 'in place from /docs: layout during the swap');
 	assert.equal(failures[0]?.actual, '1 frame showed a layout of its own (main1, aside1 where neither page has them)');
+});
+
+test('blankFrames and unstyledFrames: a region both pages fill left next to empty, or text in styles neither page has, is red; a page with no heading for a frame is not unstyled', () => {
+	const frame = (main: number, styled: string) => ({ classes: [], scheme: 'normal', backdrop: [100, 100], text: ['header1 40', `main1 ${main}`], styled });
+	const page = 'Inter 16px 400 rgb(0, 0, 0) 0px | Inter 32px 700 rgb(0, 0, 0) 0px';
+	const before = frame(800, page);
+	const after = frame(1200, page);
+	const at = (frames: ReturnType<typeof frame>[]) => frames.map((f, i) => ({ frame: f, count: 1, at: i * 16 }));
+	assert.equal(blankFrames({ before, after, frames: at([before, frame(500, page), after]) }), undefined);
+	assert.deepEqual(blankFrames({ before, after, frames: at([before, frame(0, page), frame(12, page), after]) }), { frames: 2, regions: ['main1'] });
+	assert.equal(unstyledFrames({ before, after, frames: at([before, frame(1200, 'Inter 16px 400 rgb(0, 0, 0) 0px | -'), after]) }), undefined);
+	const unstyled = unstyledFrames({ before, after, frames: at([before, frame(1200, 'Times 16px 400 rgb(0, 0, 0) 8px | Times 32px 700 rgb(0, 0, 0) 21px'), after]) });
+	assert.equal(unstyled?.frames, 1);
+	const failures = contentFailures('/docs/', 'in place from /', 'mobile', { before, after, frames: at([before, frame(0, 'Times 16px 400 rgb(0, 0, 0) 8px | -'), after]) });
+	assert.deepEqual(failures.map((f) => `${f.check} (${f.viewport}): ${f.actual}`), ['in place from /: blank region during the swap (mobile): 1 frame showed main1 next to empty', 'in place from /: styles during the swap (mobile): 1 frame showed Times 16px 400 rgb(0, 0, 0) 8px | -']);
 });
 
 test('requestFailures: a request of the app that failed while reaching a page in place is red, unless a fresh load fails it too', () => {
