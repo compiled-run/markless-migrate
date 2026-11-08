@@ -3,7 +3,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseFragment } from 'parse5';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { attr, childrenOf, elementChildren, inner, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
@@ -668,7 +669,7 @@ const CONTROLS = '[data-slot="card-header"] button, [data-slot="card-action"] bu
  * control the SVG it draws instead.
  */
 async function captureAt(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<ChartFacts[]> {
-	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+	const { context, page } = await openPage(browser, captureEnv(origin), viewport);
 	const charts: ChartFacts[] = [];
 	const load = async () => {
 		await loadPage(page, new URL(route, origin).href);
@@ -848,7 +849,7 @@ async function findStart(browser: Browser, origin: string, route: string, chart:
 	let hi = wide[0]!.viewport;
 	while (hi - lo > 1) {
 		const mid = Math.floor((lo + hi) / 2);
-		const { context, page } = await openPage(browser, defaultEnv(origin), { name: `w${mid}`, width: mid, height: 900, isMobile: false });
+		const { context, page } = await openPage(browser, captureEnv(origin), { name: `w${mid}`, width: mid, height: 900, isMobile: false });
 		try {
 			await loadPage(page, new URL(route, origin).href);
 			await page.waitForTimeout(1500);
@@ -874,7 +875,7 @@ async function findStart(browser: Browser, origin: string, route: string, chart:
  * does not animate), filming its marks frame by frame from the input: the chart's lag is the one most of them took.
  */
 async function measureLags(browser: Browser, origin: string, route: string, charts: ChartFacts[]): Promise<void> {
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await page.emulateMedia({ reducedMotion: 'no-preference' });
 		for (const chart of charts) {

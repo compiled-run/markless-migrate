@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
@@ -218,7 +219,7 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 	if (cached && cached.route === route) return cached;
 	const groups: ToggleGroup[] = [];
 	const skipped: string[] = [];
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForTimeout(300);
@@ -410,7 +411,7 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 	if (cached && cached.route === route) return cached;
 	const switches: Switch[] = [];
 	const skipped: string[] = [];
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForTimeout(300);
@@ -534,7 +535,7 @@ export async function captureForms(browser: Browser, origin: string, route: stri
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as FormCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const forms: { sig: string; nth: number; navigates: boolean }[] = [];
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		const url = new URL(route, origin).href;
 		// The old page's script takes the form over once it runs: submit only after it has.
@@ -650,7 +651,7 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as NotifyCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const notifications: Notify[] = [];
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const url = new URL(route, origin).href;
 	const fresh = async () => {
 		await loadPage(page, url);
@@ -868,7 +869,7 @@ export async function captureAccordions(browser: Browser, origin: string, route:
 	const file = join(dir, `${createHash('sha256').update(`accordion:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as AccordionCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const accordions: AccordionMode[] = [];
 	try {
 		await loadPage(page, new URL(route, origin).href);
@@ -934,7 +935,7 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 	const file = join(dir, `${createHash('sha256').update(`hover-delay:v3:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; delays: HoverDelay[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const delays: HoverDelay[] = [];
 	try {
 		await loadPage(page, new URL(route, origin).href);
@@ -1062,7 +1063,7 @@ export async function captureCarousels(browser: Browser, origin: string, route: 
 	const file = join(dir, `${createHash('sha256').update(`carousel:2:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; carousels: CarouselFacts[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const carousels: CarouselFacts[] = [];
 	try {
 		await loadPage(page, new URL(route, origin).href);
@@ -1152,7 +1153,7 @@ export async function captureComboboxEmpties(browser: Browser, origin: string, r
 	const file = join(dir, `${createHash('sha256').update(`combobox-empty:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; empties: ComboboxEmpty[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	const empties: ComboboxEmpty[] = [];
 	try {
 		await loadPage(page, new URL(route, origin).href);
@@ -1206,7 +1207,7 @@ export async function captureRacEmpties(browser: Browser, origin: string, route:
 	if (cached && cached.route === route) return cached;
 	const empties: ComboboxEmpty[] = [];
 	for (const control of controls) {
-		const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+		const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 		try {
 			await loadPage(page, new URL(route, origin).href);
 			await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
