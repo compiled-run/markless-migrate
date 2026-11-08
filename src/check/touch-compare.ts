@@ -1,7 +1,7 @@
 // What a finger's tap answered on each phone, old and new, judged: no browser here (judges-pure.test.ts).
 import { HINTS } from './hints.ts';
 import { describeTarget } from './journeys-compare.ts';
-import type { RecordedJourney, Target } from './journeys.ts';
+import type { RecordedJourney, StepResult, Target } from './journeys.ts';
 import type { Failure } from './types.ts';
 
 export type TouchProfileName = 'iphone' | 'android';
@@ -38,11 +38,13 @@ export interface TouchRow {
 	readonly profiles: readonly { readonly profile: TouchProfileName; readonly controls: readonly TouchControl[] }[];
 }
 
-/** Every desktop journey made of clicks alone (a control, and what it revealed), as the controls to tap in turn, once each. */
+const answeredOnDesktop = (r: StepResult | undefined) => Boolean(r && !r.failed && (r.navigated || r.added.length || r.removed.length || r.reaction?.regions.length || r.reaction?.changes.length));
+
+/** Every desktop journey made of clicks alone (a control, and what it revealed) whose every click the old page answered, as the controls to tap in turn, once each: a click the old page answers with nothing holds a tap to nothing either. */
 export function tappedControls(journeys: readonly RecordedJourney[]): Target[][] {
 	const seen = new Map<string, Target[]>();
 	for (const j of journeys) {
-		if (j.destructive || j.start || !j.steps.length || !j.steps.every((s) => s.action === 'click')) continue;
+		if (j.destructive || j.start || !j.steps.length || !j.steps.every((s) => s.action === 'click') || !j.steps.every((_, k) => answeredOnDesktop(j.expected[k]))) continue;
 		const targets = j.steps.map((s) => s.target);
 		const key = JSON.stringify(targets);
 		if (!seen.has(key)) seen.set(key, targets);
