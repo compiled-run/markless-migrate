@@ -166,6 +166,10 @@ Before and after numbers for the ports that are deployed are at [markless.dev/st
 | [Plan and known gaps](docs/plan.md) | The design, and what a green report does not promise yet |
 | [Notes](docs/notes/) | Agents, caching, hosts, hard problems and prior art |
 
+## Code of Conduct
+
+Everyone taking part in this project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 MIT. The fixtures include the Inter font under the SIL Open Font License (`fixtures/INTER-LICENSE.txt`).
