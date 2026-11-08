@@ -16,7 +16,7 @@
 		"test:unit": "node --test test/*.test.ts",
 		"test:e2e": "node --test test/e2e/*.test.ts",
 		"typecheck": "tsc --noEmit",
-		"browsers": "playwright install chromium"
+		"browsers": "playwright install chromium webkit"
 	},
 	"devDependencies": {
 		"@floating-ui/dom": "1.7.6",

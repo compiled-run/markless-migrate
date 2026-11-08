@@ -101,7 +101,7 @@ jobs:
           - { suite: pages, files: motion page-load radix-dialog-port embeds original-dataset }
           - { suite: networks, files: slow-network late-fonts busy-cpu state-engines, browsers: chromium firefox webkit }
           - { suite: shadcn, files: shadcn-typeset shadcn-create judge-offline, browsers: chromium webkit }
-          - { suite: parity, files: control-parity, browsers: chromium webkit }
+          - { suite: parity, files: control-parity touch, browsers: chromium webkit }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -156,7 +156,9 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' && needs.changes.outputs.tested != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # Corpus shard 1 holds "the original against itself", every micro-site page in one check: 35 to 40 min on main before
+    # phone taps; with them the other corpus shards ran 14 to 22 min where they had run 11 to 16, and shard 1 passed 45.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 5

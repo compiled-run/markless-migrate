@@ -1103,7 +1103,7 @@ const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; affect
 
 // Measured on a route's first session on each side and reused by its later sessions, so a journey does not wait a second for it.
 function ambientOnce(origin: string, route: string, page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; affected: readonly string[]; regions: readonly Box[]; lines: readonly string[] }> {
-	const key = `${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
+	const key = `${page.context().browser()?.browserType().name() ?? ''} ${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
 	let found = ambientSeen.get(key);
 	if (!found) {
 		ambientSeen.set(key, (found = ambientMotion(page, hosts)));
@@ -1155,7 +1155,7 @@ function domStill(): number {
 }
 
 /** Waits until no node has been added, removed or retexted for 200 ms (at most 3 s), polling from here. */
-async function domQuiet(page: Page): Promise<void> {
+export async function domQuiet(page: Page): Promise<void> {
 	const until = Date.now() + 3_000;
 	while (Date.now() < until) {
 		const still = await page.evaluate(domStill).catch(() => Infinity);
@@ -1172,7 +1172,7 @@ async function focusLabel(page: Page): Promise<string> {
 	return line.replace(/^- /, '').replace(/:$/, '') || 'body';
 }
 
-async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
+export async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
 	// Indentation is structure, which the rendered check compares; a step's effect is which nodes appear and disappear.
 	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
 	// A framework's own route announcer is not the app's (the a11y comparison accepts it the same way): it is hidden from
