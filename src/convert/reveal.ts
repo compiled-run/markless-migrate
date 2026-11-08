@@ -2,7 +2,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Browser, BrowserContext, Page } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { commandEmptyMark, keepCommandEmpty, markedOf } from './capture.ts';
@@ -379,7 +380,7 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 export const openDialogAtLoad = (html: string): boolean => [...html.matchAll(/<[a-z][^>]*\brole="(?:alert)?dialog"[^>]*>/g)].some(([tag]) => /\s(?:data-open(?:="")?|data-state="open")[\s>]/.test(tag));
 
 async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport, dismiss = false) {
-	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+	const { context, page } = await openPage(browser, captureEnv(origin), viewport);
 	await trackSettling(context);
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, 300);

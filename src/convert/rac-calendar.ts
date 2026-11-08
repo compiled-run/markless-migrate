@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Browser } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
 import { loadPage } from '../check/infrastructure.ts';
@@ -94,7 +95,7 @@ export async function captureRacCalendars(browser: Browser, origin: string, rout
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedCalendars, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const read = async (time: number): Promise<RawCalendar[]> => {
-		const { context, page } = await openPage(browser, defaultEnv(origin, { freeze: { ...DEFAULT_FREEZE, time } }), VIEWPORTS[0]!);
+		const { context, page } = await openPage(browser, captureEnv(origin, { freeze: { ...DEFAULT_FREEZE, time } }), VIEWPORTS[0]!);
 		try {
 			await loadPage(page, new URL(route, origin).href);
 			await settle(page);
@@ -128,7 +129,7 @@ export async function captureRacCalendars(browser: Browser, origin: string, rout
 	};
 	// What choosing a day (a range: two) in a popover's first calendar does to the control that opened it, on a fresh page each.
 	const effectOf = async (t: (typeof controls)[number], locale: string | undefined): Promise<RawEffect | undefined> => {
-		const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+		const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 		try {
 			await loadPage(page, new URL(route, origin).href);
 			await settle(page);
