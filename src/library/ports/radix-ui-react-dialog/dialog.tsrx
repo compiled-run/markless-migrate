@@ -30,7 +30,7 @@ export const dialogState = shared(
 			},
 		};
 	},
-	{ scope: 'widget' },
+	{ scope: 'subtree' },
 );
 
 
