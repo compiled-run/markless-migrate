@@ -155,7 +155,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-touch] [--touch iphone,android] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-media] [--no-touch] [--touch iphone,android] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           [--observations <dir>] [--original <dir>]
@@ -541,6 +541,7 @@ const TIMING_FLAGS = {
 	'no-control-parity': { type: 'boolean' },
 	'control-webkit': { type: 'boolean' },
 	'busy-cpu': { type: 'boolean' },
+	'no-media': { type: 'boolean' },
 	'no-touch': { type: 'boolean' },
 	touch: { type: 'string' },
 	'no-navigation': { type: 'boolean' },
@@ -859,6 +860,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(values['no-probes'] ? {} : { probes: {} }),
 					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
+					...(values['no-media'] || values.only ? {} : { media: true }),
 					...(values['no-touch'] || values.only ? {} : { touch: touchOptions(values.touch) }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
@@ -1197,6 +1199,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-probes'] ? {} : { probes: {} }),
 				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
+				...(values['no-media'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { media: true }),
 				...(values['no-touch'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { touch: touchOptions(values.touch) }),
 				...(navigation && !probesOnly ? { navigation } : {}),
 				...(load && !coverageOnly && !probesOnly ? { load } : {}),

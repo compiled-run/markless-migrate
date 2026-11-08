@@ -13,6 +13,10 @@ export interface LiveEmbed {
 	readonly role?: 'widget' | 'component';
 	/** The embed a component stands in for. */
 	readonly id?: string;
+	/** A video whose source never loaded (no source it could play, an error, or a load that gave up with no data). */
+	readonly failed?: true;
+	/** A video whose poster image the page asked for and did not get. */
+	readonly posterFailed?: true;
 }
 
 const MARK = 'data-markless-migrate-embed';
@@ -79,7 +83,12 @@ export function liveEmbeds(mark = false): LiveEmbed[] {
 			// A full-page capture can paint a video's frame a few pixels off its box, outside the mask: the frame is the decoder's, so it is not painted.
 			if (tag === 'video') (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
 		}
-		out.push({ tag, src, attributes, box });
+		const video = tag === 'video' ? (el as HTMLVideoElement) : undefined;
+		const failed = video !== undefined && (video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE || video.error !== null || (video.readyState === HTMLMediaElement.HAVE_NOTHING && video.networkState === HTMLMediaElement.NETWORK_IDLE && video.preload !== 'none'));
+		// A poster's fetch is in the page's resource timing: one answered with an error, or refused, never drew.
+		const poster = video?.poster ? (performance.getEntriesByName(video.poster) as PerformanceResourceTiming[]).at(-1) : undefined;
+		const posterFailed = poster !== undefined && (poster.responseStatus >= 400 || (poster.responseStatus === 0 && poster.transferSize === 0 && poster.decodedBodySize === 0));
+		out.push({ tag, src, attributes, box, ...(failed ? { failed: true as const } : {}), ...(posterFailed ? { posterFailed: true as const } : {}) });
 	}
 	return out;
 }
@@ -165,12 +174,12 @@ export async function maskedShot(page: Page, shoot: (mask: Locator[]) => Promise
 	}
 }
 
-const describeEmbed = (e: LiveEmbed) => `<${e.tag}>${e.role === 'component' ? ` standing in for ${e.id}` : ''} ${e.src} ${e.box.width}x${e.box.height} at (${e.box.x}, ${e.box.y})${Object.keys(e.attributes).length ? ` ${Object.entries(e.attributes).map(([k, v]) => (v ? `${k}="${v}"` : k)).join(' ')}` : ''}`;
+const describeEmbed = (e: LiveEmbed) => `<${e.tag}>${e.role === 'component' ? ` standing in for ${e.id}` : ''} ${e.src} ${e.box.width}x${e.box.height} at (${e.box.x}, ${e.box.y})${Object.keys(e.attributes).length ? ` ${Object.entries(e.attributes).map(([k, v]) => (v ? `${k}="${v}"` : k)).join(' ')}` : ''}${e.failed ? ', its source never loaded' : ''}${e.posterFailed ? ', its poster never loaded' : ''}`;
 
 const samePlace = (o: LiveEmbed, n: LiveEmbed) => Math.abs(o.box.width - n.box.width) <= 2 && Math.abs(o.box.height - n.box.height) <= 2 && Math.abs(o.box.x - n.box.x) <= PAD && Math.abs(o.box.y - n.box.y) <= PAD;
 
 /** The same embed: element, address, attributes, size and place; a Markless component standing in for an embed is held to its size and place here, and to its pixels and behaviour by the embed step. */
-const alike = (o: LiveEmbed | undefined, n: LiveEmbed | undefined) => Boolean(o && n && (o.role === 'component' || n.role === 'component' ? samePlace(o, n) : o.tag === n.tag && o.src === n.src && JSON.stringify(o.attributes) === JSON.stringify(n.attributes) && samePlace(o, n)));
+const alike = (o: LiveEmbed | undefined, n: LiveEmbed | undefined) => Boolean(o && n && (o.role === 'component' || n.role === 'component' ? samePlace(o, n) : o.tag === n.tag && o.src === n.src && Boolean(o.failed) === Boolean(n.failed) && Boolean(o.posterFailed) === Boolean(n.posterFailed) && JSON.stringify(o.attributes) === JSON.stringify(n.attributes) && samePlace(o, n)));
 
 /** Each live embed of the old page against the new page's, in order: same element, address, attributes, size and place. One the old loads disagree on is left to the noise baseline. */
 export function embedFailures(route: string, viewport: string, old: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
@@ -180,7 +189,10 @@ export function embedFailures(route: string, viewport: string, old: PageCapture,
 	for (let i = 0; i < Math.max(a.length, b.length); i++) {
 		const o = a[i];
 		const n = b[i];
-		if (others.some((p) => (o ? !alike(o, p.liveEmbeds?.[i]) : p.liveEmbeds?.[i] !== undefined)) || alike(o, n)) continue;
+		if (others.some((p) => (o ? !alike(o, p.liveEmbeds?.[i]) : p.liveEmbeds?.[i] !== undefined))) continue;
+		// A video that loads on neither side is still a video missing from the page: the old page's source failed in this run too.
+		if (alike(o, n) && (o?.failed || o?.posterFailed)) failures.push({ route, dimension: 'rendered', check: `embed #${i + 1} <${o.tag}>`, viewport, expected: `${o.failed ? 'a video whose source loads' : 'a poster that loads'}: ${o.src}`, actual: 'broken on both sides: the old page\'s source failed here as well', hint: HINTS.mediaBrokenBoth });
+		if (alike(o, n)) continue;
 		// A component the old page shows no embed for at this place is the embed step's to pair, by its id.
 		if (!o && n?.role === 'component') continue;
 		failures.push({ route, dimension: 'rendered', check: `embed #${i + 1}${o ? ` <${o.tag}>` : ''}`, viewport, expected: o ? describeEmbed(o) : '(absent)', actual: n ? describeEmbed(n) : '(absent)', hint: HINTS.embed });

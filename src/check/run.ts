@@ -68,6 +68,7 @@ import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templa
 import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
+import { observeMedia } from './media.ts';
 import { observeTouch } from './touch.ts';
 import type { TouchOptions } from './touch-compare.ts';
 import type { InventoryRoutes, Served } from './unlisted.ts';
@@ -139,6 +140,8 @@ export interface CheckOptions {
 	readonly controls?: Omit<ControlParityOptions, 'webkit'> & { readonly webkit?: boolean };
 	/** The busy-CPU lane on each template group's representative: its controls used while the machine's CPUs are kept busy, in Chromium, Firefox and WebKit. */
 	readonly busyCpu?: BusyCpuOptions;
+	/** Every picture of each page compared again at every width once the page was scrolled through and they loaded. */
+	readonly media?: boolean;
 	/** Tap every control a desktop journey clicked with a finger, on an iPhone in WebKit and an Android phone in Chromium, old and new. */
 	readonly touch?: TouchOptions;
 	/** Every route the plan lists and the source's route patterns: a page the original serves that a checked page links to, or its journeys reach, and that this does not list, is red. */
@@ -205,6 +208,7 @@ interface Run {
 	readonly probes?: ProbeOptions;
 	readonly controls?: ControlParityOptions;
 	readonly busyCpu?: BusyCpuOptions & { readonly browsers: { readonly chromium: Browser; readonly firefox: Browser; readonly webkit: Browser } };
+	readonly media?: boolean;
 	readonly touch?: TouchOptions & { readonly webkit?: Browser };
 	readonly inventory?: InventoryRoutes;
 	readonly slicing?: Slicing;
@@ -458,6 +462,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			return { patches: located.failures.map((f, i) => (f === failures[i] ? null : { ...(f.old ? { old: f.old } : {}), ...(f.new ? { new: f.new } : {}), where: f.where! })), ...(located.newFiles ? { newFiles: located.newFiles } : {}) };
 		},
 		hashLinks: () => hashLinkFailures(browser, run.new, route, viewport),
+		media: ({ viewports: names }) => observeMedia(browser, later(), route, viewports.filter((v) => names.includes(v.name))),
 		served: ({ paths }) => servedPaths(watched.old, paths),
 		walls: async () => ({ ...(walls.old[0] ? { old: walls.old[0] } : {}), ...(walls.new[0] ? { new: walls.new[0] } : {}) }),
 	};
@@ -590,7 +595,7 @@ function routeContext(run: Run, route: string, role: string | undefined, options
 	};
 }
 
-const routeStages = (run: Run): RouteContext['stages'] => ({ ...(run.original ? { original: { originalId: run.original.manifest.originalId, conditionsId: run.original.manifest.conditionsId } } : {}), probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds), ...(run.inventory ? { inventory: run.inventory } : {}), ...(run.touch ? { touch: true } : {}) });
+const routeStages = (run: Run): RouteContext['stages'] => ({ ...(run.original ? { original: { originalId: run.original.manifest.originalId, conditionsId: run.original.manifest.conditionsId } } : {}), probes: Boolean(run.probes), ...(run.controls ? { controls: { webkit: Boolean(run.controls.webkit) } } : {}), busyCpu: Boolean(run.busyCpu), ...(run.motion ? { motion: run.motion } : {}), responsiveness: Boolean(run.responsiveness), embeds: Boolean(run.embeds), ...(run.inventory ? { inventory: run.inventory } : {}), ...(run.media ? { media: true } : {}), ...(run.touch ? { touch: true } : {}) });
 
 /** OLD's captures of the route, so a record run can save what OLD fetched. */
 const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
@@ -835,7 +840,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		if (touchWebkit !== webkitBrowser) await touchWebkit?.close();
 		throw error;
 	}
-	const base: Run = { ...(options.slicing ? { slicing: options.slicing } : {}), ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.touch ? { touch: { ...options.touch, ...(touchWebkit ? { webkit: touchWebkit } : {}) } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.inventory ? { inventory: options.inventory } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { ...(options.slicing ? { slicing: options.slicing } : {}), ...(options.original ? { original: options.original } : {}), old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, { ...shared, liveCounts: new Map<string, string>() }), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.controls ? { controls: { ...options.controls, webkit: webkitBrowser } } : {}), ...(options.touch ? { touch: { ...options.touch, ...(touchWebkit ? { webkit: touchWebkit } : {}) } } : {}), ...(options.busyCpu && laneBrowsers ? { busyCpu: { ...options.busyCpu, browsers: { chromium: browser, firefox: laneBrowsers[0], webkit: laneBrowsers[1] } } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.inventory ? { inventory: options.inventory } : {}), ...(options.media ? { media: true } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
