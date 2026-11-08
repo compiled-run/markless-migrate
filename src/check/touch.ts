@@ -18,8 +18,8 @@ const tapOf = (r: StepResult | undefined, stopped = false): Tap =>
 /** Each control tapped once on a freshly loaded page per side and phone; OLD again where it and NEW differ. */
 export async function observeTouch(browsers: { readonly chromium: Browser; readonly webkit?: Browser }, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, controls: readonly (readonly Target[])[], options: TouchOptions = {}): Promise<TouchRow> {
 	const wanted = TOUCH_PROFILES.filter((p) => (options.profiles ?? TOUCH_PROFILES.map((x) => x.name)).includes(p.name));
-	const profiles: TouchRow['profiles'][number][] = [];
-	for (const profile of wanted) {
+	// The two phones are different browsers: each taps on its own, at the same time.
+	const profiles = await Promise.all(wanted.map(async (profile): Promise<TouchRow['profiles'][number]> => {
 		const browser = profile.engine === 'webkit' ? browsers.webkit : browsers.chromium;
 		if (!browser) throw new Error(`taps on ${profile.label} need WebKit, which this check did not start`);
 		const userAgent = devices[profile.device]!.userAgent;
@@ -29,14 +29,14 @@ export async function observeTouch(browsers: { readonly chromium: Browser; reado
 		const [olds, news] = await Promise.all([replayAll(browser, env(sides.old), route, viewport, journeys, { touch: true }), replayAll(browser, env(sides.new), route, viewport, journeys, { touch: true })]);
 		const differing = journeys.filter((j, i) => !tapsOf(olds[i], j.steps.length).every((t, k) => alike(t, tapsOf(news[i], j.steps.length)[k]!)));
 		const again = await replayAll(browser, env(sides.old), route, viewport, differing, { touch: true });
-		profiles.push({
+		return {
 			profile: profile.name,
 			controls: controls.map((targets, i) => {
 				const old = tapsOf(olds[i], targets.length);
 				const at = differing.indexOf(journeys[i]!);
 				return { targets, old: at < 0 ? [old] : [old, tapsOf(again[at], targets.length)], new: tapsOf(news[i], targets.length) };
 			}),
-		});
-	}
+		};
+	}));
 	return { profiles };
 }
