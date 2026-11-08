@@ -94,6 +94,13 @@ function convert(region: (s: Shape) => string, page: (html: string) => string = 
 	return { plan, placed, out: emitElement(root, { declarations, bind }), declarations };
 }
 
+// A build hands the page its shared module's interface; without it the compiler cannot see ttShared0 is shared().
+async function compilePage(plan: TablePlan, source: string) {
+	const { compileTsrxModule, compileTsrxModuleLinkArtifact } = await import('@markless/compiler');
+	const shared = await compileTsrxModuleLinkArtifact({ filename: 'pages/shared.ts', source: plan.sharedModule('../lib/parts')! });
+	return compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [], importedModuleInterfaces: { './shared.ts': shared.moduleGraphInterface } });
+}
+
 test('a TanStack table renders its rows from one template in a keyed @for over the view, with the empty state the old page showed', () => {
 	const { placed, out, plan } = convert(radixRegion);
 	assert.equal(placed, 1, plan.notes.join('\n'));
@@ -232,7 +239,7 @@ test('a table whose rows are no one template renders as the old page showed it, 
 });
 
 test('rows holding differently shaped content are one template, an arm per shape on the row\'s own key, and compile', async () => {
-	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	const { collectTsrxModuleDiagnostics } = await import('@markless/compiler');
 	// Beta draws its name inside a <b> (dashboard-01's status icon, one per status).
 	const { plan, placed, out, declarations } = convert((s) => radixRegion(s).replace('<div class="lowercase">beta</div>', '<div class="lowercase"><b>beta</b></div>'));
 	assert.equal(placed, 1, plan.notes.join('\n'));
@@ -243,7 +250,7 @@ test('rows holding differently shaped content are one template, an arm per shape
 	assert.deepEqual(['a', 'b', 'c'].map((id) => values[id]![Number(arms[1])]), ['0', '1', '0'], 'alpha and gamma hold text, beta a <b>');
 	assert.deepEqual(['a', 'c'].map((id) => values[id]![Number(arms[2])]), ['alpha', 'gamma'], 'each row fills its own arm');
 	const source = `import { computed } from '@markless/core';\nimport { ttView, ttAct } from './tt.ts';\nimport { tts_x, ttc_x } from './specs.ts';\nimport { ttShared0 } from './shared.ts';\nexport default function Page() @{\n\t${declarations.join('\n\t')}\n\t${out}\n}\n`;
-	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
+	const result = await compilePage(plan, source);
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
 });
 
@@ -258,7 +265,7 @@ test('a row only the every-row state shows has its own values, read on a page ro
 });
 
 test('a control each row keeps its own state for (a reviewer select) keeps it by row id, and compiles', async () => {
-	const { compileTsrxModule, collectTsrxModuleDiagnostics } = await import('@markless/compiler');
+	const { collectTsrxModuleDiagnostics } = await import('@markless/compiler');
 	// The page's select plan gives every select a state() of its own, as it does a select outside a table.
 	const region = (s: Shape) => radixRegion(s).replace(/<div class="lowercase">(\w+)<\/div>/g, (_, n: string) => `<div class="lowercase"><span data-slot="select-value">${n === 'beta' ? 'Assign' : n}</span></div>`);
 	const names = new Map<Element, string>();
@@ -276,7 +283,7 @@ test('a control each row keeps its own state for (a reviewer select) keeps it by
 	assert.deepEqual(['a', 'b', 'c'].map((id) => values[id]![Number(m[1])]), ['alpha', 'Assign', 'gamma'], 'each row starts with what its own select showed');
 	assert.ok(!declarations.some((d) => /\bsel\d/.test(d)), 'no row keeps a state of its own');
 	const source = `import { computed, state } from '@markless/core';\nimport { ttView, ttAct } from './tt.ts';\nimport { tts_x, ttc_x } from './specs.ts';\nimport { ttShared0 } from './shared.ts';\nexport default function Page() @{\n\t${declarations.join('\n\t')}\n\t${out}\n}\n`;
-	const result = await compileTsrxModule({ filename: 'pages/t.tsrx', source, symbols: [] });
+	const result = await compilePage(plan, source);
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), []);
 });
 

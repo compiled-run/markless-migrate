@@ -2,6 +2,7 @@
 // sequences, and compares what each page shows at fixed moments: after each action settles, halfway through the wait
 // that follows it, at the end of that wait, and in the frame after each element's own animation ends.
 import type { BrowserContext, CDPSession, Page } from 'playwright';
+import { PROTOCOL_EVENT_HOST_ATTRIBUTE } from '@markless/serializer/protocol';
 
 /** a: shadcn's dialog; b: a backdrop slower than its dialog; c: nothing animates; d: shadcn's sheet; e: opened and closed by
  * the page through `open` and `onOpenChange`, with no trigger; f: an alert dialog. */
@@ -320,6 +321,7 @@ export function differences(expected: Snapshot, actual: Snapshot): string[] {
 		}
 		if (!e.shown) continue;
 		for (const attr of new Set([...Object.keys(e.attrs ?? {}), ...Object.keys(a.attrs ?? {})])) {
+			if (attr === PROTOCOL_EVENT_HOST_ATTRIBUTE || attr.startsWith('data-markless')) continue;
 			if (e.attrs?.[attr] !== a.attrs?.[attr]) out.push(`${key} [${attr}]: Radix ${JSON.stringify(e.attrs?.[attr] ?? null)}, the port ${JSON.stringify(a.attrs?.[attr] ?? null)}`);
 		}
 		if (Math.abs((e.opacity ?? 1) - (a.opacity ?? 1)) > 0.06) out.push(`${key} opacity: Radix ${e.opacity}, the port ${a.opacity}`);

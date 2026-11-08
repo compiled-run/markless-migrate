@@ -32,7 +32,7 @@ export const alertDialogState = shared(
 			},
 		};
 	},
-	{ scope: 'widget' },
+	{ scope: 'subtree' },
 );
 
 export function AlertDialogRoot({ open, defaultOpen = false, onOpenChange, children }: DialogRootProps) @{
