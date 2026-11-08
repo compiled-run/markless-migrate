@@ -7,7 +7,7 @@ import { motionEnv } from './motion.ts';
 import type { Viewport } from './types.ts';
 
 /** How long each of the opening and the closing is watched. */
-const WINDOW_MS = 1_200;
+const WINDOW_MS = 700;
 
 type Recorder = { frames: DialogFrame[]; stop: boolean };
 

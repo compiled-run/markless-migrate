@@ -8,7 +8,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { reuseKey } from '../check/ship-key.ts';
 
 /** Bump when what every recording observes changes in code the recorder versions do not cover (the convert's orchestration). */
-export const RECORDING_VERSION = 2;
+export const RECORDING_VERSION = 3;
 
 // Next.js streams the head: the same page can come with its meta tags in another order.
 const HEAD = /<head\b[^>]*>([\s\S]*?)<\/head>/i;

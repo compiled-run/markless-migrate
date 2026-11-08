@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { DATE_TEXT, parseDate, type ClockRule, type DateText } from '../../parts/clock.ts';
 import { BEHIND, LATER } from './day-picker.ts';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
 import { loadPage } from '../check/infrastructure.ts';
@@ -151,7 +152,7 @@ export async function captureClock(browser: Browser, origin: string, route: stri
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; marks: ClockMark[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const read = async (freeze: typeof DEFAULT_FREEZE): Promise<ClockText[]> => {
-		const { context, page } = await openPage(browser, defaultEnv(origin, { freeze }), VIEWPORTS[0]!);
+		const { context, page } = await openPage(browser, captureEnv(origin, { freeze }), VIEWPORTS[0]!);
 		try {
 			await loadPage(page, new URL(route, origin).href);
 			await settle(page);
