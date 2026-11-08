@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { runCheck } from '../src/check/run.ts';
-import { judgeTouch, type Tap } from '../src/check/touch-compare.ts';
+import { judgeTouch, tappedControls, type Tap } from '../src/check/touch-compare.ts';
+import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
 
 const page = (script: string) => `<!doctype html><html lang="en"><head><title>Touch</title><meta name="viewport" content="width=device-width"></head><body><main><h1>Plans</h1><button id="details">Show details</button><button id="both">Show price</button><p id="out"></p><p id="price"></p></main><script>${script}document.getElementById("both").addEventListener("click", () => { document.getElementById("price").textContent = "Price: 10 EUR"; });</script></body></html>`;
 // The port answers the mouse only: a pointerdown handler that ignores touch, so a finger's tap does nothing.
@@ -44,4 +45,10 @@ test('what the old page varies between two taps is not held against the port', (
 	const item = { role: 'menuitem', name: 'Archive', nth: 0 };
 	const nested = { profiles: [{ profile: 'android' as const, controls: [{ targets: [target, item], old: [[tap(['- menu']), tap(['- paragraph: Archived'])]], new: [tap(['- menu']), tap([])] }] }] };
 	assert.deepEqual(judgeTouch('/', nested).map((f) => f.check), ['tap button "Roll", then tap menuitem "Archive" on an Android phone (Chromium)']);
+});
+
+test('tappedControls: a journey of clicks the old page answered on the desktop is tapped; one it answered with nothing is not, as a tap there is held to nothing too', () => {
+	const result = (added: string[]): StepResult => ({ url: '/', added, removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false });
+	const journey = (name: string, added: string[]): RecordedJourney => ({ name, steps: [{ action: 'click', target: { role: 'button', name, nth: 0 } }], expected: [result(added)] });
+	assert.deepEqual(tappedControls([journey('Open', ['- dialog "Hi"']), journey('Idle', [])]).map((t) => t[0]!.name), ['Open']);
 });
