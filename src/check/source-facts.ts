@@ -1,4 +1,5 @@
 import type { SourceFacts as ScannedFacts } from '../source/index.ts';
+import type { SourceBehaviour } from './inventory-compare.ts';
 import { matchRoute } from '../source/pattern.ts';
 
 /** What the checker reads from the source readers (src/source): a structural subset of their SourceFacts. */
@@ -48,6 +49,8 @@ export interface SourceFacts {
 	readonly guarded?: readonly string[];
 	/** `hash` when the old app's router keeps the route after `#`. */
 	readonly routing?: 'hash';
+	/** The behaviours the old app's source holds, each to be accounted for by a live run. */
+	readonly behaviours?: readonly SourceBehaviour[];
 }
 
 type Scanner = { scanSource(dir: string): Promise<ScannedFacts> };
@@ -62,7 +65,7 @@ export async function loadSourceFacts(dir: string): Promise<{ facts?: SourceFact
 	}
 	if (typeof scanner.scanSource !== 'function') return { error: 'source readers do not export scanSource' };
 	const scanned = await scanner.scanSource(dir);
-	const facts: SourceFacts = { nondeterminism: scanned.nondeterminism, writes: scanned.writes, clients: scanned.clients, routes: scanned.routes, components: scanned.components, guarded: [...new Set(scanned.authGuards.flatMap((g) => g.routes))], ...(scanned.routing ? { routing: scanned.routing } : {}) };
+	const facts: SourceFacts = { nondeterminism: scanned.nondeterminism, writes: scanned.writes, clients: scanned.clients, routes: scanned.routes, components: scanned.components, guarded: [...new Set(scanned.authGuards.flatMap((g) => g.routes))], ...(scanned.routing ? { routing: scanned.routing } : {}), ...(scanned.behaviours?.length ? { behaviours: scanned.behaviours } : {}) };
 	return { facts };
 }
 

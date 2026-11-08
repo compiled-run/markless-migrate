@@ -255,6 +255,8 @@ export interface RouteResult {
 	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
 	/** Interactions explored on the OLD page and replayed on NEW, with what OLD did at each step. */
 	readonly journeys?: readonly RecordedJourney[];
+	/** Every behaviour of the old page (handlers, animations, scroll behaviours, :hover and :focus rules, media) and whether the port has it. */
+	readonly behaviours?: readonly import('./inventory-compare.ts').Accounted[];
 	/** What the new page does better by WAI-ARIA than the old page (a state the old page left out): listed, not red, and never hiding another difference of the same step. */
 	readonly improvements?: readonly string[];
 	/** Set instead of `journeys` once they were written to disk at the end of the route's check: the file, and each journey's name. */
@@ -435,6 +437,8 @@ export interface Report {
 	readonly partial?: { readonly checked: number; readonly total: number | null };
 	/** Every route of the old site checked for existence on the new app. */
 	readonly coverage?: RouteCoverage;
+	/** Each behaviour the old app's source holds (with --source), accounted for by what the checked pages showed live: ported, or red unless accepted. */
+	readonly inventory?: { readonly source: readonly import('./inventory-compare.ts').SourceAccount[]; readonly failures: readonly Failure[] };
 	/** Pages grouped by template: every page got the other dimensions, visual, responsiveness and motion ran on each group's representative. */
 	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
 	/** The reference pages --reference named, measured as each page's first-click waste is. */

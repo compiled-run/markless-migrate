@@ -155,7 +155,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed] [--reuse <dir> [--closures <file>]]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-media] [--no-touch] [--touch iphone,android] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-control-parity] [--control-webkit] [--busy-cpu] [--no-behaviours] [--no-media] [--no-touch] [--touch iphone,android] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi] [--no-waste] [--waste-profile <name>] [--js-budget <kB>] [--waste-maps <dir>] [--reference <url>]...
           [--observations <dir>] [--original <dir>]
@@ -256,6 +256,11 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           group: a few of its controls and keys used while every CPU of the machine is kept busy, in
           Chromium, Firefox and WebKit; a control the port answers on an idle machine but not on a busy
           one, where the original still does, is red.
+          Behaviour inventory: each handler the journeys found, and each element the page animates,
+          scroll listener and IntersectionObserver, :hover and :focus rule and picture, video or audio
+          two old loads show, must be on the new page; with --source, each one the old app's source
+          holds must show live on a checked page where the port has it too (full runs only). Anything
+          else is red until accepted. --no-behaviours leaves it out.
           Touch: every control a desktop journey clicked is tapped with a finger on a freshly loaded
           page, on an iPhone in WebKit and an Android phone in Chromium (touch input, phone width), old
           and new; a tap the original answers that the port answers with nothing, or with other content
@@ -541,6 +546,7 @@ const TIMING_FLAGS = {
 	'no-control-parity': { type: 'boolean' },
 	'control-webkit': { type: 'boolean' },
 	'busy-cpu': { type: 'boolean' },
+	'no-behaviours': { type: 'boolean' },
 	'no-media': { type: 'boolean' },
 	'no-touch': { type: 'boolean' },
 	touch: { type: 'string' },
@@ -860,6 +866,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(values['no-probes'] ? {} : { probes: {} }),
 					...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
+					...(values['no-behaviours'] || values.only ? {} : { behaviours: true }),
 					...(values['no-media'] || values.only ? {} : { media: true }),
 					...(values['no-touch'] || values.only ? {} : { touch: touchOptions(values.touch) }),
 					...(navigation ? { navigation } : {}),
@@ -1199,6 +1206,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-probes'] ? {} : { probes: {} }),
 				...(values['no-probes'] || values['no-control-parity'] ? {} : { controls: values['control-webkit'] ? { webkit: true } : {} }),
 				...(values['busy-cpu'] && !probesOnly && !loadOnly && !embedsOnly ? { busyCpu: {} } : {}),
+				...(values['no-behaviours'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { behaviours: true }),
 				...(values['no-media'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { media: true }),
 				...(values['no-touch'] || probesOnly || loadOnly || embedsOnly || coverageOnly ? {} : { touch: touchOptions(values.touch) }),
 				...(navigation && !probesOnly ? { navigation } : {}),

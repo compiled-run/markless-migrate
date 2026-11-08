@@ -342,6 +342,30 @@ network failure: it is red, "ran out of time", and a bigger `--timeout` or `--jo
 (a page with hundreds of controls, such as a long comment thread). The checker's own requests are retried
 the same way. `check` exits 3 when nothing is red but such a route was not checked.
 
+### The behaviour inventory
+
+Every old page's behaviours are listed and each must be on the new page, or accepted with a reason; anything
+else is red. The handlers are the controls the journeys found on the old page (an element that listens for
+clicks or keys, or a hover-only part): one a journey used is ported unless that journey failed, one none used
+is already red as not exercised. The rest are read live, on two old loads and the new one, after the page has
+loaded and been scrolled through with motion allowed: each element the page animates (a Web Animation, a CSS
+animation or transition, a style a script writes frame after frame), each scroll or wheel listener and each
+IntersectionObserver, each `:hover` and `:focus` rule of its same-origin stylesheets, and each picture, video
+and audio by its file. One both old loads show that the new page lacks is red (`behaviour inventory: :hover
+rule .card:hover`); each route's report lists every behaviour with `ported` or `missing`.
+
+`plan --source` and `check --source` also read every behaviour the old app's source holds: its handlers, the
+components and calls of animation libraries (framer-motion and motion, react-spring, GSAP, AOS, auto-animate),
+its scroll hooks and listeners (`useScroll`, `useInView`, `new IntersectionObserver`, `addEventListener('scroll')`,
+`onScroll`, `whileInView`), the `:hover` and `:focus` rules of its CSS files and its media elements, each with its
+file and line (`.migrate/inventory.json` lists them before anything is converted). A full run (`--all`)
+accounts for each: one the source keys (a handler by its text, a rule by its selector, a picture by its file, an
+animated component by its text) is the live behaviour of that key on any checked page, ported where one page
+has it on the port; one with nothing to key it by (a scroll hook, a CSS module's rule) is ported when a checked
+page showed its kind and the port has every one of it. One no checked page showed is red, as nothing proves
+the port has it: check a route that renders it, port it, or accept it (`report.inventory`). `--no-behaviours`
+leaves the inventory out.
+
 ## Intended differences
 
 Every failure carries an id (in `[brackets]` in the summary, `id` in report.json) that stays the same
