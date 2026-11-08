@@ -47,6 +47,8 @@ import { measureLoad, type LoadOptions } from './load.ts';
 import { locateFailures } from './locate.ts';
 import { motionRules, type MotionOptions } from './motion-compare.ts';
 import { observeMotion } from './motion.ts';
+import { observeScroll } from './scroll-motion.ts';
+import { observeDialogs } from './dialogs.ts';
 import { checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { contractLines, type NetworkRecord } from './network.ts';
 import { observeProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
@@ -443,6 +445,8 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 		touch: ({ controls }) => observeTouch({ chromium: browser, ...(watched.touch?.webkit ? { webkit: watched.touch.webkit } : {}) }, later(), route, controls, watched.touch),
 		busy: () => checkBusyCpu(watched.busyCpu!.browsers, later(), route, viewport, watched.busyCpu),
 		motion: ({ journeys }) => observeMotion(browser, later(), route, viewport, journeys, { ...watched.motion, rules: motionRules(parseRules(load().olds[0]!.pages[viewport.name]?.stylesheets ?? [])) }),
+		scroll: () => observeScroll(browser, later(), route, viewports),
+		dialogs: ({ journeys }) => observeDialogs(browser, later(), route, viewports, journeys),
 		responsiveness: ({ journeys }) => checkResponsiveness(browser, later(), route, journeys, watched.responsiveness),
 		embeds: async () => {
 			const out = await checkEmbeds(browser, later(), route, viewports, watched.embeds!);
