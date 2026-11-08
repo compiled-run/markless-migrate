@@ -1155,7 +1155,7 @@ function domStill(): number {
 }
 
 /** Waits until no node has been added, removed or retexted for 200 ms (at most 3 s), polling from here. */
-async function domQuiet(page: Page): Promise<void> {
+export async function domQuiet(page: Page): Promise<void> {
 	const until = Date.now() + 3_000;
 	while (Date.now() < until) {
 		const still = await page.evaluate(domStill).catch(() => Infinity);
@@ -1172,7 +1172,7 @@ async function focusLabel(page: Page): Promise<string> {
 	return line.replace(/^- /, '').replace(/:$/, '') || 'body';
 }
 
-async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
+export async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
 	// Indentation is structure, which the rendered check compares; a step's effect is which nodes appear and disappear.
 	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
 	// A framework's own route announcer is not the app's (the a11y comparison accepts it the same way): it is hidden from
@@ -1466,9 +1466,6 @@ async function stepTarget(page: Page, step: Step): Promise<Locator> {
 	return (step.action === 'key' || step.action === 'outside') && (await marked.count().catch(() => 0)) ? marked : locate(page, step.target);
 }
 
-/** Pages of a touch session: a click step is a finger's tap there. */
-const tapping = new WeakSet<Page>();
-
 export async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
 	if (step.action === 'live') {
 		const databases = sessionDatabases(page.context());
@@ -1488,7 +1485,7 @@ export async function perform(page: Page, step: Step, patience = QUICK): Promise
 		.catch(() => {});
 	switch (step.action) {
 		case 'click':
-			return reach(page, target, (t, timeout) => (tapping.has(page) ? t.tap({ timeout }) : clickOnce(t, { timeout })), true, patience);
+			return reach(page, target, (t, timeout) => clickOnce(t, { timeout }), true, patience);
 		case 'press':
 			await reach(page, target, (t, timeout) => t.focus({ timeout }), false, patience);
 			return page.keyboard.press(step.key);
@@ -1594,11 +1591,9 @@ export interface Session {
 }
 
 /** `loops`: track loops so the caller can hold them (motion records what an interaction starts, not what a loop keeps doing). */
-export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> & { readonly touch?: boolean } = {}): Promise<Session> {
+export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> = {}): Promise<Session> {
 	const origin = env.origin;
-	const { touch, ...opening } = options;
-	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...opening });
-	if (touch) tapping.add(page);
+	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...options });
 	const host = new URL(origin).origin;
 	const oldHost = env.frontDoor ? new URL(env.frontDoor.old).origin : undefined;
 	const hosts = oldHost && oldHost !== host ? [host, oldHost] : [host];
@@ -1794,12 +1789,12 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	};
 }
 
-export function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey, options: { readonly touch?: boolean } = {}): Promise<StepResult[]> {
-	return inSession(() => replayOnce(browser, env, route, viewport, journey, options));
+export function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+	return inSession(() => replayOnce(browser, env, route, viewport, journey));
 }
 
-async function replayOnce(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey, options: { readonly touch?: boolean }): Promise<StepResult[]> {
-	const session = await openSession(browser, env, journey.start ?? route, viewport, options);
+async function replayOnce(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+	const session = await openSession(browser, env, journey.start ?? route, viewport);
 	try {
 		const results: StepResult[] = [];
 		for (const [i, step] of journey.steps.entries()) {
@@ -2592,8 +2587,8 @@ const SURVEY_READS = 4;
 /** Step results of every journey in one run, in journey order. */
 export type Run = readonly (readonly StepResult[])[];
 
-export async function replayAll(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journeys: readonly Journey[], options: { readonly touch?: boolean } = {}): Promise<Run> {
-	return pool(journeys, CONCURRENCY, (journey) => replay(browser, env, route, viewport, journey, options));
+export async function replayAll(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journeys: readonly Journey[]): Promise<Run> {
+	return pool(journeys, CONCURRENCY, (journey) => replay(browser, env, route, viewport, journey));
 }
 
 /** What each unswitched page a NEW journey reached logs to the console on a plain load from the old app: those errors are that page's own, not the port's. */

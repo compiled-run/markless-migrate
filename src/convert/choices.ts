@@ -2,7 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page, Request } from 'playwright';
-import { defaultEnv, openPage } from '../check/browser.ts';
+import { openPage } from '../check/browser.ts';
+import { captureEnv } from './capture-env.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
@@ -299,7 +300,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 		return out;
 	};
 	const session = async <T>(use: (page: Page) => Promise<T>): Promise<T> => {
-		const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
+		const { context, page } = await openPage(browser, captureEnv(origin), viewport);
 		await trackSettling(context);
 		try {
 			return await use(page);
