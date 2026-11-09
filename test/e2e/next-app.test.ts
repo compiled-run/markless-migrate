@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { after, before, describe } from 'node:test';
+import { after, before, describe, type TestContext } from 'node:test';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,7 +17,7 @@ import { discoverEndpoints } from '../../src/check/endpoints.ts';
 import { plan, writeInventory } from '../../src/plan/inventory.ts';
 import { routeTargets } from '../../src/plan/routes.ts';
 import { recordResults, status, summarizeStatus } from '../../src/status.ts';
-import { buildNext, failuresIn as failure, limited, OTHER_FONT, redByRole, redDimensions, sharded, startGuard, startNext, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
+import { buildNext, failuresIn as failure, onDemand, OTHER_FONT, redByRole, redDimensions, serveFor, sharded, startGuard, startNext, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 const FIXTURE = new URL('../../fixtures/next-app', import.meta.url).pathname;
@@ -529,28 +529,21 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 	let twinOnOtherCms: App;
 	let cms: Cms;
 	let otherCms: Cms;
-	const mutants = new Map<string, App>();
-	const sources = new Map<string, string>();
+	const edits = new Map([...MUTATIONS, ...AUTH_MUTATIONS].map((m) => [m.name, m.edits]));
+	const mutantDir = onDemand((name) => buildNext(name, edits.get(name)));
+	const mutant = (t: TestContext, name: string) => serveFor(t, async () => startNext(await mutantDir(name), cms.origin));
 	let walled: App;
 
 	before(async () => {
 		browser = await chromium.launch();
 		cms = await startCms();
 		otherCms = await startCms({ coffee: { ...CONTENT.coffee!, news: CONTENT.coffee!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Shop closed for a private tasting' } } });
-		const chosen = [...MUTATIONS, ...AUTH_MUTATIONS].filter((m) => shard.mutants.has(m.name));
-		const builds = [{ name: 'original', edits: [] }, { name: 'rebuild', edits: [] }, ...chosen];
-		const dirs = await limited(builds, 3, (b) => buildNext(b.name, b.edits));
-		const apps = await Promise.all([...dirs.map((dir) => startNext(dir, cms.origin)), startNext(dirs[1]!, otherCms.origin), startNext(dirs[0]!, cms.origin, { BOT_WALL: WALL })]);
-		old = apps[0]!;
-		twin = apps[1]!;
-		twinOnOtherCms = apps.at(-2)!;
-		walled = apps.at(-1)!;
-		chosen.forEach((m, i) => mutants.set(m.name, apps[i + 2]!));
-		chosen.forEach((m, i) => sources.set(m.name, dirs[i + 2]!));
+		const [original, rebuild] = await Promise.all([buildNext('original'), buildNext('rebuild')]);
+		[old, twin, twinOnOtherCms, walled] = await Promise.all([startNext(original, cms.origin), startNext(rebuild, cms.origin), startNext(rebuild, otherCms.origin), startNext(original, cms.origin, { BOT_WALL: WALL })]);
 	});
 
 	after(async () => {
-		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop()]);
 		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
 	});
@@ -601,9 +594,9 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 		assert.deepEqual(asked.filter((r) => !/locale=(fr|ar)$/.test(r)), [], 'what the recording covers never reaches the other CMS');
 	});
 
-	shard.test('writes to an origin that is neither staging nor localhost are held back, compared unsent, and never reach it', async () => {
+	shard.test('writes to an origin that is neither staging nor localhost are held back, compared unsent, and never reach it', async (t) => {
 		const guardOld = await startGuard(old.origin);
-		const guardNew = await startGuard(mutants.get('form-path')!.origin);
+		const guardNew = await startGuard((await mutant(t, 'form-path')).origin);
 		const { facts: source } = await loadSourceFacts(FIXTURE);
 		try {
 			const report = await runCheck({ oldOrigin: guardOld.origin, newOrigin: guardNew.origin, routes: ['/en/contact'], browser, ...(source ? { source } : {}) });
@@ -621,7 +614,7 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 		} finally {
 			await Promise.all([guardOld.stop(), guardNew.stop()]);
 		}
-	}, ['form-path']);
+	});
 
 	shard.test('check --all fills dynamic segments from the crawl, asks for a sample where none exists, and compares the feed, robots.txt, sitemap and JSON route as data; status follows the migration order', async () => {
 		const inventory = await plan({ origin: old.origin, source: FIXTURE, browser });
@@ -696,21 +689,21 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 	});
 
 	for (const mutation of AUTH_MUTATIONS) {
-		shard.test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
+		shard.test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async (t) => {
 			const auth = await writeAuth({ loginRoute: '/en/login', member: 'mia@harbour.example', admin: 'ada@harbour.example', landing: '/en/members' });
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, auth });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, auth });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redByRole(report), mutation.red, summarize(report));
 			mutation.expect(report);
-		}, [mutation.name]);
+		});
 	}
 
 	for (const mutation of MUTATIONS) {
-		shard.test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, sourceDirs: { old: FIXTURE, new: sources.get(mutation.name)! } });
+		shard.test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async (t) => {
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, sourceDirs: { old: FIXTURE, new: await mutantDir(mutation.name) } });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);
-		}, [mutation.name]);
+		});
 	}
 });

@@ -6,11 +6,12 @@ import { chromium } from 'playwright';
 import { holdNavigations } from '../src/embed/check.ts';
 
 // A page that keeps requests in flight while a slow context route (the checker's own) answers each one.
+// About 1,400 requests wait at steady state; uncapped, an oversubscribed CPU let the backlog grow to 10 GB of browser memory.
 test('holding and releasing navigations over and over while requests are in flight answers every request once', async () => {
 	const server = createServer((req, res) => {
 		if (req.url === '/') {
 			res.setHeader('content-type', 'text/html');
-			res.end('<script>setInterval(() => { for (let i = 0; i < 20; i++) fetch("/x?" + Math.random()); }, 5)</script>');
+			res.end('<script>let inFlight = 0; setInterval(() => { for (let i = 0; i < 20 && inFlight < 1500; i++) { inFlight++; fetch("/x?" + Math.random()).finally(() => inFlight--); } }, 5)</script>');
 		} else if (req.url === '/next') {
 			res.setHeader('content-type', 'text/html');
 			res.end('<p>next</p>');
