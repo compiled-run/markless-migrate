@@ -806,7 +806,7 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 export function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string; unpainted?: true }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; lists: MutationRecord[]; detached: Set<Node>; edited: Set<Node>; spilled: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string; unpainted?: true }[]; views: { at: number; text: string }[]; tweens: Map<Element, { attrs: Set<string>; frames: Set<number>; first: number; last: number }>; stop: () => void; own: (write: () => void) => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
@@ -866,7 +866,8 @@ export function watchReaction(): void {
 		frame = requestAnimationFrame(sampleFrame);
 	};
 	frame = requestAnimationFrame(sampleFrame);
-	const observer = new MutationObserver((records) => {
+	const seen = (records: MutationRecord[]) => {
+		if (!records.length) return;
 		dirty = true;
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
@@ -891,7 +892,8 @@ export function watchReaction(): void {
 			if (!attrs) changed.set(r.target, (attrs = new Map()));
 			if (!attrs.has(r.attributeName)) attrs.set(r.attributeName, r.oldValue);
 		}
-	});
+	};
+	const observer = new MutationObserver(seen);
 	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
 	// The score is CLS's, without shifts within 500 ms of a discrete input (hadRecentInput); the jump counts every shift: a page that jumps when a dialog closes is no answer the old page gave.
 	let shifts: PerformanceObserver | undefined;
@@ -917,7 +919,7 @@ export function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, lists, detached, edited, spilled, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); removeEventListener('transitioncancel', cancelled, { capture: true }); afterPaint.port1.close(); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, lists, detached, edited, spilled, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, tweens, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); removeEventListener('transitioncancel', cancelled, { capture: true }); afterPaint.port1.close(); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; }, own: (write) => { seen(observer.takeRecords()); write(); observer.takeRecords(); } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
@@ -1177,13 +1179,23 @@ export async function snapshot(page: Page, origins: readonly string[]): Promise<
 	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
 	// A framework's own route announcer is not the app's (the a11y comparison accepts it the same way): it is hidden from
 	// the tree for the snapshot only, so the navigation it announces does not count it as content appearing or leaving.
+	// The checker's own writes are kept from a step's reaction watcher, or reading the page would count as its first change.
 	const hidden = await page.evaluate((selector) => {
 		const hosts = [...document.querySelectorAll(selector)].filter((el) => !el.hasAttribute('aria-hidden'));
-		for (const el of hosts) el.setAttribute('aria-hidden', 'true');
+		const hide = () => { for (const el of hosts) el.setAttribute('aria-hidden', 'true'); };
+		const watch = (globalThis as { __markless_migrate_reaction__?: { own?: (write: () => void) => void } }).__markless_migrate_reaction__;
+		if (watch?.own) watch.own(hide);
+		else hide();
 		return hosts.length;
 	}, FRAMEWORK_MARKUP_SELECTOR).catch(() => 0);
 	let text = routeLinks(await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => ''), pageRouting(page));
-	if (hidden) await page.evaluate((selector) => { for (const el of document.querySelectorAll(selector)) el.removeAttribute('aria-hidden'); }, FRAMEWORK_MARKUP_SELECTOR).catch(() => {});
+	if (hidden)
+		await page.evaluate((selector) => {
+			const show = () => { for (const el of document.querySelectorAll(selector)) el.removeAttribute('aria-hidden'); };
+			const watch = (globalThis as { __markless_migrate_reaction__?: { own?: (write: () => void) => void } }).__markless_migrate_reaction__;
+			if (watch?.own) watch.own(show);
+			else show();
+		}, FRAMEWORK_MARKUP_SELECTOR).catch(() => {});
 	for (const origin of origins) text = text.split(origin).join('').split(`=${new URL(origin).hostname}&`).join('={host}&');
 	return text.split('\n').map((line) => line.trim());
 }
