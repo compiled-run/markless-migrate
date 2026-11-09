@@ -7,9 +7,17 @@ import { availableParallelism, networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { readAuthFile, type AuthConfig } from '../../src/check/auth.ts';
+import { defaultEnv } from '../../src/check/browser.ts';
+import { blocker } from '../../src/check/trackers.ts';
 import { recorderEnv } from '../../src/check/recorder.ts';
-import type { CheckOptions } from '../../src/check/run.ts';
+import { originalConditions, type CheckOptions } from '../../src/check/run.ts';
 import type { FailureDimension as Dimension, Report } from '../../src/check/types.ts';
+import { readLock } from '../../src/data/original/lock.ts';
+import { observeOriginal, writeObserved } from '../../src/data/original/produce.ts';
+import { openOriginal } from '../../src/data/original/read.ts';
+import { commitDataset, DatasetWriter, type Dataset } from '../../src/data/original/store.ts';
+import { isSwitched } from '../../src/switch/state.ts';
+import type { Browser } from 'playwright';
 
 export const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
 const MUTANTS = join(ROOT, '.mutants');
@@ -243,6 +251,35 @@ export function onDemand(build: (name: string) => Promise<string>): (name: strin
 			built.set(name, next);
 		}
 		return built.get(name)!;
+	};
+}
+
+/** Each mutated route's original observed once, live, the first time a mutation of it is checked; a dataset is of the frozen original, so both servers render at the page's frozen clock. */
+export function originalDatasets(sides: () => { readonly browser: Browser; readonly old: string; readonly new: string }): { for(mutation: Mutation): Promise<Partial<CheckOptions>>; remove(): Promise<void> } {
+	const produced = new Map<string, Promise<Dataset>>();
+	const dirs: string[] = [];
+	const produce = async (route: string): Promise<Dataset> => {
+		const { browser, old, new: next } = sides();
+		const dir = await mkdtemp(join(tmpdir(), 'mm-original-'));
+		dirs.push(dir);
+		const c = originalConditions({ oldOrigin: old, newOrigin: next, serverClock: true });
+		const writer = new DatasetWriter(dir, { site: 'e2e', originalId: '0'.repeat(64), conditions: c, versions: (await readLock()).producers, routes: [route], runner: 'test' });
+		const env = defaultEnv(old, { freeze: c.freeze, block: blocker(c.block), sendWrites: c.sendWrites, ...(c.serverClock ? { serverClock: true } : {}), ...(c.routing ? { routing: c.routing } : {}) });
+		const explore = { ...c.journeys, serves: (path: string) => isSwitched([route, ...c.switched], path) };
+		await writeObserved(writer, route, await observeOriginal(browser, env, route, { viewports: c.viewports, explore }));
+		await writer.close();
+		await commitDataset(dir);
+		return openOriginal(dir);
+	};
+	return {
+		for: async (mutation) => {
+			const routes = mutation.check?.routes ?? [mutation.route];
+			// A mutation checked as anything but one page (a redirect) reads no rows.
+			if (routes.length !== 1) return {};
+			if (!produced.has(routes[0]!)) produced.set(routes[0]!, produce(routes[0]!));
+			return { original: await produced.get(routes[0]!)!, serverClock: true };
+		},
+		remove: async () => void (await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })))),
 	};
 }
 
