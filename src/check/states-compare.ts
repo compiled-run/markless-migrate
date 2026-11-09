@@ -49,6 +49,8 @@ export type StateRun =
 			/** Images drawn and the screenshots, old, old again and new, when the state changed what shows. */
 			readonly images?: readonly [readonly ImageRecord[], readonly ImageRecord[], readonly ImageRecord[]];
 			readonly shots?: readonly [Buffer, Buffer, Buffer];
+			/** The old page this state was forced on, when it is not the row's `base1`: a stored state forced live again. */
+			readonly base1?: readonly ElementSnapshot[];
 	  };
 
 /** What states.ts read on one viewport: the default-state failures explained, each page's elements before any state, each state. */
@@ -113,23 +115,23 @@ export interface ForcedStatesRow {
 /** The ids of `base1` elements on the new page, or none when it shows none of them. */
 export const newIds = (indices: readonly number[], pairs: ReadonlyMap<number, number>, baseN: readonly ElementSnapshot[]): number[] => indices.flatMap((i) => (pairs.has(i) ? [baseN[pairs.get(i)!]!.id] : []));
 
-/** Why a stored state is not forced on the new page: none of the elements it was forced on are there. */
-export function newSkip(run: Extract<OldStateRun, { s1: unknown }>, pairs: ReadonlyMap<number, number>): string | undefined {
-	if ((run.kind === 'pseudo' || run.kind === 'property') && !run.targets.some((i) => pairs.has(i))) return `${run.label}: no visible element on the page matches it on both sides`;
-	if (run.kind === 'container' && !run.containers.some((i) => pairs.has(i))) return `${run.label}: no size container on the page`;
-	return undefined;
-}
+/** Whether a live run would force a stored state on the same old elements: every one it was forced on is on the new page too. */
+export const forcedAlike = (run: Extract<OldStateRun, { s1: unknown }>, pairs: ReadonlyMap<number, number>): boolean => (run.kind === 'container' ? run.containers : run.targets).every((i) => pairs.has(i));
+
+/** The OLD rule behind each of `props` on an element the stored cascade did not answer for, traced on an old page in the state. */
+export type TraceOld = (asked: readonly { readonly el: ElementSnapshot; readonly props: readonly string[] }[]) => Promise<(Explanation | undefined)[]>;
 
 /**
  * A stored state and the new page's half in it, as one state run: what is explained is chosen by the same diff a live run
  * makes, from the cascade the old page answered when the state was produced. `shotN` shoots the new page with a clip.
  */
-export async function joinState(rules: readonly CssRule[], stored: ForcedStatesRow, run: Extract<OldStateRun, { s1: unknown }>, baseN: readonly ElementSnapshot[], sn: readonly ElementSnapshot[], shotN: (clip: Box | undefined) => Promise<{ readonly images: readonly ImageRecord[]; readonly shot: Buffer }>): Promise<StateRun> {
+export async function joinState(rules: readonly CssRule[], stored: ForcedStatesRow, run: Extract<OldStateRun, { s1: unknown }>, baseN: readonly ElementSnapshot[], sn: readonly ElementSnapshot[], shotN: (clip: Box | undefined) => Promise<{ readonly images: readonly ImageRecord[]; readonly shot: Buffer }>, trace: TraceOld = async (asked) => asked.map(() => undefined)): Promise<StateRun> {
 	const { changedBoxes, differing } = stateDiff(stored.base1, baseN, run.s1, run.s2, sn, stored.noise);
-	const explanations = differing.slice(0, ELEMENTS_PER_STATE).map(({ el, props }) => {
-		const found = run.answers.get(el.id);
-		return found ? explanationOf(rules, found, props) : undefined;
-	});
+	const top = differing.slice(0, ELEMENTS_PER_STATE);
+	// The stored cascade covers what the state changed on the old page; an element only the new page changed is traced as a live run traces it.
+	const unanswered = top.flatMap((d, k) => (d.props.every((p) => p in (run.answers.get(d.el.id) ?? {})) ? [] : [k]));
+	const traced = unanswered.length ? await trace(unanswered.map((k) => top[k]!)) : [];
+	const explanations = top.map(({ el, props }, k) => (unanswered.includes(k) ? traced[unanswered.indexOf(k)] : explanationOf(rules, run.answers.get(el.id)!, props)));
 	const base = { label: run.label, kind: run.kind, targets: run.targets, s1: run.s1, s2: run.s2, sn, explanations };
 	const { shoot } = stateShot(run.kind, changedBoxes, differing.length, run.targets, stored.base1);
 	// A shot changes how the page lays out after it, so the new page is shot wherever the old pages were, with their clip.
@@ -272,7 +274,8 @@ export function judgeStateViewport(route: string, viewport: Viewport, row: State
 			continue;
 		}
 		const { s1, s2, sn } = state;
-		const { changedBoxes, differing, p12, p1n, textNoise } = stateDiff(row.base1, row.baseN, s1, s2, sn, noise);
+		const base1 = state.base1 ?? row.base1;
+		const { changedBoxes, differing, p12, p1n, textNoise } = stateDiff(base1, row.baseN, s1, s2, sn, noise);
 		out.checked.push(state.label);
 		for (const [k, { el, other, props }] of differing.slice(0, ELEMENTS_PER_STATE).entries()) {
 			const found = state.explanations[k];
@@ -292,7 +295,7 @@ export function judgeStateViewport(route: string, viewport: Viewport, row: State
 		if (differing.length > ELEMENTS_PER_STATE) {
 			out.failures.push({ route, dimension: 'css', check: `computed style in ${state.label}`, viewport: viewport.name, expected: '', actual: `${differing.length - ELEMENTS_PER_STATE} more elements differ`, hint: HINTS.cssState });
 		}
-		const { shoot, clip } = stateShot(state.kind, changedBoxes, differing.length, state.targets, row.base1);
+		const { shoot, clip } = stateShot(state.kind, changedBoxes, differing.length, state.targets, base1);
 		if (!shoot) continue;
 		if (!state.shots || !state.images) throw new Error(`the forced states row has no screenshots of ${state.label}, which changed what shows`);
 		const images = state.images;

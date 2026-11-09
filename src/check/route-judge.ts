@@ -354,17 +354,18 @@ async function arrivalCheck(o: Observe, route: string, plain: readonly RecordedJ
 	return retime(o, 'arrival', journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements), [a, b], next, fresh);
 }
 
-// The candidates a route confirms at a time, the largest first: five old and four new samples in all (the replays producer
-// takes three rounds of each), enough for a one-sided test to reach the share of 0.05 five candidates leave the first of them.
+// The candidates a route confirms at a time, the largest first: five fresh rounds a side, enough for a one-sided test to reach
+// the share of 0.05 five candidates leave the first of them.
 const RETIMED = 5;
 
 /**
  * A step answered more slowly on the new page, or showing a view in between only there, is timed again one side at a time,
- * old then new, since a busy machine slows whichever side it happens to. It stands only when the samples say so beyond chance,
- * the route's candidates sharing one significance, and an answer only by more than the route's own old runs differ.
+ * old then new, since a busy machine slows whichever side it happens to. It stands only when the fresh samples say so beyond
+ * chance, the route's candidates sharing one significance, and an answer only by more than the route's own old runs differ.
+ * The runs that made a step a candidate only pick it: counted again, they would be the chance difference they were chosen for.
  */
-async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Journey[], failures: Failure[], olds: readonly Runs[], next: Runs, fresh = false): Promise<Failure[]> {
-	// Stored old runs were timed on another machine at another time: with them, they only pick the candidates (`fresh`).
+export async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Journey[], failures: Failure[], olds: readonly Runs[], next: Runs, fresh = false): Promise<Failure[]> {
+	// Stored old runs were timed on another machine at another time: with them, the noise floor is the fresh rounds' (`fresh`).
 	const floor = Math.max(100, answerFloor(olds));
 	const freshOld: StepResult[][][] = [];
 	const judgedFloor = () => (fresh ? Math.max(100, answerFloor(freshOld)) : floor);
@@ -391,17 +392,15 @@ async function retime(o: Observe, set: 'main' | 'arrival', journeys: readonly Jo
 		const got = await roundsOf(journey);
 		if (fresh) got.forEach((r, k) => ((freshOld[k] ??= [])[journey] = [...r.old]));
 		const rounds = got.map((r) => ({ old: r.old[step], next: r.next[step] }));
-		const mine = next[journey]?.[step];
 		if (views || cadence) {
 			const shows = (r: StepResult | undefined) => (r?.reaction?.views ? (cadence ? choppier(first, r) : interimViews(first, r)) !== undefined : undefined);
 			const ox = rounds.map((r) => shows(r.old)), nx = rounds.map((r) => shows(r.next));
 			if ([...ox, ...nx].some((x) => x === undefined)) unconfirmed.add(failure);
-			return fresh ? { kind: 'shown', old: ox.map(Boolean), next: nx.map(Boolean) } : { kind: 'shown', old: [...first.map(() => false), ...ox.map(Boolean)], next: [true, ...nx.map(Boolean)] };
+			return { kind: 'shown', old: ox.map(Boolean), next: nx.map(Boolean) };
 		}
 		const ox = rounds.map((r) => r.old?.reaction?.answeredMs), nx = rounds.map((r) => r.next?.reaction?.answeredMs);
 		if ([...ox, ...nx].some((x) => x === undefined)) unconfirmed.add(failure);
-		if (fresh) return { kind: 'answer', old: ox.map((x) => x ?? 0), next: nx.map((x) => x ?? 0) };
-		return { kind: 'answer', old: [...first.map((r) => r.reaction?.answeredMs ?? 0), ...ox.map((x) => x ?? 0)], next: [mine?.reaction?.answeredMs ?? 0, ...nx.map((x) => x ?? 0)] };
+		return { kind: 'answer', old: ox.map((x) => x ?? 0), next: nx.map((x) => x ?? 0) };
 	};
 	const verdicts = await judgeInTurn(candidates.length, RETIMED, sample, (batch) => judgeTiming(batch, judgedFloor()));
 	const stands = new Map<Failure, string>();

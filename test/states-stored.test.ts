@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PNG } from 'pngjs';
-import { explanationOf, joinState, judgeStates, judgeStateViewport, newSkip, type CascadeAnswers, type ForcedStatesRow, type OldStateRun, type StateRun, type StatesViewportRow } from '../src/check/states-compare.ts';
+import { explanationOf, joinState, judgeStates, judgeStateViewport, forcedAlike, type CascadeAnswers, type ForcedStatesRow, type OldStateRun, type StateRun, type StatesViewportRow } from '../src/check/states-compare.ts';
 import type { CssRule, CssState } from '../src/check/stylesheet.ts';
 import type { ElementSnapshot, PageCapture, RouteCapture, RouteResult, Viewport } from '../src/check/types.ts';
 
@@ -63,17 +63,41 @@ test("the old side's noise comes from the stored row, not from loads taken elsew
 	assert.equal(styles(judgeStates('/', result, plan, olds, [viewport], { viewports: [{ ...seen, noise: [{ element: base1[0]!, props: new Set(['color']) }] }] })), 0, "a property the dataset's loads varied in is masked");
 });
 
-test('a quiet stored state is shot on the new page as on the old ones, judged unshot, and skipped when the new page has none of its targets', async () => {
+test('a quiet stored state is shot on the new page as on the old ones, judged unshot, and forced live when the new page lacks one of its targets', async () => {
 	const quiet: typeof stored = { ...stored, s1: base1, s2: base1, answers: new Map() };
 	let clipped: unknown;
 	const same = await joinState(rules, row([quiet]), quiet, baseN, baseN, async (clip) => ((clipped = clip), { images: [], shot: newShot }));
 	assert.deepEqual(clipped, { x: 10, y: 10, width: 80, height: 30 }, "the old pages' clip: the state's target");
 	assert.equal('shots' in same, false, 'nothing differs, so the judge has no shot to compare');
-	assert.equal(newSkip(stored, new Map()), `${hover.label}: no visible element on the page matches it on both sides`);
-	assert.equal(newSkip(stored, new Map([[0, 0]])), undefined);
+	assert.equal(forcedAlike(stored, new Map()), false, 'a live run would force it on other old elements, or skip it');
+	assert.equal(forcedAlike(stored, new Map([[0, 0]])), true);
+	assert.equal(forcedAlike({ ...stored, targets: [0, 1] }, new Map([[0, 0]])), false, 'one target of two missing on the new page is enough');
 });
 
 test('a stored state the new page differs in, with no old shots kept, is an error, never a pass', async () => {
 	const { images: _i, shots: _s, ...unshot } = stored;
 	await assert.rejects(joinState(rules, row([unshot]), unshot, baseN, sn, async () => ({ images: [], shot: newShot })), /hold no screenshots/);
+});
+
+test('an element only the new page changes in a stored state is traced on an old page for its hint; the verdict is the stored one', async () => {
+	const snNew = [el(11, 'Save', { color: 'green', padding: '4px' }), el(12, 'Cancel', { color: 'blue', padding: '9px' }, 40)];
+	const asked: string[] = [];
+	const traced = explanationOf(rules, { padding: { rule: 0, value: '4px' } }, ['padding']);
+	const joined = await joinState(rules, row([stored]), stored, baseN, snNew, async () => ({ images: [], shot: newShot }), async (list) => list.map(({ el: e, props }) => (asked.push(`${e.name}: ${props.join(', ')}`), traced)));
+	assert.deepEqual(asked, ['Cancel: padding'], 'only the element the stored cascade did not answer for is traced');
+	assert.ok('explanations' in joined);
+	assert.deepEqual(joined.explanations, [traced]);
+	const untraced = await joinState(rules, row([stored]), stored, baseN, snNew, async () => ({ images: [], shot: newShot }));
+	const seen = (run: StateRun): StatesViewportRow => ({ viewport: 'desktop', explained: [], base1, baseN, states: [run], noise: [] });
+	const judged = (run: StateRun) => judgeStateViewport('/', viewport, seen(run), [], []).failures;
+	const verdictOnly = (run: StateRun) => judged(run).map((f) => [f.dimension, f.check, f.expected, f.actual]);
+	assert.deepEqual(verdictOnly(joined), verdictOnly(untraced), 'the trace changes the hint, never the verdict');
+	assert.ok(judged(joined).some((f) => f.hint.startsWith(`Old rule: ${traced!.line}`)), judged(joined).map((f) => f.hint).join('\n'));
+});
+
+test("a state forced live on another old page is judged against that page's elements, not the stored row's", () => {
+	const other = base1.map((e) => ({ ...e, id: e.id + 100 }));
+	const run: StateRun = { ...live, s1: s1.map((e) => ({ ...e, id: e.id + 100 })), s2: s2.map((e) => ({ ...e, id: e.id + 100 })), base1: other };
+	const rowOf = (r: StateRun): StatesViewportRow => ({ viewport: 'desktop', explained: [], base1, baseN, states: [r] });
+	assert.deepEqual(verdict(rowOf(run)), verdict(rowOf(live)));
 });

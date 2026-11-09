@@ -8,7 +8,7 @@ import type { Box, ElementSnapshot, ImageRecord, Viewport } from './types.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, settleMotion } from './loops.ts';
 import { maskedShot } from './embeds.ts';
-import { CLIP_PADDING, ELEMENTS_PER_STATE, explanationOf, joinState, MAX_STATES, newIds, newSkip, stateDiff, stateShot, TARGETS_PER_STATE, type CascadeAnswers, type Explanation, type ForcedStatesRow, type OldStateRun, type StateNoise, type StateRun, type StatesViewportRow } from './states-compare.ts';
+import { CLIP_PADDING, ELEMENTS_PER_STATE, explanationOf, forcedAlike, joinState, MAX_STATES, newIds, stateDiff, stateShot, TARGETS_PER_STATE, type CascadeAnswers, type Explanation, type ForcedStatesRow, type OldStateRun, type StateNoise, type StateRun, type StatesViewportRow, type TraceOld } from './states-compare.ts';
 
 interface Side {
 	readonly context: BrowserContext;
@@ -29,6 +29,8 @@ async function open(browser: Browser, env: SideEnv, route: string, viewport: Vie
 	const session = await context.newCDPSession(page);
 	await session.send('DOM.enable');
 	await session.send('CSS.enable');
+	// Once per page: DOM.getDocument renumbers the nodes, and a state forced under an old number can then never be lifted.
+	await session.send('DOM.getDocument', { depth: 0 });
 	const base = (await readPage(page, { origin, full: true })).elements;
 	return { context, page, session, inflight, base };
 }
@@ -73,7 +75,6 @@ export async function settleState(page: Page, inflight: () => number): Promise<v
 }
 
 async function nodeId(side: Side, id: number): Promise<number | undefined> {
-	await side.session.send('DOM.getDocument', { depth: 0 });
 	const { result } = await side.session.send('Runtime.evaluate', { expression: `window.__mmById?.get(${id})` });
 	if (!result.objectId) return undefined;
 	return (await side.session.send('DOM.requestNode', { objectId: result.objectId })).nodeId;
@@ -247,6 +248,52 @@ export interface StatesInput {
 	readonly explain: readonly { readonly element: ElementSnapshot; readonly props: readonly string[] }[];
 }
 
+/** The size containers of `base` a container state sizes. */
+const containersOf = (state: Extract<CssState, { kind: 'container' }>, base: readonly ElementSnapshot[]) => base.flatMap((el, i) => (el.style['container-type'] && el.style['container-type'] !== 'normal' && (!state.name || el.style['container-name']?.split(' ').includes(state.name)) ? [i] : []));
+
+interface LiveSides {
+	readonly o1: Side;
+	readonly o2: Side;
+	readonly n: Side;
+	readonly m12: Map<number, number>;
+	readonly m1n: Map<number, number>;
+}
+
+/** One state forced on both old pages and the new one, on the old elements the new page shows too, as a live run forces it. */
+async function liveState({ o1, o2, n, m12, m1n }: LiveSides, state: CssState, viewport: Viewport, origins: { readonly old: string; readonly new: string }, rules: readonly CssRule[], noise: StateNoise): Promise<StateRun> {
+	let targets: number[] = [];
+	if (state.kind === 'pseudo' || state.kind === 'property') {
+		const ids = new Set(await o1.page.evaluate(matchingIds, state.target));
+		targets = o1.base.flatMap((el, i) => (ids.has(el.id) ? [i] : [])).filter((i) => m12.has(i) && m1n.has(i)).slice(0, TARGETS_PER_STATE);
+		if (!targets.length) return { label: state.label, kind: state.kind, skipped: `${state.label}: no visible element on the page matches it on both sides` };
+	}
+	const sides: [Side, Map<number, number> | undefined][] = [
+		[o1, undefined],
+		[o2, m12],
+		[n, m1n],
+	];
+	const idsOn = (pairs: Map<number, number> | undefined, side: Side, indices: readonly number[]) => indices.map((i) => side.base[pairs ? pairs.get(i)! : i]!.id);
+	const containers = state.kind === 'container' ? containersOf(state, o1.base).filter((i) => m12.has(i) && m1n.has(i)) : [];
+	if (state.kind === 'container' && !containers.length) return { label: state.label, kind: state.kind, skipped: `${state.label}: no size container on the page` };
+
+	const apply = (on: boolean) => Promise.all(sides.map(([side, pairs]) => force(side, state, viewport, idsOn(pairs, side, state.kind === 'container' ? containers : targets), on)));
+
+	await apply(true);
+	try {
+		const [s1, s2, sn] = await Promise.all([collect(o1, origins.old), collect(o2, origins.old), collect(n, origins.new)]);
+		const { changedBoxes, differing } = stateDiff(o1.base, n.base, s1, s2, sn, noise);
+		const explanations: (Explanation | undefined)[] = [];
+		for (const { el, props } of differing.slice(0, ELEMENTS_PER_STATE)) explanations.push(await explain(o1, rules, el, props));
+		const { shoot, clip } = stateShot(state.kind, changedBoxes, differing.length, targets, o1.base);
+		if (!shoot) return { label: state.label, kind: state.kind, targets, s1, s2, sn, explanations };
+		const images = await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]);
+		const shots = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
+		return { label: state.label, kind: state.kind, targets, s1, s2, sn, explanations, images, shots };
+	} finally {
+		await apply(false);
+	}
+}
+
 /** Forces each state on the old page twice and the new page once, and reads every element of each page in it; what differs is judged by states-compare.ts. */
 export async function observeStates(input: StatesInput): Promise<StatesViewportRow> {
 	const { browser, envs, route, viewport } = input;
@@ -259,60 +306,15 @@ export async function observeStates(input: StatesInput): Promise<StatesViewportR
 			const at = matchElements([element], o1.base).get(0);
 			explained.push(at === undefined ? undefined : await explain(o1, input.rules, o1.base[at]!, props));
 		}
+		const sides = { o1, o2, n, m12: matchElements(o1.base, o2.base), m1n: matchElements(o1.base, n.base) };
 		const runs: StateRun[] = [];
-		const m12 = matchElements(o1.base, o2.base);
-		const m1n = matchElements(o1.base, n.base);
-		for (const state of input.states.slice(0, MAX_STATES)) {
-			let targets: number[] = [];
-			if (state.kind === 'pseudo' || state.kind === 'property') {
-				const ids = new Set(await o1.page.evaluate(matchingIds, state.target));
-				targets = o1.base.flatMap((el, i) => (ids.has(el.id) ? [i] : [])).filter((i) => m12.has(i) && m1n.has(i)).slice(0, TARGETS_PER_STATE);
-				if (!targets.length) {
-					runs.push({ label: state.label, kind: state.kind, skipped: `${state.label}: no visible element on the page matches it on both sides` });
-					continue;
-				}
-			}
-			const sides: [Side, Map<number, number> | undefined][] = [
-				[o1, undefined],
-				[o2, m12],
-				[n, m1n],
-			];
-			const idsOn = (pairs: Map<number, number> | undefined, side: Side, indices: readonly number[]) => indices.map((i) => side.base[pairs ? pairs.get(i)! : i]!.id);
-			const containers = state.kind === 'container' ? o1.base.flatMap((el, i) => (el.style['container-type'] && el.style['container-type'] !== 'normal' && (!state.name || el.style['container-name']?.split(' ').includes(state.name)) && m12.has(i) && m1n.has(i) ? [i] : [])) : [];
-			if (state.kind === 'container' && !containers.length) {
-				runs.push({ label: state.label, kind: state.kind, skipped: `${state.label}: no size container on the page` });
-				continue;
-			}
-
-			const apply = (on: boolean) => Promise.all(sides.map(([side, pairs]) => force(side, state, viewport, idsOn(pairs, side, state.kind === 'container' ? containers : targets), on)));
-
-			await apply(true);
-			try {
-				const [s1, s2, sn] = await Promise.all([collect(o1, oldOrigin), collect(o2, oldOrigin), collect(n, newOrigin)]);
-				const { changedBoxes, differing } = stateDiff(o1.base, n.base, s1, s2, sn, input.noise);
-				const explanations: (Explanation | undefined)[] = [];
-				for (const { el, props } of differing.slice(0, ELEMENTS_PER_STATE)) explanations.push(await explain(o1, input.rules, el, props));
-				const { shoot, clip } = stateShot(state.kind, changedBoxes, differing.length, targets, o1.base);
-				if (!shoot) {
-					runs.push({ label: state.label, kind: state.kind, targets, s1, s2, sn, explanations });
-					continue;
-				}
-				const images = await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]);
-				const shots = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
-				runs.push({ label: state.label, kind: state.kind, targets, s1, s2, sn, explanations, images, shots });
-			} finally {
-				await apply(false);
-			}
-		}
+		for (const state of input.states.slice(0, MAX_STATES)) runs.push(await liveState(sides, state, viewport, { old: oldOrigin, new: newOrigin }, input.rules, input.noise));
 		return { viewport: viewport.name, explained, base1: o1.base, baseN: n.base, states: runs };
 	} finally {
 		await Promise.all([o1, o2, n].map((side) => side.context.close()));
 	}
 }
 
-
-/** The size containers of `base` a container state sizes. */
-const containersOf = (state: Extract<CssState, { kind: 'container' }>, base: readonly ElementSnapshot[]) => base.flatMap((el, i) => (el.style['container-type'] && el.style['container-type'] !== 'normal' && (!state.name || el.style['container-name']?.split(' ').includes(state.name)) ? [i] : []));
 
 export interface OldStatesInput {
 	readonly browser: Browser;
@@ -448,10 +450,18 @@ export interface StatesAgainstInput {
 	readonly explain: StatesInput['explain'];
 }
 
-/** The new page's half of each stored state, forced on the elements that match the stored old page's; the old half and its noise are the dataset's. */
+/**
+ * The new page's half of each stored state, forced on the elements that match the stored old page's; the old half and its
+ * noise are the dataset's. A state a live run would force on other old elements (one it was stored on is not on the new page)
+ * is forced live on two old pages, and an element only the new page changed in a state is traced to its OLD rule on an old
+ * page in that state: the hint names the rule, the verdict never reads it.
+ */
 export async function observeStatesAgainst(input: StatesAgainstInput): Promise<StatesViewportRow> {
 	const { browser, envs, route, viewport, stored } = input;
 	const [n, explained] = await Promise.all([open(browser, envs.new, route, viewport), explainDefaults(browser, envs.old, route, viewport, input.rules, input.explain)]);
+	let first: Promise<Side> | undefined;
+	let second: Promise<Side> | undefined;
+	const oldPage = () => (first ??= open(browser, envs.old, route, viewport));
 	try {
 		const pairs = matchElements(stored.base1, n.base);
 		const runs: StateRun[] = [];
@@ -460,24 +470,42 @@ export async function observeStatesAgainst(input: StatesAgainstInput): Promise<S
 				runs.push(run);
 				continue;
 			}
-			const skipped = newSkip(run, pairs);
-			if (skipped) {
-				runs.push({ label: run.label, kind: run.kind, skipped });
+			const { state } = run;
+			if (!forcedAlike(run, pairs)) {
+				const [o1, o2] = await Promise.all([oldPage(), (second ??= open(browser, envs.old, route, viewport))]);
+				const seen = await liveState({ o1, o2, n, m12: matchElements(o1.base, o2.base), m1n: matchElements(o1.base, n.base) }, state, viewport, { old: envs.old.origin, new: envs.new.origin }, input.rules, stored.noise);
+				runs.push('skipped' in seen ? seen : { ...seen, base1: o1.base });
 				continue;
 			}
-			const { state } = run;
+			const trace: TraceOld = async (asked) => {
+				const o1 = await oldPage();
+				const on = newIds(run.kind === 'container' ? run.containers : run.targets, matchElements(stored.base1, o1.base), o1.base);
+				await force(o1, state, viewport, on, true);
+				try {
+					const seen = await collect(o1, envs.old.origin);
+					const out: (Explanation | undefined)[] = [];
+					for (const { el, props } of asked) {
+						const at = matchElements([el], seen).get(0);
+						out.push(at === undefined ? undefined : await explain(o1, input.rules, seen[at]!, props));
+					}
+					return out;
+				} finally {
+					await force(o1, state, viewport, on, false);
+				}
+			};
 			const ids = newIds(run.kind === 'container' ? run.containers : run.targets, pairs, n.base);
 			await force(n, state, viewport, ids, true);
 			try {
 				const sn = await collect(n, envs.new.origin);
-				runs.push(await joinState(input.rules, stored, run, n.base, sn, async (clip) => ({ images: await drawnImages(n.page), shot: await screenshot(n.page, clip) })));
+				runs.push(await joinState(input.rules, stored, run, n.base, sn, async (clip) => ({ images: await drawnImages(n.page), shot: await screenshot(n.page, clip) }), trace));
 			} finally {
 				await force(n, state, viewport, ids, false);
 			}
 		}
 		return { viewport: viewport.name, explained, base1: stored.base1, baseN: n.base, states: runs, noise: stored.noise };
 	} finally {
-		await n.context.close();
+		const opened = await Promise.all([first, second].map((side) => side?.catch(() => undefined)));
+		await Promise.all([n, ...opened].map((side) => side?.context.close()));
 	}
 }
 

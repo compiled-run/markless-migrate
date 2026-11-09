@@ -16,7 +16,7 @@ import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from '../../src/chec
 import { plan } from '../../src/plan/inventory.ts';
 import { routeTargets } from '../../src/plan/routes.ts';
 import { connect, firstText } from '../mcp-client.ts';
-import { buildVite, failuresIn, onDemand, OTHER_FONT, redByRole, redDimensions, serveFor, sharded, startGuard, startStatic, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
+import { buildVite, failuresIn, onDemand, originalDatasets, OTHER_FONT, redByRole, redDimensions, serveFor, sharded, startGuard, startStatic, STATE_PARITY, stateVerdicts, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing', '/feed.xml', '/robots.txt', '/manifest.json', '/sitemap.xml'];
@@ -580,6 +580,7 @@ const AUTH_MUTATIONS: AuthMutation[] = [
 
 describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 	const shard = sharded();
+	const originals = originalDatasets(() => ({ browser, old: old.origin, new: twin.origin }));
 	let browser: Browser;
 	let cms: Cms;
 	let otherCms: Cms;
@@ -602,6 +603,7 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 	});
 
 	after(async () => {
+		await originals.remove();
 		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop(), walledAssets?.stop(), walledWrites?.stop()]);
 		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
@@ -831,10 +833,19 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 
 	for (const mutation of MUTATIONS) {
 		shard.test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async (t) => {
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, sourceDirs: { old: SOURCE, new: dirname(await dist(mutation.name)) }, ...mutation.check });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, ...(await originals.for(mutation)), sourceDirs: { old: SOURCE, new: dirname(await dist(mutation.name)) }, ...mutation.check });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);
+		});
+	}
+
+	for (const mutation of MUTATIONS.filter((m) => STATE_PARITY.includes(m.name))) {
+		shard.test(`mutation "${mutation.name}" gets the same verdicts against the original's dataset as against the live original`, async (t) => {
+			const live = { oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, sourceDirs: { old: SOURCE, new: dirname(await dist(mutation.name)) }, ...mutation.check };
+			const [fromLive, fromDataset] = [await runCheck(live), await runCheck({ ...live, ...(await originals.for(mutation)) })];
+			assert.deepEqual(redDimensions(fromDataset), redDimensions(fromLive), `${summarize(fromLive)}\n${summarize(fromDataset)}`);
+			assert.deepEqual(stateVerdicts(fromDataset), stateVerdicts(fromLive));
 		});
 	}
 });

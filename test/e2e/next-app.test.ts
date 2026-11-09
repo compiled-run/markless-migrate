@@ -17,7 +17,7 @@ import { discoverEndpoints } from '../../src/check/endpoints.ts';
 import { plan, writeInventory } from '../../src/plan/inventory.ts';
 import { routeTargets } from '../../src/plan/routes.ts';
 import { recordResults, status, summarizeStatus } from '../../src/status.ts';
-import { buildNext, failuresIn as failure, onDemand, OTHER_FONT, redByRole, redDimensions, serveFor, sharded, startGuard, startNext, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
+import { buildNext, failuresIn as failure, onDemand, originalDatasets, OTHER_FONT, redByRole, redDimensions, serveFor, sharded, startGuard, startNext, STATE_PARITY, stateVerdicts, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 const FIXTURE = new URL('../../fixtures/next-app', import.meta.url).pathname;
@@ -523,6 +523,7 @@ const AUTH_MUTATIONS: AuthMutation[] = [
 
 describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 	const shard = sharded();
+	const originals = originalDatasets(() => ({ browser, old: old.origin, new: twin.origin }));
 	let browser: Browser;
 	let old: App;
 	let twin: App;
@@ -543,6 +544,7 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 	});
 
 	after(async () => {
+		await originals.remove();
 		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop()]);
 		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
@@ -700,10 +702,19 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 
 	for (const mutation of MUTATIONS) {
 		shard.test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async (t) => {
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, sourceDirs: { old: FIXTURE, new: await mutantDir(mutation.name) } });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, ...(await originals.for(mutation)), sourceDirs: { old: FIXTURE, new: await mutantDir(mutation.name) } });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);
+		});
+	}
+
+	for (const mutation of MUTATIONS.filter((m) => STATE_PARITY.includes(m.name))) {
+		shard.test(`mutation "${mutation.name}" gets the same verdicts against the original's dataset as against the live original`, async (t) => {
+			const live = { oldOrigin: old.origin, newOrigin: (await mutant(t, mutation.name)).origin, routes: [mutation.route], browser, sourceDirs: { old: FIXTURE, new: await mutantDir(mutation.name) } };
+			const [fromLive, fromDataset] = [await runCheck(live), await runCheck({ ...live, ...(await originals.for(mutation)) })];
+			assert.deepEqual(redDimensions(fromDataset), redDimensions(fromLive), `${summarize(fromLive)}\n${summarize(fromDataset)}`);
+			assert.deepEqual(stateVerdicts(fromDataset), stateVerdicts(fromLive));
 		});
 	}
 });

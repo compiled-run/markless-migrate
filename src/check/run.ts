@@ -362,9 +362,8 @@ export async function servesPage(env: SideEnv, path: string): Promise<boolean> {
 	}
 }
 
-const RETIMES = 3;
-// With the old side stored, every timing sample is a fresh round: five a side is the fewest a one-sided exact test can reject at.
-const FRESH_RETIMES = 5;
+// Every timing sample is a fresh round: five a side is the fewest a one-sided exact test can reject at.
+const RETIMES = 5;
 
 /** What each stage of one route's check observes, with the browser and both apps. */
 function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readonly old: readonly WallHit[]; readonly new: readonly WallHit[] }, route: string, viewports: readonly Viewport[], logins: readonly string[], seen: { loaded?: RouteStages['load']['value'] } = {}): Producers {
@@ -441,7 +440,7 @@ function liveProducers(browser: Browser, run: Run, watched: Run, walls: { readon
 			const sides = steady();
 			const other = set === 'main' ? frontOf(sides.new) : sides.new;
 			const rounds: { old: RunResults[number]; next: RunResults[number] }[] = [];
-			for (let i = 0; i < (watched.original ? FRESH_RETIMES : RETIMES); i++) {
+			for (let i = 0; i < RETIMES; i++) {
 				const old = await replay(browser, sides.old, route, viewport, journey).catch(() => []);
 				rounds.push({ old, next: await replay(browser, other, route, viewport, journey).catch(() => []) });
 			}
