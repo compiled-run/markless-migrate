@@ -5,7 +5,7 @@ import { createServer } from 'node:net';
 import { createServer as createHttpServer, request as httpRequest } from 'node:http';
 import { availableParallelism, networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import { readAuthFile, type AuthConfig } from '../../src/check/auth.ts';
 import { recorderEnv } from '../../src/check/recorder.ts';
 import type { CheckOptions } from '../../src/check/run.ts';
@@ -225,33 +225,38 @@ export function failuresIn(report: Report, dimension: Dimension) {
 /** Tests a fixture suite runs at once, a quarter of the cores: each check already drives up to half the cores' pages, and two checks at once on a 4-vCPU CI runner made clicks and in-place navigations miss their wait. */
 export const SUITE_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 4)));
 
-/** E2E_SHARD=i/n registers every n-th test of a suite from the i-th, and records the mutants those tests use so only they are built; without it every test runs. */
+/** Starts a mutant's server for one test and stops it when that test ends, so a suite holds the servers of the tests running now, not one per mutant. */
+export async function serveFor(t: TestContext, start: () => Promise<App>): Promise<App> {
+	const app = await start();
+	t.after(() => app.stop());
+	return app;
+}
+
+/** Builds each mutant the first time a test asks for it, one build at a time: tests start while the rest build, a shard builds only the mutants its tests use, and one build's memory is held at once. */
+export function onDemand(build: (name: string) => Promise<string>): (name: string) => Promise<string> {
+	const built = new Map<string, Promise<string>>();
+	let queue: Promise<unknown> = Promise.resolve();
+	return (name) => {
+		if (!built.has(name)) {
+			const next = queue.then(() => build(name));
+			queue = next.catch(() => undefined);
+			built.set(name, next);
+		}
+		return built.get(name)!;
+	};
+}
+
+/** E2E_SHARD=i/n registers every n-th test of a suite from the i-th; without it every test runs. */
 export function sharded() {
 	const spec = /^(\d+)\/(\d+)$/.exec(process.env.E2E_SHARD ?? '');
 	const [index, of] = spec ? [Number(spec[1]), Number(spec[2])] : [1, 1];
 	let n = 0;
-	const mutants = new Set<string>();
 	return {
-		mutants,
-		test(name: string, fn: () => Promise<void>, uses: readonly string[] = []): void {
+		test(name: string, fn: (t: TestContext) => Promise<void>): void {
 			if (n++ % of !== index - 1) return;
-			for (const u of uses) mutants.add(u);
 			test(name, fn);
 		},
 	};
-}
-
-export async function limited<T, R>(items: readonly T[], concurrency: number, task: (item: T) => Promise<R>): Promise<R[]> {
-	const results: R[] = new Array(items.length);
-	let next = 0;
-	const worker = async () => {
-		while (next < items.length) {
-			const i = next++;
-			results[i] = await task(items[i]!);
-		}
-	};
-	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-	return results;
 }
 
 export function redDimensions(report: Report): Dimension[] {

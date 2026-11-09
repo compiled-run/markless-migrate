@@ -7,10 +7,10 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { after, describe, test } from 'node:test';
 import type { Failure, Report } from '../../src/check/types.ts';
 import { CASES, ORIGINAL, type Case } from '../corpus/site.ts';
-import { ROOT, sharded } from './harness.ts';
+import { ROOT, sharded, SUITE_CONCURRENCY } from './harness.ts';
 
 const servers: Server[] = [];
 after(() => {
@@ -68,20 +68,22 @@ const names = (c: Case, f: Failure) => !f.check.startsWith('not exercised') && c
 /** Not caught yet, each taken by the structured state probe: motion on pages that are not their template's representative, and a check mark only pixels show (lucide's icon is aria-hidden). */
 const PENDING = new Set(['three-dots-motion', 'combobox-close-motion', 'combobox-check']);
 
-const suite = sharded();
-suite.test('the original against itself: no page of the micro-site is red', async () => {
-	const report = await checkCase(CASES['create-get-started']!, { mutant: false, routes: Object.keys(ORIGINAL) });
-	assert.deepEqual(open(report).map(text), []);
-});
-for (const [id, c] of Object.entries(CASES)) {
-	if (PENDING.has(id)) {
-		test.todo(`${id}: ${c.bug} (pending: the structured state probe)`);
-		continue;
-	}
-	suite.test(`${id}: ${c.bug}`, async () => {
-		const report = await checkCase(c);
-		const found = open(report).filter((f) => names(c, f));
-		console.log(`CORPUS ${id}: ${found.length ? 'CAUGHT' : 'MISSED'} (${open(report).length} findings)\n${open(report).map((f) => `  ${names(c, f) ? '*' : ' '} ${text(f).slice(0, 300)}`).join('\n')}`);
-		assert.ok(found.length, `check did not report "${c.bug}" on ${c.route}; it reported:\n${open(report).map(text).join('\n') || '(nothing)'}`);
+describe('corpus', { concurrency: SUITE_CONCURRENCY }, () => {
+	const suite = sharded();
+	suite.test('the original against itself: no page of the micro-site is red', async () => {
+		const report = await checkCase(CASES['create-get-started']!, { mutant: false, routes: Object.keys(ORIGINAL) });
+		assert.deepEqual(open(report).map(text), []);
 	});
-}
+	for (const [id, c] of Object.entries(CASES)) {
+		if (PENDING.has(id)) {
+			test.todo(`${id}: ${c.bug} (pending: the structured state probe)`);
+			continue;
+		}
+		suite.test(`${id}: ${c.bug}`, async () => {
+			const report = await checkCase(c);
+			const found = open(report).filter((f) => names(c, f));
+			console.log(`CORPUS ${id}: ${found.length ? 'CAUGHT' : 'MISSED'} (${open(report).length} findings)\n${open(report).map((f) => `  ${names(c, f) ? '*' : ' '} ${text(f).slice(0, 300)}`).join('\n')}`);
+			assert.ok(found.length, `check did not report "${c.bug}" on ${c.route}; it reported:\n${open(report).map(text).join('\n') || '(nothing)'}`);
+		});
+	}
+});
