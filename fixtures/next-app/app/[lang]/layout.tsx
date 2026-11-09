@@ -54,7 +54,7 @@ export default async function LangLayout({ children, params }: { children: React
 				<main>{children}</main>
 				<footer className="site-footer">
 					<p>
-						{t.rendered} <time>{new Date().toISOString()}</time>
+						{t.rendered} <time>{new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</time>
 					</p>
 					<p className="tagline">{settings?.tagline}</p>
 				</footer>
