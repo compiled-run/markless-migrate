@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { throttling } from 'lighthouse/core/config/constants.js';
 import { chromium } from 'playwright';
+import { closeOnExit, killTree } from './close-on-exit.ts';
 import { mannWhitneyGreater, median, noiseBand, SIGNIFICANCE, spread } from './stats.ts';
 import { LOAD_METRICS, type LoadMetric, type Metrics } from './load-verdicts.ts';
 import { TRACKER_HOSTS, type BlockList } from './trackers.ts';
@@ -340,6 +341,22 @@ export async function startChromium(): Promise<{ port: number; close: () => Prom
 	const dir = await mkdtemp(join(tmpdir(), 'markless-migrate-load-'));
 	const proc = spawn(loadBrowserPath(), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}`, '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
 	const exited = new Promise<void>((done) => proc.once('exit', () => done()));
+	let closing: Promise<void> | undefined;
+	const close = () =>
+		(closing ??= (async () => {
+			proc.kill();
+			await exited;
+			// Chromium's helper processes can still write to the profile just after the browser exits.
+			await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
+			forget();
+		})());
+	const forget = closeOnExit({
+		close,
+		kill: () => {
+			if (proc.pid !== undefined) killTree(proc.pid);
+			rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+		},
+	});
 	const port = await new Promise<number>((resolve, reject) => {
 		let output = '';
 		proc.stderr!.on('data', (chunk: Buffer) => {
@@ -348,16 +365,11 @@ export async function startChromium(): Promise<{ port: number; close: () => Prom
 			if (found) resolve(Number(found[1]));
 		});
 		proc.once('exit', () => reject(new Error(`Chromium for page load exited: ${output.slice(-500)}`)));
+	}).catch(async (error: unknown) => {
+		await close();
+		throw error;
 	});
-	return {
-		port,
-		close: async () => {
-			proc.kill();
-			await exited;
-			// Chromium's helper processes can still write to the profile just after the browser exits.
-			await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
-		},
-	};
+	return { port, close };
 }
 
 /** Lighthouse's URL patterns cannot unblock one host under a blocked domain, so a domain with an allowed host anywhere under or above it loads on both sides. */
@@ -425,8 +437,9 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	const out = new Map<string, RouteLoad>();
 	if (!routes.length) return out;
 	const browser = await startChromium();
-	const unbypass = options.bypass ? await bypassForOrigins(browser.port, options.bypass) : undefined;
+	let unbypass: (() => void) | undefined;
 	try {
+		if (options.bypass) unbypass = await bypassForOrigins(browser.port, options.bypass);
 		const once = async (which: 'old' | 'new', route: string): Promise<LoadRun> => {
 			const origin = origins[which];
 			const url = new URL(route, origin).href;
