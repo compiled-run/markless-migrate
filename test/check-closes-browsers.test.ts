@@ -2,7 +2,7 @@
 // every process under the check when it was stopped is gone soon after it exits.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -69,7 +69,8 @@ function living(procs: readonly Proc[]): Proc[] {
 const servers: Server[] = [];
 const children: ChildProcess[] = [];
 const seenProcs: Proc[] = [];
-after(() => {
+const dirs: string[] = [];
+after(async () => {
 	for (const s of servers) s.closeAllConnections(), s.close();
 	for (const c of children) if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL');
 	for (const p of living(seenProcs)) {
@@ -77,6 +78,7 @@ after(() => {
 			process.kill(p.pid, 'SIGKILL');
 		} catch {}
 	}
+	for (const dir of dirs) await rm(dir, { recursive: true, force: true });
 });
 
 async function stopMidway(stage: Stage, stop: Stop): Promise<void> {
@@ -94,7 +96,9 @@ async function stopMidway(stage: Stage, stop: Stop): Promise<void> {
 		process.disconnect();
 	`;
 	// A file, not --eval: the check's worker threads inherit the process's flags, and --input-type refuses a worker's file.
-	const file = join(await mkdtemp(join(tmpdir(), 'check-closes-browsers-')), 'check.mjs');
+	const dir = await mkdtemp(join(tmpdir(), 'check-closes-browsers-'));
+	dirs.push(dir);
+	const file = join(dir, 'check.mjs');
 	await writeFile(file, script);
 	const child = spawn(process.execPath, [file], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
 	children.push(child);
