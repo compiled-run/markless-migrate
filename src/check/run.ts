@@ -24,6 +24,7 @@ import { accessFailures, compareLogin, loginRoutes, saveState, saysDenied, signI
 import { detectChallenge } from './blocked.ts';
 import { adoptAnswers, DEFINITE, defaultEnv, isLoopback, LAUNCH, offerAnswers, probeWall, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type SideEnv, type StorageState, type StoredAnswer, type WallHit } from './browser.ts';
 import { checkBusyCpu, type BusyCpuOptions } from './busy-cpu.ts';
+import { closedOnExit } from './close-on-exit.ts';
 import { OldCache } from './cache.ts';
 import { captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { checkClock } from './clock-shift.ts';
@@ -816,7 +817,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	}
 	if (options.slicing && (options.routes.length !== 1 || options.original || options.auth || options.data)) throw new Error('a sliced check checks one route, anonymous, with no --original or --data');
 	// A browser of the check's own is launched again if it dies, and the route it died under checked once more; a given one is the caller's.
-	const relaunched = options.browser ? undefined : await new Relauncher<Browser>(() => chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }), (line) => void process.stderr.write(`${line}\n`)).start();
+	const relaunched = options.browser ? undefined : await new Relauncher<Browser>(() => chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }).then(closedOnExit), (line) => void process.stderr.write(`${line}\n`)).start();
 	const browser = options.browser ?? relaunched!.shared;
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
@@ -829,13 +830,13 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	let laneBrowsers: [Browser, Browser] | undefined;
 	let touchWebkit: Browser | undefined;
 	try {
-		webkitBrowser = options.controls?.webkit && !options.writeLayoutSurvey ? await webkit.launch().catch((error: Error) => {
+		webkitBrowser = options.controls?.webkit && !options.writeLayoutSurvey ? await webkit.launch().then(closedOnExit, (error: Error) => {
 			throw new Error(`control parity compares pop-up places in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out --control-webkit`);
 		}) : undefined;
-		touchWebkit = options.touch && (options.touch.profiles ?? ['iphone']).includes('iphone') && !options.writeLayoutSurvey ? (webkitBrowser ?? (await webkit.launch().catch((error: Error) => {
+		touchWebkit = options.touch && (options.touch.profiles ?? ['iphone']).includes('iphone') && !options.writeLayoutSurvey ? (webkitBrowser ?? (await webkit.launch().then(closedOnExit, (error: Error) => {
 			throw new Error(`taps are checked on an iPhone in WebKit, which did not start (${error.message.split('\n')[0]}): install it with \`npx playwright install webkit\`, or leave out the iPhone with --touch android`);
 		}))) : undefined;
-		laneBrowsers = options.busyCpu && !options.writeLayoutSurvey ? await launchedTogether([firefox.launch(), webkitBrowser ? Promise.resolve(webkitBrowser) : webkit.launch()], webkitBrowser).catch((error: Error) => {
+		laneBrowsers = options.busyCpu && !options.writeLayoutSurvey ? await launchedTogether([firefox.launch().then(closedOnExit), webkitBrowser ? Promise.resolve(webkitBrowser) : webkit.launch().then(closedOnExit)], webkitBrowser).catch((error: Error) => {
 			throw new Error(`the busy-CPU lane uses Firefox and WebKit, which did not start (${error.message.split('\n')[0]}): install them with \`npx playwright install firefox webkit\`, or leave out --busy-cpu`);
 		}) : undefined;
 	} catch (error) {

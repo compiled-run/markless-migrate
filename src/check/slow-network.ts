@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
+import { closedOnExit } from './close-on-exit.ts';
 import { deployOf, NetworkCache } from './slow-network-cache.ts';
 import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, GATED, networkFailures, noiseBand, resolution, retakeStopped, RUN_METRIC_LABEL, RUN_METRICS, runMetric, settledNotSlower, stopBounds, stoppedAt, type RunMetric } from './slow-network-verdicts.ts';
 import { criticalPathOf, networkGroups, type CriticalPath } from './slow-network-groups.ts';
@@ -289,9 +290,9 @@ const TYPES: Readonly<Record<NetworkBrowser, BrowserType>> = { chromium, firefox
 async function launch(name: NetworkBrowser, throttle: Throttle): Promise<Browser> {
 	const proxy = { server: throttle.proxy, bypass: '' };
 	// Loopback origins go through the proxy too: Chromium and Firefox send them past it unless told otherwise.
-	if (name === 'chromium') return chromium.launch({ proxy, args: ['--proxy-bypass-list=<-loopback>', '--disable-quic'] });
-	if (name === 'firefox') return firefox.launch({ proxy, firefoxUserPrefs: { 'network.proxy.allow_hijacking_localhost': true, 'network.http.http3.enable': false } });
-	return TYPES[name].launch({ proxy });
+	if (name === 'chromium') return closedOnExit(await chromium.launch({ proxy, args: ['--proxy-bypass-list=<-loopback>', '--disable-quic'] }));
+	if (name === 'firefox') return closedOnExit(await firefox.launch({ proxy, firefoxUserPrefs: { 'network.proxy.allow_hijacking_localhost': true, 'network.http.http3.enable': false } }));
+	return closedOnExit(await TYPES[name].launch({ proxy }));
 }
 
 /** One cold load of `url` over `profile` in a fresh `browser`, clicking the control every 250 ms from when it is on screen until it answers. */
