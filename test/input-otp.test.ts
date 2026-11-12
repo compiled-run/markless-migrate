@@ -49,3 +49,12 @@ test('the mirrored selection selects the slot under a single caret, as input-otp
 	assert.deepEqual(mirror('123', 2, 2, 'none', 6, [1, 2, 'forward']), { start: 2, end: 3, direction: 'forward', select: [2, 3, 'forward'] });
 	assert.deepEqual(mirror('', 0, 0, 'none', 6, none), { start: 0, end: 0, direction: 'none' }, 'an empty field keeps the caret');
 });
+
+test("a field whose signature finds no container (an empty one's, counted among empty elements convert adds and drops) is the page's enabled field at its place", () => {
+	const doc = parseDocument(`<body>${FIELD}${FIELD.replace('maxlength="2"', 'maxlength="2" disabled')}${FIELD}</body>`);
+	const plan = new OtpPlan();
+	const placed = plan.add([{ sig: 'div||', nth: 7, texts: [] }, { sig: 'div||', nth: 9, texts: [] }], () => undefined, (h) => h, body(doc));
+	assert.equal(placed, 2);
+	const containers = [...walk(body(doc))].filter((el) => attr(el, 'data-input-otp-container') !== undefined);
+	assert.ok(plan.bind(containers[0]!) && !plan.bind(containers[1]!) && plan.bind(containers[2]!), 'the two enabled fields, in order; the disabled one is left alone');
+});
