@@ -225,3 +225,20 @@ test('a select whose options are not every choice the card\'s buttons make keeps
 	assert.match(out, /<span data-slot="select-value">Week<\/span>/);
 	assert.equal(plan.showsValue(trigger), false);
 });
+
+test('each drawing of a chart has ids of its own, and its url(#id) and href="#id" references follow them', () => {
+	const drawn = (d: string) => `<svg class="recharts-surface"><defs><linearGradient id="fillMobile"><stop offset="5%"></stop></linearGradient><clipPath id="recharts1-clip"><rect x="0"></rect></clipPath></defs><g clip-path="url(#recharts1-clip)"><path class="recharts-area-area" d="${d}" fill="url(#fillMobile)" style="filter: url(&quot;#fillMobile&quot;)"></path><use href="#fillMobile"></use></g><g id="recharts-area-1"></g></svg>`;
+	const doc = parseDocument(`<body><div data-slot="card"><div data-slot="card-header"><button>Desktop</button><button>Mobile</button></div><div class="recharts-wrapper">${drawn('M0,1')}<div class="recharts-tooltip-wrapper"></div></div></div></body>`);
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const buttons = [find(root, (el) => el.tagName === 'button' && textOf(el) === 'Desktop')!, find(root, (el) => el.tagName === 'button' && textOf(el) === 'Mobile')!];
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 3 });
+	const plan = new ChartPlan();
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [5, 5, 90, 40] as const, variants: [one(drawn('M0,1')), one(drawn('M0,3'))], drivers: [{ sig: 'b0', nth: 0, kind: 'press' as const, variant: 0 }, { sig: 'b1', nth: 0, kind: 'press' as const, variant: 1 }] }], (sig) => (sig === 'w' ? wrapper : buttons[Number(sig.slice(1))]), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	for (const copy of ['chart0w0v0', 'chart0w0v1']) {
+		for (const own of [`id="fillMobile-${copy}"`, `id="recharts1-clip-${copy}"`, `clip-path="url(#recharts1-clip-${copy})"`, `fill="url(#fillMobile-${copy})"`, `style={"filter: url(\\"#fillMobile-${copy}\\")"}`, `href="#fillMobile-${copy}"`]) assert.equal(out.split(own).length - 1, 1, `${own} once`);
+	}
+	assert.ok(!out.includes('id="fillMobile"') && !out.includes('url(#fillMobile)'), 'no drawing keeps the id another one has');
+	assert.equal(out.split('id="recharts-area-1"').length - 1, 2, 'an id nothing references by url or href stays as recharts drew it (the part finds a series by it in its own drawing)');
+});

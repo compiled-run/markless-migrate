@@ -1117,6 +1117,44 @@ function checkedAtRest(pressed: ReadonlyMap<Tree, number>): { el: Tree; values: 
 	return { el, values: Object.fromEntries(marks.map((name) => [name, [attr(el, name)!, attr(other, name)!]])) };
 }
 
+/** Where `value` names an element by url(#id): each id's start and end. */
+function urlRefs(value: string): { start: number; end: number }[] {
+	const out: { start: number; end: number }[] = [];
+	for (let at = value.indexOf('url('); at >= 0; at = value.indexOf('url(', at + 4)) {
+		let start = at + 4;
+		while (value[start] === ' ' || value[start] === '"' || value[start] === "'") start++;
+		if (value[start] !== '#') continue;
+		start++;
+		let end = start;
+		while (end < value.length && !'"\') '.includes(value[end]!)) end++;
+		if (end > start) out.push({ start, end });
+	}
+	return out;
+}
+
+/**
+ * A drawing's ids its own url(#id) and href="#id" name, made its own by `suffix` with the references renamed alike, as
+ * each instance of the old chart had them; an id nothing references so (a series the part finds by it) stays.
+ */
+export function ownIds(svg: Tree, suffix: string): void {
+	const els = [...walk(svg)];
+	const ids = new Set(els.map((el) => attr(el, 'id')).filter((id): id is string => id !== undefined));
+	const named = new Set<string>();
+	for (const el of els)
+		for (const a of el.attrs) {
+			if (a.name === 'href' && a.value.startsWith('#')) named.add(a.value.slice(1));
+			for (const r of urlRefs(a.value)) named.add(a.value.slice(r.start, r.end));
+		}
+	const renamed = new Map([...named].filter((id) => ids.has(id)).map((id) => [id, `${id}-${suffix}`]));
+	if (!renamed.size) return;
+	for (const el of els)
+		for (const a of el.attrs) {
+			if (a.name === 'id' && !a.prefix) a.value = renamed.get(a.value) ?? a.value;
+			else if (a.name === 'href' && a.value.startsWith('#')) a.value = `#${renamed.get(a.value.slice(1)) ?? a.value.slice(1)}`;
+			else for (const r of urlRefs(a.value).reverse()) a.value = `${a.value.slice(0, r.start)}${renamed.get(a.value.slice(r.start, r.end)) ?? a.value.slice(r.start, r.end)}${a.value.slice(r.end)}`;
+		}
+}
+
 const labelOf = (d: ChartDriver) => d.label ?? d.sig.split('|')[2] ?? '';
 
 /**
@@ -1160,6 +1198,8 @@ export class ChartPlan {
 			const declare = [`let ${name} = state(${start});`, ...(many ? [`let ${v} = state(0);`] : [])];
 			const entries: ChartWidth[] = [{ viewport: 0, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
 			const spares = spareCounts(entries.flatMap((entry) => entry.variants.map((v) => parsedSvg(v.svg ?? ''))));
+			// Every drawing is in the page at once, the ones not shown hidden: a url(#id) must not reach a hidden one's.
+			const copies = many || entries.length > 1;
 			// Each width's variants by the reference's: the rest is 0, a control's state is the one the same control (by its text) shows.
 			const refOf = (entry: ChartWidth, j: number): number => {
 				if (entry === entries[0]) return j;
@@ -1213,6 +1253,7 @@ export class ChartPlan {
 					if (many && style === undefined) extra.unshift(`style={${hide}}`);
 					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
 					local.set(tree, rootBinding);
+					if (copies) ownIds(tree, prefix);
 					const declarations: string[] = [];
 					svgs.push(emitElement(tree, { bind: (el) => local.get(el), declarations }));
 					declare.push(...declarations);
