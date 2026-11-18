@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { parseFragment } from 'parse5';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -10,6 +11,7 @@ import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { attr, childrenOf, elementChildren, inner, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 import type { Limit } from './limit.ts';
+import { expandFacts } from '../../parts/recharts-facts.ts';
 
 /** What a recharts chart shows for one active data point, as the old page drew it with that point active. */
 export interface ChartState {
@@ -1271,13 +1273,14 @@ export class ChartPlan {
 	private factsOf(entry: ChartWidth, variant: ChartVariant, tree?: Tree): Record<string, unknown> {
 		// A polar chart's tooltip is at the pointer's radius on the point's axis (a radar) or at the point's ring on the pointer's angle (radial bars).
 		const polar = variant.mode === 'a' || variant.mode === 'r';
-		return {
+		const exact = exactSegments(variant, entry.view);
+		const full = {
 			w: entry.width,
 			h: entry.height,
 			v: entry.view,
 			m: variant.mode,
 			...(variant.center ? { c: variant.center } : {}),
-			g: exactSegments(variant, entry.view) ?? variant.segments.map((s) => s.map(round)),
+			g: exact ?? variant.segments.map((s) => s.map(round)),
 			...(variant.span ? { sp: variant.span.map(round) } : {}),
 			p: variant.states.map((s, k) => {
 				// recharts fixes the tooltip on the point's axis and follows the pointer on the other (both for a pie's sector, neither for a polar axis); the keys' reading is the settled one.
@@ -1293,6 +1296,14 @@ export class ChartPlan {
 			...(variant.model?.layout ? { l: variant.model.layout } : {}),
 			...(variant.model?.polar ? { pl: variant.model.polar } : {}),
 		};
+		// What the part rebuilds to the same floats is left out: the hit ranges from the category axis, the tooltip places from the keys.
+		const { g, p, ...rest } = full;
+		const ranges = exact ? { gt: exact.map((s) => s[2]) } : { g };
+		for (const compact of [{ ...rest, ...ranges }, ...(exact ? [{ ...rest, ...ranges, p }] : [])]) {
+			const read = expandFacts(JSON.parse(JSON.stringify(compact)) as typeof compact);
+			if (isDeepStrictEqual(read.g, g) && isDeepStrictEqual(read.p, p)) return compact;
+		}
+		return full;
 	}
 
 	/** The card's controls set which SVG the chart shows: a press by the control, a choice by the option's text. */

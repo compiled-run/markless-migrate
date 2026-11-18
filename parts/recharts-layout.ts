@@ -3,6 +3,7 @@
 // and the tooltip's places, from what convert wrote on the drawing (its facts: every possible tick, the layout, the bar
 // settings) and what the old page drew.
 import { curvePath, rectPath, rt, shapeOf, through, type Geo } from './recharts-motion.ts';
+import { expandFacts } from './recharts-facts.ts';
 
 /** A cartesian axis as recharts' CartesianAxis was given it (convert's AxisModel). */
 export interface Axis {
@@ -975,7 +976,7 @@ export function fit(svg: SVGSVGElement, W: number, H: number, local?: (axis: Axi
 	let facts = originals.get(svg);
 	if (!facts) {
 		try {
-			facts = JSON.parse(svg.getAttribute('data-mm-facts') ?? '') as Facts;
+			facts = expandFacts(JSON.parse(svg.getAttribute('data-mm-facts') ?? '') as Facts);
 		} catch {
 			return undefined;
 		}
