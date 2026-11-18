@@ -1621,7 +1621,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			side.catch(() => {});
 			if (reveal && routes.includes(route)) {
 				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
-				const own = await captureRouteReveals(browser, options.old, route, (await atFor(route, 'reveals')), { extra, opens, loadDialog }, limit);
+				const own = await captureRouteReveals(browser, options.old, route, (await atFor(route, 'reveals')), { extra, opens, loadDialog, settled: (await page()).settled }, limit);
 				const incomplete = incompleteCapture(own);
 				if (incomplete) throw new Error(incomplete);
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);

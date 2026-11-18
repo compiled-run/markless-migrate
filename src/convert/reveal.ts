@@ -65,6 +65,8 @@ export interface RevealCapture {
 	readonly skipped: readonly string[];
 	/** Controls found on the first load and not on the page loaded again, as `key (viewport)`: the capture is incomplete, so it is never stored. */
 	readonly lost?: readonly string[];
+	/** Controls shown at one viewport whose layer was recorded only at another, as `key (shown at a, recorded at b)`: never stored, as with lost. */
+	readonly oneViewport?: readonly string[];
 	/** The version of each mark written on what the gestures added (addedMarks): a reveal lacking one that applies to it is taken again. */
 	readonly marks?: Marked;
 	/** Before marks: COMMAND_EMPTY when the commands' empty states were kept. */
@@ -428,18 +430,50 @@ async function waitFound(page: Page, find: (found: readonly Candidate[]) => Cand
 	}
 }
 
+/** The ids of the controls the settled document (capturePage's, at this viewport) holds. */
+async function settledControlIds(page: Page, html: string, selectors: readonly string[]): Promise<string[]> {
+	return page.evaluate(
+		([html, selector]) => {
+			const doc = new DOMParser().parseFromString(html, 'text/html');
+			return [...new Set([...doc.body.querySelectorAll(selector)].filter((el) => el.id && !el.closest('template')).map((el) => el.id))];
+		},
+		[html, selectors.join(', ')] as const,
+	);
+}
+
+/** Waits, at most LATE_MARKS_MS, until each of `ids` this load holds is marked as a control; returns those still unmarked. */
+async function awaitMarks(page: Page, ids: readonly string[], selectors: readonly string[]): Promise<{ id: string; visible: boolean }[]> {
+	const until = Date.now() + LATE_MARKS_MS;
+	for (;;) {
+		const unmarked = await page.evaluate(
+			([ids, selector]) =>
+				ids.flatMap((id) => {
+					const el = document.getElementById(id);
+					if (!el || el.closest('template') || el.matches(selector)) return [];
+					const rect = el.getBoundingClientRect();
+					const style = getComputedStyle(el);
+					return [{ id, visible: rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.pointerEvents !== 'none' }];
+				}),
+			[ids, selectors.join(', ')] as const,
+		);
+		if (!unmarked.length || Date.now() >= until) return unmarked;
+		await page.waitForTimeout(200);
+	}
+}
+
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
-	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls?: readonly (readonly [string, RevealAction])[]; readonly tag?: string; readonly dismiss?: boolean; readonly settled?: Readonly<Record<string, string>> } = {}, marks: readonly Mark[] = addedMarks(), taken: ReadonlySet<string> = new Set()): Promise<RevealCapture> {
+	const controls = pass.controls ?? CONTROLS;
+	const file = join(dir, `${key(`${pass.tag ?? ''}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	// Stored before an incomplete capture was refused, a control lost on a reload was kept among the skips.
-	if (cached && cached.route === route && !cached.lost?.length && !cached.skipped.some((s) => s.endsWith(LOST))) {
+	if (cached && cached.route === route && !cached.lost?.length && !cached.oneViewport?.length && !cached.skipped.some((s) => s.endsWith(LOST))) {
 		// A capture under the reveal:2 key and later had its text values marked.
 		const marked = markedOf(cached, { [textValuesMark.id]: 1 });
 		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
 		if (!stale.length) return cached;
 		// Only the controls whose content a newer mark reads are used again; every other reveal is kept as it was.
-		const taken = await retake(browser, origin, route, stale, extra, pass.controls, viewports, pass.dismiss);
+		const taken = await retake(browser, origin, route, stale, extra, controls, viewports, pass.dismiss);
 		const capture: RevealCapture = { route, reveals: cached.reveals.map((r) => taken.get(r) ?? r), skipped: cached.skipped, marks: marksOf(marks) };
 		await writeFile(file, JSON.stringify(capture));
 		return capture;
@@ -448,6 +482,9 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	const skipped: string[] = [];
 	const lost: string[] = [];
 	const done = new Set<string>(taken);
+	const selectors = [...controls, ...extra].map(([selector]) => selector);
+	// Where each control was first seen shown, for the reveals recorded only at a later viewport.
+	const shown = new Map<string, string>();
 	let hidden = true;
 	for (const viewport of viewports) {
 		// A control another viewport could not show is the only reason to load the page again at this one.
@@ -456,7 +493,11 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		const load = () => fresh(browser, origin, route, viewport, pass.dismiss);
 		let open = await load();
 		try {
-			const found = await candidates(open.page, extra, pass.controls);
+			// The first read waits for the controls the settled page marks (Base UI's aria-expanded comes with hydration).
+			const settled = pass.settled?.[viewport.name];
+			const unmarked = settled ? await awaitMarks(open.page, await settledControlIds(open.page, settled, selectors), selectors) : [];
+			const found = await candidates(open.page, extra, controls);
+			for (const c of [...found.filter((c) => c.visible).map((c) => c.key), ...unmarked.filter((u) => u.visible).map((u) => u.id)]) if (!shown.has(c)) shown.set(c, viewport.name);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			// A page loaded again can lay itself out differently, so each control is found again on it rather than reached by its old path.
 			let current = found;
@@ -466,7 +507,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 				let candidate = current === found ? first : foundAgain(current, first);
 				if (!candidate?.visible && current !== found && !waited) {
 					waited = true;
-					({ found: current, candidate } = await waitFound(open.page, (now) => foundAgain(now, first), extra, pass.controls));
+					({ found: current, candidate } = await waitFound(open.page, (now) => foundAgain(now, first), extra, controls));
 				}
 				if (!candidate?.visible) {
 					lost.push(`${first.key} (${viewport.name})`);
@@ -475,7 +516,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 				const used = await useCandidate(open, candidate);
 				if (!used.clean) {
 					open = await reload(open, load);
-					current = await candidates(open.page, extra, pass.controls);
+					current = await candidates(open.page, extra, controls);
 					waited = false;
 				}
 				const added = used.added;
@@ -489,7 +530,9 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 			await open.context.close().catch(() => {});
 		}
 	}
-	if (lost.length) return { route, reveals, skipped, lost };
+	// The port mounts a layer tagged with a later viewport only there: a control shown earlier would open nothing.
+	const oneViewport = reveals.flatMap((r) => (shown.has(r.key) && shown.get(r.key) !== r.viewport ? [`${r.key} (shown at ${shown.get(r.key)}, recorded at ${r.viewport})`] : []));
+	if (lost.length || oneViewport.length) return { route, reveals, skipped, ...(lost.length ? { lost } : {}), ...(oneViewport.length ? { oneViewport } : {}) };
 	const capture: RevealCapture = { route, reveals, skipped, marks: marksOf(marks) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
@@ -498,9 +541,13 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 
 const LOST = ': not found on the page loaded again';
 
-/** Why a route's capture fails when it lost controls on a reload, naming them; none when it is whole. */
-export function incompleteCapture(capture: Pick<RevealCapture, 'lost'>): string | undefined {
-	return capture.lost?.length ? `capture incomplete: ${capture.lost.join(', ')} not found on the page loaded again, so their reveals are missing` : undefined;
+/** Why a route's capture fails when it lost controls on a reload or recorded a shown control's layer only at another viewport, naming them; none when it is whole. */
+export function incompleteCapture(capture: Pick<RevealCapture, 'lost' | 'oneViewport'>): string | undefined {
+	const why = [
+		...(capture.lost?.length ? [`${capture.lost.join(', ')} not found on the page loaded again, so their reveals are missing`] : []),
+		...(capture.oneViewport?.length ? [`${capture.oneViewport.join(', ')} has a layer only at a viewport other than one that shows it, so it opens nothing there`] : []),
+	];
+	return why.length ? `capture incomplete: ${why.join('; ')}` : undefined;
 }
 
 // The cached reveals' controls used again on a fresh load at each one's viewport, found by key and else by tag, slot, text
@@ -545,14 +592,14 @@ export interface ListedControls {
 }
 
 /** Every pass over one route's controls (ARIA-marked, listed, child-rendered hovers, listed openers, scroll areas), joined. */
-export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls = {}, limit: Limit = (task) => task()): Promise<RevealCapture> {
+export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, options: ListedControls & { readonly settled?: Readonly<Record<string, string>> } = {}, limit: Limit = (task) => task()): Promise<RevealCapture> {
 	const failed = (error: Error): RevealCapture => ({ route, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
 	// A listed control with routes is the site's on those routes only.
 	const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(route)).map(([selector, action]) => [selector, action] as const);
 	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);
 	// Each pass loads the page afresh, so the passes run at once, each in a slot of `limit`; the wide screen's and the
 	// dismissed dialog's passes need the keys the ARIA-marked and listed controls found.
-	const pass = (viewports: readonly Viewport[], extraOf: readonly (readonly [string, RevealAction])[], tagged?: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean }, marks?: readonly Mark[], taken?: ReadonlySet<string>) => limit(() => captureReveals(browser, origin, route, dir, viewports, extraOf, tagged, marks, taken)).catch(failed);
+	const pass = (viewports: readonly Viewport[], extraOf: readonly (readonly [string, RevealAction])[], tagged?: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string; readonly dismiss?: boolean }, marks?: readonly Mark[], taken?: ReadonlySet<string>) => limit(() => captureReveals(browser, origin, route, dir, viewports, extraOf, { ...tagged, settled: options.settled }, marks, taken)).catch(failed);
 	const [first, child, opened, scroll] = await Promise.all([
 		(async () => {
 			const [own, listed] = await Promise.all([
@@ -578,8 +625,10 @@ export async function captureRouteReveals(browser: Browser, origin: string, rout
 	]);
 	const { own, listed, base, keys, wide, dismissed, dismissedOpens } = first;
 	const more = [...child.reveals, ...(dismissed?.reveals ?? []), ...(dismissedOpens?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals, ...wide.reveals];
-	const lost = [own, listed, child, opened, scroll, wide, dismissed, dismissedOpens].flatMap((c) => c?.lost ?? []);
-	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))].flatMap(ownLayers), ...(lost.length ? { lost } : {}), skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
+	const passes = [own, listed, child, opened, scroll, wide, dismissed, dismissedOpens];
+	const lost = passes.flatMap((c) => c?.lost ?? []);
+	const oneViewport = passes.flatMap((c) => c?.oneViewport ?? []);
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))].flatMap(ownLayers), ...(lost.length ? { lost } : {}), ...(oneViewport.length ? { oneViewport } : {}), skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? []), ...wide.skipped, ...(dismissed?.skipped ?? []), ...(dismissedOpens?.skipped ?? [])] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
