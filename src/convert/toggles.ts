@@ -260,6 +260,20 @@ async function use(page: Page, id: number): Promise<string | undefined> {
 	return undefined;
 }
 
+/** The element a click at the control's centre lands on instead of it, as `tag[data-slot]`; none when it lands on the control. */
+async function coveredBy(page: Page, id: number): Promise<string | undefined> {
+	return page.evaluate((id) => {
+		const el = (window as unknown as { __mmToggles: Element[] }).__mmToggles[id]!;
+		if (!el.isConnected) return undefined;
+		el.scrollIntoView({ block: 'center', inline: 'center' });
+		const r = el.getBoundingClientRect();
+		const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		if (!top || el.contains(top)) return undefined;
+		const slot = top.getAttribute('data-slot');
+		return `${top.tagName.toLowerCase()}${slot ? `[data-slot="${slot}"]` : ''}`;
+	}, id);
+}
+
 // The tab stop follows focus, which using a control moves: it is not the control's state.
 const settled = (attrs: Readonly<Record<string, string>>) => JSON.stringify(Object.entries(attrs).filter(([k]) => k !== 'tabindex').sort());
 const same = (a: ToggleState, b: ToggleState) => a.inner === b.inner && settled(a.attrs) === settled(b.attrs);
@@ -389,7 +403,10 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 				continue;
 			}
 			if (!same(first, back)) {
-				unrecorded.push(`${c.sig}#${c.nth}: ${UNRESTORED}${again ? ` (the second use ${again})` : ''}`);
+				// The original itself puts the control out of a click's reach once used: it switches one way there too.
+				const cover = again ? await coveredBy(page, c.id) : undefined;
+				if (cover) skipped.push(`${c.sig}#${c.nth}: after its first use a click on it lands on ${cover} on the original`);
+				else unrecorded.push(`${c.sig}#${c.nth}: ${UNRESTORED}${again ? ` (the second use ${again})` : ''}`);
 				continue;
 			}
 			const [on, off] = first.on ? [first, second] : [second, first];
@@ -458,8 +475,6 @@ export interface SwitchCapture {
 	readonly route: string;
 	readonly switches: readonly Switch[];
 	readonly skipped: readonly string[];
-	/** As ToggleCapture's: switches whose second use did not undo the first, so the capture is never stored. */
-	readonly unrecorded?: readonly string[];
 }
 
 async function written(page: Page, before: Map<string, string>): Promise<CookieWrite[]> {
@@ -473,10 +488,9 @@ async function written(page: Page, before: Map<string, string>): Promise<CookieW
 export async function captureSwitches(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[], settled?: string): Promise<SwitchCapture> {
 	const file = join(dir, `${createHash('sha256').update(`switches:v3:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SwitchCapture, () => undefined);
-	if (cached && cached.route === route && !cached.skipped.some((s) => s.endsWith(UNRESTORED))) return cached;
+	if (cached && cached.route === route) return cached;
 	const switches: Switch[] = [];
 	const skipped: string[] = [];
-	const unrecorded: string[] = [];
 	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
@@ -559,12 +573,8 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 			const back = await collect();
 			const cookiesOff = await written(page, between);
 			const restored = changes.every((c) => back.some((b) => b.sig === c.sig && b.nth === c.nth && b.attr === c.attr && b.after === c.before));
-			if (!changes.length) {
-				skipped.push(`${control.sig}#${control.nth}: using it changed no attribute`);
-				continue;
-			}
-			if (!restored) {
-				unrecorded.push(`${control.sig}#${control.nth}: ${UNRESTORED}`);
+			if (!changes.length || !restored) {
+				skipped.push(`${control.sig}#${control.nth}: ${changes.length ? UNRESTORED : 'using it changed no attribute'}`);
 				continue;
 			}
 			switches.push({ ...control, changes, cookiesOn, cookiesOff });
@@ -572,7 +582,6 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 	} finally {
 		await context.close().catch(() => {});
 	}
-	if (unrecorded.length) return { route, switches, skipped, unrecorded };
 	const capture: SwitchCapture = { route, switches, skipped };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));

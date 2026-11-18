@@ -11,18 +11,20 @@ import { chromium, type Browser } from 'playwright';
 import { captureToggles, unrecordedToggles } from '../src/convert/toggles.ts';
 
 // `terms` is labelled only once the page's client has run (LATE ms after load); `stuck` shows a check mark it never
-// takes away; `inert` does nothing when used.
+// takes away; `inert` does nothing when used; `covered` is covered by the page once used, as shadcn's RTL example does.
 const LATE = 1500;
 const page = (late: boolean) => `<!doctype html><html><body><main>
 <span id="terms-label">Accept terms</span>
 <span role="checkbox" aria-checked="false" id="terms" style="display: inline-block; width: 16px; height: 16px"${late ? '' : ' aria-labelledby="terms-label"'}></span>
 <span role="checkbox" aria-checked="false" id="stuck">Stuck</span>
 <span role="checkbox" aria-checked="false" id="inert">Inert</span>
+<div style="position: relative"><span role="checkbox" aria-checked="false" id="covered">Covered</span><div id="cover" data-slot="card-content" hidden style="position: absolute; inset: 0"></div></div>
 <script>
 ${late ? `setTimeout(() => document.getElementById('terms').setAttribute('aria-labelledby', 'terms-label'), ${LATE});` : ''}
 const flip = (el) => el.setAttribute('aria-checked', String(el.getAttribute('aria-checked') !== 'true'));
 document.getElementById('terms').addEventListener('click', (e) => flip(e.currentTarget));
 document.getElementById('stuck').addEventListener('click', (e) => { flip(e.currentTarget); e.currentTarget.innerHTML = '<svg data-check></svg>'; });
+document.getElementById('covered').addEventListener('click', (e) => { flip(e.currentTarget); document.getElementById('cover').hidden = false; });
 </script></main></body></html>`;
 
 let browser: Browser;
@@ -70,6 +72,17 @@ test('a control the page itself does nothing with stays a skip and does not fail
 		const capture = await captureToggles(browser, origin, '/', dir, page(false));
 		assert.ok(capture.skipped.includes('span||Inert#0: using it changed nothing in place'));
 		assert.ok(!capture.unrecorded?.some((u) => u.startsWith('span||Inert')));
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a control the original puts out of reach after its first use is a skip naming what a click lands on, not a failed capture', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-toggles-first-'));
+	try {
+		const capture = await captureToggles(browser, origin, '/', dir, page(false));
+		assert.ok(capture.skipped.includes('span||Covered#0: after its first use a click on it lands on div[data-slot="card-content"] on the original'), JSON.stringify(capture.skipped));
+		assert.ok(!capture.unrecorded?.some((u) => u.startsWith('span||Covered')));
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

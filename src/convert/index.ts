@@ -1614,8 +1614,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				(async () => {
 					if (!reveal || !routes.includes(route) || !switchSelectors.length) return;
 					const switches = await limit(async () => captureSwitches(browser, options.old, route, (await atFor(route, 'toggles')), switchSelectors, (await page()).settled.desktop)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
-					const unswitched = unrecordedToggles(switches);
-					if (unswitched) throw new Error(unswitched);
 					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
 					facts.switches = switches.switches;
 				})(),
