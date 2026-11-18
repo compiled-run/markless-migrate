@@ -3,6 +3,8 @@
 // step through the points once the chart has focus (accessibilityLayer), and leaving, Escape or blurring hides the
 // tooltip. The point's index goes to the chart as an `mmchart` event; this places the tooltip where recharts did.
 
+import { expandFacts } from './recharts-facts.ts';
+
 interface Facts {
 	readonly w: number;
 	readonly h: number;
@@ -46,7 +48,7 @@ function surfaceOf(wrapper: Element): SVGSVGElement | undefined {
 function factsOf(surface: Element): Facts | undefined {
 	if (!parsed.has(surface)) {
 		try {
-			parsed.set(surface, JSON.parse(surface.getAttribute('data-mm-facts') ?? '') as Facts);
+			parsed.set(surface, expandFacts(JSON.parse(surface.getAttribute('data-mm-facts') ?? '') as Facts));
 		} catch {
 			parsed.set(surface, undefined);
 		}

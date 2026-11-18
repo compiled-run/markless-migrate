@@ -815,6 +815,27 @@ test('recharts: the pointer picks the point whose range it is in, the tooltip go
 	await page.close();
 });
 
+test('recharts: facts without hit ranges or tooltip places pick and place as the full ones do, rebuilt from the category axis and the keys', async () => {
+	const axis = { t: 'xAxis', o: 'bottom', box: [5, 95, 290, 5], vb: [0, 0, 300, 100], gap: 5, iv: 'preserveEnd', ts: 6, tm: 2, off: 0, c: [50, 150, 250], l: ['a', 'b', 'c'] };
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', gt: [0, 1, 2], sp: [5, 95], k: [[0, 50, 60], [1, 150, 60], [2, 250, 60]], a: [axis] });
+	const page = await open(
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart="1"><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div></div>`,
+		['recharts'],
+	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => {
+		(window as unknown as { seen: number[] }).seen = [];
+		document.querySelector('.recharts-wrapper')!.addEventListener('mmchart', (e) => (window as unknown as { seen: number[] }).seen.push((e as CustomEvent<number>).detail));
+	});
+	await page.mouse.move(70, 100);
+	await page.mouse.move(210, 100, { steps: 4 });
+	assert.match(await tooltipAt(page, /translate\(150px, 60px\)/), /translate\(150px, 60px\)/, 'the second point\'s place, from its arrow key');
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { seen: number[] }).seen), [0, 1], 'x 12 is in [5, 100], x 152 in [100, 200]: halfway between the ticks');
+	await page.mouse.move(301, 100);
+	assert.deepEqual((await page.evaluate(() => (window as unknown as { seen: number[] }).seen)).slice(-1), [2]);
+	await page.close();
+});
+
 test('Base UI dialog locks scroll as @base-ui/utils useScrollLock does: the body stops scrolling (a stable gutter on <html> where scrollbars take room), put back on close', async () => {
 	const page = await open(
 		`<main style="height:3000px"><button data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dlg" type="button">Open Dialog</button></main>

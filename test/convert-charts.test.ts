@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { animationLag, ChartPlan, exactSegments, gridOf, spare, spareCounts, template } from '../src/convert/charts.ts';
 import { attr, body, find, parseDocument, textContent, walk } from '../src/convert/dom.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
+import { expandFacts } from '../parts/recharts-facts.ts';
 
 const textOf = (el: Parameters<typeof textContent>[0]) => textContent(el).trim();
 
@@ -184,4 +185,28 @@ test('a chart whose card starts in another choice on narrow pages carries that c
 	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants: [one('<svg class="recharts-surface"></svg>'), one('<svg class="recharts-surface"><g></g></svg>')], drivers, start: { below: 768, label: 'Last 7 days' } }], (sig) => (sig === 'w' ? wrapper : find(root, (el) => el.tagName === 'button')), (h) => h);
 	const out = emitElement(root, { bind: (el) => plan.bind(el) });
 	assert.ok(out.includes(`data-mm-start={${JSON.stringify(JSON.stringify({ w: 768, l: 'Last 7 days' }))}}`), out.slice(0, 500));
+});
+
+test('a drawing\'s facts leave out what the part rebuilds exactly: the hit ranges from the category axis, the tooltip places from the arrow keys\'', () => {
+	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"></svg><div class="recharts-tooltip-wrapper"></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const c = [5, 5 + 834 / 7, 5 + (834 / 7) * 2, 5 + (834 / 7) * 3];
+	const axis = { t: 'xAxis' as const, o: 'bottom' as const, box: [5, 215, 834, 30] as const, vb: [0, 0, 844, 250] as const, gap: 32, iv: 'preserveEnd', ts: 6, tm: 8, off: 0, c, l: ['Jun 23', 'Jun 24', 'Jun 25', 'Jun 26'] };
+	const state = (x: number) => ({ tooltip: `<b>${x}</b>`, x, y: null, added: [], changed: [] });
+	const segments: [number, number, number][] = [[4.75, 64.75, 0], [64.75, 183.75, 1], [183.75, 302.75, 2], [302.75, 839.75, 3]];
+	const keys: [number, number, number][] = [[0, 15, 137.5], [1, 134.143, 137.5], [2, 253.286, 137.5], [3, 372.429, 137.5]];
+	const variant = { svg: '<svg class="recharts-surface"></svg>', mode: 'x' as const, segments, states: c.map(state), points: {}, elements: 0, keys, model: { axes: [axis], layout: 'horizontal' as const } };
+	const view = [5, 5, 834, 210] as const;
+	const plan = new ChartPlan();
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 844, height: 250, view, variants: [variant], drivers: [] }], (sig) => (sig === 'w' ? wrapper : undefined), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	const written = JSON.parse(JSON.parse(/data-mm-facts=\{("(?:[^"\\]|\\.)*")\}/.exec(out)![1]!)) as Record<string, unknown>;
+	assert.equal(written.g, undefined, 'the hit ranges are the category axis\' halfway points, which the facts already carry');
+	assert.equal(written.p, undefined, 'every state\'s tooltip place is its arrow key\'s');
+	const read = expandFacts(written);
+	assert.deepEqual(read.g, exactSegments(variant, view), 'the part rebuilds the very floats recharts compares the pointer with');
+	assert.deepEqual(read.p, keys.map(([, x]) => [x, null]));
+	const unkeyed = expandFacts(JSON.parse(JSON.stringify({ m: 'x', g: [[0, 10, 0]], p: [[3, null]], k: [] })) as Record<string, unknown>);
+	assert.deepEqual([unkeyed.g, unkeyed.p], [[[0, 10, 0]], [[3, null]]], 'facts written in full are read as they are');
 });
