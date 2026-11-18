@@ -2,7 +2,7 @@
 # Serves one side of the vite.dev check on a CI runner, never a deployment:
 #   ci-serve.sh old                 builds vitejs/vite's docs (fetch-old.sh) and serves them as Vercel did on http://localhost:4000
 #   ci-serve.sh new markless@<ref>  builds examples/vite-dev-markless on compiled-run/markless at <ref> (pass a commit, so every shard builds the same)
-#   ci-serve.sh new <url>           serves a built port (a .tar.gz of its .vercel/output)
+#   ci-serve.sh new <url>           serves a built port (a .tar.gz of its .vercel/output, or of a cloudflare-module .output in workerd)
 # Both serve on the runner and return once the site answers; the port at http://127.0.0.1:3000.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,9 +37,15 @@ case "${1:-}" in
 			dest="$RUNNER_TEMP/new"
 			mkdir -p "$dest"
 			curl -fsSL "$spec" | tar -xz -C "$dest"
-			if [ -d "$dest/.vercel/output" ]; then vercel="$dest/.vercel/output"; else vercel="$dest"; fi
+			if [ -d "$dest/.vercel/output" ]; then vercel="$dest/.vercel/output"; elif [ -f "$dest/.output/server/wrangler.json" ]; then cloudflare="$dest/.output/server"; else vercel="$dest"; fi
 		fi
-		(cd "$vercel/.." && nohup node "$ROOT/deploy/shadcn-ui/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		preset=$([ -n "${cloudflare:-}" ] && echo cloudflare-module || echo vercel)
+		[ -z "${PRESET:-}" ] || [ "$PRESET" = "$preset" ] || { echo "PRESET=$PRESET, but the archive holds a $preset build" >&2; exit 1; }
+		if [ -n "${cloudflare:-}" ]; then
+			(cd "$cloudflare" && CI=1 WRANGLER_SEND_METRICS=false nohup node "$ROOT/deploy/shadcn-ui/serve-cloudflare-output.mjs" wrangler.json 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		else
+			(cd "$vercel/.." && nohup node "$ROOT/deploy/shadcn-ui/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		fi
 		wait_for http://127.0.0.1:3000/
 		for path in / /guide/ /blog; do curl -s -o /dev/null -w "new $path: %{http_code} in %{time_total} s\n" "http://127.0.0.1:3000$path"; done
 		;;
