@@ -39,7 +39,7 @@ export const typesetState = shared(
 			},
 		};
 	},
-	{ scope: 'page' },
+	{ scope: 'app' },
 );
 
 const PICKER_TRIGGER = 'relative w-36 shrink-0 touch-manipulation rounded-xl p-3 ring-1 ring-foreground/10 select-none hover:bg-muted focus-visible:ring-foreground/50 focus-visible:outline-none disabled:opacity-50 data-popup-open:bg-muted md:w-full md:rounded-lg md:px-2.5 md:py-2';

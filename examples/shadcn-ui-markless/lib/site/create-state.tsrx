@@ -24,5 +24,5 @@ export const createState = shared(
 		});
 		return { ...t };
 	},
-	{ scope: 'page' },
+	{ scope: 'app' },
 );
