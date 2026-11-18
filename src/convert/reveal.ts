@@ -57,6 +57,15 @@ export interface Reveal {
 	readonly added: readonly Revealed[];
 	/** The reveal whose content holds this one's trigger (a submenu captured from its menu). */
 	readonly from?: string;
+	/** A tab's use: the attributes it set outside its tab list on elements it did not add. */
+	readonly changed?: readonly ChangedAttribute[];
+}
+
+/** An attribute a use set: the element's path as `Revealed.into` gives one, and what it then read (null: removed). */
+export interface ChangedAttribute {
+	readonly path: readonly number[];
+	readonly name: string;
+	readonly value: string | null;
 }
 
 export interface RevealCapture {
@@ -166,13 +175,17 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmAdded = [];
 		(w as unknown as { __mmChanged: Element[] }).__mmChanged = [];
+		const tab = w as unknown as { __mmTab?: Element; __mmAttrs: { el: Element; name: string; old: string | null }[] };
+		tab.__mmTab = undefined;
+		tab.__mmAttrs = [];
 		w.__mmObserver = new MutationObserver((records) => {
 			for (const r of records) {
+				if (r.type === 'attributes' && tab.__mmTab && r.target instanceof Element) tab.__mmAttrs.push({ el: r.target, name: r.attributeName!, old: r.oldValue });
 				if (r.target instanceof Element && (r.addedNodes.length || r.removedNodes.length)) (w as unknown as { __mmChanged: Element[] }).__mmChanged.push(r.target);
 				for (const n of r.addedNodes) if (n instanceof Element && r.target instanceof Element) w.__mmAdded!.push({ parent: r.target, node: n, next: n.nextElementSibling });
 			}
 		});
-		w.__mmObserver.observe(document.body, { childList: true, subtree: true });
+		w.__mmObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeOldValue: true });
 	});
 	const target = await page.evaluateHandle((path) => {
 		let el: Element = document.body;
@@ -227,15 +240,17 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		const chain: Element[] = [];
 		for (let n = e.parentElement; n && n !== document.body; n = n.parentElement) chain.push(n);
 		(window as unknown as { __mmChain?: Element[] }).__mmChain = chain;
+		(window as unknown as { __mmTab?: Element }).__mmTab = e.getAttribute('role') === 'tab' ? e : undefined;
 	});
 	// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
 	await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
 	await settleScroll(page);
 	// What changed while scrolling to the control (a late header update) is not the gesture's doing.
 	await page.evaluate(() => {
-		const w = window as unknown as { __mmAdded: unknown[]; __mmChanged: unknown[] };
+		const w = window as unknown as { __mmAdded: unknown[]; __mmChanged: unknown[]; __mmAttrs: unknown[] };
 		w.__mmAdded = [];
 		w.__mmChanged = [];
+		w.__mmAttrs = [];
 	});
 	try {
 		if (candidate.action === 'click') await el.click({ timeout: 2000 });
@@ -310,6 +325,35 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			return { into: a.parent === document.body ? ('body' as const) : pathOf(a.parent), before: at, html: (copies.get(a.node) ?? a.node).outerHTML, ...(layer ? { layer } : {}) };
 		});
 	}, candidate.key);
+}
+
+/** The attributes the tab `reveal` last used set outside its tab list, on elements its use did not add. */
+async function tabChanges(page: Page): Promise<ChangedAttribute[]> {
+	return page.evaluate(() => {
+		const w = window as unknown as { __mmTab?: Element; __mmAttrs?: { el: Element; name: string; old: string | null }[]; __mmAdded?: { node: Element }[] };
+		const tab = w.__mmTab;
+		w.__mmTab = undefined;
+		if (!tab) return [];
+		const list = tab.closest('[role="tablist"]');
+		const added = (w.__mmAdded ?? []).map((a) => a.node).filter((n) => n.isConnected);
+		// Paths as on the page before the use: what it added is left out of each parent's children.
+		const pathOf = (el: Element): number[] => {
+			const out: number[] = [];
+			for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) out.unshift([...node.parentElement!.children].filter((c) => !added.includes(c)).indexOf(node));
+			return out;
+		};
+		const first = new Map<Element, Map<string, string | null>>();
+		for (const r of w.__mmAttrs ?? []) {
+			const names = first.get(r.el) ?? first.set(r.el, new Map()).get(r.el)!;
+			if (!names.has(r.name)) names.set(r.name, r.old);
+		}
+		const out: { path: number[]; name: string; value: string | null }[] = [];
+		for (const [el, names] of first) {
+			if (!el.isConnected || el === document.body || list?.contains(el) || added.some((a) => a.contains(el))) continue;
+			for (const [name, old] of names) if (el.getAttribute(name) !== old) out.push({ path: pathOf(el), name, value: el.getAttribute(name) });
+		}
+		return out;
+	});
 }
 
 /** A reveal with each layer of a trigger inside it (Revealed.layer) split out, as a reveal of that trigger's opened from it. */
@@ -396,12 +440,13 @@ async function fresh(browser: Browser, origin: string, route: string, viewport: 
 type Open = { context: BrowserContext; page: Page; baseline: string };
 
 /** Uses one candidate the way captureReveals does, then puts the page back; `clean` is false when it could not, and the page must be loaded again. */
-async function useCandidate(open: Open, candidate: Candidate): Promise<{ added: Revealed[] | string; clean: boolean }> {
+async function useCandidate(open: Open, candidate: Candidate): Promise<{ added: Revealed[] | string; changed?: ChangedAttribute[]; clean: boolean }> {
 	try {
 		const previous = await selectedSibling(open.page, candidate.path);
 		const raw = await reveal(open.page, candidate);
 		const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard' || a.into === 'download') : raw;
-		return { added, clean: await undo(open.page, previous, open.baseline) };
+		const changed = typeof raw !== 'string' && !candidate.extra ? await tabChanges(open.page) : [];
+		return { added, ...(changed.length ? { changed } : {}), clean: await undo(open.page, previous, open.baseline) };
 	} catch (error) {
 		return { added: `could not use it: ${(error as Error).message.split('\n')[0]}`, clean: false };
 	}
@@ -482,7 +527,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
 				else {
 					done.add(candidate.key);
-					if (added.length) reveals.push({ key: candidate.key, path: candidate.path, sig: candidate.sig, nth: candidate.nth, action: candidate.action, viewport: viewport.name, added });
+					if (added.length || used.changed) reveals.push({ key: candidate.key, path: candidate.path, sig: candidate.sig, nth: candidate.nth, action: candidate.action, viewport: viewport.name, added, ...(used.changed ? { changed: used.changed } : {}) });
 				}
 			}
 		} finally {
@@ -527,7 +572,7 @@ async function retake(browser: Browser, origin: string, route: string, stale: re
 					found = await candidates(open.page, extra, controls);
 					reloaded = true;
 				}
-				if (typeof used.added !== 'string' && used.added.length) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added });
+				if (typeof used.added !== 'string' && (used.added.length || used.changed)) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added, ...(used.changed ? { changed: used.changed } : {}) });
 			}
 		} finally {
 			await open.context.close().catch(() => {});

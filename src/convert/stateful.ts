@@ -18,6 +18,13 @@ function armed(test: string, inner: string): string {
 	return /@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : `@if (${test}) { <>${inner}</> }`;
 }
 
+/** An attribute a tab's use set on an element it did not add, and the value it then read (null: removed). */
+export interface TabChange {
+	readonly el: Element;
+	readonly name: string;
+	readonly value: string | null;
+}
+
 export class TabsPlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -26,8 +33,11 @@ export class TabsPlan {
 		return this.bindings.get(el);
 	}
 
-	/** `content` gives a panel's revealed markup (tsrx) when the old page filled it on use. */
-	add(root: Element, isRadixTab: (el: Element) => boolean, content: (panel: Element) => string | undefined): number {
+	/**
+	 * `content` gives a panel's revealed markup (tsrx) when the old page filled it on use; `changed`, the attributes a
+	 * tab's use set elsewhere on the page (reveal.ts), each read as it was then.
+	 */
+	add(root: Element, isRadixTab: (el: Element) => boolean, content: (panel: Element) => string | undefined, changed: (trigger: Element) => readonly TabChange[] = () => []): number {
 		const byId = new Map<string, Element>();
 		for (const el of walk(root)) {
 			const id = attr(el, 'id');
@@ -77,6 +87,17 @@ export class TabsPlan {
 					...(revealed !== undefined ? { children: revealed } : {}),
 					wrap: (inner) => armed(`${name} === ${v}`, inner),
 				});
+			}
+			// An attribute that showed the active tab's value at load and each used tab's value after its use is this state.
+			const follows = new Map<Element, Map<string, boolean>>();
+			for (const tab of tabs)
+				for (const c of changed(tab.trigger)) {
+					const names = follows.get(c.el) ?? follows.set(c.el, new Map()).get(c.el)!;
+					names.set(c.name, (names.get(c.name) ?? true) && c.value === tab.value);
+				}
+			for (const [el, names] of follows) {
+				const bound = [...names].filter(([n, ok]) => ok && attr(el, n) === active.value).map(([n]) => n);
+				if (bound.length) this.bindings.set(el, mergeBindings(this.bindings.get(el), { declare, omit: bound, extra: bound.map((n) => `${n}={${name}}`) })!);
 			}
 		}
 		return groups;

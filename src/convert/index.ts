@@ -20,7 +20,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, type Factored, type SharedComponent } from './factor.ts';
 import { besideTrigger } from './beside-trigger.ts';
 import { authorIdNames, hollowOf, layerNames, renameAuthorIds } from './layer-ids.ts';
-import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, holdsRadixDisclosure, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan, type TabChange } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
@@ -382,6 +382,8 @@ const isBaseTab = (el: Element) => attr(el, 'role') === 'tab' && (/^base-ui-/.te
 const basePanels = new Map<Element, { attrs: Record<string, string>; inner: string }>();
 // What the old page put in a Radix tab panel when its tab was chosen, as tsrx, by panel id (TabsPlan renders it on state).
 const panelContent = new Map<Element, string>();
+// The attributes elsewhere on the page each Radix tab's use set, by tab (TabsPlan binds those that follow its value).
+const tabChanges = new Map<Element, TabChange[]>();
 
 // The offsets a positioned part gets from the source (Radix's sideOffset and alignOffset), written on its template; the
 // side and alignment are the content's own data-side and data-align.
@@ -935,6 +937,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		if (trigger && inPageComponent(trigger, siteComponents)) continue;
 		const controlled = trigger ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
 		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger) || (controlled && attr(trigger, 'aria-expanded') !== undefined && radixDisclosurePanel(controlled))) ? controlled : undefined;
+		if (trigger && isRadixTab(trigger) && reveal.changed) tabChanges.set(trigger, reveal.changed.flatMap((c) => { const el = elementAt(root, c.path); return el ? [{ el, name: c.name, value: c.value }] : []; }));
 		if (trigger && isBaseTab(trigger)) {
 			const shown = reveal.added.filter((a) => typeof a.into !== 'string').flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)).find((e) => attr(e, 'role') === 'tabpanel');
 			if (shown) basePanels.set(trigger, { attrs: Object.fromEntries(shown.attrs.map((a) => [a.name, a.value])), inner: childrenOf(shown).map((n) => outer(n)).join('') });
@@ -1916,7 +1919,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const p of prepared.values()) for (const [el, markup] of p.appends) appended.set(el, markup);
 	const tabs = new TabsPlan();
 	let tabGroups = 0;
-	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel));
+	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel), (trigger) => tabChanges.get(trigger) ?? []);
 	if (tabGroups) log(`tabs on Markless state: ${tabGroups} tab lists`);
 	const baseTabs = new BaseTabsPlan();
 	let baseTabGroups = 0;
