@@ -254,7 +254,7 @@ test("a modal Base UI alert dialog hides the page as floating-ui's markOthers do
 	await page.close();
 });
 
-test('opening a modal Base UI alert dialog reads layout once: the stacking and initial-focus reads come before its writes, so they force one style recalculation', async () => {
+test('opening a modal Base UI alert dialog reads layout once: the initial-focus read and the focus move come after all its writes, so only the focus move restyles again', async () => {
 	const page = await open(
 		`<style>[data-slot="alert-dialog-overlay"][data-open]{opacity:.5}[data-base-ui-inert]:not([role]){pointer-events:none}</style><main><button type="button" data-slot="alert-dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="ad">Alert Dialog</button></main>
 		<div data-base-ui-portal hidden data-mm-layer="ad">${INTERNAL_BACKDROP}<div data-slot="alert-dialog-overlay" aria-hidden="true" data-base-ui-inert data-closed style="position:fixed;inset:0;z-index:50"></div><div role="alertdialog" tabindex="-1" data-slot="alert-dialog-content" data-closed style="position:fixed;z-index:50"><button data-slot="alert-dialog-cancel" type="button">Cancel</button><button type="button">Continue</button></div></div>`,
@@ -262,7 +262,7 @@ test('opening a modal Base UI alert dialog reads layout once: the stacking and i
 	);
 	await settled(page);
 	const cdp = await page.context().newCDPSession(page);
-	const events: { name: string; ph: string; args?: { beginData?: { stackTrace?: { functionName: string }[] } } }[] = [];
+	const events: { name: string; ph: string; args?: { beginData?: { stackTrace?: { functionName: string; url: string }[] } } }[] = [];
 	cdp.on('Tracing.dataCollected', (e) => events.push(...(e.value as unknown as typeof events)));
 	const complete = new Promise<void>((done) => cdp.once('Tracing.tracingComplete', () => done()));
 	await cdp.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline.stack', transferMode: 'ReportEvents' });
@@ -270,9 +270,11 @@ test('opening a modal Base UI alert dialog reads layout once: the stacking and i
 	await settled(page);
 	await cdp.send('Tracing.end');
 	await complete;
-	// A recalculation a script forced carries its stack; these are the ones the part's own reads forced.
-	const reads = events.filter((e) => e.name === 'UpdateLayoutTree' && e.args?.beginData?.stackTrace?.some((f) => f.functionName === 'raiseOver' || f.functionName === 'tabbables'));
-	assert.equal(reads.length, 1);
+	// A recalculation a script forced carries its stack: the part's reads, and the focus move's own (it restyles what focus changed).
+	const forced = events.filter((e) => e.name === 'UpdateLayoutTree' && e.args?.beginData?.stackTrace?.some((f) => f.url.includes('/parts/'))).map((e) => e.args!.beginData!.stackTrace!.map((f) => f.functionName));
+	const reads = forced.filter((stack) => stack.includes('raiseOver') || stack.includes('tabbables'));
+	assert.equal(reads.length, 1, JSON.stringify(forced));
+	assert.equal(forced.length, 2, `nothing written between the read and the focus move: ${JSON.stringify(forced)}`);
 	assert.equal(await focused(page), 'alert-dialog-cancel');
 	await page.close();
 });

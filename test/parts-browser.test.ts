@@ -905,6 +905,33 @@ test('a Radix dialog holding Markless handlers (the docs palette) opens where th
 	}
 });
 
+test('opening a Radix dialog reads style once, after the overlay and the content made every change, then moves focus: each read between writes restyles the whole page on a site with a body :has() rule', async () => {
+	const layer = dialogLayer('ad').replace(/alert-dialog/g, 'dialog').replace('role="alertdialog"', 'role="dialog"').replace('<button data-slot="dialog-cancel">Cancel</button>', '<input id="first"><button>Save</button>');
+	const page = await open(
+		`<div data-async-container><main><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Open Dialog</button></main>${layer}<!--markless:page-end--></div>`,
+		['radix/dialog'],
+		undefined,
+		// shadcn's enter animations, long enough that none ends while the opening is traced.
+		'<style>[data-slot="dialog-overlay"][data-state="open"],[role="dialog"][data-state="open"]{animation:enter 10s}@keyframes enter{from{opacity:0}}</style>',
+	);
+	const cdp = await page.context().newCDPSession(page);
+	const events: { name: string; args?: { beginData?: { stackTrace?: { functionName: string; url: string }[] } } }[] = [];
+	cdp.on('Tracing.dataCollected', (e) => events.push(...(e.value as unknown as typeof events)));
+	const complete = new Promise<void>((done) => cdp.once('Tracing.tracingComplete', () => done()));
+	await cdp.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline.stack', transferMode: 'ReportEvents' });
+	await page.getByText('Open Dialog').click();
+	await page.waitForTimeout(100);
+	await cdp.send('Tracing.end');
+	await complete;
+	// A recalculation a script forced carries its stack; these are the ones the dialog's own reads and focus moves forced.
+	const forced = events.filter((e) => e.name === 'UpdateLayoutTree' && e.args?.beginData?.stackTrace?.some((f) => f.url.includes('/parts/'))).map((e) => e.args!.beginData!.stackTrace![0]!.functionName);
+	assert.deepEqual(forced, ['animationName', 'focus']);
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'first', 'focus still lands on the first control');
+	assert.equal(await page.locator('main').getAttribute('aria-hidden'), 'true');
+	assert.equal(await page.evaluate(() => document.body.hasAttribute('data-scroll-locked')), true);
+	await page.close();
+});
+
 test('shadcn-ui site: a code block\'s copy button writes what it copied on the old page and shows Copied with the check for 2 s', async () => {
 	const icon = '<svg class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
 	const button = `<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button>`;
