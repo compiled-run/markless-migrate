@@ -1,0 +1,26 @@
+name: Browser cache
+
+# GitHub evicts a cache nobody reads for 7 days, and only main's runs may save one, so a week without a push to main leaves
+# every pull request downloading the browsers' system packages from the runners' Ubuntu mirror, which has stalled past the
+# setup's 20-minute timeout. Reading each browser set's caches from main every other day keeps them alive.
+on:
+  schedule:
+    - cron: '17 6 */2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        browsers: ['chromium', 'webkit', 'chromium webkit', 'chromium firefox webkit']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browsers }}
