@@ -915,7 +915,7 @@ test('opening a Radix dialog reads style once, after the overlay and the content
 		'<style>[data-slot="dialog-overlay"][data-state="open"],[role="dialog"][data-state="open"]{animation:enter 10s}@keyframes enter{from{opacity:0}}</style>',
 	);
 	const cdp = await page.context().newCDPSession(page);
-	const events: { name: string; args?: { beginData?: { stackTrace?: { functionName: string; url: string }[] } } }[] = [];
+	const events: { name: string; ph: string; ts: number; dur?: number; args?: { data?: { type?: string }; beginData?: { stackTrace?: { functionName: string; url: string }[] } } }[] = [];
 	cdp.on('Tracing.dataCollected', (e) => events.push(...(e.value as unknown as typeof events)));
 	const complete = new Promise<void>((done) => cdp.once('Tracing.tracingComplete', () => done()));
 	await cdp.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline.stack', transferMode: 'ReportEvents' });
@@ -923,12 +923,82 @@ test('opening a Radix dialog reads style once, after the overlay and the content
 	await page.waitForTimeout(100);
 	await cdp.send('Tracing.end');
 	await complete;
-	// A recalculation a script forced carries its stack; these are the ones the dialog's own reads and focus moves forced.
-	const forced = events.filter((e) => e.name === 'UpdateLayoutTree' && e.args?.beginData?.stackTrace?.some((f) => f.url.includes('/parts/'))).map((e) => e.args!.beginData!.stackTrace![0]!.functionName);
-	assert.deepEqual(forced, ['animationName', 'focus']);
+	// A recalculation a script forced carries its stack; these are the ones the opening forced inside the click's task (its microtasks included).
+	const click = events.find((e) => e.name === 'EventDispatch' && e.ph === 'X' && e.args?.data?.type === 'click')!;
+	const forced = events.filter((e) => e.name === 'UpdateLayoutTree' && e.ts >= click.ts && e.ts <= click.ts + click.dur! && e.args?.beginData?.stackTrace?.some((f) => f.url.includes('/parts/'))).map((e) => e.args!.beginData!.stackTrace![0]!.functionName);
+	// The scroll-bar measurement must see the page before the lock; it forces a recalculation only where scroll bars take room (Linux, not headless macOS).
+	const measured = forced[0] === 'scrollBarStyle' ? 1 : 0;
+	assert.deepEqual(forced.slice(measured), ['animationName', 'focus'], JSON.stringify(forced));
 	assert.equal(await page.evaluate(() => document.activeElement?.id), 'first', 'focus still lands on the first control');
 	assert.equal(await page.locator('main').getAttribute('aria-hidden'), 'true');
 	assert.equal(await page.evaluate(() => document.body.hasAttribute('data-scroll-locked')), true);
+	await page.close();
+});
+
+const radixDialog = (key: string, inside = '<input id="first"><button>Save</button>') => `<div data-mm-layer="${key}" hidden data-slot="dialog-overlay" data-state="closed"></div><div data-mm-layer="${key}" hidden role="dialog" id="${key}" data-slot="dialog-content" data-state="closed" tabindex="-1">${inside}</div>`;
+const pageMarks = (page: Page) => page.evaluate(() => ({ main: document.querySelector('main')!.getAttribute('aria-hidden'), guards: document.querySelectorAll('[data-radix-focus-guard]').length, locked: document.body.getAttribute('data-scroll-locked'), lockStyle: [...document.head.querySelectorAll('style')].some((s) => s.textContent!.includes('body[data-scroll-locked]')), pointer: document.body.style.pointerEvents }));
+
+test('a Radix dialog: open, it marks the page, adds the focus guards, locks scroll with the scroll bar kept as margin and keeps Tab inside; Escape puts all of it back and focus on the trigger', async () => {
+	const page = await open(`<div data-async-container><main style="height:3000px"><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dlg" data-state="closed">Open Dialog</button></main>${radixDialog('dlg')}<!--markless:page-end--></div>`, ['radix/dialog']);
+	const gap = await page.evaluate(() => innerWidth - document.documentElement.clientWidth);
+	await page.getByText('Open Dialog').click();
+	await settled(page);
+	assert.deepEqual(await pageMarks(page), { main: 'true', guards: 2, locked: '1', lockStyle: true, pointer: 'none' });
+	assert.ok(await page.evaluate((gap) => [...document.head.querySelectorAll('style')].some((s) => s.textContent!.includes(`margin-right: ${gap}px !important`)), gap), `the scroll bar's ${gap} px kept as margin`);
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'first');
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button:Save');
+	await page.keyboard.press('Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'first', 'Tab past the last control loops to the first');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await focusOf(page), 'button:Save', 'Shift+Tab past the first loops to the last');
+	await page.keyboard.press('Escape');
+	await settled(page);
+	assert.equal(await page.locator('#dlg').getAttribute('data-state'), 'closed');
+	assert.deepEqual(await pageMarks(page), { main: null, guards: 0, locked: null, lockStyle: false, pointer: '' });
+	assert.equal(await focusOf(page), 'button:Open Dialog');
+	await page.close();
+});
+
+test('a Radix dialog opened from inside another: Escape closes only the top one and the page stays marked and locked; closing the outer one puts everything back', async () => {
+	const inner = '<input id="inner-first">';
+	const outer = `<input id="first"><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="inner" data-state="closed">Open Inner</button>`;
+	const page = await open(`<div data-async-container><main><button data-slot="dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="outer" data-state="closed">Open Outer</button></main>${radixDialog('outer', outer)}${radixDialog('inner', inner)}<!--markless:page-end--></div>`, ['radix/dialog']);
+	await page.getByText('Open Outer').click();
+	await settled(page);
+	await page.getByText('Open Inner').click();
+	await settled(page);
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'inner-first');
+	assert.equal(await page.locator('#outer').getAttribute('aria-hidden'), 'true', 'the outer dialog is behind the inner one');
+	assert.deepEqual(await pageMarks(page), { main: 'true', guards: 2, locked: '2', lockStyle: true, pointer: 'none' });
+	await page.keyboard.press('Escape');
+	await settled(page);
+	assert.deepEqual([await page.locator('#inner').getAttribute('data-state'), await page.locator('#outer').getAttribute('data-state')], ['closed', 'open']);
+	assert.equal(await page.locator('#outer').getAttribute('aria-hidden'), null);
+	assert.deepEqual(await pageMarks(page), { main: 'true', guards: 2, locked: '1', lockStyle: true, pointer: 'none' });
+	assert.equal(await focusOf(page), 'button:Open Inner');
+	await page.keyboard.press('Escape');
+	await settled(page);
+	assert.deepEqual(await pageMarks(page), { main: null, guards: 0, locked: null, lockStyle: false, pointer: '' });
+	assert.equal(await focusOf(page), 'button:Open Outer');
+	await page.close();
+});
+
+test('a Radix alert dialog: opening focuses Cancel, a press outside leaves it open, Escape closes it with focus back on the trigger', async () => {
+	const page = await open(`<div data-async-container><main><button data-slot="alert-dialog-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Show Dialog</button></main>${dialogLayer('ad').replace('<button data-slot="alert-dialog-cancel">', '<button>Continue</button><button data-slot="alert-dialog-cancel">')}<!--markless:page-end--></div>`, ['radix/dialog']);
+	await page.getByText('Show Dialog').click();
+	await settled(page);
+	assert.equal(await focusOf(page), 'button:Cancel');
+	assert.deepEqual(await pageMarks(page), { main: 'true', guards: 2, locked: '1', lockStyle: true, pointer: 'none' });
+	await page.waitForTimeout(50);
+	await page.mouse.click(600, 600);
+	await settled(page);
+	assert.equal(await page.locator('#ad').getAttribute('data-state'), 'open');
+	await page.keyboard.press('Escape');
+	await settled(page);
+	assert.equal(await page.locator('#ad').getAttribute('data-state'), 'closed');
+	assert.deepEqual(await pageMarks(page), { main: null, guards: 0, locked: null, lockStyle: false, pointer: '' });
+	assert.equal(await focusOf(page), 'button:Show Dialog');
 	await page.close();
 });
 

@@ -279,6 +279,35 @@ test('opening a modal Base UI alert dialog reads layout once: the initial-focus 
 	await page.close();
 });
 
+const baseDialog = (key: string, inside: string) => `<div data-base-ui-portal hidden data-mm-layer="${key}">${INTERNAL_BACKDROP}<div data-slot="dialog-overlay" data-closed></div><div role="dialog" id="${key}-popup" tabindex="-1" data-slot="dialog-content" data-closed style="position:relative;z-index:1">${inside}</div></div>`;
+
+test('a modal Base UI dialog opened from inside another: Escape closes only the top one and the page stays hidden and locked; closing the outer one shows and unlocks the page, focus back on its trigger', async () => {
+	const outer = `<button type="button" data-slot="button">First</button><button type="button" data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="inner">Open Inner</button>`;
+	const page = await open(
+		`<main style="height:3000px"><button type="button" data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="outer">Open Outer</button></main>${baseDialog('outer', outer)}${baseDialog('inner', '<button type="button" data-slot="button">Inner First</button>')}`,
+		['base-ui/dialog'],
+	);
+	const open_ = (key: string) => page.evaluate((key) => document.getElementById(`${key}-popup`)!.hasAttribute('data-open'), key);
+	await page.getByText('Open Outer').click();
+	await settled(page);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First');
+	assert.deepEqual(await pageState(page), await locked(page));
+	await page.getByText('Open Inner').click();
+	await settled(page);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Inner First');
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.deepEqual([await open_('inner'), await open_('outer')], [false, true]);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Open Inner');
+	assert.deepEqual(await pageState(page), await locked(page));
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await open_('outer'), false);
+	assert.deepEqual(await pageState(page), { hidden: null, gutter: '', overflow: '' });
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Open Outer');
+	await page.close();
+});
+
 test("a dialog a site component opens from a plain button (Base UI's open prop, no Dialog.Trigger) leaves that button's attributes alone, open, closed and after Escape, and focus goes back to it", async () => {
 	const page = await open(
 		`<main><button type="button" tabindex="0" data-slot="button" id="add">Add</button></main><div id="rendered" data-base-ui-portal data-slot="dialog-portal" hidden>${INTERNAL_BACKDROP}<div data-open role="dialog" tabindex="-1" data-slot="dialog-content"><button data-slot="dialog-close">Done</button></div></div><script type="module">import { openRendered } from '/parts/base-ui/dialog.ts'; document.getElementById('add').addEventListener('click', () => openRendered(document.getElementById('rendered')));</script>`,
