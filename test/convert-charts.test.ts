@@ -185,3 +185,60 @@ test('a chart whose card starts in another choice on narrow pages carries that c
 	const out = emitElement(root, { bind: (el) => plan.bind(el) });
 	assert.ok(out.includes(`data-mm-start={${JSON.stringify(JSON.stringify({ w: 768, l: 'Last 7 days' }))}}`), out.slice(0, 500));
 });
+
+test('a card whose toggle group and select pick the chart: each item\'s checked state and the select\'s shown value follow the chart\'s state()', () => {
+	const item = (label: string, on: boolean) => `<button type="button" data-state="${on ? 'on' : 'off'}" role="radio" aria-checked="${on}" data-slot="toggle-group-item">${label}</button>`;
+	const doc = parseDocument(`<body><div data-slot="card"><div data-slot="card-action"><div role="group" data-slot="toggle-group">${item('Last 3 months', false)}${item('Last 30 days', false)}${item('Last 7 days', true)}</div><button type="button" role="combobox" data-slot="select-trigger"><span data-slot="select-value">Last 7 days</span></button></div><div class="recharts-wrapper"><svg class="recharts-surface"><g class="r"></g></svg><div class="recharts-tooltip-wrapper"></div></div></div></body>`);
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const items = ['Last 3 months', 'Last 30 days', 'Last 7 days'].map((label) => find(root, (el) => attr(el, 'data-slot') === 'toggle-group-item' && textOf(el) === label)!);
+	const trigger = find(root, (el) => attr(el, 'data-slot') === 'select-trigger')!;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 1 });
+	const drivers = [
+		{ sig: 'i0', nth: 0, kind: 'press' as const, variant: 1 },
+		{ sig: 'i1', nth: 0, kind: 'press' as const, variant: 2 },
+		{ sig: 'i2', nth: 0, kind: 'press' as const, variant: 3 },
+		...['Last 3 months', 'Last 30 days', 'Last 7 days'].map((label, k) => ({ sig: 's', nth: 0, kind: 'choose' as const, label, variant: k + 1 })),
+	];
+	const plan = new ChartPlan();
+	const variants = [one('<svg class="recharts-surface"><g class="r"></g></svg>'), one('<svg class="recharts-surface"><g class="a"></g></svg>'), one('<svg class="recharts-surface"><g class="b"></g></svg>'), one('<svg class="recharts-surface"><g class="c"></g></svg>')];
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants, drivers }], (sig) => (sig === 'w' ? wrapper : sig === 's' ? trigger : items[Number(sig.slice(1))]), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.match(out, /data-state=\{chart0v === 2 \? "on" : "off"\} role="radio" aria-checked=\{chart0v === 2 \? "true" : "false"\} data-slot="toggle-group-item" data-mm-variant="2">Last 30 days</, 'a pressed item is checked while its drawing is shown');
+	assert.match(out, /data-state=\{chart0v === 3 \|\| chart0v === 0 \? "on" : "off"\} role="radio" aria-checked=\{chart0v === 3 \|\| chart0v === 0 \? "true" : "false"\} data-slot="toggle-group-item" data-mm-variant="3">Last 7 days</, 'the item checked at rest is checked while the rest drawing is shown too');
+	assert.match(out, /<span data-slot="select-value">\{chart0s\[chart0v\]\}<\/span>/, 'the select shows the choice the chart shows');
+	assert.ok(plan.bind(wrapper)?.declare?.includes('const chart0s = ["Last 7 days","Last 3 months","Last 30 days","Last 7 days"];'));
+	assert.equal(plan.showsValue(trigger), true, 'the select plan leaves this trigger\'s shown value to the chart');
+});
+
+test('a select whose options are not every choice the card\'s buttons make keeps its own shown value', () => {
+	const doc = parseDocument('<body><div data-slot="card"><div data-slot="card-header"><button data-active="true">Desktop</button><button data-active="false">Mobile</button></div><button data-slot="select-trigger"><span data-slot="select-value">Week</span></button><div class="recharts-wrapper"><svg class="recharts-surface"><g class="a"></g></svg><div class="recharts-tooltip-wrapper"></div></div></div></body>');
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const buttons = [find(root, (el) => el.tagName === 'button' && textOf(el) === 'Desktop')!, find(root, (el) => el.tagName === 'button' && textOf(el) === 'Mobile')!];
+	const trigger = find(root, (el) => attr(el, 'data-slot') === 'select-trigger')!;
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 1 });
+	const drivers = [{ sig: 'b0', nth: 0, kind: 'press' as const, variant: 0, active: true }, { sig: 'b1', nth: 0, kind: 'press' as const, variant: 1, active: true }, { sig: 's', nth: 0, kind: 'choose' as const, label: 'Month', variant: 2 }];
+	const plan = new ChartPlan();
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [0, 0, 100, 50] as const, variants: [one('<svg class="recharts-surface"><g class="a"></g></svg>'), one('<svg class="recharts-surface"><g class="b"></g></svg>'), one('<svg class="recharts-surface"><g class="c"></g></svg>')], drivers }], (sig) => (sig === 'w' ? wrapper : sig === 's' ? trigger : buttons[Number(sig.slice(1))]), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	assert.match(out, /<span data-slot="select-value">Week<\/span>/);
+	assert.equal(plan.showsValue(trigger), false);
+});
+
+test('each drawing of a chart has ids of its own, and its url(#id) and href="#id" references follow them', () => {
+	const drawn = (d: string) => `<svg class="recharts-surface"><defs><linearGradient id="fillMobile"><stop offset="5%"></stop></linearGradient><clipPath id="recharts1-clip"><rect x="0"></rect></clipPath></defs><g clip-path="url(#recharts1-clip)"><path class="recharts-area-area" d="${d}" fill="url(#fillMobile)" style="filter: url(&quot;#fillMobile&quot;)"></path><use href="#fillMobile"></use></g><g id="recharts-area-1"></g></svg>`;
+	const doc = parseDocument(`<body><div data-slot="card"><div data-slot="card-header"><button>Desktop</button><button>Mobile</button></div><div class="recharts-wrapper">${drawn('M0,1')}<div class="recharts-tooltip-wrapper"></div></div></div></body>`);
+	const root = body(doc);
+	const wrapper = find(root, (el) => attr(el, 'class') === 'recharts-wrapper')!;
+	const buttons = [find(root, (el) => el.tagName === 'button' && textOf(el) === 'Desktop')!, find(root, (el) => el.tagName === 'button' && textOf(el) === 'Mobile')!];
+	const one = (svg: string) => ({ svg, mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>x</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 3 });
+	const plan = new ChartPlan();
+	plan.add(root, [{ sig: 'w', nth: 0, index: 0, widths: [], width: 100, height: 50, view: [5, 5, 90, 40] as const, variants: [one(drawn('M0,1')), one(drawn('M0,3'))], drivers: [{ sig: 'b0', nth: 0, kind: 'press' as const, variant: 0 }, { sig: 'b1', nth: 0, kind: 'press' as const, variant: 1 }] }], (sig) => (sig === 'w' ? wrapper : buttons[Number(sig.slice(1))]), (h) => h);
+	const out = emitElement(root, { bind: (el) => plan.bind(el) });
+	for (const copy of ['chart0w0v0', 'chart0w0v1']) {
+		for (const own of [`id="fillMobile-${copy}"`, `id="recharts1-clip-${copy}"`, `clip-path="url(#recharts1-clip-${copy})"`, `fill="url(#fillMobile-${copy})"`, `style={"filter: url(\\"#fillMobile-${copy}\\")"}`, `href="#fillMobile-${copy}"`]) assert.equal(out.split(own).length - 1, 1, `${own} once`);
+	}
+	assert.ok(!out.includes('id="fillMobile"') && !out.includes('url(#fillMobile)'), 'no drawing keeps the id another one has');
+	assert.equal(out.split('id="recharts-area-1"').length - 1, 2, 'an id nothing references by url or href stays as recharts drew it (the part finds a series by it in its own drawing)');
+});

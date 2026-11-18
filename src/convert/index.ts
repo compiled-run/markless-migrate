@@ -2160,7 +2160,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
 	for (const [route, p] of prepared) {
 		templatePorts.routes = [route];
-		selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || (racSelect(el) && !racCalendars.within(el)), emitTrigger);
+		selects.add(p.root, (el) => !charts.showsValue(el) && (portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || (racSelect(el) && !racCalendars.within(el))), emitTrigger);
 	}
 	templatePorts.routes = undefined;
 	// A demo's recorded uses never take over an element another plan puts on Markless state (a disclosure, a tab, a toggle).

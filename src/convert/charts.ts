@@ -1098,6 +1098,63 @@ export const WIDTH_CSS = Array.from({ length: BUCKETS }, (_, b) => {
 /** The CSS every chart page appends to its own stylesheet: the entry animation and the widths. */
 export const CHART_CSS = `${MOTION_CSS}${WIDTH_CSS}\n`;
 
+const STATE_MARKS = ['aria-checked', 'aria-pressed', 'aria-selected', 'data-state', 'data-active'];
+const ON = new Set(['true', 'on', 'active', 'checked', 'open']);
+
+/**
+ * The pressed control the card shows chosen at rest (a toggle group's checked item) and the attributes that say so,
+ * each with its value on that control and on every other: the rest's drawing is its own, or the one it shows at rest.
+ */
+function checkedAtRest(pressed: ReadonlyMap<Tree, number>): { el: Tree; values: Record<string, [string, string]> } | undefined {
+	const els = [...pressed.keys()];
+	if (els.length < 2) return undefined;
+	const marks = STATE_MARKS.filter((name) => els.every((el) => attr(el, name) !== undefined) && new Set(els.map((el) => attr(el, name))).size === 2);
+	const alone = (el: Tree) => marks.every((name) => els.every((o) => o === el || (attr(o, name) !== attr(el, name) && attr(o, name) === attr(els.find((x) => x !== el)!, name))));
+	const candidates = els.filter(alone);
+	const el = candidates.find((c) => pressed.get(c) === 0) ?? (candidates.length === 1 ? candidates[0] : candidates.find((c) => marks.every((name) => ON.has(attr(c, name)!))));
+	if (!marks.length || !el) return undefined;
+	const other = els.find((x) => x !== el)!;
+	return { el, values: Object.fromEntries(marks.map((name) => [name, [attr(el, name)!, attr(other, name)!]])) };
+}
+
+/** Where `value` names an element by url(#id): each id's start and end. */
+function urlRefs(value: string): { start: number; end: number }[] {
+	const out: { start: number; end: number }[] = [];
+	for (let at = value.indexOf('url('); at >= 0; at = value.indexOf('url(', at + 4)) {
+		let start = at + 4;
+		while (value[start] === ' ' || value[start] === '"' || value[start] === "'") start++;
+		if (value[start] !== '#') continue;
+		start++;
+		let end = start;
+		while (end < value.length && !'"\') '.includes(value[end]!)) end++;
+		if (end > start) out.push({ start, end });
+	}
+	return out;
+}
+
+/**
+ * A drawing's ids its own url(#id) and href="#id" name, made its own by `suffix` with the references renamed alike, as
+ * each instance of the old chart had them; an id nothing references so (a series the part finds by it) stays.
+ */
+export function ownIds(svg: Tree, suffix: string): void {
+	const els = [...walk(svg)];
+	const ids = new Set(els.map((el) => attr(el, 'id')).filter((id): id is string => id !== undefined));
+	const named = new Set<string>();
+	for (const el of els)
+		for (const a of el.attrs) {
+			if (a.name === 'href' && a.value.startsWith('#')) named.add(a.value.slice(1));
+			for (const r of urlRefs(a.value)) named.add(a.value.slice(r.start, r.end));
+		}
+	const renamed = new Map([...named].filter((id) => ids.has(id)).map((id) => [id, `${id}-${suffix}`]));
+	if (!renamed.size) return;
+	for (const el of els)
+		for (const a of el.attrs) {
+			if (a.name === 'id' && !a.prefix) a.value = renamed.get(a.value) ?? a.value;
+			else if (a.name === 'href' && a.value.startsWith('#')) a.value = `#${renamed.get(a.value.slice(1)) ?? a.value.slice(1)}`;
+			else for (const r of urlRefs(a.value).reverse()) a.value = `${a.value.slice(0, r.start)}${renamed.get(a.value.slice(r.start, r.end)) ?? a.value.slice(r.start, r.end)}${a.value.slice(r.end)}`;
+		}
+}
+
 const labelOf = (d: ChartDriver) => d.label ?? d.sig.split('|')[2] ?? '';
 
 /**
@@ -1110,6 +1167,7 @@ const labelOf = (d: ChartDriver) => d.label ?? d.sig.split('|')[2] ?? '';
  */
 export class ChartPlan {
 	private readonly bindings = new Map<Tree, Binding>();
+	private readonly shown = new Set<Tree>();
 	private n = 0;
 
 	bind(el: Tree): Binding | undefined {
@@ -1140,6 +1198,8 @@ export class ChartPlan {
 			const declare = [`let ${name} = state(${start});`, ...(many ? [`let ${v} = state(0);`] : [])];
 			const entries: ChartWidth[] = [{ viewport: 0, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
 			const spares = spareCounts(entries.flatMap((entry) => entry.variants.map((v) => parsedSvg(v.svg ?? ''))));
+			// Every drawing is in the page at once, the ones not shown hidden: a url(#id) must not reach a hidden one's.
+			const copies = many || entries.length > 1;
 			// Each width's variants by the reference's: the rest is 0, a control's state is the one the same control (by its text) shows.
 			const refOf = (entry: ChartWidth, j: number): number => {
 				if (entry === entries[0]) return j;
@@ -1193,6 +1253,7 @@ export class ChartPlan {
 					if (many && style === undefined) extra.unshift(`style={${hide}}`);
 					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
 					local.set(tree, rootBinding);
+					if (copies) ownIds(tree, prefix);
 					const declarations: string[] = [];
 					svgs.push(emitElement(tree, { bind: (el) => local.get(el), declarations }));
 					declare.push(...declarations);
@@ -1295,6 +1356,30 @@ export class ChartPlan {
 		};
 	}
 
+	/** Whether the chart shows the choice in this select trigger's value, in place of the select's own state. */
+	showsValue(trigger: Tree): boolean {
+		return this.shown.has(trigger);
+	}
+
+	/**
+	 * A select whose options are the choices the card's buttons make too (dashboard-01's range): its value shows the
+	 * option of the drawing shown, the rest's its text at rest; a select choosing other things keeps its own state.
+	 */
+	private showValue(controls: readonly { d: ChartDriver; el: Tree }[], chosen: Readonly<Record<string, number>>, pressed: readonly number[], name: string, v: string, declare: string[]): void {
+		for (const trigger of new Set(controls.filter((c) => c.d.kind === 'choose' && !c.d.lang).map((c) => c.el))) {
+			const value = [...walk(trigger)].find((el) => el !== trigger && attr(el, 'data-slot') === 'select-value');
+			if (!value) continue;
+			const rest = textContent(value).trim();
+			const labelOf = (k: number) => (k === 0 ? rest : Object.keys(chosen).find((label) => chosen[label] === k));
+			if ([...pressed, ...Object.values(chosen)].some((k) => labelOf(k) === undefined)) continue;
+			const table = `${name}s`;
+			const count = Math.max(0, ...pressed, ...Object.values(chosen)) + 1;
+			declare.push(`const ${table} = ${JSON.stringify(Array.from({ length: count }, (_, k) => labelOf(k) ?? rest))};`);
+			this.bindings.set(value, { ...this.bindings.get(value), children: `{${table}[${v}]}` });
+			this.shown.add(trigger);
+		}
+	}
+
 	/** The card's controls set which SVG the chart shows: a press by the control, a choice by the option's text. */
 	private drive(chart: ChartFacts, wrapper: Tree, name: string, v: string, locate: (sig: string, nth: number) => Tree | undefined, declare: string[]): void {
 		// The RTL preview's language selector: the preview's language (data-lang, set by the site's RTL part) picks the
@@ -1326,11 +1411,15 @@ export class ChartPlan {
 		if (!card || !isElement(card)) return;
 		const pressed = new Map<Tree, number>();
 		for (const { d, el } of controls) if (d.kind === 'press') pressed.set(el, d.variant);
+		const marked = checkedAtRest(pressed);
 		for (const [el, k] of pressed) {
-			const own: Binding = { extra: [`data-mm-variant="${k}"`] };
-			const active = controls.find((c) => c.el === el)?.d.active;
-			this.bindings.set(el, active ? { ...own, expressions: { 'data-active': `${v} === ${k} ? "true" : "false"` } } : own);
+			const when = el === marked?.el && k !== 0 ? `${v} === ${k} || ${v} === 0` : `${v} === ${k}`;
+			const expressions: Record<string, string> = {};
+			for (const [name, [on, off]] of Object.entries(marked?.values ?? {})) expressions[name] = `${when} ? ${lit(on)} : ${lit(off)}`;
+			if (!expressions['data-active'] && controls.find((c) => c.el === el)?.d.active) expressions['data-active'] = `${v} === ${k} ? "true" : "false"`;
+			this.bindings.set(el, { extra: [`data-mm-variant="${k}"`], ...(Object.keys(expressions).length ? { expressions } : {}) });
 		}
+		this.showValue(controls, chosen, [...pressed.values()], name, v, declare);
 		// The pointer or focus coming to the card fetches the update animation before a control is used.
 		const extra: string[] = ['data-mm-morph=""'];
 		if (pressed.size) extra.push(`onClick={(event) => { const k = (event.target as Element).closest('[data-mm-variant]')?.getAttribute('data-mm-variant'); if (k != null && ${v} !== Number(k)) { ${v} = Number(k); ${name} = -1; } }}`);
