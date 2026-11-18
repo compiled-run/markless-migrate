@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Serves one side of the docusaurus.io check on a CI runner, never a deployment:
 #   ci-serve.sh old         the old site's build (fetch-old.sh), routed as its Vercel deployment was, on http://localhost:4000
-#   ci-serve.sh new <url>   a built port (a .tar.gz of examples/docusaurus-markless/.vercel/output) on http://127.0.0.1:3000
+#   ci-serve.sh new <url>   a built port (a .tar.gz of examples/docusaurus-markless/.vercel/output, or of a cloudflare-module .output in workerd) on http://127.0.0.1:3000
 # The port's 484-page build needs about 30 GB of heap, more than a runner has, so it is built elsewhere and passed by URL.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,8 +23,14 @@ case "${1:-}" in
 		dest="$RUNNER_TEMP/new"
 		mkdir -p "$dest"
 		curl -fsSL "$spec" | tar -xz -C "$dest"
-		if [ -d "$dest/.vercel/output" ]; then vercel="$dest/.vercel/output"; else vercel="$dest"; fi
-		(cd "$vercel/.." && nohup node "$ROOT/deploy/shadcn-ui/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		preset=$([ -f "$dest/.output/server/wrangler.json" ] && echo cloudflare-module || echo vercel)
+		[ -z "${PRESET:-}" ] || [ "$PRESET" = "$preset" ] || { echo "PRESET=$PRESET, but the archive holds a $preset build" >&2; exit 1; }
+		if [ "$preset" = cloudflare-module ]; then
+			(cd "$dest/.output/server" && CI=1 WRANGLER_SEND_METRICS=false nohup node "$ROOT/deploy/shadcn-ui/serve-cloudflare-output.mjs" wrangler.json 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		else
+			if [ -d "$dest/.vercel/output" ]; then vercel="$dest/.vercel/output"; else vercel="$dest"; fi
+			(cd "$vercel/.." && nohup node "$ROOT/deploy/shadcn-ui/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		fi
 		wait_for http://127.0.0.1:3000/
 		for path in / /docs /docs/installation; do curl -s -o /dev/null -w "new $path: %{http_code} in %{time_total} s\n" "http://127.0.0.1:3000$path"; done
 		;;
