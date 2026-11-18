@@ -52,6 +52,30 @@ test('a form\'s Reset puts each checkbox and radio as its defaults say through m
 	assert.match(out, /onMmset=\{\(event\) => \{ tg1 = \(event as CustomEvent<boolean>\)\.detail; \}\}/);
 });
 
+test('an attribute outside a Radix tab list that took each used tab\'s value is bound to that list\'s state (a block viewer\'s data-view)', async () => {
+	const { TabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div id="b" data-view="preview" data-mode="x"><div role="tablist"><button role="tab" id="t-p" aria-selected="true" data-state="active" aria-controls="radix-r-content-preview">Preview</button><button role="tab" id="t-c" aria-selected="false" data-state="inactive" aria-controls="radix-r-content-code">Code</button></div><div class="group-data-[view=code]:flex hidden">code</div></div></body>');
+	const wrapper = find(body(doc), (el) => attr(el, 'id') === 'b')!;
+	const code = find(body(doc), (el) => attr(el, 'id') === 't-c')!;
+	const plan = new TabsPlan();
+	const changed = (t: Element) => (t === code ? [{ el: wrapper, name: 'data-view', value: 'code' }, { el: wrapper, name: 'data-mode', value: 'y' }] : []);
+	assert.equal(plan.add(body(doc), (el) => attr(el, 'role') === 'tab', () => undefined, changed), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div id="b" data-mode="x" data-view=\{tab0\}>/);
+	assert.deepEqual(plan.bind(wrapper)?.declare, ['let tab0 = state("preview");']);
+});
+
+test('an attribute a tab\'s use set to something other than its value stays as the page showed it', async () => {
+	const { TabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div id="b" data-view="preview"><div role="tablist"><button role="tab" aria-selected="true" aria-controls="radix-r-content-preview">Preview</button><button role="tab" id="t-c" aria-selected="false" aria-controls="radix-r-content-code">Code</button></div></div></body>');
+	const wrapper = find(body(doc), (el) => attr(el, 'id') === 'b')!;
+	const code = find(body(doc), (el) => attr(el, 'id') === 't-c')!;
+	const plan = new TabsPlan();
+	plan.add(body(doc), (el) => attr(el, 'role') === 'tab', () => undefined, (t) => (t === code ? [{ el: wrapper, name: 'data-view', value: 'source' }] : []));
+	assert.match(emitElement(body(doc), { bind: (el) => plan.bind(el) }), /<div id="b" data-view="preview">/);
+	assert.equal(plan.bind(wrapper), undefined);
+});
+
 test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, with the panel\'s id and label bound', async () => {
 	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
 	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a" data-activation-direction="none"><p>a</p></div></div></body>');
