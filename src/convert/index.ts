@@ -27,7 +27,7 @@ import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
-import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, unrecordedToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, announced, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
@@ -1604,14 +1604,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				})(),
 				(async () => {
 					if (!reveal || !routes.includes(route)) return;
-					const toggles = await limit(async () => captureToggles(browser, options.old, route, (await atFor(route, 'toggles')))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					const toggles = await limit(async () => captureToggles(browser, options.old, route, (await atFor(route, 'toggles')), (await page()).settled.desktop)).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					const incomplete = unrecordedToggles(toggles);
+					if (incomplete) throw new Error(incomplete);
 					toggledCount++;
 					if (toggles.groups.length) log(`toggles ${toggledCount}/${routes.length} ${route} (${toggles.groups.length} groups)`);
 					facts.toggles = toggles.groups;
 				})(),
 				(async () => {
 					if (!reveal || !routes.includes(route) || !switchSelectors.length) return;
-					const switches = await limit(async () => captureSwitches(browser, options.old, route, (await atFor(route, 'toggles')), switchSelectors)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					const switches = await limit(async () => captureSwitches(browser, options.old, route, (await atFor(route, 'toggles')), switchSelectors, (await page()).settled.desktop)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					const unswitched = unrecordedToggles(switches);
+					if (unswitched) throw new Error(unswitched);
 					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
 					facts.switches = switches.switches;
 				})(),

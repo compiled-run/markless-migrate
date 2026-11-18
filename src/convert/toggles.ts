@@ -6,6 +6,7 @@ import { openPage } from '../check/browser.ts';
 import { captureEnv } from './capture-env.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
+import { LATE_MARKS_MS } from './reveal.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, elementChildren, setAttr, walk, type Element as Tree } from './dom.ts';
 
@@ -53,6 +54,57 @@ export interface ToggleCapture {
 	readonly route: string;
 	readonly groups: readonly ToggleGroup[];
 	readonly skipped: readonly string[];
+	/** Controls the page visibly switched that using twice did not put back: the capture is incomplete, so it is never stored. */
+	readonly unrecorded?: readonly string[];
+}
+
+const UNRESTORED = 'using it twice did not restore it';
+
+/** Why a route's toggle capture fails, naming the controls the page switched that were not recorded; none when it is whole. */
+export function unrecordedToggles(capture: Pick<ToggleCapture, 'route' | 'unrecorded'>): string | undefined {
+	return capture.unrecorded?.length ? `capture incomplete: ${capture.unrecorded.join(', ')}, so the page's state for them is missing` : undefined;
+}
+
+/**
+ * Waits, at most LATE_MARKS_MS, until each element matching `selector` that the settled document (capturePage's, at
+ * this viewport) holds shows here as it does there: a client wires its controls after load (Base UI's aria-labelledby,
+ * React Aria dropping a describedby with no target), and a control used before then is read in a state it never returns to.
+ */
+async function awaitSettled(page: Page, settled: string, selector: string): Promise<void> {
+	const until = Date.now() + LATE_MARKS_MS;
+	for (;;) {
+		const unsettled = await page.evaluate(
+			([html, selector]) => {
+				const transient = /^(tabindex|data-(hovered|pressed|focused|focus-visible|focus-visible-within|focus-within|highlighted))$/;
+				const value = (n: Element, a: Attr) => (a.name === 'style' && n instanceof HTMLElement ? n.style.cssText : a.value);
+				const canon = (n: Node): string => {
+					if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? '';
+					if (!(n instanceof Element)) return '';
+					const attrs = [...n.attributes].filter((a) => !transient.test(a.name)).map((a) => `${a.name}=${value(n, a)}`).sort().join(' ');
+					return `<${n.tagName.toLowerCase()} ${attrs}>${[...n.childNodes].map(canon).join('')}</>`;
+				};
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				const controls = (doc: Document) => {
+					const counts = new Map<string, number>();
+					const out = new Map<string, string>();
+					for (const el of doc.body.querySelectorAll(selector)) {
+						if (el.closest('template')) continue;
+						const sig = sigOf(el);
+						const n = counts.get(sig) ?? 0;
+						counts.set(sig, n + 1);
+						out.set(`${sig}#${n}`, canon(el));
+					}
+					return out;
+				};
+				const want = controls(new DOMParser().parseFromString(html, 'text/html'));
+				const have = controls(document);
+				return [...want].filter(([k, v]) => have.has(k) && have.get(k) !== v).map(([k]) => k);
+			},
+			[settled, selector] as const,
+		);
+		if (!unsettled.length || Date.now() >= until) return;
+		await page.waitForTimeout(200);
+	}
 }
 
 // Controls that switch state in place, outside menus and listboxes (those are portaled layers, captured as reveals).
@@ -212,17 +264,23 @@ async function use(page: Page, id: number): Promise<string | undefined> {
 const settled = (attrs: Readonly<Record<string, string>>) => JSON.stringify(Object.entries(attrs).filter(([k]) => k !== 'tabindex').sort());
 const same = (a: ToggleState, b: ToggleState) => a.inner === b.inner && settled(a.attrs) === settled(b.attrs);
 
-/** Uses every in-place control of a route on the desktop viewport and records each state it shows. Cached by route. */
-export async function captureToggles(browser: Browser, origin: string, route: string, dir: string): Promise<ToggleCapture> {
+/**
+ * Uses every in-place control of a route on the desktop viewport and records each state it shows, first waiting until
+ * the controls are as `settled` (the route's settled desktop document) shows them. Cached by route.
+ */
+export async function captureToggles(browser: Browser, origin: string, route: string, dir: string, settled?: string): Promise<ToggleCapture> {
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as ToggleCapture, () => undefined);
-	if (cached && cached.route === route) return cached;
+	// Stored before an unrestored control failed its route, such a control was kept among the skips.
+	if (cached && cached.route === route && !cached.skipped.some((s) => s.endsWith(UNRESTORED))) return cached;
 	const groups: ToggleGroup[] = [];
 	const skipped: string[] = [];
+	const unrecorded: string[] = [];
 	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForTimeout(300);
+		if (settled) await awaitSettled(page, settled, SELECTOR);
 		const found = await find(page);
 		// One choice among buttons: a radio group, or a single-choice toggle group whose pressed buttons unpress each other.
 		const chooseOne = async (members: Found[]): Promise<void> => {
@@ -300,7 +358,7 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 				} else await use(page, b.id);
 				const restored = await Promise.all(members.map((m) => stateOf(page, m.id)));
 				if (restored.some((st, k) => st.on !== before[k]!.on)) {
-					skipped.push(`${a.sig}#${a.nth}: its single-choice group did not go back to its first state`);
+					unrecorded.push(`${a.sig}#${a.nth}: its single-choice group did not go back to its first state`);
 					continue;
 				}
 				for (const m of members) exclusive.add(m.id);
@@ -324,10 +382,14 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 			}
 			const second = await stateOf(page, c.id);
 			const used = await snapshot(page);
-			await use(page, c.id);
+			const again = await use(page, c.id);
 			const back = await stateOf(page, c.id);
-			if (same(first, second) || !same(first, back)) {
-				skipped.push(`${c.sig}#${c.nth}: ${same(first, second) ? 'using it changed nothing in place' : 'using it twice did not restore it'}`);
+			if (same(first, second)) {
+				skipped.push(`${c.sig}#${c.nth}: using it changed nothing in place`);
+				continue;
+			}
+			if (!same(first, back)) {
+				unrecorded.push(`${c.sig}#${c.nth}: ${UNRESTORED}${again ? ` (the second use ${again})` : ''}`);
 				continue;
 			}
 			const [on, off] = first.on ? [first, second] : [second, first];
@@ -348,6 +410,7 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 	} finally {
 		await context.close().catch(() => {});
 	}
+	if (unrecorded.length) return { route, groups, skipped, unrecorded };
 	const capture: ToggleCapture = { route, groups, skipped };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
@@ -395,6 +458,8 @@ export interface SwitchCapture {
 	readonly route: string;
 	readonly switches: readonly Switch[];
 	readonly skipped: readonly string[];
+	/** As ToggleCapture's: switches whose second use did not undo the first, so the capture is never stored. */
+	readonly unrecorded?: readonly string[];
 }
 
 async function written(page: Page, before: Map<string, string>): Promise<CookieWrite[]> {
@@ -405,16 +470,18 @@ async function written(page: Page, before: Map<string, string>): Promise<CookieW
 }
 
 /** Uses each control the site lists as switching attributes in place and records every attribute and cookie one use changes. */
-export async function captureSwitches(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[]): Promise<SwitchCapture> {
+export async function captureSwitches(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[], settled?: string): Promise<SwitchCapture> {
 	const file = join(dir, `${createHash('sha256').update(`switches:v3:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SwitchCapture, () => undefined);
-	if (cached && cached.route === route) return cached;
+	if (cached && cached.route === route && !cached.skipped.some((s) => s.endsWith(UNRESTORED))) return cached;
 	const switches: Switch[] = [];
 	const skipped: string[] = [];
+	const unrecorded: string[] = [];
 	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForTimeout(300);
+		if (settled) await awaitSettled(page, settled, selectors.join(', '));
 		const count = await page.evaluate((selector) => {
 			const w = window as unknown as { __mmSwitches: Element[] };
 			w.__mmSwitches = [...document.body.querySelectorAll(selector)].filter((el) => {
@@ -492,8 +559,12 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 			const back = await collect();
 			const cookiesOff = await written(page, between);
 			const restored = changes.every((c) => back.some((b) => b.sig === c.sig && b.nth === c.nth && b.attr === c.attr && b.after === c.before));
-			if (!changes.length || !restored) {
-				skipped.push(`${control.sig}#${control.nth}: ${changes.length ? 'using it twice did not restore it' : 'using it changed no attribute'}`);
+			if (!changes.length) {
+				skipped.push(`${control.sig}#${control.nth}: using it changed no attribute`);
+				continue;
+			}
+			if (!restored) {
+				unrecorded.push(`${control.sig}#${control.nth}: ${UNRESTORED}`);
 				continue;
 			}
 			switches.push({ ...control, changes, cookiesOn, cookiesOff });
@@ -501,6 +572,7 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 	} finally {
 		await context.close().catch(() => {});
 	}
+	if (unrecorded.length) return { route, switches, skipped, unrecorded };
 	const capture: SwitchCapture = { route, switches, skipped };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
