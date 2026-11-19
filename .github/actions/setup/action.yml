@@ -79,8 +79,8 @@ runs:
         if compgen -G ~/.cache/apt-archives/'*.deb' > /dev/null; then sudo cp ~/.cache/apt-archives/*.deb /var/cache/apt/archives/; fi
         echo "before=$(find ~/.cache/apt-archives -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
       shell: bash
-    - run: |
-        timeout 180 pnpm exec playwright install-deps ${{ inputs.browsers }} || { status=$?; [ "$status" != 124 ] || echo "::error::apt took over 3 minutes to install the browsers' system packages; the first mirror in /etc/apt/apt-mirrors.txt is stalling"; exit "$status"; }
+    # Each mirror in /etc/apt/apt-mirrors.txt gets one attempt of at most 3 minutes; a stall or failure moves to the next one.
+    - run: node scripts/apt-mirror-fallback.ts -- pnpm exec playwright install-deps ${{ inputs.browsers }}
       shell: bash
     - if: steps.browsers.outputs.cache-hit != 'true'
       run: timeout 600 pnpm exec playwright install ${{ inputs.browsers }}
