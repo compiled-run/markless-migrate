@@ -472,12 +472,19 @@
 		"/docs/typeset",
 		"/docs/utils/scroll-fade",
 		"/docs/utils/shimmer",
+		"/examples/aria/preview",
 		"/examples/authentication",
 		"/examples/dashboard",
 		"/examples/playground",
 		"/examples/rtl",
 		"/examples/tasks",
 		"/llms.txt",
+		"/preview/aria/preview",
+		"/preview/aria/preview-02",
+		"/preview/base/preview",
+		"/preview/base/preview-02",
+		"/preview/radix/preview",
+		"/preview/radix/preview-02",
 		"/preview/typeset/docs",
 		"/robots.txt",
 		"/sera",
@@ -1051,6 +1058,7 @@
 		"/docs/typeset/",
 		"/docs/utils/scroll-fade/",
 		"/docs/utils/shimmer/",
+		"/examples/aria/preview/",
 		"/examples/authentication/",
 		"/examples/dashboard/",
 		"/examples/playground/",
@@ -1065,6 +1073,12 @@
 		"/oidc",
 		"/oidc.prefetch.rsc",
 		"/oidc.rsc",
+		"/preview/aria/preview-02/",
+		"/preview/aria/preview/",
+		"/preview/base/preview-02/",
+		"/preview/base/preview/",
+		"/preview/radix/preview-02/",
+		"/preview/radix/preview/",
 		"/preview/typeset/docs/",
 		"/privacy/",
 		"/react-19",
@@ -1176,22 +1190,5 @@
 		"/view/radix-nova/sidebar-demo/",
 		"/view/radix-nova/sidebar-rtl/"
 	],
-	"unchecked": [
-		{
-			"route": "/examples/:base/:name",
-			"params": [
-				"base"
-			],
-			"file": "app/(view)/examples/[base]/[name]/page.tsx",
-			"line": 59
-		},
-		{
-			"route": "/preview/:base/:name",
-			"params": [
-				"base"
-			],
-			"file": "app/(view)/preview/[base]/[name]/page.tsx",
-			"line": 109
-		}
-	]
+	"unchecked": []
 }
