@@ -27,12 +27,12 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 
 | Suite | Pull request | Merge queue | Push to `main` |
 | --- | --- | --- | --- |
-| Typecheck, unit tests (4 shards) | yes | yes | only if the merge queue did not test this commit |
+| Typecheck, unit tests (5 shards) | yes | yes | only if the merge queue did not test this commit |
 | e2e quick, pages, networks (Chromium, Firefox, WebKit), shadcn, parity | yes, unless only `examples/`, `deploy/`, `docs/` or Markdown changed | yes | only if the merge queue did not test this commit |
 | e2e next-app (6 shards), vite-site (4 shards), corpus (4 shards) | no | yes | only if the merge queue did not test this commit |
 | Check budget (`scripts/check-budget.ts`: the checker's own time and peak memory on one fixed page, base against head on one runner) | yes, unless only `examples/`, `deploy/`, `docs/` or Markdown changed | yes | no |
 
-- A pull request's CI holds at most 11 runners (Typecheck, four unit shards, five e2e jobs, the check budget) for about 15 minutes; the check budget measures the checker twice, about 6 minutes each on a Mac, so expect it to run longest.
+- A pull request's CI holds at most 11 runners (Typecheck, five unit shards, five e2e jobs, the check budget) for about 15 minutes; the check budget measures the checker twice, about 6 minutes each on a Mac, so expect it to run longest.
 - The merge queue (ruleset "main protection", on since 2026-10-31) squashes, requires every check green, gives a group 240 minutes, builds up to 2 groups at once, merges up to 10 pull requests per group and waits 1 minute to fill one. Merge with `gh pr merge <n> --squash`, which adds the pull request to the queue.
 - The merge queue tests the exact commit `main` will become, with every suite, before it lands. A push to `main` whose commit passed the merge queue at that SHA does not run them again; the Changes job links the queue's run. A push that did not come through the queue runs everything.
 - No e2e suite reads `examples/`, `deploy/` or `docs/`, so a pull request that only touches those, or Markdown, skips the e2e jobs.
@@ -42,6 +42,16 @@ Between 2026-10-28 and 2026-10-31 the org was at 55 or more of its 60 runners 42
 - Not on today: a paid larger-runner pool for capture shards during proof-heavy stretches. A full-site capture is about 1,400 to 1,500 runner-minutes, about $9 on a 2-core larger runner at $0.006/min. If it is ever wanted, capture's `runs-on` would read a repository variable (`${{ vars.CAPTURE_RUNNER || 'ubuntu-24.04' }}`), so it is switched on and off without a code change.
 - Every job runs on `ubuntu-24.04`, not `ubuntu-latest`. On 2026-11-05 `ubuntu-latest` began handing out Ubuntu 26.04 runners; they restored the browsers cached on 24.04, WebKit did not start on them, and every corpus check stalled until its 150-minute limit (run 41998076432). The runner's OS is an input to every verdict, so it moves only in a change of its own, with the browser cache keys moved with it.
 - `check.yml` and `convert.yml` run at most 10 shards at once. The one exception is a deploy run: `check.yml` (or the pipeline's `check-max-parallel`) with `priority=deploy` may run all 24 shards at once, because a full shadcn check at 10 took 7 to 9 hours and the night's deploy waits on it (approved by the PM on 2026-10-31, while runner waits were low). `check.yml` no longer runs on pull requests; try a change to it with `gh workflow run check.yml --ref <branch>`.
+
+## Unit shards
+
+The unit job runs `test/*.test.ts` in 5 shards. Each file's shard is its own entry in `scripts/unit-shards.json`, with its slowest measured time on a runner, and `node scripts/unit-shards.ts run <k>/5` runs shard k's files longest first, 3 at a time (node's default on the 4-CPU runner, where the times were measured). Adding, renaming or removing a file never moves another file, so a pull request's unit shards change only by its own files.
+
+Until 2026-11-19 the job used node's `--test-shard`, which deals the sorted file list by position: one new file moved every later file to the next shard. On #721 (merge queue run 44496734135) that put `checker-noise`, `interaction-quality`, `memory`, `route-coverage` and `slow-click` in one shard, which passed the 1200 s watchdog although nothing it ran had changed.
+
+- A new test file needs an entry: `test/unit-shards.test.ts` fails without one and names the shard with the least modelled time. Until it has one it runs in that shard.
+- The budget is 960 s per shard, 80% of the 1200 s watchdog: the shard's files, at their slowest measured times, run longest first on 3 lanes. Over 9 runs that model was within 15% of each shard's real time (it once read 564 s for a shard that took 648 s), and a file's own time varied by up to 1.6 times between runs (`memory`, 268 to 424 s), which the slowest times already carry. The longest file, `checker-noise` (782 to 848 s), sets the slowest shard on its own.
+- Each `run` prints every file's time beside its listed one; when files grow, update their seconds from those lines. `node scripts/unit-shards.ts pack 5` deals every file afresh by its seconds (it moves files, so do it only to rebalance, in a change of its own).
 
 ## Upstream suites
 
