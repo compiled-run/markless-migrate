@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { checkerVersion } from './checker-version.ts';
 import type { RouteResult } from './types.ts';
 
 export interface Closures {
@@ -83,13 +84,10 @@ export async function readReusable(dir: string, key: string): Promise<Reused | u
 }
 
 /**
- * What decides a key besides the route itself: this checkout's checker and converter (git tree of src/ and scripts/), and
- * the Markless packages the port names. Undefined when either is unknown, so nothing is reused.
+ * What decides a key besides the route itself: the checker's version (the check command's code, checker-version.ts), and
+ * the Markless packages the port names. Undefined when the port names none, so nothing is reused.
  */
-export async function shipVersions(appDir: string, git: (args: string[]) => Promise<string | undefined>): Promise<Record<string, string> | undefined> {
-	const [src, scripts] = await Promise.all([git(['rev-parse', 'HEAD:src']), git(['rev-parse', 'HEAD:scripts'])]);
-	const dirty = await git(['status', '--porcelain', '--', 'src', 'scripts']);
-	if (!src?.trim() || !scripts?.trim() || dirty === undefined || dirty.trim()) return undefined;
+export async function shipVersions(appDir: string): Promise<Record<string, string> | undefined> {
 	let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } };
 	try {
 		pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
@@ -102,7 +100,7 @@ export async function shipVersions(appDir: string, git: (args: string[]) => Prom
 		.map(([name, spec]) => `${name}@${spec}`)
 		.join(' ');
 	if (!markless) return undefined;
-	return { checker: `${src.trim()} ${scripts.trim()}`, markless };
+	return { checker: (await checkerVersion()).version, markless };
 }
 
 export interface ReuseSelection {

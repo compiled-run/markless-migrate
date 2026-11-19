@@ -1131,11 +1131,10 @@ async function main(argv: string[]): Promise<number> {
 			let reuse: ReuseSelection | undefined;
 			if (values.reuse) {
 				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
-				const migrateDir = fileURLToPath(new URL('..', import.meta.url));
-				const versions = await shipVersions(cwd, (args) => git(migrateDir, args));
+				const versions = await shipVersions(cwd);
 				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
 				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
-				if (!versions) out('--reuse: nothing reused, the checker has uncommitted changes or the port names no Markless packages.\n');
+				if (!versions) out('--reuse: nothing reused, the port names no Markless packages.\n');
 				else if (!closures) out(`--reuse: nothing reused, no closures at ${closuresFile}.\n`);
 				else {
 					reuse = await selectReusable({ routes: routes ?? [], newOrigin: values.new, oldOrigin: values.old, ...(bypass.headers ? { headers: bypass.headers } : {}), closures, versions, dir: resolve(values.reuse) });

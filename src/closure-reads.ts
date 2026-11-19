@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import { Analyzer, type Module } from 'yuku/analyzer';
 import type { Node } from 'yuku';
-import { ROOT } from '../code-closure.ts';
+import { ROOT } from './code-closure.ts';
 
 export interface Span {
 	readonly file: string;

@@ -6,7 +6,7 @@ import { join, relative } from 'node:path';
 import { ROOT } from '../code-closure.ts';
 import { declarationClosure, type DeclarationClosure } from '../declaration-closure.ts';
 import { INDEX, recordingFacts, STORE, type RecordingFacts } from './record-facts.ts';
-import { ClosureProject, SpanIndex, type Span } from './record-reads.ts';
+import { ClosureProject, SpanIndex, type Span } from '../closure-reads.ts';
 
 /** The store's format: a store written in another is emptied of its recordings once, never read. */
 export const RECORDING_VERSION = 5;
