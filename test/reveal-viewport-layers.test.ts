@@ -73,8 +73,9 @@ test('a control shown at desktop whose layer only mobile recorded makes the capt
 	covered = true;
 	try {
 		const capture = await captureReveals(browser, origin, '/', dir, VIEWPORTS, [], { settled: { desktop: settledDoc(true), mobile: settledDoc(true) } });
-		assert.deepEqual(capture.oneViewport, ['open (shown at desktop, recorded at mobile)']);
-		assert.match(incompleteCapture(capture) ?? '', /open \(shown at desktop, recorded at mobile\)/);
+		assert.equal(capture.oneViewport?.length, 1);
+		assert.match(capture.oneViewport![0]!, /^open \(shown at desktop, recorded at mobile; at desktop: could not click: /);
+		assert.match(incompleteCapture(capture) ?? '', /open \(shown at desktop, recorded at mobile; at desktop: could not click: /);
 		assert.deepEqual(await readdir(dir).catch(() => []), []);
 	} finally {
 		covered = false;
