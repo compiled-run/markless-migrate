@@ -1029,6 +1029,7 @@ async function record(page: Page, i: number, spec: NonNullable<Found['spec']>, c
 
 /** Reads every TanStack table of a route on the old page (`expected`: the table elements its settled page showed), uses its controls and records its states. Cached by route. */
 export async function captureTables(browser: Browser, origin: string, route: string, dir: string, log: (line: string) => void = () => {}, expected = 1): Promise<TableCapture> {
+	// Proof run: a one-line edit to the tables recorder.
 	const file = fileFor(dir, route);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as TableCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
