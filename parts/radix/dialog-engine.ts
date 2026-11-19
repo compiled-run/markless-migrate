@@ -48,6 +48,22 @@ function animationName(el: HTMLElement): string {
 	return getComputedStyle(el).animationName || 'none';
 }
 
+// A style read between writes restyles the whole page; an opening's reads and focus moves run after both parts' writes, in the same task.
+let afterWrites: (() => void)[] | undefined;
+
+function whenWritten(read: () => void): void {
+	if (afterWrites) {
+		afterWrites.push(read);
+		return;
+	}
+	afterWrites = [read];
+	queueMicrotask(() => {
+		const reads = afterWrites ?? [];
+		afterWrites = undefined;
+		for (const run of reads) run();
+	});
+}
+
 // Radix Presence: an element leaving stays shown while an exit animation it did not have before runs, and is hidden when
 // that animation of its own ends or is cancelled.
 function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => void, onPresentChange?: (open: boolean) => void): void {
@@ -59,17 +75,19 @@ function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => vo
 		if (next === p.state) return;
 		const was = p.state;
 		p.state = next;
-		p.prevAnimationName = next === 'mounted' ? animationName(el) : 'none';
 		if (next === 'unmounted') {
+			p.prevAnimationName = 'none';
 			el.hidden = true;
 			onUnmount();
 		} else if (was === 'unmounted') {
 			forgetMarks(el);
 			portal(el);
 			el.hidden = false;
-			p.prevAnimationName = animationName(el);
 			onMount();
-		}
+			whenWritten(() => {
+				if (p.state !== 'unmounted') p.prevAnimationName = animationName(el);
+			});
+		} else p.prevAnimationName = next === 'mounted' ? animationName(el) : 'none';
 	};
 	const update = () => {
 		const now = el.getAttribute('data-state') === 'open';
@@ -393,31 +411,32 @@ function mountContent(dialog: Dialog): void {
 		} else outside();
 	};
 	const timer = window.setTimeout(() => document.addEventListener('pointerdown', onPointerDown), 0);
-	for (const el of dialog.autofocus) {
-		// React's control is new on every opening, its caret after the value it was given.
-		if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-			try {
-				el.setSelectionRange(el.value.length, el.value.length);
-			} catch {}
-		}
-		el.focus();
-	}
 	// FocusScope: trap now, autofocus on mount
 	trap(dialog);
 	addScope(dialog);
-	const before = document.activeElement;
-	// vaul's Drawer.Content prevents the open autofocus (its autoFocus prop, false by default, as shadcn renders it).
-	if (!content.contains(before) && !content.hasAttribute('data-vaul-drawer')) {
+	const removeGuards = addGuards();
+	const showOthers = hideOthers(content);
+	whenWritten(() => {
+		if (dialog.contentCleanup !== cleanup) return;
+		for (const el of dialog.autofocus) {
+			// React's control is new on every opening, its caret after the value it was given.
+			if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+				try {
+					el.setSelectionRange(el.value.length, el.value.length);
+				} catch {}
+			}
+			el.focus();
+		}
+		const before = document.activeElement;
+		// vaul's Drawer.Content prevents the open autofocus (its autoFocus prop, false by default, as shadcn renders it).
+		if (content.contains(before) || content.hasAttribute('data-vaul-drawer')) return;
 		if (dialog.alert) dialog.cancel?.focus({ preventScroll: true });
 		else {
 			focusFirst(tabbables(content).filter((el) => el.tagName !== 'A'));
 			if (document.activeElement === before) focus(content);
 		}
-	}
-	// FocusGuards, then aria-hidden, in the order Radix's effects run.
-	const removeGuards = addGuards();
-	const showOthers = hideOthers(content);
-	dialog.contentCleanup = () => {
+	});
+	const cleanup = () => {
 		content.removeEventListener('keydown', onLoopKey);
 		document.removeEventListener('keydown', onEscape, { capture: true });
 		window.clearTimeout(timer);
@@ -436,6 +455,7 @@ function mountContent(dialog: Dialog): void {
 			removeScope(dialog);
 		}, 0);
 	};
+	dialog.contentCleanup = cleanup;
 }
 
 function unmountContent(dialog: Dialog): void {

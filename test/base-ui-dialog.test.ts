@@ -254,7 +254,7 @@ test("a modal Base UI alert dialog hides the page as floating-ui's markOthers do
 	await page.close();
 });
 
-test('opening a modal Base UI alert dialog reads layout once: the stacking and initial-focus reads come before its writes, so they force one style recalculation', async () => {
+test('opening a modal Base UI alert dialog reads layout once: the initial-focus read and the focus move come after all its writes, so only the focus move restyles again', async () => {
 	const page = await open(
 		`<style>[data-slot="alert-dialog-overlay"][data-open]{opacity:.5}[data-base-ui-inert]:not([role]){pointer-events:none}</style><main><button type="button" data-slot="alert-dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="ad">Alert Dialog</button></main>
 		<div data-base-ui-portal hidden data-mm-layer="ad">${INTERNAL_BACKDROP}<div data-slot="alert-dialog-overlay" aria-hidden="true" data-base-ui-inert data-closed style="position:fixed;inset:0;z-index:50"></div><div role="alertdialog" tabindex="-1" data-slot="alert-dialog-content" data-closed style="position:fixed;z-index:50"><button data-slot="alert-dialog-cancel" type="button">Cancel</button><button type="button">Continue</button></div></div>`,
@@ -262,7 +262,7 @@ test('opening a modal Base UI alert dialog reads layout once: the stacking and i
 	);
 	await settled(page);
 	const cdp = await page.context().newCDPSession(page);
-	const events: { name: string; ph: string; args?: { beginData?: { stackTrace?: { functionName: string }[] } } }[] = [];
+	const events: { name: string; ph: string; args?: { beginData?: { stackTrace?: { functionName: string; url: string }[] } } }[] = [];
 	cdp.on('Tracing.dataCollected', (e) => events.push(...(e.value as unknown as typeof events)));
 	const complete = new Promise<void>((done) => cdp.once('Tracing.tracingComplete', () => done()));
 	await cdp.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline.stack', transferMode: 'ReportEvents' });
@@ -270,10 +270,41 @@ test('opening a modal Base UI alert dialog reads layout once: the stacking and i
 	await settled(page);
 	await cdp.send('Tracing.end');
 	await complete;
-	// A recalculation a script forced carries its stack; these are the ones the part's own reads forced.
-	const reads = events.filter((e) => e.name === 'UpdateLayoutTree' && e.args?.beginData?.stackTrace?.some((f) => f.functionName === 'raiseOver' || f.functionName === 'tabbables'));
-	assert.equal(reads.length, 1);
+	// A recalculation a script forced carries its stack: the part's reads, and the focus move's own (it restyles what focus changed).
+	const forced = events.filter((e) => e.name === 'UpdateLayoutTree' && e.args?.beginData?.stackTrace?.some((f) => f.url.includes('/parts/'))).map((e) => e.args!.beginData!.stackTrace!.map((f) => f.functionName));
+	const reads = forced.filter((stack) => stack.includes('raiseOver') || stack.includes('tabbables'));
+	assert.equal(reads.length, 1, JSON.stringify(forced));
+	assert.equal(forced.length, 2, `nothing written between the read and the focus move: ${JSON.stringify(forced)}`);
 	assert.equal(await focused(page), 'alert-dialog-cancel');
+	await page.close();
+});
+
+const baseDialog = (key: string, inside: string) => `<div data-base-ui-portal hidden data-mm-layer="${key}">${INTERNAL_BACKDROP}<div data-slot="dialog-overlay" data-closed></div><div role="dialog" id="${key}-popup" tabindex="-1" data-slot="dialog-content" data-closed style="position:relative;z-index:1">${inside}</div></div>`;
+
+test('a modal Base UI dialog opened from inside another: Escape closes only the top one and the page stays hidden and locked; closing the outer one shows and unlocks the page, focus back on its trigger', async () => {
+	const outer = `<button type="button" data-slot="button">First</button><button type="button" data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="inner">Open Inner</button>`;
+	const page = await open(
+		`<main style="height:3000px"><button type="button" data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="outer">Open Outer</button></main>${baseDialog('outer', outer)}${baseDialog('inner', '<button type="button" data-slot="button">Inner First</button>')}`,
+		['base-ui/dialog'],
+	);
+	const open_ = (key: string) => page.evaluate((key) => document.getElementById(`${key}-popup`)!.hasAttribute('data-open'), key);
+	await page.getByText('Open Outer').click();
+	await settled(page);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First');
+	assert.deepEqual(await pageState(page), await locked(page));
+	await page.getByText('Open Inner').click();
+	await settled(page);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Inner First');
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.deepEqual([await open_('inner'), await open_('outer')], [false, true]);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Open Inner');
+	assert.deepEqual(await pageState(page), await locked(page));
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await open_('outer'), false);
+	assert.deepEqual(await pageState(page), { hidden: null, gutter: '', overflow: '' });
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Open Outer');
 	await page.close();
 });
 
