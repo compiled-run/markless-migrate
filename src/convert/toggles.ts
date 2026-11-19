@@ -34,6 +34,8 @@ export interface ToggleGroup {
 		/** Its state when the page loaded: on, or the chosen radio. */
 		readonly initial: boolean;
 		readonly on: ToggleState;
+		/** Its markup at load when the page showed it mixed (a select-all box): the page never shows that state again once used. */
+		readonly mixed?: ToggleState;
 		readonly off: ToggleState;
 	}[];
 	/**
@@ -163,7 +165,7 @@ async function find(page: Page): Promise<Found[]> {
 	}, SELECTOR);
 }
 
-async function stateOf(page: Page, id: number): Promise<ToggleState & { on: boolean }> {
+async function stateOf(page: Page, id: number): Promise<ToggleState & { on: boolean; mixed: boolean }> {
 	return page.evaluate((id) => {
 		const el = (window as unknown as { __mmToggles: Element[] }).__mmToggles[id]!;
 		// A style attribute as the CSSOM writes it: React's server markup and its later writes spell it differently.
@@ -181,7 +183,8 @@ async function stateOf(page: Page, id: number): Promise<ToggleState & { on: bool
 			const list = [...n.attributes].filter((a) => kept(n, a)).sort((a, b) => (a.name < b.name ? -1 : 1)).map((a) => ` ${a.name}="${value(n, a).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
 			return /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/.test(tag) ? `<${tag}${list}>` : `<${tag}${list}>${[...n.childNodes].map(canon).join('')}</${tag}>`;
 		};
-		return { attrs, inner: [...el.childNodes].map(canon).join(''), on };
+		const mixed = el.getAttribute('aria-checked') === 'mixed' || (el.matches('label[data-rac]') && el.hasAttribute('data-indeterminate'));
+		return { attrs, inner: [...el.childNodes].map(canon).join(''), on, mixed };
 	}, id);
 }
 
@@ -400,6 +403,12 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 			const back = await stateOf(page, c.id);
 			if (same(first, second)) {
 				skipped.push(`${c.sig}#${c.nth}: using it changed nothing in place`);
+				continue;
+			}
+			// Loaded mixed, it switches between its other two states from then on: a third use shows the second's again.
+			if (!same(first, back) && first.mixed && !second.mixed && !back.mixed && !same(second, back) && !again && !(await use(page, c.id)) && same(await stateOf(page, c.id), second)) {
+				const [on, off] = second.on ? [second, back] : [back, second];
+				groups.push({ kind: 'toggle', controls: [{ sig: c.sig, nth: c.nth, role: c.role, initial: false, mixed: { attrs: first.attrs, inner: first.inner }, on: { attrs: on.attrs, inner: on.inner }, off: { attrs: off.attrs, inner: off.inner } }] });
 				continue;
 			}
 			if (!same(first, back)) {
