@@ -257,7 +257,8 @@ export async function stageKey(stage: Stage, o: { readonly site: string; readonl
 		await add(await codeClosure(PLAN_ENTRIES.map((f) => join(ROOT, f))), 'code');
 	} else if (stage === 'emit' || stage === 'emit-base') {
 		await add(pinned, 'pinned');
-		const converter = await codeClosure([join(ROOT, 'src/convert/index.ts'), join(ROOT, 'src/cache/cli.ts')]);
+		// What convert.sh runs into the app: the convert, the handler ledger it writes after the pages, and the cache rules.
+		const converter = await codeClosure([join(ROOT, 'src/convert/index.ts'), join(ROOT, 'src/ledger/index.ts'), join(ROOT, 'src/cache/cli.ts')]);
 		await add(converter, 'code');
 		const keys = await partsKeys(join(ROOT, 'parts'), new Set(converter));
 		parts.push(['parts', stage === 'emit' ? keys.full : keys.base]);
