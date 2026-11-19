@@ -112,7 +112,7 @@ network does during experiments in Chromium (`src/prefetch/record.ts`), never fr
   list, the same on every shard): a click to a page nothing fetched, a click to a page fetched ahead (fetched again or
   not), and the page left come back to by its link about 2 s later (`revisit`: fetched again, or answered from memory
   or the browser's cache).
-- **Network conditions.** On that same first page, load, one link scrolled into view and one hovered are repeated with
+- **Network conditions.** On the first pages of the site's two largest URL patterns, load, one link scrolled into view and one hovered are repeated with
   no connection information (as Firefox and Safari give), as 4g, 3g, 2g and slow-2g, with Save-Data, and over a real
   1.6 Mbit/s, 150 ms link (`conditions`).
 
@@ -121,8 +121,10 @@ how many of its requests were cancelled; with the most requests in flight at onc
 first click. The site's facts are in `.migrate/prefetch.json`. Recordings are kept in
 `.migrate/convert/prefetch/v-<recorder>/`, one folder per version of the recorder's own code: a change anywhere else
 in convert records none of them again, and a page records again only when its old page changes. Links that end a
-session or delete are never hovered, pressed or followed. A first recording takes about 10 s a page and about 100 s on
-each template group's first page (measured on ui.shadcn.com's docs pages).
+session or delete are never hovered, pressed or followed. A first recording takes about 10 s a page, about 25 s on each URL
+pattern's first page and about 100 s on the two pages the conditions are tried on (measured on ui.shadcn.com's docs
+pages); on the convert budget's 60-page fixture it took convert's own CPU time from 33 s to 43 s on a Mac mini, as each
+page the recorder loads costs Playwright's client its share of the page's protocol traffic.
 
 ### How to iterate on a port
 

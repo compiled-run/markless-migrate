@@ -7,11 +7,19 @@ import type { PrefetchFacts } from './facts.ts';
 import { keepCurrent, prefetchDir, prefetchPageKey } from './key.ts';
 import { recordPrefetch } from './record.ts';
 
-/** The first page of each URL pattern in the whole route list: the same on every shard, whichever pages a shard converts. */
-export function fullRecordings(allRoutes: readonly string[]): Set<string> {
-	const first = new Map<string, string>();
-	for (const route of [...allRoutes].sort()) if (!first.has(urlPattern(route))) first.set(urlPattern(route), route);
-	return new Set(first.values());
+/** Network conditions are tried on this many pages of the site: a router's own rule, the same on every page. */
+export const CONDITION_PAGES = 2;
+
+/**
+ * Over the whole route list, the same on every shard whichever pages it converts: the first page of each URL pattern (the
+ * full recording), and of those, the first pages of the largest patterns (also under every network condition).
+ */
+export function fullRecordings(allRoutes: readonly string[]): { readonly full: Set<string>; readonly conditions: Set<string> } {
+	const byPattern = new Map<string, string[]>();
+	for (const route of [...allRoutes].sort()) (byPattern.get(urlPattern(route)) ?? byPattern.set(urlPattern(route), []).get(urlPattern(route))!).push(route);
+	const groups = [...byPattern].map(([pattern, routes]) => ({ pattern, first: routes[0]!, size: routes.length }));
+	const largest = [...groups].sort((a, b) => b.size - a.size || (a.pattern < b.pattern ? -1 : 1)).slice(0, CONDITION_PAGES);
+	return { full: new Set(groups.map((g) => g.first)), conditions: new Set(largest.map((g) => g.first)) };
 }
 
 export interface PrefetchRecorder {
@@ -24,13 +32,13 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 	const store = join(state, 'convert');
 	await keepCurrent(store);
 	const dir = await prefetchDir(store);
-	const full = fullRecordings(allRoutes);
+	const { full, conditions } = fullRecordings(allRoutes);
 	const recorded = new Map<string, PrefetchFacts>();
 	return {
 		record: async (browser, route) => {
 			const page = await prefetchPageKey(origin, route);
 			try {
-				const facts = await recordPrefetch(browser, origin, route, dir, { full: full.has(route), page });
+				const facts = await recordPrefetch(browser, origin, route, dir, { full: full.has(route), ...(conditions.has(route) ? {} : { conditions: [] }), page });
 				recorded.set(route, facts);
 				return facts;
 			} catch (error) {

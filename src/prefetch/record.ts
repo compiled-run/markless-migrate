@@ -3,6 +3,7 @@
 // fetch again, and on a template group's first page whether each of those still happens under other network conditions.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Page, type Request } from 'playwright';
 import { closedOnExit } from '../check/close-on-exit.ts';
@@ -73,7 +74,8 @@ function watch(page: Page, origin: string): Log {
 		entry.end = Date.now() - log.t0;
 		log.inFlight--;
 		log.lastActivity = Date.now();
-		if (outcome !== 'completed') return;
+		// The load's own scripts, styles and images are never fetched ahead: their sizes are not asked for.
+		if (outcome !== 'completed' || (entry.phase === 'load' && !mayCarryPage(entry))) return;
 		entry.status = (await r.response().catch(() => null))?.status();
 		const sizes = await r.sizes().catch(() => undefined);
 		if (sizes) entry.bytes = sizes.responseBodySize + sizes.responseHeadersSize;
@@ -88,7 +90,7 @@ async function quiet(page: Page, log: Log, minMs = QUIET_MS): Promise<void> {
 	const started = Date.now();
 	while (Date.now() < until) {
 		if (log.inFlight <= 0 && Date.now() - log.lastActivity >= minMs && Date.now() - started >= minMs) return;
-		await page.waitForTimeout(100);
+		await sleep(100);
 	}
 }
 
@@ -203,9 +205,9 @@ async function open(browser: Browser, origin: string, route: string, condition: 
 
 /** Scrolls the link into view without moving the pointer. */
 async function reveal(page: Page, target: string): Promise<boolean> {
-	return page
-		.locator(linkSelector(target))
-		.first()
+	const link = page.locator(linkSelector(target)).first();
+	if (!(await link.count().catch(() => 0))) return false;
+	return link
 		.evaluate(
 			(a) => {
 				a.scrollIntoView({ block: 'center', inline: 'nearest' });
@@ -220,6 +222,7 @@ async function reveal(page: Page, target: string): Promise<boolean> {
 /** The link's target as the page now shows it (visible, on screen), or undefined. */
 async function boxOf(page: Page, target: string): Promise<{ x: number; y: number } | undefined> {
 	const link = page.locator(linkSelector(target)).filter({ visible: true }).first();
+	if (!(await link.count().catch(() => 0))) return undefined;
 	const box = await link.boundingBox({ timeout: 1000 }).catch(() => null);
 	return box && box.y >= 0 && box.y + box.height <= VIEWPORT.height ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : undefined;
 }
@@ -229,7 +232,7 @@ async function phase(run: Run, name: string, action: () => Promise<unknown>): Pr
 	await quiet(run.page, run.log, 300);
 	run.log.phase = name;
 	await action();
-	await run.page.waitForTimeout(SETTLE_MS);
+	await sleep(SETTLE_MS);
 	await quiet(run.page, run.log, 300);
 	run.log.phase = 'between';
 }
@@ -309,7 +312,7 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 				else {
 					// Pressed and released elsewhere: a press that never becomes a click.
 					await page.mouse.down();
-					await page.waitForTimeout(300);
+					await sleep(300);
 					await parkPointer(page);
 					await page.mouse.up();
 				}
@@ -367,7 +370,7 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 			if (clicked.length) {
 				// Back to the page before this one: the first click's page from the second's, else the route itself.
 				const back = clicked.length > 1 ? clicked[0]!.target : own;
-				await page.waitForTimeout(REVISIT_AFTER_MS);
+				await sleep(REVISIT_AFTER_MS);
 				const name3 = `revisit ${back}`;
 				log.phase = name3;
 				const cachedBefore = await cachedPaths(page);

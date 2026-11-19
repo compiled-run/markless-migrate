@@ -601,8 +601,8 @@ data at `{path}?_rsc=*`, fetched as links come into view on every network condit
   Speculation Rules are read from the page as declared; whether Chromium's own prefetch of them was used is not told
   apart from a fetch the page made.
 - Network conditions are an emulated `navigator.connection` (and a `Save-Data` header) plus one real slow link: a
-  router that measures the link some other way is seen only on that slow link. Conditions are tried on each template
-  group's first page only, with one link per trigger.
+  router that measures the link some other way is seen only on that slow link. Conditions are tried on the first pages of
+  the two largest URL patterns only, with one link per trigger.
 - A request belongs to a link when its URL names the link's target on segment edges and two targets (or a click) share
   that URL shape. A router that fetches a page under an id (`/data/8f3a.json`) is not recognised, and shows as fetching
   nothing ahead.
