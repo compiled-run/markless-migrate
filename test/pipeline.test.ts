@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { captureCosts, capturedKeys, codeClosure, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report } from '../scripts/pipeline.ts';
+import { captureCosts, codeClosure, copiedParts, deal, importsOf, partsKeys, PLAN_ENTRIES, pruneStore, recordHits, refreshParts, report, storeKeeps } from '../scripts/pipeline.ts';
 
 async function tree(files: Record<string, string>): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'pipeline-'));
@@ -80,25 +80,43 @@ test('refreshing the copied parts makes the app hold what a new emit would copy,
 const KEY_A = 'A'.repeat(43);
 const KEY_B = 'B'.repeat(43);
 const KEY_C = 'C'.repeat(43);
+const KEY_D = 'D'.repeat(43);
 
-test('a page is recorded already when its capture is held under its current key, or in flat files made from that key', async () => {
-	const store = await tree({ [`captures/${KEY_A}/page.json`]: '{}', [`reveals/${KEY_B}/x.json`]: '{}', 'sources.json': JSON.stringify({ flat: { '/flat': KEY_C, '/moved': KEY_A } }) });
-	const keys = new Map([
-		['/a', KEY_A],
-		['/b', KEY_B],
-		['/flat', KEY_C],
-		['/moved', KEY_B],
+const visit = (route: string, page: string, kinds: Record<string, [string, string[]]>) => ({ route, page, kinds: Object.fromEntries(Object.entries(kinds).map(([k, [version, dirs]]) => [k, { version, dirs }])) });
+
+test('a page is recorded already when its last visit was of the page it is now and every kind it had is there at its current version', async () => {
+	const store = await tree({ [`captures/${KEY_A}/page.json`]: '{}', [`toggles/${KEY_B}/t.json`]: '{}', [`captures/${KEY_C}/page.json`]: '{}' });
+	const versions = { captures: 'c1', toggles: 't2' };
+	const visits = [
+		visit('/a', 'page-a', { captures: ['c1', [KEY_A]], toggles: ['t2', [KEY_B]] }),
+		visit('/stale', 'page-s', { captures: ['c1', [KEY_A]], toggles: ['t1', [KEY_B]] }),
+		visit('/moved', 'page-old', { captures: ['c1', [KEY_C]] }),
+		visit('/lost', 'page-l', { captures: ['c1', [KEY_D]] }),
+	];
+	const pages = new Map([
+		['/a', 'page-a'],
+		['/stale', 'page-s'],
+		['/moved', 'page-new'],
+		['/lost', 'page-l'],
+		['/new', 'page-n'],
 		['/down', 'unreachable-1234abcd'],
 	]);
-	assert.deepEqual(await recordHits(keys, store), { hits: ['/a', '/flat'], misses: ['/b', '/moved', '/down'] });
-	assert.deepEqual(await recordHits(keys, join(store, 'none')), { hits: [], misses: ['/a', '/b', '/flat', '/moved', '/down'] });
+	assert.deepEqual(await recordHits(pages, store, versions, visits), { hits: ['/a'], misses: ['/stale', '/moved', '/lost', '/new', '/down'] });
+	assert.deepEqual(await recordHits(pages, store, versions, []), { hits: [], misses: [...pages.keys()] }, 'a store with no visits (another format, or none) holds nothing');
 });
 
-test('pruning keeps the recordings of current keys and flat files, and drops every other keyed directory', async () => {
-	const store = await tree({ [`captures/${KEY_A}/p.json`]: '', [`captures/${KEY_B}/p.json`]: '', [`reveals/${KEY_B}/p.json`]: '', 'captures/flat.json': '', 'captures/unreachable-00ff/p.json': '', 'sources.json': '{}' });
-	assert.deepEqual(await pruneStore(store, new Set([KEY_A])), { kept: 1, dropped: 3 });
-	assert.deepEqual((await readdir(join(store, 'captures'))).sort(), [KEY_A, 'flat.json']);
-	assert.deepEqual(await readdir(join(store, 'reveals')), []);
+test("pruning keeps what the current pages' visits name at each kind's current version, and drops every other recording and visit", async () => {
+	const store = await tree({ [`captures/${KEY_A}/p.json`]: '', [`captures/${KEY_B}/p.json`]: '', [`toggles/${KEY_C}/p.json`]: '', [`toggles/${KEY_D}/p.json`]: '', 'captures/flat.json': '', 'visits/a.json': '{}', 'visits/gone.json': '{}', 'costs/x.json': '{}' });
+	const versions = { captures: 'c1', toggles: 't2' };
+	const pages = new Map([['/a', 'page-a']]);
+	const visits = [visit('/a', 'page-a', { captures: ['c1', [KEY_A]], toggles: ['t1', [KEY_C]] }), visit('/gone', 'page-g', { captures: ['c1', [KEY_B]] })];
+	const keep = storeKeeps(pages, versions, visits);
+	assert.deepEqual([...keep], [`captures/${KEY_A}`], 'a kind recorded at an old version, and a route no longer converted, keep nothing');
+	assert.deepEqual(await pruneStore(store, Object.keys(versions), keep, pages, (route) => (route === '/a' ? 'a.json' : 'x.json')), { kept: 1, dropped: 4 });
+	assert.deepEqual(await readdir(join(store, 'captures')), [KEY_A]);
+	assert.deepEqual(await readdir(join(store, 'toggles')), []);
+	assert.deepEqual(await readdir(join(store, 'visits')), ['a.json']);
+	assert.deepEqual(await readdir(join(store, 'costs')), ['x.json'], 'what is not a recording stays');
 });
 
 test('pages are dealt into at most n shards, none empty, and none at all when every page is held', () => {
@@ -146,10 +164,4 @@ test("the plan's key reads the planner's code, not the CLI that hands it its arg
 	assert.ok(files.includes('src/plan/inventory.ts') && files.includes('src/cache/cli.ts') && files.includes('src/usage/index.ts'));
 	assert.ok(!files.includes('src/cli.ts'));
 	assert.ok(!files.includes('src/convert/index.ts') && !files.includes('src/convert/reveal.ts'), 'a change to the emit or the recorder keeps the plan');
-});
-
-test("a run's own captures give each route the key it was recorded under, read from the capture itself", async () => {
-	const store = await tree({ [`captures/${KEY_A}/x.json`]: JSON.stringify({ route: '/a', status: 200 }), [`captures/${KEY_B}/y.json`]: JSON.stringify({ route: '/b' }), [`reveals/${KEY_C}/z.json`]: JSON.stringify({ route: '/c' }), 'captures/flat.json': JSON.stringify({ route: '/flat' }) });
-	assert.deepEqual([...(await capturedKeys(store))], [['/a', KEY_A], ['/b', KEY_B]]);
-	assert.deepEqual([...(await capturedKeys(join(store, 'none')))], []);
 });
