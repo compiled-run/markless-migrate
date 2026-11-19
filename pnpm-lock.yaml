@@ -247,11 +247,11 @@ importers:
         specifier: 1.7.6
         version: 1.7.6
       '@markless/core':
-        specifier: 0.9.0
-        version: 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
+        specifier: 0.14.0
+        version: 0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
       '@markless/router':
-        specifier: 0.9.0
-        version: 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
+        specifier: 0.14.0
+        version: 0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
       nitro:
         specifier: 3.0.260903-beta
         version: 3.0.260903-beta
@@ -272,11 +272,11 @@ importers:
         specifier: 1.7.6
         version: 1.7.6
       '@markless/core':
-        specifier: 0.9.0
-        version: 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
+        specifier: 0.14.0
+        version: 0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
       '@markless/router':
-        specifier: 0.9.0
-        version: 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
+        specifier: 0.14.0
+        version: 0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
       nitro:
         specifier: 3.0.260903-beta
         version: 3.0.260903-beta
@@ -943,34 +943,17 @@ packages:
       vite:
         optional: true
 
-  '@markless/bundler@0.9.0':
-    resolution: {integrity: sha512-Yw9NaMacls7rNWsWtRXA9f0Cbu+sVVqfIZ/U5ElheJhFnG8uwjXd+VC2wH/BlOyhaGkgVJ0kin0wyVJr2QOThg==}
-    peerDependencies:
-      rolldown: 1.2.14
-      vite: 8.3.4
-    peerDependenciesMeta:
-      rolldown:
-        optional: true
-      vite:
-        optional: true
-
   '@markless/compiler@0.14.0':
     resolution: {integrity: sha512-Ingi/qmFaFkrrqzSwah56loGqehTL6yb9bVcTezUOSi7vJjs/98MZeBhH3aphQyoFhOAgoH7bozau/gQfH+1zg==}
 
   '@markless/compiler@0.4.0':
     resolution: {integrity: sha512-zB6paUTWh+dmbc2m1nXHYj/blrU/Bb9eMqx+VT5TO/GzCWFfvtCSgg2rZr+WuKkWpeb38lbbxRZXSKLCwEjE2Q==}
 
-  '@markless/compiler@0.9.0':
-    resolution: {integrity: sha512-5LCn2Jto9lmkjEORoPshVEVcXTXdw1fd+vQKeGYQta85U60p7g7nDCXKrVQQv5IALoKGsN8cG7ihNsLr7rASSg==}
-
   '@markless/core@0.14.0':
     resolution: {integrity: sha512-5jI47ZaqBUmr3tCwf1Ei7i1TsPJs7HVwnRPSXsgQYcup+zQHbWepUhdEu1OtoAT8u9JhGfNyc8d4gFxeeRhBEw==}
 
   '@markless/core@0.4.0':
     resolution: {integrity: sha512-3Z/agJfHwR+l+P3mtUvH5kwuGwizURa7p90+U7i3nb4ipHLNcIwCvXlA/A2uZ7lsKi97jlxtmao3jkAGtymWDw==}
-
-  '@markless/core@0.9.0':
-    resolution: {integrity: sha512-17W2Y8aMCXqRHFcQfBHbpKzEICWTsEeASl1vfjven4TXRO2M+8ISfQKu9PomQq8dnDRuKHBmLALsZvHxxCQZVg==}
 
   '@markless/router@0.14.0':
     resolution: {integrity: sha512-dcpMf2+qFCsAnoYK3XG5FEb6XQoQoXxgFeqEf/1mRAyPohWNbTmQ3z5wiPth0m1zIZZgaWnImgWWr4vMThaQfg==}
@@ -989,32 +972,17 @@ packages:
       vite:
         optional: true
 
-  '@markless/router@0.9.0':
-    resolution: {integrity: sha512-Slzg65hU/8BqWlBwu8qVjBike5Vke5KHVjOR8WcBF1A7R6kvdAX+Q+3CuRJPS948I7kGU17c2N8mxE5UPfTiDQ==}
-    peerDependencies:
-      typescript: ^5.9.3
-      vite: 8.3.4
-    peerDependenciesMeta:
-      vite:
-        optional: true
-
   '@markless/runtime@0.14.0':
     resolution: {integrity: sha512-1/IgrXfjaNmAI2tRG+GIQCascDE2fxuwlfAWMOUvfmooV9ldgbi/3c5x3bM57sxP4VR3zhknTTuI2zU24WcG8g==}
 
   '@markless/runtime@0.4.0':
     resolution: {integrity: sha512-H4+G3eYJOHX+fzKLkEwo0rcHJLcjLBCTxoy9vKiUdE0UGCpj2eyma5uhS1kGD7tYyOESaPnmcGfhxSTOuVHapg==}
 
-  '@markless/runtime@0.9.0':
-    resolution: {integrity: sha512-GM/O+jerGJ0UW6NiveHDP0sdhIi0xZgVIUCKYtVEinHDESxbFsHelFk9TdOkKAyJ4mPPoNMf3TX1R5X9gWLlBw==}
-
   '@markless/serializer@0.14.0':
     resolution: {integrity: sha512-AK9OMroPnX1Vo7x9RVTIhZX3FWu89frvknvwd2KgQdlqCbsMhLogwK0vNjyASEFzAyG6amh0fuUBZTLLJgk7GQ==}
 
   '@markless/serializer@0.4.0':
     resolution: {integrity: sha512-j+JpSzHNNRAZBFOOTv/Lmd3el6l1CquMuXa+HrUkTGf2PCvfpmiFk0hAQnFUiEbA1ah0Afug0a3ntsVAyjVLBg==}
-
-  '@markless/serializer@0.9.0':
-    resolution: {integrity: sha512-gqii87prOxFk2GeGVNu7pDnJ0yVHV25bcv0Eg5xaVCguMpFdnxpto4ZHndGKDjRwgWSNHvbfwS+P/gx5y4xD4w==}
 
   '@markless/typescript-plugin@0.14.0':
     resolution: {integrity: sha512-xYgVuP3jPKrdtsarFgcOKJv9xGzr5/Sgqim7tcmAcCHiVU9dooFCASyd/9zlPr2LhtT8efdJuxZjZj0Le0Q5Jg==}
@@ -1027,9 +995,6 @@ packages:
 
   '@markless/web@0.4.0':
     resolution: {integrity: sha512-5IHcwNqAYgHrPH3aVkUzt6toDYe1rtX3vx4uCGD24Uc8NBKYajex3mr3s/q+/Hd5QpvjahJIpaV+eHAiE6pDhQ==}
-
-  '@markless/web@0.9.0':
-    resolution: {integrity: sha512-n58EFsHELL7WkT8Bx6p7yCJnNtAQRQhsAMmV9KveUWhmod+PLUKT2Nbkg8AVee580dkU0DBRA2BU7a6MkDAG+g==}
 
   '@modelcontextprotocol/sdk@1.32.1':
     resolution: {integrity: sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==}
@@ -6397,18 +6362,6 @@ snapshots:
       rolldown: 1.2.14
       vite: 8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)
 
-  '@markless/bundler@0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)':
-    dependencies:
-      '@markless/compiler': 0.9.0
-      '@markless/serializer': 0.9.0
-      '@markless/web': 0.9.0
-      '@thi.ng/dgraph': 2.1.213
-      pathe: 2.0.3
-      ufo: 1.6.4
-    optionalDependencies:
-      rolldown: 1.2.14
-      vite: '@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3)'
-
   '@markless/compiler@0.14.0':
     dependencies:
       '@markless/serializer': 0.14.0
@@ -6424,12 +6377,6 @@ snapshots:
       yuku-analyzer: 0.9.0
       yuku-codegen: 0.9.0
       yuku-tsrx: 0.1.3
-
-  '@markless/compiler@0.9.0':
-    dependencies:
-      '@markless/serializer': 0.9.0
-      '@tsrx/yuku': 0.8.0
-      yuku-css: 0.1.0
 
   '@markless/core@0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)':
     dependencies:
@@ -6465,16 +6412,6 @@ snapshots:
       - wrangler
       - xml2js
       - zephyr-agent
-
-  '@markless/core@0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)':
-    dependencies:
-      '@markless/bundler': 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)
-      '@markless/router': 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)
-      '@markless/web': 0.9.0
-    transitivePeerDependencies:
-      - rolldown
-      - typescript
-      - vite
 
   '@markless/router@0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)':
     dependencies:
@@ -6544,24 +6481,6 @@ snapshots:
       - xml2js
       - zephyr-agent
 
-  '@markless/router@0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)':
-    dependencies:
-      '@markless/bundler': 0.9.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)
-      '@markless/compiler': 0.9.0
-      '@markless/web': 0.9.0
-      '@tsrx/yuku': 0.8.0
-      '@virtualstate/navigation': 1.0.1-alpha.212
-      hast-util-to-html: 9.0.5
-      nitro: 3.0.260903-beta
-      pathe: 2.0.3
-      satteri: 0.6.3
-      typescript: 5.9.3
-      ufo: 1.6.4
-    optionalDependencies:
-      vite: '@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3)'
-    transitivePeerDependencies:
-      - rolldown
-
   '@markless/runtime@0.14.0':
     dependencies:
       '@markless/serializer': 0.14.0
@@ -6570,15 +6489,9 @@ snapshots:
     dependencies:
       '@markless/serializer': 0.4.0
 
-  '@markless/runtime@0.9.0':
-    dependencies:
-      '@markless/serializer': 0.9.0
-
   '@markless/serializer@0.14.0': {}
 
   '@markless/serializer@0.4.0': {}
-
-  '@markless/serializer@0.9.0': {}
 
   '@markless/typescript-plugin@0.14.0(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(@volar/typescript@2.4.28(typescript@5.9.3))(esbuild@0.28.2)(jiti@2.7.0)(typescript@5.9.3))(rolldown@1.2.14)(typescript@5.9.3)':
     dependencies:
@@ -6608,11 +6521,6 @@ snapshots:
     dependencies:
       '@markless/runtime': 0.4.0
       '@markless/serializer': 0.4.0
-
-  '@markless/web@0.9.0':
-    dependencies:
-      '@markless/runtime': 0.9.0
-      '@markless/serializer': 0.9.0
 
   '@modelcontextprotocol/sdk@1.32.1(supports-color@10.2.2)(zod@4.6.7)':
     dependencies:
