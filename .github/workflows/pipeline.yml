@@ -527,13 +527,16 @@ jobs:
           recorded=$(cd "$store" && find . -mindepth 3 -type f -newer "$RUNNER_TEMP/convert-start" ! -path './visits/*' ! -path './costs/*' ! -path './prerender/*' | cut -d/ -f2 | sort | uniq -c | awk '{printf "%s%s:%s", (NR>1?"/":""), $2, $1}')
           tail -n 30 "$RUNNER_TEMP/convert.txt"
           node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted=made recorded-here="${recorded:-none}" seconds=$(( $(date +%s) - t )) peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024 ))
           if [ -d "$RUNNER_TEMP/kept-app" ]; then
+            # The kept app was packed without the recordings store: compare what is packed.
+            mv "$store" "$RUNNER_TEMP/store-aside"
             if node scripts/convert-diff.ts "$APP" "$RUNNER_TEMP/kept-app" > "$RUNNER_TEMP/verify.txt" 2>&1; then verdict=same; else verdict="DIFFERENT: $(grep -c . "$RUNNER_TEMP/verify.txt") lines in verify.txt"; fi
+            mv "$RUNNER_TEMP/store-aside" "$store"
             tail -n 40 "$RUNNER_TEMP/verify.txt"
             node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit verify="$verdict"
             [ "$verdict" = same ] || { echo "::error::The kept converted app differs from a convert of the same inputs"; exit 1; }
           fi
-          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted=made recorded-here="${recorded:-none}" seconds=$(( $(date +%s) - t )) peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024 ))
       - name: Keep the recordings for the next run
         if: needs.prepare.outputs.emit-run == ''
         run: |
