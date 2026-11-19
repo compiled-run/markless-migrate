@@ -22,51 +22,43 @@ runs:
     # Caches are saved on main only: a pull request's copy is visible to that pull request alone, and those copies pushed
     # the repository past its 10 GB cache limit (10.5 GB on 2026-10-27), which evicted main's and sent jobs to the mirror.
     # A set with no cache of its own restores a warmed set holding all its browsers and more (scripts/browser-cache-sets.ts).
-    - id: sets
+    - id: keys
+      run: node scripts/browser-cache-sets.ts keys "$RUNNER_OS" "${{ steps.playwright.outputs.version }}" "$BROWSERS" "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       env:
         BROWSERS: ${{ inputs.browsers }}
-        PREFIX: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-
-        APT_PREFIX: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-
-      run: |
-        sets=(); while IFS= read -r s; do sets+=("$s"); done < <(node scripts/browser-cache-sets.ts "$BROWSERS")
-        { echo 'browsers<<EOF'; for s in "${sets[@]}"; do echo "$PREFIX$s"; done; echo EOF
-          echo 'apt<<EOF'; echo "$APT_PREFIX$BROWSERS-"; for s in "${sets[@]}"; do echo "$APT_PREFIX$s-"; done; echo EOF; } >> "$GITHUB_OUTPUT"
       shell: bash
     - uses: actions/cache/restore@v4
       id: browsers
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
-        restore-keys: ${{ steps.sets.outputs.browsers }}
+        key: ${{ steps.keys.outputs.browsers }}
+        restore-keys: ${{ steps.keys.outputs.browsers-restore }}
     # The browsers' system packages, as apt downloaded them: the runners' mirror has served them at 30 kB/s, past a job's
     # 45 minutes (165 kB/s, 12 minutes for 119 MB, on 2026-10-27). The newest main entry is restored.
     - uses: actions/cache/restore@v4
       id: apt-cache
       with:
         path: ~/.cache/apt-archives
-        key: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: ${{ steps.sets.outputs.apt }}
+        key: ${{ steps.keys.outputs.apt }}
+        restore-keys: ${{ steps.keys.outputs.apt-restore }}
     # A cache restored from a superset is never saved under this set's key: it would carry the superset's extra browsers.
     - id: restored
       env:
         BROWSERS: ${{ inputs.browsers }}
-        PREFIX: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-
-        APT_PREFIX: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-
+        VERSION: ${{ steps.playwright.outputs.version }}
         BROWSERS_KEY: ${{ steps.browsers.outputs.cache-matched-key }}
         APT_KEY: ${{ steps.apt-cache.outputs.cache-matched-key }}
       run: |
-        own=true
         for kind in browsers apt; do
-          if [ "$kind" = browsers ]; then key=$BROWSERS_KEY; [ "$key" = "$PREFIX$BROWSERS" ] && mine=true || mine=false
-          else key=$APT_KEY; [[ "$key" == "$APT_PREFIX$BROWSERS-"* ]] && mine=true || mine=false; fi
-          if [ -z "$key" ]; then echo "$kind for '$BROWSERS': no cache, downloading"
-          elif [ "$mine" = true ]; then echo "$kind for '$BROWSERS': restored from its own cache $key"
-          else
-            echo "$kind for '$BROWSERS': restored from superset cache $key"
-            if [ "$kind" = apt ]; then own=false; fi
-          fi
+          if [ "$kind" = browsers ]; then key=$BROWSERS_KEY; else key=$APT_KEY; fi
+          relation=$(node scripts/browser-cache-sets.ts restored "$RUNNER_OS" "$VERSION" "$BROWSERS" "$key")
+          case "$relation" in
+            none) echo "$kind for '$BROWSERS': no cache, downloading" ;;
+            own|superset) echo "$kind for '$BROWSERS': restored from $relation cache $key" ;;
+            *) echo "::error::$kind for '$BROWSERS' restored $key, a $relation of the set; only its own cache or a superset may be restored"; exit 1 ;;
+          esac
+          echo "$kind=$relation" >> "$GITHUB_OUTPUT"
         done
-        echo "apt-own=$own" >> "$GITHUB_OUTPUT"
       shell: bash
     # The runner's packages.microsoft.com source has answered 403, failing the browsers' apt-get update; they need nothing from it.
     # AWS-hosted runners list us-east-2.ec2.archive.ubuntu.com first, which served 0.55 MB/s on 2026-11-18 (azure.archive.ubuntu.com: 18-110 MB/s from the same runners).
@@ -91,13 +83,13 @@ runs:
         find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -n {} ~/.cache/apt-archives/ \;
         echo "new=$(( $(find ~/.cache/apt-archives -name '*.deb' | wc -l) - ${{ steps.apt.outputs.before || 0 }} ))" >> "$GITHUB_OUTPUT"
       shell: bash
-    - if: steps.browsers.outputs.cache-matched-key == '' && github.ref == 'refs/heads/main'
+    - if: steps.restored.outputs.browsers == 'none' && github.ref == 'refs/heads/main'
       uses: actions/cache/save@v4
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
-    - if: always() && steps.kept.outputs.new > 0 && steps.restored.outputs.apt-own == 'true' && github.ref == 'refs/heads/main'
+        key: ${{ steps.keys.outputs.browsers }}
+    - if: always() && steps.kept.outputs.new > 0 && (steps.restored.outputs.apt == 'none' || steps.restored.outputs.apt == 'own') && github.ref == 'refs/heads/main'
       uses: actions/cache/save@v4
       with:
         path: ~/.cache/apt-archives
-        key: playwright-apt-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}-${{ github.run_id }}-${{ github.run_attempt }}
+        key: ${{ steps.keys.outputs.apt }}
