@@ -137,7 +137,9 @@ its phase ended counts until then) and every byte fetched before the first click
 the recorder's own code: a change anywhere else in convert records none of them again, and a page records again only
 when its old page changes. Links that end a session or delete are never hovered, pressed or followed (the same words
 journeys and widget probes hold back, `src/check/destructive.ts`). The recorder has slots of its own beside the
-captures', so its waiting holds no capture back. A first recording takes about 10 s a page, about 25 s on each of the
+captures', so its waiting holds no capture back. A page is recorded once its capture worked (a page that kills the
+browser is not loaded again for it); a recording the browser died under twice leaves that page unknown to the
+decision and never fails the page. A first recording takes about 10 s a page, about 25 s on each of the
 four pages with clicks and about 100 s on the two the conditions are tried on (measured on ui.shadcn.com's docs pages).
 
 ### How to iterate on a port
