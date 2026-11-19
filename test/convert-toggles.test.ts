@@ -467,3 +467,18 @@ test('a menu item whose choosing scrolled a message scroller to a message scroll
 	assert.deepEqual(scrollBinding(jump, choices), { extra: ['onClick={() => scrollToMessage("msg-3", "smooth")}'] });
 	assert.equal(scrollBinding(copy, choices), undefined);
 });
+
+test('a checkbox that loaded mixed starts with no value and shows its mixed markup until its first click checks it', () => {
+	const doc = parseDocument('<body><div><span role="checkbox" tabindex="0" aria-checked="mixed" data-indeterminate="" data-slot="checkbox"><span data-slot="checkbox-indicator"><svg data-minus=""></svg></span></span><input type="checkbox" aria-hidden="true"></div></body>');
+	const box = find(body(doc), (el) => attr(el, 'role') === 'checkbox')!;
+	const plan = new CheckablePlan();
+	const st = (checked: string, flag: string, inner: string) => ({ attrs: { role: 'checkbox', 'aria-checked': checked, [flag]: '' }, inner });
+	plan.add(body(doc), [{ kind: 'toggle', controls: [{ sig: 's', nth: 0, role: 'checkbox', initial: false, mixed: st('mixed', 'data-indeterminate', '<span data-slot="checkbox-indicator"><svg data-minus=""></svg></span>'), on: st('true', 'data-checked', '<span data-slot="checkbox-indicator"><svg data-check=""></svg></span>'), off: st('false', 'data-unchecked', '') }] }], () => box, (html) => html);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.deepEqual(plan.bind(box)?.declare, ['let tg0 = state(null as boolean | null);']);
+	assert.match(out, /aria-checked=\{tg0 === null \? "mixed" : tg0 \? "true" : "false"\}/);
+	assert.match(out, /data-indeterminate=\{tg0 === null \? "" : tg0 \? undefined : undefined\}/);
+	assert.match(out, /onClick=\{\(\) => \{ tg0 = !tg0; \}\}/, 'the first click checks it, as the old page did');
+	assert.match(out, /@if \(tg0 === null\) \{ <><span data-slot="checkbox-indicator"><svg data-minus=""><\/svg><\/span><\/> \} @else \{ @if \(tg0\) \{ <><span data-slot="checkbox-indicator"><svg data-check=""><\/svg><\/span><\/> \} @else \{ <><\/> \} \}/);
+	assert.match(out, /<input type="checkbox" aria-hidden="true" checked=\{tg0 === true\}/);
+});

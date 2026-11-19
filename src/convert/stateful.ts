@@ -1,7 +1,7 @@
 import { parseFragment } from 'parse5';
 import { attr, childrenOf, find, inner as innerOf, isElement, isText, outer as outerOf, textContent, walk, type Element, type Node } from './dom.ts';
 import { lit, mergeBindings, type Binding } from './tsrx.ts';
-import type { BaseToastCapture, Notify, SonnerToast, Switch, ToggleGroup } from './toggles.ts';
+import type { BaseToastCapture, Notify, SonnerToast, Switch, ToggleGroup, ToggleState } from './toggles.ts';
 import { SONNER_STATE } from '../../parts/sonner.ts';
 import { BASE_TOAST_STATE } from '../../parts/base-ui/toast.ts';
 
@@ -302,14 +302,17 @@ export class CheckablePlan {
 			if (els.some((el) => !el || this.bindings.has(el) || skip(el))) continue;
 			const name = `${group.kind === 'radio' ? 'rg' : 'tg'}${this.n++}`;
 			const initial = group.controls.findIndex((c) => c.initial);
-			const declare = [group.kind === 'radio' ? `let ${name} = state(${initial});` : `let ${name} = state(${group.controls[0]!.initial});`];
+			// A control that loaded mixed starts with no value; its first click (`!null`) checks it, as on the old page.
+			const declare = [group.kind === 'radio' ? `let ${name} = state(${initial});` : group.controls[0]!.mixed ? `let ${name} = state(null as boolean | null);` : `let ${name} = state(${group.controls[0]!.initial});`];
 			group.controls.forEach((c, k) => {
 				const el = els[k]!;
 				const on = group.kind === 'radio' ? `${name} === ${k}` : name;
 				const choose = group.kind === 'radio' ? (group.clears ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = ${k}`) : `${name} = !${name}`;
 				// The tab stop follows focus (a roving group's part moves it), not the control's state.
-				const names = [...new Set([...Object.keys(c.on.attrs), ...Object.keys(c.off.attrs)])].filter((a) => c.on.attrs[a] !== c.off.attrs[a] && a !== 'tabindex' && /^[A-Za-z_][\w.-]*$/.test(a));
-				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+				const arms: Arms = [...(c.mixed ? [[`${name} === null`, c.mixed] as const] : []), [on, c.on], [undefined, c.off]];
+				const checked = c.mixed ? `${name} === true` : on;
+				const names = [...new Set(arms.flatMap(([, st]) => Object.keys(st.attrs)))].filter((a) => new Set(arms.map(([, st]) => st.attrs[a])).size > 1 && a !== 'tabindex' && /^[A-Za-z_][\w.-]*$/.test(a));
+				const bound = (a: string) => `${a}={${pick(arms.map(([when, st]) => [when, st.attrs[a]] as const))}}`;
 				// Base UI's checkables (useButton, RadioRoot, CheckboxRoot): a radio chooses on Space as it goes down, a checkbox or
 				// switch on Space as it comes up, a switch on Enter too; Enter on a checkbox submits its form instead.
 				const role = attr(el, 'role');
@@ -329,25 +332,25 @@ export class CheckablePlan {
 				// on the label reaches the input too, and Space on the input clicks it: the input's click is the one use.
 				// Only the descendants that differ are bound, so the focused input is never rendered again.
 				if (el.tagName === 'label' && attr(el, 'data-rac') !== undefined) {
-					const pick = group.kind === 'radio' ? `${name} = ${k}` : choose;
-					this.bindings.set(el, { declare, omit: names, extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${pick}; } }}`, set] });
-					this.diff(el, c.on.inner, c.off.inner, on, declare, emit);
+					const choosing = group.kind === 'radio' ? `${name} = ${k}` : choose;
+					this.bindings.set(el, { declare, omit: names, extra: [...names.map(bound), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${choosing}; } }}`, set] });
+					this.diff(el, arms.map(([when, st]) => [when, st.inner] as const), declare, emit);
 					const input = [...walk(el)].find((x) => x.tagName === 'input');
-					if (input) this.bindings.set(input, mergeBindings(this.bindings.get(input), { declare, omit: ['checked'], extra: [`checked={${on}}`] })!);
+					if (input) this.bindings.set(input, mergeBindings(this.bindings.get(input), { declare, omit: ['checked'], extra: [`checked={${checked}}`] })!);
 					return;
 				}
 				this.bindings.set(el, {
 					declare,
 					omit: names,
-					extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving, set],
-					...(c.on.inner !== c.off.inner ? { children: `@if (${on}) { <>${emit(c.on.inner)}</> } @else { <>${emit(c.off.inner)}</> }` } : {}),
+					extra: [...names.map(bound), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving, set],
+					...(new Set(arms.map(([, st]) => st.inner)).size > 1 ? { children: armsOf(arms.map(([when, st]) => [when, emit(st.inner)] as const)) } : {}),
 				});
 				const parent = el.parentNode as Element | null;
 				const siblings = parent && 'childNodes' in parent ? parent.childNodes.filter((x): x is Element => 'tagName' in x) : [];
 				const input = siblings[siblings.indexOf(el) + 1];
 				if (input && input.tagName === 'input' && attr(input, 'aria-hidden') === 'true' && /^(checkbox|radio)$/.test(attr(input, 'type') ?? '')) {
 					// Its label's click focuses the input: Base UI hands focus on to the control.
-					this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${on}}`, `onClick={() => { ${group.kind === 'radio' ? `${name} = ${k}` : choose}; }}`, `onFocus={(event) => focusControl(event)}`] });
+					this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${checked}}`, `onClick={() => { ${group.kind === 'radio' ? `${name} = ${k}` : choose}; }}`, `onFocus={(event) => focusControl(event)}`] });
 				}
 			});
 			for (const d of group.dependents ?? []) {
@@ -367,35 +370,47 @@ export class CheckablePlan {
 	}
 
 	/**
-	 * Binds what differs between a control's two states on the descendants that differ: an attribute on the element
-	 * that carries it, and an @if arm only where the children themselves differ in shape (a checkbox's check icon).
+	 * Binds what differs between a control's states on the descendants that differ: an attribute on the element that
+	 * carries it, and an @if arm only where the children themselves differ in shape (a checkbox's check icon).
 	 */
-	private diff(parent: Element, onHtml: string, offHtml: string, on: string, declare: readonly string[], emit: (html: string) => string): void {
-		if (onHtml === offHtml) return;
+	private diff(parent: Element, arms: readonly (readonly [string | undefined, string])[], declare: readonly string[], emit: (html: string) => string): void {
+		if (new Set(arms.map(([, html]) => html)).size < 2) return;
 		const meaningful = (nodes: readonly Node[]) => nodes.filter((n) => !(isText(n) && !n.value.trim()));
-		const a = meaningful(childrenOf(parseFragment(onHtml) as unknown as Element));
-		const b = meaningful(childrenOf(parseFragment(offHtml) as unknown as Element));
+		const parsed = arms.map(([, html]) => meaningful(childrenOf(parseFragment(html) as unknown as Element)));
 		const page = meaningful(childrenOf(parent));
-		const alike = a.length === b.length && a.length === page.length && a.every((x, i) => {
-			const y = b[i]!;
+		const [a] = parsed as [Node[]];
+		const alike = parsed.every((p) => p.length === page.length) && a.every((x, i) => {
 			const z = page[i]!;
-			if (isText(x) || isText(y)) return isText(x) && isText(y) && x.value === y.value;
-			return isElement(x) && isElement(y) && isElement(z) && x.tagName === y.tagName && y.tagName === z.tagName;
+			const texts = parsed.map((p) => p[i]!).filter(isText);
+			if (texts.length) return texts.length === parsed.length && texts.every((t) => t.value === texts[0]!.value);
+			return isElement(z) && parsed.every((p) => isElement(p[i]!) && (p[i] as Element).tagName === z.tagName);
 		});
 		if (!alike) {
-			this.bindings.set(parent, mergeBindings(this.bindings.get(parent), { declare, children: `@if (${on}) { <>${emit(onHtml)}</> } @else { <>${emit(offHtml)}</> }` })!);
+			this.bindings.set(parent, mergeBindings(this.bindings.get(parent), { declare, children: armsOf(arms.map(([when, html]) => [when, emit(html)] as const)) })!);
 			return;
 		}
 		a.forEach((x, i) => {
 			if (!isElement(x)) return;
-			const y = b[i] as Element;
 			const z = page[i] as Element;
-			const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
-			const names = [...new Set([...x.attrs, ...y.attrs].map((t) => t.name))].filter((n) => attr(x, n) !== attr(y, n) && /^[A-Za-z_][\w.-]*$/.test(n) && n !== 'checked');
-			if (names.length) this.bindings.set(z, mergeBindings(this.bindings.get(z), { declare, omit: names, extra: names.map((n) => `${n}={${on} ? ${value(attr(x, n))} : ${value(attr(y, n))}}`) })!);
-			this.diff(z, innerOf(x), innerOf(y), on, declare, emit);
+			const els = parsed.map((p) => p[i] as Element);
+			const names = [...new Set(els.flatMap((e) => e.attrs.map((t) => t.name)))].filter((n) => new Set(els.map((e) => attr(e, n))).size > 1 && /^[A-Za-z_][\w.-]*$/.test(n) && n !== 'checked');
+			if (names.length) this.bindings.set(z, mergeBindings(this.bindings.get(z), { declare, omit: names, extra: names.map((n) => `${n}={${pick(arms.map(([when], k) => [when, attr(els[k]!, n)] as const))}}`) })!);
+			this.diff(z, arms.map(([when], k) => [when, innerOf(els[k]!)] as const), declare, emit);
 		});
 	}
+}
+
+type Arms = readonly (readonly [string | undefined, ToggleState])[];
+
+/** A value chosen by the first arm whose condition holds, the last arm (no condition) otherwise. */
+function pick(arms: readonly (readonly [string | undefined, string | undefined])[]): string {
+	const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+	return arms.reduceRight<string>((rest, [when, v], k) => (k === arms.length - 1 || when === undefined ? value(v) : `${when} ? ${value(v)} : ${rest}`), '');
+}
+
+/** Markup in an @if arm per state, the last in the final @else. */
+function armsOf(arms: readonly (readonly [string | undefined, string])[]): string {
+	return arms.reduceRight<string>((rest, [when, html], k) => (k === arms.length - 1 || when === undefined ? `<>${html}</>` : `@if (${when}) { <>${html}</> } @else { ${rest} }`), '');
 }
 
 /**
