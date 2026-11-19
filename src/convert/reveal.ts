@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Browser, BrowserContext, Page } from 'playwright';
+import type { Browser, BrowserContext, ElementHandle, Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
 import { captureEnv } from './capture-env.ts';
 import { finishAnimations } from '../check/capture.ts';
@@ -171,6 +171,25 @@ async function bodyHash(page: Page): Promise<string> {
 	});
 }
 
+// A cap against a page that never handles the event, not a wait for it: the page's acknowledgement ends it.
+const INPUT_MS = 30_000;
+
+/** The control the page holds now in place of one a render replaced: by its id, else by its tag, slot, text and order. */
+async function refind(page: Page, candidate: Candidate): Promise<ElementHandle<Element> | undefined> {
+	const handle = await page.evaluateHandle(
+		([key, sig, nth]): Element | null => {
+			const byId = key.startsWith('p:') ? null : document.getElementById(key);
+			if (byId && !byId.closest('template')) return byId;
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			let n = 0;
+			for (const el of document.body.querySelectorAll('*')) if (!el.closest('template') && sigOf(el) === sig && n++ === nth) return el;
+			return null;
+		},
+		[candidate.key, candidate.sig, candidate.nth] as const,
+	);
+	return handle.asElement() ?? undefined;
+}
+
 /** Uses one control and records the subtrees its use added to the page. */
 async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | string> {
 	await page.evaluate(() => {
@@ -194,7 +213,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		for (const i of path) el = el.children[i]!;
 		return el;
 	}, candidate.path);
-	const el = target.asElement();
+	let el = target.asElement();
 	if (!el) return 'not found';
 	if (candidate.action === 'download') {
 		await page.evaluate(() => {
@@ -238,30 +257,51 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		const after = await el.getAttribute('aria-label').catch(() => null);
 		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]!, ...(after !== null && after !== before ? { label: after } : {}) }] : [];
 	}
-	await el.evaluate((e) => {
-		const chain: Element[] = [];
-		for (let n = e.parentElement; n && n !== document.body; n = n.parentElement) chain.push(n);
-		(window as unknown as { __mmChain?: Element[] }).__mmChain = chain;
-		(window as unknown as { __mmTab?: Element }).__mmTab = e.getAttribute('role') === 'tab' ? e : undefined;
-	});
-	// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
-	await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-	await settleScroll(page);
-	// What changed while scrolling to the control (a late header update) is not the gesture's doing.
-	await page.evaluate(() => {
-		const w = window as unknown as { __mmAdded: unknown[]; __mmChanged: unknown[]; __mmAttrs: unknown[] };
-		w.__mmAdded = [];
-		w.__mmChanged = [];
-		w.__mmAttrs = [];
-	});
-	try {
-		if (candidate.action === 'click') await el.click({ timeout: 2000 });
-		else if (candidate.action === 'hover') {
-			await el.hover({ timeout: 2000 });
+	const ready = async (el: ElementHandle<Element>) => {
+		await el.evaluate((e) => {
+			const chain: Element[] = [];
+			for (let n = e.parentElement; n && n !== document.body; n = n.parentElement) chain.push(n);
+			(window as unknown as { __mmChain?: Element[] }).__mmChain = chain;
+			(window as unknown as { __mmTab?: Element }).__mmTab = e.getAttribute('role') === 'tab' ? e : undefined;
+		});
+		// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
+		await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+		await settleScroll(page);
+		// What changed while scrolling to the control (a late header update) is not the gesture's doing.
+		await page.evaluate(() => {
+			const w = window as unknown as { __mmAdded: unknown[]; __mmChanged: unknown[]; __mmAttrs: unknown[] };
+			w.__mmAdded = [];
+			w.__mmChanged = [];
+			w.__mmAttrs = [];
+		});
+	};
+	// The control has 2 s to be visible, stable and the target of the pointer; the event is then dispatched apart from that
+	// budget, since a busy page acknowledges it only once its main thread has handled it.
+	const act = async (el: ElementHandle<Element>) => {
+		if (candidate.action === 'hover') {
+			await el.hover({ trial: true, timeout: 2000 });
+			await el.hover({ force: true, timeout: INPUT_MS });
 			await el.focus().catch(() => {});
-		} else await el.click({ button: 'right', timeout: 2000 });
+			return;
+		}
+		const button = candidate.action === 'click' ? 'left' : 'right';
+		await el.click({ button, trial: true, timeout: 2000 });
+		await el.click({ button, force: true, timeout: INPUT_MS });
+	};
+	await ready(el);
+	try {
+		await act(el);
 	} catch (error) {
-		return `could not ${candidate.action}: ${(error as Error).message.split('\n')[0]}`;
+		// A render replaced the control between finding and pressing it: the one the page now holds in its place is used.
+		const again = (await el.evaluate((e) => e.isConnected).catch(() => false)) ? undefined : await refind(page, candidate);
+		if (!again) return `could not ${candidate.action}: ${(error as Error).message.split('\n')[0]}`;
+		el = again;
+		try {
+			await ready(el);
+			await act(el);
+		} catch (error) {
+			return `could not ${candidate.action}: ${(error as Error).message.split('\n')[0]}`;
+		}
 	}
 	await quiet(page, candidate.action === 'hover' ? 900 : candidate.extra ? 1500 : 300);
 	if (candidate.action === 'click') await keepCommandEmpty(page, '__mmAdded');
@@ -530,6 +570,8 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	const selectors = [...controls, ...extra].map(([selector]) => selector);
 	// Where each control was first seen shown, for the reveals recorded only at a later viewport.
 	const shown = new Map<string, string>();
+	// Why each control's use failed, at the first viewport it failed at.
+	const failed = new Map<string, string>();
 	let hidden = true;
 	for (const viewport of viewports) {
 		// A control another viewport could not show is the only reason to load the page again at this one.
@@ -565,8 +607,10 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 					waited = false;
 				}
 				const added = used.added;
-				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
-				else {
+				if (typeof added === 'string') {
+					skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
+					if (!failed.has(candidate.key)) failed.set(candidate.key, `${viewport.name}: ${added}`);
+				} else {
 					done.add(candidate.key);
 					if (added.length || used.changed) reveals.push({ key: candidate.key, path: candidate.path, sig: candidate.sig, nth: candidate.nth, action: candidate.action, viewport: viewport.name, added, ...(used.changed ? { changed: used.changed } : {}) });
 				}
@@ -576,7 +620,12 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		}
 	}
 	// The port mounts a layer tagged with a later viewport only there: a control shown earlier would open nothing.
-	const oneViewport = reveals.flatMap((r) => (shown.has(r.key) && shown.get(r.key) !== r.viewport ? [`${r.key} (shown at ${shown.get(r.key)}, recorded at ${r.viewport})`] : []));
+	const oneViewport = reveals.flatMap((r) => {
+		const at = shown.get(r.key);
+		if (!at || at === r.viewport) return [];
+		const why = failed.get(r.key);
+		return [`${r.key} (shown at ${at}, recorded at ${r.viewport}${why?.startsWith(`${at}: `) ? `; at ${why}` : ''})`];
+	});
 	if (lost.length || oneViewport.length) return { route, reveals, skipped, ...(lost.length ? { lost } : {}), ...(oneViewport.length ? { oneViewport } : {}) };
 	const capture: RevealCapture = { route, reveals, skipped, marks: marksOf(marks) };
 	await mkdir(dir, { recursive: true });
