@@ -88,7 +88,7 @@ export async function unchanged(env: SideEnv, prints: readonly Fingerprint[]): P
  * revalidation, else the same content hash), so a reused entry is what loading the old page again would record.
  */
 export class OldCache {
-	readonly counts: Record<CacheOutcome, number> = { hit: 0, miss: 0, changed: 0, 'stale-checker': 0 };
+	readonly counts: Record<CacheOutcome, number> & { written: number } = { hit: 0, miss: 0, changed: 0, 'stale-checker': 0, written: 0 };
 	readonly dir: string;
 	/** The run's options that shape every entry (the block list). */
 	readonly salt: unknown;
@@ -140,5 +140,6 @@ export class OldCache {
 		const temp = `${path}.${process.pid}.tmp`;
 		await writeFile(temp, gzipSync(serialize({ version: await checkerVersion(), prints, value })));
 		await rename(temp, path);
+		this.counts.written++;
 	}
 }

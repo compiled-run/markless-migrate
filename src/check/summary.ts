@@ -89,7 +89,7 @@ export function summarize(report: Report): string {
 	const red = report.routes.length - green - blocked - network - unverified;
 	if (report.cache && Object.values(report.cache).some(Boolean)) {
 		const c = report.cache;
-		lines.push('', `Old side from the cache (.migrate/cache): ${c.hit} reused because nothing the old page loads changed${c.changed ? `, ${c.changed} loaded again because a response changed` : ''}${c['stale-checker'] ? `, ${c['stale-checker']} loaded again for a new checker version` : ''}${c.miss ? `, ${c.miss} not cached yet` : ''}. Pass --no-cache to load every old page again.`);
+		lines.push('', `Old side from the cache (.migrate/cache): ${c.hit} reused because nothing the old page loads changed${c.changed ? `, ${c.changed} loaded again because a response changed` : ''}${c['stale-checker'] ? `, ${c['stale-checker']} loaded again for a new checker version` : ''}${c.miss ? `, ${c.miss} not cached yet` : ''}${c.written !== undefined ? `; ${c.written} written for later runs` : ''}. Pass --no-cache to load every old page again.`);
 	}
 	if (report.templates) {
 		const pages = report.templates.groups.reduce((n, g) => n + g.members.length, 0);

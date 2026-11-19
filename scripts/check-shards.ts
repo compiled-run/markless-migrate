@@ -377,9 +377,11 @@ export async function lostUploads(dir: string): Promise<string[]> {
 		const text = await readFile(join(log.parentPath, log.name), 'utf8');
 		const count = (re: RegExp) => files.filter((f) => f.isFile() && re.test(f.parentPath)).length;
 		const kept = Number(/--reuse: kept (\d+) results/.exec(text)?.[1] ?? 0);
-		const cached = Number(/Old side from the cache[^\n]*?(\d+) not cached yet/.exec(text)?.[1] ?? 0);
+		// What the shard wrote to the old-side cache; a miss it could not cache (a page holding a socket, say) writes nothing.
+		const line = /Old side from the cache[^\n]*/.exec(text)?.[0] ?? '';
+		const cached = Number(/(\d+) written for later runs/.exec(line)?.[1] ?? /(\d+) not cached yet/.exec(line)?.[1] ?? 0);
 		if (kept && !count(/\.migrate\/reuse$/)) lost.push(`${shard.name} kept ${kept} results for later runs, but its artifact has none`);
-		if (cached && !count(/\.migrate\/cache\/old$/)) lost.push(`${shard.name} recorded ${cached} old pages not cached before, but its artifact has no old-side entries`);
+		if (cached && !count(/\.migrate\/cache\/old$/)) lost.push(`${shard.name} wrote ${cached} old-side cache entries, but its artifact has none`);
 	}
 	return lost;
 }
