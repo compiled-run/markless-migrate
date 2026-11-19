@@ -657,12 +657,13 @@ jobs:
           key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
       - name: Join kept results
         if: inputs.reuse != 'false'
-        run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/check-shards.ts keep shards "$APP/.migrate/reuse" >> "$GITHUB_STEP_SUMMARY"
+      # Saved at the path the shards and check-select restore it to: a cache saved at another path is another cache, never restored.
       - name: Keep results for later runs
         if: inputs.reuse != 'false'
         uses: actions/cache/save@v4
         with:
-          path: reuse
+          path: ${{ env.APP }}/.migrate/reuse
           key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         with:
