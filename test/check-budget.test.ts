@@ -32,6 +32,6 @@ test('a route with no check time on one side is over budget, never passed', () =
 test('navigation timing is held to its own bound: a head that adds it is compared to base without it, and is over when it passes that bound', () => {
 	const head = { ...before[0]!, totalMs: before[0]!.totalMs + 200_000, navTimingMs: 200_000 };
 	assert.deepEqual(overBudget(before[0]!, head), []);
-	assert.match(overBudget(before[0]!, { ...head, totalMs: before[0]!.totalMs + 400_000, navTimingMs: 400_000 }).join('\n'), /^navigation timing: 400 s on the fixed page/m);
+	assert.match(overBudget(before[0]!, { ...head, totalMs: before[0]!.totalMs + 1_000_000, navTimingMs: 1_000_000 }).join('\n'), /^navigation timing: 1000 s on the fixed page/m);
 	assert.match(overBudget(before[0]!, { ...head, totalMs: before[0]!.totalMs * 2 + 200_000 }).join('\n'), /^whole run: /m, 'the rest of the run is still held to base');
 });

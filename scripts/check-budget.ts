@@ -20,10 +20,12 @@ const WORK = ['--max-journeys', '15', '--load-runs', '4', '--no-slow-network', '
 const BUSY = `<script>(function () { const rows = []; for (let i = 0; i < 3000; i++) { const p = document.createElement('p'); p.textContent = 'row ' + i; p.hidden = true; rows.push(p); } document.body.append(...rows); const deep = (n) => (n ? deep(n - 1) + Math.sqrt(n) : 0); for (let i = 0; i < 60; i++) { document.body.style.paddingBottom = (i % 7) + 'px'; void document.body.offsetHeight; deep(2000); } })();</script>`;
 
 /**
- * The most navigation timing's fixed work may take. Measured on a Mac mini with the page here: see the pull request that
- * set it; the bound is about twice that, as the runs are timed against a 20 s paint timeout and a slow runner stretches them.
+ * The most navigation timing's fixed work may take. Measured on a Mac mini on 2026-11-19: 409 s of a 782 s run. This
+ * page's two header links lead to the same content, so the original never shows a next page for the second: each run
+ * waits out its 20 s paint timeout and the cell stops after two runs a side, as it would on a real site. The bound is
+ * about twice that, for a slower runner.
  */
-export const NAV_TIMING_SECONDS = 300;
+export const NAV_TIMING_SECONDS = 900;
 
 /**
  * How much slower or heavier head may be than base. Measured on a Mac under other jobs' load (load average 7 to 44), each
