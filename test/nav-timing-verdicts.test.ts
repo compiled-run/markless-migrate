@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEFAULT_CELLS, DEFAULT_NAV_RUNS, MAX_NAV_RUNS, type NavCell, type NavClick, type NavRun, type NavStep, type RouteNavTiming } from '../src/check/nav-timing.ts';
+import { DEFAULT_CELLS, DEFAULT_NAV_RUNS, FULL_CELLS, MAX_NAV_RUNS, type NavCell, type NavClick, type NavRun, type NavStep, type RouteNavTiming } from '../src/check/nav-timing.ts';
 import { bandOf, byteRows, navRows, navTally, navTimingFailures, navTimingUnmeasured } from '../src/check/nav-timing-verdicts.ts';
 
 const STEPS: readonly NavStep[] = [
@@ -28,24 +28,27 @@ function runs(r: () => number, base: number, n = DEFAULT_NAV_RUNS, shift = 0, mo
 	});
 }
 const baseOf = (profile: string) => (profile === 'slow-4g' ? 600 : profile === 'cpu-4x' ? 250 : 120);
-const route = (r: () => number, shiftCell = -1, shift = 0) => timing(DEFAULT_CELLS.map((c, i) => cell(runs(r, baseOf(c.profile)), runs(r, baseOf(c.profile), DEFAULT_NAV_RUNS, i === shiftCell ? shift : 0), { ...c })));
+const route = (r: () => number, shiftCell = -1, shift = 0, cells = DEFAULT_CELLS) => timing(cells.map((c, i) => cell(runs(r, baseOf(c.profile)), runs(r, baseOf(c.profile), DEFAULT_NAV_RUNS, i === shiftCell ? shift : 0), { ...c })));
 
-test('identical sides: a route of every default cell goes red rarely, a check of 4 routes at most about 5% of the time', () => {
-	let red = 0;
-	const ROUTES = 240;
-	for (const seed of [1, 2, 3]) {
-		const r = seeded(seed);
-		for (let i = 0; i < ROUTES / 3; i++) if (navTimingFailures('/r', route(r)).length) red++;
+test('identical sides go red rarely on a route, with the default cells and with every cell: a check of 4 routes at most about 5% of the time', () => {
+	for (const cells of [DEFAULT_CELLS, FULL_CELLS]) {
+		let red = 0;
+		const ROUTES = 240;
+		for (const seed of [1, 2, 3]) {
+			const r = seeded(seed);
+			for (let i = 0; i < ROUTES / 3; i++) if (navTimingFailures('/r', route(r, -1, 0, cells)).length) red++;
+		}
+		// Holm at 5% / 4 per route bounds a route at 1.25%; 600-route runs over 3 seeds gave 0.8 to 1.2% (default) and 0.3 to 0.8% (every cell).
+		assert.ok(red / ROUTES <= 0.025, `${red} of ${ROUTES} identical routes red with ${cells.length} cells`);
 	}
-	// Holm at 5% / 4 per route bounds a route at 1.25%; the simulation gives 0.4 to 1%, a check of 4 routes 1.6 to 3.9%.
-	assert.ok(red / ROUTES <= 0.025, `${red} of ${ROUTES} identical routes red`);
 });
 
 test('100 ms added to one cell is caught on most routes, and named', () => {
 	const r = seeded(42);
 	let caught = 0;
 	for (let i = 0; i < 40; i++) if (navRows(route(r, 0, 100)).some((x) => x.verdict === 'slower' && x.mode === DEFAULT_CELLS[0]!.mode && x.profile === DEFAULT_CELLS[0]!.profile && x.browser === 'chromium')) caught++;
-	assert.ok(caught >= 28, `caught on ${caught} of 40 routes`);
+	// 600-route runs over 3 seeds: 96 to 97% with the default cells, 80 to 83% with every cell.
+	assert.ok(caught >= 34, `caught on ${caught} of 40 routes`);
 });
 
 test('a port press that never arrives is red, did not arrive, whatever the other presses did', () => {

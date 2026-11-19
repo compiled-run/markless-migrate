@@ -115,6 +115,8 @@ test('check rejects navigation timing flags it cannot honour: fewer runs than ca
 	assert.match((await check('--nav-timing-cell', 'firefox/cpu-4x/instant')).stderr, /only Chromium can slow its CPU/);
 	assert.match((await check('--no-nav-timing', '--nav-timing-runs', '8')).stderr, /--no-nav-timing leaves navigation timing out/);
 	assert.match((await check('--no-slow-network', '--nav-timing-runs', '5')).stderr, /at least 7/, '--no-slow-network does not switch navigation timing off');
+	assert.match((await check('--nav-timing-cells', 'most')).stderr, /--nav-timing-cells takes default or full/);
+	assert.match((await check('--nav-timing-cells', 'full', '--nav-timing-cell', 'chromium/fast/instant')).stderr, /both choose the cells/);
 });
 
 test('check --all with a route nothing gives a sample is not "all green": it counts the route unchecked and exits 1 unless --allow-unchecked', async () => {

@@ -34,20 +34,35 @@ export interface NavCellSpec {
 	readonly mode: PressMode;
 }
 
-/** Chromium every way on every network; Firefox and WebKit where their pointer and network can be emulated, WebKit on an iPhone for touch. */
-export const DEFAULT_CELLS: readonly NavCellSpec[] = [
+/** Every cell: Chromium every way on every network; Firefox and WebKit where their pointer and network can be emulated, WebKit on an iPhone for touch. A deliberate deep run (`--nav-timing-cells full`), about four times the default's cost. */
+export const FULL_CELLS: readonly NavCellSpec[] = [
 	...(['fast', 'slow-4g'] as const).flatMap((profile) => PRESS_MODES.map((mode) => ({ browser: 'chromium' as const, profile, mode }))),
 	...(['instant', 'dwell-250', 'touch'] as const).map((mode) => ({ browser: 'chromium' as const, profile: 'cpu-4x' as const, mode })),
 	...(['fast', 'slow-4g'] as const).flatMap((profile) => (['instant', 'dwell-250'] as const).map((mode) => ({ browser: 'firefox' as const, profile, mode }))),
 	...(['fast', 'slow-4g'] as const).flatMap((profile) => (['dwell-250', 'touch'] as const).map((mode) => ({ browser: 'webkit' as const, profile, mode }))),
 ];
 /**
- * Runs a side per cell. Runs are compared by their medians, and a route's rows share a twentieth of a check's 5%
- * significance per timed route (nav-timing-verdicts.ts): fewer than 7 runs a side can then never tell any row apart. In a
- * simulation with run-to-run machine noise shared by a run's presses, 21 cells and 4 routes, 8 runs went red on
- * identical sites in 1.6 to 3.2% of checks and caught 100 ms added to one cell 80% of the time (`test/nav-timing-verdicts.test.ts`).
+ * Runs a side per cell. Runs are compared by their medians, and the check's 5% is shared by the routes it times and then
+ * by each route's rows (nav-timing-verdicts.ts): fewer than 7 runs a side can never tell a row apart. In a simulation
+ * with run-to-run machine noise shared by a run's presses and 4 routes, 8 runs with the default cells went red on
+ * identical sites in 3.3 to 4.6% of checks and caught 100 ms added to one cell on 96 to 97% of routes (every cell: 1.3 to
+ * 3.3%, 80 to 83%); see `test/nav-timing-verdicts.test.ts`.
  */
 export const DEFAULT_NAV_RUNS = 8;
+
+/**
+ * What every check runs: does it feel as fast as the original. A hand resting 250 ms in Chromium on a fast line and on
+ * slow 4G, the instant press on a fast line, a finger on an iPhone (WebKit) on both, and Firefox resting on a fast line.
+ */
+export const DEFAULT_CELLS: readonly NavCellSpec[] = [
+	{ browser: 'chromium', profile: 'fast', mode: 'dwell-250' },
+	{ browser: 'chromium', profile: 'slow-4g', mode: 'dwell-250' },
+	{ browser: 'chromium', profile: 'fast', mode: 'instant' },
+	{ browser: 'webkit', profile: 'fast', mode: 'touch' },
+	{ browser: 'webkit', profile: 'slow-4g', mode: 'touch' },
+	{ browser: 'firefox', profile: 'fast', mode: 'dwell-250' },
+];
+export type NavCellSet = 'default' | 'full' | 'named';
 /** The most runs a side: the noise band splits the original's runs every way into halves, C(16, 8) = 12,870 splits at most. */
 export const MAX_NAV_RUNS = 16;
 /** A route's navigation timing stops here and reports what it has: cells not reached are not checked, never green. */
@@ -126,6 +141,8 @@ export interface NavCell extends NavCellSpec {
 
 export interface RouteNavTiming {
 	readonly route: string;
+	/** Which cells ran: the default six, every cell, or ones named with --nav-timing-cell. */
+	readonly set?: NavCellSet;
 	/** How many routes the check times: each shares the check's significance (nav-timing-verdicts.ts). */
 	readonly layouts?: number;
 	readonly cells: readonly NavCell[];
@@ -134,6 +151,8 @@ export interface RouteNavTiming {
 
 export interface NavTimingOptions {
 	readonly cells?: readonly NavCellSpec[];
+	/** Every cell instead of the default six (ignored when `cells` names some). */
+	readonly full?: boolean;
 	/** Runs a side in each cell, old and new taken in turn; at least 4, so the old runs can be split to measure their own noise. */
 	readonly runs?: number;
 	/** At most this many routes (one per layout) are timed. */
@@ -452,7 +471,8 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 	const started = Date.now();
 	const deadline = started + (options.deadlineMs ?? NAV_DEADLINE_MS);
 	const runs = Math.min(MAX_NAV_RUNS, Math.max(4, options.runs ?? DEFAULT_NAV_RUNS));
-	const specs = options.cells ?? DEFAULT_CELLS;
+	const specs = options.cells ?? (options.full ? FULL_CELLS : DEFAULT_CELLS);
+	const set: NavCellSet = options.cells ? 'named' : options.full ? 'full' : 'default';
 	const cells: NavCell[] = [];
 	const groups = new Map<string, NavCellSpec[]>();
 	for (const spec of specs) (groups.get(`${spec.browser} ${spec.profile}`) ?? groups.set(`${spec.browser} ${spec.profile}`, []).get(`${spec.browser} ${spec.profile}`)!).push(spec);
@@ -527,5 +547,5 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 			await throttle.close();
 		}
 	}
-	return { route, cells, ms: Date.now() - started, ...(options.layouts ? { layouts: options.layouts } : {}) };
+	return { route, set, cells, ms: Date.now() - started, ...(options.layouts ? { layouts: options.layouts } : {}) };
 }

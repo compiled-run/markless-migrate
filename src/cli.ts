@@ -584,6 +584,7 @@ const TIMING_FLAGS = {
 	'nav-timing-runs': { type: 'string' },
 	'nav-timing-layouts': { type: 'string' },
 	'nav-timing-cell': { type: 'string', multiple: true },
+	'nav-timing-cells': { type: 'string' },
 	'no-waste': { type: 'boolean' },
 	'waste-profile': { type: 'string' },
 	'js-budget': { type: 'string' },
@@ -629,8 +630,11 @@ function requireNetworkBrowsers(load: CheckOptions['load'], values: { only?: str
 	if (error) fail(error);
 }
 
-function navTimingOptions(values: { 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string; 'nav-timing-cell'?: string[] }): NavTimingOptions | undefined {
-	if (values['no-nav-timing'] && (values['nav-timing-runs'] !== undefined || values['nav-timing-layouts'] !== undefined || values['nav-timing-cell']?.length)) fail('--no-nav-timing leaves navigation timing out: --nav-timing-runs, --nav-timing-layouts and --nav-timing-cell have nothing to set');
+function navTimingOptions(values: { 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string; 'nav-timing-cell'?: string[]; 'nav-timing-cells'?: string }): NavTimingOptions | undefined {
+	if (values['no-nav-timing'] && (values['nav-timing-runs'] !== undefined || values['nav-timing-layouts'] !== undefined || values['nav-timing-cell']?.length || values['nav-timing-cells'] !== undefined)) fail('--no-nav-timing leaves navigation timing out: --nav-timing-runs, --nav-timing-layouts, --nav-timing-cell and --nav-timing-cells have nothing to set');
+	const set = values['nav-timing-cells'];
+	if (set !== undefined && set !== 'default' && set !== 'full') fail('--nav-timing-cells takes default or full');
+	if (set !== undefined && values['nav-timing-cell']?.length) fail('--nav-timing-cells and --nav-timing-cell both choose the cells: give one');
 	if (values['no-nav-timing']) return undefined;
 	const whole = (flag: 'nav-timing-runs' | 'nav-timing-layouts', least: number, why: string) => {
 		const raw = values[flag];
@@ -645,10 +649,10 @@ function navTimingOptions(values: { 'no-nav-timing'?: boolean; 'nav-timing-runs'
 	const cells = values['nav-timing-cell']?.map(parseNavCell);
 	const bad = cells?.find((c): c is string => typeof c === 'string');
 	if (bad) fail(`--nav-timing-cell ${bad}`);
-	return { ...(runs ? { runs } : {}), ...(layouts ? { layouts } : {}), ...(cells?.length ? { cells: cells as NavCellSpec[] } : {}) };
+	return { ...(runs ? { runs } : {}), ...(layouts ? { layouts } : {}), ...(cells?.length ? { cells: cells as NavCellSpec[] } : {}), ...(set === 'full' ? { full: true } : {}) };
 }
 
-function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean; 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string; 'nav-timing-cell'?: string[] } & SlowNetworkFlags & WasteFlags): CheckOptions['load'] {
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean; 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string; 'nav-timing-cell'?: string[]; 'nav-timing-cells'?: string } & SlowNetworkFlags & WasteFlags): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
 	const count = (flag: 'load-runs' | 'psi-runs') => {
 		const raw = values[flag];

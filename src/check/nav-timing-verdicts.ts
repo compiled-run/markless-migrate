@@ -274,8 +274,9 @@ export function navTimingLines(timing: RouteNavTiming | { readonly unavailable: 
 		.join('; ');
 	const ms = (v: number | undefined) => (v === undefined ? '-' : `${Math.round(v)} ms`);
 	const cost = rows.some((r) => r.verdict === 'slower' || r.verdict === 'same') ? aheadCost(timing) : undefined;
+	const set = timing.set === 'full' ? 'every cell' : timing.set === 'named' ? `the ${timing.cells.length} cells named with --nav-timing-cell` : `the default ${timing.cells.length} cells, not the full matrix (--nav-timing-cells full)`;
 	return [
-		`Navigation timing, press to next page shown, original -> port (${Math.round(timing.ms / 60000)} min): ${tally}`,
+		`Navigation timing, press to next page shown, original -> port, ${set} (${Math.round(timing.ms / 60000)} min): ${tally}`,
 		...sorted.map((r) => `  ${r.browser} ${r.profile} ${r.mode} ${r.kind}: ${ms(r.old)} -> ${ms(r.new)}${r.gap !== undefined ? ` (${r.gap > 0 ? '+' : ''}${Math.round(r.gap)}, band ${Math.round(r.band)})` : ''}, served without a fetch ${pct(r.served.old)} -> ${pct(r.served.new)}, page data before the press ${kb(r.bytesBefore.old)} -> ${kb(r.bytesBefore.new)}, after ${kb(r.bytesAfter.old)} -> ${kb(r.bytesAfter.new)}${r.otherHosts ? `, data host not matched: ${r.otherHosts.join(', ')}` : ''}: ${r.verdict}${r.cause ? ` (${r.cause})` : ''}${r.reason ? ` (${r.reason})` : ''}`),
 		...listed,
 		...byteRows(timing).map((b) => `  page data fetched ahead of the presses, ${b.browser} ${b.profile}: ${kb(b.old)} -> ${kb(b.new)}${b.over ? `, over ${BYTES_REPORT_FACTOR}x (reported, not judged: no noise bound for bytes yet)` : ''}`),
