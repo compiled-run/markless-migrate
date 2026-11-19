@@ -60,6 +60,7 @@ import { checkResponsiveness, type ResponsivenessOptions } from './responsivenes
 import { deadlineResult, destructiveCoverage, loadTimeout, partialResult, probesOnly, roleCheck, stopped, unreachableAlike, unreachableTried, type Deadline, type JourneysRow, type RouteContext, type RouteStages } from './route-judge.ts';
 import { selfUrlFailures } from './self-urls.ts';
 import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
+import { DEFAULT_NAV_LAYOUTS, measureNavTiming, navTimedRoutes } from './nav-timing.ts';
 import type { ClientFact, SourceFacts } from './source-facts.ts';
 import { mapRules } from './sourcemap.ts';
 import { stateNoise, type StatesRequest, type StatesRow, type StatesViewportRow } from './states-compare.ts';
@@ -1049,6 +1050,20 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				const measured = bypassed ? undefined : await measureRoutesNetwork({ old: options.oldOrigin, new: options.newOrigin }, [...loads.keys()], { afterAnswerMs: CHECK_AFTER_ANSWER_MS, timeoutMs: CHECK_RUN_TIMEOUT_MS, ...networkOptions });
 				for (const [route, load] of loads) loads.set(route, { ...load, network: measured?.get(route) ?? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } });
 				for (const [route, network] of measured ?? []) if (network.ms) profileLine(route, 'slow network', network.ms);
+			}
+			const navOptions = options.load?.navTiming;
+			if (navOptions) {
+				// The site's largest template groups, chosen over every page so each shard of a site times the same ones (those it holds).
+				const timed = navTimedRoutes(groups, [...loads.keys()], navOptions.layouts ?? DEFAULT_NAV_LAYOUTS);
+				for (const route of loads.keys()) {
+					const load = loads.get(route)!;
+					if (bypassed) loads.set(route, { ...load, navTiming: { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } });
+					else if (timed.includes(route)) {
+						const navTiming = await measureNavTiming({ old: options.oldOrigin, new: options.newOrigin }, route, navOptions).catch((error: Error) => ({ unavailable: `not measured: ${error.message.split('\n')[0]}`, failed: true as const }));
+						loads.set(route, { ...load, navTiming });
+						if ('ms' in navTiming) profileLine(route, 'navigation timing', navTiming.ms);
+					}
+				}
 			}
 			const wasteOptions = options.load?.waste;
 			if (wasteOptions) {

@@ -170,6 +170,8 @@
 		"test/motion-canvas.test.ts": {"shard":3,"seconds":1},
 		"test/motion.test.ts": {"shard":4,"seconds":1},
 		"test/nav-parity.test.ts": {"shard":5,"seconds":1},
+		"test/nav-timing-verdicts.test.ts": {"shard":5,"seconds":30},
+		"test/nav-timing.test.ts": {"shard":5,"seconds":200},
 		"test/network.test.ts": {"shard":1,"seconds":1},
 		"test/no-questions.test.ts": {"shard":4,"seconds":2},
 		"test/noise.test.ts": {"shard":2,"seconds":1},

@@ -139,6 +139,59 @@ route's slowest control and a table per route; `report.json` carries the same as
 (`interaction` and `navigation`, each `desktop` and `throttled` with `old`, `new`, `oldAt`, `newAt`, and
 `routes`), and each route's full timings under its own `responsiveness`. `--no-responsiveness` leaves it out.
 
+### Navigation timing: from the press on a link to the next page
+
+Part of page load (`src/check/nav-timing.ts`, `src/check/nav-timing-verdicts.ts`). On the representatives of the
+site's largest template groups (`--nav-timing-layouts`, default 4, chosen over every page of the site so each shard
+times the same ones), a fresh visitor loads the page and follows two links of each shared navigation (the sidebar, a
+nav, the header; at phone width a nav, the header and the content), each to a page not seen yet, then comes back to
+the first of them by its link: first visits and a revisit. The links are chosen on the old page by a hash of their
+address, the same on every run. Each press is timed from the browser's own `pointerdown` (or `touchstart`) to the
+frame after the new page's heading (or its main content) shows, across a full page load too (both clocks are the
+documents' `timeOrigin`).
+
+Every cell is measured the same way on both sides, old and new taken in turn, `--nav-timing-runs` a side (default 4),
+after one unmeasured run a side that wakes both servers and fills their caches, so a fresh deploy is not compared cold
+against one that has been up for months:
+
+| Browser | Network | Press |
+| --- | --- | --- |
+| Chromium | fast line (50 Mbit/s, 40 ms), slow 4G (1.6 Mbit/s, 150 ms) | instant, rest 100, 250, 400 ms, touch |
+| Chromium | fast line, CPU 4x slower | instant, rest 250 ms, touch |
+| Firefox | fast line, slow 4G | instant, rest 250 ms |
+| WebKit | fast line, slow 4G | rest 250 ms, touch on an iPhone |
+
+The network is the throttling proxy every byte crosses, the same in every browser. `instant` moves the pointer and
+presses in one instant (what a script's click does, the worst case); `rest <ms>` arrives and rests before pressing, as
+a hand does (instant.page reports that half the links hovered for 65 ms are then clicked, and that fetching from that moment leaves more than 300 ms before the click on average); `touch`
+holds a finger down 100 ms before lifting it in Chromium, and taps in WebKit, which cannot hold a touch. The CPU is
+slowed in Chromium only.
+
+For each press check records what the visitor waited on: whether the page's data was fetched ahead and had arrived,
+was still arriving, had been cancelled, or was never asked for; whether the press fetched it again; the bytes fetched
+before the press (since the step before settled, through scrolling to the link and resting on it) and from the press to
+the paint; and long animation frames in between (Chromium). Which requests carry a page is learned from the run's
+requests as convert learns it ([convert.md](convert.md#how-the-original-fetches-pages-ahead-of-a-click)).
+
+Verdict, per cell and for first visits and revisits apart: red when the new median is later than the old one by more
+than the old page's own noise (the 90th percentile gap between the medians of two halves of its presses), two 60 Hz
+frames, or 5% of its median, whichever is most, and a one-sided Mann-Whitney test puts the two sides' presses apart,
+the route's rows sharing one significance by Holm's step-down. On 200 simulated routes of 9 cells with the same
+distribution on both sides, at most 6% go red (asserted in `test/nav-timing-verdicts.test.ts`). A red row names its
+cause, the first that explains it: `refetched on revisit` (the old page showed it again with no fetch, the new one
+fetched), `prefetch cancelled`, `prefetched too late` (fetched ahead but still arriving at the press), `not prefetched`,
+`main thread` (long frames account for half the gap or more), `larger payload` (the new page's data over 1.25 times
+the old one's), else `unexplained`. A press the new page never answers is red. Also red: bytes fetched before the
+presses over 1.5 times the old page's, where the old page fetches ahead at all. A row without enough old presses to
+tell its noise leaves the route not checked, never green.
+
+The summary leads with the resting mouse and touch rows, the instant press last, and counts per network the rows where
+the new page is faster, level and slower, with the median gap. Where the new page is slower or only level, it also
+estimates what fetching ahead as much as the old page would cost it before the presses, from the old page's bytes
+ahead and each side's page data size. `report.json` keeps every press under the route's `load.navTiming`. About an hour
+of one runner per layout. `--no-nav-timing` leaves it out, and so does `--no-slow-network`, as it times through the same
+throttling proxy.
+
 ### Widget probes: what a library's widgets do between the clicks
 
 Journeys compare what one use of a control changes. A library's widget also has behaviour between and

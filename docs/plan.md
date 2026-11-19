@@ -610,3 +610,22 @@ data at `{path}?_rsc=*`, fetched as links come into view on every network condit
 - A page that fetches on a timer later than 3 s after its load went quiet is read as fetching during a scroll.
 - Touch (`touchstart`) is not tried apart from the pointer; a hover delay over 500 ms is read as no hover prefetch;
   the revisit is about 2 s after leaving, so a client cache shorter than that is not seen.
+
+## Navigation timing (2026-11-19)
+
+Built: `check` times in-page navigations old against new from the press to the next page shown, per browser, network
+and pointer behaviour, first visits and revisits apart ([check.md](check.md#navigation-timing-from-the-press-on-a-link-to-the-next-page)).
+Proven by `test/nav-timing.test.ts` (a port that fetches only on the click is red against a router that fetched on
+hover, as `not prefetched` and its revisits as `refetched on revisit`; the same router on both sides is green) and
+`test/nav-timing-verdicts.test.ts` (identical sides over 200 simulated routes, each cause, the byte factor, a press
+never answered).
+
+### What still slips through, from this work
+
+- Two links per shared navigation and one revisit, on at most four layouts: a link elsewhere on the page (a card in the
+  content, a footer) is not timed, nor a revisit more than about a second after leaving.
+- The next page counts as shown when its heading (or the start of its main content) changes: a router that swaps the
+  heading before the content is timed early.
+- Firefox and WebKit report no long animation frames, so `main thread` is named only from Chromium's rows; WebKit's
+  touch is a tap with no contact time; the CPU is slowed in Chromium only.
+- About an hour of one runner per layout with every cell; a site with many layouts times only the four largest.
