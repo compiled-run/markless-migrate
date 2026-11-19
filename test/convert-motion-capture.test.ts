@@ -55,6 +55,47 @@ test('a page whose scripts never ask for the motion preference is captured once:
 	}
 });
 
+// recharts' line: drawn a frame at a time for 1.5 s after it mounts, its labels added once the drawing ends.
+const DRAWN = `<!doctype html><html lang="en"><head><title>Chart</title></head><body><svg width="300" height="100"><path id="line" d="M0,50" stroke-dasharray="0px 300px"></path><g id="labels"></g></svg>
+<script>const start = performance.now(); const line = document.getElementById('line');
+function frame(now) { const t = Math.min(1, (now - start) / 1500); line.setAttribute('stroke-dasharray', Math.round(t * 300) + 'px 300px'); if (t < 1) requestAnimationFrame(frame); else document.getElementById('labels').innerHTML = '<text>186</text><text>305</text>'; }
+requestAnimationFrame(frame);</script></body></html>`;
+
+test('the settled document is read once the page has stopped drawing, so a chart drawn by its script has its whole line and its labels', { timeout: 120_000 }, async () => {
+	const { server, origin } = await serve(DRAWN);
+	const dir = await mkdtemp(join(tmpdir(), 'mm-motion-capture-'));
+	const browser = await chromium.launch();
+	try {
+		const desktop = { name: 'desktop', width: 1280, height: 800, isMobile: false } as const;
+		const captured = await capturePage(browser, origin, '/', dir, [desktop]);
+		assert.match(captured.settled.desktop!, /stroke-dasharray="300px 300px"/);
+		assert.match(captured.settled.desktop!, /<g id="labels"><text>186<\/text><text>305<\/text><\/g>/);
+		// A capture read before it waited for the drawing is taken again.
+		const file = join(dir, (await readdir(dir))[0]!);
+		const { scripts: _, ...stale } = { ...JSON.parse(await readFile(file, 'utf8')), settled: { desktop: '<g id="labels"></g>' } };
+		await import('node:fs/promises').then((fs) => fs.writeFile(file, JSON.stringify(stale)));
+		assert.match((await capturePage(browser, origin, '/', dir, [desktop])).settled.desktop!, /<text>186<\/text>/);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a page that never stops drawing is read once the wait for its scripts runs out', { timeout: 120_000 }, async () => {
+	const { server, origin } = await serve('<!doctype html><html lang="en"><head><title>Spinner</title></head><body><p id="t">0</p><script>let n = 0; (function frame() { document.getElementById("t").textContent = String(++n); requestAnimationFrame(frame); })();</script></body></html>');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-motion-capture-'));
+	const browser = await chromium.launch();
+	try {
+		const captured = await capturePage(browser, origin, '/', dir, [{ name: 'desktop', width: 1280, height: 800, isMobile: false }]);
+		assert.match(captured.settled.desktop!, /<p id="t">\d+<\/p>/);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test('no convert module opens the old site with the check\'s own reduced-motion environment: every one runs through captureEnv', async () => {
 	const dir = new URL('../src/convert/', import.meta.url);
 	const offenders: string[] = [];

@@ -33,6 +33,15 @@ test('a recharts chart: the active point in state(), the tooltip and the SVG\'s 
 	assert.deepEqual(plan.bind(wrapper)?.declare, ['let chart0 = state(-1);', 'const chart0t = [["March"],["April"]];', 'const chart0w0v0a0 = [["5","6"],["15","7"]];', 'const chart0w0v0c0 = ["layer","layer recharts-active-shape"];']);
 });
 
+test('a recorded chart its settled document does not hold is named, not dropped', () => {
+	// The settled document read before recharts drew the labels the recording's text has.
+	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"><g class="layer"></g></svg></div></body>');
+	const plan = new ChartPlan();
+	const variant = { mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>Jan</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 1 };
+	assert.equal(plan.add(body(doc), [{ sig: 'div||JanFeb186305', nth: 2, width: 100, height: 50, view: [5, 5, 90, 40], variants: [variant], drivers: [], index: 0, widths: [] }], () => undefined, (h) => h), 0);
+	assert.deepEqual(plan.unplaced, ['chart 1 ("JanFeb186305"): no element of the settled document has its text']);
+});
+
 test('a tooltip the old page shows at rest (recharts\' defaultIndex) starts the chart\'s state() on the point it shows', () => {
 	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"><g class="layer"></g></svg><div class="recharts-tooltip-wrapper" style="visibility: visible; transform: translate(20px, 5px);"><div><span>April</span></div></div></div></body>');
 	const wrapper = find(body(doc), (el) => attr(el, 'class') === 'recharts-wrapper')!;

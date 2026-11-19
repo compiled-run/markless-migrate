@@ -176,6 +176,23 @@ export async function settle(page: Page, capMs: number): Promise<void> {
 	}
 }
 
+/**
+ * Waits, at most `capMs`, until the page's scripts have stopped drawing: no animation frame or finite animation pending,
+ * no timer due within the wait, and the document unchanged for STILL_MS. Unlike `settle`, a timer due later does not
+ * hold it to the cap. Returns how long it waited, or undefined where the cap was reached.
+ */
+export async function scriptsStill(page: Page, capMs: number): Promise<number | undefined> {
+	const start = Date.now();
+	for (;;) {
+		const left = capMs - (Date.now() - start);
+		if (left <= 0) return undefined;
+		const seen = await page.evaluate((within) => (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(within), left).catch(() => undefined);
+		if (!seen) throw new Error('scriptsStill: the page has no settle tracker (trackSettling on its context before it loads)');
+		if (seen.busy === 0 && seen.still >= STILL_MS) return Date.now() - start;
+		await page.waitForTimeout(Math.min(POLL_MS, left));
+	}
+}
+
 /** Waits until no request is open on the page and none has ended for STILL_MS, at most `capMs`: what a load still fetches. */
 export async function requestsDone(page: Page, capMs: number): Promise<void> {
 	const net = network.get(page);

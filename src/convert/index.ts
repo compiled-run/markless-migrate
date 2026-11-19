@@ -2133,12 +2133,15 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const charts = new ChartPlan();
 	let chartCount = 0;
+	const unplacedCharts: string[] = [];
 	for (const [route, p] of prepared) {
 		const placed = charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+		for (const why of charts.unplaced.splice(0)) unplacedCharts.push(`${route}: ${why}`);
 		// The charts' CSS rides the page's own stylesheet, as its body styles do: one request less before first paint.
 		if (placed) p.bodyCss.unshift(CHART_CSS);
 		chartCount += placed;
 	}
+	if (unplacedCharts.length) throw new Error(`convert: recorded recharts charts not placed on their pages, which would ship without their tooltips:\n  ${unplacedCharts.join('\n  ')}`);
 	if (chartCount) {
 		log(`recharts charts on Markless state: ${chartCount} charts`);
 		templatePorts.plan('recharts');
