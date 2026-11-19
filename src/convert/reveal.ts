@@ -464,7 +464,7 @@ async function reload(open: Open, load: () => Promise<Open>): Promise<Open> {
 const foundAgain = (found: readonly Candidate[], of: Candidate): Candidate | undefined => (of.key.startsWith('p:') ? undefined : found.find((c) => c.key === of.key && c.action === of.action)) ?? found.find((c) => c.sig === of.sig && c.nth === of.nth && c.action === of.action);
 
 // A page loaded again can be read before its client marks its controls (Base UI's aria-expanded comes with hydration).
-const LATE_MARKS_MS = 5000;
+export const LATE_MARKS_MS = 5000;
 async function waitFound(page: Page, find: (found: readonly Candidate[]) => Candidate | undefined, extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[]): Promise<{ found: Candidate[]; candidate: Candidate | undefined }> {
 	const until = Date.now() + LATE_MARKS_MS;
 	for (;;) {
