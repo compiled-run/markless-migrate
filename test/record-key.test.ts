@@ -213,6 +213,8 @@ test('editing one declaration changes the version of exactly the kinds whose cod
 		await writeFile(join(app, 'lib/site/controls.json'), '[]');
 		await writeFile(join(app, '.migrate/inventory.json'), '{"routes":[]}');
 		assert.deepEqual(changed(await read()), [], 'the inventory chooses routes, not what a route records');
+		await writeFile(join(app, '.migrate/usage.json'), '{"generatedAt":"another time"}');
+		assert.deepEqual(changed(await read()), [], 'the usage inventory only decides whether the table and form recorders run, and a re-plan writes it with a new time');
 		const variable = base.captures!.env[0]!;
 		process.env[variable] = '12345';
 		try {
