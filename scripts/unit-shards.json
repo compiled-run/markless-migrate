@@ -188,7 +188,7 @@
 		"test/popper-options.test.ts": {"shard":5,"seconds":1},
 		"test/popup-reads.test.ts": {"shard":1,"seconds":1},
 		"test/prefetch-facts.test.ts": {"shard":5,"seconds":1},
-		"test/prefetch-record.test.ts": {"shard":5,"seconds":150},
+		"test/prefetch-record.test.ts": {"shard":5,"seconds":250},
 		"test/probe-pack.test.ts": {"shard":2,"seconds":1},
 		"test/probe-prefix.test.ts": {"shard":5,"seconds":69},
 		"test/probe-reuse.test.ts": {"shard":3,"seconds":1},
