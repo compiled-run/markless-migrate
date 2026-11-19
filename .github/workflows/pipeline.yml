@@ -212,6 +212,9 @@ jobs:
     if: inputs.build-url == '' && inputs.converted-from == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      # The old site every recording is made of: in every recording's key (src/convert/record-key.ts).
+      MIGRATE_ORIGINAL_ID: ${{ needs.original.outputs.id }}
     outputs:
       capture: ${{ steps.records.outputs.matrix }}
       emit-key: ${{ steps.emit.outputs.key }}
@@ -311,12 +314,12 @@ jobs:
           if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$store"; fi
           t=$(date +%s)
           if [ -d "$RUNNER_TEMP/taken" ]; then cp -R "$RUNNER_TEMP/taken/." "$store/"; fi
-          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out" ${{ inputs.captures-from != '' && '"$RUNNER_TEMP/taken"' || '' }})
+          result=$(node scripts/pipeline.ts record-split "$out/all/shard-1.txt" http://localhost:4000 "$store" "$SHARDS" "$out" "$APP" ${{ inputs.captures-from != '' && '"$RUNNER_TEMP/taken"' || '' }})
           echo "$result"
           echo "matrix=$(node -p 'JSON.stringify(JSON.parse(process.argv[1]).matrix)' "$result")" >> "$GITHUB_OUTPUT"
           echo "keys=$(node -p 'JSON.parse(process.argv[1]).keys' "$result")" >> "$GITHUB_OUTPUT"
           cp "$APP"/.migrate/*.json "$out/state/"
-          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "capture" $(node -p 'const r=JSON.parse(process.argv[1]);`pages=${r.pages} kept=${r.hits} to-record=${r.misses} shards=${r.matrix.length}${r.keyed?"":" keyed=no(recordings-not-keyed-on-this-commit)"}`' "$result") keying-seconds=$(( $(date +%s) - t ))
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/prepare.jsonl" "capture" $(node -p 'const r=JSON.parse(process.argv[1]);`pages=${r.pages} kept=${r.hits} to-record=${r.misses} shards=${r.matrix.length} stale=${Object.entries(r.stale??{}).map(([k,n])=>`${k}:${n}`).join("/")||"none"}${r.keyed?"":" keyed=no(recordings-not-keyed-on-this-commit)"}`' "$result") keying-seconds=$(( $(date +%s) - t ))
       - name: Key the emit
         id: emit
         env:
@@ -353,6 +356,8 @@ jobs:
     if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 345
+    env:
+      MIGRATE_ORIGINAL_ID: ${{ needs.original.outputs.id }}
     strategy:
       fail-fast: false
       # Every shard at once: the capture's wall time is its slowest shard, not waves of ten.
@@ -369,6 +374,14 @@ jobs:
         with:
           name: pl-inputs
           path: ${{ runner.temp }}/inputs
+      # The store: a page whose recordings of one kind are stale records that kind again and reads back the rest.
+      - if: needs.prepare.outputs.store-run != '' && !inputs.fresh
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.store-name }}
+          run-id: ${{ needs.prepare.outputs.store-run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/store-archive
       - name: The original
         uses: ./.github/actions/old-site
         with:
@@ -384,19 +397,24 @@ jobs:
         run: |
           set -euo pipefail
           t=$(date +%s)
-          mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
+          mkdir -p "$APP/.migrate/convert" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
+          if [ -f "$RUNNER_TEMP/store-archive/store.tar.zst" ]; then tar --zstd -xf "$RUNNER_TEMP/store-archive/store.tar.zst" -C "$APP/.migrate/convert"; fi
+          # Only what this shard writes is its capture: the store's files keep their packed times, older than this mark.
+          touch "$RUNNER_TEMP/capture-start"
           status=0
           env CAPTURE_ONLY=1 CONCURRENCY=3 RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || status=$?
-          rm -f "$APP/.migrate/convert/sources.json" "$APP/.migrate/convert/report.json"
+          mkdir -p "$RUNNER_TEMP/captured-out"
+          (cd "$APP/.migrate/convert" && find . -type f -newer "$RUNNER_TEMP/capture-start" ! -name report.json -print0 | tar --null -T - -cf - | tar -xf - -C "$RUNNER_TEMP/captured-out")
           if [ "$status" -ne 0 ]; then tail -n 80 "$RUNNER_TEMP/capture.txt"; exit "$status"; fi
           tail -n 15 "$RUNNER_TEMP/capture.txt"
-          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") failed=$(grep -c '^not captured ' "$RUNNER_TEMP/capture.txt" || true) seconds=$(( $(date +%s) - t ))
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") failed=$(grep -c '^not captured ' "$RUNNER_TEMP/capture.txt" || true) recordings-written=$(find "$RUNNER_TEMP/captured-out" -type f ! -path '*/visits/*' ! -path '*/costs/*' ! -name format.json | wc -l) seconds=$(( $(date +%s) - t ))
       # What a failed shard finished is kept too: a run given this one's captures-from records only the pages missing.
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pl-captures-${{ matrix.shard }}
-          path: ${{ env.APP }}/.migrate/convert
+          path: ${{ runner.temp }}/captured-out
+          include-hidden-files: true
           retention-days: 7
       - if: always()
         uses: actions/upload-artifact@v4
@@ -413,6 +431,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
+      MIGRATE_ORIGINAL_ID: ${{ needs.original.outputs.id }}
       # A pull request's run proves a kept converted app (and its parts copied again) equal to a convert of the same inputs.
       VERIFY: ${{ inputs.verify-emit || github.event_name == 'pull_request' }}
     steps:
@@ -502,7 +521,10 @@ jobs:
           only=""
           [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/all/shard-1.txt"
           t=$(date +%s)
+          touch "$RUNNER_TEMP/convert-start"
           /usr/bin/time -v env ONLY="$only" RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
+          # Recordings this convert made itself, by kind (<kind>/<key>/<file>): a capture shard should have made them.
+          recorded=$(cd "$store" && find . -mindepth 3 -type f -newer "$RUNNER_TEMP/convert-start" ! -path './visits/*' ! -path './costs/*' ! -path './prerender/*' | cut -d/ -f2 | sort | uniq -c | awk '{printf "%s%s:%s", (NR>1?"/":""), $2, $1}')
           tail -n 30 "$RUNNER_TEMP/convert.txt"
           node scripts/pipeline.ts copied-parts "$APP" > "$RUNNER_TEMP/copied-parts.txt"
           if [ -d "$RUNNER_TEMP/kept-app" ]; then
@@ -511,12 +533,12 @@ jobs:
             node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit verify="$verdict"
             [ "$verdict" = same ] || { echo "::error::The kept converted app differs from a convert of the same inputs"; exit 1; }
           fi
-          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted=made seconds=$(( $(date +%s) - t )) peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024 ))
+          node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit converted=made recorded-here="${recorded:-none}" seconds=$(( $(date +%s) - t )) peak-mb=$(( $(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024 ))
       - name: Keep the recordings for the next run
         if: needs.prepare.outputs.emit-run == ''
         run: |
           set -euo pipefail
-          pruned=$(node scripts/pipeline.ts prune "$APP/.migrate/convert" "$RUNNER_TEMP/inputs/record-keys.json")
+          pruned=$(node scripts/pipeline.ts prune "$APP/.migrate/convert" "$RUNNER_TEMP/inputs/record-keys.json" "$APP")
           mkdir -p "$RUNNER_TEMP/store-out"
           tar --zstd -cf "$RUNNER_TEMP/store-out/store.tar.zst" --exclude=./report.json -C "$APP/.migrate/convert" .
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/emit.jsonl" emit store="$(du -m "$RUNNER_TEMP/store-out/store.tar.zst" | cut -f1) MB, $(node -p 'const p=JSON.parse(process.argv[1]);`${p.kept} kept, ${p.dropped} dropped`' "$pruned")"
