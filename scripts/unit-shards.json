@@ -256,7 +256,7 @@
 		"test/shared-css.test.ts": {"shard":5,"seconds":8},
 		"test/shared-regions.test.ts": {"shard":1,"seconds":1},
 		"test/ship-key.test.ts": {"shard":2,"seconds":1},
-		"test/slow-click.test.ts": {"shard":5,"seconds":376},
+		"test/slow-click.test.ts": {"shard":5,"seconds":70},
 		"test/slow-network-cache.test.ts": {"shard":3,"seconds":1},
 		"test/slow-network-groups.test.ts": {"shard":4,"seconds":1},
 		"test/slow-network-html.test.ts": {"shard":5,"seconds":1},
