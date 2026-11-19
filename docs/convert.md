@@ -95,6 +95,35 @@ the app's `tsconfig.json` does not load it. Deploy notes are left alone. Without
 one with the same sections. Once someone edits the README convert wrote, convert leaves it alone
 (`.migrate/convert/readme.json` holds the hash of what it wrote).
 
+### How the original fetches pages ahead of a click
+
+Convert also records, for every page, how the original fetches the next page before a visitor clicks, from what its
+network does during experiments in Chromium (`src/prefetch/record.ts`), never from the framework's name:
+
+- **How a page is fetched.** The requests the page makes that name a link's target (`/docs/a?_rsc=...`,
+  `/docs/a.data`, `/_next/data/<build>/docs/a.json`, the document itself) give the app's shape for a page's data,
+  `{path}?_rsc=*`. A shape counts once two targets share it, or a click to a page nothing fetched ahead fetched it first.
+- **At load.** What the page fetches before anything is done to it: links off screen too (`load`), or only those on
+  screen (`visible`).
+- **In view.** Links off screen are scrolled into view one at a time, the pointer never moved (`viewport`).
+- **Intent.** Links not fetched yet are hovered (`hover`), focused (`focus`), or pressed and released elsewhere, so the
+  press never becomes a click (`pointerdown`); a press whose pointer fetched on arriving is hover's, and tells nothing.
+- **Clicks and revisits.** On a template group's first page (the first page of each URL pattern in the whole route
+  list, the same on every shard): a click to a page nothing fetched, a click to a page fetched ahead (fetched again or
+  not), and the page left come back to by its link about 2 s later (`revisit`: fetched again, or answered from memory
+  or the browser's cache).
+- **Network conditions.** On that same first page, load, one link scrolled into view and one hovered are repeated with
+  no connection information (as Firefox and Safari give), as 4g, 3g, 2g and slow-2g, with Save-Data, and over a real
+  1.6 Mbit/s, 150 ms link (`conditions`).
+
+Each trigger records how many links it could tell about, how many it fetched, how long after the action, its bytes and
+how many of its requests were cancelled; with the most requests in flight at once and every byte fetched before the
+first click. The site's facts are in `.migrate/prefetch.json`. Recordings are kept in
+`.migrate/convert/prefetch/v-<recorder>/`, one folder per version of the recorder's own code: a change anywhere else
+in convert records none of them again, and a page records again only when its old page changes. Links that end a
+session or delete are never hovered, pressed or followed. A first recording takes about 10 s a page and about 100 s on
+each template group's first page (measured on ui.shadcn.com's docs pages).
+
 ### How to iterate on a port
 
 Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the

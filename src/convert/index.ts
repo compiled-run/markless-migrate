@@ -9,6 +9,7 @@ import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
+import { prefetchRecorder } from '../prefetch/convert.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -1519,6 +1520,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		);
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
+		// How the original fetches pages ahead of a click, a kind of its own (src/prefetch): before any form is sent to it.
+		const prefetching = await prefetchRecorder(state, options.old, htmlRoutes, log);
+		const prefetchRead = eachLimited(limit, routes, (r) => guarded(r, ['prefetch'], (browser) => prefetching.record(browser, r)));
+		prefetchRead.catch(() => {});
 		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
@@ -1771,7 +1776,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const read = await Promise.all(reads);
 		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
 		for (const ref of captures) captureDirs.set(ref.route, await atFor(ref.route, 'captures'));
-		await Promise.all([scenesRead, notifiesRead]);
+		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
+		await prefetching.save();
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
 			const f = read[i]!;
