@@ -18,7 +18,7 @@ test('mirrors are tried in the order apt reads them, then the canonical archives
 function fake(dir: string): { command: string[]; file: string } {
 	const file = join(dir, 'apt-mirrors.txt');
 	const script = join(dir, 'fake-apt.sh');
-	writeFileSync(script, `#!/bin/sh\nfirst=$(head -1 "${file}")\necho "$first" >> "${join(dir, 'calls')}"\ncase "$first" in *stall*) sleep 30 & wait ;; *fail*) exit 100 ;; esac\n`);
+	writeFileSync(script, `#!/bin/sh\nfirst=$(head -1 "${file}")\necho "$first" >> "${join(dir, 'calls')}"\ncase "$first" in *stall*) sleep 30 & wait ;; *fail*) echo 'E: Failed to fetch http://security.ubuntu.com/ubuntu/dists/noble-security/universe/binary-amd64/Packages.xz  File has unexpected size (1230472 != 1230480). Mirror sync in progress?' >&2; exit 100 ;; esac\n`);
 	chmodSync(script, 0o755);
 	return { command: [script], file };
 }
@@ -70,7 +70,7 @@ test('security.ubuntu.com read directly is moved onto the mirror list, so a faul
 	assert.equal(routeSecurity('deb http://security.ubuntu.com.evil.example/ubuntu noble main\n'), undefined);
 });
 
-test('a failing first mirror moves on to the next one the same way', async () => {
+test('apt-get update failing on the first mirror (a size mismatch while it syncs, exit 100) moves on to the next one like a stall', async () => {
 	const r = await scenario('http://fail.example/ubuntu/\tpriority:1\n' + RUNNER.split('\n').slice(1).join('\n'));
 	assert.equal(r.status, 0);
 	assert.equal(r.calls.length, 2);
