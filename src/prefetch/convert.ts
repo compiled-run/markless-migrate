@@ -21,6 +21,8 @@ export function fullRecordings(allRoutes: readonly string[]): { readonly full: S
 
 export interface PrefetchRecorder {
 	readonly record: (browser: Browser, route: string) => Promise<PrefetchFacts>;
+	/** A page whose recording could not finish (the browser died under it twice): unknown to the decision, recorded again next time. */
+	readonly unknown: (route: string, why: string) => void;
 	/** Writes what was recorded to `.migrate/prefetch.json`, without the raw requests. */
 	readonly save: () => Promise<void>;
 }
@@ -31,6 +33,13 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 	const dir = await prefetchDir(store);
 	const { full, conditions } = fullRecordings(allRoutes);
 	const recorded = new Map<string, PrefetchFacts>();
+	// Not kept: the route is recorded again next time, and the decision reads it as unknown.
+	const unknown = (route: string, why: string, browser = 'chromium'): PrefetchFacts => {
+		const facts: PrefetchFacts = { route, browser, shapes: [], fullLoads: false, links: 0, triggers: {}, concurrency: 0, bytesBeforeClick: 0, hints: { links: [], speculationRules: [] }, requests: [], error: why };
+		log(`  prefetch recording of ${route} failed: ${why}`);
+		recorded.set(route, facts);
+		return facts;
+	};
 	return {
 		record: async (browser, route) => {
 			const page = await prefetchPageKey(origin, route);
@@ -39,13 +48,10 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 				recorded.set(route, facts);
 				return facts;
 			} catch (error) {
-				// Not kept: the route is recorded again next time, and the decision reads it as unknown.
-				const facts: PrefetchFacts = { route, browser: browser.version(), shapes: [], fullLoads: false, links: 0, triggers: {}, concurrency: 0, bytesBeforeClick: 0, hints: { links: [], speculationRules: [] }, requests: [], error: (error as Error).message.split('\n')[0]! };
-				log(`  prefetch recording of ${route} failed: ${facts.error}`);
-				recorded.set(route, facts);
-				return facts;
+				return unknown(route, (error as Error).message.split('\n')[0]!, browser.version());
 			}
 		},
+		unknown: (route, why) => void unknown(route, why),
 		save: async () => {
 			const routes = Object.fromEntries([...recorded].sort(([a], [b]) => (a < b ? -1 : 1)).map(([route, { requests: _, ...facts }]) => [route, facts]));
 			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ routes }, null, 1));
