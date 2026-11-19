@@ -10,6 +10,7 @@ import type { Failure, Viewport } from './types.ts';
 import { clickOnce } from './click.ts';
 import { armStateReader, compareStates, readState, type StateReading } from './state-probe.ts';
 import { compareRuns, controlKey, describeControl, describeOp, handedOver, itemId, journeyPrefixes, judgeProbes, lines, notifiers, prefixFor, type BorrowedProbe, type Op, type ProbeClass, type ProbeItem, type ProbeResult, type ProbesRow, type Reading, type Sequence } from './probes-compare.ts';
+import { DESTRUCTIVE } from './destructive.ts';
 
 const key = (k: string): Op => ({ op: 'key', key: k });
 const item = (n: number, how: 'hover' | 'click'): Op => ({ op: 'item', n, how });
@@ -75,7 +76,6 @@ type ProbeWindow = { __markless_migrate_probe__?: { read(): Reading; outside(): 
 // Keys are held as a person holds them: Radix moves a radio group's focus in a timeout and checks the radio only while the key is still down.
 const HOLD_MS = 60;
 const ON_CONTROL = new Set<Op['op']>(['click', 'right click', 'click label', 'tab in', 'hover', 'drag']);
-const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate)\b/i;
 
 interface Side {
 	readonly page: Page;

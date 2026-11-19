@@ -602,9 +602,11 @@ data at `{path}?_rsc=*`, fetched as links come into view on every network condit
   apart from a fetch the page made.
 - Network conditions are an emulated `navigator.connection` (and a `Save-Data` header) plus one real slow link: a
   router that measures the link some other way is seen only on that slow link. Conditions are tried on the first pages of
-  the two largest URL patterns only, with one link per trigger.
+  the two largest URL patterns only, with one link per trigger (three runs where the first says a trigger stopped).
+  Clicks and revisits are tried on the four largest patterns' first pages only.
 - A request belongs to a link when its URL names the link's target on segment edges and two targets (or a click) share
   that URL shape. A router that fetches a page under an id (`/data/8f3a.json`) is not recognised, and shows as fetching
   nothing ahead.
+- A page that fetches on a timer later than 3 s after its load went quiet is read as fetching during a scroll.
 - Touch (`touchstart`) is not tried apart from the pointer; a hover delay over 500 ms is read as no hover prefetch;
   the revisit is about 2 s after leaving, so a client cache shorter than that is not seen.

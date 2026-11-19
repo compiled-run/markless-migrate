@@ -105,26 +105,40 @@ network does during experiments in Chromium (`src/prefetch/record.ts`), never fr
   `{path}?_rsc=*`. A shape counts once two targets share it, or a click to a page nothing fetched ahead fetched it first.
 - **At load.** What the page fetches before anything is done to it: links off screen too (`load`), or only those on
   screen (`visible`).
-- **In view.** Links off screen are scrolled into view one at a time, the pointer never moved (`viewport`).
-- **Intent.** Links not fetched yet are hovered (`hover`), focused (`focus`), or pressed and released elsewhere, so the
-  press never becomes a click (`pointerdown`); a press whose pointer fetched on arriving is hover's, and tells nothing.
-- **Clicks and revisits.** On a template group's first page (the first page of each URL pattern in the whole route
-  list, the same on every shard): a click to a page nothing fetched, a click to a page fetched ahead (fetched again or
-  not), and the page left come back to by its link about 2 s later (`revisit`: fetched again, or answered from memory
-  or the browser's cache).
-- **Network conditions.** On the first pages of the site's two largest URL patterns, load, one link scrolled into view and one hovered are repeated with
-  no connection information (as Firefox and Safari give), as 4g, 3g, 2g and slow-2g, with Save-Data, and over a real
-  1.6 Mbit/s, 150 ms link (`conditions`).
+- **On a timer.** The page is then left alone for 3 s: what it fetches then is on a timer, such as an idle callback
+  (`timer`), not anything a probe did.
+- **In view.** Links off screen are scrolled into view one at a time, the pointer never moved. A target the scroll
+  brought into view counts for `viewport`; one fetched during the scroll that stayed off screen counts for `scroll`
+  (a page that starts fetching once the visitor first scrolls). A link the probe could not scroll to is not counted as
+  tried. Links are found by their resolved address, so one written as an absolute URL is found like a relative one.
+- **Intent.** Links not fetched yet are hovered (`hover`), focused (`focus`), or pressed and released elsewhere
+  (`pointerdown`); a press whose pointer fetched on arriving is hover's, and tells nothing. While the press is held,
+  anything it could still start is stopped before the page hears it: the drag a held press starts on a link, the click
+  the browser would send to the element under both ends, a context menu. If the page still leaves, the probes stop
+  there and the recording says so (`pressActivated`).
+- **Clicks and revisits.** On the first pages of the site's four largest URL patterns (over the whole route list, the
+  same on every shard): a click to a page nothing fetched, a click to a page fetched ahead (fetched again or not), and
+  the page left come back to by its link about 2 s later (`revisit`: fetched again, or answered from memory or the
+  browser's cache).
+- **Network conditions.** On the first pages of the two largest URL patterns, load, one link scrolled into view and
+  one hovered are repeated with no connection information (as Firefox and Safari give), as 4g, 3g, 2g and slow-2g,
+  with Save-Data, and over a real 1.6 Mbit/s, 150 ms link (`conditions`). When a run says a trigger that fired without
+  the condition did not fire, or the run fails, two more runs are taken and the majority decides; the triggers they
+  disagreed on are kept (`disagreed`). A condition every run of which failed is not kept: the next convert tries again.
+- **Declared hints.** `<link rel=prefetch|prerender|modulepreload>` and Speculation Rules are read from the page. Chromium
+  shows the fetches they start as requests (`Sec-Purpose: prefetch`), which the triggers above then count; Firefox
+  shows only `<link rel=prefetch>` and WebKit neither. A page that declares hints while no trigger was seen fetching
+  ahead is recorded as not observed (`unobserved`), never as fetching nothing.
 
 Each trigger records how many links it could tell about, how many it fetched, how long after the action, its bytes and
-how many of its requests were cancelled; with the most requests in flight at once and every byte fetched before the
-first click. The site's facts are in `.migrate/prefetch.json`. Recordings are kept in
-`.migrate/convert/prefetch/v-<recorder>/`, one folder per version of the recorder's own code: a change anywhere else
-in convert records none of them again, and a page records again only when its old page changes. Links that end a
-session or delete are never hovered, pressed or followed. A first recording takes about 10 s a page, about 25 s on each URL
-pattern's first page and about 100 s on the two pages the conditions are tried on (measured on ui.shadcn.com's docs
-pages); on the convert budget's 60-page fixture it took convert's own CPU time from 33 s to 43 s on a Mac mini, as each
-page the recorder loads costs Playwright's client its share of the page's protocol traffic.
+how many of its requests were cancelled; with the most speculative fetches in flight at once (a request still open when
+its phase ended counts until then) and every byte fetched before the first click. The site's facts are in
+`.migrate/prefetch.json`. Recordings are kept in `.migrate/convert/prefetch/v-<recorder>/`, one folder per version of
+the recorder's own code: a change anywhere else in convert records none of them again, and a page records again only
+when its old page changes. Links that end a session or delete are never hovered, pressed or followed (the same words
+journeys and widget probes hold back, `src/check/destructive.ts`). The recorder has slots of its own beside the
+captures', so its waiting holds no capture back. A first recording takes about 10 s a page, about 25 s on each of the
+four pages with clicks and about 100 s on the two the conditions are tried on (measured on ui.shadcn.com's docs pages).
 
 ### How to iterate on a port
 

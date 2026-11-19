@@ -1522,7 +1522,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
 		// How the original fetches pages ahead of a click, a kind of its own (src/prefetch): before any form is sent to it.
 		const prefetching = await prefetchRecorder(state, options.old, htmlRoutes, log);
-		const prefetchRead = eachLimited(limit, routes, (r) => guarded(r, ['prefetch'], (browser) => prefetching.record(browser, r)));
+		// Its own slots: most of a recording is waiting on the page, which should not hold a capture's slot meanwhile.
+		const prefetchRead = eachLimited(limiter(width), routes, (r) => guarded(r, ['prefetch'], (browser) => prefetching.record(browser, r)));
 		prefetchRead.catch(() => {});
 		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});

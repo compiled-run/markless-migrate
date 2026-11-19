@@ -32,9 +32,15 @@ export interface PrefetchLink {
 	readonly visibleAtLoad: boolean;
 }
 
-export type Trigger = 'load' | 'visible' | 'viewport' | 'hover' | 'focus' | 'pointerdown';
+/**
+ * `load` and `visible`: fetched while the page loaded (links off screen too, or only those on screen). `timer`: fetched
+ * after the load went quiet with nothing done to the page (an idle callback, a timeout). `viewport`: fetched for a link the
+ * probe's scroll brought into view. `scroll`: fetched during a scroll for a link it did not bring into view (a page that
+ * starts fetching once the visitor first scrolls).
+ */
+export type Trigger = 'load' | 'visible' | 'timer' | 'viewport' | 'scroll' | 'hover' | 'focus' | 'pointerdown';
 /** Earliest first: what each trigger fetches is fetched by every trigger before it too. */
-export const TRIGGERS: readonly Trigger[] = ['load', 'visible', 'viewport', 'hover', 'focus', 'pointerdown'];
+export const TRIGGERS: readonly Trigger[] = ['load', 'visible', 'timer', 'viewport', 'scroll', 'hover', 'focus', 'pointerdown'];
 
 export interface TriggerEvidence {
 	/** Links whose target the experiment could tell about (not already fetched by an earlier trigger). */
@@ -58,6 +64,10 @@ export interface ConditionResult {
 	readonly visible?: boolean;
 	readonly viewport?: boolean;
 	readonly hover?: boolean;
+	/** Runs taken under the condition: one when every trigger that fired without it fired again, else three, the majority deciding. */
+	readonly runs?: number;
+	/** Triggers the runs did not agree on. */
+	readonly disagreed?: readonly string[];
 	readonly error?: string;
 }
 
@@ -81,6 +91,10 @@ export interface PrefetchFacts {
 	/** Prefetch hints the page itself declares: `<link rel=prefetch|prerender|modulepreload>` and Speculation Rules. */
 	readonly hints: { readonly links: readonly { readonly rel: string; readonly href: string }[]; readonly speculationRules: readonly unknown[] };
 	readonly conditions?: Readonly<Partial<Record<Condition, ConditionResult>>>;
+	/** The page declares prefetch hints (above) but no trigger was seen fetching ahead: the browser's own prefetch may not show as a request, so nothing ahead is not established. */
+	readonly unobserved?: string;
+	/** A press probe that should never activate anything did (the page navigated): the intent probes stopped there. */
+	readonly pressActivated?: string;
 	readonly requests: readonly PrefetchRequest[];
 	readonly error?: string;
 }

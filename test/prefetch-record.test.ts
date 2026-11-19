@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { recordPrefetch } from '../src/prefetch/record.ts';
+import { agreed, recordPrefetch } from '../src/prefetch/record.ts';
 
 // Each site is a prefix with its own way of fetching pages ahead, written as plain scripts so no framework is named.
 const ROUTER = `
@@ -28,11 +28,18 @@ const MODES: Record<string, string> = {
 	load: `${ROUTER} addEventListener('load', () => document.querySelectorAll('a[href]').forEach(__ahead));`,
 	gated: `${ROUTER} const c = navigator.connection; if (c && c.effectiveType === '4g' && !c.saveData) { const io = new IntersectionObserver((es) => es.forEach((x) => x.isIntersecting && __ahead(x.target))); document.querySelectorAll('a[href]').forEach((a) => io.observe(a)); }`,
 	none: '',
+	idle: `${ROUTER} addEventListener('load', () => setTimeout(() => document.querySelectorAll('a[href]').forEach(__ahead), 2000));`,
+	scrolled: `${ROUTER} addEventListener('scroll', () => document.querySelectorAll('a[href]').forEach(__ahead), { once: true, capture: true });`,
+	absolute: `${ROUTER} const io = new IntersectionObserver((es) => es.forEach((x) => x.isIntersecting && __ahead(x.target))); document.querySelectorAll('a[href]').forEach((a) => io.observe(a));`,
+	clicky: `${ROUTER} document.addEventListener('pointerdown', (e) => { const a = e.target.closest('a[href]'); if (a) __ahead(a); }); document.addEventListener('click', (e) => { if (!(e.target instanceof Element && e.target.closest('a'))) location.href = '/clicky/p29'; }); document.addEventListener('dragstart', () => { location.href = '/clicky/p29'; });`,
+	hints: '',
 };
 
-function page(mode: string, n: string): string {
-	const links = Array.from({ length: 30 }, (_, i) => `<li style="height:60px"><a href="/${mode}/p${i}">Page ${i}</a></li>`).join('');
-	return `<!doctype html><html><head><title>${n}</title></head><body><header><a href="/${mode}/p0">Home</a> <a href="/${mode}/p1">Docs</a></header><aside><ul>${links}</ul></aside><main><h1>${n}</h1></main><script>${MODES[mode]}</script></body></html>`;
+function page(mode: string, n: string, origin: string): string {
+	const href = (i: number) => `${mode === 'absolute' ? origin : ''}/${mode}/p${i}`;
+	const links = Array.from({ length: 30 }, (_, i) => `<li style="height:60px"><a href="${href(i)}">Page ${i}</a></li>`).join('');
+	const hints = mode === 'hints' ? `<link rel="prefetch" href="/hints/p2"><script type="speculationrules">{"prefetch":[{"source":"list","urls":["/hints/p3"],"eagerness":"immediate"}]}</script>` : '';
+	return `<!doctype html><html><head><title>${n}</title>${hints}</head><body><header><a href="/${mode}/p0">Home</a> <a href="/${mode}/p1">Docs</a></header><aside><ul>${links}</ul></aside><main><h1>${n}</h1></main><script>${MODES[mode]}</script></body></html>`;
 }
 
 let browser: Browser;
@@ -47,7 +54,7 @@ before(async () => {
 		const [, mode = '', name = ''] = url.pathname.split('/');
 		if (!(mode in MODES)) return void res.writeHead(404).end();
 		if (name.endsWith('.data')) return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ title: name.slice(0, -5), pad: 'x'.repeat(2000) }));
-		res.writeHead(200, { 'content-type': 'text/html' }).end(page(mode, name || 'start'));
+		res.writeHead(200, { 'content-type': 'text/html' }).end(page(mode, name || 'start', `http://${req.headers.host}`));
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -117,4 +124,45 @@ test('a recording is read back from its directory instead of recorded again', as
 	const again = await recordPrefetch(browser, origin, '/load/p5', join(dir, 'load'), { conditions: [] });
 	assert.deepEqual(again, first);
 	assert.ok(Date.now() - started < 200);
+});
+
+test('a site that fetches every link on a timer after load is recorded as a timer, not as fetching in view', async () => {
+	const facts = await recordPrefetch(browser, origin, '/idle/p5', join(dir, 'idle'), { conditions: [] });
+	assert.ok(facts.triggers.timer && facts.triggers.timer.fired > 10, JSON.stringify(facts.triggers));
+	assert.equal(facts.triggers.viewport?.fired ?? 0, 0, 'the scroll probes ran after the timer fetched everything, so nothing is left for them');
+});
+
+test('a site that fetches every link on the first scroll: the scroll fires for links it did not bring into view', async () => {
+	const facts = await recordPrefetch(browser, origin, '/scrolled/p5', join(dir, 'scrolled'), { conditions: [] });
+	assert.ok(facts.triggers.scroll && facts.triggers.scroll.fired > 0, JSON.stringify(facts.triggers));
+	assert.equal(facts.triggers.timer?.fired, 0);
+});
+
+test('links written as absolute addresses are scrolled to and probed like relative ones', async () => {
+	const facts = await recordPrefetch(browser, origin, '/absolute/p5', join(dir, 'absolute'), { conditions: [] });
+	assert.ok(facts.triggers.viewport && facts.triggers.viewport.tested > 0 && facts.triggers.viewport.fired > 0, JSON.stringify(facts.triggers));
+});
+
+test('a press probe never activates anything: the drag a held press starts on a link, and the click it would send instead, are stopped', async () => {
+	const facts = await recordPrefetch(browser, origin, '/clicky/p5', join(dir, 'clicky'), { full: true, conditions: [] });
+	assert.equal(facts.pressActivated, undefined);
+	assert.ok(facts.triggers.pointerdown && facts.triggers.pointerdown.fired > 0, JSON.stringify(facts.triggers));
+	assert.ok(!facts.requests.some((r) => r.path === '/clicky/p29' && r.type === 'document'), 'the page navigated on a press released off the link');
+});
+
+test('prefetch hints Chromium follows are seen as fetched at load, and nothing is left unobserved', async () => {
+	const facts = await recordPrefetch(browser, origin, '/hints/p5', join(dir, 'hints'), { conditions: [] });
+	assert.equal(facts.hints.links.length, 1);
+	assert.equal(facts.hints.speculationRules.length, 1);
+	assert.deepEqual(facts.triggers.load?.targets.length ?? 0, 0, 'the hinted pages are on screen at load: they count as visible');
+	assert.ok(facts.requests.some((r) => r.path === '/hints/p2' && r.purpose?.includes('prefetch')), JSON.stringify(facts.requests.map((r) => r.path)));
+	assert.ok(facts.requests.some((r) => r.path === '/hints/p3' && r.purpose?.includes('prefetch')));
+	assert.equal(facts.unobserved, undefined);
+});
+
+test('one run under a condition never decides alone: the majority of three does, and disagreement is kept', () => {
+	assert.deepEqual(agreed([{ viewport: false }, { viewport: true }, { viewport: true }]), { runs: 3, viewport: true, disagreed: ['viewport'] });
+	assert.deepEqual(agreed([{ viewport: false }, { viewport: false }, { viewport: true }]), { runs: 3, viewport: false, disagreed: ['viewport'] });
+	assert.deepEqual(agreed([{ error: 'x' }, { viewport: true }]), { runs: 2, viewport: true });
+	assert.equal(agreed([{ error: 'x' }, { error: 'y' }]).error, 'x');
 });

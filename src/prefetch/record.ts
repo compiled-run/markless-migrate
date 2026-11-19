@@ -5,16 +5,19 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
-import { chromium, type Browser, type BrowserContext, type Page, type Request } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Request } from 'playwright';
 import { closedOnExit } from '../check/close-on-exit.ts';
 import { NETWORK_PROFILES, startThrottle } from '../check/throttle.ts';
 import { CONDITIONS, learnShapes, maxInFlight, median, mayCarryPage, pageOf, shapeOf, targetOf, type Condition, type ConditionResult, type PrefetchFacts, type PrefetchLink, type PrefetchRequest, type Trigger, type TriggerEvidence } from './facts.ts';
+import { DESTRUCTIVE } from '../check/destructive.ts';
 
 const VIEWPORT = { width: 1280, height: 800 };
 const QUIET_MS = 800;
 const QUIET_MAX_MS = 10_000;
 /** How long after an action its fetches may start and still be its own. */
 const SETTLE_MS = 500;
+/** After the load went quiet, the page is left alone this long before any probe: what it fetches then is a timer's, not a scroll's. */
+const IDLE_CONTROL_MS = 3000;
 /** Links probed per trigger: a template group's first page, every other page. */
 const PROBES = { full: { viewport: 4, intent: 2 }, light: { viewport: 2, intent: 1 } } as const;
 /** The page left is come back to after about this long: inside every client cache's lifetime we know of (Next's 30 s, Markless's ttl). */
@@ -38,7 +41,6 @@ interface Log {
 	lastActivity: number;
 }
 
-const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 const CANCELLED = /ERR_ABORTED|NS_BINDING_ABORTED|cancelled|canceled/i;
 
 function watch(page: Page, origin: string): Log {
@@ -76,7 +78,6 @@ function watch(page: Page, origin: string): Log {
 		log.lastActivity = Date.now();
 		// The load's own scripts, styles and images are never fetched ahead: their sizes are not asked for.
 		if (outcome !== 'completed' || (entry.phase === 'load' && !mayCarryPage(entry))) return;
-		entry.status = (await r.response().catch(() => null))?.status();
 		const sizes = await r.sizes().catch(() => undefined);
 		if (sizes) entry.bytes = sizes.responseBodySize + sizes.responseHeadersSize;
 	};
@@ -92,6 +93,17 @@ async function quiet(page: Page, log: Log, minMs = QUIET_MS): Promise<void> {
 		if (log.inFlight <= 0 && Date.now() - log.lastActivity >= minMs && Date.now() - started >= minMs) return;
 		await sleep(100);
 	}
+}
+
+/** The addresses of the same-origin links inside the viewport now. */
+function visibleTargets(): string[] {
+	const out: string[] = [];
+	for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+		if (a.origin !== location.origin) continue;
+		const box = a.getBoundingClientRect();
+		if (box.width > 0 && box.height > 0 && box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth) out.push(a.pathname + a.search);
+	}
+	return out;
 }
 
 /** Same-origin links in the page, each with its landmark and whether it is on screen. */
@@ -133,14 +145,45 @@ function readHints(): { links: { rel: string; href: string }[]; speculationRules
 	return { links, speculationRules };
 }
 
+// Set on the page before a press probe: what a press could still start (a click on the element under both ends of it, a
+// drag, a context menu) is stopped before the page's own listeners hear it, and counted.
+function guardPress(): void {
+	const w = window as unknown as { __mmPressGuard?: { stop: (e: Event) => void; seen: string[] } };
+	const guard = { seen: [] as string[], stop: (e: Event) => (guard.seen.push(e.type), e.preventDefault(), e.stopImmediatePropagation()) };
+	for (const type of ['click', 'auxclick', 'dblclick', 'dragstart', 'contextmenu']) addEventListener(type, guard.stop, { capture: true });
+	w.__mmPressGuard = guard;
+}
+
+/** Removes the press guard; what it had to stop, or '' when the press started nothing. */
+function unguardPress(): string {
+	const w = window as unknown as { __mmPressGuard?: { stop: (e: Event) => void; seen: string[] } };
+	const guard = w.__mmPressGuard;
+	if (!guard) return 'the page was replaced during the press';
+	for (const type of ['click', 'auxclick', 'dblclick', 'dragstart', 'contextmenu']) removeEventListener(type, guard.stop, { capture: true });
+	delete w.__mmPressGuard;
+	return guard.seen.length ? `the press started ${guard.seen.join(', ')} (stopped before the page heard it)` : '';
+}
+
 /** Resource Timing: paths whose answer moved no byte (the browser's cache), for requests the page itself made. */
 async function cachedPaths(page: Page): Promise<Set<string>> {
 	const paths = await page.evaluate(() => (performance.getEntriesByType('resource') as PerformanceResourceTiming[]).filter((e) => e.transferSize === 0 && e.decodedBodySize > 0).map((e) => new URL(e.name).pathname + new URL(e.name).search)).catch((): string[] => []);
 	return new Set(paths);
 }
 
-function linkSelector(target: string): string {
-	return `a[href="${target.replace(/["\\]/g, '\\$&')}"], a[href="${target.replace(/["\\]/g, '\\$&')}/"]`;
+/** The first link whose resolved address is `target` (an absolute `href` included), shown on the page when `shown`. */
+export async function linkTo(page: Page, target: string, shown = false): Promise<Locator | undefined> {
+	const at = await page
+		.evaluate(
+			({ target, shown }) =>
+				[...document.querySelectorAll<HTMLAnchorElement>('a[href]')].findIndex((a) => {
+					const path = a.pathname.length > 1 && a.pathname.endsWith('/') ? a.pathname.slice(0, -1) : a.pathname;
+					if (a.origin !== location.origin || path + a.search !== target) return false;
+					return !shown || (a.getBoundingClientRect().width > 0 && (a.checkVisibility?.({ visibilityProperty: true, opacityProperty: true }) ?? true));
+				}),
+			{ target, shown },
+		)
+		.catch(() => -1);
+	return at < 0 ? undefined : page.locator('a[href]').nth(at);
 }
 
 function hashOf(text: string): string {
@@ -205,8 +248,8 @@ async function open(browser: Browser, origin: string, route: string, condition: 
 
 /** Scrolls the link into view without moving the pointer. */
 async function reveal(page: Page, target: string): Promise<boolean> {
-	const link = page.locator(linkSelector(target)).first();
-	if (!(await link.count().catch(() => 0))) return false;
+	const link = await linkTo(page, target);
+	if (!link) return false;
 	return link
 		.evaluate(
 			(a) => {
@@ -221,8 +264,8 @@ async function reveal(page: Page, target: string): Promise<boolean> {
 
 /** The link's target as the page now shows it (visible, on screen), or undefined. */
 async function boxOf(page: Page, target: string): Promise<{ x: number; y: number } | undefined> {
-	const link = page.locator(linkSelector(target)).filter({ visible: true }).first();
-	if (!(await link.count().catch(() => 0))) return undefined;
+	const link = await linkTo(page, target, true);
+	if (!link) return undefined;
 	const box = await link.boundingBox({ timeout: 1000 }).catch(() => null);
 	return box && box.y >= 0 && box.y + box.height <= VIEWPORT.height ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : undefined;
 }
@@ -267,20 +310,36 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 		const asks = (target: string, among: Iterable<PrefetchRequest> = log.requests.values()) => [...among].some((r) => mayCarryPage(r) && shapeOf(r.path, target) !== undefined);
 		const actions: { phase: string; target: string; trigger: Trigger; at: number }[] = [];
 
-		// Viewport: links off screen at load, scrolled into view one by one, the pointer never moved.
+		// Control: the page left alone once its load went quiet, as long as a scroll probe and more. What it fetches now is
+		// on a timer (an idle callback), and would otherwise be read as the first scroll's.
+		log.phase = 'idle';
+		await sleep(IDLE_CONTROL_MS);
+		await quiet(page, log, 300);
+		log.phase = 'between';
+
+		// Viewport: links off screen at load, scrolled into view one by one, the pointer never moved. Only links the scroll
+		// brought into view count for it; a link fetched in the same moment that stayed off screen is the scroll's.
+		const onScreen = async () => new Set((await page.evaluate(visibleTargets).catch((): string[] => [])).map(targetOf));
+		const broughtIn = new Map<string, Set<string>>();
 		for (const link of sample(others.filter((l) => !l.visibleAtLoad && !asks(l.target)), probes.viewport, salt + 'v')) {
 			const name = `viewport ${link.target}`;
+			const before = await onScreen();
 			let at = 0;
+			let revealed = false;
 			await phase(run, name, async () => {
 				at = Date.now() - log.t0;
-				await reveal(page, link.target);
+				revealed = await reveal(page, link.target);
 			});
+			if (!revealed) continue;
+			const after = await onScreen();
+			broughtIn.set(name, new Set([...after].filter((t) => !before.has(t))));
 			actions.push({ phase: name, target: link.target, trigger: 'viewport', at });
 		}
 
 		// Intent: on screen, each link gets one trigger in turn, hover first; a target already fetched cannot tell.
 		await parkPointer(page);
 		const done = new Map<Trigger, number>([['hover', 0], ['focus', 0], ['pointerdown', 0]]);
+		let pressActivated: string | undefined;
 		// A link scrolled to that the page then fetches tells nothing about intent: a few such tries are enough to say so.
 		let tries = 0;
 		for (const link of sample(others, 30, salt + 'i')) {
@@ -308,15 +367,25 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 			await phase(run, name, async () => {
 				at = Date.now() - log.t0;
 				if (trigger[0] === 'hover') await page.mouse.move(box.x, box.y);
-				else if (trigger[0] === 'focus') await page.locator(linkSelector(link.target)).filter({ visible: true }).first().focus();
+				else if (trigger[0] === 'focus') await (await linkTo(page, link.target, true))?.focus();
 				else {
-					// Pressed and released elsewhere: a press that never becomes a click.
+					// Pressed and released elsewhere, and every click, drag or menu it could still start is stopped before the page
+					// hears of it: the page sees the press and nothing that activates.
+					await page.evaluate(guardPress);
 					await page.mouse.down();
 					await sleep(300);
 					await parkPointer(page);
 					await page.mouse.up();
 				}
 			});
+			if (trigger[0] === 'pointerdown') {
+				// The guard stops a click the browser sends to the element under both ends of the press; the page must still be this one.
+				const gone = await page.evaluate(unguardPress).then((r) => r === 'the page was replaced during the press', () => true);
+				if (gone || targetOf(new URL(page.url()).pathname) !== own) {
+					pressActivated = `a press released off the link still left the page, for ${new URL(page.url()).pathname}`;
+					break;
+				}
+			}
 			actions.push({ phase: name, target: link.target, trigger: trigger[0], at });
 			if (trigger[0] === 'focus') await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
 			await parkPointer(page);
@@ -342,7 +411,7 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 		let prefetchedClick: PrefetchFacts['prefetchedClick'];
 		let revisit: PrefetchFacts['revisit'];
 		const shapesSoFar = () => learnShapes([...log.requests.values()], targets, clicked.slice(0, 1), own);
-		if (fresh && full) {
+		if (fresh && full && !pressActivated) {
 			const name = `click ${fresh.target}`;
 			log.phase = name;
 			if (await follow(run, fresh.target)) {
@@ -394,8 +463,8 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 		for (const r of requests) if (r.outcome === 'completed' && cached.has(r.path)) r.cached = true;
 		const navigational = beforeClick.filter((r) => pageOf(r, shapes, targets) !== undefined);
 		const triggers: Partial<Record<Trigger, TriggerEvidence>> = {};
-		const evidence = (tested: number, phases: (r: PrefetchRequest) => boolean, wanted: (t: string) => boolean, delays: number[], atLoadOnly = false): TriggerEvidence => {
-			const mine = navigational.filter((r) => phases(r) && wanted(pageOf(r, shapes, targets)!));
+		const evidence = (tested: number, phases: (r: PrefetchRequest) => boolean, wanted: (t: string, r: PrefetchRequest) => boolean, delays: number[], atLoadOnly = false): TriggerEvidence => {
+			const mine = navigational.filter((r) => phases(r) && wanted(pageOf(r, shapes, targets)!, r));
 			const fired = new Set(mine.map((r) => pageOf(r, shapes, targets)!));
 			// The load phase holds the page's own files: only what it fetched ahead is the trigger's.
 			const phaseBytes = (atLoadOnly ? mine : beforeClick.filter(phases)).reduce((s, r) => s + (r.bytes ?? 0), 0);
@@ -408,6 +477,12 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 		const loadFired = navigational.filter(atLoad).map((r) => pageOf(r, shapes, targets)!);
 		if (offscreen.size) triggers.load = evidence(offscreen.size, atLoad, (t) => offscreen.has(t), [], true);
 		if (onscreen.size && !loadFired.some((t) => offscreen.has(t))) triggers.visible = evidence(onscreen.size, atLoad, (t) => onscreen.has(t), [], true);
+		triggers.timer = evidence(others.length, (r) => r.phase === 'idle', () => true, [], true);
+		const scrolls = actions.filter((a) => a.trigger === 'viewport');
+		if (scrolls.length) {
+			const inView = (r: PrefetchRequest) => broughtIn.get(r.phase)?.has(pageOf(r, shapes, targets)!) === true;
+			triggers.scroll = evidence(scrolls.length, (r) => broughtIn.has(r.phase) && !inView(r), () => true, [], true);
+		}
 		for (const trigger of ['viewport', 'hover', 'focus', 'pointerdown'] as const) {
 			const mine = actions.filter((a) => a.trigger === trigger);
 			if (!mine.length) continue;
@@ -416,12 +491,19 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 				return first === undefined ? [] : [first];
 			});
 			const wanted = new Map(mine.map((a) => [a.phase, a.target]));
-			// A viewport scroll brings neighbours into view too: any target first fetched in that phase counts.
-			triggers[trigger] = evidence(mine.length, (r) => wanted.has(r.phase), (t) => trigger === 'viewport' || [...wanted.values()].includes(t), delays);
+			// A scroll counts for the links it brought into view, the probed one and its neighbours; a press, hover or focus for its own link.
+			const counts = (t: string, r: PrefetchRequest) => (trigger === 'viewport' ? broughtIn.get(r.phase)?.has(t) === true : [...wanted.values()].includes(t));
+			triggers[trigger] = evidence(mine.length, (r) => wanted.has(r.phase), (t, r) => counts(t, r), delays, trigger === 'viewport');
 		}
 		const ahead = new Set(navigational);
 		const bytesBeforeClick = beforeClick.filter((r) => ahead.has(r) || r.phase !== 'load').reduce((s, r) => s + (r.bytes ?? 0), 0);
-		return { shapes, fullLoads, links: links.length, triggers, concurrency: maxInFlight(navigational), bytesBeforeClick, ...(prefetchedClick ? { prefetchedClick } : {}), ...(revisit ? { revisit } : {}), hints, requests };
+		const declared = hints.links.some((l) => l.rel.includes('prefetch') || l.rel.includes('prerender')) || hints.speculationRules.length > 0;
+		const unobserved = declared && !Object.values(triggers).some((e) => e && e.fired > 0) ? 'the page declares prefetch hints, but no fetch ahead was seen: the browser may prefetch them without a request the recorder sees' : undefined;
+		// Speculative fetches in flight together: what was still open when its phase ended counts to that moment, not forever.
+		const phaseEnd = new Map<string, number>();
+		for (const r of beforeClick) phaseEnd.set(r.phase, Math.max(phaseEnd.get(r.phase) ?? 0, r.end ?? r.start));
+		const speculative = navigational.filter((r) => r.phase !== 'load').map((r) => ({ ...r, end: r.end ?? phaseEnd.get(r.phase) ?? r.start }));
+		return { shapes, fullLoads, links: links.length, triggers, concurrency: maxInFlight(speculative), bytesBeforeClick, ...(prefetchedClick ? { prefetchedClick } : {}), ...(revisit ? { revisit } : {}), hints, requests, ...(unobserved ? { unobserved } : {}), ...(pressActivated ? { pressActivated } : {}) };
 	} finally {
 		await run.close();
 	}
@@ -489,17 +571,49 @@ export async function recordPrefetch(browser: Browser, origin: string, route: st
 	let conditions: Partial<Record<Condition, ConditionResult>> | undefined;
 	if (options.full) {
 		conditions = {};
-		for (const condition of options.conditions ?? CONDITIONS) {
-			if (condition === 'slow-link') {
-				const slow = await slowLinkBrowser().catch(() => undefined);
-				conditions[condition] = slow ? await underCondition(slow.browser, origin, route, condition, base.shapes, options.headers).finally(() => slow.close()) : { error: 'could not start the throttled browser' };
-			} else conditions[condition] = await underCondition(browser, origin, route, condition, base.shapes, options.headers);
-		}
-	}
-	// The load's own scripts and styles are the page's, not fetched ahead: left out of what is kept.
+		const once = async (condition: Condition): Promise<ConditionResult> => {
+			if (condition !== 'slow-link') return underCondition(browser, origin, route, condition, base.shapes, options.headers);
+			const slow = await slowLinkBrowser().catch(() => undefined);
+			return slow ? underCondition(slow.browser, origin, route, condition, base.shapes, options.headers).finally(() => slow.close()) : { error: 'could not start the throttled browser' };
+		};
+		for (const condition of options.conditions ?? CONDITIONS) conditions[condition] = agreed(await repeatWhileUnsure(once, condition, base.triggers));
+	}	// The load's own scripts and styles are the page's, not fetched ahead: left out of what is kept.
 	const facts: PrefetchFacts = { route, browser: `chromium ${browser.version()}`, ...base, requests: base.requests.filter((r) => r.phase !== 'load' || mayCarryPage(r)), ...(conditions ? { conditions } : {}) };
+	// A condition run that failed is not kept: the next convert tries it again rather than reading the failure back.
+	if (Object.values(conditions ?? {}).some((c) => c?.error)) return facts;
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
 	return facts;
+}
+
+const CONDITION_KEYS = ['load', 'visible', 'viewport', 'hover'] as const;
+
+/**
+ * One run under the condition, and two more when it says a trigger that fired without the condition did not fire (or it
+ * failed): one unlucky run never decides on its own that a trigger stops on a network.
+ */
+async function repeatWhileUnsure(once: (c: Condition) => Promise<ConditionResult>, condition: Condition, base: PrefetchFacts['triggers']): Promise<ConditionResult[]> {
+	const first = await once(condition);
+	const fired = (k: (typeof CONDITION_KEYS)[number]) => (base[k]?.fired ?? 0) > 0;
+	const unsure = first.error !== undefined || CONDITION_KEYS.some((k) => fired(k) && first[k] === false);
+	return unsure ? [first, await once(condition), await once(condition)] : [first];
+}
+
+/** The majority of the runs for each trigger, with the triggers they disagreed on; failed only when every run failed. */
+export function agreed(runs: readonly ConditionResult[]): ConditionResult {
+	const ok = runs.filter((r) => !r.error);
+	if (!ok.length) return { error: runs[0]?.error ?? 'no run', runs: runs.length };
+	const out: { -readonly [K in keyof ConditionResult]: ConditionResult[K] } = { runs: runs.length };
+	const disagreed: string[] = [];
+	for (const k of CONDITION_KEYS) {
+		const seen = ok.map((r) => r[k]).filter((v): v is boolean => v !== undefined);
+		if (!seen.length) continue;
+		const yes = seen.filter(Boolean).length;
+		// A tie leans to firing: the port is then the more eager side.
+		out[k] = yes * 2 >= seen.length;
+		if (yes && yes < seen.length) disagreed.push(k);
+	}
+	if (disagreed.length) out.disagreed = disagreed;
+	return out;
 }
 

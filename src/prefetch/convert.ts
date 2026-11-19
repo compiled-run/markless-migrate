@@ -7,19 +7,16 @@ import type { PrefetchFacts } from './facts.ts';
 import { keepCurrent, prefetchDir, prefetchPageKey } from './key.ts';
 import { recordPrefetch } from './record.ts';
 
-/** Network conditions are tried on this many pages of the site: a router's own rule, the same on every page. */
+/** The router's own rules (whether a click or a revisit fetches again, which networks it prefetches on) are the same on every page: they are read on the first pages of the site's largest URL patterns, the clicks on this many, the network conditions on the first `CONDITION_PAGES` of those. */
+export const FULL_PAGES = 4;
 export const CONDITION_PAGES = 2;
 
-/**
- * Over the whole route list, the same on every shard whichever pages it converts: the first page of each URL pattern (the
- * full recording), and of those, the first pages of the largest patterns (also under every network condition).
- */
+/** Over the whole route list, the same on every shard whichever pages it converts. */
 export function fullRecordings(allRoutes: readonly string[]): { readonly full: Set<string>; readonly conditions: Set<string> } {
 	const byPattern = new Map<string, string[]>();
 	for (const route of [...allRoutes].sort()) (byPattern.get(urlPattern(route)) ?? byPattern.set(urlPattern(route), []).get(urlPattern(route))!).push(route);
-	const groups = [...byPattern].map(([pattern, routes]) => ({ pattern, first: routes[0]!, size: routes.length }));
-	const largest = [...groups].sort((a, b) => b.size - a.size || (a.pattern < b.pattern ? -1 : 1)).slice(0, CONDITION_PAGES);
-	return { full: new Set(groups.map((g) => g.first)), conditions: new Set(largest.map((g) => g.first)) };
+	const largest = [...byPattern].map(([pattern, routes]) => ({ pattern, first: routes[0]!, size: routes.length })).sort((a, b) => b.size - a.size || (a.pattern < b.pattern ? -1 : 1));
+	return { full: new Set(largest.slice(0, FULL_PAGES).map((g) => g.first)), conditions: new Set(largest.slice(0, CONDITION_PAGES).map((g) => g.first)) };
 }
 
 export interface PrefetchRecorder {
