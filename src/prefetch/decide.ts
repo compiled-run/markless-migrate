@@ -44,18 +44,43 @@ export function moreEager(s: PrefetchSetting): { readonly setting: PrefetchSetti
 	return undefined;
 }
 
-/** A trigger fires on a page when it fetched at least half the links it could tell about (load, visible), or any (the rest). */
+/**
+ * What the page's own prefetch hints ask the browser to fetch ahead, by the trigger that matches them: a prefetch link
+ * or an `immediate`/`eager` Speculation Rule at load, `moderate` on hover, `conservative` on a press.
+ */
+export function declaredTriggers(hints: PrefetchFacts['hints']): Set<Trigger> {
+	const out = new Set<Trigger>();
+	if (hints.links.some((l) => /\b(prefetch|prerender)\b/.test(l.rel))) out.add('visible');
+	const rules = hints.speculationRules.flatMap((r) => (r && typeof r === 'object' ? [...((r as { prefetch?: unknown[] }).prefetch ?? []), ...((r as { prerender?: unknown[] }).prerender ?? [])] : []));
+	for (const rule of rules) {
+		const eagerness = (rule as { eagerness?: string; source?: string }).eagerness ?? ((rule as { source?: string }).source === 'document' ? 'conservative' : 'immediate');
+		out.add(eagerness === 'moderate' ? 'hover' : eagerness === 'conservative' ? 'pointerdown' : 'visible');
+	}
+	return out;
+}
+
+/**
+ * A trigger fires on a page when it fetched at least half the links it could tell about (load, visible, timer), or any
+ * (the rest). Where the page declared hints and no fetch ahead was seen, its hints stand for what it does.
+ */
 function fires(facts: PrefetchFacts, trigger: Trigger): boolean | undefined {
+	if (facts.unobserved && declaredTriggers(facts.hints).has(trigger)) return true;
 	const e = facts.triggers[trigger];
 	if (!e || e.tested === 0) return undefined;
-	return trigger === 'load' || trigger === 'visible' ? e.fired * 2 >= e.tested : e.fired > 0;
+	return trigger === 'load' || trigger === 'visible' || trigger === 'timer' ? e.fired * 2 >= e.tested : e.fired > 0;
 }
+
+/**
+ * At most this many speculative fetches at once: a browser opens 6 connections to a host over HTTP/1.1, so a seventh
+ * waits for one anyway, and over HTTP/2 more fetches at once only share the same bandwidth.
+ */
+export const MAX_CONCURRENCY = 6;
 
 const SLOW: readonly Condition[] = ['3g', '2g', 'slow-2g', 'slow-link'];
 const FAST: readonly Condition[] = ['4g', 'no-info'];
 
 /** The condition runs try load, one scroll and one hover: the reading each trigger is judged by. */
-const CONDITION_KEY: Partial<Record<Trigger, 'load' | 'visible' | 'viewport' | 'hover'>> = { load: 'load', visible: 'visible', viewport: 'viewport', hover: 'hover', focus: 'hover', pointerdown: 'hover' };
+const CONDITION_KEY: Record<Trigger, 'load' | 'visible' | 'viewport' | 'hover'> = { load: 'load', visible: 'visible', timer: 'load', viewport: 'viewport', scroll: 'viewport', hover: 'hover', focus: 'hover', pointerdown: 'hover' };
 
 /** Where the original still fired the trigger: on a slow network ('all'), only on fast ones ('fast'), or untested. */
 function networksOf(pages: readonly PrefetchFacts[], trigger: Trigger): Networks | 'untested' {
@@ -69,6 +94,8 @@ function networksOf(pages: readonly PrefetchFacts[], trigger: Trigger): Networks
 const WORDS: Record<Trigger, string> = {
 	load: "fetches the pages its links go to as soon as it loads, including links off screen",
 	visible: 'fetches the pages of the links on screen once it has loaded',
+	timer: 'fetches the pages its links go to on a timer a moment after it loads, with nothing done to it',
+	scroll: 'starts fetching the pages its links go to once the visitor scrolls, links still off screen included',
 	viewport: "fetches a link's page when the link comes into view",
 	hover: "fetches a link's page when the pointer rests on it",
 	focus: "fetches a link's page when the link takes keyboard focus",
@@ -84,7 +111,7 @@ function wider(a: Networks, b: Networks): Networks {
 export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDecision {
 	const pages = recorded.filter((p) => !p.error);
 	const failed = recorded.filter((p) => p.error).map((p) => p.route);
-	const triggers: Trigger[] = ['load', 'visible', 'viewport', 'hover', 'focus', 'pointerdown'];
+	const triggers: Trigger[] = ['load', 'visible', 'timer', 'viewport', 'scroll', 'hover', 'focus', 'pointerdown'];
 	const original = triggers.flatMap((trigger) => {
 		const told = pages.map((p) => fires(p, trigger)).filter((f): f is boolean => f !== undefined);
 		if (!told.length) return [];
@@ -99,9 +126,10 @@ export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDeci
 		return !o ? 'none' : o.networks === 'untested' ? 'all' : o.networks;
 	};
 	const reasons: PrefetchReason[] = [];
-	let viewport = reach('viewport');
+	// Fetching once the visitor scrolls is nearest to fetching what comes into view; a timer after load, to fetching at load.
+	let viewport = wider(reach('viewport'), reach('scroll'));
 	let idle = reach('visible');
-	const load = reach('load');
+	const load = wider(reach('load'), reach('timer'));
 	if (load !== 'none') {
 		// Nothing in the router fetches links off screen at load: idle for those on screen and viewport for the rest come nearest.
 		idle = wider(idle, load);
@@ -115,18 +143,24 @@ export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDeci
 	// had fetched already), intent stays on: the press on a link in view costs nothing more.
 	const intent: Networks = !prefetchesAtAll ? 'all' : intentFrom !== 'none' ? intentFrom : 'all';
 	const originalConcurrency = Math.max(0, ...pages.map((p) => p.concurrency));
-	const concurrency = Math.max(1, originalConcurrency);
+	const concurrency = Math.min(MAX_CONCURRENCY, Math.max(1, originalConcurrency));
 
-	for (const o of original.filter((x) => x.networks !== 'none')) reasons.push({ trigger: o.trigger === 'viewport' ? 'viewport' : o.trigger === 'load' || o.trigger === 'visible' ? 'idle' : 'intent', says: `The original ${WORDS[o.trigger]}, ${ON[o.networks]} (${o.pages} of ${o.of} pages).` });
+	for (const o of original.filter((x) => x.networks !== 'none')) reasons.push({ trigger: o.trigger === 'viewport' || o.trigger === 'scroll' ? 'viewport' : o.trigger === 'load' || o.trigger === 'visible' || o.trigger === 'timer' ? 'idle' : 'intent', says: `The original ${WORDS[o.trigger]}, ${ON[o.networks]} (${o.pages} of ${o.of} pages).` });
 	if (!prefetchesAtAll) reasons.push({ trigger: 'intent', says: 'The original fetches nothing before a click. The port fetches a page when its link is hovered, focused or pressed, on every network, and nothing else ahead.' });
 	const set = (n: Networks) => (n === 'all' ? 'on every network but Save-Data' : n === 'fast' ? 'on fast connections only' : 'off');
 	reasons.push({ trigger: 'viewport', says: `The port fetches a link's page when it comes into view: ${set(viewport)}.` });
 	reasons.push({ trigger: 'idle', says: `The port fetches the links on screen once the page is idle: ${set(idle)}.` });
 	reasons.push({ trigger: 'intent', says: `The port fetches a link's page on hover, focus or press: ${set(intent)}.` });
 	if (load !== 'none') reasons.push({ trigger: 'idle', says: "The original also fetches links off screen at load; the router has no such setting, so the port fetches them as they come into view instead. That is later than the original for links far down the page." });
-	const saveData = pages.some((p) => p.conditions?.['save-data'] && Object.entries(p.conditions['save-data']).some(([k, v]) => k !== 'error' && v === true));
-	if (saveData) reasons.push({ trigger: 'viewport', says: 'The original still fetches ahead under Save-Data. The router never does, so there the port is less eager than the original.' });
-	if (concurrency > 0) reasons.push({ trigger: 'concurrency', says: `At most ${concurrency} page fetches in flight at once, as many as the original had.` });
+	// Under Save-Data, by trigger: only those the original fires on most pages count (a few links at load do not).
+	const SAVE_DATA_WORDS = { load: 'links off screen at load', visible: 'links on screen once loaded', viewport: 'links as they come into view', hover: 'links on hover' } as const;
+	const underSaveData = (['load', 'visible', 'viewport', 'hover'] as const).filter((k) => firing(k as Trigger) && pages.some((p) => p.conditions?.['save-data']?.[k] === true));
+	if (underSaveData.length) reasons.push({ trigger: 'viewport', says: `Under Save-Data the original still fetches ${underSaveData.map((k) => SAVE_DATA_WORDS[k]).join(', ')}. The router never fetches ahead under Save-Data, so there the port is less eager than the original.` });
+	const disagreed = [...new Set(pages.flatMap((p) => Object.entries(p.conditions ?? {}).flatMap(([c, r]) => (r?.disagreed ?? []).map((k) => `${k} on ${c}`))))];
+	if (disagreed.length) reasons.push({ trigger: 'viewport', says: `Repeated runs disagreed on ${disagreed.join(', ')}; the port takes the more eager reading.` });
+	const unobserved = pages.filter((p) => p.unobserved);
+	if (unobserved.length) reasons.push({ trigger: 'idle', says: `${unobserved.length} page${unobserved.length === 1 ? '' : 's'} declare prefetch hints the recording could not see fetched; their hints are taken as what they do.` });
+	reasons.push({ trigger: 'concurrency', says: originalConcurrency > MAX_CONCURRENCY ? `At most ${concurrency} page fetches in flight at once: the original had ${originalConcurrency}, but past ${MAX_CONCURRENCY} they only wait for a connection or share the same bandwidth.` : `At most ${concurrency} page fetches in flight at once, as many as the original had.` });
 	const loadLinks = load === 'none' ? [...new Set(pages.flatMap((p) => p.triggers.load?.targets ?? []))].sort() : [];
 	if (loadLinks.length) reasons.push({ trigger: 'per-link', says: `The original fetches ${loadLinks.length} particular link${loadLinks.length === 1 ? '' : 's'} at load (${loadLinks.slice(0, 4).join(', ')}${loadLinks.length > 4 ? ', ...' : ''}). The port does not mark those links yet.` });
 	const revisits = pages.flatMap((p) => (p.revisit ? [p.revisit] : []));

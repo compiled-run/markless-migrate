@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { routerOptions } from '../src/convert/prefetch-config.ts';
-import { decidePrefetch } from '../src/prefetch/decide.ts';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { routerOptions, routerPrefetchSupport } from '../src/convert/prefetch-config.ts';
+import { prefetchRecorder } from '../src/prefetch/convert.ts';
+import { decidePrefetch, declaredTriggers, MAX_CONCURRENCY } from '../src/prefetch/decide.ts';
 import type { ConditionResult, PrefetchFacts, Trigger, TriggerEvidence } from '../src/prefetch/facts.ts';
 
 const e = (tested: number, fired: number): TriggerEvidence => ({ tested, fired, targets: Array.from({ length: fired }, (_, i) => `/p${i}`), bytes: fired * 1000, cancelled: 0 });
@@ -68,4 +72,78 @@ test('vite.config.ts hands the router those options, and nothing when there are 
 	const { viteConfig } = await import('../src/convert/index.ts');
 	assert.match(viteConfig([], { vercel: [] }, "{ prefetch: { intent: 'all', concurrency: 2 } }"), /router\(\{ prefetch: \{ intent: 'all', concurrency: 2 \} \}\)\]/);
 	assert.match(viteConfig([]), /router\(\)\]/);
+});
+
+test('declared hints the recording could not see fetched stand for what the page does, never for nothing ahead', () => {
+	const hints = { links: [{ rel: 'prefetch', href: '/a' }], speculationRules: [{ prefetch: [{ source: 'document', eagerness: 'moderate' }] }] };
+	const d = decidePrefetch([page('/a', { load: e(10, 0), viewport: e(4, 0) }, { hints, unobserved: 'not seen' })]);
+	assert.equal(d.setting.idle, 'all', JSON.stringify(d.setting));
+	assert.equal(d.setting.intent, 'all');
+	assert.ok(d.reasons.some((r) => /declare prefetch hints the recording could not see/.test(r.says)));
+	assert.deepEqual([...declaredTriggers({ links: [], speculationRules: [{ prefetch: [{ source: 'list', urls: ['/x'] }] }, { prerender: [{ source: 'document', eagerness: 'conservative' }] }] })].sort(), ['pointerdown', 'visible']);
+});
+
+test('a timer after load reads as fetching at load, a first scroll as fetching in view', () => {
+	assert.equal(decidePrefetch([page('/a', { timer: e(30, 30) })]).setting.viewport, 'all');
+	assert.equal(decidePrefetch([page('/a', { scroll: e(4, 20), viewport: e(4, 0) })]).setting.viewport, 'all');
+});
+
+test('concurrency is capped at 6, and the cap is said', () => {
+	const d = decidePrefetch([page('/a', { viewport: e(4, 40) }, { concurrency: 40 })]);
+	assert.equal(d.setting.concurrency, MAX_CONCURRENCY);
+	assert.ok(d.reasons.some((r) => /the original had 40, but past 6/.test(r.says)));
+});
+
+test('Save-Data is named by trigger, and a few links fetched at load under Save-Data do not make it a sentence', () => {
+	const few = decidePrefetch([page('/a', { load: e(100, 4), hover: e(2, 2) }, { conditions: { 'save-data': { load: true, hover: true } } })]);
+	assert.ok(few.reasons.some((r) => r.says === 'Under Save-Data the original still fetches links on hover. The router never fetches ahead under Save-Data, so there the port is less eager than the original.'), JSON.stringify(few.reasons));
+	const none = decidePrefetch([page('/a', { load: e(100, 4), hover: e(2, 2) }, { conditions: { 'save-data': { load: true, hover: false } } })]);
+	assert.ok(!none.reasons.some((r) => /Under Save-Data/.test(r.says)));
+});
+
+test('repeated condition runs that disagreed are said, and the port takes the more eager reading', () => {
+	const d = decidePrefetch([page('/a', { viewport: e(4, 8) }, { conditions: { '3g': { viewport: true, runs: 3, disagreed: ['viewport'] } } })]);
+	assert.equal(d.setting.viewport, 'all');
+	assert.ok(d.reasons.some((r) => /disagreed on viewport on 3g/.test(r.says)));
+});
+
+test('the router support says why it cannot take the setting: not installed, or too old', async () => {
+	const apps: string[] = [];
+	const app = async (vite?: string) => {
+		const dir = await mkdtemp(join(tmpdir(), 'mm-router-'));
+		apps.push(dir);
+		await writeFile(join(dir, 'package.json'), '{"name":"app","type":"module"}');
+		if (vite !== undefined) {
+			const pkg = join(dir, 'node_modules', '@markless', 'router');
+			await mkdir(pkg, { recursive: true });
+			await writeFile(join(pkg, 'package.json'), '{"name":"@markless/router","type":"module","exports":{"./vite":"./vite.js"}}');
+			await writeFile(join(pkg, 'vite.js'), vite);
+		}
+		return dir;
+	};
+	try {
+		assert.equal(((await routerPrefetchSupport(await app())) as { refused?: string }).refused, 'not installed');
+		assert.equal(((await routerPrefetchSupport(await app('export const router = () => ({});'))) as { refused?: string }).refused, 'too old');
+		const current = await app("export const router = () => ({}); export const PREFETCH_TRIGGERS = ['intent', 'viewport', 'idle']; export const PREFETCH_NETWORKS = ['none', 'fast', 'all'];");
+		assert.deepEqual(await routerPrefetchSupport(current), { triggers: ['intent', 'viewport', 'idle'], networks: ['none', 'fast', 'all'] });
+		assert.equal(routerOptions({ intent: 'all', viewport: 'all', idle: 'none', concurrency: 2 }, { refused: 'too old', says: '' }), '');
+	} finally {
+		for (const dir of apps) await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a partial convert decides from the last convert\'s pages and its own, and keeps the others in prefetch.json', async () => {
+	const state = await mkdtemp(join(tmpdir(), 'mm-state-'));
+	try {
+		const stored = { routes: { '/a': page('/a', { viewport: e(4, 8) }), '/b': page('/b', { viewport: e(4, 8) }), '/gone': page('/gone', {}) } };
+		await writeFile(join(state, 'prefetch.json'), JSON.stringify(stored));
+		const recorder = await prefetchRecorder(state, 'http://127.0.0.1:9', ['/a', '/b', '/c'], () => {});
+		assert.deepEqual(recorder.recorded().map((f) => f.route).sort(), ['/a', '/b'], 'a page no longer listed is not read');
+		assert.equal(recorder.fromBefore(), 2);
+		assert.equal(decidePrefetch(recorder.recorded()).setting.viewport, 'all');
+		await recorder.save();
+		assert.deepEqual(Object.keys((JSON.parse(await readFile(join(state, 'prefetch.json'), 'utf8')) as { routes: object }).routes).sort(), ['/a', '/b']);
+	} finally {
+		await rm(state, { recursive: true, force: true });
+	}
 });

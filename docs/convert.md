@@ -158,7 +158,14 @@ router's options in `vite.config.ts` (`router({ prefetch: { intent, viewport, id
   the report says the port is less eager there.
 - Where the original fetches nothing ahead, intent alone (`intent: 'all'`, the rest off). Where its intent could not be
   told (every link it was tried on was already fetched), intent stays on.
-- `concurrency` is the most page fetches the original had in flight at once.
+- Fetched on a timer after load counts as fetched at load; fetched once the visitor first scrolls, as fetched in view.
+  A page that declares prefetch hints the recording could not see fetched is taken at its hints' word: a prefetch link
+  or an `immediate`/`eager` Speculation Rule as fetched once loaded, `moderate` as hover, `conservative` as a press.
+- `concurrency` is the most speculative page fetches the original had in flight at once, at most 6: a browser opens 6
+  connections to a host over HTTP/1.1, so a seventh fetch waits anyway, and over HTTP/2 more at once only share the
+  same bandwidth.
+- A partial convert (`--only`) decides from its own pages and, for the rest, the facts the last convert kept in
+  `.migrate/prefetch.json`, so it never changes the app-wide setting from a few pages alone.
 
 `.migrate/convert/report.json` carries the decision as `prefetch`: the setting, each reason in plain words ("The
 original fetches a link's page when the link comes into view, on every network we tried, slow ones too (2 of 2
@@ -166,7 +173,10 @@ pages)"), the links the original fetched at load by name, whether its revisits w
 more eager setting, which convert never applies (the navigation timing check prices it). It is written into
 `vite.config.ts` only when the app's router says it takes it (`PREFETCH_TRIGGERS` and `PREFETCH_NETWORKS` from
 `@markless/router/vite`, read from the installed package, so a trigger the router does not list is left out and a value
-it does not take fails the convert); otherwise the report says `applied: false` and the router's defaults stand.
+it does not take fails the convert); otherwise the report says `applied: false` with the reason in `notApplied`: the router is not installed (install the
+app's dependencies and convert again), the router is older than the setting, `vite.config.ts` was kept from before (a
+partial convert: it holds what the last full convert wrote, which may be older), or convert ran without `--source`
+and does not write `vite.config.ts`. Convert's log says it the same way.
 
 ### How to iterate on a port
 

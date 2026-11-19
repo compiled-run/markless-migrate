@@ -257,7 +257,7 @@ export interface ConvertReport {
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
 	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it. */
-	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[] };
+	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string };
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
@@ -1807,6 +1807,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
 		await prefetching.save();
 		prefetchDecision = decidePrefetch(prefetching.recorded());
+		if (prefetching.fromBefore()) log(`prefetch: decided from ${prefetching.recorded().length} pages, ${prefetching.fromBefore()} of them as the last convert recorded them`);
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
 			const f = read[i]!;
@@ -2653,7 +2654,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (whole) await writeManaged(managedFile, [...assets.copied.map((c) => c.path), ...used.written].filter((path) => referenced.has(path)));
 	if (unshipped.length) log(`assets: ${unshipped.length} the old pages loaded and the written app does not name left out (${Math.round(unshipped.reduce((n, c) => n + c.bytes, 0) / 1024)} kB)`);
 	const endpoints: EndpointPort[] = [];
-	let prefetchSupport: Awaited<ReturnType<typeof routerPrefetchSupport>>;
+	let prefetchSupport: Awaited<ReturnType<typeof routerPrefetchSupport>> | undefined;
 	let prefetchReport: ConvertReport['prefetch'];
 	const serverKept = options.reuse && (await keepRouting(app, [...new Set(out.map((r) => new URL(r.route, options.old).pathname))]));
 	if (serverKept) log('server: kept as written before, with these pages');
@@ -2694,9 +2695,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort(), routing.trailing, routerOptions(prefetchDecision?.setting, prefetchSupport)));
 	}
 	if (prefetchDecision) {
-		const missing = (['intent', 'viewport', 'idle'] as const).filter((t) => prefetchDecision!.setting[t] !== 'none' && prefetchSupport && !prefetchSupport.triggers.includes(t));
-		prefetchReport = { ...prefetchDecision, applied: Boolean(prefetchSupport), missing };
-		log(`prefetch: ${prefetchSupport ? 'router set to' : "decided, not applied (the app's @markless/router has no prefetch setting):"} ${JSON.stringify(prefetchDecision.setting)}`);
+		const supported = prefetchSupport && !('refused' in prefetchSupport) ? prefetchSupport : undefined;
+		const notApplied = supported
+			? undefined
+			: prefetchSupport && 'refused' in prefetchSupport
+				? prefetchSupport.says
+				: serverKept
+					? 'vite.config.ts was kept as written before with these pages (a partial convert), so it holds whatever prefetch setting the last full convert wrote, which may be older than this decision'
+					: 'convert writes vite.config.ts only with --source, so this app keeps the prefetch setting its own vite.config.ts has';
+		const missing = (['intent', 'viewport', 'idle'] as const).filter((t) => prefetchDecision!.setting[t] !== 'none' && supported && !supported.triggers.includes(t));
+		prefetchReport = { ...prefetchDecision, applied: Boolean(supported), missing, ...(notApplied ? { notApplied } : {}) };
+		log(`prefetch: ${supported ? 'router set to' : 'decided, NOT applied:'} ${JSON.stringify(prefetchDecision.setting)}${notApplied ? `\n  not applied because ${notApplied}` : ''}`);
 		for (const r of prefetchDecision.reasons) log(`  ${r.says}`);
 		if (missing.length) log(`  the router does not take ${missing.join(', ')}: the port is less eager there than the original`);
 	}
