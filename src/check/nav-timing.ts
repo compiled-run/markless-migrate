@@ -305,34 +305,83 @@ async function press(page: Page, context: BrowserContext, browser: NetworkBrowse
 	await page.mouse.up();
 }
 
-/** The links a sequence follows: two of each of the page's shared navigations (sidebar, nav, header) whose page both apps serve, each visited and the first visited again. */
-export async function chooseSteps(page: Page, route: string, regions: readonly string[] = ['aside', 'nav', 'header']): Promise<NavStep[]> {
-	const links = await page.evaluate(() => {
-		const region = (el: Element): string => {
-			for (let at: Element | null = el; at; at = at.parentElement) {
-				const tag = at.tagName.toLowerCase();
-				const role = at.getAttribute('role');
-				if (tag === 'aside' || role === 'complementary' || at.getAttribute('data-slot') === 'sidebar') return 'aside';
-				if (tag === 'header' || role === 'banner') return 'header';
-				if (tag === 'nav' || role === 'navigation') return 'nav';
-				if (tag === 'main' || role === 'main') return 'main';
-			}
-			return 'body';
-		};
-		return [...document.querySelectorAll<HTMLAnchorElement>('a[href]')]
-			.filter((a) => a.origin === location.origin && !a.hash && !a.hasAttribute('download') && (!a.target || a.target === '_self') && a.checkVisibility?.() !== false && a.getBoundingClientRect().width > 0)
-			.map((a) => ({ target: a.pathname + a.search, region: region(a), text: (a.textContent ?? '').trim() }));
-	});
-	const own = targetOf(route);
+/** The same-origin links of one navigation region on the page, by their resolved address, that a press could follow. */
+async function regionLinks(page: Page, region: string): Promise<string[]> {
+	const links = await page
+		.evaluate(() => {
+			const regionOf = (el: Element): string => {
+				for (let at: Element | null = el; at; at = at.parentElement) {
+					const tag = at.tagName.toLowerCase();
+					const role = at.getAttribute('role');
+					if (tag === 'aside' || role === 'complementary' || at.getAttribute('data-slot') === 'sidebar') return 'aside';
+					if (tag === 'header' || role === 'banner') return 'header';
+					if (tag === 'nav' || role === 'navigation') return 'nav';
+					if (tag === 'main' || role === 'main') return 'main';
+				}
+				return 'body';
+			};
+			return [...document.querySelectorAll<HTMLAnchorElement>('a[href]')]
+				.filter((a) => a.origin === location.origin && !a.hash && !a.hasAttribute('download') && (!a.target || a.target === '_self') && a.checkVisibility?.() !== false && a.getBoundingClientRect().width > 0)
+				.map((a) => ({ target: a.pathname + a.search, region: regionOf(a), text: (a.textContent ?? '').trim() }));
+		})
+		.catch(() => []);
+	return [...new Set(links.filter((l) => l.region === region && !DESTRUCTIVE.test(`${l.target} ${l.text}`)).map((l) => targetOf(l.target)))];
+}
+
+/** Presses the link as the cell's device does and waits for the address to become its target. */
+async function walkTo(page: Page, spec: NavCellSpec, target: string): Promise<boolean> {
+	const at = await linkPoint(page, target);
+	if (!at) return false;
+	if (phone(spec)) await page.touchscreen.tap(at.x, at.y);
+	else await page.mouse.click(at.x, at.y);
+	const bare = targetOf(target.split('?', 1)[0]!);
+	return page
+		.waitForURL((u) => targetOf(u.pathname) === bare, { timeout: 15_000 })
+		.then(() => page.waitForLoadState('load').catch(() => {}))
+		.then(() => true, () => false);
+}
+
+/**
+ * The links a sequence follows, found by walking them on the old app as the cell's device would: for each shared
+ * navigation (sidebar, nav, header; at phone width a nav, the header and the content), a link A on the page the walk is
+ * on, a link B on A's page in the same region, and a link back to A on B's page. Only a walk the old app completes is
+ * kept, so every step can be pressed there; the next region starts from A.
+ */
+export async function chooseSteps(browser: Browser, origin: string, route: string, spec: NavCellSpec): Promise<NavStep[]> {
+	const regions = phone(spec) ? ['nav', 'header', 'main'] : ['aside', 'nav', 'header'];
+	const context = await browser.newContext(contextOptions(spec));
 	const steps: NavStep[] = [];
-	const used = new Set<string>([own]);
-	for (const region of regions) {
-		const pool = [...new Map(links.filter((l) => l.region === region && !DESTRUCTIVE.test(`${l.target} ${l.text}`)).map((l) => [targetOf(l.target), l] as const)).keys()].filter((t) => !used.has(t)).sort((a, b) => (hash(route + a) < hash(route + b) ? -1 : 1));
-		if (pool.length < 2) continue;
-		const [a, b] = pool as [string, string];
-		used.add(a).add(b);
-		steps.push({ target: a, region, kind: 'first' }, { target: b, region, kind: 'first' }, { target: a, region, kind: 'revisit' });
-		if (steps.length >= 6) break;
+	try {
+		const page = await context.newPage();
+		let here = route;
+		const goHere = () => page.goto(new URL(here, origin).href, { waitUntil: 'load', timeout: 120_000 });
+		await goHere();
+		const order = (list: string[], salt: string) => list.sort((a, b) => (hash(salt + a) < hash(salt + b) ? -1 : 1));
+		for (const region of regions) {
+			if (steps.length >= 6) break;
+			const used = new Set([targetOf(here), ...steps.map((s) => s.target)]);
+			let found = false;
+			for (const a of order((await regionLinks(page, region)).filter((t) => !used.has(t)), route + region).slice(0, 4)) {
+				if (!(await walkTo(page, spec, a))) {
+					await goHere();
+					continue;
+				}
+				for (const b of order((await regionLinks(page, region)).filter((t) => !used.has(t) && t !== a), route + a).slice(0, 4)) {
+					if (!(await walkTo(page, spec, b))) break;
+					if (await walkTo(page, spec, a)) {
+						steps.push({ target: a, region, kind: 'first' }, { target: b, region, kind: 'first' }, { target: a, region, kind: 'revisit' });
+						here = a;
+						found = true;
+						break;
+					}
+					await page.goto(new URL(a, origin).href, { waitUntil: 'load', timeout: 120_000 });
+				}
+				if (found) break;
+				await goHere();
+			}
+		}
+	} finally {
+		await context.close().catch(() => {});
 	}
 	return steps;
 }
@@ -496,11 +545,7 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 				const device = phone(spec) ? 'phone' : 'desktop';
 				let steps = chosen.get(device);
 				if (!steps) {
-					const context = await browser.newContext(contextOptions(spec));
-					const page = await context.newPage();
-					await page.goto(new URL(route, origins.old).href, { waitUntil: 'load', timeout: 120_000 });
-					steps = await chooseSteps(page, route, device === 'phone' ? ['nav', 'header', 'main'] : ['aside', 'nav', 'header']);
-					await context.close();
+					steps = await chooseSteps(browser, origins.old, route, spec);
 					chosen.set(device, steps);
 				}
 				return steps;
