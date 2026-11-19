@@ -68,11 +68,9 @@ runs:
         done
         echo "apt-own=$own" >> "$GITHUB_OUTPUT"
       shell: bash
-    # The runner's packages.microsoft.com source has answered 403, failing the browsers' apt-get update; they need nothing from it.
     # AWS-hosted runners list us-east-2.ec2.archive.ubuntu.com first, which served 0.55 MB/s on 2026-11-18 (azure.archive.ubuntu.com: 18-110 MB/s from the same runners).
     - id: apt
       run: |
-        { grep -rl packages.microsoft.com /etc/apt/sources.list.d || true; } | xargs -r sudo rm -f
         if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i -E 's#^https?://[^/]*\.ec2\.archive\.ubuntu\.com/ubuntu/#http://azure.archive.ubuntu.com/ubuntu/#' /etc/apt/apt-mirrors.txt && head -1 /etc/apt/apt-mirrors.txt; fi
         echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded > /dev/null
         mkdir -p ~/.cache/apt-archives
