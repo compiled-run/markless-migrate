@@ -205,13 +205,15 @@ it and sign the role out for the rest of the run.
 `check --all` needs `plan --source`. It checks every crawled path, and every route only the source knows:
 a dynamic segment takes a value seen in a crawled path for a segment of the same name, or one from
 `.migrate/samples.json` (`{ "slug": "first-post" }` by name, or `{ "/blog/:slug": "/blog/hello" }` by
-pattern); a route nothing gives a value is reported as "needs a sample". It also checks the source's GET
+pattern, or a list of paths for a pattern, which `plan` also loads and so lists to port); a route nothing
+gives a value is reported as "needs a sample". It also checks the source's GET
 route handlers, `robots.txt`, sitemaps (including those robots.txt names), feeds and the manifest the
 pages link to, and common `/.well-known` files, whenever the old app serves them as something other than
 HTML. Any `--route` whose old response is not HTML is compared the same way.
 
 A route the plan does not list is never skipped in silence. Each checked page's links to the old app's own
-paths, and the pages its journeys reached, are held against `.migrate/inventory.json` (its routes and the
+paths, the pages it shows in a frame, object or embed (query aside), and the pages its journeys reached or
+switched a frame to, are held against `.migrate/inventory.json` (its routes and the
 source's route patterns, `/blog/:slug`); each one it does not list (a file such as a PDF aside) is asked of
 the original, up to 40 a route, and one the original serves as a page on its own origin is red under
 `coverage` on the route that links to it (`a page the inventory does not list: /careers`), as are any left

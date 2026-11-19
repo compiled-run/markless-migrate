@@ -202,7 +202,9 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		embedLines.set(line, left - 1);
 		return false;
 	});
-	const links = [...document.querySelectorAll('a[href], link[rel~="alternate"][hreflang]')].map((a) => (a as HTMLAnchorElement).href).filter(Boolean);
+	// A page drawn in a frame is one the original serves, as a link's target is; its query is the host page's state, not another page.
+	const frames = [...document.querySelectorAll<HTMLIFrameElement | HTMLObjectElement | HTMLEmbedElement>('iframe[src], frame[src], object[data], embed[src]')].map((el) => (el instanceof HTMLObjectElement ? el.data : el.src).split(/[?#]/)[0]!);
+	const links = [...[...document.querySelectorAll('a[href], link[rel~="alternate"][hreflang]')].map((a) => (a as HTMLAnchorElement).href), ...frames].filter(Boolean);
 	return { elements, styles: { props, values, rows }, seo, images, fonts, text, links };
 }
 
@@ -220,6 +222,11 @@ export function expandStyles(collected: Collected) {
 }
 
 /** Runs collectPage in the page and expands its styles. */
+/** Runs inside the page: the addresses its frames, objects and embeds show, without their query. Must stay self-contained. */
+export function frameSources(): string[] {
+	return [...document.querySelectorAll<HTMLIFrameElement | HTMLObjectElement | HTMLEmbedElement>('iframe[src], frame[src], object[data], embed[src]')].map((el) => (el instanceof HTMLObjectElement ? el.data : el.src).split(/[?#]/)[0]!).filter(Boolean);
+}
+
 export async function readPage(page: { evaluate: <R, A>(fn: (arg: A) => R, arg: A) => Promise<R> }, options: { origin: string; full: boolean; styles?: boolean }) {
 	return expandStyles(await page.evaluate(collectPage, options));
 }

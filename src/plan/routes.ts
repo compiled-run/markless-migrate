@@ -24,8 +24,13 @@ export interface RouteTargets {
 	readonly filled: Readonly<Record<string, string>>;
 }
 
-/** `.migrate/samples.json`: `{ "lang": "en" }` fills a segment by name; `{ "/blog/:slug": "/blog/hello" }` names a path for a pattern. */
-export type Samples = Readonly<Record<string, string>>;
+/** `.migrate/samples.json`: `{ "lang": "en" }` fills a segment by name; `{ "/blog/:slug": "/blog/hello" }` names a path for a pattern, and a list names several (the pages a page can switch its frame to). */
+export type Samples = Readonly<Record<string, string | readonly string[]>>;
+
+/** The concrete paths samples.json names for source patterns. */
+export function samplePaths(samples: Samples): string[] {
+	return Object.entries(samples).flatMap(([key, value]) => (key.startsWith('/') ? (typeof value === 'string' ? [value] : [...value]) : []));
+}
 
 export async function readSamples(dir: string): Promise<Samples> {
 	try {
@@ -83,7 +88,7 @@ export function routeTargets(inventory: Inventory, samples: Samples = {}): Route
 			for (const [name, value] of Object.entries(paramValues(entry.route, path))) known[name] ??= value;
 		}
 	}
-	for (const [key, value] of Object.entries(samples)) if (!key.startsWith('/')) known[key] = value;
+	for (const [key, value] of Object.entries(samples)) if (!key.startsWith('/') && typeof value === 'string') known[key] = value;
 	// Writes a GET can trigger: an SDK call or a handler for any method; a POST-only action (a form's) is not fetched by a GET.
 	const writing = new Map((inventory.source?.writes ?? []).filter((w) => !['POST', 'PUT', 'PATCH', 'DELETE'].includes(w.method)).map((w) => [w.handler.file, w.handler.line] as const));
 	for (const entry of union) {
@@ -98,6 +103,13 @@ export function routeTargets(inventory: Inventory, samples: Samples = {}): Route
 			continue;
 		}
 		const sample = samples[entry.route];
+		if (sample !== undefined && typeof sample !== 'string') {
+			for (const path of sample) {
+				target.add(path);
+				if (path !== entry.route) filled[path] = entry.route;
+			}
+			continue;
+		}
 		const result = sample ? { path: sample, missing: [] } : entry.dynamic ? fillPattern(entry.route, known) : { path: entry.route, missing: [] };
 		if (result.path) {
 			target.add(result.path);

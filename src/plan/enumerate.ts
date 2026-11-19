@@ -1,8 +1,8 @@
 import { request } from '../check/http.ts';
 import { mime } from '../check/capture.ts';
 
-/** Where plan learned of a route: a sitemap, a link on a crawled page, the old app's source, robots.txt, a feed, a fixed non-page path, or a redirect. */
-export type RouteSource = 'sitemap' | 'crawl' | 'hreflang' | 'source' | 'robots' | 'feed' | 'endpoint' | 'redirect';
+/** Where plan learned of a route: a sitemap, a link or frame on a crawled page, the old app's source, robots.txt, a feed, a fixed non-page path, a redirect, or `.migrate/samples.json`. */
+export type RouteSource = 'sitemap' | 'crawl' | 'hreflang' | 'source' | 'robots' | 'feed' | 'endpoint' | 'redirect' | 'sample';
 
 export interface PlannedRoute {
 	readonly route: string;
