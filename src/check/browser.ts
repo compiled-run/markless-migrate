@@ -385,6 +385,7 @@ export function routedRequests(env: SideEnv, options: OpenOptions): string | Reg
 
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
+	// Proof run: a one-line edit to code every recorder shares.
 	await registerStructure();
 	const storageState = env.frontDoor ? withOldSession(env.storageState, env.frontDoor.storageState) : env.storageState;
 	// A visitor's browser lets a click write to the clipboard; headless Linux refuses unless asked, so both sides get the same grant.
