@@ -12,6 +12,8 @@ OLD="${OLD:-http://localhost:4000}"
 SOURCE="$ROOT/deploy/shadcn-ui/old/apps/v4"
 PAGE_ORDER_FROM="${PAGE_ORDER_FROM-https://mm-shadcn-ui-old.long-wildflower-ecf7.workers.dev}"
 cd "$APP"
+# The preview pages /create's designer frame can show that no crawl reaches: the source's generateStaticParams (app/(view)/preview/[base]/[name]/page.tsx).
+[ -f .migrate/samples.json ] || { mkdir -p .migrate && cp "$ROOT/deploy/shadcn-ui/samples.json" .migrate/samples.json; }
 [ -f .migrate/inventory.json ] || node "$ROOT/src/cli.ts" plan --old "$OLD" --source "$SOURCE" --limit 5000 ${PLAN_CONCURRENCY:+--concurrency "$PLAN_CONCURRENCY"}
 [ -f .migrate/usage.json ] || node "$ROOT/src/cli.ts" usage --old "$OLD" --source "$SOURCE"
 [ -z "${PLAN_ONLY:-}" ] || exit 0

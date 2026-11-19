@@ -7,6 +7,7 @@ import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideE
 import { clickOnce } from './click.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
+import { frameSources } from './collect.ts';
 import { signInCookies, storageKeys } from './storage.ts';
 import type { Box, Viewport, WriteLine } from './types.ts';
 import { changedRegions } from './visual.ts';
@@ -70,6 +71,8 @@ export interface StepResult {
 	readonly dialogs?: readonly string[];
 	/** Files the step downloaded, by the name the page gave and their size: `route.ts (63 bytes)`. */
 	readonly downloads?: readonly string[];
+	/** Same-origin pages the step put in a frame, object or embed of the page it stayed on, by path. */
+	readonly frames?: readonly string[];
 	/** The step ended on a page the front door serves from the old app, on the old app's own origin: what that page keeps in the browser is the old app's, on another origin, so it is not compared. */
 	readonly door?: boolean;
 	/** What the step changed on <html> and <body> (attributes, class names: shown, not compared), in the page colours, colour scheme, scroll lock and pointer-events, and in stored values: `page background: rgb(255, 255, 255) → rgb(24, 25, 32)`, `localStorage theme: "light" → "dark"`. */
@@ -1672,6 +1675,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		if (inflight() > 0) await quiet(page, inflight, navigations);
 		documentLoaded = false;
 		const before = await snapshot(page, hosts);
+		const framesBefore = await page.evaluate(frameSources).catch(() => [] as string[]);
 		const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);
 		const stateBefore = await readState(page, signedIn);
 		requests = [];
@@ -1708,6 +1712,8 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		const widget = step && (step.action === 'key' || step.action === 'outside') ? await readWidget(page, step) : undefined;
 		const saved = (await Promise.all(downloads)).sort();
 		const after = await snapshot(page, hosts);
+		const pageOrigin = new URL(page.url()).origin;
+		const frames = documentLoaded ? [] : [...new Set((await page.evaluate(frameSources).catch(() => [] as string[])).filter((src) => !framesBefore.includes(src) && URL.parse(src)?.origin === pageOrigin))].map((src) => new URL(src).pathname);
 		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 		// Lines the page changes on its own while nothing is used (a demo toggling a class on a timer) are no step's doing.
 		const own = (lines: string[]) => (documentLoaded || !ambient.lines.length ? lines : lines.filter((l) => !ambient.lines.includes(l)));
@@ -1756,6 +1762,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			...(unreachable ? { unreachable } : {}),
 			...(dialogs.length ? { dialogs: [...dialogs] } : {}),
 			...(saved.length ? { downloads: saved } : {}),
+			...(frames.length ? { frames } : {}),
 			...(onOld(page.url()) ? { door: true } : {}),
 			...(state.length ? { state } : {}),
 			...(reaction ? { reaction } : {}),

@@ -30,10 +30,10 @@ const listed = (inventory: InventoryRoutes, path: string) => {
 // A file the page links to (a PDF, an image, a feed) is an asset or an endpoint, not a page to port.
 const looksLikeFile = (path: string) => /\.[a-z0-9]{2,5}$/i.test(path.split(/[?#]/)[0]!);
 
-/** The paths of the old app's own pages this route's old page links to or a journey reached, that the inventory does not list. */
+/** The paths of the old app's own pages this route's old page links to or frames, or a journey reached or framed, that the inventory does not list. */
 export function unlistedCandidates(route: string, olds: readonly RouteCapture[], journeys: readonly RecordedJourney[], inventory: InventoryRoutes): string[] {
 	const linked = olds.flatMap((o) => Object.values(o.pages).flatMap((p) => p.links ?? []));
-	const reached = journeys.flatMap((j) => j.expected.filter((r) => r.navigated && !r.door).map((r) => r.url));
+	const reached = journeys.flatMap((j) => j.expected.flatMap((r) => [...(r.navigated && !r.door ? [r.url] : []), ...(r.frames ?? [])]));
 	const paths = [...new Set([...linked, ...reached].filter((p) => p.startsWith('/') && !looksLikeFile(p)).map((p) => p.split('#')[0]!))];
 	return paths.filter((p) => trim(p) !== trim(route) && !listed(inventory, p)).sort();
 }
@@ -44,7 +44,7 @@ export function unlistedFailures(route: string, candidates: readonly string[], s
 	for (const s of served) {
 		// A link that leaves for another site (a chat invite, a sponsor) lands on that site's page, not the original's.
 		if (s.status >= 400 || !s.page || !s.landed.startsWith('/') || listed(inventory, s.landed)) continue;
-		failures.push({ route, dimension: 'coverage', check: `a page the inventory does not list: ${s.path}`, expected: 'every page the original serves is in .migrate/inventory.json, so it is checked', actual: `the original serves ${s.path}${s.landed !== s.path ? ` (landing on ${s.landed})` : ''} with ${s.status}, linked from ${route} or reached by its journeys, and the inventory does not list it`, hint: HINTS.unlistedRoute });
+		failures.push({ route, dimension: 'coverage', check: `a page the inventory does not list: ${s.path}`, expected: 'every page the original serves is in .migrate/inventory.json, so it is checked', actual: `the original serves ${s.path}${s.landed !== s.path ? ` (landing on ${s.landed})` : ''} with ${s.status}, linked or shown in a frame on ${route} or reached by its journeys, and the inventory does not list it`, hint: HINTS.unlistedRoute });
 	}
 	const left = candidates.length - served.length;
 	if (left > 0) failures.push({ route, dimension: 'coverage', check: 'pages the inventory does not list, past the probe limit', expected: `at most ${MAX_UNLISTED} linked paths the inventory does not list, each asked of the original`, actual: `${left} more linked path${left === 1 ? '' : 's'} the inventory does not list were not asked: ${candidates.slice(served.length, served.length + 5).join(', ')}${left > 5 ? ', ...' : ''}`, hint: HINTS.unlistedRoute });

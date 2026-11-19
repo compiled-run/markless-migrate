@@ -11,7 +11,7 @@ import { request } from '../check/http.ts';
 import { defaultEnv } from '../check/browser.ts';
 import { discoverEndpoints } from '../check/endpoints.ts';
 import { DEFAULT_CRAWL_BOUND, enumerateRoutes, routesToPort, type Enumeration, type PlannedRoute, type RouteSource } from './enumerate.ts';
-import { routeTargets, type Samples } from './routes.ts';
+import { routeTargets, samplePaths, type Samples } from './routes.ts';
 import { signIn, type AuthConfig } from '../check/auth.ts';
 import { ANONYMOUS } from '../check/types.ts';
 import type { StorageState } from '../check/browser.ts';
@@ -20,7 +20,7 @@ export interface InventoryRoute {
 	readonly route: string;
 	readonly status: number;
 	readonly redirectsTo?: string;
-	readonly foundIn: readonly ('sitemap' | 'crawl' | 'hreflang')[];
+	readonly foundIn: readonly ('sitemap' | 'crawl' | 'hreflang' | 'sample')[];
 	readonly seo: Readonly<Record<string, string>>;
 	readonly assets: readonly { url: string; type: string; status: number; contentType: string }[];
 }
@@ -70,7 +70,7 @@ export interface PlanOptions {
 	readonly crawlBound?: number;
 	/** Roles to crawl as besides anonymous: routes only a signed-in visitor reaches are listed too. */
 	readonly auth?: AuthConfig;
-	/** `.migrate/samples.json`: values for the dynamic segments of source routes no crawl reached. */
+	/** `.migrate/samples.json`: values for the dynamic segments of source routes no crawl reached, and the paths to port for a source pattern. */
 	readonly samples?: Samples;
 	/** Pages loaded at once by the browser inventory (default 1). Results are taken in the order one page would take them. */
 	readonly concurrency?: number;
@@ -220,6 +220,7 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	const own = ownHeaders(options);
 	note('/', 'crawl');
 	for (const route of await sitemapRoutes(origin, own)) note(route, 'sitemap');
+	for (const route of samplePaths(options.samples ?? {})) note(route, 'sample');
 	const routes: InventoryRoute[] = [];
 	const done = new Set<string>();
 	try {
