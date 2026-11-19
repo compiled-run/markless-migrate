@@ -49,6 +49,23 @@ export function routeSecurity(text: string): string | undefined {
 	return changed ? out : undefined;
 }
 
+/** The repository URIs an apt source file names (deb822 `URIs:` or one-line `deb`), comments left out. */
+export function sourceUris(text: string): string[] {
+	return text.split('\n').flatMap((line) => {
+		const uris = /^URIs:\s*(.*)$/.exec(line);
+		if (uris) return uris[1]!.split(/\s+/).filter(Boolean);
+		const deb = /^deb(?:-src)?\s+(?:\[[^\]]*\]\s+)?(\S+)/.exec(line);
+		return deb ? [deb[1]!] : [];
+	});
+}
+
+// packages.microsoft.com has answered 403 and failed apt-get update; a file is dropped only when every source in it is that host.
+const MICROSOFT = /^https?:\/\/packages\.microsoft\.com\//;
+export const onlyMicrosoft = (text: string) => {
+	const uris = sourceUris(text);
+	return uris.length > 0 && uris.every((u) => MICROSOFT.test(u));
+};
+
 /** The mirror file for one attempt: the mirrors from `from` on, so apt still fails over between them file by file. */
 export function mirrorFile(order: readonly string[], from: number): string {
 	return order
@@ -62,8 +79,11 @@ export type Outcome = { readonly kind: 'ok' } | { readonly kind: 'stalled' } | {
 export interface Io {
 	readonly read: () => string | undefined;
 	readonly write: (text: string) => void;
-	/** Points every apt source that reads security.ubuntu.com directly at the mirror list; returns the files it changed. */
-	readonly routeSecurity: () => string[];
+	readonly sources: () => { readonly file: string; readonly text: string }[];
+	readonly writeSource: (file: string, text: string) => void;
+	readonly removeSource: (file: string) => void;
+	/** The repositories apt itself reads, from `apt-get indextargets`. */
+	readonly repositories: () => string[];
 	readonly run: (command: readonly string[], seconds: number) => Promise<Outcome>;
 	/** Before the next attempt: stop what the last one left running as root, and repair an interrupted dpkg. */
 	readonly settle: () => Promise<void>;
@@ -72,6 +92,17 @@ export interface Io {
 
 /** 0 once an attempt installs; 1 when every mirror stalled or failed. At most MAX_ATTEMPTS attempts of ATTEMPT_SECONDS each. */
 export async function install(command: readonly string[], io: Io, seconds = ATTEMPT_SECONDS): Promise<number> {
+	for (const { file, text } of io.sources()) {
+		if (!onlyMicrosoft(text)) continue;
+		io.removeSource(file);
+		io.log(`apt source ${file} reads only packages.microsoft.com, which has answered 403; removed`);
+	}
+	const listing = () => io.sources().map(({ file, text }) => `${file}: ${sourceUris(text).join(' ') || '(no sources)'}`).join('; ') || 'no source files';
+	io.log(`apt sources: ${listing()}`);
+	if (!io.repositories().length) {
+		io.log(`::error::apt has no package source on this runner, so no mirror can help (${listing()})`);
+		return 1;
+	}
 	const text = io.read();
 	if (text === undefined) {
 		const outcome = await io.run(command, seconds);
@@ -87,7 +118,7 @@ export async function install(command: readonly string[], io: Io, seconds = ATTE
 		if (i > 0) {
 			await io.settle();
 			io.write(mirrorFile(order, i));
-			if (i === 1) for (const file of io.routeSecurity()) io.log(`apt source ${file} read security.ubuntu.com directly; it now reads the mirror list too`);
+			if (i === 1) rerouteSecurity(io);
 		}
 		const started = Date.now();
 		const outcome = await io.run(command, seconds);
@@ -102,6 +133,22 @@ export async function install(command: readonly string[], io: Io, seconds = ATTE
 	}
 	io.log(`::error::apt could not install the browsers' system packages from any mirror: ${tried.join('; ')}`);
 	return 1;
+}
+
+function rerouteSecurity(io: Io): void {
+	const before = io.sources();
+	const changed = before.flatMap(({ file, text }) => {
+		const routed = routeSecurity(text);
+		return routed === undefined ? [] : [{ file, text, routed }];
+	});
+	for (const c of changed) io.writeSource(c.file, c.routed);
+	if (!changed.length) return;
+	if (io.repositories().length) {
+		for (const c of changed) io.log(`apt source ${c.file} read security.ubuntu.com directly; it now reads the mirror list too`);
+		return;
+	}
+	for (const c of changed) io.writeSource(c.file, c.text);
+	io.log(`::warning::apt read no source after security.ubuntu.com was moved onto the mirror list in ${changed.map((c) => c.file).join(', ')}; those files are restored as they were`);
 }
 
 /** Runs `command` in its own process group; past `seconds` the group gets SIGTERM, and SIGKILL KILL_GRACE_SECONDS later. */
@@ -150,15 +197,14 @@ export function systemIo(file = MIRRORS_FILE): Io {
 	return {
 		read: () => (existsSync(file) ? readFileSync(file, 'utf8') : undefined),
 		write: (text) => put(file, text),
-		routeSecurity: () => {
+		sources: () => {
 			const dir = '/etc/apt/sources.list.d';
-			const files = ['/etc/apt/sources.list', ...(existsSync(dir) ? readdirSync(dir).filter((f) => /\.(list|sources)$/.test(f)).map((f) => `${dir}/${f}`) : [])].filter((f) => existsSync(f));
-			return files.filter((f) => {
-				const routed = routeSecurity(readFileSync(f, 'utf8'));
-				if (routed !== undefined) put(f, routed);
-				return routed !== undefined;
-			});
+			const files = ['/etc/apt/sources.list', ...(existsSync(dir) ? readdirSync(dir).filter((f) => /\.(list|sources)$/.test(f)).map((f) => `${dir}/${f}`) : [])];
+			return files.filter((f) => existsSync(f)).map((f) => ({ file: f, text: readFileSync(f, 'utf8') }));
 		},
+		writeSource: put,
+		removeSource: (f) => void spawnSync('sudo', ['rm', '-f', f], { stdio: 'inherit' }),
+		repositories: () => [...new Set((spawnSync('apt-get', ['indextargets', '--format', '$(REPO_URI)'], { encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean))],
 		// sudo does not pass on a signal sent from its own process group, so a stopped attempt leaves apt-get running as root, holding the lock.
 		settle: async () => {
 			const running = () => spawnSync('pgrep', ['-x', 'apt-get|dpkg']).status === 0;
