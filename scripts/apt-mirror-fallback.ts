@@ -44,7 +44,8 @@ export interface Io {
 	readonly read: () => string | undefined;
 	readonly write: (text: string) => void;
 	readonly run: (command: readonly string[], seconds: number) => Promise<Outcome>;
-	readonly recover: () => void;
+	/** Before the next attempt: stop what the last one left running as root, and repair an interrupted dpkg. */
+	readonly settle: () => Promise<void>;
 	readonly log: (line: string) => void;
 }
 
@@ -63,7 +64,7 @@ export async function install(command: readonly string[], io: Io, seconds = ATTE
 	for (let i = 0; i < order.length; i++) {
 		const mirror = order[i]!;
 		if (i > 0) {
-			io.recover();
+			await io.settle();
 			io.write(mirrorFile(order, i));
 		}
 		const started = Date.now();
@@ -125,8 +126,14 @@ export function systemIo(file = MIRRORS_FILE): Io {
 			if (writable(file)) writeFileSync(file, text);
 			else spawnSync('sudo', ['tee', file], { input: text, stdio: ['pipe', 'ignore', 'inherit'] });
 		},
-		// A stalled attempt stopped mid-unpack leaves dpkg interrupted, which would fail every later attempt at once.
-		recover: () => {
+		// sudo does not pass on a signal sent from its own process group, so a stopped attempt leaves apt-get running as root, holding the lock.
+		settle: async () => {
+			const running = () => spawnSync('pgrep', ['-x', 'apt-get|dpkg']).status === 0;
+			for (const signal of ['TERM', 'KILL']) {
+				if (!running()) break;
+				spawnSync('sudo', ['pkill', `-${signal}`, '-x', 'apt-get'], { stdio: 'inherit' });
+				for (let waited = 0; running() && waited < KILL_GRACE_SECONDS; waited++) await new Promise((r) => setTimeout(r, 1000));
+			}
 			if (existsSync('/var/lib/dpkg/updates') && readdirSync('/var/lib/dpkg/updates').length > 0) spawnSync('sudo', ['dpkg', '--configure', '-a'], { stdio: 'inherit', timeout: ATTEMPT_SECONDS * 1000 });
 		},
 		run,
