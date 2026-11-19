@@ -104,9 +104,6 @@ jobs:
           - { suite: parity, files: control-parity touch, browsers: chromium webkit }
     steps:
       - uses: actions/checkout@v4
-      - if: matrix.suite == 'parity'
-        run: |
-          { printf 'http://10.255.255.1/ubuntu/\tpriority:0\n'; cat /etc/apt/apt-mirrors.txt; } > /tmp/mirrors && sudo cp /tmp/mirrors /etc/apt/apt-mirrors.txt && cat /etc/apt/apt-mirrors.txt
       - uses: ./.github/actions/setup
         with:
           browsers: ${{ matrix.browsers || 'chromium' }}
