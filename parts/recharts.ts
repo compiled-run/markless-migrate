@@ -34,7 +34,7 @@ interface Facts {
 const WRAPPER = '[data-mm-chart]';
 const OFFSET = 10;
 const parsed = new WeakMap<Element, Facts | undefined>();
-const active = new WeakMap<Element, { surface: Element; state: number; key: number }>();
+const active = new WeakMap<Element, { surface: Element; state: number }>();
 const wired = new WeakSet<Element>();
 
 /** The SVG the chart shows now: one per width the old page drew it at and per state of its card's controls. */
@@ -84,7 +84,7 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 	const shown = f ? state : -1;
 	resting.delete(wrapper);
 	if (!now || now.surface !== surface || now.state !== shown) wrapper.dispatchEvent(new CustomEvent('mmchart', { detail: shown }));
-	if (surface) active.set(wrapper, { surface, state: shown, key: place && 'key' in place ? place.key : (now?.key ?? -1) });
+	if (surface) active.set(wrapper, { surface, state: shown });
 	if (shown < 0 || !place || !f || !surface) {
 		// recharts drops the hidden tooltip's transform, so it comes in from the corner the next time it shows.
 		tip.style.visibility = 'hidden';
@@ -143,16 +143,42 @@ function pick(f: Facts, svg: Element, target: Element, x: number, y: number, cli
 	return inside(f.g, ((Math.atan2(cy - y, x - cx) * 180) / Math.PI + 360) % 360);
 }
 
-function at(wrapper: HTMLElement, event: MouseEvent): void {
+// recharts' tooltip state keeps the hovered point and the keys' point apart; the hovered one shows while there is one.
+const hovered = new WeakMap<Element, { state: number; x: number; y: number }>();
+const keyed = new WeakMap<Element, { key: number; on: boolean }>();
+
+function render(wrapper: HTMLElement, surface = surfaceOf(wrapper)): void {
+	const h = hovered.get(wrapper);
+	const k = keyed.get(wrapper);
+	const entry = k?.on && surface ? factsOf(surface)?.k?.[k.key] : undefined;
+	if (h) show(wrapper, surface, h.state, { x: h.x, y: h.y });
+	else if (entry) show(wrapper, surface, entry[0], { key: k!.key });
+	else show(wrapper, surface, -1);
+}
+
+function pointAt(wrapper: HTMLElement, event: MouseEvent): { surface: SVGSVGElement; state: number; x: number; y: number } | undefined {
 	const surface = surfaceOf(wrapper);
 	const f = surface && factsOf(surface);
 	const m = surface?.getScreenCTM();
-	if (!surface || !f || !m || !f.p.length) return;
+	if (!surface || !f || !m || !f.p.length) return undefined;
 	// recharts' getRelativeCoordinate rounds the pointer to whole pixels.
 	const inSvg = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
 	const p = { x: Math.round(inSvg.x), y: Math.round(inSvg.y) };
 	const inBox = p.x >= 0 && p.y >= 0 && p.x <= f.w && p.y <= f.h;
-	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y, event) : -1, { x: p.x, y: p.y });
+	return { surface, state: inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y, event) : -1, ...p };
+}
+
+// setMouseOverAxisIndex: a point under the pointer is hovered and the keys' point goes inactive; none is mouseLeaveChart.
+function at(wrapper: HTMLElement, event: MouseEvent): void {
+	const point = pointAt(wrapper, event);
+	if (!point) return;
+	if (point.state < 0) hovered.delete(wrapper);
+	else {
+		hovered.set(wrapper, point);
+		const k = keyed.get(wrapper);
+		if (k) k.on = false;
+	}
+	render(wrapper, point.surface);
 }
 
 function wire(wrapper: HTMLElement): void {
@@ -161,7 +187,15 @@ function wire(wrapper: HTMLElement): void {
 	// recharts follows mousemove, whose coordinates the browser gives in whole pixels; a touch or a pen, pointermove.
 	wrapper.addEventListener('mousemove', (e) => at(wrapper, e));
 	wrapper.addEventListener('pointermove', (e) => e.pointerType !== 'mouse' && at(wrapper, e));
-	wrapper.addEventListener('pointerleave', () => show(wrapper, surfaceOf(wrapper), -1));
+	wrapper.addEventListener('pointerleave', () => {
+		hovered.delete(wrapper);
+		render(wrapper);
+	});
+	// setMouseClickAxisIndex: a click on a point also sets the keys' point inactive.
+	wrapper.addEventListener('click', (e) => {
+		const k = keyed.get(wrapper);
+		if (k && (pointAt(wrapper, e)?.state ?? -1) >= 0) k.on = false;
+	});
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
@@ -402,22 +436,26 @@ const intent = (target: Element) => {
 };
 
 function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {
-	const entry = factsOf(surface)?.k?.[key];
-	if (entry) show(wrapper, surface, entry[0], { key });
+	if (!factsOf(surface)?.k?.[key]) return;
+	keyed.set(wrapper, { key, on: true });
+	render(wrapper, surface);
 }
 
+// recharts' focusAction gives the keys the first point only the first time; blurAction sets their point inactive.
 export function focusin(target: Element): boolean {
 	intent(target);
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
-	step(wrapper, target, 0);
+	if (!keyed.has(wrapper)) step(wrapper, target, 0);
 	return true;
 }
 
 export function focusout(target: Element): boolean {
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
-	show(wrapper, target, -1);
+	const k = keyed.get(wrapper);
+	if (k) k.on = false;
+	render(wrapper, target);
 	return true;
 }
 
@@ -426,14 +464,15 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
 	const f = factsOf(target);
 	if (!f?.k?.length) return false;
+	const k = keyed.get(wrapper);
 	if (event.key === 'Escape') {
-		show(wrapper, target, -1);
+		if (k) k.on = false;
+		hovered.delete(wrapper);
+		render(wrapper, target);
 		return true;
 	}
 	if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return false;
 	event.preventDefault();
-	const now = active.get(wrapper);
-	const key = now && now.state >= 0 ? now.key : -1;
-	step(wrapper, target, key < 0 ? 0 : Math.min(f.k.length - 1, Math.max(0, key + (event.key === 'ArrowRight' ? 1 : -1))));
+	step(wrapper, target, k ? Math.min(f.k.length - 1, Math.max(0, k.key + (event.key === 'ArrowRight' ? 1 : -1))) : 0);
 	return true;
 }
