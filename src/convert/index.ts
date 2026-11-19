@@ -1410,7 +1410,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const inventory = { routes: [...new Map([...planned.routes.map((r) => [r.route, { route: r.route, status: r.status, contentType: types.get(r.route)?.contentType }] as const), ...(planned.allRoutes ?? []).filter((r) => r.status !== undefined).map((r) => [r.route, { route: r.route, status: r.status!, contentType: r.contentType }] as const)]).values()] };
 	const htmlRoutes = inventory.routes.filter((r) => r.status === 200 && (r.contentType ?? 'text/html').includes('html')).map((r) => r.route);
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
-	siteComponents = await readSiteComponents(app);
 	useSiteInstanceProps(await readFile(join(app, 'lib', 'site', 'instance-props.json'), 'utf8').then((t) => JSON.parse(t) as InstanceSpec[], () => []));
 	// Each kind of a route's recordings is kept under a key of its old page, the code that records that kind and the data the recorder is given (record-key.ts).
 	const dirs = await RecordDirs.open(join(state, 'convert'), await recorderVersions(app));
@@ -1822,6 +1821,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const loadCapture = (route: string) => record('captures', capturePage, browser, route);
 	captures = captures.map((ref) => storedCapture(ref.route, ref.status, loadCapture));
 	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: failedCaptures, failedCaptures: failedCaptures.length, endpoints: [], unported: [] };
+	// The site's own components are the emit's: read once the recordings are made, so no recording is keyed by them.
+	siteComponents = await readSiteComponents(app);
 	const usagePath = join(state, 'usage.json');
 	const librariesPath = join(state, 'libraries.json');
 	const hasUsage = await stat(usagePath).then(() => true, () => false);
