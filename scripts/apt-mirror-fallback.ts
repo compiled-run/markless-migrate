@@ -30,6 +30,25 @@ export function mirrorOrder(text: string): string[] {
 	return [...new Set([...listed, ...CANONICAL])].slice(0, MAX_ATTEMPTS);
 }
 
+// Some runners read noble-security straight from security.ubuntu.com, outside the mirror list, so a fault there would fail every attempt.
+const SECURITY = /^https?:\/\/security\.ubuntu\.com\/ubuntu\/?$/;
+
+/** An apt source file with security.ubuntu.com read through the mirror list instead (deb822 `URIs:` or one-line `deb`), or undefined if it has none. */
+export function routeSecurity(text: string): string | undefined {
+	let changed = false;
+	const swap = (token: string) => (SECURITY.test(token) ? ((changed = true), `mirror+file:${MIRRORS_FILE}`) : token);
+	const out = text
+		.split('\n')
+		.map((line) => {
+			const uris = /^(URIs:\s*)(.*)$/.exec(line);
+			if (uris) return uris[1] + uris[2]!.split(/(\s+)/).map(swap).join('');
+			const deb = /^(deb(?:-src)?\s+(?:\[[^\]]*\]\s+)?)(\S+)(.*)$/.exec(line);
+			return deb ? deb[1] + swap(deb[2]!) + deb[3] : line;
+		})
+		.join('\n');
+	return changed ? out : undefined;
+}
+
 /** The mirror file for one attempt: the mirrors from `from` on, so apt still fails over between them file by file. */
 export function mirrorFile(order: readonly string[], from: number): string {
 	return order
@@ -43,6 +62,8 @@ export type Outcome = { readonly kind: 'ok' } | { readonly kind: 'stalled' } | {
 export interface Io {
 	readonly read: () => string | undefined;
 	readonly write: (text: string) => void;
+	/** Points every apt source that reads security.ubuntu.com directly at the mirror list; returns the files it changed. */
+	readonly routeSecurity: () => string[];
 	readonly run: (command: readonly string[], seconds: number) => Promise<Outcome>;
 	/** Before the next attempt: stop what the last one left running as root, and repair an interrupted dpkg. */
 	readonly settle: () => Promise<void>;
@@ -66,6 +87,7 @@ export async function install(command: readonly string[], io: Io, seconds = ATTE
 		if (i > 0) {
 			await io.settle();
 			io.write(mirrorFile(order, i));
+			if (i === 1) for (const file of io.routeSecurity()) io.log(`apt source ${file} read security.ubuntu.com directly; it now reads the mirror list too`);
 		}
 		const started = Date.now();
 		const outcome = await io.run(command, seconds);
@@ -119,12 +141,23 @@ function writable(path: string): boolean {
 	}
 }
 
+function put(file: string, text: string): void {
+	if (writable(file)) writeFileSync(file, text);
+	else spawnSync('sudo', ['tee', file], { input: text, stdio: ['pipe', 'ignore', 'inherit'] });
+}
+
 export function systemIo(file = MIRRORS_FILE): Io {
 	return {
 		read: () => (existsSync(file) ? readFileSync(file, 'utf8') : undefined),
-		write: (text) => {
-			if (writable(file)) writeFileSync(file, text);
-			else spawnSync('sudo', ['tee', file], { input: text, stdio: ['pipe', 'ignore', 'inherit'] });
+		write: (text) => put(file, text),
+		routeSecurity: () => {
+			const dir = '/etc/apt/sources.list.d';
+			const files = ['/etc/apt/sources.list', ...(existsSync(dir) ? readdirSync(dir).filter((f) => /\.(list|sources)$/.test(f)).map((f) => `${dir}/${f}`) : [])].filter((f) => existsSync(f));
+			return files.filter((f) => {
+				const routed = routeSecurity(readFileSync(f, 'utf8'));
+				if (routed !== undefined) put(f, routed);
+				return routed !== undefined;
+			});
 		},
 		// sudo does not pass on a signal sent from its own process group, so a stopped attempt leaves apt-get running as root, holding the lock.
 		settle: async () => {

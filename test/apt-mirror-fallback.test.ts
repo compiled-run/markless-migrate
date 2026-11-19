@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CANONICAL, install, MAX_ATTEMPTS, mirrorFile, mirrorOrder, systemIo } from '../scripts/apt-mirror-fallback.ts';
+import { CANONICAL, install, MAX_ATTEMPTS, mirrorFile, mirrorOrder, routeSecurity, systemIo } from '../scripts/apt-mirror-fallback.ts';
 
 const RUNNER = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://archive.ubuntu.com/ubuntu/\tpriority:2\nhttps://security.ubuntu.com/ubuntu/\tpriority:3\n';
 
@@ -30,10 +30,11 @@ async function scenario(mirrors: string) {
 		writeFileSync(file, mirrors);
 		const lines: string[] = [];
 		let settled = 0;
+		let routed = 0;
 		const started = Date.now();
-		const status = await install(command, { ...systemIo(file), settle: async () => void settled++, log: (l) => lines.push(l) }, 1);
+		const status = await install(command, { ...systemIo(file), settle: async () => void settled++, routeSecurity: () => (routed++, ['/etc/apt/sources.list.d/ubuntu.sources']), log: (l) => lines.push(l) }, 1);
 		const calls = readFileSync(join(dir, 'calls'), 'utf8').trim().split('\n');
-		return { status, lines, settled, calls, seconds: (Date.now() - started) / 1000, file: readFileSync(file, 'utf8') };
+		return { status, lines, settled, routed, calls, seconds: (Date.now() - started) / 1000, file: readFileSync(file, 'utf8') };
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -44,6 +45,7 @@ test('the first mirror working installs once and leaves the mirror list as the r
 	assert.equal(r.status, 0);
 	assert.equal(r.calls.length, 1);
 	assert.equal(r.settled, 0);
+	assert.equal(r.routed, 0);
 	assert.equal(r.file, RUNNER);
 	assert.match(r.lines.at(-1)!, /^apt installed the browsers' system packages from http:\/\/azure\.archive\.ubuntu\.com\/ubuntu\/ \(attempt 1 of 3/);
 });
@@ -56,6 +58,16 @@ test('a stalling first mirror is stopped at the cap and the install goes on from
 	assert.ok(r.lines.includes('::warning::apt mirror http://stall.example/ubuntu/ stalled (over 1 s); trying https://archive.ubuntu.com/ubuntu/'));
 	assert.match(r.lines.at(-1)!, /from https:\/\/archive\.ubuntu\.com\/ubuntu\/ \(attempt 2 of 3, \d+ s\), after http:\/\/stall\.example\/ubuntu\/ stalled \(over 1 s\)$/);
 	assert.equal(r.settled, 1);
+	assert.equal(r.routed, 1);
+	assert.ok(r.lines.includes('apt source /etc/apt/sources.list.d/ubuntu.sources read security.ubuntu.com directly; it now reads the mirror list too'));
+});
+
+test('security.ubuntu.com read directly is moved onto the mirror list, so a fault there (a mid-sync size mismatch) is left behind too', () => {
+	const sources = 'Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates\n\nTypes: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\n';
+	assert.equal(routeSecurity(sources), sources.replace('http://security.ubuntu.com/ubuntu/', 'mirror+file:/etc/apt/apt-mirrors.txt'));
+	assert.equal(routeSecurity('deb [arch=amd64] http://security.ubuntu.com/ubuntu noble-security main\n'), 'deb [arch=amd64] mirror+file:/etc/apt/apt-mirrors.txt noble-security main\n');
+	assert.equal(routeSecurity('Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\n'), undefined);
+	assert.equal(routeSecurity('deb http://security.ubuntu.com.evil.example/ubuntu noble main\n'), undefined);
 });
 
 test('a failing first mirror moves on to the next one the same way', async () => {
@@ -71,7 +83,7 @@ test('every mirror failing fails once each and says so', async () => {
 		const { file } = fake(dir);
 		writeFileSync(file, RUNNER);
 		const lines: string[] = [];
-		const status = await install(['sh', '-c', `head -1 "${file}" | grep -q azure && sleep 30; exit 100`], { ...systemIo(file), settle: async () => {}, log: (l) => lines.push(l) }, 1);
+		const status = await install(['sh', '-c', `head -1 "${file}" | grep -q azure && sleep 30; exit 100`], { ...systemIo(file), settle: async () => {}, routeSecurity: () => [], log: (l) => lines.push(l) }, 1);
 		assert.equal(status, 1);
 		assert.equal(lines.filter((l) => l.startsWith('::warning::')).length, 2);
 		assert.equal(lines.at(-1), "::error::apt could not install the browsers' system packages from any mirror: http://azure.archive.ubuntu.com/ubuntu/ stalled (over 1 s); https://archive.ubuntu.com/ubuntu/ failed (exit 100); https://security.ubuntu.com/ubuntu/ failed (exit 100)");
@@ -82,7 +94,7 @@ test('every mirror failing fails once each and says so', async () => {
 
 test('a runner without a mirror list gets one capped attempt', async () => {
 	const lines: string[] = [];
-	const status = await install(['sh', '-c', 'exit 100'], { ...systemIo('/nonexistent/apt-mirrors.txt'), settle: async () => {}, log: (l) => lines.push(l) }, 1);
+	const status = await install(['sh', '-c', 'exit 100'], { ...systemIo('/nonexistent/apt-mirrors.txt'), settle: async () => {}, routeSecurity: () => [], log: (l) => lines.push(l) }, 1);
 	assert.equal(status, 1);
 	assert.match(lines.at(-1)!, /failed \(exit 100\).*has no \/etc\/apt\/apt-mirrors\.txt/);
 });
