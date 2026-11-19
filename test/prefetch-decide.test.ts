@@ -57,9 +57,11 @@ test('a page whose recording failed is left out and named', () => {
 
 test('the router options carry the setting only when the app\'s router takes it, and only the triggers it names', () => {
 	const setting = { intent: 'all', viewport: 'all', idle: 'none', concurrency: 5 } as const;
+	const networks = ['none', 'fast', 'all'];
 	assert.equal(routerOptions(setting, undefined), '');
-	assert.equal(routerOptions(setting, { triggers: ['intent', 'viewport', 'idle'] }), "{ prefetch: { intent: 'all', viewport: 'all', idle: 'none', concurrency: 5 } }");
-	assert.equal(routerOptions(setting, { triggers: ['intent'] }), "{ prefetch: { intent: 'all', concurrency: 5 } }");
+	assert.equal(routerOptions(setting, { triggers: ['intent', 'viewport', 'idle'], networks }), "{ prefetch: { intent: 'all', viewport: 'all', idle: 'none', concurrency: 5 } }");
+	assert.equal(routerOptions(setting, { triggers: ['intent'], networks }), "{ prefetch: { intent: 'all', concurrency: 5 } }");
+	assert.throws(() => routerOptions(setting, { triggers: ['intent'], networks: ['on', 'off'] }), /takes on, off for intent, not all/, 'a value the router does not take fails loudly');
 });
 
 test('vite.config.ts hands the router those options, and nothing when there are none', async () => {

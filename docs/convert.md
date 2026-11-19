@@ -164,8 +164,9 @@ router's options in `vite.config.ts` (`router({ prefetch: { intent, viewport, id
 original fetches a link's page when the link comes into view, on every network we tried, slow ones too (2 of 2
 pages)"), the links the original fetched at load by name, whether its revisits were answered from memory, and the next
 more eager setting, which convert never applies (the navigation timing check prices it). It is written into
-`vite.config.ts` only when the app's router says it takes it (`PREFETCH_TRIGGERS` from `@markless/router/vite`);
-otherwise the report says `applied: false` and the router's defaults stand.
+`vite.config.ts` only when the app's router says it takes it (`PREFETCH_TRIGGERS` and `PREFETCH_NETWORKS` from
+`@markless/router/vite`, read from the installed package, so a trigger the router does not list is left out and a value
+it does not take fails the convert); otherwise the report says `applied: false` and the router's defaults stand.
 
 ### How to iterate on a port
 
