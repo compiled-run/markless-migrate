@@ -18,6 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The sets a setup may restore in place of its own: WARMED in scripts/browser-cache-sets.ts, kept equal by its test.
         browsers: ['chromium', 'webkit', 'chromium webkit', 'chromium firefox webkit']
     steps:
       - uses: actions/checkout@v4
