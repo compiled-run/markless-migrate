@@ -142,6 +142,31 @@ browser is not loaded again for it); a recording the browser died under twice le
 decision and never fails the page. A first recording takes about 10 s a page, about 25 s on each of the
 four pages with clicks and about 100 s on the two the conditions are tried on (measured on ui.shadcn.com's docs pages).
 
+From those facts convert chooses the port's prefetch setting (`src/prefetch/decide.ts`) and writes it as the Markless
+router's options in `vite.config.ts` (`router({ prefetch: { intent, viewport, idle, concurrency } })`, through
+`src/convert/prefetch-config.ts`, the one file that knows the router's shape):
+
+- A trigger counts for the site when it fetched on most of the pages that could tell: at least half the links it could
+  tell about at load, any link for the others.
+- The port is at least as eager as the original wherever the original fetches ahead, never more: fetched as links
+  come into view becomes `viewport`; links on screen fetched once loaded becomes `idle`; hover, focus or press becomes
+  `intent`. Links off screen fetched at load have no router setting; `idle` and `viewport` come nearest, and the
+  report says the port is later there. Viewport on every network makes idle add nothing, so idle is then off.
+- On which networks: a trigger the original still fired on 3g, 2g, slow-2g or the real slow link is `'all'`; one it
+  fired only with 4g or no connection information is `'fast'`; one never tried under other networks is `'all'`, the
+  side that cannot leave the port less eager. Save-Data is never prefetched by the router: when the original does,
+  the report says the port is less eager there.
+- Where the original fetches nothing ahead, intent alone (`intent: 'all'`, the rest off). Where its intent could not be
+  told (every link it was tried on was already fetched), intent stays on.
+- `concurrency` is the most page fetches the original had in flight at once.
+
+`.migrate/convert/report.json` carries the decision as `prefetch`: the setting, each reason in plain words ("The
+original fetches a link's page when the link comes into view, on every network we tried, slow ones too (2 of 2
+pages)"), the links the original fetched at load by name, whether its revisits were answered from memory, and the next
+more eager setting, which convert never applies (the navigation timing check prices it). It is written into
+`vite.config.ts` only when the app's router says it takes it (`PREFETCH_TRIGGERS` from `@markless/router/vite`);
+otherwise the report says `applied: false` and the router's defaults stand.
+
 ### How to iterate on a port
 
 Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the

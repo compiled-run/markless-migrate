@@ -25,6 +25,7 @@ export interface PrefetchRecorder {
 	readonly unknown: (route: string, why: string) => void;
 	/** Writes what was recorded to `.migrate/prefetch.json`, without the raw requests. */
 	readonly save: () => Promise<void>;
+	readonly recorded: () => readonly PrefetchFacts[];
 }
 
 export async function prefetchRecorder(state: string, origin: string, allRoutes: readonly string[], log: (line: string) => void): Promise<PrefetchRecorder> {
@@ -52,6 +53,7 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 			}
 		},
 		unknown: (route, why) => void unknown(route, why),
+		recorded: () => [...recorded.values()],
 		save: async () => {
 			const routes = Object.fromEntries([...recorded].sort(([a], [b]) => (a < b ? -1 : 1)).map(([route, { requests: _, ...facts }]) => [route, facts]));
 			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ routes }, null, 1));
