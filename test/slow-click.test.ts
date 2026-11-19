@@ -58,7 +58,7 @@ test('the widget probe sends a click the page acknowledged late only once: the m
 	const [fast, slow] = await Promise.all([serve(0), serve(2_500)]);
 	try {
 		const at = (s: Server) => `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
-		const report = await runCheck({ oldOrigin: at(fast), newOrigin: at(slow), routes: ['/'], browser, probes: {} });
+		const report = await runCheck({ oldOrigin: at(fast), newOrigin: at(slow), routes: ['/'], browser, probes: {}, only: 'probes' });
 		const probe = report.routes.flatMap((r) => r.failures).filter((f) => /probe/.test(f.check));
 		assert.deepEqual(probe.map((f) => `${f.check}: ${f.actual}`), [], summarize(report));
 	} finally {
