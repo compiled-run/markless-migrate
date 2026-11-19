@@ -145,8 +145,10 @@ Part of page load (`src/check/nav-timing.ts`, `src/check/nav-timing-verdicts.ts`
 site's largest template groups (`--nav-timing-layouts`, default 4, chosen over every page of the site so each shard
 times the same ones), a fresh visitor loads the page and follows two links of each shared navigation (the sidebar, a
 nav, the header; at phone width a nav, the header and the content), each to a page not seen yet, then comes back to
-the first of them by its link: first visits and a revisit. The links are chosen on the old page by a hash of their
-address and found by their resolved address, the same on every run. Each press is timed from the browser's own
+the first of them by its link: first visits and a revisit. The links are chosen by walking them on the old app first,
+as the cell's device presses: a link A on the page, a link B in the same region on A's page, and a link back to A on
+B's page, the next region starting from A. So every step is one the old app can make. Among candidates the order is a
+hash of their address, and links are found by their resolved address, the same on every run. Each press is timed from the browser's own
 `pointerdown` (or `touchstart`) to the frame after the address has changed and the page's own content differs from
 the page pressed on: its main landmark, else the body without its header, navigation, sidebar and footer. The heading
 alone is never the evidence (a site whose every page has its name in the `<h1>` is timed right). Both clocks are the
