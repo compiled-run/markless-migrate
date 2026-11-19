@@ -318,6 +318,8 @@ export function summarizeLedger(ledger: Ledger): string {
 export async function writeLedger(app: string, ledger: Ledger): Promise<string> {
 	const file = join(app, '.migrate', 'ledger.json');
 	await mkdir(dirname(file), { recursive: true });
-	await writeFile(file, `${JSON.stringify(ledger, null, '\t')}\n`);
+	// The time it took is the log line's: a record of the same inputs is the same bytes, so a kept app compares equal to a convert of them.
+	const { ms: _, ...record } = ledger;
+	await writeFile(file, `${JSON.stringify(record, null, '\t')}\n`);
 	return file;
 }
