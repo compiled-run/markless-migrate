@@ -146,13 +146,16 @@ site's largest template groups (`--nav-timing-layouts`, default 4, chosen over e
 times the same ones), a fresh visitor loads the page and follows two links of each shared navigation (the sidebar, a
 nav, the header; at phone width a nav, the header and the content), each to a page not seen yet, then comes back to
 the first of them by its link: first visits and a revisit. The links are chosen on the old page by a hash of their
-address, the same on every run. Each press is timed from the browser's own `pointerdown` (or `touchstart`) to the
-frame after the new page's heading (or its main content) shows, across a full page load too (both clocks are the
-documents' `timeOrigin`).
+address and found by their resolved address, the same on every run. Each press is timed from the browser's own
+`pointerdown` (or `touchstart`) to the frame after the address has changed and the page's own content differs from
+the page pressed on: its main landmark, else the body without its header, navigation, sidebar and footer. The heading
+alone is never the evidence (a site whose every page has its name in the `<h1>` is timed right). Both clocks are the
+documents' `timeOrigin`, so a full page load is timed the same way. A press with no next page within 20 s says which
+half was missing: the address never changed, or it changed and the content did not.
 
-Every cell is measured the same way on both sides, old and new taken in turn, `--nav-timing-runs` a side (default 4),
-after one unmeasured run a side that wakes both servers and fills their caches, so a fresh deploy is not compared cold
-against one that has been up for months:
+Every cell is measured the same way on both sides, old and new taken in turn, `--nav-timing-runs` a side (default 8,
+from 7 to 16), after one unmeasured run a side that wakes both servers and fills their caches, so a fresh deploy is not
+compared cold against one that has been up for months:
 
 | Browser | Network | Press |
 | --- | --- | --- |
@@ -163,34 +166,51 @@ against one that has been up for months:
 
 The network is the throttling proxy every byte crosses, the same in every browser. `instant` moves the pointer and
 presses in one instant (what a script's click does, the worst case); `rest <ms>` arrives and rests before pressing, as
-a hand does (instant.page reports that half the links hovered for 65 ms are then clicked, and that fetching from that moment leaves more than 300 ms before the click on average); `touch`
-holds a finger down 100 ms before lifting it in Chromium, and taps in WebKit, which cannot hold a touch. The CPU is
-slowed in Chromium only.
+a hand does (instant.page reports that half the links hovered for 65 ms are then clicked, and that fetching from that
+moment leaves more than 300 ms before the click on average); `touch` holds a finger down 100 ms before lifting it in
+Chromium, and taps in WebKit, which cannot hold a touch. The CPU is slowed in Chromium only. `--nav-timing-cell
+<browser>/<network>/<press>` times named cells alone.
 
 For each press check records what the visitor waited on: whether the page's data was fetched ahead and had arrived,
-was still arriving, had been cancelled, or was never asked for; whether the press fetched it again; the bytes fetched
-before the press (since the step before settled, through scrolling to the link and resting on it) and from the press to
-the paint; and long animation frames in between (Chromium). Which requests carry a page is learned from the run's
-requests as convert learns it ([convert.md](convert.md#how-the-original-fetches-pages-ahead-of-a-click)).
+was still arriving, had been cancelled, or was never asked for; whether the press fetched it again; the page data
+fetched before the press (requests matched to a link's page as convert matches them, and documents) and every byte from
+the press to the paint; requests to other hosts in between, named because their data cannot be matched to a page; and
+long animation frames in between (Chromium).
 
-Verdict, per cell and for first visits and revisits apart: red when the new median is later than the old one by more
-than the old page's own noise (the 90th percentile gap between the medians of two halves of its presses), two 60 Hz
-frames, or 5% of its median, whichever is most, and a one-sided Mann-Whitney test puts the two sides' presses apart,
-the route's rows sharing one significance by Holm's step-down. On 200 simulated routes of 9 cells with the same
-distribution on both sides, at most 6% go red (asserted in `test/nav-timing-verdicts.test.ts`). A red row names its
-cause, the first that explains it: `refetched on revisit` (the old page showed it again with no fetch, the new one
-fetched), `prefetch cancelled`, `prefetched too late` (fetched ahead but still arriving at the press), `not prefetched`,
-`main thread` (long frames account for half the gap or more), `larger payload` (the new page's data over 1.25 times
-the old one's), else `unexplained`. A press the new page never answers is red. Also red: bytes fetched before the
-presses over 1.5 times the old page's, where the old page fetches ahead at all. A row without enough old presses to
-tell its noise leaves the route not checked, never green.
+Verdict, per cell and for first visits and revisits apart. Each run counts as the median of its presses: presses in one
+run share a browser and the machine's moment, so they are not independent samples. A press the new page never answers,
+where the old page answered every one, is red at once (`did not arrive`): it is the slowest result a press can have. A
+press the old page never answers leaves the row not checked, and a route with a not-checked row is never green.
+Otherwise a row is red when the new median is later than the old one by more than the old page's own run-to-run spread
+(the 90th percentile gap between the medians of two halves of its runs), two 60 Hz frames, or 5% of its median,
+whichever is most, and a one-sided Mann-Whitney test on the runs puts the sides apart. The spread counts only up to a
+quarter of the old median (at least 50 ms): an old page whose runs land in two clusters (fetched ahead or not) would
+otherwise widen the band enough to hide a real slowdown. The route's rows share one significance by Holm's step-down,
+at the route's share of 5% for the whole check (5% divided by the routes the check times), so identical sites go red in
+at most 5% of whole checks. Fewer than 7 runs a side can then never tell a row apart, which is why 7 is the least the
+flag takes. In `test/nav-timing-verdicts.test.ts`, a simulation of every default cell, run-to-run machine noise shared
+by a run's presses and an old page with two clusters, 8 runs went red on identical sites on 0.4 to 1% of routes (1.6 to
+3.9% of checks of 4 routes, over 3 seeds) and caught 100 ms added to one cell on 80% of routes (9 runs: 95%). A faster
+row passes the same correction the other way, so the summary does not overstate wins.
+
+A red row names its cause, the first that explains it: `did not arrive`, `refetched on revisit` (the old page showed it
+again with no fetch, the new one fetched), `prefetch cancelled`, `prefetched too late` (fetched ahead but still
+arriving at the press), `not prefetched`, `main thread` (long frames account for half the gap or more), `larger
+payload` (the new page's data over 1.25 times the old one's), else `unexplained`. Page data fetched ahead of the
+presses is reported beside the times, with a note when it is over 1.5 times the old page's; it is not judged until it
+has a noise bound of its own.
+
+A run the machine stalled in (this process went a second without running a 100 ms timer) is taken again, twice at
+most; a cell still stalled is not checked. A cell stops once one side has shown no next page in two runs. The route
+stops at a 3 h deadline and reports what it has: cells it did not reach are not checked. With `--no-nav-timing` the
+summary says `navigation timing: not measured (--no-nav-timing)`.
 
 The summary leads with the resting mouse and touch rows, the instant press last, and counts per network the rows where
-the new page is faster, level and slower, with the median gap. Where the new page is slower or only level, it also
-estimates what fetching ahead as much as the old page would cost it before the presses, from the old page's bytes
-ahead and each side's page data size. `report.json` keeps every press under the route's `load.navTiming`. About an hour
-of one runner per layout. `--no-nav-timing` leaves it out, and so does `--no-slow-network`, as it times through the same
-throttling proxy.
+the new page is faster, level, slower and not checked, with the median gap. Where the new page is slower or only level,
+it also estimates what fetching ahead as much as the old page would cost it before the presses, from the old page's
+page data ahead and each side's page data size. `report.json` keeps every press under the route's `load.navTiming`.
+With every default cell, about two hours of one runner per layout. The check budget (`scripts/check-budget.ts`) times
+one cell, 7 runs a side, on its page, held to a bound of its own.
 
 ### Widget probes: what a library's widgets do between the clicks
 

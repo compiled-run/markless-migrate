@@ -8,6 +8,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ORIGINAL } from '../test/corpus/site.ts';
 
 /** One page, so every dimension runs on it: journeys, probes, control parity, busy CPU, motion, responsiveness and page load. */
@@ -19,6 +20,12 @@ const WORK = ['--max-journeys', '15', '--load-runs', '4', '--no-slow-network', '
 const BUSY = `<script>(function () { const rows = []; for (let i = 0; i < 3000; i++) { const p = document.createElement('p'); p.textContent = 'row ' + i; p.hidden = true; rows.push(p); } document.body.append(...rows); const deep = (n) => (n ? deep(n - 1) + Math.sqrt(n) : 0); for (let i = 0; i < 60; i++) { document.body.style.paddingBottom = (i % 7) + 'px'; void document.body.offsetHeight; deep(2000); } })();</script>`;
 
 /**
+ * The most navigation timing's fixed work may take. Measured on a Mac mini with the page here: see the pull request that
+ * set it; the bound is about twice that, as the runs are timed against a 20 s paint timeout and a slow runner stretches them.
+ */
+export const NAV_TIMING_SECONDS = 300;
+
+/**
  * How much slower or heavier head may be than base. Measured on a Mac under other jobs' load (load average 7 to 44), each
  * checker twice in the order A B C C B A: one checker's two runs differed by up to 15% in the route's check time (214 s and
  * 247 s), 15% in the whole run (264 s and 304 s) and 16% in peak memory (642 MB and 553 MB); the bounds sit above that.
@@ -26,6 +33,8 @@ const BUSY = `<script>(function () { const rows = []; for (let i = 0; i < 3000; 
  * 264 to 304 s to 458 to 470 s (1.5x to 1.8x) and its page-load stage from 50 to 58 s to 243 s.
  */
 export const BUDGET = {
+	/** Navigation timing's fixed work (one cell, seven runs a side, `BUDGET_NAV_WORK`) on the budget page, measured on its own: see NAV_TIMING_SECONDS. */
+	navTimingSeconds: NAV_TIMING_SECONDS,
 	routeRatio: 1.35,
 	routeSlackMs: 20_000,
 	totalRatio: 1.3,
@@ -37,6 +46,8 @@ export const BUDGET = {
 export interface Measure {
 	readonly checker: string;
 	readonly totalMs: number;
+	/** Navigation timing's own time inside `totalMs`, compared on its own bound rather than against a base that may not have it. */
+	readonly navTimingMs?: number;
 	readonly peakRssMb: number;
 	readonly peakHeapMb: number;
 	readonly routes: Readonly<Record<string, number>>;
@@ -67,9 +78,11 @@ export async function measure(checker: string): Promise<Measure> {
 	const peakFile = join(cwd, 'peak.json');
 	await writeFile(sampler, SAMPLER);
 	const began = Date.now();
+	// The checker's own fixed navigation timing work, read from its module: a checker without navigation timing has none.
+	const navWork = await import(pathToFileURL(join(checker, 'src/check/nav-timing.ts')).href).then((m: { BUDGET_NAV_WORK?: readonly string[] }) => m.BUDGET_NAV_WORK ?? [], () => [] as readonly string[]);
 	try {
 		const out = await new Promise<string>((done, fail) => {
-			const args = [join(checker, 'src/cli.ts'), 'check', '--old', sides[0].origin, '--new', sides[1].origin, ...BUDGET_ROUTES.flatMap((r) => ['--route', r]), '--control-webkit', '--busy-cpu', ...WORK, '--no-navigation', '--no-cache', '--json'];
+			const args = [join(checker, 'src/cli.ts'), 'check', '--old', sides[0].origin, '--new', sides[1].origin, ...BUDGET_ROUTES.flatMap((r) => ['--route', r]), '--control-webkit', '--busy-cpu', ...WORK, ...navWork, '--no-navigation', '--no-cache', '--json'];
 			const child = spawn(process.execPath, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: `--import ${sampler}`, BUDGET_PEAK_FILE: peakFile, MARKLESS_MIGRATE_PROFILE: '1' } });
 			let stdout = '', stderr = '';
 			child.stdout.on('data', (d: Buffer) => (stdout += d));
@@ -80,12 +93,14 @@ export async function measure(checker: string): Promise<Measure> {
 			child.on('close', (code) => (code === 0 || code === 1 || code === 4 ? done(stdout) : fail(new Error(`check exited ${code}:\n${stderr.slice(-2000)}`))));
 		});
 		const totalMs = Date.now() - began;
-		const report = JSON.parse(out) as { routes: { route: string; timing?: { ms: number; steps: { name: string; ms: number }[] } }[] };
+		const report = JSON.parse(out) as { routes: { route: string; timing?: { ms: number; steps: { name: string; ms: number }[] }; load?: { navTiming?: { ms?: number } } }[] };
+		const navTimingMs = report.routes.reduce((sum, r) => sum + (r.load?.navTiming?.ms ?? 0), 0);
 		const peak = JSON.parse(await readFile(peakFile, 'utf8')) as { rss: number; heap: number };
 		const timed = report.routes.filter((r) => r.timing);
 		return {
 			checker,
 			totalMs,
+			...(navWork.length ? { navTimingMs } : {}),
 			peakRssMb: Math.round(peak.rss / 2 ** 20),
 			peakHeapMb: Math.round(peak.heap / 2 ** 20),
 			routes: Object.fromEntries(timed.map((r) => [r.route, r.timing!.ms])),
@@ -112,7 +127,10 @@ export function overBudget(base: Measure, head: Measure, budget: typeof BUDGET =
 		}
 		if (h > b * budget.routeRatio + budget.routeSlackMs) out.push(`${route}: ${s(h)} against base's ${s(b)} (${(h / b).toFixed(2)}x; budget ${budget.routeRatio}x + ${s(budget.routeSlackMs)})`);
 	}
-	if (head.totalMs > base.totalMs * budget.totalRatio + budget.totalSlackMs) out.push(`whole run: ${s(head.totalMs)} against base's ${s(base.totalMs)} (${(head.totalMs / base.totalMs).toFixed(2)}x; budget ${budget.totalRatio}x + ${s(budget.totalSlackMs)})`);
+	// Navigation timing is held to its own bound; the rest of the run to base's, as before.
+	const nav = (m: Measure) => m.navTimingMs ?? 0;
+	if (nav(head) > budget.navTimingSeconds * 1000) out.push(`navigation timing: ${s(nav(head))} on the fixed page (budget ${budget.navTimingSeconds} s)`);
+	if (head.totalMs - nav(head) > (base.totalMs - nav(base)) * budget.totalRatio + budget.totalSlackMs) out.push(`whole run: ${s(head.totalMs)} against base's ${s(base.totalMs)} (${(head.totalMs / base.totalMs).toFixed(2)}x; budget ${budget.totalRatio}x + ${s(budget.totalSlackMs)})`);
 	if (head.peakRssMb > base.peakRssMb * budget.memoryRatio + budget.memorySlackMb) out.push(`peak memory: ${head.peakRssMb} MB against base's ${base.peakRssMb} MB (${(head.peakRssMb / base.peakRssMb).toFixed(2)}x; budget ${budget.memoryRatio}x + ${budget.memorySlackMb} MB)`);
 	return out;
 }
@@ -125,6 +143,7 @@ function table(base: Measure, head: Measure): string {
 		'| | base | head | head/base |',
 		'|---|---|---|---|',
 		row('whole run', sec(base.totalMs), sec(head.totalMs), 's'),
+		row('navigation timing (own bound)', sec(base.navTimingMs), sec(head.navTimingMs), 's'),
 		row('after the route (page load)', sec(base.totalMs - Object.values(base.routes).reduce((t, ms) => t + ms, 0)), sec(head.totalMs - Object.values(head.routes).reduce((t, ms) => t + ms, 0)), 's'),
 		row('peak memory (check process)', base.peakRssMb, head.peakRssMb, 'MB'),
 		row('peak heap (main thread)', base.peakHeapMb, head.peakHeapMb, 'MB'),

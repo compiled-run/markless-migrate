@@ -108,6 +108,15 @@ test('check rejects a bad interaction budget, CPU slowdown or control limit', as
 	assert.match((await check('--interaction-controls', '2.5')).stderr, /--interaction-controls must be a whole number of at least 1/);
 });
 
+test('check rejects navigation timing flags it cannot honour: fewer runs than can tell, more than the noise band splits, a cell that is not one, or settings with --no-nav-timing', async () => {
+	const check = (...args: string[]) => run('check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--route', '/', ...args);
+	assert.match((await check('--nav-timing-runs', '5')).stderr, /--nav-timing-runs must be a whole number of at least 7/);
+	assert.match((await check('--nav-timing-runs', '17')).stderr, /--nav-timing-runs takes at most 16/);
+	assert.match((await check('--nav-timing-cell', 'firefox/cpu-4x/instant')).stderr, /only Chromium can slow its CPU/);
+	assert.match((await check('--no-nav-timing', '--nav-timing-runs', '8')).stderr, /--no-nav-timing leaves navigation timing out/);
+	assert.match((await check('--no-slow-network', '--nav-timing-runs', '5')).stderr, /at least 7/, '--no-slow-network does not switch navigation timing off');
+});
+
 test('check --all with a route nothing gives a sample is not "all green": it counts the route unchecked and exits 1 unless --allow-unchecked', async () => {
 	const { createServer } = await import('node:http');
 	const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');

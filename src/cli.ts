@@ -17,7 +17,7 @@ import { TOUCH_PROFILES, type TouchOptions, type TouchProfileName } from './chec
 import { measureSlowNetwork, missingBrowsersError, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { networkHtml } from './check/slow-network-html.ts';
-import type { NavTimingOptions } from './check/nav-timing.ts';
+import { DEFAULT_NAV_RUNS, MAX_NAV_RUNS, parseNavCell, type NavCellSpec, type NavTimingOptions } from './check/nav-timing.ts';
 import { DEFAULT_JS_BUDGET, measureWaste, wasteFlags, wasteHtml, wasteLines, type WasteFlags, type WasteReport } from './check/waste.ts';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
@@ -316,19 +316,22 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
             and --slow-network-browser <name> narrow it, --slow-network-concurrency loads that many pages
             at once (default 2), --no-slow-network leaves it out. markless-migrate network measures any
             pages the same way, side by side.
-          - Navigation timing, on by default: on the first --nav-timing-layouts (default 4) template
-            groups' pages, a fresh visitor follows two links of each shared navigation (sidebar, nav,
-            header) and comes back to the first, old and new in turn, --nav-timing-runs a side (default 4),
-            timed from the press to the next page's content painted. Chromium on a fast line, slow 4G and
-            with the CPU 4x slower, Firefox and WebKit on a fast line and slow 4G (WebKit on an iPhone for
-            touch), each pressed the instant the pointer arrives, after it rests 100, 250 or 400 ms, or by
-            touch; one unmeasured run a side warms both servers first. Red where the new page shows the
-            next page later than the old one beyond the old page's own noise (the larger of its runs'
-            spread, two frames and 5%; one-sided Mann-Whitney, Holm across the route's rows), first visits
-            and revisits apart, naming the cause (not prefetched, prefetch cancelled, refetched on revisit,
-            larger payload, main thread), or where it fetches over 1.5 times the old page's bytes before the
-            presses. About an hour of one runner per layout. --no-nav-timing leaves it out, and so does
-            --no-slow-network, as it times through the same throttling proxy.
+          - Navigation timing, on by default: on the representatives of the site's largest template groups
+            (--nav-timing-layouts, default 4), a fresh visitor follows two links of each shared navigation
+            (sidebar, nav, header) and comes back to the first, old and new in turn, --nav-timing-runs a
+            side (default 8, 7 to 16), timed from the press until the address has changed and the page's
+            own content (its main landmark) differs. Chromium on a fast line, slow 4G and with the CPU 4x
+            slower, Firefox and WebKit on a fast line and slow 4G (WebKit on an iPhone for touch), each
+            pressed the instant the pointer arrives, after it rests 100, 250 or 400 ms, or by touch; one
+            unmeasured run a side warms both servers first. Each run counts as its presses' median. Red
+            where the new page is later beyond the old page's own run-to-run spread (capped at a quarter of
+            its median), two frames and 5%, by a one-sided Mann-Whitney test, Holm across the route's rows
+            at the route's share of 5% for the whole check; first visits and revisits apart, naming the
+            cause. A press the new page never answers is red ("did not arrive"); one the old page never
+            answers leaves the cell not checked, and the route is then never green. The route stops at a
+            3 h deadline with what it has. Page data fetched ahead of the presses is reported, not judged.
+            --nav-timing-cell <browser>/<network>/<press> (repeatable) times those cells alone.
+            --no-nav-timing leaves it out and says so.
           - First-click waste, on by default: each page (one per template group) loaded cold once more in
             Chromium over --waste-profile (default regular-3g), the same control clicked until it answers,
             and the JavaScript requested before the answer split by what ran and who owns it through
@@ -580,6 +583,7 @@ const TIMING_FLAGS = {
 	'no-nav-timing': { type: 'boolean' },
 	'nav-timing-runs': { type: 'string' },
 	'nav-timing-layouts': { type: 'string' },
+	'nav-timing-cell': { type: 'string', multiple: true },
 	'no-waste': { type: 'boolean' },
 	'waste-profile': { type: 'string' },
 	'js-budget': { type: 'string' },
@@ -625,9 +629,9 @@ function requireNetworkBrowsers(load: CheckOptions['load'], values: { only?: str
 	if (error) fail(error);
 }
 
-function navTimingOptions(values: { 'no-nav-timing'?: boolean; 'no-slow-network'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string }): NavTimingOptions | undefined {
-	// It times through the same throttling proxy in the same browsers: leaving the throttled timings out leaves it out too.
-	if (values['no-nav-timing'] || values['no-slow-network']) return undefined;
+function navTimingOptions(values: { 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string; 'nav-timing-cell'?: string[] }): NavTimingOptions | undefined {
+	if (values['no-nav-timing'] && (values['nav-timing-runs'] !== undefined || values['nav-timing-layouts'] !== undefined || values['nav-timing-cell']?.length)) fail('--no-nav-timing leaves navigation timing out: --nav-timing-runs, --nav-timing-layouts and --nav-timing-cell have nothing to set');
+	if (values['no-nav-timing']) return undefined;
 	const whole = (flag: 'nav-timing-runs' | 'nav-timing-layouts', least: number, why: string) => {
 		const raw = values[flag];
 		if (raw === undefined) return undefined;
@@ -635,12 +639,16 @@ function navTimingOptions(values: { 'no-nav-timing'?: boolean; 'no-slow-network'
 		if (!Number.isInteger(n) || n < least) fail(`--${flag} must be a whole number of at least ${least}: ${why}`);
 		return n;
 	};
-	const runs = whole('nav-timing-runs', 4, 'with fewer runs a side, no difference can be told from noise');
+	const runs = whole('nav-timing-runs', DEFAULT_NAV_RUNS - 1, `runs are compared by their medians, and with fewer than ${DEFAULT_NAV_RUNS - 1} a side no row can be told apart at the significance a route gets`);
+	if (runs !== undefined && runs > MAX_NAV_RUNS) fail(`--nav-timing-runs takes at most ${MAX_NAV_RUNS}: the noise band splits the original's runs every way into halves, which past that takes minutes per row`);
 	const layouts = whole('nav-timing-layouts', 1, 'at least one layout is timed');
-	return { ...(runs ? { runs } : {}), ...(layouts ? { layouts } : {}) };
+	const cells = values['nav-timing-cell']?.map(parseNavCell);
+	const bad = cells?.find((c): c is string => typeof c === 'string');
+	if (bad) fail(`--nav-timing-cell ${bad}`);
+	return { ...(runs ? { runs } : {}), ...(layouts ? { layouts } : {}), ...(cells?.length ? { cells: cells as NavCellSpec[] } : {}) };
 }
 
-function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean; 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string } & SlowNetworkFlags & WasteFlags): CheckOptions['load'] {
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean; 'no-nav-timing'?: boolean; 'nav-timing-runs'?: string; 'nav-timing-layouts'?: string; 'nav-timing-cell'?: string[] } & SlowNetworkFlags & WasteFlags): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
 	const count = (flag: 'load-runs' | 'psi-runs') => {
 		const raw = values[flag];

@@ -1059,12 +1059,14 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const load = loads.get(route)!;
 					if (bypassed) loads.set(route, { ...load, navTiming: { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } });
 					else if (timed.includes(route)) {
-						const navTiming = await measureNavTiming({ old: options.oldOrigin, new: options.newOrigin }, route, navOptions).catch((error: Error) => ({ unavailable: `not measured: ${error.message.split('\n')[0]}`, failed: true as const }));
+						// Every route the site times shares the check's significance: as many as the largest groups give, at most the cap.
+						const share = Math.min(navOptions.layouts ?? DEFAULT_NAV_LAYOUTS, groups.length || loads.size);
+						const navTiming = await measureNavTiming({ old: options.oldOrigin, new: options.newOrigin }, route, { ...navOptions, layouts: share }).catch((error: Error) => ({ unavailable: `not measured: ${error.message.split('\n')[0]}`, failed: true as const }));
 						loads.set(route, { ...load, navTiming });
 						if ('ms' in navTiming) profileLine(route, 'navigation timing', navTiming.ms);
 					}
 				}
-			}
+			} else for (const route of navTimedRoutes(groups, [...loads.keys()], DEFAULT_NAV_LAYOUTS)) loads.set(route, { ...loads.get(route)!, navTiming: { unavailable: 'not measured (--no-nav-timing)' } });
 			const wasteOptions = options.load?.waste;
 			if (wasteOptions) {
 				const control = networkOptions?.control ? { control: networkOptions.control } : {};

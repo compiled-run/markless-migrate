@@ -5,6 +5,8 @@ import { closedOnExit } from './close-on-exit.ts';
 import { browserInstalled, stallWatch, type NetworkBrowser } from './slow-network.ts';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 import { learnShapes, mayCarryPage, pageOf, targetOf, type PrefetchRequest } from '../prefetch/facts.ts';
+import { linkTo } from '../prefetch/record.ts';
+import { DESTRUCTIVE } from './destructive.ts';
 
 /** About one round trip to a nearby CDN on a fast line: both sides get the same link, so a local and a deployed app compare as apps. */
 const FAST: NetworkProfile = { name: 'fast', label: 'fast (50 Mbit/s, 40 ms RTT)', downBytesPerSecond: 50_000_000 / 8, upBytesPerSecond: 20_000_000 / 8, rttMs: 40, source: 'a nearby CDN on a fast line' };
@@ -39,8 +41,34 @@ export const DEFAULT_CELLS: readonly NavCellSpec[] = [
 	...(['fast', 'slow-4g'] as const).flatMap((profile) => (['instant', 'dwell-250'] as const).map((mode) => ({ browser: 'firefox' as const, profile, mode }))),
 	...(['fast', 'slow-4g'] as const).flatMap((profile) => (['dwell-250', 'touch'] as const).map((mode) => ({ browser: 'webkit' as const, profile, mode }))),
 ];
-export const DEFAULT_NAV_RUNS = 4;
+/**
+ * Runs a side per cell. Runs are compared by their medians, and a route's rows share a twentieth of a check's 5%
+ * significance per timed route (nav-timing-verdicts.ts): fewer than 7 runs a side can then never tell any row apart. In a
+ * simulation with run-to-run machine noise shared by a run's presses, 21 cells and 4 routes, 8 runs went red on
+ * identical sites in 1.6 to 3.2% of checks and caught 100 ms added to one cell 80% of the time (`test/nav-timing-verdicts.test.ts`).
+ */
+export const DEFAULT_NAV_RUNS = 8;
+/** The most runs a side: the noise band splits the original's runs every way into halves, C(16, 8) = 12,870 splits at most. */
+export const MAX_NAV_RUNS = 16;
+/** A route's navigation timing stops here and reports what it has: cells not reached are not checked, never green. */
+export const NAV_DEADLINE_MS = 3 * 60 * 60_000;
+/** A cell stops early once the port has shown no next page in this many runs: its row is red whatever the rest would do. */
+const GIVE_UP_RUNS = 2;
+/** A run during which this process stalled this long is taken again, at most twice. */
+const STALL_LIMIT_MS = 1000;
 export const DEFAULT_NAV_LAYOUTS = 4;
+/** The fixed amount of navigation timing the check budget (scripts/check-budget.ts) measures on its page: one cell, the fewest runs that can go red. */
+export const BUDGET_NAV_WORK = ['--nav-timing-cell', 'chromium/fast/dwell-250', '--nav-timing-runs', '7'] as const;
+
+/** A `--nav-timing-cell` value, `<browser>/<profile>/<press>`, or why it is not one. */
+export function parseNavCell(text: string): NavCellSpec | string {
+	const [browser, profile, mode] = text.split('/');
+	if (!['chromium', 'firefox', 'webkit'].includes(browser ?? '')) return `${text}: the browser is chromium, firefox or webkit`;
+	if (!(profile && profile in NAV_PROFILES)) return `${text}: the network is ${Object.keys(NAV_PROFILES).join(', ')}`;
+	if (!(PRESS_MODES as readonly string[]).includes(mode ?? '')) return `${text}: the press is ${PRESS_MODES.join(', ')}`;
+	if (profile === 'cpu-4x' && browser !== 'chromium') return `${text}: only Chromium can slow its CPU`;
+	return { browser: browser as NetworkBrowser, profile: profile as NavProfile, mode: mode as PressMode };
+}
 const VIEWPORT = { width: 1280, height: 800 };
 const PAINT_TIMEOUT_MS = 20_000;
 const SETTLE_MS = 1000;
@@ -64,7 +92,7 @@ export interface NavClick {
 	readonly fetched: boolean;
 	/** The press was answered from what was fetched ahead or kept from before, with no fetch of its own. */
 	readonly served: boolean;
-	/** Same-origin bytes fetched since the previous step settled, before the press; and from the press to the paint. */
+	/** Page data (requests matched to a link's page, and documents) fetched since the previous step settled, before the press; and every same-origin byte from the press to the paint. */
 	readonly bytesBefore: number;
 	readonly bytesAfter: number;
 	/** Of `bytesAfter`, the target's data. */
@@ -73,6 +101,8 @@ export interface NavClick {
 	readonly mainThreadMs?: number;
 	/** A new document was loaded. */
 	readonly fullLoad: boolean;
+	/** Hosts other than the app's own the press fetched from before the paint: not matched to a page on either side. */
+	readonly otherHosts?: readonly string[];
 	readonly error?: string;
 }
 
@@ -88,11 +118,16 @@ export interface NavCell extends NavCellSpec {
 	readonly steps: readonly NavStep[];
 	readonly old: readonly NavRun[];
 	readonly new: readonly NavRun[];
+	/** Not measured, and nothing to hold against the port: a browser not installed, no shared navigation at this width. */
 	readonly unavailable?: string;
+	/** Not measured where it should have been (out of time, the machine stalled through every retake): the route is never green. */
+	readonly notChecked?: string;
 }
 
 export interface RouteNavTiming {
 	readonly route: string;
+	/** How many routes the check times: each shares the check's significance (nav-timing-verdicts.ts). */
+	readonly layouts?: number;
 	readonly cells: readonly NavCell[];
 	readonly ms: number;
 }
@@ -105,6 +140,8 @@ export interface NavTimingOptions {
 	readonly layouts?: number;
 	/** Host names the proxy connects elsewhere (tests). */
 	readonly hosts?: Readonly<Record<string, string>>;
+	/** Defaults to `NAV_DEADLINE_MS`. */
+	readonly deadlineMs?: number;
 }
 
 const TYPES: Readonly<Record<NetworkBrowser, BrowserType>> = { chromium, firefox, webkit };
@@ -133,7 +170,23 @@ function instrument(): void {
 			for (const e of list.getEntries()) w.__mmLoaf.push([performance.timeOrigin + e.startTime, e.duration]);
 		}).observe({ type: 'long-animation-frame', buffered: true });
 	} catch {}
-	const signature = () => (document.querySelector('h1')?.textContent ?? document.querySelector('main')?.textContent?.slice(0, 200) ?? '').trim();
+	// The page's own content: its main landmark, else the body without the header, navigation, sidebar and footer every
+	// page shares. The same reading on both sides, whatever the heading says.
+	const signature = () => {
+		const main = document.querySelector('main, [role="main"]');
+		if (main) return (main.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 4000);
+		const out: string[] = [];
+		const walk = (el: Element) => {
+			for (const child of el.children) {
+				if (child.matches('header, nav, aside, footer, script, style, template, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]')) continue;
+				if (!child.children.length) out.push(child.textContent ?? '');
+				else walk(child);
+			}
+		};
+		if (document.body) walk(document.body);
+		return out.join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+	};
+	(window as unknown as { __mmNavSig: () => string }).__mmNavSig = signature;
 	w.__mmNavWatch = () => {
 		const want = S.getItem('__mmNavWant');
 		if (!want) return;
@@ -156,6 +209,8 @@ function instrument(): void {
 interface Logged extends PrefetchRequest {
 	readonly at: number;
 	endAt?: number;
+	/** Another origin's host: what it answered is not matched to a page. */
+	readonly host?: string;
 }
 
 function logRequests(page: Page, origin: string): { readonly all: Logged[]; inFlight: () => number; lastActivity: () => number } {
@@ -169,8 +224,7 @@ function logRequests(page: Page, origin: string): { readonly all: Logged[]; inFl
 		} catch {
 			return;
 		}
-		if (url.origin !== origin) return;
-		const entry = { path: url.pathname + url.search, type: r.resourceType(), phase: '', start: 0, outcome: 'pending' as PrefetchRequest['outcome'], at: Date.now() };
+		const entry = { path: url.pathname + url.search, type: r.resourceType(), phase: '', start: 0, outcome: 'pending' as PrefetchRequest['outcome'], at: Date.now(), ...(url.origin !== origin ? { host: url.host } : {}) };
 		open.set(r, entry);
 		all.push(entry);
 		last = Date.now();
@@ -182,7 +236,7 @@ function logRequests(page: Page, origin: string): { readonly all: Logged[]; inFl
 		entry.outcome = outcome;
 		entry.endAt = Date.now();
 		last = Date.now();
-		if (outcome !== 'completed') return;
+		if (outcome !== 'completed' || entry.host) return;
 		const sizes = await r.sizes().catch(() => undefined);
 		if (sizes) entry.bytes = sizes.responseBodySize + sizes.responseHeadersSize;
 	};
@@ -196,14 +250,9 @@ async function quiet(page: Page, log: ReturnType<typeof logRequests>, ms: number
 	while (Date.now() < until && !(log.inFlight() === 0 && Date.now() - log.lastActivity() >= ms)) await page.waitForTimeout(50);
 }
 
-function selectorOf(target: string): string {
-	const q = target.replace(/["\\]/g, '\\$&');
-	return `a[href="${q}"], a[href="${q}/"]`;
-}
-
 async function linkPoint(page: Page, target: string): Promise<{ x: number; y: number } | undefined> {
-	const link = page.locator(selectorOf(target)).filter({ visible: true }).first();
-	if (!(await link.count().catch(() => 0))) return undefined;
+	const link = await linkTo(page, target, true);
+	if (!link) return undefined;
 	await link.evaluate((a) => a.scrollIntoView({ block: 'center', inline: 'nearest' }), undefined, { timeout: 2000 }).catch(() => {});
 	const box = await link.boundingBox({ timeout: 1000 }).catch(() => null);
 	if (!box) return undefined;
@@ -256,11 +305,10 @@ export async function chooseSteps(page: Page, route: string, regions: readonly s
 			.map((a) => ({ target: a.pathname + a.search, region: region(a), text: (a.textContent ?? '').trim() }));
 	});
 	const own = targetOf(route);
-	const destructive = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate)\b/i;
 	const steps: NavStep[] = [];
 	const used = new Set<string>([own]);
 	for (const region of regions) {
-		const pool = [...new Map(links.filter((l) => l.region === region && !destructive.test(`${l.target} ${l.text}`)).map((l) => [targetOf(l.target), l] as const)).keys()].filter((t) => !used.has(t)).sort((a, b) => (hash(route + a) < hash(route + b) ? -1 : 1));
+		const pool = [...new Map(links.filter((l) => l.region === region && !DESTRUCTIVE.test(`${l.target} ${l.text}`)).map((l) => [targetOf(l.target), l] as const)).keys()].filter((t) => !used.has(t)).sort((a, b) => (hash(route + a) < hash(route + b) ? -1 : 1));
 		if (pool.length < 2) continue;
 		const [a, b] = pool as [string, string];
 		used.add(a).add(b);
@@ -294,13 +342,14 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 		await quiet(page, log, 1500, 20_000);
 		const targets = await page.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].filter((a) => a.origin === location.origin).map((a) => a.pathname + a.search)).then((t) => [...new Set(t.map(targetOf))]);
 		const clicks: NavClick[] = [];
-		const raw: { step: NavStep; got: { down: number; paint: number; sameDoc: boolean; loaf: [number, number][] } | undefined; pressAt: number; paintAt: number; since: number }[] = [];
+		const notMade: NavClick[] = [];
+		const raw: { step: NavStep; got: { down: number; paint: number; sameDoc: boolean; loaf: [number, number][]; path: string; sig: string } | undefined; pressAt: number; paintAt: number; since: number; why?: string }[] = [];
 		let since = log.all.length;
 		for (const step of steps) {
 			await park(page, spec.mode);
 			const at = await linkPoint(page, step.target);
 			if (!at) {
-				clicks.push({ target: step.target, kind: step.kind, ahead: 'none', fetched: false, served: false, bytesBefore: 0, bytesAfter: 0, dataAfter: 0, fullLoad: false, error: 'no link to it on the page' });
+				clicks.push({ target: step.target, kind: step.kind, ahead: 'none', fetched: false, served: false, bytesBefore: 0, bytesAfter: 0, dataAfter: 0, fullLoad: false, error: `no link to ${step.target} on ${new URL(page.url()).pathname}` });
 				continue;
 			}
 			// A visitor finds the link before pressing it: what its coming into view starts has a moment, as in nav.mjs.
@@ -308,7 +357,7 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 			const before = await page.evaluate(() => {
 				sessionStorage.removeItem('__mmNavDown');
 				sessionStorage.removeItem('__mmNavPaint');
-				const sig = (document.querySelector('h1')?.textContent ?? document.querySelector('main')?.textContent?.slice(0, 200) ?? '').trim();
+				const sig = (window as unknown as { __mmNavSig: () => string }).__mmNavSig();
 				const want = { path: location.pathname, sig };
 				sessionStorage.setItem('__mmNavWant', JSON.stringify(want));
 				sessionStorage.setItem('__mmNavArmed', '1');
@@ -317,7 +366,7 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 				return want;
 			});
 			await press(page, context, name, spec.mode, at);
-			const read = () => page.evaluate(() => ({ down: Number(sessionStorage.getItem('__mmNavDown') ?? NaN), paint: Number(sessionStorage.getItem('__mmNavPaint') ?? NaN), sameDoc: (window as unknown as { __mmNavDoc?: number }).__mmNavDoc === 1, loaf: (window as unknown as { __mmLoaf: [number, number][] }).__mmLoaf }));
+			const read = () => page.evaluate(() => ({ down: Number(sessionStorage.getItem('__mmNavDown') ?? NaN), paint: Number(sessionStorage.getItem('__mmNavPaint') ?? NaN), sameDoc: (window as unknown as { __mmNavDoc?: number }).__mmNavDoc === 1, loaf: (window as unknown as { __mmLoaf: [number, number][] }).__mmLoaf, path: location.pathname, sig: (window as unknown as { __mmNavSig?: () => string }).__mmNavSig?.() ?? '' }));
 			const until = Date.now() + PAINT_TIMEOUT_MS;
 			let got: Awaited<ReturnType<typeof read>> | undefined;
 			while (Date.now() < until) {
@@ -329,25 +378,34 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 			const pressAt = Number.isFinite(got?.down) ? got!.down : Date.now();
 			const paintAt = Number.isFinite(got?.paint) ? got!.paint : Date.now();
 			for (const r of log.all.slice(since)) if (r.at >= pressAt && r.at <= paintAt) (r as { phase: string }).phase = `click ${step.target}`;
-			raw.push({ step, got, pressAt, paintAt, since });
+			// When the next page never showed, say which half of the evidence was missing: the address, or the content.
+			const why = !got || !Number.isFinite(got.down) ? 'the press never reached the page' : Number.isFinite(got.paint) ? undefined : got.path === before.path ? `the address stayed ${before.path} for ${PAINT_TIMEOUT_MS / 1000} s` : got.sig === before.sig ? `the address changed to ${got.path} but the page's content did not, in ${PAINT_TIMEOUT_MS / 1000} s` : `no new content painted within ${PAINT_TIMEOUT_MS / 1000} s`;
+			raw.push({ step, got, pressAt, paintAt, since, ...(why ? { why } : {}) });
 			await quiet(page, log, 500, SETTLE_MS * 4);
 			await page.waitForTimeout(SETTLE_MS);
 			since = log.all.length;
-			if (before.path === new URL(page.url()).pathname) break;
+			// Off the path the steps assume: the rest cannot be pressed as planned, and each counts as not made.
+			if (why) {
+				for (const rest of steps.slice(steps.indexOf(step) + 1)) notMade.push({ target: rest.target, kind: rest.kind, ahead: 'none', fetched: false, served: false, bytesBefore: 0, bytesAfter: 0, dataAfter: 0, fullLoad: false, error: `not made: the press on ${step.target} before it did not arrive` });
+				break;
+			}
 		}
 		// Which requests carry a page is learned from the whole run: a first click alone names one target, never a shape.
 		const firsts = raw.filter((x) => x.step.kind === 'first').map((x) => ({ phase: `click ${x.step.target}`, target: x.step.target }));
-		const shapes = learnShapes(log.all, targets, firsts);
-		for (const { step, got, pressAt, paintAt, since: from } of raw) {
-			// Since the step before settled, through the scroll to the link and the pointer resting on it, until the press.
-			const beforeBytes = log.all.slice(from).filter((r) => r.at < pressAt).reduce((sum, r) => sum + (r.bytes ?? 0), 0);
+		const own = log.all.filter((r) => !r.host);
+		const shapes = learnShapes(own, targets, firsts);
+		const pageData = (r: Logged) => mayCarryPage(r) && (pageOf(r, shapes, targets) !== undefined || r.type === 'document');
+		for (const { step, got, pressAt, paintAt, since: from, why } of raw) {
+			// Page data fetched since the step before settled, through the scroll to the link and the pointer resting on it, until the press.
+			const beforeBytes = log.all.slice(from).filter((r) => !r.host && r.at < pressAt && pageData(r)).reduce((sum, r) => sum + (r.bytes ?? 0), 0);
 			const bare = (path: string) => targetOf(path.split('?', 1)[0]!);
 			const mine = (r: Logged) => mayCarryPage(r) && (pageOf(r, shapes, [step.target]) === step.target || (r.type === 'document' && bare(r.path) === bare(step.target)));
-			const earlier = log.all.filter((r) => r.at < pressAt && mine(r));
-			const own = log.all.filter((r) => r.at >= pressAt && r.at <= paintAt && mine(r));
-			const after = log.all.filter((r) => r.at >= pressAt && r.at <= paintAt);
+			const earlier = own.filter((r) => r.at < pressAt && mine(r));
+			const fetchedNow = own.filter((r) => r.at >= pressAt && r.at <= paintAt && mine(r));
+			const after = own.filter((r) => r.at >= pressAt && r.at <= paintAt);
+			const otherHosts = [...new Set(log.all.filter((r) => r.host && r.at >= pressAt && r.at <= paintAt && mayCarryPage(r)).map((r) => r.host!))].sort();
 			const ahead: NavClick['ahead'] = earlier.some((r) => r.outcome === 'completed' && (r.endAt ?? Infinity) <= pressAt) ? 'arrived' : earlier.some((r) => r.outcome === 'completed' || r.outcome === 'pending') ? 'arriving' : earlier.some((r) => r.outcome === 'cancelled') ? 'cancelled' : 'none';
-			const fetched = own.some((r) => (r.bytes ?? 1) > 0);
+			const fetched = fetchedNow.some((r) => (r.bytes ?? 1) > 0);
 			const loaf = got?.sameDoc ? got.loaf.filter(([start]) => start >= pressAt - 1 && start <= paintAt).reduce((sum, [, d]) => sum + d, 0) : undefined;
 			const timed = Number.isFinite(got?.down) && Number.isFinite(got?.paint);
 			clicks.push({
@@ -359,12 +417,14 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 				served: !fetched,
 				bytesBefore: beforeBytes,
 				bytesAfter: after.reduce((sum, r) => sum + (r.bytes ?? 0), 0),
-				dataAfter: own.reduce((sum, r) => sum + (r.bytes ?? 0), 0),
+				dataAfter: fetchedNow.reduce((sum, r) => sum + (r.bytes ?? 0), 0),
 				...(name === 'chromium' && loaf !== undefined ? { mainThreadMs: Math.round(loaf) } : {}),
 				fullLoad: got ? !got.sameDoc : false,
-				...(!Number.isFinite(got?.down) ? { error: 'the press never reached the page' } : !Number.isFinite(got?.paint) ? { error: `no new content within ${PAINT_TIMEOUT_MS / 1000} s` } : {}),
+				...(otherHosts.length ? { otherHosts } : {}),
+				...(why ? { error: why } : {}),
 			});
 		}
+		clicks.push(...notMade);
 		const stalledMs = watch.stop();
 		return { clicks, ...(stalledMs ? { stalledMs } : {}) };
 	} catch (error) {
@@ -382,19 +442,31 @@ export function navTimedRoutes(groups: readonly { readonly representative: strin
 	return measured.filter((r) => largest.includes(r));
 }
 
-/** The route's sequence, old and new taken in turn, `runs` a side, in every cell; one unmeasured run a side first warms both servers and their caches. */
+/**
+ * The route's sequence, old and new taken in turn, `runs` a side, in every cell; one unmeasured run a side first warms
+ * both servers and their caches. A run the machine stalled in is taken again (twice at most). The whole route stops at
+ * its deadline with what it has: cells not reached are not checked. A cell whose port shows no next page in its first
+ * runs stops there, red already.
+ */
 export async function measureNavTiming(origins: { readonly old: string; readonly new: string }, route: string, options: NavTimingOptions = {}): Promise<RouteNavTiming> {
 	const started = Date.now();
-	const runs = Math.max(4, options.runs ?? DEFAULT_NAV_RUNS);
+	const deadline = started + (options.deadlineMs ?? NAV_DEADLINE_MS);
+	const runs = Math.min(MAX_NAV_RUNS, Math.max(4, options.runs ?? DEFAULT_NAV_RUNS));
 	const specs = options.cells ?? DEFAULT_CELLS;
 	const cells: NavCell[] = [];
 	const groups = new Map<string, NavCellSpec[]>();
 	for (const spec of specs) (groups.get(`${spec.browser} ${spec.profile}`) ?? groups.set(`${spec.browser} ${spec.profile}`, []).get(`${spec.browser} ${spec.profile}`)!).push(spec);
 	const chosen = new Map<string, NavStep[]>();
+	const late = () => Date.now() > deadline;
+	const outOfTime = (spec: NavCellSpec, steps: readonly NavStep[] = []) => cells.push({ ...spec, steps, old: [], new: [], unavailable: 'ran out of time', notChecked: `the route's navigation timing passed its ${Math.round((options.deadlineMs ?? NAV_DEADLINE_MS) / 60_000)} min deadline before this cell` });
 	for (const group of groups.values()) {
 		const { browser: name, profile } = group[0]!;
 		if (!browserInstalled(name)) {
 			for (const spec of group) cells.push({ ...spec, steps: [], old: [], new: [], unavailable: `${name} is not installed` });
+			continue;
+		}
+		if (late()) {
+			for (const spec of group) outOfTime(spec);
 			continue;
 		}
 		const throttle = await startThrottle(NAV_PROFILES[profile].network, options.hosts ? { hosts: options.hosts } : {});
@@ -413,6 +485,11 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 				}
 				return steps;
 			};
+			const steady = async (origin: string, steps: readonly NavStep[], spec: NavCellSpec): Promise<NavRun> => {
+				let run = await navRun(browser, name, origin, route, steps, spec);
+				for (let retake = 0; retake < 2 && (run.stalledMs ?? 0) >= STALL_LIMIT_MS; retake++) run = await navRun(browser, name, origin, route, steps, spec);
+				return run;
+			};
 			// Unmeasured: wakes both servers and fills their caches, so a fresh deploy is not compared cold against a warm one.
 			const first = await stepsOf(group[0]!);
 			if (first.length) {
@@ -425,19 +502,30 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 					cells.push({ ...spec, steps, old: [], new: [], unavailable: 'no shared navigation with two links to follow on this page at this width' });
 					continue;
 				}
+				if (late()) {
+					outOfTime(spec, steps);
+					continue;
+				}
 				const old: NavRun[] = [];
 				const next: NavRun[] = [];
-				for (let i = 0; i < runs; i++) {
-					old.push(await navRun(browser, name, origins.old, route, steps, spec));
-					next.push(await navRun(browser, name, origins.new, route, steps, spec));
+				const nothing = (r: NavRun) => Boolean(r.error) || r.clicks.every((c) => c.error);
+				let stalled: string | undefined;
+				for (let i = 0; i < runs && !late(); i++) {
+					old.push(await steady(origins.old, steps, spec));
+					next.push(await steady(origins.new, steps, spec));
+					if (next.length >= GIVE_UP_RUNS && (next.every(nothing) || old.every(nothing))) break;
 				}
-				cells.push({ ...spec, steps, old, new: next });
+				const still = [...old, ...next].find((r) => (r.stalledMs ?? 0) >= STALL_LIMIT_MS);
+				if (still) stalled = `the machine stalled the measurement for ${still.stalledMs} ms in a run taken three times`;
+				// Stopped early because one side showed nothing: the port's row is red, the original's not checked, both by their runs.
+				const gaveUp = next.length < runs && (next.every(nothing) || old.every(nothing));
+				const cut = !gaveUp && next.length < runs;
+				cells.push({ ...spec, steps, old, new: next, ...(cut ? { notChecked: `the route's navigation timing passed its deadline after ${next.length} of ${runs} runs` } : stalled ? { notChecked: stalled } : {}) });
 			}
 		} finally {
 			await browser.close().catch(() => {});
 			await throttle.close();
 		}
 	}
-	return { route, cells, ms: Date.now() - started };
+	return { route, cells, ms: Date.now() - started, ...(options.layouts ? { layouts: options.layouts } : {}) };
 }
-

@@ -624,8 +624,12 @@ never answered).
 
 - Two links per shared navigation and one revisit, on at most four layouts: a link elsewhere on the page (a card in the
   content, a footer) is not timed, nor a revisit more than about a second after leaving.
-- The next page counts as shown when its heading (or the start of its main content) changes: a router that swaps the
-  heading before the content is timed early.
+- The next page counts as shown when its main landmark's text (or the body's outside its header, navigation, sidebar
+  and footer) differs: a router that swaps in a loading placeholder first is timed to the placeholder.
 - Firefox and WebKit report no long animation frames, so `main thread` is named only from Chromium's rows; WebKit's
-  touch is a tap with no contact time; the CPU is slowed in Chromium only.
-- About an hour of one runner per layout with every cell; a site with many layouts times only the four largest.
+  touch is a tap with no contact time, and WebKit does not show Speculation Rules or `<link rel=prefetch>` fetches as
+  requests, so `ahead` reads `none` there for an old page that uses them (its times are still its own); the CPU is
+  slowed in Chromium only.
+- Page data fetched ahead of the presses is reported, not judged: it has no noise bound yet.
+- With every default cell, about two hours of one runner per layout; a site with many layouts times only the four
+  largest.
