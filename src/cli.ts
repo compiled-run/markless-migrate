@@ -320,10 +320,11 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
             (--nav-timing-layouts, default 4), a fresh visitor follows two links of each shared navigation
             (sidebar, nav, header) and comes back to the first, old and new in turn, --nav-timing-runs a
             side (default 8, 7 to 16), timed from the press until the address has changed and the page's
-            own content (its main landmark) differs. Chromium on a fast line, slow 4G and with the CPU 4x
-            slower, Firefox and WebKit on a fast line and slow 4G (WebKit on an iPhone for touch), each
-            pressed the instant the pointer arrives, after it rests 100, 250 or 400 ms, or by touch; one
-            unmeasured run a side warms both servers first. Each run counts as its presses' median. Red
+            own content (its main landmark) differs. Six cells: Chromium resting 250 ms on a fast line and
+            slow 4G and pressing at once on a fast line, an iPhone (WebKit) tapping on a fast line and slow
+            4G, Firefox resting 250 ms on a fast line; --nav-timing-cells full runs every browser, network
+            and press (rests of 100, 250 and 400 ms, the CPU 4x slower), about four times the cost. One
+            unmeasured run a side warms both servers first; the summary names which cells ran. Each run counts as its presses' median. Red
             where the new page is later beyond the old page's own run-to-run spread (capped at a quarter of
             its median), two frames and 5%, by a one-sided Mann-Whitney test, Holm across the route's rows
             at the route's share of 5% for the whole check; first visits and revisits apart, naming the

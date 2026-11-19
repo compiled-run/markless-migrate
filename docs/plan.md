@@ -631,5 +631,6 @@ never answered).
   requests, so `ahead` reads `none` there for an old page that uses them (its times are still its own); the CPU is
   slowed in Chromium only.
 - Page data fetched ahead of the presses is reported, not judged: it has no noise bound yet.
-- With every default cell, about two hours of one runner per layout; a site with many layouts times only the four
+- The default runs six cells; the other fifteen (rests of 100 and 400 ms, the CPU 4x slower, Firefox on slow 4G,
+  Chromium touch, WebKit resting) run only with `--nav-timing-cells full`. A site with many layouts times only the four
   largest.

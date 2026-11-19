@@ -155,14 +155,27 @@ half was missing: the address never changed, or it changed and the content did n
 
 Every cell is measured the same way on both sides, old and new taken in turn, `--nav-timing-runs` a side (default 8,
 from 7 to 16), after one unmeasured run a side that wakes both servers and fills their caches, so a fresh deploy is not
-compared cold against one that has been up for months:
+compared cold against one that has been up for months. Every check runs the six cells that answer whether the port
+feels as fast as the original:
 
 | Browser | Network | Press |
 | --- | --- | --- |
-| Chromium | fast line (50 Mbit/s, 40 ms), slow 4G (1.6 Mbit/s, 150 ms) | instant, rest 100, 250, 400 ms, touch |
+| Chromium | fast line (50 Mbit/s, 40 ms) | rest 250 ms, instant |
+| Chromium | slow 4G (1.6 Mbit/s, 150 ms) | rest 250 ms |
+| WebKit on an iPhone | fast line, slow 4G | touch |
+| Firefox | fast line | rest 250 ms |
+
+`--nav-timing-cells full` runs every cell instead, a deliberate deep run before a port is presented (about four times
+the cost):
+
+| Browser | Network | Press |
+| --- | --- | --- |
+| Chromium | fast line, slow 4G | instant, rest 100, 250, 400 ms, touch |
 | Chromium | fast line, CPU 4x slower | instant, rest 250 ms, touch |
 | Firefox | fast line, slow 4G | instant, rest 250 ms |
 | WebKit | fast line, slow 4G | rest 250 ms, touch on an iPhone |
+
+The summary names which set ran, so a default run is never read as the full matrix.
 
 The network is the throttling proxy every byte crosses, the same in every browser. `instant` moves the pointer and
 presses in one instant (what a script's click does, the worst case); `rest <ms>` arrives and rests before pressing, as
@@ -185,12 +198,13 @@ Otherwise a row is red when the new median is later than the old one by more tha
 (the 90th percentile gap between the medians of two halves of its runs), two 60 Hz frames, or 5% of its median,
 whichever is most, and a one-sided Mann-Whitney test on the runs puts the sides apart. The spread counts only up to a
 quarter of the old median (at least 50 ms): an old page whose runs land in two clusters (fetched ahead or not) would
-otherwise widen the band enough to hide a real slowdown. The route's rows share one significance by Holm's step-down,
-at the route's share of 5% for the whole check (5% divided by the routes the check times), so identical sites go red in
-at most 5% of whole checks. Fewer than 7 runs a side can then never tell a row apart, which is why 7 is the least the
-flag takes. In `test/nav-timing-verdicts.test.ts`, a simulation of every default cell, run-to-run machine noise shared
-by a run's presses and an old page with two clusters, 8 runs went red on identical sites on 0.4 to 1% of routes (1.6 to
-3.9% of checks of 4 routes, over 3 seeds) and caught 100 ms added to one cell on 80% of routes (9 runs: 95%). A faster
+otherwise widen the band enough to hide a real slowdown. The rows that ran on the route share one significance by
+Holm's step-down, at the route's share of 5% for the whole check (5% divided by the routes the check times), so
+identical sites go red in at most 5% of whole checks. Fewer than 7 runs a side can then never tell a row apart, which
+is why 7 is the least the flag takes. In a simulation (`test/nav-timing-verdicts.test.ts`: run-to-run machine noise
+shared by a run's presses, an old page with two clusters, 600 routes over 3 seeds), 8 runs went red on identical sites
+on 0.8 to 1.2% of routes with the default cells (3.3 to 4.6% of checks of 4 routes) and caught 100 ms added to one cell
+on 96 to 97% of routes; with every cell, 0.3 to 0.8% of routes (1.3 to 3.3% of checks) and 80 to 83%. A faster
 row passes the same correction the other way, so the summary does not overstate wins.
 
 A red row names its cause, the first that explains it: `did not arrive`, `refetched on revisit` (the old page showed it
@@ -209,7 +223,7 @@ The summary leads with the resting mouse and touch rows, the instant press last,
 the new page is faster, level, slower and not checked, with the median gap. Where the new page is slower or only level,
 it also estimates what fetching ahead as much as the old page would cost it before the presses, from the old page's
 page data ahead and each side's page data size. `report.json` keeps every press under the route's `load.navTiming`.
-With every default cell, about two hours of one runner per layout. The check budget (`scripts/check-budget.ts`) times
+See the pull request that set the default for its measured cost per layout. The check budget (`scripts/check-budget.ts`) times
 one cell, 7 runs a side, on its page, held to a bound of its own.
 
 ### Widget probes: what a library's widgets do between the clicks
