@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { routerOptions, routerPrefetchSupport } from '../src/convert/prefetch-config.ts';
+import { budgetOf, routerOptions, routerPrefetchSupport } from '../src/convert/prefetch-config.ts';
 import { prefetchRecorder } from '../src/prefetch/convert.ts';
 import { decidePrefetch, declaredTriggers, MAX_CONCURRENCY } from '../src/prefetch/decide.ts';
 import type { ConditionResult, PrefetchFacts, Trigger, TriggerEvidence } from '../src/prefetch/facts.ts';
@@ -126,6 +126,8 @@ test('the router support says why it cannot take the setting: not installed, or 
 		assert.equal(((await routerPrefetchSupport(await app('export const router = () => ({});'))) as { refused?: string }).refused, 'too old');
 		const current = await app("export const router = () => ({}); export const PREFETCH_TRIGGERS = ['intent', 'viewport', 'idle']; export const PREFETCH_NETWORKS = ['none', 'fast', 'all'];");
 		assert.deepEqual(await routerPrefetchSupport(current), { triggers: ['intent', 'viewport', 'idle'], networks: ['none', 'fast', 'all'] });
+		const budgeted = await app("export const router = () => ({}); export const PREFETCH_TRIGGERS = ['intent', 'viewport', 'idle']; export const PREFETCH_NETWORKS = ['none', 'fast', 'all']; export const PREFETCH_DEFAULTS = { intent: 'all', viewport: 'none', idle: 'fast', concurrency: 2, budget: 2097152 };");
+		assert.equal(((await routerPrefetchSupport(budgeted)) as { defaultBudget?: number }).defaultBudget, 2097152, 'the default is read from the router, not restated');
 		assert.equal(routerOptions({ intent: 'all', viewport: 'all', idle: 'none', concurrency: 2 }, { refused: 'too old', says: '' }), '');
 	} finally {
 		for (const dir of apps) await rm(dir, { recursive: true, force: true });
@@ -146,4 +148,17 @@ test('a partial convert decides from the last convert\'s pages and its own, and 
 	} finally {
 		await rm(state, { recursive: true, force: true });
 	}
+});
+
+test('the budget is 1.5 times the original\'s page data ahead per page view, never above the router\'s default, and none without fetching ahead', () => {
+	const mib = 1024 * 1024;
+	const d = decidePrefetch([page('/a', { visible: { ...e(10, 10), bytes: 400_000 }, viewport: { ...e(4, 20), bytes: 600_000 } })]);
+	assert.equal(d.aheadBytes, 1_000_000);
+	assert.equal(d.budgetCap, 1_500_000);
+	const support = { triggers: ['intent', 'viewport', 'idle'], networks: ['none', 'fast', 'all'], defaultBudget: 2 * mib };
+	assert.equal(budgetOf(d.setting, d.budgetCap, support), 1_500_000);
+	assert.equal(budgetOf(d.setting, 10 * mib, support), 2 * mib, 'never above the default');
+	assert.equal(budgetOf({ intent: 'all', viewport: 'none', idle: 'none', concurrency: 2 }, d.budgetCap, support), undefined, 'intent is not budgeted');
+	assert.equal(budgetOf(d.setting, d.budgetCap, { ...support, defaultBudget: undefined }), undefined, 'a router without a budget gets none');
+	assert.equal(routerOptions(d.setting, support, d.budgetCap), `{ prefetch: { intent: 'all', viewport: 'all', idle: 'none', concurrency: 2, budget: 1500000 } }`);
 });

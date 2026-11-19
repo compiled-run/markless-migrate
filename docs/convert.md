@@ -164,6 +164,11 @@ router's options in `vite.config.ts` (`router({ prefetch: { intent, viewport, id
 - `concurrency` is the most speculative page fetches the original had in flight at once, at most 6: a browser opens 6
   connections to a host over HTTP/1.1, so a seventh fetch waits anyway, and over HTTP/2 more at once only share the
   same bandwidth.
+- `budget`, where the router has one (`PREFETCH_DEFAULTS.budget`, read from the installed package): the most the port
+  fetches ahead in one page view, 1.5 times the original's page data fetched ahead per page view (at load, on a timer
+  and while scrolling; the median over pages), never above the router's own default. Fetching on hover, focus or
+  press is not budgeted, so a port that fetches only on intent gets none. The log says it in words: "The original
+  fetches about 1.0 MB ahead per page view; the port is allowed 1.4 MB (1.5 times the original)."
 - A partial convert (`--only`) decides from its own pages and, for the rest, the facts the last convert kept in
   `.migrate/prefetch.json`, so it never changes the app-wide setting from a few pages alone.
 

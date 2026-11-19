@@ -32,6 +32,10 @@ export interface PrefetchDecision {
 	readonly revisitFromMemory?: boolean;
 	/** The most the original had in flight at once before any click, on any page. */
 	readonly originalConcurrency: number;
+	/** The original's page data fetched ahead in one page view (at load, on a timer and while scrolling), the median over pages. */
+	readonly aheadBytes: number;
+	/** The most the port may fetch ahead in one page view: `BUDGET_FACTOR` times `aheadBytes`; the router's own default caps it (prefetch-config.ts). */
+	readonly budgetCap: number;
 	/** The next more eager setting, never applied by convert: the navigation timing check prices it in bytes before a click. */
 	readonly next?: { readonly setting: PrefetchSetting; readonly says: string };
 }
@@ -75,6 +79,10 @@ function fires(facts: PrefetchFacts, trigger: Trigger): boolean | undefined {
  * waits for one anyway, and over HTTP/2 more fetches at once only share the same bandwidth.
  */
 export const MAX_CONCURRENCY = 6;
+
+/** The port may fetch ahead at most this many times the original's page data per page view. */
+export const BUDGET_FACTOR = 1.5;
+const AHEAD_TRIGGERS: readonly Trigger[] = ['load', 'visible', 'timer', 'viewport', 'scroll'];
 
 const SLOW: readonly Condition[] = ['3g', '2g', 'slow-2g', 'slow-link'];
 const FAST: readonly Condition[] = ['4g', 'no-info'];
@@ -167,7 +175,10 @@ export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDeci
 	const revisitFromMemory = revisits.length ? revisits.every((r) => !r.refetched || r.fromCache) : undefined;
 	if (revisitFromMemory !== undefined) reasons.push({ trigger: 'revisit', says: revisitFromMemory ? `The original shows a page it showed before without asking the network again (${revisits.length} of ${revisits.length} revisits). The port must do the same; the navigation timing check measures it.` : `The original asks the network again when a page is revisited (${revisits.filter((r) => r.refetched && !r.fromCache).length} of ${revisits.length} revisits).` });
 	if (failed.length) reasons.push({ trigger: 'per-link', says: `${failed.length} page${failed.length === 1 ? '' : 's'} could not be recorded and were left out (${failed.slice(0, 3).join(', ')}).` });
+	const ahead = pages.map((p) => AHEAD_TRIGGERS.reduce((sum, t) => sum + (p.triggers[t]?.bytes ?? 0), 0)).sort((a, b) => a - b);
+	const aheadBytes = ahead.length ? ahead[ahead.length >> 1]! : 0;
+	const budgetCap = Math.round(aheadBytes * BUDGET_FACTOR);
 	const setting = { intent, viewport, idle, concurrency };
 	const next = moreEager(setting);
-	return { setting, ...(next ? { next } : {}), reasons, pages: pages.length, failed, original, loadLinks, ...(revisitFromMemory !== undefined ? { revisitFromMemory } : {}), originalConcurrency };
+	return { setting, ...(next ? { next } : {}), reasons, pages: pages.length, failed, original, loadLinks, aheadBytes, budgetCap, ...(revisitFromMemory !== undefined ? { revisitFromMemory } : {}), originalConcurrency };
 }

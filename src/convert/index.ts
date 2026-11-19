@@ -11,7 +11,7 @@ import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
 import { decidePrefetch, type PrefetchDecision } from '../prefetch/decide.ts';
-import { routerOptions, routerPrefetchSupport } from './prefetch-config.ts';
+import { budgetOf, routerOptions, routerPrefetchSupport } from './prefetch-config.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -257,7 +257,7 @@ export interface ConvertReport {
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
 	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it. */
-	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string };
+	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly budget?: number; readonly notApplied?: string };
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
@@ -2692,7 +2692,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (Object.keys(routing.overrides).length) manifest.overrides = { ...manifest.overrides, ...routing.overrides };
 		await writeFile(manifestPath, `${JSON.stringify(manifest, null, '\t')}\n`);
 		prefetchSupport = await routerPrefetchSupport(app);
-		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort(), routing.trailing, routerOptions(prefetchDecision?.setting, prefetchSupport)));
+		await writeFile(join(app, 'vite.config.ts'), viteConfig(Object.keys(routing.packages).filter((p) => p !== 'path-to-regexp').sort(), routing.trailing, routerOptions(prefetchDecision?.setting, prefetchSupport, prefetchDecision?.budgetCap)));
 	}
 	if (prefetchDecision) {
 		const supported = prefetchSupport && !('refused' in prefetchSupport) ? prefetchSupport : undefined;
@@ -2704,9 +2704,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					? 'vite.config.ts was kept as written before with these pages (a partial convert), so it holds whatever prefetch setting the last full convert wrote, which may be older than this decision'
 					: 'convert writes vite.config.ts only with --source, so this app keeps the prefetch setting its own vite.config.ts has';
 		const missing = (['intent', 'viewport', 'idle'] as const).filter((t) => prefetchDecision!.setting[t] !== 'none' && supported && !supported.triggers.includes(t));
-		prefetchReport = { ...prefetchDecision, applied: Boolean(supported), missing, ...(notApplied ? { notApplied } : {}) };
+		const written = supported ? budgetOf(prefetchDecision.setting, prefetchDecision.budgetCap, supported) : undefined;
+		prefetchReport = { ...prefetchDecision, applied: Boolean(supported), missing, ...(written !== undefined ? { budget: written } : {}), ...(notApplied ? { notApplied } : {}) };
 		log(`prefetch: ${supported ? 'router set to' : 'decided, NOT applied:'} ${JSON.stringify(prefetchDecision.setting)}${notApplied ? `\n  not applied because ${notApplied}` : ''}`);
 		for (const r of prefetchDecision.reasons) log(`  ${r.says}`);
+		const budget = supported ? budgetOf(prefetchDecision.setting, prefetchDecision.budgetCap, supported) : undefined;
+		const mb = (b: number) => `${(b / 1024 / 1024).toFixed(1)} MB`;
+		if (budget !== undefined) log(`  The original fetches about ${mb(prefetchDecision.aheadBytes)} ahead per page view; the port is allowed ${mb(budget)}${budget < prefetchDecision.budgetCap ? " (the router's default; 1.5 times the original's would be more)" : ' (1.5 times the original)'}.`);
 		if (missing.length) log(`  the router does not take ${missing.join(', ')}: the port is less eager there than the original`);
 	}
 	const readme = await writeMigratedReadme({ app, ...(options.source ? { source: options.source } : {}), state });
