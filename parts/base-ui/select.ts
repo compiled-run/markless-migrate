@@ -184,21 +184,35 @@ function openSelect(trigger: HTMLElement, key?: string, press?: 'mouse' | 'other
 	return true;
 }
 
+// SelectRoot's useClick opens on mousedown; after a touch or pen press that comes once the tap has hit the trigger, so
+// opening on pointerdown would put the item-aligned list under the finger and the tap's click would choose an option.
+let tapped: HTMLElement | null = null;
 export function pointerdown(target: Element, event: PointerEvent): boolean {
+	tapped = null;
 	const trigger = target.closest<HTMLElement>(TRIGGER);
 	if (!trigger || event.button !== 0) return false;
 	const p = popupFor(trigger);
-	// A mouse press is left its own focus of the trigger (SelectTrigger opens on mousedown without preventing it).
-	if (p || event.pointerType !== 'mouse') event.preventDefault();
-	if (p) dismiss(p);
-	else {
-		if (event.pointerType !== 'mouse') trigger.focus(quietly);
-		openSelect(trigger, undefined, event.pointerType === 'mouse' ? 'mouse' : 'other');
+	if (!p && event.pointerType !== 'mouse') {
+		tapped = trigger;
+		return true;
 	}
+	// A mouse press is left its own focus of the trigger (SelectTrigger opens on mousedown without preventing it).
+	if (p) {
+		event.preventDefault();
+		dismiss(p);
+	} else openSelect(trigger, undefined, 'mouse');
 	return true;
 }
 export function click(target: Element): boolean {
-	if (target.closest(TRIGGER)) return true;
+	const trigger = target.closest<HTMLElement>(TRIGGER);
+	if (trigger) {
+		if (tapped === trigger && !popupFor(trigger)) {
+			trigger.focus(quietly);
+			openSelect(trigger, undefined, 'other');
+		}
+		tapped = null;
+		return true;
+	}
 	const option = target.closest<HTMLElement>(OPTION);
 	const p = option && popupOfSelect(option);
 	if (!option || !p) return false;
