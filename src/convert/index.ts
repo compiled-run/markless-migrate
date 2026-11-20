@@ -10,6 +10,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
+import { discoverRecorder, discoveryReport, routeDiscovery, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -254,6 +255,8 @@ export interface ConvertReport {
 	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
+	/** Controls that change the original's page when pressed and that no recording ports: static markup on the port, by route. */
+	readonly deadControls?: DiscoveryReport;
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
@@ -1453,6 +1456,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	optionValues = {};
 	layerChoices = choices;
 	const failed = new Map<string, string>();
+	let discovering: Awaited<ReturnType<typeof discoverRecorder>> | undefined;
+	const discovered: Record<string, RouteDiscovery> = {};
 	try {
 		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
@@ -1547,6 +1552,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			),
 		);
 		prefetchRead.catch(() => {});
+		// Every control a visitor would press that no recorder's ARIA contract uses, pressed to see what it does: a kind of its own (src/discover).
+		discovering = await discoverRecorder(state, options.old, log);
+		const discoverSlots = limiter(width);
+		const discoverRead = Promise.all(
+			discovering.notRun
+				? []
+				: routes.map((r) =>
+						pageOf.get(r)!.then((ref) => {
+							if (!ref || ref.status !== 200) return undefined;
+							return discoverSlots(async () => {
+								const got = await browsers.retried(r, (browser) => discovering!.record(browser, r), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0]! }));
+								if (!('value' in got)) discovering!.unknown(r, got.failed);
+							});
+						}),
+					),
+		);
+		discoverRead.catch(() => {});
 		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
@@ -1799,7 +1821,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const read = await Promise.all(reads);
 		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
 		for (const ref of captures) captureDirs.set(ref.route, await atFor(ref.route, 'captures'));
-		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
+		await Promise.all([scenesRead, notifiesRead, prefetchRead, discoverRead]);
 		await prefetching.save();
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
@@ -1832,6 +1854,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			// Where an option went is its page's (written on the option), as is what it gave a form.
 			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined || c.trigger !== undefined);
 			if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
+		}
+		// What each route's other recordings port, so the pressed controls they do not are named.
+		const at = (x: { readonly sig: string; readonly nth: number }) => `${x.sig}#${x.nth}`;
+		const themeNames = new Set(listed.flatMap((c) => (c.action === 'theme' && 'name' in c && typeof c.name === 'string' ? [c.name] : [])));
+		for (const [route, facts] of discovering.recorded) {
+			const claims: Claims = {
+				controls: new Set([...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)]),
+				holders: new Set([...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at)),
+				scenes: (scenes.get(route) ?? []).map(({ scene }) => ({ holder: at(scene), labels: new Set(scene.edges.map((e) => e.control.replace(/#\d+(\|.*)?$/, ''))) })),
+				names: themeNames,
+			};
+			discovered[route] = routeDiscovery(facts, claims);
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
@@ -2699,6 +2733,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		...(used.unseen.length ? { unseenClassBuilders: used.unseen } : {}),
 		unplacedCharts,
 		stillCapped,
+		...(discovering ? { deadControls: await discoveryReport(join(state, 'convert'), discovered, discovering.notRun) } : {}),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 	if (!options.only?.length) await writeFile(join(state, 'convert', CONVERT_INPUTS), JSON.stringify({ pageOrderFrom: options.pageOrderFrom ?? null } satisfies ConvertInputs));
@@ -2715,6 +2750,7 @@ export function summarizeConvert(report: ConvertReport): string {
 	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
 	if (report.unseenClassBuilders?.length) lines.push(`Classes built with no fixed start, which the stylesheet cut cannot see (${report.unseenClassBuilders.length}): ${report.unseenClassBuilders.slice(0, 12).join(', ')}`);
 	for (const c of report.unplacedCharts) lines.push(`  chart not placed ${c.route}: ${c.chart} (ships without its tooltip)`);
+	if (report.deadControls) lines.push(...summarizeDiscovery(report.deadControls));
 	if (report.stillCapped.length) lines.push(`Pages still drawing at the ${SCRIPTS_STILL_CAP_MS / 1000} s wait, read mid-frame: ${report.stillCapped.map((c) => `${c.route} (${c.viewports.join(', ')})`).join('; ')}`);
 	return `${lines.join('\n')}\n`;
 }

@@ -142,6 +142,41 @@ browser is not loaded again for it); a recording the browser died under twice le
 decision and never fails the page. A first recording takes about 10 s a page, about 25 s on each of the
 four pages with clicks and about 100 s on the two the conditions are tried on (measured on ui.shadcn.com's docs pages).
 
+### Controls no recording ports (dead controls)
+
+Every other recorder finds its controls by a mark it knows: ARIA's (`aria-expanded`, a checkbox, a tab), a part's, or a
+selector the site lists in `lib/site/controls.json`. A plain button whose click the page's own state answers ("Start
+Listening", a suggestion that sends a reply, a file in a tree) carries none, and would be written out as static markup
+with no message. So convert also presses, on each page of the original at desktop width (`src/discover/record.ts`):
+
+- every `button`, `[role=button]`, `summary` and `[role=treeitem]`, and every element the page's CSS gives a pointer or
+  text cursor its parent does not have (an input group's addon that focuses its field), each marked with how it was found;
+- never one inside a form or a link, a submit, a disabled or hidden one, one whose name ends a session or deletes
+  (`src/check/destructive.ts`), or one a reveal uses by its ARIA marks (`aria-expanded`, `aria-haspopup`, tabs, menus,
+  options, comboboxes).
+
+Each press is read against the page before it: an element added, removed, shown or hidden, its text, an ARIA state or
+name, how it looks (display, visibility, opacity, colours, transform, size), focus moving to another element, the scroll,
+and any text a live region announced. A class, style or `data-` change that changes no look is not a change, nor an
+`animation-*` or `transition-*` style, an id reference renamed to the same element, a tooltip, hover or focus style (the
+pointer leaves and the control is focused before the first reading), or what changes on the page with no press at all
+(a clock). The page is read once its scripts stop (`scriptsStill`), and again once its timers have run: a page that came
+back by itself is `transient`. Otherwise the control is pressed again, up to four times: back at the start is a `toggle`
+(or a `cycle` of three or more states), unchanged by the next press `one-way`. A press that sends anything but a GET is
+aborted and reported as writing to a server, its state after the press unknown; one that leaves the page, opens a
+window, a download or a dialog is stopped and named. A page a press left changed is loaded again before the next
+control. Discovery runs only against a copy of the original on this machine (`localhost`, `127.x`): it presses each
+control up to four times.
+
+A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
+toggles, switches, notifications and hover delays), holds it (a carousel, slider, chart, table, accordion, form or day
+picker), or a recorded demo's uses include it, or the site names it (a theme toggle). The rest that changed the page
+are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
+and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
+last run of the same store (`.migrate/convert/discover/last.json`: new and cleared). The pipeline's `dead-controls` job
+fails while there are any; nothing waits on it, so the port is still built, checked and deployed, but the run is red.
+Recordings are kept in `.migrate/convert/discover/v-<recorder>/` as the prefetch ones are.
+
 ### How to iterate on a port
 
 Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the
