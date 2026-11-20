@@ -52,7 +52,7 @@ export interface SceneLimits {
 	readonly max: number;
 }
 
-const LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
+export const LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
 /** A docs page's demos; a page-level demo (no such wrapper) is named by the selector of the element that holds it. */
 const PREVIEW = '[data-slot="preview"]';
 

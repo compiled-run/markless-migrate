@@ -54,6 +54,8 @@ export interface SceneHolder {
 	readonly listed: string;
 	/** A recorded demo whose listing left these controls out: recorded again with them, in its place. */
 	readonly replaces?: string;
+	/** How many of its controls discovery found dead: each may lead to a state of its own, which the recording makes room for. */
+	readonly controls: number;
 }
 
 /** `body>div2>main1` as `body > div:nth-of-type(2) > main:nth-of-type(1)`. */
@@ -79,12 +81,16 @@ export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[
 	const wanted = facts.controls.filter((c) => STATEFUL.has(c.shape) && !claimed(c, claims) && markupChanged(c) && c.holder && c.holder.path !== 'body');
 	const holders = wanted.map((c): SceneHolder => {
 		const i = c.path ? c.ancestors.findIndex((a) => claims.scenes.some((s) => s.holder === a)) : -1;
-		if (i < 0) return { path: c.holder!.path, selector: pathSelector(c.holder!.path), at: c.holder!.at, canvas: Boolean(c.holder!.canvas), listed: SCENE_CONTROLS };
+		if (i < 0) return { path: c.holder!.path, selector: pathSelector(c.holder!.path), at: c.holder!.at, canvas: Boolean(c.holder!.canvas), listed: SCENE_CONTROLS, controls: 1 };
 		const scene = claims.scenes.find((s) => s.holder === c.ancestors[i])!;
 		const path = c.path!.split('>').slice(0, -(i + 1)).join('>');
-		return { path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder!.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder };
+		return { path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder!.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1 };
 	});
-	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) if (!out.some((o) => h.path === o.path || h.path.startsWith(`${o.path}>`))) out.push(h);
+	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) {
+		const outer = out.findIndex((o) => h.path === o.path || h.path.startsWith(`${o.path}>`));
+		if (outer < 0) out.push(h);
+		else out[outer] = { ...out[outer]!, controls: out[outer]!.controls + 1 };
+	}
 	return out;
 }
 

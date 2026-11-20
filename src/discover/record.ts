@@ -523,7 +523,11 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				await still();
 				const own = quick.changed.filter((p) => !hovered.some((h) => p === h || p.startsWith(`${h}>`)));
 				if (!own.length && !said.length) controls.push({ ...base, shape: 'inert' });
-				else controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
+				else {
+					const holder = holderPath(pressed, own);
+					if (holder) pending.push([controls.length, holder]);
+					controls.push({ ...base, path: pressed, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
+				}
 				continue;
 			}
 			fresh = false;
