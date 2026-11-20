@@ -1,7 +1,7 @@
 // What discovery never lets a press do to the original (write, leave, open), what it never presses, and what its report
 // says when a page is cut short, fails or is read back.
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -253,5 +253,32 @@ test('a spot check compares the control it pressed, even when the same control a
 	const [, many] = await Promise.all(['/chrome-first', '/chrome-many'].map((r) => rec.record(browser, r)));
 	assert.equal(many?.spotMismatch, undefined, 'three Copy buttons that do what the owner did: no mismatch');
 	assert.equal(many?.controls.filter((c) => c.name === 'Copy' && !c.sameAs).length, 1, 'one is pressed as the spot check');
+	await rm(state, { recursive: true, force: true });
+});
+
+test('a count made in a shard against its own first route is accepted when every route is converted together, and re-recorded once that route did another thing', async () => {
+	const state = await mkdtemp(join(tmpdir(), 'mm-discover-shards-'));
+	const by = (f: DiscoverFacts | undefined, name: string) => f?.controls.find((c) => c.name === name);
+	const run = async (order: readonly string[]) => {
+		const rec = await discoverRecorder(state, origin, () => {}, order);
+		return Promise.all(order.map((r) => rec.record(browser, r)));
+	};
+	// A shard holding the second and third routes: the second is its first, so the third counts from it.
+	const [, third] = await run(['/chrome-second', '/chrome-third']);
+	assert.equal(by(third, 'Copy')?.sameAs?.route, '/chrome-second');
+	// Every route together (emit): /chrome-first owns the group now, but the third's count names the second, whose result is the same.
+	const [, , third2] = await run(['/chrome-first', '/chrome-second', '/chrome-third']);
+	assert.deepEqual(by(third2, 'Copy')?.sameAs, by(third, 'Copy')?.sameAs, 'read back, not recorded again');
+	// The second route's kept result for the group changes: the count that names it is recorded again.
+	const dir = join(state, 'convert', 'discover');
+	const [version] = await readdir(dir).then((d) => d.filter((x) => x.startsWith('v-')));
+	for (const f of await readdir(join(dir, version ?? ''))) {
+		const file = join(dir, version ?? '', f);
+		const facts: unknown = JSON.parse(await readFile(file, 'utf8'));
+		if (typeof facts !== 'object' || facts === null || !('route' in facts) || facts.route !== '/chrome-second' || !('controls' in facts) || !Array.isArray(facts.controls)) continue;
+		await writeFile(file, JSON.stringify({ ...facts, controls: facts.controls.map((c: { name?: string; changes?: unknown[] }) => (c.name === 'Copy' ? { ...c, changes: [{ at: 'x', what: 'text', before: 'Copy', after: 'Something else' }] } : c)) }));
+	}
+	const [third3] = await run(['/chrome-third']);
+	assert.notDeepEqual(by(third3, 'Copy')?.sameAs, by(third, 'Copy')?.sameAs, 'the count that named a changed result is not read back');
 	await rm(state, { recursive: true, force: true });
 });

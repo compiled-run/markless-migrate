@@ -108,7 +108,7 @@
 		"test/destructive.test.ts": {"shard":3,"seconds":113},
 		"test/dev-verdict.test.ts": {"shard":5,"seconds":1},
 		"test/dev.test.ts": {"shard":1,"seconds":1},
-		"test/discover-guards.test.ts": {"shard":5,"seconds":90},
+		"test/discover-guards.test.ts": {"shard":5,"seconds":110},
 		"test/discover-record.test.ts": {"shard":5,"seconds":30},
 		"test/docsearch.test.ts": {"shard":3,"seconds":7},
 		"test/embed-navigation-hold.test.ts": {"shard":3,"seconds":3},

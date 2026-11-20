@@ -36,6 +36,8 @@ export function sharedControls(order: readonly string[], unshared: ReadonlySet<s
 		const earlier = index < 0 ? [] : order.slice(0, index);
 		return {
 			spot: index % SPOT_EVERY === SPOT_EVERY - 1,
+			inRun: (other) => order.includes(other),
+			counts: (group) => !unshared.has(group),
 			owners: async (groups) => {
 				announce(route).resolve(new Set(groups));
 				const sets = await Promise.all(earlier.map((r) => announce(r).promise));

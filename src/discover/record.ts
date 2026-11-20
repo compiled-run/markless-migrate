@@ -101,6 +101,10 @@ export interface Shared {
 	/** The owner's result for a group, once it pressed it (undefined when it did not). */
 	result(owner: string, group: string): Promise<PressedControl | undefined>;
 	publish(group: string, control: PressedControl | undefined): void;
+	/** The route is recorded in this run (its result comes from it), not only kept in the store from another shard's. */
+	inRun(route: string): boolean;
+	/** The group may be counted at all (a spot check has not found it counted wrongly). */
+	counts(group: string): boolean;
 	/** Every 10th route presses one counted control of each group anyway and compares it with the owner's. */
 	readonly spot: boolean;
 	done(): void;
@@ -548,11 +552,17 @@ function sigsAt(paths: readonly string[]): string[] {
 
 const fileOf = (dir: string, route: string) => join(dir, `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`);
 
-// What this route owns (a group no earlier route shows), its first result for each, for the routes after it.
-function publishOwned(shared: Shared, owners: ReadonlyMap<string, string>, controls: readonly PressedControl[]): void {
+/** A route's kept result for a group, as its recording in the store has it: a pressed control, never a count. */
+async function keptResult(dir: string, route: string, group: string): Promise<PressedControl | undefined> {
+	const kept: unknown = await readFile(fileOf(dir, route), 'utf8').then((t) => JSON.parse(t) as unknown, () => undefined);
+	return isFacts(kept) ? kept.controls.find((c) => c.group === group && !c.sameAs) : undefined;
+}
+
+// This route's first pressed result for each group, for the routes that count from it or name it.
+function publishPressed(shared: Shared, controls: readonly PressedControl[]): void {
 	const seen = new Set<string>();
 	for (const c of controls) {
-		if (!c.group || c.sameAs || owners.has(c.group) || seen.has(c.group)) continue;
+		if (!c.group || c.sameAs || seen.has(c.group)) continue;
 		seen.add(c.group);
 		shared.publish(c.group, c);
 	}
@@ -589,17 +599,18 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	if (isFacts(kept) && kept.route === route && kept.page === options.page && (kept.claims ?? '') === claimKey) {
 		const { page: _, claims: __, ...facts } = kept;
 		if (!shared) return facts;
-		// A count from another route stands only while that route's result is the one it was counted from.
-		const owners = await shared.owners(facts.groups ?? []);
+		// A count stands while the route it names still has that result: from this run if it is recorded here, else its kept recording (another shard's).
+		await shared.owners(facts.groups ?? []);
 		let current = true;
 		for (const c of facts.controls) {
 			if (!c.sameAs || !c.group) continue;
-			const o = owners.get(c.group) === c.sameAs.route ? await shared.result(c.sameAs.route, c.group) : undefined;
+			const named = c.sameAs.route;
+			const o = !shared.counts(c.group) ? undefined : shared.inRun(named) ? await shared.result(named, c.group) : await keptResult(dir, named, c.group);
 			if (!o || resultHash(o) !== c.sameAs.hash) current = false;
 		}
 		// A recording with a spot mismatch is made again: its group is pressed on every route now.
 		if (current && !facts.spotMismatch?.length) {
-			publishOwned(shared, owners, facts.controls);
+			publishPressed(shared, facts.controls);
 			shared.done();
 			return facts;
 		}
@@ -936,7 +947,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const got = controls.find((c) => `${c.sig}#${c.nth}` === key && !c.sameAs);
 			if (got && resultHash(got) !== resultHash(o)) spotMismatch.push({ name: got.name, owner, group: got.group ?? '' });
 		}
-		if (shared) publishOwned(shared, owners, controls);
+		if (shared) publishPressed(shared, controls);
 	} catch (error) {
 		const message = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
 		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
