@@ -669,7 +669,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				controls.push({ ...base, shape: 'unpressable', why: 'not on the page once loaded again' });
 				continue;
 			}
-			await control.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+			// Scrolled in the page, at once: Playwright's own scroll waits for a visibility an unpressable control never gets.
+			await control.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
 			// What covers the control's centre takes a click there: one a click cannot reach is named at once, not after the click's timeout.
 			const covered = await control
 				.evaluate((el) => {
