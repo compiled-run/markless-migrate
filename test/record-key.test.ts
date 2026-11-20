@@ -356,6 +356,7 @@ test('a recording made around record, a recorder used outside it, or a computed 
 	assert.match((await problems(`\tconst kind = 'a';\n\tawait record(kind, recordA, null, '/');`)).problems.join('\n'), /whose kind is not a literal/);
 	assert.match((await problems(`\tawait record('a', recordA, null, '/');\n\tawait atFor('/', 'y', []);`)).problems.join('\n'), /atFor is called from 2 functions/);
 	assert.deepEqual((await problems(`\tawait readFile(join(app, 'lib', 'x.json'));\n\tawait record('a', recordA, null, '/');`, "import { readFile } from 'node:fs/promises';")).inputs, ['.migrate/convert', 'lib/x.json']);
+	assert.deepEqual((await problems(`\tawait writeFile(join(app, '.migrate', 'made.json'), '');\n\tawait record('a', recordA, null, '/');`, "import { writeFile } from 'node:fs/promises';")).inputs, ['.migrate/convert'], 'a file the orchestration writes is not one of its inputs');
 	const computed = await problems(`\tawait readFile(join(app, 'lib', String(Date.now())));\n\tawait record('a', recordA, null, '/');`, "import { readFile } from 'node:fs/promises';");
 	assert.deepEqual(computed.inputs, ['.migrate/convert', 'lib/*']);
 });

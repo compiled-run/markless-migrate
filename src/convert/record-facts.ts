@@ -272,6 +272,11 @@ export function recordingFacts(file = INDEX): RecordingFacts {
 		const imp = b ? mod.imports.find((i) => i.local?.id === b.id) : undefined;
 		return !!imp && ['fs', 'node:fs', 'fs/promises', 'node:fs/promises'].includes(imp.specifier);
 	};
+	const fsWrite = (mod: Module, call: CallExpression): boolean => {
+		const b = call.callee.type === 'Identifier' ? mod.referenceOf(call.callee)?.binding : null;
+		const imp = b ? mod.imports.find((i) => i.local?.id === b.id) : undefined;
+		return !!imp?.name && ['fs', 'node:fs', 'fs/promises', 'node:fs/promises'].includes(imp.specifier) && ['writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'mkdir', 'mkdirSync', 'rm', 'rmSync'].includes(imp.name);
+	};
 	const inside = (node: Node, within: readonly Node[]) => within.some((s) => node.start >= s.start && node.end <= s.end);
 	const followed = new Set<string>();
 	// `audit`: only whether a folder of the store is handed to a function, anywhere in convert (the inputs are the slice's).
@@ -290,7 +295,8 @@ export function recordingFacts(file = INDEX): RecordingFacts {
 				const held = open < 0 && holder?.type === 'VariableDeclarator' && holder.init === outer && holder.id.type === 'Identifier' ? mod.bindingOf(holder.id) : null;
 				if (held) pathUses(mod, held, path, within, depth, audit);
 				else {
-					if (!audit) inputs.add(path);
+					// A path handed to a write is something the orchestration makes (prefetch.json, costs), not one of its inputs.
+					if (!audit && !(holder?.type === 'CallExpression' && holder.arguments[0] === outer && fsWrite(mod, holder))) inputs.add(path);
 					// A folder of the store handed to anything but the file system or the store's opening is a recording made outside record.
 					if ((path === STORE || path.startsWith(`${STORE}/`)) && holder?.type === 'CallExpression' && holder.arguments.some((a) => a === outer) && !storeCall(mod, holder)) problems.push(`${at(mod, up)} a folder of the store is handed to a function: record through record()`);
 				}
