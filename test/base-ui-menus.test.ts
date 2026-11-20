@@ -888,3 +888,23 @@ test('choosing a Base UI select option drops data-placeholder from its trigger a
 	assert.equal(await marks(), 'true,true');
 	await page.close();
 });
+
+test('a Base UI menu item the menu re-lays out under a still pointer is not highlighted until the pointer moves, as Base UI highlights on mousemove', async () => {
+	const page = await open(menu(['Default', 'Inverted']), ['base-ui/menu']);
+	await page.click('#dd');
+	await settled(page);
+	const inverted = await page.locator('[role="menuitem"]', { hasText: 'Inverted' }).boundingBox();
+	await page.mouse.move(inverted!.x + 5, inverted!.y + 5);
+	await page.mouse.move(inverted!.x + 8, inverted!.y + 8);
+	await settled(page);
+	assert.equal(await state(page), 'true focus=Inverted highlighted=Inverted');
+	// What a layout change under the still pointer sends (WebKit does, after a choice re-renders the menu): an over with no move.
+	await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent === 'Default')!.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })));
+	await settled(page);
+	assert.equal(await state(page), 'true focus=Inverted highlighted=Inverted');
+	const def = await page.locator('[role="menuitem"]', { hasText: 'Default' }).boundingBox();
+	await page.mouse.move(def!.x + 5, def!.y + 5);
+	await settled(page);
+	assert.equal(await state(page), 'true focus=Default highlighted=Default');
+	await page.close();
+});

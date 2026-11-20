@@ -1,0 +1,10 @@
+[
+	{
+		"routes": "^/preview/(base|radix|aria)/",
+		"name": "iconLibrary",
+		"query": "preset",
+		"values": { "lucide": "", "tabler": "bY64", "hugeicons": "bH32", "phosphor": "bp96", "remixicon": "b16C8" },
+		"elements": "svg",
+		"source": "The preset /create's rail writes when only the icon library differs from the default design (shadcn/preset's encodePreset over DEFAULT_CONFIG): its Icon Library menu writes ?preset=bY64 for Tabler and bH32 for HugeIcons on the original. The default (lucide) writes no preset."
+	}
+]
