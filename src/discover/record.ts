@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Browser, Route } from 'playwright';
+import type { Browser } from 'playwright';
 import { openPage } from '../check/browser.ts';
 import { finishAnimations, settle as settleLoad } from '../check/capture.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
@@ -88,6 +88,54 @@ export function assertLocal(origin: string): void {
 	const host = new URL(origin).hostname.replace(/^\[|\]$/g, '');
 	if (host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host)) return;
 	throw new Error(`discovery presses each control of the original up to ${MAX_PRESSES} times, so it runs only against a local copy, not ${origin}`);
+}
+
+/**
+ * In every document of the context, before its own scripts: a request that is not a GET (fetch, XMLHttpRequest, a form
+ * sent from code) is refused in the page and noted, so nothing a press does writes to the original's server. A beacon
+ * (analytics) is dropped without a note. Done in the page: intercepting every request in Node costs a convert's CPU.
+ */
+function holdWrites(): void {
+	const g = globalThis as typeof globalThis & { __mmWrites__?: string[] };
+	if (g.__mmWrites__) return;
+	const writes: string[] = [];
+	g.__mmWrites__ = writes;
+	const write = (method: string | undefined) => !['GET', 'HEAD', 'OPTIONS'].includes((method ?? 'GET').toUpperCase());
+	const path = (url: string | URL) => {
+		try {
+			return new URL(url, location.href).pathname;
+		} catch {
+			return String(url);
+		}
+	};
+	const realFetch = g.fetch;
+	g.fetch = function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+		const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+		if (!write(method)) return realFetch.call(this, input, init);
+		writes.push(`${method.toUpperCase()} ${path(input instanceof Request ? input.url : input)}`);
+		return Promise.reject(new TypeError('Failed to fetch'));
+	} as typeof fetch;
+	const open = XMLHttpRequest.prototype.open;
+	const held = new WeakMap<XMLHttpRequest, string>();
+	XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
+		if (write(method)) held.set(this, `${method.toUpperCase()} ${path(url)}`);
+		return (open as (...a: unknown[]) => void).call(this, method, url, ...rest);
+	} as typeof XMLHttpRequest.prototype.open;
+	const send = XMLHttpRequest.prototype.send;
+	XMLHttpRequest.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
+		const what = held.get(this);
+		if (!what) return send.call(this, body);
+		writes.push(what);
+		queueMicrotask(() => this.dispatchEvent(new ProgressEvent('error')));
+	};
+	if (navigator.sendBeacon) navigator.sendBeacon = () => true;
+	for (const name of ['submit', 'requestSubmit'] as const) {
+		const real = HTMLFormElement.prototype[name] as (this: HTMLFormElement, ...a: unknown[]) => void;
+		HTMLFormElement.prototype[name] = function (this: HTMLFormElement, ...a: unknown[]) {
+			if (!write(this.method)) return real.apply(this, a);
+			writes.push(`${this.method.toUpperCase()} ${path(this.action)}`);
+		} as never;
+	}
 }
 
 /** In every document of the context: reads the page for comparison, and keeps what live regions announce between reads. */
@@ -382,13 +430,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	// Set by the handlers below while a press is read: what stopped it.
 	let stopped: { shape: Stopped; why: string } | undefined;
 	const stop = (shape: Stopped, why: string) => void (stopped ??= { shape, why });
-	await context.route('**/*', (r: Route) => {
-		const request = r.request();
-		if (['GET', 'HEAD', 'OPTIONS'].includes(request.method())) return r.fallback();
-		// A beacon (analytics) is dropped without stopping the press; anything else might write, and what follows is unknown.
-		if (request.resourceType() !== 'ping') stop('blocked', `${request.method()} ${new URL(request.url()).pathname}`);
-		return r.abort();
-	});
+	await context.addInitScript(holdWrites);
 	context.on('page', (other) => {
 		if (other === page) return;
 		stop('window', other.url());
@@ -402,6 +444,11 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	const read = () => page.evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.read());
 	const forget = () => page.evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.forget());
 	const announcedSince = () => page.evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.announced());
+	// A write the page tried since the last look: the press is stopped, its state after unknown.
+	const wrote = async () => {
+		const tried = await page.evaluate(() => (globalThis as { __mmWrites__?: string[] }).__mmWrites__?.splice(0) ?? []).catch((): string[] => []);
+		if (tried.length) stop('blocked', tried[0]!);
+	};
 	const diff = (a: number, b: number, ignore: readonly string[], pressed: string) => page.evaluate(([a, b, ignore, pressed]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.diff(a, b, ignore, pressed), [a, b, ignore, pressed] as const);
 	const load = async () => {
 		await loadPage(page, url);
@@ -501,6 +548,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				settled = await read();
 			}
 			const announced = await announcedSince();
+			await wrote();
 			if (stopped) {
 				controls.push({ ...base, shape: stopped.shape, why: stopped.why });
 				fresh = false;
@@ -533,6 +581,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				await still();
 				await settle(page, AFTER_CAP_MS);
 				await still();
+				await wrote();
 				if (stopped) break;
 				const now = await read();
 				let same = -1;

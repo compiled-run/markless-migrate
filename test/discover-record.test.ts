@@ -27,6 +27,7 @@ const PAGE = `<!doctype html><html><head><style>
 <div class="group"><input id="search" placeholder="Search"><div class="addon" id="kbd">K</div></div>
 <button id="b-drag" type="button">Drag to reorder</button><div class="sr" aria-live="assertive" id="live"></div>
 <button id="b-post" type="button">Save</button>
+<button id="b-xhr" type="button">Send report</button>
 <button id="b-go" type="button">Go elsewhere</button>
 <button id="b-delete" type="button">Delete account</button>
 <form><button id="b-form" type="button">Inside a form</button></form>
@@ -50,6 +51,7 @@ document.getElementById('b-churn').onclick = () => { document.getElementById('pa
 document.getElementById('kbd').onclick = () => document.getElementById('search').focus();
 document.getElementById('b-drag').onclick = () => { document.getElementById('live').textContent = 'Draggable item 1 was dropped.'; };
 document.getElementById('b-post').onclick = () => { fetch('/save', { method: 'POST', body: 'x' }).then(() => { document.getElementById('reply').textContent = 'Saved'; }, () => {}); };
+document.getElementById('b-xhr').onclick = () => { const x = new XMLHttpRequest(); x.open('PUT', '/report'); x.onload = () => { document.getElementById('reply').textContent = 'Sent'; }; x.send('r'); };
 document.getElementById('b-go').onclick = () => { location.href = '/other'; };
 document.getElementById('b-delete').onclick = () => { window.__deleted = true; document.body.dataset.deleted = '1'; };
 const tip = document.querySelector('.tip'); let shown;
@@ -118,6 +120,8 @@ test('a press that only moves focus, or only announces, is a change', () => {
 test('a press that writes to a server is blocked and not read; one that leaves the page is stopped', () => {
 	assert.equal(byName('Save')?.shape, 'blocked');
 	assert.match(byName('Save')?.why ?? '', /POST \/save/);
+	assert.equal(byName('Send report')?.shape, 'blocked');
+	assert.match(byName('Send report')?.why ?? '', /PUT \/report/);
 	assert.deepEqual(writes, []);
 	assert.equal(byName('Go elsewhere')?.shape, 'navigates');
 });
@@ -150,7 +154,7 @@ test('a recording is read back for the same page key, and claimed controls are n
 	assert.equal(routeDiscovery(facts, { ...none, holders: new Set([kbd.ancestors[0]!]) }).dead.find((d) => d.name === 'K')?.held, true);
 	const route = routeDiscovery(facts, none);
 	assert.deepEqual(route.dead.map((d) => d.name).sort(), ['Create', 'Drag to reorder', 'K', 'Load reply', 'Show more', 'Start Listening']);
-	assert.deepEqual(route.unknown.map((u) => u.shape).sort(), ['blocked', 'navigates']);
+	assert.deepEqual(route.unknown.map((u) => u.shape).sort(), ['blocked', 'blocked', 'navigates']);
 	const store = await mkdtemp(join(tmpdir(), 'mm-discover-store-'));
 	const first = await discoveryReport(store, { '/': route });
 	assert.equal(first.count, 6);
