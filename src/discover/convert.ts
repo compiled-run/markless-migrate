@@ -14,8 +14,8 @@ export interface Claims {
 	readonly controls: ReadonlySet<string>;
 	/** Widgets a recording ports whole (a carousel, a table, a chart): every control inside is theirs. sig#nth. */
 	readonly holders: ReadonlySet<string>;
-	/** Each recorded demo's container and the label signatures of the controls its uses were recorded for. */
-	readonly scenes: readonly { readonly holder: string; readonly labels: ReadonlySet<string> }[];
+	/** Each recorded demo's container, the selector its controls were listed by, and the label signatures of those its uses were recorded for. */
+	readonly scenes: readonly { readonly holder: string; readonly listed: string; readonly labels: ReadonlySet<string> }[];
 	/** Controls the site names in controls.json by their name (a theme toggle). */
 	readonly names: ReadonlySet<string>;
 }
@@ -41,10 +41,62 @@ export function claimed(c: PressedControl, claims: Claims): 'control' | 'holder'
 }
 
 /** One route's discovery: the stateful controls no recording ports, and what was pressed but not read. */
-export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDiscovery {
+/** The controls a scene of a page-level demo records: what a visitor presses, less what a reveal or a toggle uses by ARIA. */
+export const SCENE_CONTROLS = ':is(button, [role="button"], summary, [role="treeitem"]):not([aria-expanded], [aria-haspopup]:not([aria-haspopup="false"]), [role="checkbox"], [role="switch"], [role="radio"], [aria-pressed], [type="submit"], :disabled)';
+
+export interface SceneHolder {
+	/** Path from the body (`body>div2>main1`) and the CSS selector that finds it again on the page as loaded. */
+	readonly path: string;
+	readonly selector: string;
+	readonly at: string;
+	readonly canvas: boolean;
+	/** The controls the scene records. */
+	readonly listed: string;
+	/** A recorded demo whose listing left these controls out: recorded again with them, in its place. */
+	readonly replaces?: string;
+}
+
+/** `body>div2>main1` as `body > div:nth-of-type(2) > main:nth-of-type(1)`. */
+export const pathSelector = (path: string): string =>
+	path
+		.split('>')
+		.map((step, i) => {
+			if (i === 0) return step;
+			const [, tag, n] = /^([a-z0-9-]+?)(\d+)$/.exec(step) ?? [];
+			return `${tag}:nth-of-type(${n})`;
+		})
+		.join(' > ');
+
+// A press that only moves focus or the scroll changes no markup a scene could replay: a part's job.
+const markupChanged = (c: PressedControl) => (c.changes ?? []).some((x) => x.what !== 'focus' && x.what !== 'scroll');
+
+/**
+ * The elements whose controls a scene should record: a recorded demo the controls sit in (its listing left them out), or the
+ * element around each unclaimed stateful control and all it changed; outermost first, none inside another.
+ */
+export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[] {
+	const out: SceneHolder[] = [];
+	const wanted = facts.controls.filter((c) => STATEFUL.has(c.shape) && !claimed(c, claims) && markupChanged(c) && c.holder && c.holder.path !== 'body');
+	const holders = wanted.map((c): SceneHolder => {
+		const i = c.path ? c.ancestors.findIndex((a) => claims.scenes.some((s) => s.holder === a)) : -1;
+		if (i < 0) return { path: c.holder!.path, selector: pathSelector(c.holder!.path), at: c.holder!.at, canvas: Boolean(c.holder!.canvas), listed: SCENE_CONTROLS };
+		const scene = claims.scenes.find((s) => s.holder === c.ancestors[i])!;
+		const path = c.path!.split('>').slice(0, -(i + 1)).join('>');
+		return { path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder!.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder };
+	});
+	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) if (!out.some((o) => h.path === o.path || h.path.startsWith(`${o.path}>`))) out.push(h);
+	return out;
+}
+
+export function routeDiscovery(facts: DiscoverFacts, claims: Claims, demos: readonly SceneHolder[] = []): RouteDiscovery {
 	const mine = facts.controls.filter((c) => claimed(c, claims) !== 'control');
 	const held = (c: PressedControl) => claimed(c, claims) === 'holder';
+	const notes = [
+		...demos.filter((d) => d.canvas).map((d) => `a canvas in ${d.at.split('#')[0]!.split('|').slice(0, 2).join('|')} draws from the page's own script, which the port does not keep: its drawing is not ported, only its markup's states`),
+		...mine.filter((c) => STATEFUL.has(c.shape) && !markupChanged(c)).map((c) => `"${c.name}" only moves focus or the scroll: no scene ports that, a part must`),
+	];
 	return {
+		...(notes.length ? { notes } : {}),
 		candidates: facts.candidates,
 		found: { role: facts.controls.filter((c) => c.found === 'role').length, cursor: facts.controls.filter((c) => c.found === 'cursor').length },
 		pressed: facts.controls.length,

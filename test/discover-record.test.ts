@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { assertLocal, recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
-import { claimed, discoveryReport, draftReport, finishDiscovery, routeDiscovery } from '../src/discover/convert.ts';
+import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from '../src/discover/record.ts';
+import { claimed, discoveryReport, draftReport, finishDiscovery, routeDiscovery, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
 import { cutsOf } from '../src/discover/report.ts';
 
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
@@ -145,7 +145,7 @@ test('a recording is read back for the same page key, and claimed controls are n
 	assert.equal(claimed(listen, none), undefined);
 	assert.equal(claimed(listen, { ...none, controls: new Set([`${listen.sig}#${listen.nth}`]) }), 'control');
 	const kbd = byName('K')!;
-	assert.equal(claimed(kbd, { ...none, scenes: [{ holder: kbd.ancestors[0]!, labels: new Set([kbd.labelSig]) }] }), 'control');
+	assert.equal(claimed(kbd, { ...none, scenes: [{ holder: kbd.ancestors[0]!, listed: 'div', labels: new Set([kbd.labelSig]) }] }), 'control');
 	assert.equal(claimed(kbd, { ...none, holders: new Set([kbd.ancestors[0]!]) }), 'holder', 'a widget a recording ports whole leaves its other controls to the port to answer');
 	assert.equal(routeDiscovery(facts, { ...none, holders: new Set([kbd.ancestors[0]!]) }).dead.find((d) => d.name === 'K')?.held, true);
 	const route = routeDiscovery(facts, none);
@@ -187,4 +187,35 @@ export default function Page() @{
 	assert.deepEqual(done.routes['/']!.answered?.map((a) => [a.name, a.by.split(' ')[0]]), [['Copy', 'site-part'], ['Show more', 'markless'], ['Next month', 'markless']]);
 	assert.equal(done.count, 2);
 	await rm(app, { recursive: true, force: true });
+});
+
+test('a scene is recorded around the outermost unported demo, or again over a recorded demo whose listing left the control out', () => {
+	const control = (name: string, path: string, holder: string, ancestors: string[], what: 'text' | 'focus' = 'text'): PressedControl => ({ sig: `button||${name}`, nth: 0, labelSig: `button||${name}`, name, found: 'role', ancestors, shape: 'toggle', states: 2, path, holder: { path: holder, at: `${holder}#0`, canvas: name === 'Start Listening' }, changes: [{ at: 'x', what }] });
+	const facts: DiscoverFacts = {
+		route: '/',
+		browser: 'chromium',
+		candidates: 4,
+		excluded: {},
+		drift: 0,
+		reloads: 0,
+		ms: 1,
+		controls: [
+			control('Start Listening', 'body>div1>div2>button1', 'body>div1', ['div||card#0', 'div||page#0']),
+			control('Static', 'body>div1>div2>div3>button1', 'body>div1>div2', ['div||inner#0', 'div||card#0', 'div||page#0']),
+			control('Fix the build', 'body>div3>div1>button2', 'body>div3>div1', ['div|preview|demo#0', 'div||docs#0']),
+			control('K', 'body>div4>div1', 'body>div4', ['div|group|#0'], 'focus'),
+		],
+	};
+	const none = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>() };
+	const holders = sceneHolders(facts, { ...none, scenes: [{ holder: 'div|preview|demo#0', listed: 'textarea', labels: new Set(['textarea||Ask']) }] });
+	assert.deepEqual(
+		holders.map((h) => [h.path, h.selector, h.listed === SCENE_CONTROLS ? 'discovered' : h.listed, h.replaces ?? '']),
+		[
+			['body>div1', 'body > div:nth-of-type(1)', 'discovered', ''],
+			['body>div3>div1', 'body > div:nth-of-type(3) > div:nth-of-type(1)', `textarea, ${SCENE_CONTROLS}`, 'div|preview|demo#0'],
+		],
+	);
+	const route = routeDiscovery(facts, { ...none, scenes: [] }, holders);
+	assert.ok(route.notes?.some((n) => /canvas .* not ported/.test(n)));
+	assert.ok(route.notes?.some((n) => n.startsWith('"K" only moves focus')));
 });

@@ -44,7 +44,9 @@ export interface PressedControl {
 	 * Where what the press changed sits: the nearest element holding the control and every element it changed, as its path
 	 * from the body (`body>div2>main1`: tag and occurrence among its siblings of that tag) and its sig#nth.
 	 */
-	readonly holder?: { readonly path: string; readonly at: string };
+	readonly holder?: { readonly path: string; readonly at: string; readonly canvas?: boolean };
+	/** The control's own path from the body, as the page loaded. */
+	readonly path?: string;
 	/** The states one control showed before it came back or the presses ran out, the first included. */
 	readonly states?: number;
 	readonly changes?: readonly Change[];
@@ -338,8 +340,8 @@ export function holderPath(pressed: string, changed: readonly string[]): string 
 	return common.join('>');
 }
 
-/** In the page as loaded: the sig#nth of the element at each path, the signature scenes and the emit find it by. */
-function sigsAt(paths: readonly string[]): string[] {
+/** In the page as loaded: the sig#nth of the element at each path (the signature scenes and the emit find it by), and whether it holds a canvas. */
+function sigsAt(paths: readonly string[]): [string, boolean][] {
 	const sigOf = (e: Element) => `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${(e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const order = new Map<Element, number>();
 	const counts = new Map<string, number>();
@@ -355,7 +357,7 @@ function sigsAt(paths: readonly string[]): string[] {
 			const [, tag, n] = /^([a-z0-9-]+?)(\d+)$/.exec(step) ?? [];
 			el = el ? ([...el.children].filter((c) => c.tagName.toLowerCase() === tag)[Number(n) - 1] ?? null) : null;
 		}
-		return el ? `${sigOf(el)}#${order.get(el) ?? 0}` : '';
+		return el ? [`${sigOf(el)}#${order.get(el) ?? 0}`, Boolean(el.querySelector('canvas'))] : ['', false];
 	});
 }
 
@@ -447,7 +449,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		const pending: [number, string][] = [];
 		const name = async () => {
 			const sigs = await page.evaluate(sigsAt, pending.map(([, path]) => path));
-			for (const [i, [at, path]] of pending.entries()) if (sigs[i]) controls[at] = { ...controls[at]!, holder: { path, at: sigs[i]! } };
+			for (const [i, [at, path]] of pending.entries()) if (sigs[i]?.[0]) controls[at] = { ...controls[at]!, holder: { path, at: sigs[i]![0], ...(sigs[i]![1] ? { canvas: true } : {}) } };
 			pending.splice(0);
 		};
 		for (const [index, c] of candidates.slice(0, MAX_CONTROLS).entries()) {
@@ -526,6 +528,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			fresh = false;
 			states.push(settled);
+			Object.assign(base, { path: pressed });
 			const holder = holderPath(pressed, first.changed);
 			let shape: Shape | undefined;
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {

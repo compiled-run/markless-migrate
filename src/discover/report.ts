@@ -34,6 +34,8 @@ export interface RouteDiscovery {
 	readonly repeats?: Readonly<Record<string, number>>;
 	readonly seconds: number;
 	readonly error?: string;
+	/** What a scene of a page-level demo could not port: a script-drawn canvas, a press that only moves focus. */
+	readonly notes?: readonly string[];
 }
 
 export interface DiscoveryReport {
@@ -70,6 +72,7 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 		if (r.error) lines.push(`  discovery on ${route} stopped: ${r.error}`);
 		const cut = cutsOf(r);
 		if (cut) lines.push(`  cut on ${route}: ${cut}`);
+		for (const n of r.notes ?? []) lines.push(`  on ${route}: ${n}`);
 	}
 	for (const n of report.before?.added ?? []) lines.push(`  new since the last run: ${n}`);
 	for (const n of report.before?.cleared ?? []) lines.push(`  cleared since the last run: ${n}`);

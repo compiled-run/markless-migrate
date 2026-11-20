@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { captureScenes, type SceneNode } from '../src/convert/scenes.ts';
+import { pathSelector, SCENE_CONTROLS } from '../src/discover/convert.ts';
 
 const PAGE = `<!doctype html><html><body><main>
 <div data-slot="preview"><div role="log"><p>Hi</p></div><button data-slot="button" id="send">Send</button><button data-slot="button" id="reset" disabled>Reset</button></div>
@@ -201,6 +202,38 @@ test('a use whose demo pauses on a timer of its own for longer than the quiet th
 		const replay = scenes[0]!.edges.find((e) => e.from === 0)!;
 		const step = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		assert.deepEqual(replay.frames.map((f) => step(f.tree)), ['1 of 3 done', '2 of 3 done', '3 of 3 done']);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+// A page-level demo, as on ui.shadcn.com's /preview pages: a card with no docs preview around it, found by the path discovery gave.
+const CARD = `<!doctype html><html><body><main><h1>Preview</h1>
+<div class="card"><div role="img" aria-label="Processing audio"><canvas width="40" height="10"></canvas></div>
+<button type="button" id="listen">Start Listening</button><button type="button" aria-expanded="false">More</button></div>
+<script>
+const labels = ['Processing audio', 'Live audio waveform', 'Audio waveform idle'];
+let s = 0;
+document.getElementById('listen').onclick = (e) => { s = s === 1 ? 2 : 1; document.querySelector('[role=img]').setAttribute('aria-label', labels[s]); e.target.textContent = s === 1 ? 'Stop Listening' : 'Start Listening'; };
+</script></main></body></html>`;
+
+test('a page-level demo is recorded from the element discovery found around its control, with only the controls no ARIA mark claims', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(CARD));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 300, max: 3000 }, '', pathSelector('body>main1>div1'));
+		assert.equal(scenes.length, 1);
+		const scene = scenes[0]!;
+		assert.match(scene.sig, /^div\|\|Start Listening/);
+		const label = (n: SceneNode) => ((n as Extract<SceneNode, { kids: unknown }>).kids[0] as Extract<SceneNode, { attrs: unknown }>).attrs.find(([k]) => k === 'aria-label')?.[1];
+		assert.deepEqual(scene.states.map(label), ['Processing audio', 'Live audio waveform', 'Audio waveform idle']);
+		assert.ok(scene.edges.every((e) => e.control.startsWith('button||')), 'the disclosure is left to the reveals');
+		assert.deepEqual(scene.edges.map((e) => [e.from, e.to]).sort(), [[0, 1], [1, 2], [2, 1]].sort());
 	} finally {
 		await browser.close();
 		server.close();

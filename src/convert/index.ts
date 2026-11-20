@@ -10,7 +10,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
-import { discoverRecorder, draftReport, routeDiscovery, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
+import { discoverRecorder, draftReport, routeDiscovery, sceneHolders, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -1858,15 +1858,24 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// What each route's other recordings port, so the pressed controls they do not are named.
 		const at = (x: { readonly sig: string; readonly nth: number }) => `${x.sig}#${x.nth}`;
 		const themeNames = new Set(listed.flatMap((c) => (c.action === 'theme' && 'name' in c && typeof c.name === 'string' ? [c.name] : [])));
-		for (const [route, facts] of discovering.recorded) {
-			const claims: Claims = {
-				controls: new Set([...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)]),
-				holders: new Set([...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at)),
-				scenes: (scenes.get(route) ?? []).map(({ scene }) => ({ holder: at(scene), labels: new Set(scene.edges.map((e) => e.control.replace(/#\d+(\|.*)?$/, ''))) })),
-				names: themeNames,
-			};
-			discovered[route] = routeDiscovery(facts, claims);
-		}
+		const claimsOf = (route: string): Claims => ({
+			controls: new Set([...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)]),
+			holders: new Set([...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at)),
+			scenes: (scenes.get(route) ?? []).map(({ scene, listed }) => ({ holder: at(scene), listed, labels: new Set(scene.edges.map((e) => e.control.replace(/#\d+(\|.*)?$/, ''))) })),
+			names: themeNames,
+		});
+		for (const [route, facts] of discovering.recorded) discovered[route] = routeDiscovery(facts, claimsOf(route));
+		// A page-level demo no recording ports (no docs preview around it): its controls' uses recorded as a scene, held by
+		// the element around each control and all its press changed.
+		const demos = [...discovering.recorded].flatMap(([route, facts]) => (failed.has(route) ? [] : sceneHolders(facts, claimsOf(route)).map((holder) => [route, holder] as const)));
+		const demoScenes = await eachLimited(limit, demos, async ([route, holder]) => guarded(route, ['scenes'], async (browser) => captureScenes(browser, options.old, route, await atFor(route, 'scenes'), holder.listed, undefined, '', holder.selector)));
+		demos.forEach(([route, holder], i) => {
+			const got = demoScenes[i]?.scenes ?? [];
+			if (!got.length) return;
+			const kept = (scenes.get(route) ?? []).filter(({ scene }) => !holder.replaces || at(scene) !== holder.replaces);
+			scenes.set(route, [...kept, ...got.map((scene) => ({ scene, listed: holder.listed }))]);
+		});
+		for (const route of new Set(demos.map(([route]) => route))) discovered[route] = routeDiscovery(discovering.recorded.get(route)!, claimsOf(route), demos.filter(([r]) => r === route).map(([, h]) => h));
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
 			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] }))))));
