@@ -8,6 +8,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { assertLocal, recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
 import { claimed, discoveryReport, routeDiscovery } from '../src/discover/convert.ts';
+import { cutsOf } from '../src/discover/report.ts';
 
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
 const PAGE = `<!doctype html><html><head><style>
@@ -125,6 +126,9 @@ test('destructive names, forms, links and reveals are never pressed', () => {
 	assert.equal(facts.excluded['in a grid'], 1);
 	assert.equal(facts.excluded['same as a control pressed'], 1);
 	assert.equal(facts.controls.filter((c) => c.name === 'Again').length, 2);
+	assert.deepEqual(facts.repeats, { '"Again" (button||Again#0)': 1 });
+	assert.equal(cutsOf({ excluded: { 'past 240 s on the page': 3 } }), '3 not reached (past 240 s on the page)');
+	assert.match(cutsOf({ excluded: facts.excluded, repeats: facts.repeats }), /1 in grids.*1 same as a control pressed: 1 like "Again" \(button\|\|Again#0\)/);
 	assert.equal(facts.excluded['destructive name'], 1);
 	assert.equal(facts.excluded['in a form'], 1);
 	assert.equal(facts.excluded['link'], 1);

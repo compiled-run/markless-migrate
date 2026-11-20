@@ -57,6 +57,8 @@ export interface DiscoverFacts {
 	/** Pressables left alone, by why: inside a form, a submit, a link, a destructive name, hidden, disabled, a reveal's. */
 	readonly excluded: Readonly<Record<string, number>>;
 	readonly controls: readonly PressedControl[];
+	/** Controls not pressed because one like them was, by the first one's name and signature: how many more there were. */
+	readonly repeats?: Readonly<Record<string, number>>;
 	/** Elements that changed with no press (a clock, an autoplaying carousel): never counted as a press's change. */
 	readonly drift: number;
 	readonly reloads: number;
@@ -246,7 +248,7 @@ interface Candidate {
 }
 
 /** In the page: every pressable, the ones left alone counted by why, the rest marked `data-mm-discover="<n>"` in document order. */
-function findCandidates(destructive: string): { readonly candidates: Candidate[]; readonly excluded: Record<string, number> } {
+function findCandidates(destructive: string): { readonly candidates: Candidate[]; readonly excluded: Record<string, number>; readonly repeats: Record<string, number> } {
 	const DESTRUCTIVE = new RegExp(destructive, 'i');
 	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const labelSigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
@@ -271,7 +273,17 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 	const leave = (why: string) => void (excluded[why] = (excluded[why] ?? 0) + 1);
 	// A control repeated on the page (each code block's Copy) is pressed this many times; the rest are like them.
 	const REPEATS = 2;
-	const seen = new Map<string, number>();
+	const seen = new Map<string, { n: number; first: string }>();
+	const repeats: Record<string, number> = {};
+	// Grouped by signature and accessible name: the first REPEATS are pressed, the rest counted against the first one's name.
+	const repeat = (el: Element, name: string) => {
+		const key = `${sigOf(el)}\u0000${name}`;
+		const got = seen.get(key) ?? { n: 0, first: `"${name}" (${sigOf(el)}#${order.get(el) ?? 0})` };
+		seen.set(key, { ...got, n: got.n + 1 });
+		if (got.n + 1 <= REPEATS) return false;
+		repeats[got.first] = (repeats[got.first] ?? 0) + 1;
+		return true;
+	};
 	// The one control inside an element a reveal uses (a trigger rendered around a button).
 	const wrappedBy = (el: Element) => {
 		const wrapper = el.parentElement?.closest(REVEALS);
@@ -294,7 +306,7 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 		else if (el.matches(REVEALS) || el.closest('[role="menu"], [role="menubar"], [role="listbox"], [role="tablist"]') || wrappedBy(el)) leave('a reveal uses it');
 		else if (el.closest('[role="grid"], [role="treegrid"]')) leave('in a grid');
 		else if (el.matches(TOGGLES)) leave('a toggle uses it');
-		else if ((seen.set(sigOf(el), (seen.get(sigOf(el)) ?? 0) + 1).get(sigOf(el)) ?? 0) > REPEATS) leave('same as a control pressed');
+		else if (repeat(el, name)) leave('same as a control pressed');
 		else {
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(`${sigOf(up)}#${order.get(up) ?? 0}`);
@@ -302,7 +314,7 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), name, found: byRole ? 'role' : 'cursor', ancestors });
 		}
 	}
-	return { candidates: out, excluded };
+	return { candidates: out, excluded, repeats };
 }
 
 /** The nearest element holding the pressed control and every element its press changed, as a path from the body. */
@@ -398,11 +410,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	const controls: PressedControl[] = [];
 	let candidates: Candidate[] = [];
 	let excluded: Record<string, number> = {};
+	let repeats: Record<string, number> = {};
 	let drift: string[] = [];
 	let reloads = 0;
 	try {
 		await load();
-		({ candidates, excluded } = await page.evaluate(findCandidates, DESTRUCTIVE.source));
+		({ candidates, excluded, repeats } = await page.evaluate(findCandidates, DESTRUCTIVE.source));
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
 		// What changes on its own over a wait as long as a press's: never a press's doing.
 		const idle0 = await read();
@@ -523,11 +536,11 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		}
 	} catch (error) {
 		const message = (error as Error).message.split('\n')[0]!;
-		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
+		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
 	} finally {
 		await context.close().catch(() => {});
 	}
-	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, controls, drift: drift.length, reloads, ms: Date.now() - started };
+	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
 	return facts;

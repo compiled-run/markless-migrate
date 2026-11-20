@@ -48,6 +48,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), what: line(c) })),
 		unknown: mine.filter((c) => STOPPED.has(c.shape) || c.shape === 'unpressable').map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })),
 		excluded: facts.excluded,
+		...(facts.repeats ? { repeats: facts.repeats } : {}),
 		seconds: Math.round(facts.ms / 100) / 10,
 		...(facts.error ? { error: facts.error } : {}),
 	};
