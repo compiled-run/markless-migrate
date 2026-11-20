@@ -10,7 +10,7 @@ import { DESTRUCTIVE } from '../check/destructive.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { captureEnv } from '../convert/capture-env.ts';
-import { scriptsStill, settle, trackSettling } from '../convert/settle.ts';
+import { scriptsStill, settle, STILL_MS, trackSettling } from '../convert/settle.ts';
 
 /** How a press changed the page: back by itself, back on the next press, unchanged by the next press, or more states. */
 export type Shape = 'inert' | 'transient' | 'toggle' | 'one-way' | 'cycle' | 'sequence';
@@ -413,9 +413,19 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	};
 	// Two frames: what a press showed at once, before a timer put it back (a spinner, a "Copied" label).
 	const frames = () => page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+	// scriptsStill's test on the same settle tracker, polled in the page: one round trip per wait, not one per 20 ms.
 	const still = async () => {
 		await page.mouse.move(0, 0);
-		await scriptsStill(page, STILL_CAP_MS).catch(() => undefined);
+		await page
+			.waitForFunction(
+				([cap, quiet, t0]) => {
+					const seen = (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(Math.max(0, cap - (performance.now() - t0)));
+					return !seen || (seen.busy === 0 && seen.still >= quiet);
+				},
+				[STILL_CAP_MS, STILL_MS, await page.evaluate(() => performance.now())] as const,
+				{ polling: 50, timeout: STILL_CAP_MS },
+			)
+			.catch(() => undefined);
 	};
 	const controls: PressedControl[] = [];
 	let candidates: Candidate[] = [];

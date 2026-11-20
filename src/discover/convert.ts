@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
 import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from './record.ts';
-import { portAnswers } from './ported.ts';
 import type { DeadControl, DiscoveryReport, RouteDiscovery } from './report.ts';
 
 export { discoveryMarkdown, summarizeDiscovery, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
@@ -76,6 +75,8 @@ const UNANSWERED = new Set(['none', 'not on the port']);
 export async function finishDiscovery(app: string, draft: DiscoveryReport): Promise<DiscoveryReport> {
 	if (draft.notRun) return draft;
 	const wanted = new Map(Object.entries(draft.routes).filter(([, r]) => r.dead.length).map(([route, r]) => [route, r.dead] as const));
+	// The sandbox (happy-dom) is loaded only here, after convert: convert itself never holds it.
+	const { portAnswers } = await import('./ported.ts');
 	const answers = await portAnswers(app, wanted);
 	const routes = Object.fromEntries(
 		Object.entries(draft.routes).map(([route, r]) => {
