@@ -41,7 +41,8 @@ const CASES: readonly { readonly name: string; readonly body: string; readonly p
 	},
 	{
 		name: 'a React Aria Sheet',
-		body: `${desk('<button data-slot="sidebar-trigger" data-rac="" type="button" id="react-aria-t">Toggle Sidebar</button>')}<div data-mm-layer="react-aria-t" data-mm-viewport="mobile" hidden data-slot="sheet-overlay" data-rac=""><div data-slot="sheet-content" data-rac=""><section role="dialog" tabindex="-1" data-slot="sheet" data-mobile="true" data-rac=""><div data-slot="sidebar-content"><a href="#a">Inbox</a></div></section></div></div>`,
+		// The Sidebar's props replace the ModalOverlay's sheet-overlay slot.
+		body: `${desk('<button data-slot="sidebar-trigger" data-rac="" type="button" id="react-aria-t">Toggle Sidebar</button>')}<span data-focus-scope-start="true" inert="" hidden data-mm-layer="react-aria-t" data-mm-viewport="mobile"></span><div data-slot="sidebar" data-mobile="true" data-rac="" hidden data-mm-layer="react-aria-t" data-mm-viewport="mobile"><div data-slot="sheet-content" data-rac=""><div><section role="dialog" tabindex="-1" data-slot="sheet" data-rac=""><div data-slot="sidebar-content"><a href="#a">Inbox</a></div></section></div></div></div><span data-focus-scope-end="true" inert="" hidden data-mm-layer="react-aria-t" data-mm-viewport="mobile"></span>`,
 		ports: ['react-aria/dialog'],
 	},
 ];
