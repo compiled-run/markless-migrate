@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yuku-css';
+import { builtStarts, parseModule, withBuilt } from './built-classes.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: css-tree's AST, walked generically
 type Node = any;
@@ -156,7 +157,7 @@ async function filesUnder(dir: string): Promise<string[]> {
 /**
  * Each page's same-origin stylesheets, cut to the rules its markup can match (usedCss): the page module and what it
  * imports, the Document and what it imports, the served layers they name, and every module under lib/ (the parts and
- * the site's own code, which set classes from script). The cut sheet is written beside the original, so its relative
+ * the site's own code, which set classes from script, with every class their template literals build). The cut sheet is written beside the original, so its relative
  * url()s still resolve, and the page's link names it. `texts` is what else the page's markup holds (its <html> and <body>
  * attributes, its head). Returns the pages' head tags with the new hrefs.
  */
@@ -183,7 +184,10 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 	};
 	const shared = new Set<string>(await filesUnder(join(app, 'lib')));
 	await closure('document.tsrx', shared);
-	const sharedTokens = classTokens(await Promise.all([...shared].map(read)));
+	const sharedTokens = withBuilt(
+		classTokens(await Promise.all([...shared].map(read))),
+		(await Promise.all([...shared].filter((f) => /\.(?:[mc]?[jt]s|tsrx)$/.test(f)).map(async (f) => { const program = parseModule(f, await read(f)); return program ? builtStarts(program) : []; }))).flat(),
+	);
 	const sheets = new Map<string, { css: string; ast: Node | undefined }>();
 	const written = new Map<string, string>();
 	const cuts = new Map<string, Cut>();

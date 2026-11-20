@@ -102,6 +102,17 @@ test("a page's code facts: each host element's literal class list, and every oth
 	await rm(dir, { recursive: true, force: true });
 });
 
+test("a class the page's code builds from a template (`style-${name}`) can be on any element: every class with that start floats", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-class-facts-'));
+	await mkdir(join(dir, 'lib'), { recursive: true });
+	await writeFile(join(dir, 'page.tsrx'), `import { classes } from './lib/design.ts';\nexport default function Page() @{\n\t<div class="a"></div>\n}\n`);
+	await writeFile(join(dir, 'lib', 'design.ts'), 'export const classes = (style: string, color: string) => [`style-${style}`, `base-color-${color} x`];\n');
+	const facts = await codeClasses(dir)(['page.tsrx']);
+	for (const t of ['style-mira', 'style-vega', 'base-color-neutral', 'x']) assert.ok(facts.floating.has(t), t);
+	for (const t of ['a', 'mira', 'color-neutral']) assert.ok(!facts.floating.has(t), t);
+	await rm(dir, { recursive: true, force: true });
+});
+
 test("a page's appended <style> text stays with its page, after its cut", async () => {
 	const css = '.a{color:red}.b{color:blue}';
 	const { dir, cuts, heads, pagesOf } = await site({ '/s.css': css }, { '/one': { markup: 'a b' }, '/two': { markup: 'a b' } });

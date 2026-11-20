@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { parse } from 'yuku';
-import { parse as parseTsrx } from 'yuku-tsrx';
+import { builtStarts, parseModule, withBuilt } from './built-classes.ts';
 import { classTokens } from './used-css.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree from yuku and yuku-tsrx, walked generically
@@ -14,6 +13,8 @@ interface ModuleFacts {
 	readonly elements: readonly string[];
 	/** The app modules it imports, statically or dynamically. */
 	readonly imports: readonly string[];
+	/** The starts of the classes its template literals build (built-classes.ts). */
+	readonly starts: readonly string[];
 }
 
 function literal(node: Node): Node | undefined {
@@ -24,12 +25,8 @@ function literal(node: Node): Node | undefined {
 }
 
 function factsOf(file: string, text: string): ModuleFacts {
-	let program: Node;
-	try {
-		program = file.endsWith('.tsrx') ? parseTsrx(text, { lang: 'tsx' }).program : parse(text, { path: file, sourceType: 'module' }).program;
-	} catch {
-		return { strings: [text], elements: [], imports: [] };
-	}
+	const program: Node = parseModule(file, text);
+	if (!program) return { strings: [text], elements: [], imports: [], starts: [] };
 	const markup = new Set<Node>();
 	const strings: string[] = [];
 	const imports: string[] = [];
@@ -54,15 +51,16 @@ function factsOf(file: string, text: string): ModuleFacts {
 		for (const key of Object.keys(node)) if (key !== 'parent' && typeof node[key] === 'object') visit(node[key]);
 	};
 	visit(program);
-	return { strings, elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
+	return { strings, starts: builtStarts(program), elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
 }
 
 /**
  * What a page's code says about classes, over every app module the entries load: `elements`, each host element's literal
  * class attribute (only that element carries it), and `floating`, the tokens of every other string, which code can put on
- * any element. A class built by joining strings is not seen, as usedCss does not see it either.
+ * any element, with every class a template literal builds (`style-${name}`: each class starting `style-`). A class built
+ * by joining strings otherwise is not seen, as usedCss does not see it either.
  */
-export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: Set<string> }> {
+export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: { has(token: string): boolean } }> {
 	// Modules other modules import are read once; an entry (a page, often megabytes) is read for its own call and let go.
 	const modules = new Map<string, Promise<ModuleFacts | undefined>>();
 	const load = (file: string) => read(file).then((found) => found && factsOf(found.file, found.text));
@@ -84,6 +82,7 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 		const roots = new Set(entries.map((e) => resolve(app, e)));
 		const queue = [...roots];
 		const strings: string[] = [];
+		const starts: string[] = [];
 		const elements: string[][] = [];
 		while (queue.length) {
 			const file = queue.pop()!;
@@ -92,10 +91,11 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 			const f = await facts(file, roots.has(file));
 			if (!f) continue;
 			strings.push(...f.strings);
+			starts.push(...f.starts);
 			for (const c of f.elements) elements.push(c.split(/\s+/).filter(Boolean));
 			queue.push(...f.imports);
 		}
-		return { elements, floating: classTokens(strings) };
+		return { elements, floating: withBuilt(classTokens(strings), starts) };
 	};
 }
 
