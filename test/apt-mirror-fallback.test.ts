@@ -18,13 +18,50 @@ const UBUNTU = '/etc/apt/sources.list.d/ubuntu.sources';
 // The layout on runners that read noble-security straight from security.ubuntu.com (CI run 44486398574).
 const UBUNTU_SOURCES = 'Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-backports\nComponents: main restricted universe multiverse\n\nTypes: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\nComponents: main restricted universe multiverse\n';
 
+const MODIFIED = new Date('2026-11-20T13:46:30Z');
+
+// cloud-init's ubuntu deb822 template for noble with both URIs moved onto the mirror list by runner-images' configure-apt-sources.sh, as current ubuntu-24.04 images log it.
+const RUNNER_SOURCES = `## Note, this file is written by cloud-init on first boot of an instance
+## modifications made here will not survive a re-bundle.
+##
+## If you wish to make changes you can:
+## a.) add 'apt_preserve_sources_list: true' to /etc/cloud/cloud.cfg
+##     or do the same in user-data
+## b.) add supplemental sources in /etc/apt/sources.list.d
+## c.) make changes to template file
+##      /etc/cloud/templates/sources.list.ubuntu.deb822.tmpl
+##
+
+# See http://help.ubuntu.com/community/UpgradeNotes for how to upgrade to
+# newer versions of the distribution.
+
+## Ubuntu distribution repository
+##
+## See the sources.list(5) manual page for further settings.
+Types: deb
+URIs: mirror+file:/etc/apt/apt-mirrors.txt
+Suites: noble noble-updates noble-backports
+Components: main universe restricted multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+## Ubuntu security updates. Aside from URIs and Suites,
+## this should mirror your choices in the previous section.
+Types: deb
+URIs: mirror+file:/etc/apt/apt-mirrors.txt
+Suites: noble-security
+Components: main universe restricted multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+`;
+const SOURCES_LIST = '# Ubuntu sources have moved to /etc/apt/sources.list.d/ubuntu.sources\n';
+const MICROSOFT = 'deb [arch=amd64,arm64,armhf] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n';
+
 // apt's source files in memory; apt reads every URI they name unless `reads` says otherwise.
 function sources(files: Record<string, string>, reads = (all: Record<string, string>) => Object.values(all).flatMap(sourceUris)) {
 	const all = { ...files };
 	return {
 		all,
 		io: {
-			sources: () => Object.entries(all).map(([file, text]) => ({ file, text })),
+			sources: () => Object.entries(all).map(([file, text]) => ({ file, text, modified: MODIFIED })),
 			writeSource: (file: string, text: string) => void (all[file] = text),
 			removeSource: (file: string) => void delete all[file],
 			repositories: () => reads(all),
@@ -117,19 +154,43 @@ test('a runner without a mirror list gets one capped attempt', async () => {
 	assert.match(lines.at(-1)!, /failed \(exit 100\).*has no \/etc\/apt\/apt-mirrors\.txt/);
 });
 
-// CI run 44624246741 (Check budget, image ubuntu-24.04 20261116.133.1): apt-get update read nothing and all 3 attempts failed within 0.5 s.
-test('a runner where apt reads no package source fails once, saying so, instead of walking every mirror', async () => {
+test('a runner with good sources but no downloaded package lists (an empty /var/lib/apt/lists) installs', async () => {
 	const lines: string[] = [];
 	let runs = 0;
-	const apt = sources({ [UBUNTU]: UBUNTU_SOURCES }, () => []);
+	const apt = sources({ '/etc/apt/sources.list': SOURCES_LIST, [UBUNTU]: RUNNER_SOURCES, '/etc/apt/sources.list.d/microsoft-prod.list': MICROSOFT }, () => []);
+	const status = await install(['true'], { ...systemIo('/nonexistent/apt-mirrors.txt'), ...apt.io, read: () => RUNNER, run: async () => (runs++, { kind: 'ok' }), settle: async () => {}, log: (l) => lines.push(l) }, 1);
+	assert.equal(status, 0);
+	assert.equal(runs, 1);
+	assert.ok(lines.includes(`apt sources: /etc/apt/sources.list: (no sources); ${UBUNTU}: mirror+file:/etc/apt/apt-mirrors.txt mirror+file:/etc/apt/apt-mirrors.txt`));
+});
+
+test('a runner whose source files configure no repository fails once, printing each file as it was, instead of walking every mirror', async () => {
+	const lines: string[] = [];
+	let runs = 0;
+	const apt = sources({ '/etc/apt/sources.list': SOURCES_LIST, [UBUNTU]: '' });
 	const status = await install(['true'], { ...systemIo('/nonexistent/apt-mirrors.txt'), ...apt.io, read: () => RUNNER, run: async () => (runs++, { kind: 'failed', status: 1 }), settle: async () => {}, log: (l) => lines.push(l) }, 1);
 	assert.equal(status, 1);
 	assert.equal(runs, 0);
-	assert.equal(lines.at(-1), `::error::apt has no package source on this runner, so no mirror can help (${UBUNTU}: mirror+file:/etc/apt/apt-mirrors.txt http://security.ubuntu.com/ubuntu/)`);
+	assert.deepEqual(lines.slice(-6), [
+		'--- /etc/apt/sources.list (modified 2026-11-20T13:46:30.000Z, 70 bytes)',
+		'# Ubuntu sources have moved to /etc/apt/sources.list.d/ubuntu.sources',
+		`--- ${UBUNTU} (modified 2026-11-20T13:46:30.000Z, 0 bytes)`,
+		'(empty)',
+		'--- end of apt source files',
+		`::error::apt has no package source on this runner, so no mirror can help (/etc/apt/sources.list: (no sources); ${UBUNTU}: (no sources))`,
+	]);
+});
+
+test('the source reader follows deb822 stanzas and the one-line form as apt does', () => {
+	assert.deepEqual(sourceUris(RUNNER_SOURCES), ['mirror+file:/etc/apt/apt-mirrors.txt', 'mirror+file:/etc/apt/apt-mirrors.txt']);
+	assert.deepEqual(sourceUris(SOURCES_LIST), []);
+	assert.deepEqual(sourceUris('Types: deb\nURIs: http://a.example/ubuntu/\nEnabled: no\n\nTypes: deb\nuris: http://b.example/ubuntu/\n http://c.example/ubuntu/\nSuites: noble\n'), ['http://b.example/ubuntu/', 'http://c.example/ubuntu/']);
+	assert.deepEqual(sourceUris('Types: deb\r\nURIs: http://a.example/ubuntu/\r\n'), ['http://a.example/ubuntu/']);
+	assert.deepEqual(sourceUris('deb [ arch=amd64 signed-by=/k.gpg ] http://a.example/ubuntu noble main\n# deb http://b.example/ubuntu noble main\ndeb-src http://c.example/ubuntu noble main\n'), ['http://a.example/ubuntu', 'http://c.example/ubuntu']);
 });
 
 test('only a source file that reads nothing but packages.microsoft.com is removed; one that merely mentions it stays', async () => {
-	const microsoft = 'deb [arch=amd64,arm64,armhf] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n';
+	const microsoft = MICROSOFT;
 	const mentioning = `# packages.microsoft.com sources live in microsoft-prod.list\n${UBUNTU_SOURCES}`;
 	assert.equal(onlyMicrosoft(microsoft), true);
 	assert.equal(onlyMicrosoft(mentioning), false);
@@ -140,7 +201,7 @@ test('only a source file that reads nothing but packages.microsoft.com is remove
 	const status = await install(['true'], { ...systemIo('/nonexistent/apt-mirrors.txt'), ...apt.io, run: async () => ({ kind: 'ok' }), settle: async () => {}, log: (l) => lines.push(l) }, 1);
 	assert.equal(status, 0);
 	assert.deepEqual(Object.keys(apt.all), [UBUNTU]);
-	assert.equal(lines[0], "apt source /etc/apt/sources.list.d/microsoft-prod.list reads only packages.microsoft.com, which has answered 403; removed");
+	assert.equal(lines[0], "apt source /etc/apt/sources.list.d/microsoft-prod.list reads only packages.microsoft.com, which the browsers' system packages do not come from and which has failed apt-get update before; removed without contacting it");
 });
 
 test('a security reroute that leaves apt reading nothing is put back as it was', async () => {
