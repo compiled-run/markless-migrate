@@ -1,0 +1,7 @@
+/preview/base/preview
+/preview/radix/preview
+/preview/aria/preview
+/docs/ai-elements/radix/suggestion
+/docs/ai-elements/aria/file-tree
+/docs/components/radix/button
+/docs/components/base/card
