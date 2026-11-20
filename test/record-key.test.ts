@@ -146,7 +146,7 @@ test('every recording convert makes goes through record, each recorder attribute
 	const facts = recordingFacts();
 	assert.deepEqual(facts.problems, []);
 	const kinds = Object.fromEntries([...facts.kinds].map(([k, v]) => [k, v.entries.map((e) => `${relative(ROOT, e.file)} ${e.name}`)]));
-	assert.deepEqual(Object.keys(kinds).sort(), ['captures', 'choices', 'clock', 'day-pickers', 'form-libraries', 'otps', 'rac-calendars', 'reveals', 'scenes', 'tables', 'toggles']);
+	assert.deepEqual(Object.keys(kinds).sort(), ['captures', 'choices', 'clock', 'day-pickers', 'form-libraries', 'otps', 'prefetch', 'rac-calendars', 'reveals', 'scenes', 'tables', 'toggles']);
 	assert.ok(kinds.toggles?.includes('src/convert/toggles.ts captureToggles') && kinds.toggles.includes('src/convert/charts.ts captureCharts'));
 	assert.deepEqual(kinds.choices, ['src/convert/choices.ts captureChoices'], 'the adapter that reorders its arguments leads to the recorder it calls');
 	for (const o of facts.options) assert.ok(o in OPTIONS_READ, `options.${o} is read by the recording and no key holds it`);
@@ -391,7 +391,7 @@ test("on the repository itself: an input or a variable read changes the kinds th
 		await writeFile(join(repo, 'src/convert/tanstack-table.ts'), tables);
 		const browser = await readFile(join(repo, 'src/check/browser.ts'), 'utf8');
 		await writeFile(join(repo, 'src/check/browser.ts'), browser.replace('export async function openPage', 'export/*edit*/ async function openPage'));
-		assert.deepEqual(changed(await read()), all, 'the page every recorder opens');
+		assert.deepEqual(changed(await read()), all.filter((k) => k !== 'prefetch'), 'the page every recorder opens, but the prefetch recorder, which opens its own contexts');
 		await writeFile(join(repo, 'src/check/browser.ts'), browser);
 
 		await writeFile(join(app, 'lib/site/controls.json'), '[{"selector":"button","action":"toggle"}]');
