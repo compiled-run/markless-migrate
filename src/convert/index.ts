@@ -29,6 +29,7 @@ import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.t
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, edgeLabel, LIMITS as SCENE_LIMITS, type Scene } from './scenes.ts';
+import { captureVariants, markVariants, VariantPlan, type VariantCapture, type VariantSpec } from './variants.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, unrecordedToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
@@ -255,6 +256,10 @@ export interface ConvertReport {
 	readonly unseenClassBuilders?: readonly string[];
 	/** Recorded recharts charts convert could not place on their route: that route ships the chart without its tooltip, so the run fails. */
 	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
+	/** Pages a query value changes (lib/site/variants.json) whose elements could not be swapped by position: the run fails. */
+	readonly variantFailures?: readonly { readonly route: string; readonly reason: string }[];
+	/** Of those pages, the elements a value would change that the page shows only once a control is used (a tab's panel): they keep the captured value. */
+	readonly variantUnswapped?: readonly { readonly route: string; readonly elements: number }[];
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
 	/** Controls that change the original's page when pressed and that no recording ports: static markup on the port, by route. */
@@ -264,7 +269,7 @@ export interface ConvertReport {
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
-export const convertFailed = (report: ConvertReport): boolean => !report.routes.length || Boolean(report.failedCaptures) || report.unplacedCharts.length > 0;
+export const convertFailed = (report: ConvertReport): boolean => !report.routes.length || Boolean(report.failedCaptures) || report.unplacedCharts.length > 0 || Boolean(report.variantFailures?.length);
 
 /** The page file a route is served from: `/` is `pages/index.tsrx`, a path with routes under it is its folder's index. */
 export function pageFile(pathname: string, folders: ReadonlySet<string>): string {
@@ -1462,6 +1467,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	layerChoices = choices;
 	const failed = new Map<string, string>();
 	let discovering: Awaited<ReturnType<typeof discoverRecorder>> | undefined;
+	const variants = new Map<string, { capture: VariantCapture; spec: VariantSpec }>();
 	const discovered: Record<string, RouteDiscovery> = {};
 	try {
 		const limit = limiter(width);
@@ -1916,6 +1922,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const untrusted = discovered[route]?.untrusted;
 			if (facts) discovered[route] = { ...routeDiscovery(facts, claimsOf(route), demos.filter(([r]) => r === route).map(([, h]) => h), sceneNotes.get(route) ?? []), ...(untrusted ? { untrusted } : {}) };
 		}
+		// Pages a query value changes in place (a preview frame's icon library): each value's page, by position.
+		const variantSpecs = await readFile(join(app, 'lib', 'site', 'variants.json'), 'utf8').then((t) => JSON.parse(t) as VariantSpec[], () => []);
+		const variantJobs = routes.flatMap((route) => (failed.has(route) ? [] : variantSpecs.filter((v) => new RegExp(v.routes).test(route)).map((spec) => [route, spec] as const)));
+		const variantRead = await eachLimited(limit, variantJobs, async ([route, spec]) => guarded(route, ['variants'], async (browser) => captureVariants(browser, options.old, route, await atFor(route, 'variants'), spec)));
+		variantJobs.forEach(([route, spec], i) => {
+			const got = variantRead[i];
+			if (got) variants.set(route, { capture: got, spec });
+		});
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
 			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] }))))));
@@ -1962,6 +1976,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const captured of racCalendarsRead.values()) for (const c of captured.calendars) if (c.locale && !racMessages.has(c.locale)) racMessages.set(c.locale, await racCalendarMessages(options.source, c.locale));
 	racLayer = { plan: racCalendars, captured: racCalendarsRead, messages: (locale) => racMessages.get(locale), route: '' };
 	const prepared = new Map<string, Prepared>();
+	// Each page a query value changes: its elements marked by position, before any plan copies markup into its arms, and
+	// their markup per value served as a file.
+	const variantFailures: { route: string; reason: string }[] = [];
+	const variantUnswapped: { route: string; elements: number }[] = [];
+	const markedCapture = (route: string, capture: CapturedPage): CapturedPage => {
+		const v = variants.get(route);
+		if (!v) return capture;
+		const desktop = capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server;
+		const marked = v.capture.failed ? { failed: v.capture.failed } : markVariants(desktop, v.capture, v.spec.elements);
+		if (marked.failed || !marked.html) {
+			variantFailures.push({ route, reason: marked.failed ?? 'not marked' });
+			log(`  ${v.spec.name} not swappable on ${route}: ${marked.failed}`);
+			variants.delete(route);
+			return capture;
+		}
+		return { ...capture, settled: { ...capture.settled, desktop: marked.html } };
+	};
 	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
 	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
 	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
@@ -2000,7 +2031,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const capture = await ref.load();
 		if (capture.stillCapped?.length) stillCapped.push({ route: ref.route, viewports: capture.stillCapped });
 		runtimeScripts = await runtimes.among(capture.server);
-		prepared.set(ref.route, prepare(capture, revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
+		prepared.set(ref.route, prepare(markedCapture(ref.route, capture), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 		for (const e of racPageEmpties.get(ref.route) ?? []) {
 			const p = prepared.get(ref.route)!;
 			const input = locator(p.root.parentNode as Element)(e.sig, e.nth);
@@ -2223,6 +2254,21 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.plan('toggle');
 	}
+	// Each page a query value changes: its marked elements on a state of that value, an @switch arm per value.
+	const variantPlan = new VariantPlan();
+	const emitVariant = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
+	let variantPages = 0;
+	for (const [route, p] of prepared) {
+		const v = variants.get(route);
+		if (!v) continue;
+		const placed = variantPlan.add(p.root.parentNode as Element, v.capture, v.spec.elements, emitVariant);
+		if (placed.bound) variantPages++;
+		if (placed.unswapped) {
+			variantUnswapped.push({ route, elements: placed.unswapped });
+			log(`  ${v.spec.name} on ${route}: ${placed.unswapped} ${v.spec.elements} the page shows only once a control is used keep the captured value`);
+		}
+	}
+	if (variantPages) log(`pages whose elements a query value switches on Markless state: ${variantPages}`);
 	const charts = new ChartPlan();
 	let chartCount = 0;
 	const unplacedCharts: { route: string; chart: string }[] = [];
@@ -2339,6 +2385,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(needs(radixForms.bind(el), 'radix/form'), binding);
 		for (const markup of scenePlan.markupOf(el)) for (const shown of walk(parseFragment(markup) as unknown as Element)) if (isElement(shown)) needs(true, ...[portFor(shown)].filter((p): p is string => Boolean(p)));
 		binding = mergeBindings(reactState.bind(el), binding);
+		binding = mergeBindings(variantPlan.bind(el), binding);
 		const own = mergeBindings(needs(scenePlan.bind(el), 'scene', 'form'), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), needs(baseTabs.bind(el), 'radix/roving')), needs(charts.bind(el), 'recharts')), needs(disclosures.bind(el), 'panel-motion')), needs(insertedDisclosures.bind(el), 'panel-motion')), selects.bind(el)), needs(checkables.bind(el), 'toggle')), needs(switchPlan.bind(el), 'switch')), mergeBindings(notifyPlan.bind(el), formOf(el))), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
@@ -2383,11 +2430,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const ownContent = (el: Element): string | undefined => {
 		const panel = basePanels.get(el);
-		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
+		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), variantPlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	// Their bind is a lookup; a TanStack table's emits its rows on first bind, so it is left out.
-	const statePlans: { bind(el: Element): Binding | undefined }[] = [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps, scenePlan, dayPickers, racCalendars, racTables, charts];
+	const statePlans: { bind(el: Element): Binding | undefined }[] = [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps, scenePlan, dayPickers, racCalendars, racTables, charts, variantPlan];
 	// An app component's state is found last, on elements no other plan binds.
 	const bound = (el: Element) => statePlans.some((plan) => plan.bind(el)) || tables.nameOf(el) !== undefined;
 	let stateInstances = 0;
@@ -2798,6 +2845,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
 		...(used.unseen.length ? { unseenClassBuilders: used.unseen } : {}),
 		unplacedCharts,
+		...(variantFailures.length ? { variantFailures } : {}),
+		...(variantUnswapped.length ? { variantUnswapped } : {}),
 		stillCapped,
 		...(discovering ? { deadControls: draftReport(discovered, discovering.notRun) } : {}),
 		...(prefetchReport ? { prefetch: prefetchReport } : {}),
@@ -2817,6 +2866,8 @@ export function summarizeConvert(report: ConvertReport): string {
 	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
 	if (report.unseenClassBuilders?.length) lines.push(`Classes built with no fixed start, which the stylesheet cut cannot see (${report.unseenClassBuilders.length}): ${report.unseenClassBuilders.slice(0, 12).join(', ')}`);
 	for (const c of report.unplacedCharts) lines.push(`  chart not placed ${c.route}: ${c.chart} (ships without its tooltip)`);
+	for (const v of report.variantFailures ?? []) lines.push(`  values not swappable ${v.route}: ${v.reason}`);
+	for (const v of report.variantUnswapped ?? []) lines.push(`  values not swapped ${v.route}: ${v.elements} elements shown only once a control is used`);
 	if (report.deadControls) lines.push(...summarizeDiscovery(report.deadControls));
 	if (report.stillCapped.length) lines.push(`Pages still drawing at the ${SCRIPTS_STILL_CAP_MS / 1000} s wait, read mid-frame: ${report.stillCapped.map((c) => `${c.route} (${c.viewports.join(', ')})`).join('; ')}`);
 	return `${lines.join('\n')}\n`;
