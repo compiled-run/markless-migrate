@@ -5,6 +5,7 @@ import { loadLine, psiLines } from './load-verdicts.ts';
 import { PSI_NOTICE } from './psi.ts';
 import { routeState } from './route-state.ts';
 import { networkLines } from './slow-network-verdicts.ts';
+import { navTimingLines } from './nav-timing-verdicts.ts';
 import { wasteLines, wasteSummaryLines } from './waste.ts';
 import { notCompared, type Coverage, type Failure, type LoginResult, type Report, type RouteResult } from './types.ts';
 
@@ -70,7 +71,7 @@ export function summarize(report: Report): string {
 			const differ = route.motion.interactions.filter((i) => !i.ok || i.reduced?.ok === false).length;
 			lines.push(`      motion: ${route.motion.checked} interactions recorded, ${route.motion.interactions.length} moved${differ ? `, ${differ} differently on new` : ', alike on both'}${route.motion.skipped.length ? `; ${route.motion.skipped.length} not recorded` : ''}`);
 		}
-		if (route.load) lines.push(`      ${loadLine(route.load)}`, ...psiLines(route.load.psi).map((l) => `      ${l}`), ...networkLines(route.load.network).map((l) => `      ${l}`));
+		if (route.load) lines.push(`      ${loadLine(route.load)}`, ...psiLines(route.load.psi).map((l) => `      ${l}`), ...networkLines(route.load.network).map((l) => `      ${l}`), ...navTimingLines(route.load.navTiming).map((l) => `      ${l}`));
 		const waste = route.load?.waste;
 		if (waste) lines.push(...('unavailable' in waste ? [`first-click waste: ${waste.unavailable}`] : wasteLines(waste, 5)).map((l) => `      ${l}`));
 		for (const f of route.failures) lines.push(...failureLines(f));
