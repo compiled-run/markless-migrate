@@ -64,6 +64,8 @@ export interface PressedControl {
 		readonly inside?: readonly string[];
 		/** An ARIA widget a part drives on the way from it to an element the presses changed (a listbox, a menu). */
 		readonly widget?: string;
+		/** It is the body, main or a layout landmark: a page region, never a demo. */
+		readonly landmark?: boolean;
 	};
 	/** Pressed again from a fresh load, it left another page (a time, a random value): a scene would replay one of them. */
 	readonly unsteady?: boolean;
@@ -575,7 +577,7 @@ export function holderPath(pressed: string, changed: readonly string[]): string 
 }
 
 /** What holds a press, found on the page as it loads: its sig#nth (what scenes and the emit find it by), ancestors, whether it holds a canvas, and every element inside it. */
-function holdersAt(paths: readonly string[]): { at: string; canvas: boolean; ancestors: string[]; inside: string[] }[] {
+function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: string }): { at: string; canvas: boolean; ancestors: string[]; inside: string[]; landmark: boolean }[] {
 	const sigOf = (e: Element) => `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${(e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const order = new Map<Element, number>();
 	const counts = new Map<string, number>();
@@ -592,10 +594,10 @@ function holdersAt(paths: readonly string[]): { at: string; canvas: boolean; anc
 			const [, tag, n] = /^([a-z0-9-]+?)(\d+)$/.exec(step) ?? [];
 			el = el ? ([...el.children].filter((c) => c.tagName.toLowerCase() === tag)[Number(n) - 1] ?? null) : null;
 		}
-		if (!el) return { at: '', canvas: false, ancestors: [], inside: [] };
+		if (!el) return { at: '', canvas: false, ancestors: [], inside: [], landmark: false };
 		const ancestors: string[] = [];
 		for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
-		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at) };
+		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at), landmark: el === document.body || el.matches(`main, [role="main"], ${landmarks}`) };
 	});
 }
 
@@ -622,6 +624,10 @@ function publishPressed(shared: Shared, controls: readonly PressedControl[]): vo
 
 /** The widgets a part drives: the composite roles, and the single ones a part opens or moves (a combobox, a slider, a dialog). */
 const WIDGET_ROLES: readonly string[] = [...COMPOSITE_ROLES, 'combobox', 'slider', 'dialog', 'alertdialog'];
+/** A holder past this many elements is a page section around demos (the carousel docs area, 1,498), never a demo. */
+export const MAX_DEMO_ELEMENTS = 600;
+/** The most uses a discovered demo's scene records: the busiest demo on the sample (the AI Elements suggestions) recorded 119. */
+export const MAX_DEMO_USES = 120;
 /** Playwright's wait for a control to take a click (stable, enabled, not covered): what the hit test let through takes it at once. */
 const CLICK_MS = 5000;
 /** The hover that tells a tooltip's change from the press's: a control that just took a click takes the pointer at once. */
@@ -810,12 +816,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		// Holders are named on the page as it loads, before any press changed their text.
 		const pending: { at: number; path: string; widget?: string }[] = [];
 		const name = async () => {
-			const found = await within(at().evaluate(holdersAt, pending.map((h) => h.path)), 'naming the holders');
+			const found = await within(at().evaluate(holdersAt, { paths: pending.map((h) => h.path), landmarks: LAYOUT_LANDMARKS }), 'naming the holders');
 			for (const [i, h] of pending.entries()) {
 				const got = found[i];
 				const control = controls[h.at];
 				if (!got?.at || !control) continue;
-				controls[h.at] = { ...control, holder: { path: h.path, at: got.at, ...(got.canvas ? { canvas: true } : {}), size: got.inside.length, ancestors: got.ancestors, inside: [...new Set(got.inside.map(shortKey))], ...(h.widget ? { widget: h.widget } : {}) } };
+				controls[h.at] = { ...control, holder: { path: h.path, at: got.at, ...(got.canvas ? { canvas: true } : {}), size: got.inside.length, ancestors: got.ancestors, inside: [...new Set(got.inside.map(shortKey))], ...(h.widget ? { widget: h.widget } : {}), ...(got.landmark ? { landmark: true } : {}) } };
 			}
 			pending.splice(0);
 		};
@@ -1011,7 +1017,10 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				await find();
 				await name();
 				const again = at().locator(`[data-mm-discover="${index}"]`).first();
-				if (await again.count()) {
+				// Named by now: a holder a scene refuses anyway (a page region, too large, a widget's) is not pressed again.
+				const h = controls[controls.length - 1]?.holder;
+				const refused = !h || h.landmark || (h.size ?? 0) > MAX_DEMO_ELEMENTS || h.widget;
+				if (!refused && (await again.count())) {
 					await again.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
 					await at().evaluate(() => (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement.blur() : undefined));
 					await frames();

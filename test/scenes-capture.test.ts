@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // What a demo's own controls did on the old page, recorded frame by frame (src/convert/scenes.ts), on a page whose Send
 // shows a typing row, then streams a reply in, and whose Reset clears it.
 import assert from 'node:assert/strict';
@@ -41,8 +42,12 @@ test('a demo\'s controls are used from every state they lead to, and each use is
 	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
 	const browser = await chromium.launch();
 	try {
-		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 400, max: 5000 });
+		const limits = { states: 3, depth: 2, settle: 400, max: 5000 };
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', limits);
 		assert.equal(scenes.length, 1);
+		// A docs preview's recording is the file, and the shape, it was before discovered demos: kept recordings stay valid.
+		const file = `${createHash('sha256').update(`scenes:8:/|[data-slot="preview"] button|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`;
+		assert.deepEqual(Object.keys(JSON.parse(await readFile(join(dir, file), 'utf8')).scenes[0]), ['sig', 'nth', 'states', 'edges', 'skipped']);
 		const scene = scenes[0]!;
 		const log = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		const reply = 'Hello there friend';

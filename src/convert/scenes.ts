@@ -40,6 +40,8 @@ export interface Scene {
 	readonly states: readonly SceneNode[];
 	readonly edges: readonly Edge[];
 	readonly skipped: readonly string[];
+	/** The uses not recorded, by control (as `edges[].control`): a control with any is ported only for its recorded uses. */
+	readonly skippedUses?: readonly { readonly control: string; readonly from: number; readonly why: string }[];
 }
 
 export interface SceneCapture {
@@ -53,6 +55,8 @@ export interface SceneLimits {
 	/** Quiet time that ends a use, and the longest a use is followed. */
 	readonly settle: number;
 	readonly max: number;
+	/** The most uses one demo records (each from a fresh load): past it a use is skipped and said. */
+	readonly uses?: number;
 }
 
 export const LIMITS: SceneLimits = { states: 8, depth: 4, settle: 1200, max: 20000 };
@@ -350,6 +354,12 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 		}, [root, listed, text] as const);
 		for (const demo of demos) {
 			const skipped: string[] = [];
+			const skippedUses: { control: string; from: number; why: string }[] = [];
+			const skip = (control: string, from: number, why: string) => {
+				skipped.push(`${control} from state ${from}: ${why}`);
+				skippedUses.push({ control, from, why });
+			};
+			let used = 0;
 			const states: SceneNode[] = [];
 			const byHash = new Map<string, number>();
 			const paths: string[][] = [];
@@ -396,6 +406,11 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 				const controls = await page.evaluate(controlsIn, [root, demo.index, listed, text] as const);
 				for (const control of controls) {
 					if (edges.some((e) => e.from === at && e.control === control)) continue;
+					if (limits.uses !== undefined && used >= limits.uses) {
+						skip(control, at, `past ${limits.uses} uses`);
+						continue;
+					}
+					used++;
 					await fresh(demo.index);
 					for (const step of paths[at]!) await replay(step);
 					await snapshot(page);
@@ -405,7 +420,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 					}, maxId + 1);
 					await startRecording(page);
 					if (!(await use(page, root, demo.index, listed, control))) {
-						skipped.push(`${control} from state ${at}: not usable`);
+						skip(control, at, 'not usable');
 						continue;
 					}
 					let frames = await stopRecording(page, limits.settle, limits.max);
@@ -423,7 +438,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 					let to = byHash.get(key);
 					if (to === undefined) {
 						if (states.length >= limits.states) {
-							skipped.push(`${control} from state ${at}: past ${limits.states} states`);
+							skip(control, at, `past ${limits.states} states`);
 							continue;
 						}
 						to = states.length;
@@ -434,7 +449,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 					edges.push({ from: at, control, to, frames });
 				}
 			}
-			scenes.push({ sig: demo.sig, nth: demo.nth, states, edges, skipped });
+			scenes.push({ sig: demo.sig, nth: demo.nth, states, edges, skipped, ...(skippedUses.length ? { skippedUses } : {}) });
 		}
 	} finally {
 		await context.close().catch(() => {});

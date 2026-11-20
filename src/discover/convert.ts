@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
 import { REVEAL_CLICKS } from '../convert/reveal.ts';
+import { edgeLabel, type Scene } from '../convert/scenes.ts';
 import { SELECTOR as TOGGLE_CONTROLS } from '../convert/toggles.ts';
-import { assertLocal, recordDiscovery, shortKey, type Claimed, type DiscoverFacts, type PressedControl, type Shared } from './record.ts';
+import { assertLocal, MAX_DEMO_ELEMENTS, MAX_DEMO_USES, recordDiscovery, shortKey, type Claimed, type DiscoverFacts, type PressedControl, type Shared } from './record.ts';
 import { deadCount, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
 import { sharedControls, UNSHARED } from './shared.ts';
 
@@ -20,7 +21,7 @@ export interface Claims {
 	/** Widgets a recording ports whole (a carousel, a table, a chart): every control inside is theirs. sig#nth. */
 	readonly holders: ReadonlySet<string>;
 	/** Each recorded demo's container, the selector its controls were listed by, and the label signatures of those its uses were recorded for. */
-	readonly scenes: readonly { readonly holder: string; readonly listed: string; readonly labels: ReadonlySet<string> }[];
+	readonly scenes: readonly { readonly holder: string; readonly listed: string; readonly labels: ReadonlySet<string>; /** Per label signature: the uses recorded and those not (a bound, a use that failed). */ readonly uses?: ReadonlyMap<string, { readonly recorded: number; readonly skipped: number; readonly why: string }> }[];
 	/** Controls the site names in controls.json by their name (a theme toggle). */
 	readonly names: ReadonlySet<string>;
 	/** Every element another recording owns (its controls, widgets, demos), by `shortKey` of its sig#nth, with what it is. */
@@ -52,7 +53,7 @@ export function claimed(c: PressedControl, claims: Claims): 'control' | 'holder'
 }
 
 /** The controls a scene of a page-level demo records: what a visitor presses, less what the reveals or the toggles take by their own selectors. */
-export const SCENE_CONTROLS = `:is(button, [role="button"], summary, [role="treeitem"]):not(${REVEAL_CLICKS}, ${TOGGLE_CONTROLS}, [type="submit"], :disabled)`;
+export const SCENE_CONTROLS = `:is(button, [role="button"], summary, [role="treeitem"]):not(${REVEAL_CLICKS}, ${TOGGLE_CONTROLS}, [aria-expanded], [type="submit"], :disabled)`;
 
 export interface SceneHolder {
 	/** Path from the body as the page loaded, and the sig#nth convert finds it again by. */
@@ -69,11 +70,41 @@ export interface SceneHolder {
 	readonly labels: readonly string[];
 }
 
+export { MAX_DEMO_ELEMENTS, MAX_DEMO_USES };
+
+/** Per control label (tag|data-slot|label): the uses a scene recorded and those it did not, with why. */
+export function sceneUses(scene: Pick<Scene, 'edges' | 'skippedUses'>): Map<string, { recorded: number; skipped: number; why: string }> {
+	const out = new Map<string, { recorded: number; skipped: number; why: string }>();
+	const at = (control: string) => out.get(edgeLabel(control)) ?? out.set(edgeLabel(control), { recorded: 0, skipped: 0, why: '' }).get(edgeLabel(control)) ?? { recorded: 0, skipped: 0, why: '' };
+	for (const e of scene.edges) at(e.control).recorded++;
+	for (const u of scene.skippedUses ?? []) {
+		const got = at(u.control);
+		got.skipped++;
+		got.why ||= u.why;
+	}
+	return out;
+}
+
+/** The uses an old recording of a demo had that none of the new ones has: by control and the use made of it. */
+export function lostUses(old: Pick<Scene, 'edges'>, fresh: readonly Pick<Scene, 'edges'>[]): string[] {
+	const now = new Set(fresh.flatMap((s) => s.edges.map((e) => e.control)));
+	return [...new Set(old.edges.map((e) => e.control))].filter((c) => !now.has(c));
+}
+
 /**
- * The most elements a discovered demo holds. A scene snapshots its whole demo on every frame of every use, and a holder
- * this large is the page around the demo, not the demo: measured in the PR.
+ * A control a scene ports only in part: some of its uses were not recorded, or it is not a native button, so its keyboard
+ * activation (Enter, Space) is not replayed. Reported apart, and the job fails on it as on a dead control.
  */
-export const MAX_DEMO_ELEMENTS = 600;
+export function partly(c: PressedControl, claims: Claims): string | undefined {
+	const within = (scene: string) => (c.holder ? c.holder.at === scene || (c.holder.ancestors ?? []).includes(scene) : c.ancestors.includes(scene));
+	const scene = claims.scenes.find((s) => s.labels.has(c.labelSig) && within(s.holder));
+	if (!scene || claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return undefined;
+	const uses = scene.uses?.get(c.labelSig);
+	if (uses?.skipped) return `ported for ${uses.recorded} of ${uses.recorded + uses.skipped} uses: ${uses.skipped} not recorded (${uses.why})`;
+	const tag = c.sig.slice(0, c.sig.indexOf('|'));
+	if (tag !== 'button' && tag !== 'summary') return 'ported for its click only: a scene does not replay its keyboard activation (Enter, Space)';
+	return undefined;
+}
 
 const focusMoved = (c: PressedControl) => (c.changes ?? []).some((x) => x.what === 'focus');
 
@@ -97,6 +128,7 @@ export function noScene(c: PressedControl, claims: Claims, scene?: Claims['scene
 	if (c.unsteady) return 'pressed again from a fresh load it left another page (a time or a random value), which a scene would replay as one';
 	const h = c.holder;
 	if (!h || h.path === 'body') return 'what its presses change reaches across the page';
+	if (h.landmark) return `what its presses change sits in ${holderName(h.at)}, a page landmark, which is never a demo`;
 	if ((h.size ?? 0) > MAX_DEMO_ELEMENTS) return `what its presses change sits in ${holderName(h.at)} of ${h.size} elements, over the ${MAX_DEMO_ELEMENTS} a demo holds`;
 	if (h.widget) return `its presses change the inside of a ${h.widget}, which a part drives`;
 	if (scene && !(h.at === scene.holder || (h.ancestors ?? []).includes(scene.holder))) return `what its presses change reaches outside the recorded demo ${holderName(scene.holder)}`;
@@ -138,6 +170,10 @@ export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[
 /** One route's discovery: the stateful controls no recording ports, what was pressed but not read, and what scenes could not port. */
 export function routeDiscovery(facts: DiscoverFacts, claims: Claims, demos: readonly SceneHolder[] = [], skipped: readonly string[] = []): RouteDiscovery {
 	const mine = facts.controls.filter((c) => claimed(c, claims) !== 'control');
+	const inPart = facts.controls.flatMap((c) => {
+		const why = STATEFUL.has(c.shape) ? partly(c, claims) : undefined;
+		return why ? [{ name: c.name, why }] : [];
+	});
 	const held = (c: PressedControl) => claimed(c, claims) === 'holder';
 	const sameAs: Record<string, number> = {};
 	for (const c of facts.controls) if (c.sameAs) sameAs[c.sameAs.route] = (sameAs[c.sameAs.route] ?? 0) + 1;
@@ -170,6 +206,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims, demos: read
 		...(facts.spotMismatch?.length ? { spotMismatch: facts.spotMismatch.map(({ name, owner }) => ({ name, owner })) } : {}),
 		seconds: Math.round(facts.ms / 100) / 10,
 		...(facts.cut ? { cut: true } : {}),
+		...(inPart.length ? { partly: inPart } : {}),
 		...(facts.error ? { error: facts.error } : {}),
 	};
 }
@@ -181,11 +218,12 @@ const sum = (routes: Readonly<Record<string, RouteDiscovery>>) => ({
 	count: Object.values(routes).reduce((n, r) => n + deadCount(r), 0),
 	deadRoutes: Object.values(routes).filter((r) => r.dead.length).length,
 	handled: Object.values(routes).reduce((n, r) => n + (r.handled ?? []).reduce((k, h) => k + 1 + (h.repeated ?? 0), 0), 0),
+	partly: Object.values(routes).reduce((n, r) => n + (r.partly?.length ?? 0), 0),
 	incomplete: incompleteOf(routes),
 });
 const totals = (routes: Readonly<Record<string, RouteDiscovery>>) => {
-	const { count, deadRoutes, handled, incomplete } = sum(routes);
-	return { count, deadRoutes, ...(handled ? { handled } : {}), ...(incomplete.length ? { incomplete } : {}) };
+	const { count, deadRoutes, handled, partly, incomplete } = sum(routes);
+	return { count, deadRoutes, ...(handled ? { handled } : {}), ...(partly ? { partly } : {}), ...(incomplete.length ? { incomplete } : {}) };
 };
 
 /** The report as convert leaves it: dead by the recordings alone, before the written port is asked (`finishDiscovery`). */

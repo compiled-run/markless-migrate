@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from '../src/discover/record.ts';
-import { claimed, discoveryReport, draftReport, finishDiscovery, labelFilter, MAX_DEMO_ELEMENTS, routeDiscovery, shortKey, type Claims, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
+import { claimed, discoveryMarkdown, discoveryReport, draftReport, finishDiscovery, labelFilter, lostUses, MAX_DEMO_ELEMENTS, noScene, partly, routeDiscovery, sceneUses, shortKey, type Claims, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
 import { cutsOf } from '../src/discover/report.ts';
 
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
@@ -253,4 +253,30 @@ test('no scene is recorded over a widget, a page-sized or unsteady holder, what 
 	assert.deepEqual([owned.holders.length, owned.note[0]], [0, '"Over" got no scene: what holds it, div|, holds the widget div|, which another recording ports']);
 	assert.equal(only(control('Copy', { shape: 'transient' })).holders.length, 0, 'a transient press is left to the port check');
 	assert.equal(only(control('Copy', { shape: 'transient' })).note.length, 0);
+});
+
+test('a control a scene ports only in part is said so and fails the job: uses the bound cut, or a click only', () => {
+	const scene = { edges: [{ from: 0, control: 'button||Fix the build#0', to: 1, frames: [] }, { from: 0, control: 'button||Ask#0', to: 2, frames: [] }], skippedUses: [{ control: 'button||Ask#0', from: 1, why: 'past 14 states' }] };
+	const uses = sceneUses(scene);
+	assert.deepEqual(uses.get('button||Ask'), { recorded: 1, skipped: 1, why: 'past 14 states' });
+	const claims: Claims = { controls: new Set(), holders: new Set(), names: new Set(), owned: new Map(), scenes: [{ holder: 'div|preview|demo#0', listed: 'button', labels: new Set(['button||Ask', 'button||Fix the build', 'div||Open']), uses }] };
+	const control = (name: string, sig = `button||${name}`): PressedControl => ({ sig, nth: 0, labelSig: sig, name, found: 'role', ancestors: ['div|preview|demo#0'], shape: 'one-way', changes: [{ at: 'x', what: 'text' }] });
+	assert.equal(partly(control('Ask'), claims), 'ported for 1 of 2 uses: 1 not recorded (past 14 states)');
+	assert.equal(partly(control('Fix the build'), claims), undefined);
+	assert.match(partly(control('Open', 'div||Open'), claims) ?? '', /click only/);
+	const route = routeDiscovery({ route: '/', browser: 'chromium', candidates: 3, excluded: {}, drift: 0, reloads: 0, ms: 1, controls: [control('Ask'), control('Fix the build'), control('Open', 'div||Open')] }, claims);
+	assert.deepEqual(route.partly?.map((p) => p.name), ['Ask', 'Open']);
+	assert.deepEqual(route.dead, [], 'neither is dead: each is its own class');
+	assert.equal(discoveryMarkdown(draftReport({ '/': route })).failed, true, 'and the job fails on them as on a dead control');
+});
+
+test('a recorded demo is replaced only by a recording that keeps every use it had', () => {
+	const edge = (control: string) => ({ from: 0, control, to: 1, frames: [] });
+	assert.deepEqual(lostUses({ edges: [edge('textarea||Ask#0|fill'), edge('textarea||Ask#0|enter'), edge('button||Fix#0')] }, [{ edges: [edge('textarea||Ask#0|fill'), edge('button||Fix#0'), edge('button||New#0')] }]), ['textarea||Ask#0|enter']);
+	assert.deepEqual(lostUses({ edges: [edge('button||Fix#0')] }, [{ edges: [edge('button||Fix#0'), edge('button||New#0')] }]), []);
+});
+
+test('a page region (main, a layout landmark, the body) is never a demo', () => {
+	const c: PressedControl = { sig: 'button||Go', nth: 0, labelSig: 'button||Go', name: 'Go', found: 'role', ancestors: ['main||Go#0'], shape: 'one-way', path: 'body>main1>button1', holder: { path: 'body>main1', at: 'main||Go#0', size: 12, landmark: true }, changes: [{ at: 'x', what: 'text' }] };
+	assert.match(noScene(c, { controls: new Set(), holders: new Set(), names: new Set(), scenes: [], owned: new Map() }) ?? '', /a page landmark, which is never a demo/);
 });

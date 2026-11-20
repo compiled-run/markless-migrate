@@ -10,7 +10,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
-import { discoverRecorder, draftReport, holderName, labelFilter, routeDiscovery, sceneHolders, shortKey, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
+import { discoverRecorder, draftReport, holderName, labelFilter, lostUses, MAX_DEMO_USES, routeDiscovery, sceneHolders, sceneUses, shortKey, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
 import { decidePrefetch, type PrefetchDecision } from '../prefetch/decide.ts';
 import { routerOptions, routerPrefetchSupport } from './prefetch-config.ts';
 import { atRest } from './at-rest.ts';
@@ -1852,7 +1852,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const claimsOf = (route: string): Claims => {
 			const controls = [...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)];
 			const holders = [...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at);
-			const demos = (scenes.get(route) ?? []).map(({ scene, listed }) => ({ holder: at(scene), listed, labels: new Set(scene.edges.map((e) => edgeLabel(e.control))) }));
+			const demos = (scenes.get(route) ?? []).map(({ scene, listed }) => ({ holder: at(scene), listed, labels: new Set(scene.edges.map((e) => edgeLabel(e.control))), uses: sceneUses(scene) }));
 			return {
 				controls: new Set(controls),
 				holders: new Set(holders),
@@ -1893,7 +1893,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const demoScenes = await eachLimited(limit, demos, async ([route, holder]) =>
 			// Each dead control may add a state and a way back to the start: room for both, past the scenes' own bound.
 			guarded(route, ['scenes'], async (browser) =>
-				captureScenes(browser, options.old, route, await atFor(route, 'scenes'), holder.listed, { ...SCENE_LIMITS, states: Math.max(SCENE_LIMITS.states, 2 + 2 * holder.controls) }, labelFilter(holder.labels), holder.at).catch((error: unknown) => {
+				captureScenes(browser, options.old, route, await atFor(route, 'scenes'), holder.listed, { ...SCENE_LIMITS, states: Math.max(SCENE_LIMITS.states, 2 + 2 * holder.controls), uses: MAX_DEMO_USES }, labelFilter(holder.labels), holder.at).catch((error: unknown) => {
 					// A demo not found again by its signature is named, never guessed at: its route converts without its scene.
 					note(route, `the demo ${holderName(holder.at)} got no scene: ${(error instanceof Error ? error.message : String(error)).split('\n')[0] ?? ''}`);
 					return undefined;
@@ -1904,6 +1904,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const got = demoScenes[i]?.scenes ?? [];
 			for (const scene of got) for (const skip of scene.skipped) note(route, `in the demo ${holderName(holder.at)}, a use not recorded: ${skip}`);
 			if (!got.length) return;
+			// A recorded demo is replaced only by a recording that holds every use it had: one the bound cut is kept as it was.
+			const old = holder.replaces ? (scenes.get(route) ?? []).find(({ scene }) => at(scene) === holder.replaces) : undefined;
+			const lost = old ? lostUses(old.scene, got) : [];
+			if (lost.length) return note(route, `the demo ${holderName(holder.at)} was recorded again with its dead controls, but that recording lost ${lost.length} of its own uses (${lost.slice(0, 3).join(', ')}): the old one is kept, and those controls are not ported`);
 			const kept = (scenes.get(route) ?? []).filter(({ scene }) => !holder.replaces || at(scene) !== holder.replaces);
 			scenes.set(route, [...kept, ...got.map((scene) => ({ scene, listed: holder.listed }))]);
 		});
