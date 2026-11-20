@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
-import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from './record.ts';
+import { assertLocal, recordDiscovery, type Claimed, type DiscoverFacts, type PressedControl } from './record.ts';
 import { deadCount, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
 
 export { discoveryMarkdown, summarizeDiscovery, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
@@ -50,7 +50,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		candidates: facts.candidates,
 		found: { role: facts.controls.filter((c) => c.found === 'role').length, cursor: facts.controls.filter((c) => c.found === 'cursor').length },
 		pressed: facts.controls.length,
-		claimed: facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
+		claimed: (facts.claimedSkipped ?? 0) + facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
 		inert: mine.filter((c) => c.shape === 'inert' && !held(c)).length,
 		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: line(c), ...(like[`${c.sig}#${c.nth}`] ? { repeated: like[`${c.sig}#${c.nth}`] } : {}) })),
 		unknown: [...mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })), ...unlooked.map((l) => ({ name: l.name, shape: 'unpressable' as const, left: l.to, why: `left to the ${l.to}, which recorded nothing for it` })), ...loose.map((l) => ({ name: l.name, shape: 'unpressable' as const, left: 'grids' as const, why: `a grid of ${l.cells ?? 0} cells no recording holds, its cells not pressed` }))],
@@ -134,7 +134,8 @@ const isLast = (x: unknown): x is { dead: Record<string, string[]> } =>
 export interface DiscoverRecorder {
 	/** Why discovery does not run at all, if it does not. */
 	readonly notRun?: string;
-	readonly record: (browser: Browser, route: string) => Promise<DiscoverFacts>;
+	/** What the other recorders' control lists claim on the route: not pressed. */
+	readonly record: (browser: Browser, route: string, claimed?: Claimed) => Promise<DiscoverFacts>;
 	readonly unknown: (route: string, why: string) => void;
 	readonly recorded: ReadonlyMap<string, DiscoverFacts>;
 }
@@ -158,10 +159,10 @@ export async function discoverRecorder(state: string, origin: string, log: (line
 		return facts;
 	};
 	return {
-		record: async (browser, route) => {
+		record: async (browser, route, claimed) => {
 			const page = await discoverPageKey(origin, route);
 			try {
-				const facts = await recordDiscovery(browser, origin, route, dir, { page });
+				const facts = await recordDiscovery(browser, origin, route, dir, { page, ...(claimed ? { claimed } : {}) });
 				if (facts.error) log(`  discovery of ${route} stopped: ${facts.error}`);
 				recorded.set(route, facts);
 				return facts;

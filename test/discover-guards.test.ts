@@ -158,6 +158,9 @@ test('a recording is read back only for the same page of the original', async ()
 	await writeFile(join(own, file!), JSON.stringify(fake));
 	assert.equal((await recordDiscovery(browser, origin, '/one', own, { page: 'a' })).controls.length, 0, 'the same page is read back');
 	assert.equal((await recordDiscovery(browser, origin, '/one', own, { page: 'b' })).controls.length, 1, 'another page is recorded again');
+	const claimed = await recordDiscovery(browser, origin, '/one', own, { page: 'b', claimed: { controls: ['button||Item 0#0'], names: [] } });
+	assert.deepEqual([claimed.controls.length, claimed.claimedSkipped], [0, 1], "a control another recording's list uses is not pressed");
+	assert.equal((await recordDiscovery(browser, origin, '/one', own, { page: 'b' })).controls.length, 1, 'other claims are another recording');
 	await writeFile(join(own, file!), '{"route": 3}');
 	assert.equal((await recordDiscovery(browser, origin, '/one', own, { page: 'b' })).controls.length, 1, 'a file of another shape is recorded again');
 	await rm(own, { recursive: true, force: true });

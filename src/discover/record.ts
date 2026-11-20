@@ -65,6 +65,8 @@ export interface DiscoverFacts {
 	readonly repeats?: Readonly<Record<string, number>>;
 	/** Pressables left to the reveals or the toggles by their own selectors: checked against what those recorded. */
 	readonly left?: readonly LeftControl[];
+	/** Controls another recording's control list uses: not pressed. */
+	readonly claimedSkipped?: number;
 	/** The press budget ended the presses before every control: the same page is cut at the same control every time. */
 	readonly cut?: boolean;
 	/** Elements that changed with no press (a clock, an autoplaying carousel): never counted as a press's change. */
@@ -74,7 +76,15 @@ export interface DiscoverFacts {
 	readonly error?: string;
 }
 
+/** What the route's other recordings use, by their control lists: theirs, so never pressed. */
+export interface Claimed {
+	/** sig#nth. */
+	readonly controls: readonly string[];
+	readonly names: readonly string[];
+}
+
 export interface DiscoverOptions {
+	readonly claimed?: Claimed;
 	/** The old page's key (key.ts): a recording made from another page is recorded again. */
 	readonly page?: string;
 	/** The press budget per page, when not MAX_PAGE_PRESSES. */
@@ -490,17 +500,22 @@ function sigsAt(paths: readonly string[]): string[] {
 
 const fileOf = (dir: string, route: string) => join(dir, `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`);
 
-const isFacts = (x: unknown): x is DiscoverFacts & { page?: string } => typeof x === 'object' && x !== null && typeof (x as DiscoverFacts).route === 'string' && Array.isArray((x as DiscoverFacts).controls) && typeof (x as DiscoverFacts).ms === 'number';
+const isFacts = (x: unknown): x is DiscoverFacts & { page?: string; claims?: string } => typeof x === 'object' && x !== null && typeof (x as DiscoverFacts).route === 'string' && Array.isArray((x as DiscoverFacts).controls) && typeof (x as DiscoverFacts).ms === 'number';
 
 /** Presses each pressable of the page at desktop width up to MAX_PRESSES times; a press that writes, leaves or opens something is stopped and named. */
 export async function recordDiscovery(browser: Browser, origin: string, route: string, dir: string, options: DiscoverOptions = {}): Promise<DiscoverFacts> {
 	assertLocal(origin);
 	const file = fileOf(dir, route);
 	const kept: unknown = await readFile(file, 'utf8').then((t) => JSON.parse(t) as unknown, () => undefined);
-	if (isFacts(kept) && kept.route === route && kept.page === options.page) {
-		const { page: _, ...facts } = kept;
+	// The claims a recording was made with are part of its key, by content.
+	const claimKey = options.claimed ? createHash('sha256').update(JSON.stringify([[...options.claimed.controls].sort(), [...options.claimed.names].sort()])).digest('hex').slice(0, 16) : '';
+	if (isFacts(kept) && kept.route === route && kept.page === options.page && (kept.claims ?? '') === claimKey) {
+		const { page: _, claims: __, ...facts } = kept;
 		return facts;
 	}
+	const claimedControls = new Set(options.claimed?.controls ?? []);
+	const claimedNames = new Set(options.claimed?.names ?? []);
+	let claimedSkipped = 0;
 	const started = Date.now();
 	const url = new URL(route, origin).href;
 	// openPage's route holds back every write the page's own guard misses (a worker's, a native form's).
@@ -645,6 +660,10 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				excluded[`past ${budget} presses on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index;
 				cut = true;
 				break;
+			}
+			if (claimedControls.has(`${c.sig}#${c.nth}`) || claimedNames.has(c.name)) {
+				claimedSkipped++;
+				continue;
 			}
 			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
 			// The same control (signature and name) in another place, once REPEATS of it did the same kind of thing, is counted like the first.
@@ -809,8 +828,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	} finally {
 		await session?.context.close().catch(() => {});
 	}
-	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}) };
+	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}), ...(claimedSkipped ? { claimedSkipped } : {}) };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
+	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}), ...(claimKey ? { claims: claimKey } : {}) }));
 	return facts;
 }

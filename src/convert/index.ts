@@ -1552,23 +1552,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			),
 		);
 		prefetchRead.catch(() => {});
-		// Every control a visitor would press that no recorder's ARIA contract uses, pressed to see what it does: a kind of its own (src/discover).
 		discovering = await discoverRecorder(state, options.old, log);
-		const discoverSlots = limiter(width);
-		const discoverRead = Promise.all(
-			discovering.notRun
-				? []
-				: routes.map((r) =>
-						pageOf.get(r)!.then((ref) => {
-							if (!ref || ref.status !== 200) return undefined;
-							return discoverSlots(async () => {
-								const got = await browsers.retried(r, (browser) => discovering!.record(browser, r), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0]! }));
-								if (!('value' in got)) discovering!.unknown(r, got.failed);
-							});
-						}),
-					),
-		);
-		discoverRead.catch(() => {});
 		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
@@ -1821,7 +1805,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const read = await Promise.all(reads);
 		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
 		for (const ref of captures) captureDirs.set(ref.route, await atFor(ref.route, 'captures'));
-		await Promise.all([scenesRead, notifiesRead, prefetchRead, discoverRead]);
+		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
 		await prefetching.save();
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
@@ -1858,15 +1842,29 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// What each route's other recordings port, so the pressed controls they do not are named.
 		const at = (x: { readonly sig: string; readonly nth: number }) => `${x.sig}#${x.nth}`;
 		const themeNames = new Set(listed.flatMap((c) => (c.action === 'theme' && 'name' in c && typeof c.name === 'string' ? [c.name] : [])));
-		for (const [route, facts] of discovering.recorded) {
-			const claims: Claims = {
-				controls: new Set([...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)]),
-				holders: new Set([...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at)),
-				scenes: (scenes.get(route) ?? []).map(({ scene }) => ({ holder: at(scene), labels: new Set(scene.edges.map((e) => edgeLabel(e.control))) })),
-				names: themeNames,
-			};
-			discovered[route] = routeDiscovery(facts, claims);
-		}
+		const claimsOf = (route: string): Claims => ({
+			controls: new Set([...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)]),
+			holders: new Set([...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at)),
+			scenes: (scenes.get(route) ?? []).map(({ scene }) => ({ holder: at(scene), labels: new Set(scene.edges.map((e) => edgeLabel(e.control))) })),
+			names: themeNames,
+		});
+		// After the other recorders: a control one of them uses is theirs and is not pressed (its claim is part of the recording's key).
+		const discoverSlots = limiter(width);
+		await Promise.all(
+			discovering.notRun
+				? []
+				: routes.map((r) =>
+						pageOf.get(r)?.then((ref) => {
+							if (!ref || ref.status !== 200 || failed.has(r)) return undefined;
+							const claims = claimsOf(r);
+							return discoverSlots(async () => {
+								const got = await browsers.retried(r, (browser) => (discovering ? discovering.record(browser, r, { controls: [...claims.controls], names: [...claims.names] }) : Promise.reject(new Error('discovery not set up'))), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0] ?? '' }));
+								if (!('value' in got)) discovering?.unknown(r, got.failed);
+							});
+						}),
+					),
+		);
+		for (const [route, facts] of discovering.recorded) discovered[route] = routeDiscovery(facts, claimsOf(route));
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
 			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] }))))));
