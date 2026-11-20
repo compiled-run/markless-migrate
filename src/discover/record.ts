@@ -194,6 +194,8 @@ function installReader(): void {
 				continue;
 			}
 			if (!x.s && !y.s) continue;
+			// The pressed control's own look follows the press itself (focus, active, a ring): its text and ARIA still count.
+			const own = pressed !== '' && (key === pressed || key.startsWith(`${pressed}>`));
 			if (x.s !== y.s) (changed.push(key), changes.push({ at: y.d, what: y.s ? 'shown' : 'hidden' }));
 			else if (x.t !== y.t) (changed.push(key), changes.push({ at: y.d, what: 'text', before: x.t.slice(0, 80), after: y.t.slice(0, 80) }));
 			else if (x.c !== y.c) (changed.push(key), changes.push({ at: y.d, what: 'scroll', before: x.c, after: y.c }));
@@ -204,10 +206,12 @@ function installReader(): void {
 				// An ARIA state, name or a meaningful attribute counts; a class, style or data- attribute only when the element looks different.
 				const named = [...new Set([...ax.keys(), ...ay.keys()])].filter((n) => ax.get(n) !== ay.get(n) && ARIA.test(n));
 				if (named.length) (changed.push(key), changes.push({ at: y.d, what: 'attribute', name: named[0], before: ax.get(named[0]!)?.slice(0, 80), after: ay.get(named[0]!)?.slice(0, 80) }));
-				else if (x.l !== y.l) (changed.push(key), changes.push({ at: y.d, what: 'look', before: x.l, after: y.l }));
-			} else if (x.l !== y.l) (changed.push(key), changes.push({ at: y.d, what: 'look', before: x.l, after: y.l }));
+				else if (x.l !== y.l && !own) (changed.push(key), changes.push({ at: y.d, what: 'look', before: x.l, after: y.l }));
+			} else if (x.l !== y.l && !own) (changed.push(key), changes.push({ at: y.d, what: 'look', before: x.l, after: y.l }));
 		}
-		return { changed, changes };
+		// What a person reads first: text, ARIA and elements coming and going before a box that grew around them.
+		const rank = ['text', 'attribute', 'added', 'removed', 'shown', 'hidden', 'focus', 'announced', 'scroll', 'look'];
+		return { changed, changes: changes.sort((p, q) => rank.indexOf(p.what) - rank.indexOf(q.what)) };
 	};
 	g.__mmDiscover__ = {
 		read,
@@ -255,6 +259,8 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 	}
 	const ROLE = 'button, [role="button"], summary, [role="treeitem"]';
 	// What a reveal uses by ARIA's own marks, the controls convert already reads for the content they hold back.
+	// What the toggles recorder uses by ARIA: it records both states, and fails loudly on one it could not.
+	const TOGGLES = '[role="checkbox"], [role="switch"], [role="radio"], [aria-pressed]';
 	const REVEALS = '[aria-expanded], [aria-haspopup]:not([aria-haspopup="false"]), [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="combobox"]';
 	const FIELD = 'input, textarea, select, option, [contenteditable]:not([contenteditable="false"]), label';
 	const cursorOf = (el: Element | null) => (el ? getComputedStyle(el).cursor : '');
@@ -268,14 +274,15 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 		const byCursor = !byRole && (cursor === 'pointer' || cursor === 'text') && cursorOf(el.parentElement) !== cursor && !el.matches(FIELD) && !el.closest(ROLE) && !el.querySelector(ROLE);
 		if (!byRole && !byCursor) continue;
 		const css = getComputedStyle(el);
-		const name = (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
+		const name = (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60) || `${el.tagName.toLowerCase()}${el.getAttribute('data-slot') ? `[data-slot=${el.getAttribute('data-slot')}]` : ''}`;
 		if (el.closest('a[href], area[href]')) leave('link');
-		else if (el.closest('form')) leave('in a form');
+		else if (el.closest('form') || (el as HTMLButtonElement).form) leave('in a form');
 		else if (el.matches('[type="submit"]')) leave('submit');
 		else if (DESTRUCTIVE.test(name) || DESTRUCTIVE.test(el.getAttribute('title') ?? '')) leave('destructive name');
 		else if (el.matches(':disabled, [aria-disabled="true"]') || el.closest('[inert]')) leave('disabled');
 		else if (css.display === 'none' || css.visibility === 'hidden' || !el.getClientRects().length || el.closest('[aria-hidden="true"]')) leave('hidden');
 		else if (el.matches(REVEALS) || el.closest('[role="menu"], [role="menubar"], [role="listbox"], [role="tablist"]')) leave('a reveal uses it');
+		else if (el.matches(TOGGLES)) leave('a toggle uses it');
 		else {
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(`${sigOf(up)}#${order.get(up) ?? 0}`);
@@ -411,8 +418,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			await control.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-			// Focused before the first reading, as the press will leave it: its own focus styles are no change.
-			await control.focus({ timeout: 2000 }).catch(() => {});
+			// Focus left on the last control would move with this press: its ring going is not this press's doing.
+			await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
 			await still();
 			const pressed = await control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)).catch(() => '');
 			await forget();

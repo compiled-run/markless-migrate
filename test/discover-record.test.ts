@@ -29,6 +29,7 @@ const PAGE = `<!doctype html><html><head><style>
 <button id="b-delete" type="button">Delete account</button>
 <form><button id="b-form" type="button">Inside a form</button></form>
 <button id="b-menu" type="button" aria-expanded="false">Menu</button>
+<button id="b-switch" type="button" role="switch" aria-checked="false">Wifi</button>
 <a href="#x"><span id="in-link" role="button">In a link</span></a>
 <div style="height: 1500px"></div>
 <script>
@@ -111,7 +112,8 @@ test('a press that writes to a server is blocked and not read; one that leaves t
 });
 
 test('destructive names, forms, links and reveals are never pressed', () => {
-	for (const name of ['Delete account', 'Inside a form', 'In a link', 'Menu']) assert.equal(byName(name), undefined, name);
+	for (const name of ['Delete account', 'Inside a form', 'In a link', 'Menu', 'Wifi']) assert.equal(byName(name), undefined, name);
+	assert.equal(facts.excluded['a toggle uses it'], 1);
 	assert.equal(facts.excluded['destructive name'], 1);
 	assert.equal(facts.excluded['in a form'], 1);
 	assert.equal(facts.excluded['link'], 1);
