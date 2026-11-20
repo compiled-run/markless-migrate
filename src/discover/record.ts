@@ -109,8 +109,8 @@ export interface Shared {
 /** A pressed result as the kind of thing it did: its shape and what changed, text and all. */
 export const resultHash = (c: Pick<PressedControl, 'shape' | 'states' | 'changes'>): string => createHash('sha256').update(JSON.stringify([c.shape, c.states ?? 0, (c.changes ?? []).map((x) => [x.what, x.name ?? '', x.before ?? '', x.after ?? ''])])).digest('base64url').slice(0, 12);
 
-// Rule (a): a result that left no lasting markup change a scene would record (a "Copied" mark that goes, a focus move) can be counted anywhere; (b) a layout landmark's control can be counted on a route whose landmark has the same markup.
-const countable = (c: PressedControl, layout: boolean): boolean => layout || c.shape === 'inert' || c.shape === 'transient' || c.shape === 'unpressable' || (c.changes ?? []).every((x) => x.what === 'focus' || x.what === 'scroll');
+// (b) a layout landmark's control on a route whose landmark has the same markup; (a) elsewhere only a transient or a focus or scroll move, never an inert or unpressable result, which says something of the owner's page only.
+const countable = (c: PressedControl, layout: boolean): boolean => c.shape !== 'unpressable' && (layout || c.shape === 'transient' || (c.shape !== 'inert' && Boolean(c.changes?.length) && (c.changes ?? []).every((x) => x.what === 'focus' || x.what === 'scroll')));
 
 export interface DiscoverOptions {
 	readonly claimed?: Claimed;
@@ -189,11 +189,15 @@ function holdWrites(): void {
 	};
 	if (navigator.sendBeacon) navigator.sendBeacon = (url) => (writes.push(`POST ${path(url)}`), true);
 	for (const name of ['submit', 'requestSubmit'] as const) {
-		const real = HTMLFormElement.prototype[name] as (this: HTMLFormElement, ...a: unknown[]) => void;
-		HTMLFormElement.prototype[name] = function (this: HTMLFormElement, ...a: unknown[]) {
-			if (!write(this.method)) return real.apply(this, a);
-			writes.push(`${this.method.toUpperCase()} ${path(this.action)}`);
-		} as never;
+		const real = HTMLFormElement.prototype[name];
+		Object.defineProperty(HTMLFormElement.prototype, name, {
+			configurable: true,
+			writable: true,
+			value: function (this: HTMLFormElement, ...a: unknown[]) {
+				if (!write(this.method)) return Reflect.apply(real, this, a);
+				writes.push(`${this.method.toUpperCase()} ${path(this.action)}`);
+			},
+		});
 	}
 	// A form a script sends by clicking its own submit button, or a submit a visitor presses.
 	addEventListener(
@@ -289,7 +293,8 @@ function installReader(): void {
 				.trim();
 			const look = !shown ? '' : moving ? 'moving' : `${css.display} ${css.visibility} ${css.opacity} ${css.color} ${css.backgroundColor} ${css.borderColor} ${css.transform} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`;
 			const scrolled = el.scrollTop || el.scrollLeft ? `${Math.round(el.scrollTop)},${Math.round(el.scrollLeft)}` : '';
-			out[paths.get(el)!] = { d: describe(el), a: attrs, t: text, s: shown ? 1 : 0, l: look, c: scrolled };
+			const at = paths.get(el);
+			if (at !== undefined) out[at] = { d: describe(el), a: attrs, t: text, s: shown ? 1 : 0, l: look, c: scrolled };
 			for (const c of el.children) walk(c, shown || css.display === 'contents', moving);
 		};
 		walk(document.body, true, false);
@@ -438,8 +443,14 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 	const seen = new Map<string, { n: number; first: string }>();
 	const repeats: Record<string, number> = {};
 	const grids = new Map<string, LeftControl>();
-	// A repeat is the same control in the same place: its signature, name and the nearest element around it with a slot,
-	// a role or an id. A grid's cells repeat by their grid alone (a calendar's days); a treegrid's rows each expand their own.
+	// Each landmark's markup, read before this pass marks any control in it.
+	const landmarkHash = new Map<Element, string>();
+	for (const landmark of document.body.querySelectorAll(o.landmarks)) {
+		let h = 2166136261;
+		for (const ch of landmark.outerHTML) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+		landmarkHash.set(landmark, (h >>> 0).toString(16));
+	}
+	// A repeat: the same signature and name under the same nearest element with a slot, a role or an id.
 	const repeat = (el: Element, name: string) => {
 		const around = el.parentElement?.closest('[data-slot], [role], [id]');
 		const key = `${sigOf(el)}\u0000${name}\u0000${around ? at(around) : ''}`;
@@ -492,9 +503,7 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 			const landmark = el.closest('main, [role="main"]') ? null : el.closest(o.landmarks);
 			const around = el.parentElement?.closest('[data-slot], [role], [id]');
 			const shape = (e: Element | null | undefined) => (e ? `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${e.getAttribute('role') ?? ''}` : '');
-			let markup = 2166136261;
-			if (landmark) for (const ch of landmark.outerHTML) markup = Math.imul(markup ^ ch.charCodeAt(0), 16777619);
-			const group = landmark ? `layout|${shape(landmark)}|${(markup >>> 0).toString(16)}|${sigOf(el)}|${name}|${order.get(el) ?? 0}` : `component|${shape(around)}|${sigOf(el)}|${name}`;
+			const group = landmark ? `layout|${shape(landmark)}|${landmarkHash.get(landmark) ?? ''}|${sigOf(el)}|${name}|${order.get(el) ?? 0}` : `component|${shape(around)}|${sigOf(el)}|${name}`;
 			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors, group, layout: Boolean(landmark) });
 		}
 	}
@@ -549,6 +558,24 @@ function publishOwned(shared: Shared, owners: ReadonlyMap<string, string>, contr
 	}
 }
 
+/** Playwright's wait for a control to take a click (stable, enabled, not covered): what the hit test let through takes it at once. */
+const CLICK_MS = 5000;
+/** The hover that tells a tooltip's change from the press's: a control that just took a click takes the pointer at once. */
+const HOVER_MS = 2000;
+/** A step in the page longer than this has stopped answering: it fails the route by name instead of holding every route after it. */
+const STEP_MS = 30_000;
+const within = <T>(work: Promise<T>, what: string): Promise<T> => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<never>((_, fail) => (timer = setTimeout(() => fail(new Error(`stopped: ${what} did not answer within ${STEP_MS / 1000} s`)), STEP_MS)));
+	return Promise.race([work, late]).finally(() => clearTimeout(timer));
+};
+
+// A page that stopped answering fails the route; any other failure of the step is the control's.
+const unlessStalled = <T>(fallback: T) => (error: unknown): T => {
+	if (error instanceof Error && error.message.startsWith('stopped:')) throw error;
+	return fallback;
+};
+
 const isFacts = (x: unknown): x is DiscoverFacts & { page?: string; claims?: string } => typeof x === 'object' && x !== null && typeof (x as DiscoverFacts).route === 'string' && Array.isArray((x as DiscoverFacts).controls) && typeof (x as DiscoverFacts).ms === 'number';
 
 /** Presses each pressable of the page at desktop width up to MAX_PRESSES times; a press that writes, leaves or opens something is stopped and named. */
@@ -557,7 +584,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	const file = fileOf(dir, route);
 	const kept: unknown = await readFile(file, 'utf8').then((t) => JSON.parse(t) as unknown, () => undefined);
 	// The claims a recording was made with are part of its key, by content.
-	const claimKey = options.claimed ? createHash('sha256').update(JSON.stringify([[...options.claimed.controls].sort(), [...options.claimed.names].sort()])).digest('hex').slice(0, 16) : '';
+	const claimKey = options.claimed ? createHash('sha256').update(JSON.stringify([[...options.claimed.controls].sort(), [...options.claimed.names].sort(), [...(options.claimed.holders ?? [])].sort()])).digest('hex').slice(0, 16) : '';
 	const shared = options.shared;
 	if (isFacts(kept) && kept.route === route && kept.page === options.page && (kept.claims ?? '') === claimKey) {
 		const { page: _, claims: __, ...facts } = kept;
@@ -570,7 +597,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const o = owners.get(c.group) === c.sameAs.route ? await shared.result(c.sameAs.route, c.group) : undefined;
 			if (!o || resultHash(o) !== c.sameAs.hash) current = false;
 		}
-		if (current) {
+		// A recording with a spot mismatch is made again: its group is pressed on every route now.
+		if (current && !facts.spotMismatch?.length) {
 			publishOwned(shared, owners, facts.controls);
 			shared.done();
 			return facts;
@@ -586,6 +614,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	let session: OpenPage | undefined;
 	let page: Page | undefined;
 	let stopped: { shape: Stopped; why: string } | undefined;
+	// Read through a call: a press sets it in a listener, which narrowing cannot see.
+	const halted = (): { shape: Stopped; why: string } | undefined => stopped;
 	const stop = (shape: Stopped, why: string) => void (stopped ??= { shape, why });
 	let movedTo: string | undefined;
 	let docId = '';
@@ -627,12 +657,11 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			if (frame === opened.page.mainFrame() && frame.url() !== url) movedTo = frame.url();
 		});
 	};
-	const read = () => at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.read());
-	const forget = () => at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.forget());
-	const announcedSince = () => at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.announced());
-	const diff = (a: number, b: number, ignore: readonly string[], pressed: string) => at().evaluate(([a, b, ignore, pressed]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.diff(a, b, ignore, pressed), [a, b, ignore, pressed] as const);
-	// What a press tried that would leave the page or write: the press is stopped, the page after it unknown. An address
-	// the same document took (a filter written to the URL) is a change of the page, not a navigation.
+	const read = () => within(at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.read()), 'reading the page');
+	const forget = () => within(at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.forget()), 'clearing the readings');
+	const announcedSince = () => within(at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.announced()), 'reading the announcements');
+	const diff = (a: number, b: number, ignore: readonly string[], pressed: string) => within(at().evaluate(([a, b, ignore, pressed]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.diff(a, b, ignore, pressed), [a, b, ignore, pressed] as const), 'comparing two readings');
+	// A write or another document stops the press; an address the same document took (a filter in the URL) is a change.
 	const looked = async (changes: Change[]) => {
 		const tried = await at().evaluate(() => (globalThis as { __mmWrites__?: string[] }).__mmWrites__?.splice(0) ?? []).catch((): string[] => []);
 		const held = session?.log.writes.slice(writesSeen) ?? [];
@@ -662,9 +691,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		movedTo = undefined;
 		writesSeen = session?.log.writes.length ?? 0;
 	};
-	const frames = () => at().evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
-	// scriptsStill's test on the same settle tracker, polled in the page, then what still moves finished: a transition
-	// half run reads as a state of its own.
+	const frames = () => within(at().evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))), 'waiting two frames');
+	// scriptsStill's test polled in the page, then animations finished: a half-run transition is no state of its own.
 	const still = async () => {
 		await at().mouse.move(0, 0);
 		await at()
@@ -679,12 +707,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			.catch(() => undefined);
 		await finishAnimations(at()).catch(() => {});
 	};
-	const find = () => at().evaluate(findCandidates, { destructive: DESTRUCTIVE.source, reveals: REVEAL_CLICKS, toggles: TOGGLE_CONTROLS, repeats: REPEATS, landmarks: LAYOUT_LANDMARKS });
+	const find = () => within(at().evaluate(findCandidates, { destructive: DESTRUCTIVE.source, reveals: REVEAL_CLICKS, toggles: TOGGLE_CONTROLS, repeats: REPEATS, landmarks: LAYOUT_LANDMARKS }), 'finding the controls');
 	const controls: PressedControl[] = [];
 	let owners: ReadonlyMap<string, string> = new Map();
 	const holders = new Set(options.claimed?.holders ?? []);
 	const spotted = new Set<string>();
-	const spots: { at: number; owner: string; o: PressedControl }[] = [];
+	const spots: { key: string; owner: string; o: PressedControl }[] = [];
 	const spotMismatch: { name: string; owner: string; group: string }[] = [];
 	let candidates: Candidate[] = [];
 	let excluded: Record<string, number> = {};
@@ -715,7 +743,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		const moved = new Map<number, string[]>();
 		const pending: [number, string][] = [];
 		const name = async () => {
-			const sigs = await at().evaluate(sigsAt, pending.map(([, path]) => path));
+			const sigs = await within(at().evaluate(sigsAt, pending.map(([, path]) => path)), 'naming the holders');
 			for (const [i, [index, path]] of pending.entries()) {
 				const sig = sigs[i];
 				const control = controls[index];
@@ -735,6 +763,15 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors, group: c.group };
+			// The same control (signature and name) in another place, once REPEATS of it did the same kind of thing, is counted like the first.
+			const alike = controls.filter((p) => p.sig === c.sig && p.name === c.name);
+			const [like] = alike;
+			const kind = (p: PressedControl) => `${p.shape}|${(p.changes ?? []).map((x) => x.what).join(',')}`;
+			if (like && alike.length >= REPEATS && alike.every((p) => kind(p) === kind(like))) {
+				repeats[`${like.sig}#${like.nth}`] = (repeats[`${like.sig}#${like.nth}`] ?? 0) + 1;
+				excluded['same as a control pressed'] = (excluded['same as a control pressed'] ?? 0) + 1;
+				continue;
+			}
 			const owner = owners.get(c.group);
 			if (shared && owner && !c.ancestors.some((a) => holders.has(a))) {
 				const o = await shared.result(owner, c.group);
@@ -744,17 +781,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 						continue;
 					}
 					spotted.add(c.group);
-					spots.push({ at: controls.length, owner, o });
+					spots.push({ key: `${c.sig}#${c.nth}`, owner, o });
 				}
-			}
-			// The same control (signature and name) in another place, once REPEATS of it did the same kind of thing, is counted like the first.
-			const alike = controls.filter((p) => p.sig === c.sig && p.name === c.name);
-			const [like] = alike;
-			const kind = (p: PressedControl) => `${p.shape}|${(p.changes ?? []).map((x) => x.what).join(',')}`;
-			if (like && alike.length >= REPEATS && alike.every((p) => kind(p) === kind(like))) {
-				repeats[`${like.sig}#${like.nth}`] = (repeats[`${like.sig}#${like.nth}`] ?? 0) + 1;
-				excluded['same as a control pressed'] = (excluded['same as a control pressed'] ?? 0) + 1;
-				continue;
 			}
 			if (!fresh) {
 				await load();
@@ -772,13 +800,14 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			// Scrolled in the page, at once: Playwright's own scroll waits for a visibility an unpressable control never gets.
 			await control.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
 			// What covers the control's centre takes a click there: one a click cannot reach is named at once, not after the click's timeout.
-			const covered = await control
-				.evaluate((el) => {
+			const covered = await within(
+				control.evaluate((el) => {
 					const r = el.getBoundingClientRect();
 					const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
 					return !r.width || !r.height ? 'it has no size' : hit && hit !== el && !el.contains(hit) && !hit.contains(el) ? `covered at its centre by ${hit.tagName.toLowerCase()}` : hit ? '' : 'its centre is off the page';
-				})
-				.catch(() => 'it went from the page');
+				}),
+				'the hit test',
+			).catch(unlessStalled('it went from the page'));
 			if (covered) {
 				controls.push({ ...base, shape: 'unpressable', why: `the press did not reach it: ${covered}` });
 				continue;
@@ -787,7 +816,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			await at().evaluate(() => (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement.blur() : undefined));
 			await frames();
 			await still();
-			const pressed = await control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)).catch(() => '');
+			const pressed = await within(control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)), 'reading the control\'s place').catch(unlessStalled(''));
 			// What changed since the last control's last reading, with no press between: the page's own (a clock), never a press's.
 			if (lastRead !== undefined) drift = [...new Set([...drift, ...(await diff(lastRead, await read(), [], pressed)).changed])];
 			await forget();
@@ -797,7 +826,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const press = async (): Promise<boolean> => {
 				presses++;
 				const since = Date.now();
-				const ok = await control.click({ timeout: 5000 }).then(
+				const ok = await control.click({ timeout: CLICK_MS }).then(
 					() => true,
 					() => false,
 				);
@@ -825,9 +854,9 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const address: Change[] = [];
 			await looked(address);
 			if (address.length) fresh = false;
-			if (stopped) {
-				const s = stopped as { shape: Stopped; why: string };
-				controls.push({ ...base, shape: s.shape, why: s.why });
+			const stopFirst = halted();
+			if (stopFirst) {
+				controls.push({ ...base, shape: stopFirst.shape, why: stopFirst.why });
 				fresh = false;
 				continue;
 			}
@@ -840,7 +869,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			if (!first.changed.length) {
 				// What only showed while the pointer was on the control (a tooltip) is the hover's, not the press's.
-				await control.hover({ timeout: 2000 }).catch(() => {});
+				await control.hover({ timeout: HOVER_MS }).catch(() => {});
 				await frames();
 				await scriptsStill(at(), SCRIPTS_STILL_CAP_MS).catch(() => undefined);
 				const hovered = (await changesFrom(states[0] ?? 0, await read())).changed;
@@ -867,7 +896,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				await settle(at(), LATE_MARKS_MS);
 				await still();
 				await looked([]);
-				if (stopped) break;
+				if (halted()) break;
 				const now = await read();
 				let same = -1;
 				for (const [i, s] of states.entries()) if (!(await changesFrom(s, now)).changed.length) same = i;
@@ -881,9 +910,9 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				else if (same > 0) shape = 'sequence';
 				else states.push(now);
 			}
-			if (stopped) {
-				const s = stopped as { shape: Stopped; why: string };
-				controls.push({ ...base, shape: s.shape, why: `${s.why}, on a later press` });
+			const stopLater = halted();
+			if (stopLater) {
+				controls.push({ ...base, shape: stopLater.shape, why: `${stopLater.why}, on a later press` });
 				continue;
 			}
 			if (holder) pending.push([controls.length, holder]);
@@ -903,8 +932,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			await load();
 			await name();
 		}
-		for (const { at: i, owner, o } of spots) {
-			const got = controls[i];
+		for (const { key, owner, o } of spots) {
+			const got = controls.find((c) => `${c.sig}#${c.nth}` === key && !c.sameAs);
 			if (got && resultHash(got) !== resultHash(o)) spotMismatch.push({ name: got.name, owner, group: got.group ?? '' });
 		}
 		if (shared) publishOwned(shared, owners, controls);

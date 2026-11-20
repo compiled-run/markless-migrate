@@ -1,5 +1,6 @@
 // Convert's side of the discovery recordings: which pressed controls no recording ported, per route, against the last run.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
@@ -72,7 +73,7 @@ const incompleteOf = (routes: Readonly<Record<string, RouteDiscovery>>) => Objec
 const sum = (routes: Readonly<Record<string, RouteDiscovery>>) => ({
 	count: Object.values(routes).reduce((n, r) => n + deadCount(r), 0),
 	deadRoutes: Object.values(routes).filter((r) => r.dead.length).length,
-	handled: Object.values(routes).reduce((n, r) => n + (r.handled?.length ?? 0), 0),
+	handled: Object.values(routes).reduce((n, r) => n + (r.handled ?? []).reduce((k, h) => k + 1 + (h.repeated ?? 0), 0), 0),
 	incomplete: incompleteOf(routes),
 });
 const totals = (routes: Readonly<Record<string, RouteDiscovery>>) => {
@@ -91,7 +92,8 @@ export async function finishDiscovery(app: string, draft: DiscoveryReport): Prom
 	const wanted = new Map(Object.entries(draft.routes).filter(([, r]) => r.dead.length).map(([route, r]) => [route, r.dead] as const));
 	// The sandbox (happy-dom) is loaded only here, after convert: convert itself never holds it.
 	const { portAnswers } = await import('./ported.ts');
-	const answers = await portAnswers(app, wanted);
+	const thrown: string[] = [];
+	const answers = await portAnswers(app, wanted, (line) => thrown.push(line));
 	const routes = Object.fromEntries(
 		Object.entries(draft.routes).map(([route, r]) => {
 			const got = answers.get(route);
@@ -105,10 +107,11 @@ export async function finishDiscovery(app: string, draft: DiscoveryReport): Prom
 				return d.held ? { ...d, what: `${d.what} (inside a widget a recording ports, which does not answer this press)` } : d;
 			};
 			const dead = r.dead.filter((d) => by(d).by !== 'handler').map(note);
-			return [route, { ...r, dead, ...(handled.length ? { handled: handled.map((d) => ({ name: d.name, by: by(d).where ?? '' })) } : {}) }];
+			return [route, { ...r, dead, ...(handled.length ? { handled: handled.map((d) => ({ name: d.name, by: by(d).where ?? '', ...(d.repeated ? { repeated: d.repeated } : {}) })) } : {}) }];
 		}),
 	);
-	return discoveryReport(join(app, '.migrate', 'convert'), routes);
+	const report = await discoveryReport(join(app, '.migrate', 'convert'), routes);
+	return thrown.length ? { ...report, thrown } : report;
 }
 
 /** The report against the store's last run (dead controls by route, the count derived); a route not looked at in full clears nothing. */
@@ -148,7 +151,9 @@ export interface DiscoverRecorder {
 	readonly recorded: ReadonlyMap<string, DiscoverFacts>;
 }
 
-const UNSHARED = 'unshared.json';
+const UNSHARED = 'unshared';
+/** One route in this many checks a counted control of each group: on the sample, one press per group per 10 routes, under 2% of its presses. */
+const SPOT_EVERY = 10;
 
 interface Deferred<T> {
 	readonly promise: Promise<T>;
@@ -180,7 +185,7 @@ function sharedControls(order: readonly string[], unshared: ReadonlySet<string>)
 		const index = order.indexOf(route);
 		const earlier = index < 0 ? [] : order.slice(0, index);
 		return {
-			spot: index % 10 === 9,
+			spot: index % SPOT_EVERY === SPOT_EVERY - 1,
 			owners: async (groups) => {
 				announce(route).resolve(new Set(groups));
 				const sets = await Promise.all(earlier.map((r) => announce(r).promise));
@@ -216,8 +221,10 @@ export async function discoverRecorder(state: string, origin: string, log: (line
 	}
 	await keepCurrent(store);
 	const dir = await discoverDir(store);
-	const kept: unknown = await readFile(join(dir, UNSHARED), 'utf8').then((t) => JSON.parse(t) as unknown, () => []);
-	const unshared = new Set(Array.isArray(kept) ? kept.filter((g): g is string => typeof g === 'string') : []);
+	// One file per run that found any, so the shards' files are kept side by side and read as one list.
+	const files = await readdir(dir).catch((): string[] => []);
+	const kept = await Promise.all(files.filter((f) => f.startsWith(`${UNSHARED}-`)).map((f) => readFile(join(dir, f), 'utf8').then((t) => JSON.parse(t) as unknown, (): unknown => [])));
+	const unshared = new Set(kept.flatMap((k) => (Array.isArray(k) ? k.filter((g): g is string => typeof g === 'string') : [])));
 	const sharedFor = sharedControls(order, unshared);
 	const failed = (route: string, why: string): DiscoverFacts => {
 		const facts: DiscoverFacts = { route, browser: 'chromium', candidates: 0, excluded: {}, controls: [], drift: 0, reloads: 0, ms: 0, error: why };
@@ -243,8 +250,9 @@ export async function discoverRecorder(state: string, origin: string, log: (line
 		save: async () => {
 			const wrong = [...recorded.values()].flatMap((f) => (f.spotMismatch ?? []).map((m) => m.group));
 			if (!wrong.length) return;
+			const list = [...new Set(wrong)].sort();
 			await mkdir(dir, { recursive: true });
-			await writeFile(join(dir, UNSHARED), JSON.stringify([...new Set([...unshared, ...wrong])].sort()));
+			await writeFile(join(dir, `${UNSHARED}-${createHash('sha256').update(JSON.stringify(list)).digest('hex').slice(0, 12)}.json`), JSON.stringify(list));
 		},
 		recorded,
 	};

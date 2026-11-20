@@ -168,7 +168,8 @@ animations finished, and again once its timers have run: a page that came back b
 (or a `cycle` of three or more states), unchanged by the next press `one-way`. A request other than GET, HEAD or
 OPTIONS is held back twice: in the page (`fetch`, `XMLHttpRequest`, `sendBeacon`, a form's `submit()` and
 `requestSubmit()`, a native submission, a WebSocket's `send`) and, for what gets past that (a worker's fetch), by the
-browser's route. Either is reported as writing to a server, its state after the press unknown. A press that loads
+browser's route. Either is reported as writing to a server, its state after the press unknown. A `WebSocket.send` from a
+worker, or from a frame the page's guard is not installed in, passes both: a known limit. A press that loads
 another document, opens a window, a download or a dialog is stopped and named; one that only changes the address of the
 same document (a filter written to the URL) is a change. A page a press left changed is loaded again, in a new
 browser context, before the next control. Discovery runs only against a copy of the original on this machine
@@ -178,16 +179,16 @@ four times.
 Discovery runs after the route's other recorders. A control one of their control lists uses (the reveals', toggles',
 switches', notifications', hover delays') is theirs and is not pressed; the claims are part of the recording's key. The
 same control on several routes is pressed once: the first route in convert's order that shows it owns it, and a later
-route counts it from that route's result ("same as <route>") when either the result left no lasting markup change a
-scene would record (inert, transient, unpressable, or a focus or scroll move), compared by what changed, text and all;
-or the control sits in a layout landmark outside main (header, nav, aside, footer, `src/check/landmarks.ts`) whose
-markup is the same on both routes. A control is grouped with others by that landmark and its markup, or else by the
+route counts it from that route's result ("same as <route>") when the control sits in a layout landmark outside main
+(header, nav, aside, footer, `src/check/landmarks.ts`) whose markup is the same on both routes, or else when the owner's
+result was a transient (the same change, text and all) or only a focus or scroll move. An inert result is counted only
+inside such a landmark, and an unpressable one never: both say something of the owner's page only. A control is grouped with others by that landmark and its markup, or else by the
 tag, slot and role of the component around it, with its signature and name. One inside a widget a recording ports whole
 is always pressed. A counted control stands only while the owner's result is the one it was counted from: the
 recording is made again otherwise. Every 10th route presses one counted control of each group anyway; a result other
 than the owner's names the group, fails that run's routes that counted from it, and has the group pressed on every route
-next run (`discover/v-<recorder>/unshared.json`). The written port is still asked about every counted control on its own
-route, so a count never hides a control that is dead on one route's port.
+next run (`discover/v-<recorder>/unshared-*.json`, one file per run that found any, read together). The written port is
+still asked about every counted control that is stateful on its own route.
 
 A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
 toggles, switches, notifications and hover delays), a recorded demo's uses include it, or the site names it (a theme
@@ -200,7 +201,7 @@ handler throws there stays dead. The rest that changed the page are the route's 
 and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
 last run of the same store (`.migrate/convert/discover/last.json`, which keeps the dead controls by route; the count is
 derived from it: new and cleared). Each cut is said per route too: the controls not reached once the page's presses reach 160
-(a budget, so a page is cut at the same control every run; a page still going after 900 s stopped answering and is an
+(a budget: for the same route order and owners, a page is cut at the same control every run; a page still going after 900 s stopped answering and is an
 error), grid cells (never pressed: a grid a recording holds, a day picker or a table, is that
 recording's, and one no recording holds is named), and repeats (a control is pressed twice per page by its signature,
 name and the nearest element around it with a slot, role or id; the same control elsewhere on the page is counted like

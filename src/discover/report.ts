@@ -31,7 +31,7 @@ export interface RouteDiscovery {
 	readonly unknown: readonly { readonly name: string; readonly shape: PressedControl['shape']; readonly why?: string; /** Not pressed: the recorder that takes it by its own selector, which recorded nothing for it. */ readonly left?: 'reveals' | 'toggles' | 'grids' }[];
 	readonly excluded: Readonly<Record<string, number>>;
 	/** Stateful controls no recording ports but the written port has a handler for (a site part, its own): the effect is not compared. */
-	readonly handled?: readonly { readonly name: string; readonly by: string }[];
+	readonly handled?: readonly { readonly name: string; readonly by: string; /** Repeats of it, not pressed and not asked of the port: not compared either. */ readonly repeated?: number }[];
 	/** Repeats not pressed, by the pressed control they are like (`"name" (sig#nth)`). */
 	readonly repeats?: Readonly<Record<string, number>>;
 	readonly seconds: number;
@@ -60,6 +60,8 @@ export interface DiscoveryReport {
 	readonly before?: { readonly count: number; readonly added: readonly string[]; readonly cleared: readonly string[] };
 	/** Why no route was looked at (the original is not a local copy). */
 	readonly notRun?: string;
+	/** What the port's scripts threw outside a browser while the port was asked (the first 20). */
+	readonly thrown?: readonly string[];
 	/** Where the report was made, when the run reads one an earlier run left (a kept emit). */
 	readonly from?: string;
 }
@@ -88,7 +90,7 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 	if (report.incomplete?.length) lines.push(`Routes not looked at in full (their last findings stand): ${report.incomplete.join(', ')}.`);
 	for (const [route, r] of Object.entries(report.routes).sort(([a], [b]) => (a < b ? -1 : 1))) {
 		for (const d of r.dead) lines.push(`  dead control on ${route}: "${d.name}" ${d.what}${d.repeated ? ` (and ${d.repeated} like it)` : ''}`);
-		for (const h of r.handled ?? []) lines.push(`  has a handler, effect not compared, on ${route}: "${h.name}" (${h.by})`);
+		for (const h of r.handled ?? []) lines.push(`  has a handler, effect not compared, on ${route}: "${h.name}" (${h.by})${h.repeated ? `, and ${h.repeated} like it not asked of the port` : ''}`);
 		for (const u of r.unknown) lines.push(`  not read on ${route}: "${u.name}" ${unknownLine(u)}`);
 		for (const m of r.spotMismatch ?? []) lines.push(`  spot check on ${route}: "${m.name}" did another thing than on ${m.owner}; it is pressed on every route next run`);
 		if (r.untrusted) lines.push(`  not looked at in full on ${route}: ${r.untrusted} counted from a group a spot check found wrong`);
@@ -96,6 +98,7 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 		const cut = cutsOf(r);
 		if (cut) lines.push(`  cut on ${route}: ${cut}`);
 	}
+	for (const t of report.thrown ?? []) lines.push(`  the port threw outside a browser while asked: ${t}`);
 	for (const n of report.before?.added ?? []) lines.push(`  new since the last run: ${n}`);
 	for (const n of report.before?.cleared ?? []) lines.push(`  cleared since the last run: ${n}`);
 	return lines;
