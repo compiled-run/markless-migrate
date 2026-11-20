@@ -173,8 +173,12 @@ toggles, switches, notifications and hover delays), holds it (a carousel, slider
 picker), or a recorded demo's uses include it, or the site names it (a theme toggle). The rest that changed the page
 are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
 and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
-last run of the same store (`.migrate/convert/discover/last.json`: new and cleared). The pipeline's `dead-controls` job
-fails while there are any; nothing waits on it, so the port is still built, checked and deployed, but the run is red.
+last run of the same store (`.migrate/convert/discover/last.json`: new and cleared). Each cut is said per route too: the
+controls not reached before the page's 240 s stop (and the route named), grid cells, and repeats (a control is pressed
+twice per page by its signature and name, and the rest are counted against the first one). The pipeline's
+`dead-controls` job fails while there are any; nothing waits on it, so the port is still built, checked and deployed,
+but the run is red. A pull request's run of the pipeline (which proves the pipeline on a fixed subset) lists them in
+its summary without failing.
 Recordings are kept in `.migrate/convert/discover/v-<recorder>/` as the prefetch ones are.
 
 ### How to iterate on a port
