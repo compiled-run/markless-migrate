@@ -90,7 +90,7 @@ const DRIFT_WATCH_MS = 2000;
 const MAX_CONTROLS = 200;
 /** About twice the slowest page of the 18-route shadcn sample (134 s). */
 const MAX_ROUTE_MS = 240_000;
-/** Two presses of a repeat agreed on every repeat in the sample (19 Copy, 16 View Code, 10 Drag to reorder). */
+/** Two presses of a repeat agreed on every repeat in the sample (19 Copy, 16 View Code, 10 Drag to reorder): the rest are counted like them. */
 const REPEATS = 2;
 /** What a reader reads per control: the 47-node suggestion reply is named by its first few. */
 const KEPT_CHANGES = 12;
@@ -339,10 +339,13 @@ interface Candidate {
 
 /** A pressable left to another recorder by that recorder's own selector: checked against what it recorded. */
 export interface LeftControl {
-	readonly to: 'reveals' | 'toggles';
+	readonly to: 'reveals' | 'toggles' | 'grids';
 	readonly sig: string;
 	readonly nth: number;
 	readonly name: string;
+	/** For a grid: its cells, none pressed, and the grid's ancestors' sig#nth, to find the recording that holds it. */
+	readonly cells?: number;
+	readonly ancestors?: readonly string[];
 }
 
 interface Found {
@@ -387,12 +390,12 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 	const leave = (why: string) => void (excluded[why] = (excluded[why] ?? 0) + 1);
 	const seen = new Map<string, { n: number; first: string }>();
 	const repeats: Record<string, number> = {};
+	const grids = new Map<string, LeftControl>();
 	// A repeat is the same control in the same place: its signature, name and the nearest element around it with a slot,
 	// a role or an id. A grid's cells repeat by their grid alone (a calendar's days); a treegrid's rows each expand their own.
 	const repeat = (el: Element, name: string) => {
-		const grid = el.closest('[role="grid"]');
 		const around = el.parentElement?.closest('[data-slot], [role], [id]');
-		const key = grid ? `grid ${at(grid)}` : `${sigOf(el)}\u0000${name}\u0000${around ? at(around) : ''}`;
+		const key = `${sigOf(el)}\u0000${name}\u0000${around ? at(around) : ''}`;
 		const got = seen.get(key) ?? { n: 0, first: at(el) };
 		seen.set(key, { ...got, n: got.n + 1 });
 		if (got.n + 1 <= o.repeats) return false;
@@ -422,7 +425,19 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 		else if (css.display === 'none' || css.visibility === 'hidden' || !el.getClientRects().length || el.closest('[aria-hidden="true"]')) leave('hidden');
 		else if (el.matches(o.reveals) || wrappedBy(el)) (leave('left to the reveals'), left.push({ to: 'reveals', sig: sigOf(el), nth: order.get(el) ?? 0, name }));
 		else if (el.matches(o.toggles)) (leave('left to the toggles'), left.push({ to: 'toggles', sig: sigOf(el), nth: order.get(el) ?? 0, name }));
-		else if (repeat(el, name)) leave('same as a control pressed');
+		else if (el.closest('[role="grid"]')) {
+			// A grid's cells (a calendar's days) are its recorder's: checked at convert against the recording that holds the grid.
+			const grid = el.closest('[role="grid"]');
+			leave('in a grid');
+			const key = grid ? at(grid) : '';
+			const got = grids.get(key);
+			if (got) grids.set(key, { ...got, cells: (got.cells ?? 0) + 1 });
+			else if (grid) {
+				const ancestors: string[] = [];
+				for (let up = grid.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
+				grids.set(key, { to: 'grids', sig: sigOf(grid), nth: order.get(grid) ?? 0, name: words(grid.getAttribute('aria-label') ?? '') || name, cells: 1, ancestors });
+			}
+		} else if (repeat(el, name)) leave('same as a control pressed');
 		else {
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
@@ -430,7 +445,7 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors });
 		}
 	}
-	return { candidates: out, excluded, repeats, left };
+	return { candidates: out, excluded, repeats, left: [...left, ...grids.values()] };
 }
 
 /** The nearest element holding the pressed control and every element its press changed, as a path from the body. */
@@ -617,9 +632,18 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				await find();
 				await name();
 			}
+			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
+			// The same control (signature and name) in another place, once REPEATS of it did the same kind of thing, is counted like the first.
+			const alike = controls.filter((p) => p.sig === c.sig && p.name === c.name);
+			const [like] = alike;
+			const kind = (p: PressedControl) => `${p.shape}|${(p.changes ?? []).map((x) => x.what).join(',')}`;
+			if (like && alike.length >= REPEATS && alike.every((p) => kind(p) === kind(like))) {
+				repeats[`${like.sig}#${like.nth}`] = (repeats[`${like.sig}#${like.nth}`] ?? 0) + 1;
+				excluded['same as a control pressed'] = (excluded['same as a control pressed'] ?? 0) + 1;
+				continue;
+			}
 			fresh = true;
 			const control = at().locator(`[data-mm-discover="${index}"]`).first();
-			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
 			if (!(await control.count())) {
 				controls.push({ ...base, shape: 'unpressable', why: 'not on the page once loaded again' });
 				continue;

@@ -130,8 +130,9 @@ test('destructive names, forms, links and reveals are never pressed', () => {
 	for (const name of ['Delete account', 'Inside a form', 'In a link', 'Menu', 'Wifi']) assert.equal(byName(name), undefined, name);
 	assert.equal(facts.excluded['left to the toggles'], 1);
 	assert.equal(facts.excluded['left to the reveals'], 2, 'a trigger and the one button inside another');
-	assert.deepEqual(facts.left?.map((l) => [l.to, l.name]), [['reveals', 'Menu'], ['toggles', 'Wifi'], ['reveals', 'Inner trigger']]);
-	assert.equal(byName('15')?.shape, 'inert', 'a grid no recording holds is pressed');
+	assert.deepEqual(facts.left?.map((l) => [l.to, l.name]), [['reveals', 'Menu'], ['toggles', 'Wifi'], ['reveals', 'Inner trigger'], ['grids', '15']]);
+	assert.equal(byName('15'), undefined, "a grid's cells are its recorder's");
+	assert.equal(facts.excluded['in a grid'], 1);
 	assert.equal(facts.excluded['same as a control pressed'], 1);
 	assert.equal(facts.controls.filter((c) => c.name === 'Again').length, 2);
 	assert.deepEqual(facts.repeats, { 'button||Again#0': 1 });
@@ -140,6 +141,9 @@ test('destructive names, forms, links and reveals are never pressed', () => {
 	assert.match(cutsOf(routeDiscovery(facts, none)), /1 same as a control pressed: 1 like "Again" \(button\|\|Again#0\)/);
 	const unlooked = routeDiscovery(facts, { ...none, controls: new Set(['button||Menu#0']) }).unknown.filter((u) => u.why?.startsWith('left to'));
 	assert.deepEqual(unlooked.map((u) => [u.name, u.why]), [['Wifi', 'left to the toggles, which recorded nothing for it'], ['Inner trigger', 'left to the reveals, which recorded nothing for it']], 'what the reveals recorded is theirs; the rest no one looked at');
+	const grid = facts.left?.find((l) => l.to === 'grids');
+	assert.ok(routeDiscovery(facts, none).unknown.some((u) => u.why === 'a grid of 1 cells no recording holds, its cells not pressed'));
+	assert.ok(!routeDiscovery(facts, { ...none, holders: new Set([`${grid?.sig}#${grid?.nth}`]) }).unknown.some((u) => u.why?.startsWith('a grid')), 'a grid a recording holds is that recording\'s');
 	assert.equal(facts.excluded['destructive name'], 1);
 	assert.equal(facts.excluded['in a form'], 1);
 	assert.equal(facts.excluded['link'], 1);
@@ -158,7 +162,7 @@ test('a recording is read back for the same page key, and claimed controls are n
 	assert.equal(routeDiscovery(facts, { ...none, holders: new Set([kbd.ancestors[0]!]) }).dead.find((d) => d.name === 'K')?.held, true);
 	const route = routeDiscovery(facts, none);
 	assert.deepEqual(route.dead.map((d) => d.name).sort(), ['Create', 'Drag to reorder', 'K', 'Load reply', 'Show more', 'Start Listening']);
-	assert.deepEqual(route.unknown.filter((u) => !u.why?.startsWith('left to')).map((u) => u.shape).sort(), ['blocked', 'blocked', 'navigates']);
+	assert.deepEqual(route.unknown.filter((u) => !u.why?.startsWith('left to') && !u.why?.startsWith('a grid')).map((u) => u.shape).sort(), ['blocked', 'blocked', 'navigates']);
 	const store = await mkdtemp(join(tmpdir(), 'mm-discover-store-'));
 	const first = await discoveryReport(store, { '/': route });
 	assert.equal(first.count, 6);

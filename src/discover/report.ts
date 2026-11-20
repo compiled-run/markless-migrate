@@ -65,6 +65,7 @@ export const deadCount = (r: Pick<RouteDiscovery, 'dead'>): number => r.dead.red
 export function cutsOf(r: Pick<RouteDiscovery, 'excluded' | 'repeats'>): string {
 	const parts: string[] = [];
 	for (const [why, n] of Object.entries(r.excluded)) if (why.startsWith('past ')) parts.push(`${n} not reached (${why})`);
+	if (r.excluded['in a grid']) parts.push(`${r.excluded['in a grid']} in grids, left to the recording that holds each`);
 	const repeats = Object.entries(r.repeats ?? {});
 	if (repeats.length) parts.push(`${repeats.reduce((n, [, k]) => n + k, 0)} same as a control pressed: ${repeats.map(([like, k]) => `${k} like ${like}`).join(', ')}`);
 	return parts.join('; ');

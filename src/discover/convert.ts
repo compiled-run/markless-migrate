@@ -43,7 +43,9 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 	const like = facts.repeats ?? {};
 	const named = new Map(facts.controls.map((c) => [`${c.sig}#${c.nth}`, c.name]));
 	// A control left to the reveals or the toggles by their selector that they recorded nothing for: no one looked at it.
-	const unlooked = (facts.left ?? []).filter((l) => !claims.controls.has(`${l.sig}#${l.nth}`) && !claims.names.has(l.name));
+	const unlooked = (facts.left ?? []).filter((l) => l.to !== 'grids' && !claims.controls.has(`${l.sig}#${l.nth}`) && !claims.names.has(l.name));
+	// A grid no recording holds (no day picker, no table) had its cells left unpressed for nothing: named, never dropped.
+	const loose = (facts.left ?? []).filter((l) => l.to === 'grids' && !(l.ancestors ?? []).some((a) => claims.holders.has(a)) && !claims.holders.has(`${l.sig}#${l.nth}`));
 	return {
 		candidates: facts.candidates,
 		found: { role: facts.controls.filter((c) => c.found === 'role').length, cursor: facts.controls.filter((c) => c.found === 'cursor').length },
@@ -51,7 +53,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		claimed: facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
 		inert: mine.filter((c) => c.shape === 'inert' && !held(c)).length,
 		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: line(c), ...(like[`${c.sig}#${c.nth}`] ? { repeated: like[`${c.sig}#${c.nth}`] } : {}) })),
-		unknown: [...mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })), ...unlooked.map((l) => ({ name: l.name, shape: 'unpressable' as const, why: `left to the ${l.to}, which recorded nothing for it` }))],
+		unknown: [...mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })), ...unlooked.map((l) => ({ name: l.name, shape: 'unpressable' as const, why: `left to the ${l.to}, which recorded nothing for it` })), ...loose.map((l) => ({ name: l.name, shape: 'unpressable' as const, why: `a grid of ${l.cells ?? 0} cells no recording holds, its cells not pressed` }))],
 		excluded: facts.excluded,
 		...(Object.keys(like).length ? { repeats: Object.fromEntries(Object.entries(like).map(([at, n]) => [`"${named.get(at) ?? ''}" (${at})`, n])) } : {}),
 		seconds: Math.round(facts.ms / 100) / 10,

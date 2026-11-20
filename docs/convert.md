@@ -186,8 +186,10 @@ handler throws there stays dead. The rest that changed the page are the route's 
 and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
 last run of the same store (`.migrate/convert/discover/last.json`, which keeps the dead controls by route; the count is
 derived from it: new and cleared). Each cut is said per route too: the controls not reached before the page's 240 s stop
-(and the route named) and repeats (a control is pressed twice per page by its signature, name and the nearest element
-around it with a slot, role or id, a grid's cells by their grid; the rest count with the first one, dead with it). A
+(and the route named), grid cells (never pressed: a grid a recording holds, a day picker or a table, is that
+recording's, and one no recording holds is named), and repeats (a control is pressed twice per page by its signature,
+name and the nearest element around it with a slot, role or id; the same control elsewhere on the page is counted like
+the first once two presses of it did the same kind of thing; the rest count with the first one, dead with it). A
 route whose discovery failed or stopped before every control is not looked at in full: it clears nothing, keeps its
 last findings, and is not kept as a recording. The pipeline's `dead-controls` job fails while there are dead controls
 or such routes; nothing waits on it, so the port is still built, checked and deployed, but the run is red. A pull
