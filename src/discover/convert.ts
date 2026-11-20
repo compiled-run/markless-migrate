@@ -51,7 +51,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		pressed: facts.controls.length,
 		claimed: facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
 		inert: mine.filter((c) => c.shape === 'inert' && !held(c)).length,
-		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: line(c) })),
+		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: line(c) })),
 		unknown: mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })),
 		excluded: facts.excluded,
 		...(facts.repeats ? { repeats: facts.repeats } : {}),

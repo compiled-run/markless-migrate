@@ -7,6 +7,8 @@ import { DOCUMENT } from '../ledger/trials.ts';
 export interface PortControl {
 	readonly sig: string;
 	readonly nth: number;
+	readonly labelSig?: string;
+	readonly pair?: number;
 }
 
 /** Per route, per sig#nth: what answered its press on the port (`site part 3`, a Markless handler's file), `none`, or `not on the port`. */
@@ -35,7 +37,7 @@ export async function portAnswers(app: string, wanted: ReadonlyMap<string, reado
 				if (!shown) sandbox.show(html);
 				shown = true;
 				const doc = sandbox.window.document as unknown as Document;
-				const target = nthBySig(doc, c.sig, c.nth);
+				const target = find(doc, c);
 				if (!target) {
 					answers.set(`${c.sig}#${c.nth}`, 'not on the port');
 					continue;
@@ -66,14 +68,19 @@ export async function portAnswers(app: string, wanted: ReadonlyMap<string, reado
 	return out;
 }
 
-/** The element with this tag|data-slot|text signature, at this occurrence among the body's elements, as every recorder counts. */
-function nthBySig(doc: Document, sig: string, nth: number): Element | undefined {
+/**
+ * The element with both of the control's signatures (tag|data-slot|text and tag|data-slot|label) at its occurrence among
+ * those, as the original counted them; by its text signature alone where only that is known.
+ */
+function find(doc: Document, c: PortControl): Element | undefined {
+	const label = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+	const byPair = c.labelSig !== undefined && c.pair !== undefined;
 	let n = 0;
 	for (const el of doc.body.querySelectorAll('*')) {
 		if (el.closest('template')) continue;
 		const own = `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
-		if (own !== sig) continue;
-		if (n++ === nth) return el;
+		if (own !== c.sig || (byPair && label(el) !== c.labelSig)) continue;
+		if (n++ === (byPair ? c.pair : c.nth)) return el;
 	}
 	return undefined;
 }

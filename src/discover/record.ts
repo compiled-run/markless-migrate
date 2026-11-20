@@ -32,6 +32,8 @@ export interface PressedControl {
 	readonly nth: number;
 	/** tag|data-slot|aria-label (or text): the signature a scene keys its controls by. */
 	readonly labelSig: string;
+	/** Its occurrence among the elements with both its signatures: how the written port is searched for it. */
+	readonly pair?: number;
 	readonly name: string;
 	/** `role`: a button, a role=button, a summary or a tree item; `cursor`: an element the page's CSS gives a pointer or text cursor. */
 	readonly found: 'role' | 'cursor';
@@ -245,6 +247,7 @@ interface Candidate {
 	readonly sig: string;
 	readonly nth: number;
 	readonly labelSig: string;
+	readonly pair: number;
 	readonly name: string;
 	readonly found: 'role' | 'cursor';
 	readonly ancestors: readonly string[];
@@ -257,12 +260,16 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 	const labelSigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const counts = new Map<string, number>();
 	const order = new Map<Element, number>();
+	const pairs = new Map<Element, number>();
 	for (const el of document.body.querySelectorAll('*')) {
 		if (el.closest('template')) continue;
 		const sig = sigOf(el);
 		const n = counts.get(sig) ?? 0;
 		counts.set(sig, n + 1);
 		order.set(el, n);
+		const pair = `${sig}\u0000${labelSigOf(el)}`;
+		pairs.set(el, counts.get(pair) ?? 0);
+		counts.set(pair, (counts.get(pair) ?? 0) + 1);
 	}
 	const ROLE = 'button, [role="button"], summary, [role="treeitem"]';
 	// What a reveal uses by ARIA's own marks, the controls convert already reads for the content they hold back.
@@ -314,7 +321,7 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(`${sigOf(up)}#${order.get(up) ?? 0}`);
 			el.setAttribute('data-mm-discover', String(out.length));
-			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), name, found: byRole ? 'role' : 'cursor', ancestors });
+			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors });
 		}
 	}
 	return { candidates: out, excluded, repeats };
@@ -446,7 +453,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			fresh = true;
 			const control = page.locator(`[data-mm-discover="${index}"]`).first();
-			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, name: c.name, found: c.found, ancestors: c.ancestors };
+			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
 			if (!(await control.count())) {
 				controls.push({ ...base, shape: 'unpressable', why: 'not on the page once loaded again' });
 				continue;

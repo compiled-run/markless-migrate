@@ -5,6 +5,9 @@ export interface DeadControl {
 	readonly name: string;
 	readonly sig: string;
 	readonly nth: number;
+	/** The label signature and the occurrence among elements with both: how the written port is searched for it. */
+	readonly labelSig?: string;
+	readonly pair?: number;
 	readonly found: PressedControl['found'];
 	readonly shape: PressedControl['shape'];
 	readonly states?: number;
