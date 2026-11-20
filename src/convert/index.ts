@@ -8,7 +8,8 @@ import { copyAssets, copyStaticDir, MANAGED_ASSETS, pruneUnreferenced, readManag
 import { capturePage, SCRIPTS_STILL_CAP_MS, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
-import { fetchPageKey, recorderVersions, RecordDirs } from './record-key.ts';
+import { fetchPageKey, pageStatus, recordingVersions, RecordDirs } from './record-key.ts';
+import { expectedStatus } from '../check/expected-status.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
 import { recordPrefetch } from '../prefetch/record.ts';
 import { atRest } from './at-rest.ts';
@@ -57,7 +58,7 @@ import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort, type TrailingOutput } from './endpoints.ts';
 import { bodyAfterModule, documentExtras, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, SERVED_LAYER_BYTES, splitBody, trailingExtras, type LayerTable } from './document.ts';
-import { captureOtps, OtpPlan } from './otp.ts';
+import { captureOtps, OtpPlan, type OtpCapture } from './otp.ts';
 import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
 import { fragmentPath } from '../cache/apply.ts';
@@ -1423,20 +1424,43 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
 	useSiteInstanceProps(await readFile(join(app, 'lib', 'site', 'instance-props.json'), 'utf8').then((t) => JSON.parse(t) as InstanceSpec[], () => []));
 	// Each kind of a route's recordings is kept under a key of its old page, the code that records that kind and the data the recorder is given (record-key.ts).
-	const dirs = await RecordDirs.open(join(state, 'convert'), await recorderVersions(app));
+	const recordings = await recordingVersions(app);
+	const unkept = [...new Set(Object.values(recordings).flatMap((v) => v.problems))];
+	if (unkept.length) log(`recordings are made again and not read back: ${unkept[0]}${unkept.length > 1 ? ` (and ${unkept.length - 1} more)` : ''}`);
+	const dirs = await RecordDirs.open(join(state, 'convert'), Object.fromEntries(Object.entries(recordings).map(([kind, v]) => [kind, v.version])));
 	const sources = new Map<string, Promise<string>>();
 	// Per route, the directories of each kind its recordings went into.
 	const keyedDirs = new Map<string, Map<string, Set<string>>>();
-	const atFor = async (route: string, kind: string, given: readonly unknown[]): Promise<string> => {
+	const pageKeyOf = (route: string): Promise<string> => {
 		let source = sources.get(route);
-		if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route)!) : fetchPageKey(options.old, route)));
-		const dir = await dirs.dir(route, await source, kind, given);
-		const kinds = keyedDirs.get(route) ?? keyedDirs.set(route, new Map()).get(route)!;
-		(kinds.get(kind) ?? kinds.set(kind, new Set()).get(kind)!).add(dir);
-		return dir;
+		if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route) ?? '') : fetchPageKey(options.old, route)));
+		return source;
 	};
-	/** Every recording of the old site: the recorder writes into the directory of its kind, the route's page and what it is given. */
-	const record = async <A extends unknown[], R>(kind: string, recorder: (browser: Browser, origin: string, route: string, dir: string, ...given: A) => Promise<R>, browser: Browser, route: string, ...given: A): Promise<R> => recorder(browser, options.old, route, await atFor(route, kind, given), ...given);
+	const atFor = async (route: string, kind: string, given: readonly unknown[]) => {
+		const staged = await dirs.stage(route, await pageKeyOf(route), kind, given);
+		const kinds = keyedDirs.get(route) ?? new Map<string, Set<string>>();
+		keyedDirs.set(route, kinds);
+		kinds.set(kind, (kinds.get(kind) ?? new Set<string>()).add(staged.dir));
+		return staged;
+	};
+	/**
+	 * Every recording of the old site: the recorder writes into the directory of its kind, the route's page and what it is
+	 * given, kept only once it succeeds, and refused when the browser's load of the page answers another status than the key's.
+	 */
+	const record = async <A extends unknown[], R>(kind: string, recorder: (browser: Browser, origin: string, route: string, dir: string, ...given: A) => Promise<R>, browser: Browser, route: string, ...given: A): Promise<R> => {
+		const target = await atFor(route, kind, given);
+		const status = pageStatus(await pageKeyOf(route));
+		const run = () => recorder(browser, options.old, route, target.dir, ...given);
+		try {
+			// A redirect's key holds the redirect; the browser follows it, so its answer is not compared.
+			const got = status !== undefined && (status < 300 || status >= 400) ? await expectedStatus.run({ url: new URL(route, options.old).href, status }, run) : await run();
+			await target.commit();
+			return got;
+		} catch (error) {
+			await target.abandon();
+			throw error;
+		}
+	};
 	// Chromium's last lines of output, said in the log if it dies.
 	const said: string[] = [];
 	const browsers = await new Relauncher<Browser>(() => chromium.launch({ logger: { isEnabled: (name) => name === 'browser', log: (_name, _severity, message) => void (said.push(String(message)) > 8 && said.shift()) } }), log, () => said.slice(-3).join(' / ')).start();
@@ -1463,6 +1487,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
 	const formLibsRead = new Map<string, readonly CapturedForm[]>();
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
+	const otpsRead = new Map<string, OtpCapture['fields']>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
 	layerChoices = choices;
@@ -1583,6 +1608,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
 			floating?: readonly QwikFloating[];
+			otps?: OtpCapture['fields'];
 		}
 		const readRoute = async (route: string, ref: CapturedRef, browser: Browser, running: Promise<unknown>[]): Promise<RouteFacts> => {
 			const facts: RouteFacts = {};
@@ -1609,6 +1635,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				(async () => {
 					// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
 					if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(async () => record('toggles', captureQwikFloating, browser, route))).panels;
+				})(),
+				(async () => {
+					// Each input-otp field, used once on the old page for the caret its site renders and the text that shows its value.
+					if (reveal && Object.values((await page()).settled).some((html) => html.includes('data-input-otp-container'))) facts.otps = (await limit(async () => record('otps', captureOtps, browser, route))).fields;
 				})(),
 				(async () => {
 					if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(async () => record('toggles', captureScrollers, browser, route))).scrollers;
@@ -1773,7 +1803,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 							await Promise.allSettled(running);
 						}
 					};
-					return (await guarded(route, ['reveals', 'toggles', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars'], read)) ?? {};
+					return (await guarded(route, ['reveals', 'toggles', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars', 'otps'], read)) ?? {};
 				}),
 			),
 		);
@@ -1822,6 +1852,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
+			if (f.otps) otpsRead.set(route, f.otps);
 		});
 		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
 		for (const { route, reveal, run } of shownOn) {
@@ -2185,18 +2216,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
-	const otpRoutes = [...prepared].filter(([, p]) => [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined));
-	if (otpRoutes.length && options.reveal !== false) {
-		const otpBrowser = await chromium.launch();
-		try {
-			let fields = 0;
-			for (const [route, p] of otpRoutes) fields += otps.add((await record('otps', captureOtps, otpBrowser, route)).fields, locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
-			if (fields) log(`input-otp fields on Markless state: ${fields}`);
-		} finally {
-			await otpBrowser.close();
-		}
-		await dirs.save();
+	let otpFields = 0;
+	for (const [route, p] of prepared) {
+		const fields = otpsRead.get(route);
+		if (fields && [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined)) otpFields += otps.add(fields, locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
 	}
+	if (otpFields) log(`input-otp fields on Markless state: ${otpFields}`);
 	const selects = new SelectPlan();
 	const racSelect = (el: Element) => attr(el, 'aria-haspopup') === 'listbox' && candidatesOf(el).some((c) => c.library === 'react-aria-components');
 	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });

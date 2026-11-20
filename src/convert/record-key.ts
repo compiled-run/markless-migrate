@@ -1,33 +1,40 @@
-// Where a route's recordings are kept: each kind (captures, reveals, toggles...) under a key of the old page as its server
-// sends it, of the code that records that kind (its recorders' declaration closure, the orchestration around them, the app
-// files and environment they read) and of the data the recorder is handed. A recorder edit records only its own kind again.
+// Where a route's recordings are kept: each kind under a key of its old page, the code that records it, and the data its recorder is handed.
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { moduleEdges, ROOT } from '../code-closure.ts';
+import { ROOT } from '../code-closure.ts';
 import { declarationClosure } from '../declaration-closure.ts';
-import { analyze } from 'yuku/analyzer';
-import { walk, type N } from '../source/js.ts';
 import { INDEX, recordingFacts, STORE, type RecordingFacts } from './record-facts.ts';
+import { ClosureProject, type Span } from './record-reads.ts';
 
 /** The store's format: a store written in another is emptied of its recordings once, never read. */
-export const RECORDING_VERSION = 4;
+export const RECORDING_VERSION = 5;
 
 // Next.js streams the head: the same page can come with its meta tags in another order.
 const HEAD = /<head\b[^>]*>([\s\S]*?)<\/head>/i;
 const TAGS = /<(?:meta|link|title|script|style)\b[\s\S]*?(?:<\/(?:title|script|style)>|\/?>)/gi;
+// Tags whose order changes nothing; a stylesheet's or a script's order is the cascade's and the page's.
+const UNORDERED = /^<(?:meta|title)\b/i;
 
-/** The old page as the key reads it: its status and server HTML, the head's tags in any order. */
+/** The old page as the key reads it: its status and server HTML, the head's meta and title tags in any order. */
 export function oldPageSource(status: number, html: string): string {
-	const head = HEAD.exec(html);
-	const normal = head ? html.replace(head[1]!, [...head[1]!.matchAll(TAGS)].map((m) => m[0]).sort().join('')) : html;
-	return `${status}\n${normal}`;
+	const inner = HEAD.exec(html)?.[1];
+	if (inner === undefined) return `${status}\n${html}`;
+	const tags = [...inner.matchAll(TAGS)].map((m) => m[0]);
+	const head = [...tags.filter((t) => UNORDERED.test(t)).sort(), ...tags.filter((t) => !UNORDERED.test(t))].join('');
+	return `${status}\n${html.replace(inner, head)}`;
 }
 
-/** The key of a route's old page as its origin serves it, which each kind of its recordings is kept under (with that kind's code). */
+/** The key of a route's old page as its origin serves it (`<status>.<hash>`), which each kind of its recordings is kept under. */
 export function pageKey(origin: string, route: string, status: number, html: string): string {
-	return createHash('sha256').update(`record ${new URL(origin).origin} ${route}\n`).update(oldPageSource(status, html)).digest('base64url');
+	return `${status}.${createHash('sha256').update(`record ${new URL(origin).origin} ${route}\n`).update(oldPageSource(status, html)).digest('base64url')}`;
+}
+
+/** The status the page answered the request its key was made from; none for a page that did not answer. */
+export function pageStatus(page: string): number | undefined {
+	const status = Number(page.slice(0, page.indexOf('.')));
+	return page.indexOf('.') > 0 && Number.isInteger(status) ? status : undefined;
 }
 
 /** The key of a route's old page, from one plain request for it (no browser). An unreachable page's key matches nothing kept. */
@@ -76,70 +83,30 @@ export interface KindVersion {
 	readonly problems: readonly string[];
 }
 
-type Programs = (file: string) => Promise<N | undefined>;
-const programs = (): Programs => {
-	const parsed = new Map<string, Promise<N | undefined>>();
-	return (file) => parsed.get(file) ?? parsed.set(file, moduleEdges(file).then((r) => r.program)).get(file)!;
-};
-
-const isEnv = (n: N | undefined) => n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'Identifier' && n.object.name === 'process' && n.property?.name === 'env';
-
-/** The environment variables and mutable module state a set of statements reads. */
-async function reads(programOf: Programs, spans: ReadonlyMap<string, readonly { readonly start: number; readonly end: number }[]>): Promise<{ env: Set<string>; state: Set<string>; problems: string[] }> {
-	const env = new Set<string>();
-	const state = new Set<string>();
-	const problems: string[] = [];
-	for (const [file, list] of spans) {
-		const program = await programOf(file);
-		if (!program) continue;
-		const statements = (program.body as N[]).filter((s) => list.some((u) => u.start === s.start));
-		// A binding the code reads that code it never runs assigns: state set from outside.
-		const mod = statements.some((st) => (st.type === 'ExportNamedDeclaration' && st.declaration ? st.declaration : st).type === 'VariableDeclaration') ? analyze(await readFile(file, 'utf8'), { path: file } as Parameters<typeof analyze>[1]) : undefined;
-		for (const st of statements) {
-			const decl = st.type === 'ExportNamedDeclaration' && st.declaration ? st.declaration : st;
-			if (decl.type !== 'VariableDeclaration' || decl.kind === 'const' || !mod) continue;
-			for (const d of decl.declarations as N[]) {
-				const binding = d.id?.type === 'Identifier' ? mod.bindingOf(d.id as never) : null;
-				if (binding?.references.some((r) => r.isWrite && !list.some((u) => (r.node as N).start >= u.start && (r.node as N).end <= u.end))) state.add(`${relative(ROOT, file)} ${binding.name}`);
-			}
-		}
-		const roots: N[] = statements.length ? statements : [];
-		for (const u of list) if (!statements.some((s) => s.start === u.start)) walk(program, (n) => (n.start === u.start && n.end === u.end ? void roots.push(n) : n.end < u.start || n.start > u.end ? false : undefined));
-		for (const root of roots)
-			walk(root, (n, ancestors) => {
-				if (!isEnv(n)) return;
-				const up = ancestors[ancestors.length - 1];
-				if (up?.type === 'MemberExpression' && up.object === n && !up.computed) env.add(up.property.name);
-				else problems.push(`${relative(ROOT, file)}:${n.start} reads the environment other than by a variable's name`);
-			});
-	}
-	return { env, state, problems };
-}
-
 /** What every kind's version is made of: the facts read from index.ts, and the declaration closure each kind's code has. */
 export async function recordingVersions(app?: string, facts: RecordingFacts = recordingFacts()): Promise<Record<string, KindVersion>> {
 	const shared: string[] = [...facts.problems];
 	for (const o of facts.options) if (!(o in OPTIONS_READ)) shared.push(`convert's recording reads options.${o}, which no key holds: key it or say why it changes no recording (OPTIONS_READ)`);
 	const inputs = facts.inputs.filter((p) => !(p === STORE || p.startsWith(`${STORE}/`)) && !(p in UNKEYED_INPUTS));
 	for (const p of inputs) if (p.includes('*')) shared.push(`convert's recording reads ${p}, files under a computed path no key can name`);
+	// Without the old site's id nothing says its build and fixtures are the ones recorded: nothing is read back.
+	const original = process.env.MIGRATE_ORIGINAL_ID;
+	if (!original) shared.push('MIGRATE_ORIGINAL_ID names no old site: recordings are made again on every run');
 	const inputParts: [string, string | Uint8Array][] = [];
 	for (const p of inputs) inputParts.push([`input ${p}`, app ? await readFile(join(app, p)).catch(() => '\0absent') : '\0no app']);
+	const kinds = [...facts.kinds].sort(([a], [b]) => (a < b ? -1 : 1));
+	const closures = await Promise.all(kinds.map(([, k]) => declarationClosure([...k.entries.map((e) => ({ file: e.file, names: [e.name] })), { file: INDEX, names: k.names }])));
+	const project = new ClosureProject(new Set([INDEX, ...closures.flatMap((c) => c.statements.map((st) => st.file))]));
+	const spansOf = kinds.map(([, k], i): Span[] => [...(closures[i]?.statements ?? []), ...k.statements.map((st) => ({ file: INDEX, ...st }))]);
+	const recording = spansOf.flat();
 	const out: Record<string, KindVersion> = {};
-	const programOf = programs();
-	for (const [kind, k] of [...facts.kinds].sort(([a], [b]) => (a < b ? -1 : 1))) {
-		const closure = await declarationClosure([...k.entries.map((e) => ({ file: e.file, names: [e.name] })), { file: INDEX, names: k.names }]);
-		const spans = new Map<string, { start: number; end: number }[]>();
-		for (const unit of closure.units) {
-			const m = /^(.*):(\d+) /.exec(unit)!;
-			const file = join(ROOT, m[1]!);
-			const program = await programOf(file);
-			const s = (program?.body as N[] | undefined)?.find((x) => x.start === Number(m[2]));
-			if (s) (spans.get(file) ?? spans.set(file, []).get(file)!).push({ start: s.start, end: s.end });
-		}
-		(spans.get(INDEX) ?? spans.set(INDEX, []).get(INDEX)!).push(...k.statements);
-		const found = await reads(programOf, spans);
+	for (const [i, [kind, k]] of kinds.entries()) {
+		const closure = closures[i];
+		const spans = spansOf[i];
+		if (!closure || !spans) continue;
+		const found = project.reads(spans, recording);
 		const problems = [...shared, ...closure.unresolved, ...found.problems];
-		for (const s of found.state) if (!(s in MODULE_STATE)) problems.push(`the ${kind} recording reads ${s}, which code outside it assigns: key what it is set to, then list it in MODULE_STATE`);
+		for (const st of found.state) if (!(st in MODULE_STATE)) problems.push(`the ${kind} recording reads ${st}, which another kind's recording changes: key what it is set to, then list it in MODULE_STATE`);
 		const hash = createHash('sha256');
 		const part = (name: string, value: string | Uint8Array) => {
 			const bytes = typeof value === 'string' ? Buffer.from(value) : value;
@@ -148,13 +115,12 @@ export async function recordingVersions(app?: string, facts: RecordingFacts = re
 		part('format', String(RECORDING_VERSION));
 		part('kind', kind);
 		for (const [name, value] of closure.parts) part(name, value);
-		for (const s of k.statements) part('orchestration', facts.source.slice(s.start, s.end));
+		for (const st of k.statements) part('orchestration', facts.source.slice(st.start, st.end));
 		for (const name of [...found.env].sort()) part(`env ${name}`, process.env[name] ?? '\0unset');
 		for (const [name, value] of inputParts) part(name, value);
-		// The old site's build and fixtures as the pipeline serves them (its originalId): what a page loads besides its HTML.
-		part('original', process.env.MIGRATE_ORIGINAL_ID ?? '');
+		part('original', original ?? '');
 		if (problems.length) part('problems', `${problems.join('\n')}\n${randomUUID()}`);
-		const files = [...new Set([...closure.units.map((u) => u.slice(0, u.lastIndexOf(':'))), ...closure.files.map((f) => relative(ROOT, f))])].sort();
+		const files = [...new Set([...closure.statements.map((st) => relative(ROOT, st.file)), ...closure.files.map((f) => relative(ROOT, f))])].sort();
 		const units = [...closure.units, ...k.statements.map((st) => `${relative(ROOT, INDEX)}:${st.start} (orchestration)`)].sort();
 		out[kind] = { version: hash.digest('base64url').slice(0, 32), files, units, env: [...found.env].sort(), state: [...found.state].sort(), problems: [...new Set(problems)].sort() };
 	}
@@ -190,7 +156,8 @@ export function givenDigest(given: readonly unknown[]): string {
 		seen.add(obj);
 		if (Array.isArray(obj)) {
 			hash.update(`[${obj.length};`);
-			obj.forEach((v, i) => put(v, `${path}[${i}]`));
+			for (let i = 0; i < obj.length; i++) if (i in obj) put(obj[i], `${path}[${i}]`);
+			else hash.update('h;');
 		} else if (obj instanceof Map) {
 			hash.update(`M${obj.size};`);
 			for (const [k, v] of [...obj].sort(([a], [b]) => (String(a) < String(b) ? -1 : 1))) (put(k, `${path} key`), put(v, `${path}.get(${String(k)})`));
@@ -246,6 +213,12 @@ export async function readVisits(root: string): Promise<Visit[]> {
 	return out;
 }
 
+export interface Staged {
+	readonly dir: string;
+	readonly commit: () => Promise<void>;
+	readonly abandon: () => Promise<void>;
+}
+
 /** The recording directories under `<root>/<kind>/<key>`, and each route's visit (`visits/`). */
 export class RecordDirs {
 	private readonly root: string;
@@ -266,15 +239,35 @@ export class RecordDirs {
 		return new RecordDirs(root, versions);
 	}
 
-	/** The directory a recorder of `kind` writes a route's recording into, given the route's page key and what the recorder is handed. */
-	async dir(route: string, page: string, kind: string, given: readonly unknown[]): Promise<string> {
+	/**
+	 * Where a recorder of `kind` writes a route's recording, given the route's page key and what the recorder is handed: the
+	 * kept directory, or a new one beside it that `commit` makes the kept one once the recorder succeeded. Only a committed
+	 * directory is named in the route's visit.
+	 */
+	async stage(route: string, page: string, kind: string, given: readonly unknown[]): Promise<Staged> {
 		const key = recordDirKey(this.versions, kind, page, given);
-		let visit = this.visits.get(route);
-		if (visit?.page !== page) this.visits.set(route, (visit = { page, kinds: new Map() }));
-		(visit.kinds.get(kind) ?? visit.kinds.set(kind, new Set()).get(kind)!).add(key);
-		const dir = join(this.root, kind, key);
-		if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-		return dir;
+		const kept = join(this.root, kind, key);
+		const note = () => {
+			let visit = this.visits.get(route);
+			if (visit?.page !== page) this.visits.set(route, (visit = { page, kinds: new Map() }));
+			const dirs = visit.kinds.get(kind) ?? new Set<string>();
+			visit.kinds.set(kind, dirs.add(key));
+		};
+		if (existsSync(kept)) return { dir: kept, commit: async () => note(), abandon: async () => {} };
+		const staged = `${kept}.staging-${randomUUID().slice(0, 8)}`;
+		await mkdir(staged, { recursive: true });
+		return {
+			dir: staged,
+			commit: async () => {
+				// Another recorder of the same key may have committed first: its files stay, this one's join them.
+				if (existsSync(kept)) {
+					for (const name of await readdir(staged)) await rename(join(staged, name), join(kept, name));
+					await rm(staged, { recursive: true, force: true });
+				} else await rename(staged, kept);
+				note();
+			},
+			abandon: () => rm(staged, { recursive: true, force: true }),
+		};
 	}
 
 	/** Writes each route's visit: the directories each kind recorded this run used, and from its last visit of the same page the kinds this run did not record, at their current version. */
@@ -285,7 +278,10 @@ export class RecordDirs {
 			const last = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Visit, () => undefined);
 			const merged: Record<string, { version: string; dirs: string[] }> = {};
 			if (last?.page === page) for (const [kind, v] of Object.entries(last.kinds)) if (this.versions[kind] === v.version) merged[kind] = { version: v.version, dirs: [...v.dirs] };
-			for (const [kind, dirs] of kinds) merged[kind] = { version: this.versions[kind]!, dirs: [...dirs].sort() };
+			for (const [kind, dirs] of kinds) {
+				const version = this.versions[kind];
+				if (version !== undefined) merged[kind] = { version, dirs: [...dirs].sort() };
+			}
 			const visit: Visit = { route, page, kinds: Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : 1))) };
 			await writeFile(file, JSON.stringify(visit));
 		}

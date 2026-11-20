@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page, Request } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -12,6 +12,7 @@ import { attr, body, parseDocument, setAttr, textContent, walk, type Element as 
 import type { Reveal } from './reveal.ts';
 import { lit, type Binding } from './tsrx.ts';
 import type { Limit } from './limit.ts';
+import { writeRecording } from './recording-file.ts';
 
 /**
  * What choosing an option inside revealed content did on the old page: where the page went, what it copied, or, for a
@@ -338,7 +339,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	if (Object.values(out).some((c) => c.trigger !== undefined)) for (const [key, html] of kept) if (!Object.keys(out[key] ?? {}).length) out[key] = { trigger: html };
 	log(failure === undefined ? `choices of ${reveal.key} on ${route}: ${Object.keys(out).length} options` : `choices of ${reveal.key} on ${route}: not recorded (${failure})`);
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(out));
+	await writeRecording(file, JSON.stringify(out));
 	return out;
 }
 

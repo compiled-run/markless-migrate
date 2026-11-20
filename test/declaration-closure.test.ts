@@ -29,8 +29,9 @@ test('the closure of a producer reaches what it calls through imports, re-export
 	const { units, unresolved } = await declarationClosure([{ file: join(dir, 'rec.ts'), names: ['record'] }]);
 	assert.deepEqual(unresolved, []);
 	const names = units.map((u) => u.replace(/^.*\/(\w+\.ts):\d+ /, '$1 '));
-	for (const reached of ['rec.ts record', 'inner.ts capture', 'inner.ts LIMIT', 'fmt.ts stamp', 'fmt.ts other']) assert.ok(names.includes(reached), `${reached} in ${names.join(', ')}`);
-	for (const left of ['capture.ts judge', 'judge.ts verdict', 'inner.ts UNREAD', 'inner.ts expensive']) assert.ok(!names.includes(left), `${left} left out`);
+	// UNREAD's initializer calls expensive() when inner.ts loads, whether or not anything reads UNREAD.
+	for (const reached of ['rec.ts record', 'inner.ts capture', 'inner.ts LIMIT', 'fmt.ts stamp', 'fmt.ts other', 'inner.ts (runs at load)', 'inner.ts expensive']) assert.ok(names.includes(reached), `${reached} in ${names.join(', ')}`);
+	for (const left of ['capture.ts judge', 'judge.ts verdict']) assert.ok(!names.includes(left), `${left} left out`);
 });
 
 test('a judge-only edit leaves the producer digest alone; an edit to code the producer runs moves it', async () => {

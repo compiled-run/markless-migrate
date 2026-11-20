@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -7,6 +7,7 @@ import { captureEnv } from './capture-env.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { trackSettle } from './settle.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** A node of a demo as one frame showed it: an element, or a run of adjacent text (the browser parses a run as one node). */
 export type SceneNode = { readonly id: number; readonly tag: string; readonly attrs: readonly (readonly [string, string])[]; readonly kids: readonly SceneNode[] } | { readonly id: number; readonly text: string };
@@ -416,6 +417,6 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 	}
 	const capture: SceneCapture = { route, scenes };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }

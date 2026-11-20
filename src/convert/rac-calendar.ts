@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,6 +16,7 @@ import { parseFragment } from 'parse5';
 import { attr, childrenOf, elementChildren, isElement, isText, walk, type Element, type Node } from './dom.ts';
 import { emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
 import { outer as outerOf } from './dom.ts';
+import { writeRecording } from './recording-file.ts';
 
 // React Aria's Calendar and RangeCalendar on Markless state (parts/react-aria/calendar.ts). What each calendar on the old
 // page was given is read from React's fibers at two clock settings, so a date that follows today is told from a fixed one;
@@ -165,7 +166,7 @@ export async function captureRacCalendars(browser: Browser, origin: string, rout
 	}
 	const captured: CapturedCalendars = { route, calendars: calendars.map((c) => (c.layer && c.layer.index === 0 && effects.has(`${c.layer.sig}|${c.layer.nth}`) ? { ...c, effect: effects.get(`${c.layer.sig}|${c.layer.nth}`)! } : c)), later: await read(LATER) };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(captured));
+	await writeRecording(file, JSON.stringify(captured));
 	return captured;
 }
 

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -8,6 +8,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, walk, type Element as Markup } from './dom.ts';
 import { lit, type Binding } from './tsrx.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** One input-otp field on the old page, as using it showed: the fake caret its active empty slot renders, and app text that shows its value. */
 export interface OtpField {
@@ -128,7 +129,7 @@ export async function captureOtps(browser: Browser, origin: string, route: strin
 	}
 	const capture: OtpCapture = { route, fields };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
