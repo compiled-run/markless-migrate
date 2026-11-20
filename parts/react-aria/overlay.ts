@@ -136,6 +136,9 @@ export interface OpenOptions {
 	readonly onReady?: (o: Overlay) => void;
 }
 
+/** A Modal's overlay: its `-overlay` slot, or, where a user's props replaced that slot (shadcn's mobile sidebar), a ModalOverlay holding a Modal with a Dialog in it. */
+export const MODAL_OVERLAY = '[data-slot$="-overlay"], [data-rac]:not([data-trigger]):has(> [data-rac] :is([role="dialog"], [role="alertdialog"]))';
+
 const num = (v: string | undefined, fallback: number) => (v !== undefined && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : fallback);
 
 /** Shows a trigger's captured overlay; undefined when the page has none for it. */
@@ -144,7 +147,7 @@ export function openOverlay(trigger: HTMLElement, key: string, options: OpenOpti
 	if (existing) return existing;
 	const nodes = layersFor(key);
 	if (!nodes.length) return undefined;
-	const CONTENT = '[data-trigger], [role="tooltip"][data-rac], [data-slot$="-overlay"]';
+	const CONTENT = `[data-trigger], [role="tooltip"][data-rac], ${MODAL_OVERLAY}`;
 	const content = nodes.map((n) => (n.matches(CONTENT) ? n : n.querySelector<HTMLElement>(CONTENT))).find(Boolean) ?? nodes[0]!;
 	for (const n of nodes) n.hidden = false;
 	content.removeAttribute('data-exiting');

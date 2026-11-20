@@ -183,6 +183,8 @@
 		"test/parts-guard.test.ts": {"shard":1,"seconds":1},
 		"test/parts-registries.test.ts": {"shard":2,"seconds":1},
 		"test/parts-typecheck.test.ts": {"shard":3,"seconds":1},
+		"test/phone-layers.test.ts": {"shard":5,"seconds":6},
+		"test/phone-uses.test.ts": {"shard":5,"seconds":6},
 		"test/pipeline.test.ts": {"shard":4,"seconds":1},
 		"test/plan-concurrency.test.ts": {"shard":3,"seconds":84},
 		"test/plan-frame-pages.test.ts": {"shard":1,"seconds":3},

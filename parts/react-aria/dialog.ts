@@ -1,6 +1,6 @@
 import { layersFor } from '../reveal.ts';
 import { holdPressed } from './interactions.ts';
-import { closeOverlay, openOverlay, overlayFor, overlayOf, top, type Overlay } from './overlay.ts';
+import { MODAL_OVERLAY, closeOverlay, openOverlay, overlayFor, overlayOf, top, type Overlay } from './overlay.ts';
 
 // React Aria's DialogTrigger with a Popover or a Modal (useOverlayTrigger, usePopover, useModalOverlay, useDialog): a
 // press on the trigger toggles it, the trigger held pressed while it is open; the dialog takes focus and keeps Tab
@@ -13,8 +13,8 @@ const PLAIN = 'button[data-rac]:not([aria-expanded]):not([aria-haspopup]):not([r
 const DISMISS = 'button[tabindex="-1"]:is([aria-label], [aria-labelledby])[style*="width: 1px"][style*="height: 1px"]:empty';
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-const hasOverlay = (trigger: HTMLElement) => trigger.id !== '' && layersFor(trigger.id).some((n) => n.matches('[data-trigger], [data-slot$="-overlay"]') || n.querySelector('[data-trigger="DialogTrigger"], [data-slot$="-overlay"]'));
-const modalLayer = (trigger: HTMLElement) => trigger.id !== '' && layersFor(trigger.id).some((n) => n.matches('[data-slot$="-overlay"]') || n.querySelector('[data-trigger="DialogTrigger"], [data-slot$="-overlay"]'));
+const hasOverlay = (trigger: HTMLElement) => trigger.id !== '' && layersFor(trigger.id).some((n) => n.matches(`[data-trigger], ${MODAL_OVERLAY}`) || n.querySelector(`[data-trigger="DialogTrigger"], ${MODAL_OVERLAY}`));
+const modalLayer = (trigger: HTMLElement) => trigger.id !== '' && layersFor(trigger.id).some((n) => n.matches(MODAL_OVERLAY) || n.querySelector(`[data-trigger="DialogTrigger"], ${MODAL_OVERLAY}`));
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? (() => {
 	const plain = target.closest<HTMLElement>(PLAIN);
 	return plain && modalLayer(plain) ? plain : null;
@@ -29,7 +29,7 @@ function close(o: Overlay): void {
 
 function openDialog(trigger: HTMLElement): boolean {
 	const nodes = layersFor(trigger.id);
-	const surface = nodes.map((n) => (n.matches('[data-trigger], [data-slot$="-overlay"]') ? n : n.querySelector<HTMLElement>('[data-trigger], [data-slot$="-overlay"]'))).find(Boolean);
+	const surface = nodes.map((n) => (n.matches(`[data-trigger], ${MODAL_OVERLAY}`) ? n : n.querySelector<HTMLElement>(`[data-trigger], ${MODAL_OVERLAY}`))).find(Boolean);
 	const dismissable = !!surface?.querySelector(DISMISS);
 	const marked = trigger.matches(TRIGGER);
 	// The dialog takes focus, unless a search field in it does (a command palette's input, autoFocus in the source).

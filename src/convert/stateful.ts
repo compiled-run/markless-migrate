@@ -678,7 +678,8 @@ export class SwitchPlan {
 		return this.bindings.get(el);
 	}
 
-	add(switches: readonly Switch[], locate: (sig: string, nth: number) => Element | undefined): number {
+	/** `phone`: the controls (`sig#nth`) that open a layer on a phone instead, whose use switches nothing there. */
+	add(switches: readonly Switch[], locate: (sig: string, nth: number) => Element | undefined, phone: ReadonlySet<string> = new Set()): number {
 		const groups = new Map<string, Switch[]>();
 		for (const s of switches) {
 			const key = s.changes.map((c) => `${c.sig}#${c.nth}:${c.attr}`).sort().join('|');
@@ -700,9 +701,10 @@ export class SwitchPlan {
 				this.bindings.set(el, { declare, omit: [...(own?.omit ?? []), ...changes.map((c) => c.attr)], extra: [...(own?.extra ?? []), ...changes.map((c) => `${c.attr}={${name} ? ${value(c.after)} : ${value(c.before)}}`)] });
 			}
 			const cookies = (list: Switch['cookiesOn']) => JSON.stringify(list);
-			controls.forEach((control) => {
+			controls.forEach((control, i) => {
 				const own = this.bindings.get(control!);
-				this.bindings.set(control!, { declare, omit: own?.omit ?? [], extra: [...(own?.extra ?? []), `onClick={() => { ${name} = !${name}; writeCookies(${name} ? ${cookies(first.cookiesOn)} : ${cookies(first.cookiesOff)}); }}`] });
+				const guard = phone.has(`${members[i]!.sig}#${members[i]!.nth}`) ? 'if (onPhone()) return; ' : '';
+				this.bindings.set(control!, { declare, omit: own?.omit ?? [], extra: [...(own?.extra ?? []), `onClick={() => { ${guard}${name} = !${name}; writeCookies(${name} ? ${cookies(first.cookiesOn)} : ${cookies(first.cookiesOff)}); }}`] });
 			});
 			placed++;
 		}

@@ -68,28 +68,40 @@ function afterPage(nodes: DocumentFragment, into: Element = document.body): void
 	into.append(nodes);
 }
 
+/** The widths the converter's `mobile` viewport stands for: a layer recorded there (data-mm-viewport) is shown only here. */
+export const PHONE = '(max-width: 767px)';
+
+export const onPhone = (): boolean => matchMedia(PHONE).matches;
+
+// A served layer recorded at the phone viewport is never fetched or mounted at other widths.
+const servedHere = (): HTMLTemplateElement[] => {
+	const phone = onPhone();
+	return [...document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE)].filter((t) => !t.dataset.mmViewport || (t.dataset.mmViewport === 'mobile') === phone);
+};
+
 /** Fetches the files of the page's served layers not fetched yet, and fills any shell already mounted. */
 export function loadLayers(): Promise<void> {
 	const pending: Promise<unknown>[] = [];
-	for (const template of document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE))
-		pending.push(request(template.dataset.mmLayerSrc!).then(() => template.isConnected && used.has(template.dataset.mmLayerSrc!) && fill(template), () => {}));
+	for (const template of servedHere()) pending.push(request(template.dataset.mmLayerSrc!).then(() => template.isConnected && used.has(template.dataset.mmLayerSrc!) && fill(template), () => {}));
 	return Promise.all(pending).then(() => {});
 }
 
 /** Whether the page names a served layer whose file is not in yet. */
-export const layersPending = (): boolean => [...document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE)].some((t) => !markup.has(t.dataset.mmLayerSrc!));
+export const layersPending = (): boolean => servedHere().some((t) => !markup.has(t.dataset.mmLayerSrc!));
 
 /** The nodes a control portals, for this viewport when the page has a variant of its own for it. */
 export function layersFor(key: string): HTMLElement[] {
-	const served = document.querySelector<HTMLTemplateElement>(`${LAYER_SOURCE}[data-mm-layer-keys~="${CSS.escape(key)}"]`);
+	const served = servedHere().find((t) => (t.dataset.mmLayerKeys ?? '').split(' ').includes(key));
 	if (served) mountServed(served);
 	const all = [...document.querySelectorAll<HTMLElement>(`[data-mm-layer="${CSS.escape(key)}"]`)];
-	const mobile = matchMedia('(max-width: 767px)').matches;
+	const mobile = onPhone();
 	const own = all.filter((n) => (n.dataset.mmViewport === 'mobile') === mobile);
 	return own.length ? own : all.filter((n) => !n.dataset.mmViewport);
 }
 
 const CONTENT = '[data-slot$="-content"], [data-slot$="-popup"]';
+const DIALOG = '[role="dialog"], [role="alertdialog"]';
+const OVERLAY = '[data-slot$="-overlay"]';
 const slots = new WeakMap<Element, string>();
 
 /**
@@ -112,7 +124,12 @@ export function layerSlot(el: Element): string {
 		const served = document.querySelector<HTMLTemplateElement>(`${LAYER_SOURCE}[data-mm-layer-keys~="${CSS.escape(key)}"]`);
 		const nodes = [...document.querySelectorAll(`[data-mm-layer="${CSS.escape(key)}"]`), ...(served?.content.querySelectorAll(`[data-mm-layer="${CSS.escape(key)}"]`) ?? [])];
 		// What its own key's layer holds (a sheet's content, keyed by its id) is that layer, not the control that opens it.
-		for (const n of nodes.some((n) => n.contains(el)) ? [] : nodes) {
+		const own = nodes.some((n) => n.contains(el)) ? [] : nodes;
+		// A dialog whose content slot its user overrode (shadcn's mobile sidebar is a SheetContent with data-slot="sidebar") is named by its overlay.
+		const surface = own.map((n) => (n.matches(DIALOG) ? n : n.querySelector(DIALOG))).find(Boolean);
+		const overlay = surface && !surface.matches(CONTENT) ? own.map((n) => (n.matches(OVERLAY) ? n : n.querySelector(OVERLAY))).find(Boolean) : undefined;
+		if (overlay) found = overlay.getAttribute('data-slot')!.replace(/-overlay$/, '-trigger');
+		for (const n of overlay ? [] : own) {
 			const content = n.matches(CONTENT) ? n : n.querySelector(CONTENT);
 			const slot = content?.getAttribute('data-slot');
 			if (slot) {
@@ -123,6 +140,12 @@ export function layerSlot(el: Element): string {
 	}
 	slots.set(el, found);
 	return found;
+}
+
+/** The closest control from `target` that matches `selector` whose layer's content `slot` tests true for, whatever its own data-slot. */
+export function closestByLayer<T extends HTMLElement = HTMLElement>(target: Element, selector: string, slot: (name: string) => boolean): T | null {
+	for (let el = target.closest<T>(selector); el; el = el.parentElement?.closest<T>(selector) ?? null) if (slot(layerSlot(el))) return el;
+	return null;
 }
 
 /** The closest control from `target` that matches `selector` and is the trigger part `slot` tests true for. */

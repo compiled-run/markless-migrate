@@ -2,15 +2,18 @@ import { markOthers } from './mark-others.ts';
 import { acquireScrollLock, closePopup, isOpen, openPopup, popupOf, setTrigger, top, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
 import { announceOpen, followOpen, followsOpen } from '../open-state.ts';
-import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
+import { closestByLayer, closestTrigger, layerKey, layersFor } from '../reveal.ts';
 
 // Base UI Dialog, AlertDialog and Drawer: a press on the trigger opens the popup with its backdrop, focus moves to the
 // first tabbable element inside (a drawer's popup itself); a modal one keeps Tab inside, hides the page behind from
 // assistive technology and stops it scrolling; Escape, a Close part and (not for an alert dialog) a press on the
 // backdrop close it, focus back on the trigger.
 const TRIGGER = '[data-base-ui-click-trigger][aria-haspopup="dialog"]';
-// A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
-const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
+// A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key, and is
+// known by that layer's content when its own data-slot names another part (shadcn's sidebar-trigger opening the mobile Sheet).
+const PLAIN = '[data-mm-key]:not([aria-haspopup]):not([data-state])';
+const isDialogSlot = (slot: string) => /(dialog|sheet|drawer)-trigger$/.test(slot);
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, PLAIN, isDialogSlot) ?? closestByLayer(target, PLAIN, isDialogSlot);
 // data-mm-part: a Close the source renders through its child (render), which gives the element its own data-slot.
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot="drawer-close"], [data-slot$="dialog-cancel"], [data-mm-part$="dialog-close"], [data-mm-part="drawer-close"]';
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
