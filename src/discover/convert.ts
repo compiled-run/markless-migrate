@@ -69,8 +69,15 @@ export const pathSelector = (path: string): string =>
 		})
 		.join(' > ');
 
-// A press that only moves focus or the scroll changes no markup a scene could replay: a part's job.
-const markupChanged = (c: PressedControl) => (c.changes ?? []).some((x) => x.what !== 'focus' && x.what !== 'scroll');
+// A press that only moves focus or the scroll (and the rings that focus draws) changes no markup a scene could replay: a part's job.
+const markupChanged = (c: PressedControl) => {
+	const focus = (c.changes ?? []).some((x) => x.what === 'focus');
+	return (c.changes ?? []).some((x) => x.what !== 'focus' && x.what !== 'scroll' && !(focus && x.what === 'look'));
+};
+
+// What a scene of a page-level demo is recorded for: a dead control whose press changed markup and stayed changed. A
+// transient one (a "Copied" mark, a spinner) is most often a part's, which the written port is asked about afterwards.
+const sceneWorthy = (c: PressedControl, claims: Claims) => STATEFUL.has(c.shape) && c.shape !== 'transient' && !claimed(c, claims) && markupChanged(c);
 
 /**
  * The elements whose controls a scene should record: a recorded demo the controls sit in (its listing left them out), or the
@@ -78,13 +85,15 @@ const markupChanged = (c: PressedControl) => (c.changes ?? []).some((x) => x.wha
  */
 export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[] {
 	const out: SceneHolder[] = [];
-	const wanted = facts.controls.filter((c) => STATEFUL.has(c.shape) && !claimed(c, claims) && markupChanged(c) && c.holder && c.holder.path !== 'body');
-	const holders = wanted.map((c): SceneHolder => {
+	const holders = facts.controls.filter((c) => sceneWorthy(c, claims)).flatMap((c): SceneHolder[] => {
 		const i = c.path ? c.ancestors.findIndex((a) => claims.scenes.some((s) => s.holder === a)) : -1;
-		if (i < 0) return { path: c.holder!.path, selector: pathSelector(c.holder!.path), at: c.holder!.at, canvas: Boolean(c.holder!.canvas), listed: SCENE_CONTROLS, controls: 1 };
-		const scene = claims.scenes.find((s) => s.holder === c.ancestors[i])!;
-		const path = c.path!.split('>').slice(0, -(i + 1)).join('>');
-		return { path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder!.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1 };
+		if (i >= 0) {
+			const scene = claims.scenes.find((s) => s.holder === c.ancestors[i])!;
+			const path = c.path!.split('>').slice(0, -(i + 1)).join('>');
+			return [{ path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder?.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1 }];
+		}
+		if (!c.holder || c.holder.path === 'body') return [];
+		return [{ path: c.holder.path, selector: pathSelector(c.holder.path), at: c.holder.at, canvas: Boolean(c.holder.canvas), listed: SCENE_CONTROLS, controls: 1 }];
 	});
 	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) {
 		const outer = out.findIndex((o) => h.path === o.path || h.path.startsWith(`${o.path}>`));
@@ -100,6 +109,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims, demos: read
 	const notes = [
 		...demos.filter((d) => d.canvas).map((d) => `a canvas in ${d.at.split('#')[0]!.split('|').slice(0, 2).join('|')} draws from the page's own script, which the port does not keep: its drawing is not ported, only its markup's states`),
 		...mine.filter((c) => STATEFUL.has(c.shape) && !markupChanged(c)).map((c) => `"${c.name}" only moves focus or the scroll: no scene ports that, a part must`),
+		...(demos.length ? mine.filter((c) => sceneWorthy(c, claims) && !demos.some((d) => c.path?.startsWith(`${d.path}>`))).map((c) => `"${c.name}" got no scene: what its press changed reaches across the page`) : []),
 	];
 	return {
 		...(notes.length ? { notes } : {}),
