@@ -4,9 +4,9 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { ROOT } from '../code-closure.ts';
-import { declarationClosure } from '../declaration-closure.ts';
+import { declarationClosure, type DeclarationClosure } from '../declaration-closure.ts';
 import { INDEX, recordingFacts, STORE, type RecordingFacts } from './record-facts.ts';
-import { ClosureProject, type Span } from './record-reads.ts';
+import { ClosureProject, SpanIndex, type Span } from './record-reads.ts';
 
 /** The store's format: a store written in another is emptied of its recordings once, never read. */
 export const RECORDING_VERSION = 5;
@@ -95,16 +95,18 @@ export async function recordingVersions(app?: string, facts: RecordingFacts = re
 	const inputParts: [string, string | Uint8Array][] = [];
 	for (const p of inputs) inputParts.push([`input ${p}`, app ? await readFile(join(app, p)).catch(() => '\0absent') : '\0no app']);
 	const kinds = [...facts.kinds].sort(([a], [b]) => (a < b ? -1 : 1));
-	const closures = await Promise.all(kinds.map(([, k]) => declarationClosure([...k.entries.map((e) => ({ file: e.file, names: [e.name] })), { file: INDEX, names: k.names }])));
+	// One at a time: each closure parses its whole graph, and twelve at once held 700 MB of syntax trees.
+	const closures: DeclarationClosure[] = [];
+	for (const [, k] of kinds) closures.push(await declarationClosure([...k.entries.map((e) => ({ file: e.file, names: [e.name] })), { file: INDEX, names: k.names }]));
 	const project = new ClosureProject(new Set([INDEX, ...closures.flatMap((c) => c.statements.map((st) => st.file))]));
 	const spansOf = kinds.map(([, k], i): Span[] => [...(closures[i]?.statements ?? []), ...k.statements.map((st) => ({ file: INDEX, ...st }))]);
-	const recording = spansOf.flat();
+	const recording = new SpanIndex(spansOf.flat());
 	const out: Record<string, KindVersion> = {};
 	for (const [i, [kind, k]] of kinds.entries()) {
 		const closure = closures[i];
 		const spans = spansOf[i];
 		if (!closure || !spans) continue;
-		const found = project.reads(spans, recording);
+		const found = project.reads(new SpanIndex(spans), recording);
 		const problems = [...shared, ...closure.unresolved, ...found.problems];
 		for (const st of found.state) if (!(st in MODULE_STATE)) problems.push(`the ${kind} recording reads ${st}, which another kind's recording changes: key what it is set to, then list it in MODULE_STATE`);
 		const hash = createHash('sha256');
