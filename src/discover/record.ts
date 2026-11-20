@@ -626,12 +626,6 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				cut = true;
 				break;
 			}
-			if (!fresh) {
-				await load();
-				reloads++;
-				await find();
-				await name();
-			}
 			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
 			// The same control (signature and name) in another place, once REPEATS of it did the same kind of thing, is counted like the first.
 			const alike = controls.filter((p) => p.sig === c.sig && p.name === c.name);
@@ -641,6 +635,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				repeats[`${like.sig}#${like.nth}`] = (repeats[`${like.sig}#${like.nth}`] ?? 0) + 1;
 				excluded['same as a control pressed'] = (excluded['same as a control pressed'] ?? 0) + 1;
 				continue;
+			}
+			if (!fresh) {
+				await load();
+				reloads++;
+				await find();
+				await name();
 			}
 			fresh = true;
 			const control = at().locator(`[data-mm-discover="${index}"]`).first();
