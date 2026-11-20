@@ -78,6 +78,7 @@ const STILL_CAP_MS = 3000;
 /** After a press went still, how long the page may take to come back by itself (a spinner, a "Copied" label) or go on. */
 const AFTER_CAP_MS = 5000;
 const MAX_PRESSES = 4;
+const DRIFT_WATCH_MS = 2000;
 const MAX_CONTROLS = 200;
 /** A page's presses stop after this long; the controls not reached are counted, never guessed. */
 const MAX_ROUTE_MS = 240_000;
@@ -241,10 +242,8 @@ function installReader(): void {
 				if (x!.d !== y!.d && y!.d && y!.d !== pressed && !y!.d.startsWith(`${pressed}>`)) (changed.push(y!.d), changes.push({ at: B[y!.d]?.d ?? y!.d, what: 'focus' }));
 				continue;
 			}
-			if (key === '@scroll') {
-				if (x!.c !== y!.c) (changed.push(key), changes.push({ at: 'the window', what: 'scroll', before: x!.c, after: y!.c }));
-				continue;
-			}
+			// The window's own scroll moves under a press for reasons of its own (a late layout above, scroll anchoring): never a change.
+			if (key === '@scroll') continue;
 			if (!x || !y) {
 				const it = (x ?? y)!;
 				if (it.s) (changed.push(key), changes.push({ at: it.d, what: x ? 'removed' : 'added' }));
@@ -487,9 +486,15 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		// What changes on its own over a wait as long as a press's: never a press's doing.
 		const idle0 = await read();
 		await settle(page, AFTER_CAP_MS);
+		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
+		await page.waitForTimeout(DRIFT_WATCH_MS);
 		const idle1 = await read();
 		drift = (await diff(idle0, idle1, [], '')).changed;
 		let fresh = true;
+		// The reading a control that left the page as it found it ended on: compared with the next control's first.
+		let lastRead: number | undefined;
+		// Per stateful control, the elements its first press changed: one that changed only what the page changes on its own is inert.
+		const moved = new Map<number, string[]>();
 		// Holders are named on the page as it loads, before any press changed their text.
 		const pending: [number, string][] = [];
 		const name = async () => {
@@ -522,9 +527,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			await frames();
 			await still();
 			const pressed = await control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)).catch(() => '');
+			// What changed since the last control's last reading, with no press between: the page's own (a clock), never a press's.
+			if (lastRead !== undefined) drift = [...new Set([...drift, ...(await diff(lastRead, await read(), [], pressed)).changed])];
 			await forget();
 			await announcedSince();
 			const states = [await read()];
+			lastRead = undefined;
 			const press = async (): Promise<boolean> =>
 				control.click({ timeout: 5000 }).then(
 					() => true,
@@ -558,6 +566,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const said: Change[] = announced.map((a) => ({ at: a.slice(0, a.indexOf(':')), what: 'announced', after: a.slice(a.indexOf(':') + 2) }));
 			if (!first.changed.length && !quick.changed.length && !said.length) {
 				controls.push({ ...base, shape: 'inert' });
+				lastRead = settled;
 				continue;
 			}
 			if (!first.changed.length) {
@@ -568,8 +577,14 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				const hovered = (await changesFrom(states[0]!, await read())).changed;
 				await still();
 				const own = quick.changed.filter((p) => !hovered.some((h) => p === h || p.startsWith(`${h}>`)));
-				if (!own.length && !said.length) controls.push({ ...base, shape: 'inert' });
-				else controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
+				if (!own.length && !said.length) {
+					controls.push({ ...base, shape: 'inert' });
+					lastRead = await read();
+				}
+				else {
+					if (!said.length) moved.set(controls.length, own);
+					controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
+				}
 				continue;
 			}
 			fresh = false;
@@ -597,8 +612,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			if (holder) pending.push([controls.length, holder]);
+			moved.set(controls.length, said.length ? [] : first.changed);
 			controls.push({ ...base, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
 		}
+		// What the page turned out to change on its own (learned between controls) is taken back from every press it fooled.
+		const own = (path: string) => drift.some((d) => path === d || path.startsWith(`${d}>`));
+		for (const [at, paths] of moved) if (paths.length && paths.every(own)) controls[at] = { ...controls[at]!, shape: 'inert', changes: [], states: 1 };
 		if (pending.length) {
 			await load();
 			await name();

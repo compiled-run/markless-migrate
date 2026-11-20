@@ -156,8 +156,8 @@ with no message. So convert also presses, on each page of the original at deskto
   options, comboboxes).
 
 Each press is read against the page before it: an element added, removed, shown or hidden, its text, an ARIA state or
-name, how it looks (display, visibility, opacity, colours, transform, size), focus moving to another element, the scroll,
-and any text a live region announced. A class, style or `data-` change that changes no look is not a change, nor an
+name, how it looks (display, visibility, opacity, colours, transform, size), focus moving to another element, a scroller's
+scroll, and any text a live region announced. A class, style or `data-` change that changes no look is not a change, nor an
 `animation-*` or `transition-*` style, an id reference renamed to the same element, a tooltip, hover or focus style (the
 pointer leaves and the control is focused before the first reading), or what changes on the page with no press at all
 (a clock). The page is read once its scripts stop (`scriptsStill`), and again once its timers have run: a page that came
