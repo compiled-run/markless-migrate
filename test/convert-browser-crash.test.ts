@@ -69,7 +69,7 @@ test('a browser that dies mid-shard is launched again: its pages are captured on
 		assert.ok(lines.some((l) => l.includes('/once') && /again/.test(l)), `the retried page is logged: ${lines.join('\n')}`);
 		assert.ok(lines.some((l) => l.includes('/always') && /failed/.test(l)), 'the page that failed twice is logged');
 		for (const route of ['/c', '/d']) assert.ok(lines.some((l) => l.startsWith('captured ') && l.endsWith(` ${route}`)), `${route}, after the crashes, is captured`);
-		assert.equal((await readdir(join(app, '.migrate', 'convert', 'visits'))).length, ROUTES.length, "each page's visit is saved");
+		assert.equal((await readdir(join(app, '.migrate', 'convert', 'visits'))).length, ROUTES.length - 1, "each page's visit is saved, but the failed page's: it is recorded again next time");
 	} finally {
 		await rm(app, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 	}

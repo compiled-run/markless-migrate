@@ -1,5 +1,5 @@
 import type { BrowserContext, Frame, Page, Request, Response } from 'playwright';
-import { unexpectedStatus } from './expected-status.ts';
+import { expectedStatus, unexpectedStatus } from './expected-status.ts';
 import type { Infrastructure, InfrastructureCause } from './types.ts';
 
 /** How long one page load may take before it is retried, then reported as an infrastructure failure. */
@@ -74,7 +74,7 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 	};
 	try {
 		const response = await loadWithRetry();
-		const refused = unexpectedStatus(url, response?.status() ?? 0);
+		const refused = expectedStatus.getStore() && unexpectedStatus(url, response?.status() ?? 0);
 		if (refused) throw new Error(refused);
 		return response;
 	} finally {
