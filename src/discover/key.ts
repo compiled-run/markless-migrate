@@ -9,8 +9,8 @@ export const KIND = 'discover';
 
 let version: Promise<string> | undefined;
 export function discoverVersion(): Promise<string> {
-	// convert.ts decides owners, spot checks and which counts stand: a change there is a change of what a kept recording means.
-	version ??= codeKey([fileURLToPath(new URL('./record.ts', import.meta.url)), fileURLToPath(new URL('./convert.ts', import.meta.url))]);
+	// shared.ts decides owners and spot checks: a change there is a change of what a kept recording means.
+	version ??= codeKey([fileURLToPath(new URL('./record.ts', import.meta.url)), fileURLToPath(new URL('./shared.ts', import.meta.url))]);
 	return version;
 }
 
