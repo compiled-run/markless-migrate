@@ -28,7 +28,7 @@ export interface RouteDiscovery {
 	/** Stateful on the original, ported by no recording: static markup on the port. */
 	readonly dead: readonly DeadControl[];
 	/** Pressed, but what the press did was not read: it wrote to a server (blocked), left the page, opened a window or a dialog. */
-	readonly unknown: readonly { readonly name: string; readonly shape: PressedControl['shape']; readonly why?: string }[];
+	readonly unknown: readonly { readonly name: string; readonly shape: PressedControl['shape']; readonly why?: string; /** Not pressed: the recorder that takes it by its own selector, which recorded nothing for it. */ readonly left?: 'reveals' | 'toggles' | 'grids' }[];
 	readonly excluded: Readonly<Record<string, number>>;
 	/** Stateful controls no recording ports but the written port has a handler for (a site part, its own): the effect is not compared. */
 	readonly handled?: readonly { readonly name: string; readonly by: string }[];
@@ -91,7 +91,8 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 	return lines;
 }
 
-const unknownLine = (u: RouteDiscovery['unknown'][number]): string => `${u.shape === 'blocked' ? 'writes to a server (blocked), state after press unknown' : u.shape}${u.why ? ` (${u.why})` : ''}`;
+const unknownLine = (u: RouteDiscovery['unknown'][number]): string =>
+	u.left === 'grids' ? `not ported and not pressed: ${u.why ?? ''}` : u.left ? `not ported and not pressed: the ${u.left} take it by their own selector (an ARIA state such as aria-expanded or aria-pressed) and recorded nothing for it` : `${u.shape === 'blocked' ? 'writes to a server (blocked), state after press unknown' : u.shape}${u.why ? ` (${u.why})` : ''}`;
 
 /** The pipeline job's summary: the count against the last run, then a row per route with dead controls. */
 export function discoveryMarkdown(report: DiscoveryReport | undefined): { readonly text: string; readonly failed: boolean; readonly missing: boolean } {
@@ -109,7 +110,7 @@ export function discoveryMarkdown(report: DiscoveryReport | undefined): { readon
 		lines.push(
 			'| Route | Dead | Handler, not compared | Not read | Controls | Cut |',
 			'|---|---|---|---|---|---|',
-			...routes.map(([route, r]) => `| ${route} | ${deadCount(r)} | ${r.handled?.length ?? 0} | ${r.unknown.length}${r.error ? ` (failed: ${cell(r.error)})` : ''} | ${cell([...r.dead.map((d) => `"${d.name}" ${d.shape}${d.repeated ? ` +${d.repeated} like it` : ''}`), ...(r.handled ?? []).map((h) => `"${h.name}" handler`), ...r.unknown.map((u) => `"${u.name}" ${u.shape}`)].join('; '))} | ${cell(cutsOf(r))} |`),
+			...routes.map(([route, r]) => `| ${route} | ${deadCount(r)} | ${r.handled?.length ?? 0} | ${r.unknown.length}${r.error ? ` (failed: ${cell(r.error)})` : ''} | ${cell([...r.dead.map((d) => `"${d.name}" ${d.shape}${d.repeated ? ` +${d.repeated} like it` : ''}`), ...(r.handled ?? []).map((h) => `"${h.name}" handler`), ...r.unknown.map((u) => `"${u.name}" ${u.left ? `not pressed (${u.left})` : u.shape}`)].join('; '))} | ${cell(cutsOf(r))} |`),
 		);
 	return { text: `${lines.join('\n')}\n`, failed: report.count > 0 || Boolean(report.incomplete?.length), missing: false };
 }

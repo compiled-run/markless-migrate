@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page, Request } from 'playwright';
 import { isLoopback, openPage, type OpenPage } from '../check/browser.ts';
 import { finishAnimations, settle as settleLoad } from '../check/capture.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
@@ -11,7 +11,7 @@ import { VIEWPORTS } from '../check/types.ts';
 import { captureEnv } from '../convert/capture-env.ts';
 import { SCRIPTS_STILL_CAP_MS } from '../convert/capture.ts';
 import { LATE_MARKS_MS, REVEAL_CLICKS } from '../convert/reveal.ts';
-import { requestsDone, scriptsStill, settle, STILL_MS, trackSettling } from '../convert/settle.ts';
+import { scriptsStill, settle, STILL_MS, trackSettling } from '../convert/settle.ts';
 import { SELECTOR as TOGGLE_CONTROLS } from '../convert/toggles.ts';
 
 /** How a press changed the page: back by itself, back on the next press, unchanged by the next press, or more states. */
@@ -508,6 +508,14 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	let movedTo: string | undefined;
 	let docId = '';
 	let writesSeen = 0;
+	// The page's open requests by when each started: a press waits only on those it started, never on one the page holds open.
+	const requests = new Map<Request, number>();
+	let lastEnded = 0;
+	const pressedRequestsDone = async (since: number) => {
+		const t0 = Date.now();
+		const open = () => [...requests.values()].some((t) => t >= since);
+		while (Date.now() - t0 < SCRIPTS_STILL_CAP_MS && (open() || (lastEnded >= since && Date.now() - lastEnded < STILL_MS))) await at().waitForTimeout(20);
+	};
 	const at = (): Page => {
 		if (!page) throw new Error('discovery: no page open');
 		return page;
@@ -518,6 +526,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		const opened = session;
 		page = opened.page;
 		writesSeen = 0;
+		requests.clear();
 		await trackSettling(opened.context);
 		await opened.context.addInitScript(installReader);
 		await opened.context.addInitScript(holdWrites);
@@ -526,6 +535,10 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			stop('window', other.url());
 			other.close().catch(() => {});
 		});
+		opened.page.on('request', (r) => void requests.set(r, Date.now()));
+		const ended = (r: Request) => void (requests.delete(r) && (lastEnded = Date.now()));
+		opened.page.on('requestfinished', ended);
+		opened.page.on('requestfailed', ended);
 		opened.page.on('download', (d) => (stop('download', d.suggestedFilename()), d.cancel().catch(() => {})));
 		opened.page.on('dialog', (d) => (stop('dialog', d.message().slice(0, 80)), d.dismiss().catch(() => {})));
 		opened.page.on('framenavigated', (frame) => {
@@ -661,12 +674,13 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const states = [await read()];
 			lastRead = undefined;
 			const press = async (): Promise<boolean> => {
+				const since = Date.now();
 				const ok = await control.click({ timeout: 5000 }).then(
 					() => true,
 					() => false,
 				);
 				// What a press fetched (a chunk, a GET it waits on) comes before the page is read.
-				await requestsDone(at(), SCRIPTS_STILL_CAP_MS).catch(() => {});
+				await pressedRequestsDone(since).catch(() => {});
 				return ok;
 			};
 			const changesFrom = (a: number, b: number) => diff(a, b, drift, pressed);
