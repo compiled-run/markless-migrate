@@ -1,6 +1,4 @@
-// The checker's version in a `check --reuse` key: the code the check command runs, read from the module graph (yuku's
-// analyzer over src/cli.ts, then the declaration closure of what its `check` branch references), the environment variables
-// that code reads, and of parts/ only the selectors the widget probes read. Another command's code is not in it.
+// The checker's part of a `check --reuse` key: the code the check command runs, from yuku's analyzer over src/cli.ts and its declaration closure.
 import { createHash, randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
@@ -8,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { analyze } from 'yuku/analyzer';
 import { ClosureProject, type Span } from '../closure-reads.ts';
 import { ROOT } from '../code-closure.ts';
-import { declarationClosure, type DataDir } from '../declaration-closure.ts';
-import type { N } from '../source/js.ts';
+import { declarationClosure, type ClosureStatement, type DataDir } from '../declaration-closure.ts';
+import type { Node, SwitchCase } from 'yuku';
 import { partSelectors } from './probe-parts.ts';
 import { psiKey } from './psi.ts';
 
@@ -54,53 +52,48 @@ const DATA_DIRS: readonly DataDir[] = [
 export interface CheckerVersion {
 	readonly version: string;
 	readonly units: readonly string[];
+	readonly statements: readonly ClosureStatement[];
 	readonly env: readonly string[];
 	/** What could not be attributed: the version is then new on every call, and no result is reused. */
 	readonly problems: readonly string[];
 }
 
 const ENDS = new Set(['ReturnStatement', 'ThrowStatement', 'BreakStatement']);
-const ends = (statements: readonly N[]): boolean => {
+const ends = (statements: readonly Node[]): boolean => {
 	const last = statements[statements.length - 1];
-	return !!last && (ENDS.has(last.type) || (last.type === 'BlockStatement' && ends(last.body as N[])));
+	return !!last && (ENDS.has(last.type) || (last.type === 'BlockStatement' && ends(last.body)));
 };
 
 /** The statements of cli.ts's `main` the check command runs: those before its command switch, and the `check` case. */
-export async function checkCommand(file = CLI): Promise<{ readonly statements: readonly N[]; readonly names: readonly string[]; readonly runs: readonly N[]; readonly problems: readonly string[] }> {
-	const source = await readFile(file, 'utf8');
-	const m = analyze(source, { path: file } as Parameters<typeof analyze>[1]);
-	const main = m.rootScope.find('main')?.declarations.map((d) => m.parentOf(d) as N | null).find((n) => n?.type === 'FunctionDeclaration');
-	const body = (main?.body?.body ?? []) as N[];
-	const at = body.findIndex((s) => s.type === 'SwitchStatement' && (s.cases as N[]).some((c) => c.test?.type === 'Literal' && c.test.value === 'check'));
-	if (!main || at < 0) return { statements: [], names: [], runs: [], problems: [`${relative(ROOT, file)}: no main with a switch over the commands that has a check case`] };
-	const cases = body[at]!.cases as N[];
-	const first = cases.findIndex((c) => c.test?.value === 'check');
-	const statements: N[] = [...body.slice(0, at), body[at]!.discriminant];
+export async function checkCommand(file = CLI): Promise<{ readonly statements: readonly Node[]; readonly names: readonly string[]; readonly runs: readonly Node[]; readonly problems: readonly string[] }> {
+	const m = analyze(await readFile(file, 'utf8'), { path: file });
+	const declared = m.rootScope.find('main')?.declarations[0];
+	const main = declared ? m.parentOf(declared) : null;
+	const body = main?.type === 'FunctionDeclaration' ? (main.body?.body ?? []) : [];
+	const isCheck = (c: SwitchCase) => c.test?.type === 'Literal' && c.test.value === 'check';
+	const at = body.findIndex((st) => st.type === 'SwitchStatement' && st.cases.some(isCheck));
+	const command = body[at];
+	if (main?.type !== 'FunctionDeclaration' || command?.type !== 'SwitchStatement') return { statements: [], names: [], runs: [], problems: [`${relative(ROOT, file)}: no main with a switch over the commands that has a check case`] };
+	const calls = (root: Node, binding: { readonly id: number }) => m.references.some((r) => r.binding?.id === binding.id && r.node.start >= root.start && r.node.end <= root.end);
+	const mainBinding = main.id ? m.bindingOf(main.id) : null;
+	const statements: Node[] = [...body.slice(0, at), command.discriminant];
 	// What runs main when cli.ts loads: kept, with main itself left to the slice of it the check command runs.
-	const runs = (m.ast.body as unknown as N[]).filter((s) => {
-		let calls = false;
-		m.walk({ Identifier(_n, ctx) { if (ctx.reference?.binding?.declarations.includes(main.id)) calls = true; } }, s as never);
-		return calls && s !== main;
-	});
+	const runs = mainBinding ? m.ast.body.filter((st) => st !== main && calls(st, mainBinding)) : [];
 	statements.push(...runs);
 	const problems: string[] = [];
-	for (let i = first; i < cases.length; i++) {
-		statements.push(...(cases[i]!.consequent as N[]));
-		if (ends(cases[i]!.consequent as N[])) break;
+	const cases = command.cases;
+	for (let i = cases.findIndex(isCheck); i < cases.length; i++) {
+		const consequent = cases[i]?.consequent ?? [];
+		statements.push(...consequent);
+		if (ends(consequent)) break;
 		if (i === cases.length - 1) problems.push(`${relative(ROOT, file)}: the check case runs off the end of the switch`);
 	}
 	const names = new Set<string>();
-	for (const s of statements)
-		m.walk(
-			{
-				Identifier(_node, ctx) {
-					const b = ctx.reference?.binding;
-					if (!ctx.reference || ctx.reference.inTypePosition || !b || b.scope.id !== m.rootScope.id || b.declarations.includes(main.id)) return;
-					names.add(b.name);
-				},
-			},
-			s as never,
-		);
+	for (const ref of m.references) {
+		const b = ref.binding;
+		if (ref.inTypePosition || !b || b.scope.id !== m.rootScope.id || b.id === mainBinding?.id || !statements.some((st) => ref.node.start >= st.start && ref.node.end <= st.end)) continue;
+		names.add(b.name);
+	}
 	return { statements, names: [...names].sort(), runs, problems };
 }
 
@@ -125,5 +118,5 @@ export async function checkerVersion(): Promise<CheckerVersion> {
 	// The one whole-environment read that can change a result: whether PageSpeed Insights runs.
 	part('psi key', psiKey() ? 'found' : 'none');
 	if (problems.length) part('problems', `${problems.join('\n')}\n${randomUUID()}`);
-	return { version: hash.digest('base64url').slice(0, 32), units: closure.units, env: [...found.env].sort(), problems: [...new Set(problems)].sort() };
+	return { version: hash.digest('base64url').slice(0, 32), units: closure.units, statements: closure.statements, env: [...found.env].sort(), problems: [...new Set(problems)].sort() };
 }

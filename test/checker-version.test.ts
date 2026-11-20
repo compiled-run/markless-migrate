@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { ROOT } from '../src/code-closure.ts';
 import { checkCommand, checkerVersion, type CheckerVersion } from '../src/check/checker-version.ts';
@@ -15,9 +15,12 @@ test("the check command's code is attributed whole: what runs it, its branch of 
 	assert.ok(!command.names.includes('planCommand') && !command.names.includes('main'));
 	const v = await checkerVersion();
 	assert.deepEqual(v.problems, []);
-	const files = new Set(v.units.map((u) => u.slice(0, u.lastIndexOf(':'))));
+	const files = new Set(v.statements.map((st) => relative(ROOT, st.file)));
 	for (const f of ['src/cli.ts', 'src/check/run.ts', 'src/check/journeys.ts']) assert.ok(files.has(f), f);
-	for (const f of ['src/convert/index.ts', 'src/convert/reveal.ts', 'src/plan/command.ts', 'src/dev/index.ts']) assert.ok(!files.has(f), `${f} is another command's code`);
+	for (const f of ['src/convert/reveal.ts', 'src/plan/command.ts', 'src/dev/index.ts']) assert.ok(!files.has(f), `${f} is another command's code`);
+	// cli.ts imports convert, so loading it runs index.ts's load-time initializers; convert itself is not run.
+	const index = v.statements.filter((st) => relative(ROOT, st.file) === 'src/convert/index.ts').map((st) => st.name);
+	assert.ok(!index.includes('convert'), `index.ts reached: ${index.join(', ')}`);
 });
 
 test("editing code the check command runs changes the checker's version; the converter, another command, or a part's code with the same selectors does not", { timeout: 600_000 }, async () => {
