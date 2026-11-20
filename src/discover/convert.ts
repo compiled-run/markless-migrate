@@ -56,6 +56,8 @@ export interface SceneHolder {
 	readonly replaces?: string;
 	/** How many of its controls discovery found dead: each may lead to a state of its own, which the recording makes room for. */
 	readonly controls: number;
+	/** The labels the scene uses its controls by: the dead controls' own and what their presses relabel them to, never a bystander's. */
+	readonly labels: readonly string[];
 }
 
 /** `body>div2>main1` as `body > div:nth-of-type(2) > main:nth-of-type(1)`. */
@@ -69,6 +71,9 @@ export const pathSelector = (path: string): string =>
 		})
 		.join(' > ');
 
+// A scene snapshots its demo on every frame of every use: a page-sized holder is a page, not a demo.
+const MAX_DEMO_ELEMENTS = 600;
+
 // A press that only moves focus or the scroll (and the rings that focus draws) changes no markup a scene could replay: a part's job.
 const markupChanged = (c: PressedControl) => {
 	const focus = (c.changes ?? []).some((x) => x.what === 'focus');
@@ -78,6 +83,12 @@ const markupChanged = (c: PressedControl) => {
 // What a scene of a page-level demo is recorded for: a dead control whose press changed markup and stayed changed. A
 // transient one (a "Copied" mark, a spinner) is most often a part's, which the written port is asked about afterwards.
 const sceneWorthy = (c: PressedControl, claims: Claims) => STATEFUL.has(c.shape) && c.shape !== 'transient' && !claimed(c, claims) && markupChanged(c);
+
+// A control's label and the labels its own press gives it (Start Listening, then Stop Listening).
+const labelsOf = (c: PressedControl) => [c.name, ...(c.changes ?? []).filter((x) => x.what === 'text' && x.before === c.name && x.after).map((x) => x.after!)];
+
+/** The text filter a scene's uses take: the labels, whole, as captureScenes matches a control's label. */
+export const labelFilter = (labels: readonly string[]): string => `^(${[...new Set(labels)].map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`;
 
 /**
  * The elements whose controls a scene should record: a recorded demo the controls sit in (its listing left them out), or the
@@ -90,15 +101,16 @@ export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[
 		if (i >= 0) {
 			const scene = claims.scenes.find((s) => s.holder === c.ancestors[i])!;
 			const path = c.path!.split('>').slice(0, -(i + 1)).join('>');
-			return [{ path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder?.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1 }];
+			return [{ path, selector: pathSelector(path), at: scene.holder, canvas: Boolean(c.holder?.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1, labels: labelsOf(c) }];
 		}
-		if (!c.holder || c.holder.path === 'body') return [];
-		return [{ path: c.holder.path, selector: pathSelector(c.holder.path), at: c.holder.at, canvas: Boolean(c.holder.canvas), listed: SCENE_CONTROLS, controls: 1 }];
+		// A demo holding an ARIA widget is the widget's part's to drive: a scene replaying its markup would fight it.
+		if (!c.holder || c.holder.path === 'body' || (c.holder.size ?? 0) > MAX_DEMO_ELEMENTS || c.holder.widget) return [];
+		return [{ path: c.holder.path, selector: pathSelector(c.holder.path), at: c.holder.at, canvas: Boolean(c.holder.canvas), listed: SCENE_CONTROLS, controls: 1, labels: labelsOf(c) }];
 	});
 	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) {
 		const outer = out.findIndex((o) => h.path === o.path || h.path.startsWith(`${o.path}>`));
 		if (outer < 0) out.push(h);
-		else out[outer] = { ...out[outer]!, controls: out[outer]!.controls + 1 };
+		else out[outer] = { ...out[outer]!, controls: out[outer]!.controls + 1, labels: [...out[outer]!.labels, ...h.labels] };
 	}
 	return out;
 }
@@ -109,7 +121,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims, demos: read
 	const notes = [
 		...demos.filter((d) => d.canvas).map((d) => `a canvas in ${d.at.split('#')[0]!.split('|').slice(0, 2).join('|')} draws from the page's own script, which the port does not keep: its drawing is not ported, only its markup's states`),
 		...mine.filter((c) => STATEFUL.has(c.shape) && !markupChanged(c)).map((c) => `"${c.name}" only moves focus or the scroll: no scene ports that, a part must`),
-		...(demos.length ? mine.filter((c) => sceneWorthy(c, claims) && !demos.some((d) => c.path?.startsWith(`${d.path}>`))).map((c) => `"${c.name}" got no scene: what its press changed reaches across the page`) : []),
+		...(demos.length ? mine.filter((c) => sceneWorthy(c, claims) && !demos.some((d) => c.path?.startsWith(`${d.path}>`))).map((c) => (c.holder?.widget ? `"${c.name}" got no scene: what its press changed holds a ${c.holder.widget}, which a part drives` : `"${c.name}" got no scene: what its press changed reaches across the page${c.holder?.size ? ` (${c.holder.size} elements)` : ''}`)) : []),
 	];
 	return {
 		...(notes.length ? { notes } : {}),

@@ -10,7 +10,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
-import { discoverRecorder, draftReport, routeDiscovery, sceneHolders, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
+import { discoverRecorder, draftReport, labelFilter, routeDiscovery, sceneHolders, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -1869,7 +1869,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// the element around each control and all its press changed.
 		const demos = [...discovering.recorded].flatMap(([route, facts]) => (failed.has(route) ? [] : sceneHolders(facts, claimsOf(route)).map((holder) => [route, holder] as const)));
 		for (const [route, holder] of demos) log(`  recording the uses of discovered controls on ${route} in ${holder.at.split('#')[0]!.split('|').slice(0, 2).join('|')}${holder.replaces ? ', in place of its recorded demo' : ''}`);
-		const demoScenes = await eachLimited(limit, demos, async ([route, holder]) => guarded(route, ['scenes'], async (browser) => captureScenes(browser, options.old, route, await atFor(route, 'scenes'), holder.listed, { ...SCENE_LIMITS, states: Math.max(SCENE_LIMITS.states, 2 + 2 * holder.controls) }, '', holder.selector)));
+		const demoScenes = await eachLimited(limit, demos, async ([route, holder]) => guarded(route, ['scenes'], async (browser) => captureScenes(browser, options.old, route, await atFor(route, 'scenes'), holder.listed, { ...SCENE_LIMITS, states: Math.max(SCENE_LIMITS.states, 2 + 2 * holder.controls) }, labelFilter(holder.labels), holder.selector)));
 		demos.forEach(([route, holder], i) => {
 			const got = demoScenes[i]?.scenes ?? [];
 			if (!got.length) return;
