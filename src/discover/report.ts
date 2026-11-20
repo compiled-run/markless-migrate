@@ -44,6 +44,8 @@ export interface RouteDiscovery {
 	/** Controls counted from a group a spot check found wrong this run: the route is not looked at in full. */
 	readonly untrusted?: number;
 	readonly error?: string;
+	/** What a scene of a page-level demo could not port: a script-drawn canvas, a press that only moves focus. */
+	readonly notes?: readonly string[];
 }
 
 export interface DiscoveryReport {
@@ -100,6 +102,7 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 		if (r.error) lines.push(`  discovery on ${route} stopped: ${r.error}`);
 		const cut = cutsOf(r);
 		if (cut) lines.push(`  cut on ${route}: ${cut}`);
+		for (const n of r.notes ?? []) lines.push(`  on ${route}: ${n}`);
 	}
 	for (const t of report.thrown ?? []) lines.push(`  the port threw outside a browser while asked: ${t}`);
 	for (const n of report.before?.added ?? []) lines.push(`  new since the last run: ${n}`);

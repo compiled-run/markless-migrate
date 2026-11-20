@@ -232,7 +232,7 @@ test('the same control on a later route is counted from the first route that sho
 	assert.equal(by(second, 'Nothing')?.sameAs, undefined, 'an inert result outside the layout is never counted');
 	assert.equal(by(second, 'chrome-second')?.sameAs, undefined, "a page's own control is pressed");
 	assert.ok(second);
-	assert.match(routeDiscovery(second, { controls: new Set(), holders: new Set(), scenes: [], names: new Set() }).dead.find((d) => d.name === 'Copy')?.what ?? '', /same as \/chrome-first/);
+	assert.match(routeDiscovery(second, { controls: new Set(), holders: new Set(), scenes: [], names: new Set(), owned: new Map() }).dead.find((d) => d.name === 'Copy')?.what ?? '', /same as \/chrome-first/);
 	assert.equal(by(odd, 'Copy')?.sameAs, undefined, 'the 10th route presses one of each group');
 	assert.deepEqual(odd?.spotMismatch?.map((m) => [m.name, m.owner]), [['Copy', '/chrome-first']], 'its "Done" is not the owner\'s "Copied"');
 	// Read back: the count still matches the owner's result; the spot route is recorded again and its group is pressed everywhere.
