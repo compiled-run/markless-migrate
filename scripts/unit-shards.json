@@ -1,6 +1,7 @@
 {
 	"budgetSeconds": 960,
 	"files": {
+		"test/built-classes.test.ts": {"shard":5,"seconds":1},
 		"test/a11y-csp.test.ts": {"shard":1,"seconds":5},
 		"test/accepted.test.ts": {"shard":3,"seconds":1},
 		"test/alike-clickables.test.ts": {"shard":4,"seconds":56},

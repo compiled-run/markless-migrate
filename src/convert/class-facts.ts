@@ -1,7 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { parse } from 'yuku';
-import { parse as parseTsrx } from 'yuku-tsrx';
+import { readdir, readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { builtStarts, classFacts, MODULE, parseModule, withBuilt, type ClassFacts } from './built-classes.ts';
 import { classTokens } from './used-css.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree from yuku and yuku-tsrx, walked generically
@@ -14,6 +13,8 @@ interface ModuleFacts {
 	readonly elements: readonly string[];
 	/** The app modules it imports, statically or dynamically. */
 	readonly imports: readonly string[];
+	/** What its templates say about the classes they build (built-classes.ts). */
+	readonly classes?: ClassFacts;
 }
 
 function literal(node: Node): Node | undefined {
@@ -24,12 +25,8 @@ function literal(node: Node): Node | undefined {
 }
 
 function factsOf(file: string, text: string): ModuleFacts {
-	let program: Node;
-	try {
-		program = file.endsWith('.tsrx') ? parseTsrx(text, { lang: 'tsx' }).program : parse(text, { path: file, sourceType: 'module' }).program;
-	} catch {
-		return { strings: [text], elements: [], imports: [] };
-	}
+	const program: Node = parseModule(file, text);
+	if (!program) return { strings: [text], elements: [], imports: [] };
 	const markup = new Set<Node>();
 	const strings: string[] = [];
 	const imports: string[] = [];
@@ -54,15 +51,16 @@ function factsOf(file: string, text: string): ModuleFacts {
 		for (const key of Object.keys(node)) if (key !== 'parent' && typeof node[key] === 'object') visit(node[key]);
 	};
 	visit(program);
-	return { strings, elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
+	return { strings, ...(MODULE.test(file) ? { classes: classFacts(program) } : {}), elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
 }
 
 /**
  * What a page's code says about classes, over every app module the entries load: `elements`, each host element's literal
  * class attribute (only that element carries it), and `floating`, the tokens of every other string, which code can put on
- * any element. A class built by joining strings is not seen, as usedCss does not see it either.
+ * any element, with every class a template literal builds (`style-${name}`: each class starting `style-`). A class built
+ * by joining strings otherwise is not seen, as usedCss does not see it either.
  */
-export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: Set<string> }> {
+export function codeClasses(app: string): (entries: readonly string[]) => Promise<{ elements: string[][]; floating: { has(token: string): boolean } }> {
 	// Modules other modules import are read once; an entry (a page, often megabytes) is read for its own call and let go.
 	const modules = new Map<string, Promise<ModuleFacts | undefined>>();
 	const load = (file: string) => read(file).then((found) => found && factsOf(found.file, found.text));
@@ -79,11 +77,14 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 		}
 		return undefined;
 	};
+	let lib: Promise<string[]> | undefined;
+	const libModules = () => (lib ??= readdir(join(app, 'lib'), { recursive: true, withFileTypes: true }).then((es) => es.filter((e) => e.isFile() && MODULE.test(e.name)).map((e) => join(e.parentPath, e.name)), () => []));
 	return async (entries) => {
 		const seen = new Set<string>();
 		const roots = new Set(entries.map((e) => resolve(app, e)));
 		const queue = [...roots];
 		const strings: string[] = [];
+		const classes: ClassFacts[] = [];
 		const elements: string[][] = [];
 		while (queue.length) {
 			const file = queue.pop()!;
@@ -92,10 +93,16 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 			const f = await facts(file, roots.has(file));
 			if (!f) continue;
 			strings.push(...f.strings);
+			if (f.classes) classes.push(f.classes);
 			for (const c of f.elements) elements.push(c.split(/\s+/).filter(Boolean));
 			queue.push(...f.imports);
 		}
-		return { elements, floating: classTokens(strings) };
+		// Every lib/ module counts, as usedStylesheets counts it: the parts and the site's code run on every page.
+		for (const file of await libModules()) if (!seen.has(file)) {
+			const f = await facts(file, false);
+			if (f?.classes) classes.push(f.classes);
+		}
+		return { elements, floating: withBuilt(classTokens(strings), builtStarts(classes)) };
 	};
 }
 

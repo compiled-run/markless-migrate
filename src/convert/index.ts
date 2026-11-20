@@ -248,6 +248,8 @@ export interface ConvertReport {
 	readonly endpoints: readonly EndpointPort[];
 	/** Library parts the source renders that no port implements yet, with how many routes show them (only where a route renders the part itself, not in a shared region). */
 	readonly unported: readonly { readonly part: string; readonly routes: number }[];
+	/** Where the app's code builds a class with no fixed start (`${size}-text`, `[a, b].join('-')`): the stylesheet cut cannot see those classes, so their rules may be cut. */
+	readonly unseenClassBuilders?: readonly string[];
 }
 
 /** The page file a route is served from: `/` is `pages/index.tsrx`, a path with routes under it is its folder's index. */
@@ -2559,6 +2561,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const bodyCssAppended = new Map<string, { readonly from: string; readonly extra: string }>();
 	const folded = await appendBodyCss(publicDir, prepared.values(), bodyCssAppended);
 	if (folded) log(`stylesheets: ${folded} pages' own <style> elements appended to their last stylesheet, not fetched apart`);
+	if (used.unseen.length) log(`stylesheets: ${used.unseen.length} places build a class with no fixed start, which the cut cannot see (their rules may be cut): ${used.unseen.join(', ')}`);
 	if (used.sheets) log(`stylesheets: each page links only the rules its markup can match, ${used.sheets} cut sheets (${Math.round(used.bytes[1] / 1024)} of ${Math.round(used.bytes[0] / 1024)} kB across the pages)`);
 	const importedUrls: string[] = [];
 	// A route's own stylesheets its page module could not import with its other routes': linked first in the body.
@@ -2679,6 +2682,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		failedCaptures: failedCaptures.length,
 		endpoints,
 		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
+		...(used.unseen.length ? { unseenClassBuilders: used.unseen } : {}),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 	if (!options.only?.length) await writeFile(join(state, 'convert', CONVERT_INPUTS), JSON.stringify({ pageOrderFrom: options.pageOrderFrom ?? null } satisfies ConvertInputs));
@@ -2693,5 +2697,6 @@ export function summarizeConvert(report: ConvertReport): string {
 	for (const e of report.endpoints) lines.push(`  endpoint ${e.route}: ${e.how === 'handler' ? 'ported' : e.how === 'prerendered' ? 'ported, run at convert time' : e.how === 'build' ? 'NOT PORTED, served from the old build' : 'missing'} (${e.reason})`);
 	if (report.unported.length) lines.push(`Library parts no port implements yet (${report.unported.length}):`, ...report.unported.slice(0, 12).map((u) => `  ${u.part}: ${u.routes} routes`));
 	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
+	if (report.unseenClassBuilders?.length) lines.push(`Classes built with no fixed start, which the stylesheet cut cannot see (${report.unseenClassBuilders.length}): ${report.unseenClassBuilders.slice(0, 12).join(', ')}`);
 	return `${lines.join('\n')}\n`;
 }

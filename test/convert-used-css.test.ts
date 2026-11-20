@@ -147,6 +147,51 @@ test('a page and the pages it shows in frames link one cut of a stylesheet, hold
 	}
 });
 
+test("a class the site's code builds from a template (/create's `style-${params.style}` on the frame's body) keeps the rules for every class with that start", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'mm-used-css-'));
+	const files: Record<string, string> = {
+		'document.tsrx': '<body class="style-nova"></body>',
+		'lib/site/preview.ts': 'export const bodyClasses = (p: { style: string }) => [`style-${p.style}`];\ndocument.body.classList.add(...bodyClasses({ style: location.search }));\ndocument.body.classList.add(`${location.hash}-size`);',
+		'pages/preview.tsrx': '<div class="cn-card"></div>',
+		'public/site.css': '.style-nova .cn-card{a:1}.style-mira .cn-card{a:2}.mira .cn-card{a:3}.nowhere{a:4}',
+	};
+	for (const [file, text] of Object.entries(files)) {
+		await mkdir(dirname(join(app, file)), { recursive: true });
+		await writeFile(join(app, file), text);
+	}
+	try {
+		const out = await usedStylesheets(app, new Map([['/preview', { page: 'pages/preview.tsrx', head: [{ tag: 'link', attrs: { rel: 'stylesheet', href: '/site.css' } as Record<string, string> }], texts: [] }]]));
+		assert.equal(await readFile(join(app, 'public', out.heads.get('/preview')![0]!.attrs.href!), 'utf8'), '.style-nova .cn-card{a:1}.style-mira .cn-card{a:2}');
+		assert.deepEqual(out.unseen, ['lib/site/preview.ts:3'], 'a class with no fixed start is named where it is built');
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
+});
+
+test("a class a page's own module builds keeps its rules too, as the cascade check counts it", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'mm-used-css-'));
+	const files: Record<string, string> = {
+		'document.tsrx': '<body></body>',
+		'components/own/tone.tsx': 'export const tone = (t: string) => document.body.classList.add(`tone-${t}`);',
+		'pages/a.tsrx': "import { tone } from '../components/own/tone.tsx';\n<div class=\"card\"></div>",
+		'pages/b.tsrx': '<div class="card"></div>',
+		'public/site.css': '.tone-red .card{a:1}.card{a:2}',
+	};
+	for (const [file, text] of Object.entries(files)) {
+		await mkdir(dirname(join(app, file)), { recursive: true });
+		await writeFile(join(app, file), text);
+	}
+	try {
+		const head = [{ tag: 'link', attrs: { rel: 'stylesheet', href: '/site.css' } as Record<string, string> }];
+		const out = await usedStylesheets(app, new Map([['/a', { page: 'pages/a.tsrx', head, texts: [] }], ['/b', { page: 'pages/b.tsrx', head, texts: [] }]]));
+		const cut = async (route: string) => { const href = out.heads.get(route)![0]!.attrs.href!; return href === '/site.css' ? 'uncut' : readFile(join(app, 'public', href), 'utf8'); };
+		assert.equal(await cut('/a'), 'uncut', 'the page whose module builds tone-… keeps every rule');
+		assert.equal(await cut('/b'), '.card{a:2}');
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
+});
+
 test("a late face's @font-face leaves the page's stylesheet, its url() resolved from the stylesheet's path", () => {
 	const sheet = '@font-face{font-family:Geist;src:url(../media/geist.woff2)format("woff2");font-display:swap}@layer base{@font-face{font-family:"Noto Sans Arabic";font-style:normal;font-weight:100 900;src:url(../media/arabic.woff2)format("woff2");unicode-range:U+6??,U+750-77F;font-display:swap}}.flex{display:flex}';
 	const out = usedCss(sheet, classTokens(['flex']), { sheet: '/_next/static/chunks/site.css', withheld: new Set(['/_next/static/media/arabic.woff2']) });

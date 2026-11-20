@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { parse } from 'yuku-css';
+import { builtStarts, classFacts, MODULE, parseModule, withBuilt, type ClassFacts } from './built-classes.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: css-tree's AST, walked generically
 type Node = any;
@@ -156,11 +157,11 @@ async function filesUnder(dir: string): Promise<string[]> {
 /**
  * Each page's same-origin stylesheets, cut to the rules its markup can match (usedCss): the page module and what it
  * imports, the Document and what it imports, the served layers they name, and every module under lib/ (the parts and
- * the site's own code, which set classes from script). The cut sheet is written beside the original, so its relative
+ * the site's own code, which set classes from script, with every class their template literals build). The cut sheet is written beside the original, so its relative
  * url()s still resolve, and the page's link names it. `texts` is what else the page's markup holds (its <html> and <body>
  * attributes, its head). Returns the pages' head tags with the new hrefs.
  */
-export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; written: string[]; bytes: [number, number]; cuts: Map<string, Cut> }> {
+export async function usedStylesheets<T extends Tag>(app: string, heads: ReadonlyMap<string, { readonly page: string; readonly head: readonly T[]; readonly texts: readonly string[]; readonly withheld?: readonly string[] }>): Promise<{ heads: Map<string, T[]>; sheets: number; written: string[]; bytes: [number, number]; cuts: Map<string, Cut>; unseen: string[] }> {
 	const publicDir = join(app, 'public');
 	const texts = new Map<string, Promise<string>>();
 	const read = (file: string) => {
@@ -184,17 +185,25 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 	const shared = new Set<string>(await filesUnder(join(app, 'lib')));
 	await closure('document.tsrx', shared);
 	const sharedTokens = classTokens(await Promise.all([...shared].map(read)));
+	// The classes the code builds from templates, read from each module's syntax tree once.
+	const facts = new Map<string, Promise<ClassFacts | undefined>>();
+	const factsOf = (file: string) => {
+		if (!facts.has(file)) facts.set(file, MODULE.test(file) ? read(file).then((text) => { const program = parseModule(file, text); return program && classFacts(program); }) : Promise.resolve(undefined));
+		return facts.get(file)!;
+	};
+	const factsIn = async (files: Iterable<string>) => (await Promise.all([...files].map(factsOf))).filter((f): f is ClassFacts => Boolean(f));
+	const sharedFacts = await factsIn(shared);
 	const sheets = new Map<string, { css: string; ast: Node | undefined }>();
 	const written = new Map<string, string>();
 	const cuts = new Map<string, Cut>();
 	const bytes: [number, number] = [0, 0];
 	const out = new Map<string, T[]>();
-	const ownTexts = async (route: string) => {
-		const { page, texts: extra } = heads.get(route)!;
+	const ownFiles = async (route: string) => {
 		const own = new Set<string>();
-		await closure(page, own);
-		return [...extra, ...(await Promise.all([...own].filter((f) => !shared.has(f)).map(read)))];
+		await closure(heads.get(route)!.page, own);
+		return [...own].filter((f) => !shared.has(f));
 	};
+	const ownTexts = async (route: string) => [...heads.get(route)!.texts, ...(await Promise.all((await ownFiles(route)).map(read)))];
 	// A page and the pages it frames are one group with one cut, which the frames then fetch once.
 	const groupOf = new Map<string, string>();
 	const find = (route: string): string => {
@@ -221,7 +230,8 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 		const group = members.has(find(route)) ? find(route) : undefined;
 		if (group && !groupTokens.has(group)) groupTokens.set(group, Promise.all(members.get(group)!.map(ownTexts)).then((texts) => classTokens(texts.flat())));
 		const ownTokens = group ? await groupTokens.get(group)! : classTokens(await ownTexts(route));
-		const tokens = { has: (t: string) => sharedTokens.has(t) || ownTokens.has(t) };
+		const ownFacts = await factsIn((await Promise.all((group ? members.get(group)! : [route]).map(ownFiles))).flat());
+		const tokens = withBuilt({ has: (t: string) => sharedTokens.has(t) || ownTokens.has(t) }, builtStarts([...sharedFacts, ...ownFacts]));
 		const tags: T[] = [];
 		for (const tag of head) {
 			const href = tag.attrs.href;
@@ -257,5 +267,13 @@ export async function usedStylesheets<T extends Tag>(app: string, heads: Readonl
 		}
 		out.set(route, tags);
 	}
-	return { heads: out, sheets: written.size, written: [...written.keys()], bytes, cuts };
+	// Where code builds a class with no fixed start: the cut cannot see those classes.
+	const unseen: string[] = [];
+	for (const [file, got] of facts) {
+		const f = await got;
+		if (!f?.unseen.length) continue;
+		const text = await read(file);
+		for (const at of f.unseen) unseen.push(`${relative(app, file)}:${text.slice(0, at).split('\n').length}`);
+	}
+	return { heads: out, sheets: written.size, written: [...written.keys()], bytes, cuts, unseen: unseen.sort() };
 }
