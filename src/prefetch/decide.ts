@@ -1,5 +1,4 @@
-// The port's prefetch setting, from how the original fetched pages ahead (facts.ts): at least as eager wherever the
-// original prefetches, on the same networks; intent only where it prefetches nothing. Never more eager on its own.
+// The port's prefetch setting: at least as eager as the original wherever it fetches ahead, on the same networks, never more.
 import { CONDITIONS, targetOf, type Condition, type PrefetchFacts, type Trigger } from './facts.ts';
 
 /** Which networks a router trigger runs on: every one but Save-Data, only links judged fast, or none. */
@@ -135,7 +134,6 @@ export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDeci
 		const told = pages.map((p) => fires(p, trigger)).filter((f): f is boolean => f !== undefined);
 		if (!told.length) return [];
 		const on = told.filter(Boolean).length;
-		// A trigger counts for the site when it fired on most pages that could tell.
 		return on * 2 > told.length ? [{ trigger, pages: on, of: told.length, networks: networksOf(pages, trigger) }] : [{ trigger, pages: on, of: told.length, networks: 'none' as const }];
 	});
 	const firing = (t: Trigger) => original.find((o) => o.trigger === t && o.networks !== 'none');
@@ -145,7 +143,6 @@ export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDeci
 		return !o ? 'none' : o.networks === 'untested' ? 'all' : o.networks;
 	};
 	const reasons: PrefetchReason[] = [];
-	// Fetching once the visitor scrolls is nearest to fetching what comes into view; a timer after load, to fetching at load.
 	let viewport = wider(reach('viewport'), reach('scroll'));
 	let idle = reach('visible');
 	const load = wider(reach('load'), reach('timer'));
@@ -154,7 +151,6 @@ export function decidePrefetch(recorded: readonly PrefetchFacts[]): PrefetchDeci
 		idle = wider(idle, load);
 		viewport = wider(viewport, load);
 	}
-	// What comes into view is fetched by viewport, links on screen at load included: idle would add nothing.
 	if (viewport !== 'none' && idle !== 'none' && (viewport === 'all' || idle === 'fast')) idle = 'none';
 	const INTENT = ['hover', 'focus', 'pointerdown'] as const;
 	const intentFrom = INTENT.map(reach).reduce(wider, 'none');
