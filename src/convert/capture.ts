@@ -48,6 +48,8 @@ export interface CapturedPage {
 	readonly fonts?: number;
 	/** SCRIPTS_STILL when `settled` was read once the page's scripts stopped drawing; a capture without it is taken again. */
 	readonly scripts?: number;
+	/** The viewports whose page was still drawing when the wait for its scripts ran out: `settled` is read mid-frame there. */
+	readonly stillCapped?: readonly string[];
 }
 
 /** The version of the font facts a capture records: lateFonts, the first-screen fonts, offscreenFontPreloads and swapFontPreloads. */
@@ -59,8 +61,8 @@ export const FONT_FACTS = 4;
  * chart pages went still 0.7 to 1.3 s after settling, a carousel 1.6 s, the home page, a docs page, /blocks and
  * /examples/dashboard within 3 ms.
  */
-const SCRIPTS_STILL_CAP_MS = 3000;
-export const SCRIPTS_STILL = 1;
+export const SCRIPTS_STILL_CAP_MS = 3000;
+export const SCRIPTS_STILL = 2;
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
 
@@ -129,6 +131,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	let swapFirstScreenFonts: string[] = [];
 	let offscreenFontPreloads: string[] = [];
 	let swapFontPreloads: string[] = [];
+	const stillCapped: string[] = [];
 	for (const viewport of viewports) {
 		const env = captureEnv(origin);
 		const { context, page } = await openPage(browser, env, viewport);
@@ -145,7 +148,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await settle(page);
 			await page.evaluate(restoreScrollState).catch(() => 0);
 			await finishAnimations(page);
-			await scriptsStill(page, SCRIPTS_STILL_CAP_MS);
+			if ((await scriptsStill(page, SCRIPTS_STILL_CAP_MS)) === undefined) stillCapped.push(viewport.name);
 			await keepCommandEmpty(page);
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
 			await page.evaluate(markInstanceProps, { specs: instanceSpecs(), added: false }).catch(() => {});
@@ -176,7 +179,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		}
 		if (asked) reducedMotion[viewport.name] = await reducedDocument(browser, origin, route, viewport);
 	}
-	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, ...(Object.keys(reducedMotion).length ? { reducedMotion } : {}), images, marks: marksOf(marks), fonts: FONT_FACTS, scripts: SCRIPTS_STILL, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, ...(Object.keys(reducedMotion).length ? { reducedMotion } : {}), images, marks: marksOf(marks), fonts: FONT_FACTS, scripts: SCRIPTS_STILL, ...(stillCapped.length ? { stillCapped } : {}), ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;

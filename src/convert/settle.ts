@@ -183,10 +183,20 @@ export async function settle(page: Page, capMs: number): Promise<void> {
  */
 export async function scriptsStill(page: Page, capMs: number): Promise<number | undefined> {
 	const start = Date.now();
+	let navigated = false;
 	for (;;) {
 		const left = capMs - (Date.now() - start);
 		if (left <= 0) return undefined;
-		const seen = await page.evaluate((within) => (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(within), left).catch(() => undefined);
+		let seen: { busy: number; still: number } | undefined;
+		try {
+			seen = await page.evaluate((within) => (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(within), left);
+		} catch (error) {
+			// A page that navigates itself is read on the page it went to, whose tracker the context's init script installed.
+			if (navigated || !/Execution context was destroyed/.test(String(error))) throw error;
+			navigated = true;
+			await page.waitForLoadState('load');
+			continue;
+		}
 		if (!seen) throw new Error('scriptsStill: the page has no settle tracker (trackSettling on its context before it loads)');
 		if (seen.busy === 0 && seen.still >= STILL_MS) return Date.now() - start;
 		await page.waitForTimeout(Math.min(POLL_MS, left));
