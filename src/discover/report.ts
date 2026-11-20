@@ -66,6 +66,9 @@ export interface DiscoveryReport {
 	readonly from?: string;
 }
 
+/** Repeats of a control with a handler on the port: counted with it, never asked themselves. */
+const notAsked = (report: DiscoveryReport): number => Object.values(report.routes).reduce((n, r) => n + (r.handled ?? []).reduce((k, h) => k + (h.repeated ?? 0), 0), 0);
+
 /** Dead controls on a route, each repeat of a dead one included. */
 export const deadCount = (r: Pick<RouteDiscovery, 'dead'>): number => r.dead.reduce((n, d) => n + 1 + (d.repeated ?? 0), 0);
 
@@ -86,7 +89,7 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 	if (report.notRun) return [`Dead controls: not looked for (${report.notRun}).`];
 	const before = report.before ? ` (last run: ${report.before.count}; ${report.before.added.length} new, ${report.before.cleared.length} cleared)` : '';
 	const lines = [`Ported with dead controls: ${report.count} controls on ${report.deadRoutes} of ${Object.keys(report.routes).length} routes${before}.`];
-	if (report.handled) lines.push(`Has a handler on the port, effect not compared: ${report.handled} controls.`);
+	if (report.handled) lines.push(`Has a handler on the port, effect not compared: ${report.handled} controls${notAsked(report) ? `, ${notAsked(report)} of them repeats of one, not asked of the port` : ''}.`);
 	if (report.incomplete?.length) lines.push(`Routes not looked at in full (their last findings stand): ${report.incomplete.join(', ')}.`);
 	for (const [route, r] of Object.entries(report.routes).sort(([a], [b]) => (a < b ? -1 : 1))) {
 		for (const d of r.dead) lines.push(`  dead control on ${route}: "${d.name}" ${d.what}${d.repeated ? ` (and ${d.repeated} like it)` : ''}`);
@@ -114,7 +117,7 @@ export function discoveryMarkdown(report: DiscoveryReport | undefined): { readon
 	const routes = Object.entries(report.routes).filter(([, r]) => r.dead.length || r.handled?.length || r.unknown.length || r.error || r.cut || cutsOf(r)).sort(([a], [b]) => (a < b ? -1 : 1));
 	const lines = [`### Ported with dead controls: ${report.count} controls on ${report.deadRoutes} of ${Object.keys(report.routes).length} routes`, ''];
 	if (report.from) lines.push(`This report is the one ${report.from} made: the emit was kept from it.`, '');
-	if (report.handled) lines.push(`Has a handler on the port, effect not compared: ${report.handled} controls.`, '');
+	if (report.handled) lines.push(`Has a handler on the port, effect not compared: ${report.handled} controls${notAsked(report) ? `, ${notAsked(report)} of them repeats of one, not asked of the port` : ''}.`, '');
 	if (report.incomplete?.length) lines.push(`Not looked at in full (failed or stopped; their last findings stand): ${report.incomplete.join(', ')}.`, '');
 	if (report.before) lines.push(`Last run of this store: ${report.before.count}. New: ${report.before.added.length}. Cleared: ${report.before.cleared.length}.`, '', ...report.before.added.map((n) => `- new: ${n}`), ...report.before.cleared.map((n) => `- cleared: ${n}`), '');
 	else lines.push('No earlier run of this store to compare with.', '');
