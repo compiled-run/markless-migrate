@@ -573,7 +573,15 @@ jobs:
           name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
           path: ${{ runner.temp }}/converted
       - name: Dead controls
-        run: node scripts/dead-controls.ts "$RUNNER_TEMP/converted/convert-report.json" | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -o pipefail
+          status=0
+          node scripts/dead-controls.ts "$RUNNER_TEMP/converted/convert-report.json" | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          # A pull request's run proves the pipeline on a fixed subset: its dead controls are listed in the summary, a port's run fails on them.
+          if [ "$EVENT" = pull_request ] && [ "$status" -eq 1 ]; then echo "::warning::dead controls listed in the job summary (a pull request's run does not fail on them)"; exit 0; fi
+          exit "$status"
 
   build:
     needs: [gate, prepare, emit]
