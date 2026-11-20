@@ -146,10 +146,13 @@ function installReader(): void {
 			}
 		};
 		name(document.body, 'body');
-		const walk = (el: Element, shownAbove: boolean) => {
+		// An element a running endless animation moves (a spinner) and all inside it: their look is never the same twice.
+		const endless = new Set(document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).map((a) => (a.effect as KeyframeEffect | null)?.target).filter((t): t is Element => t instanceof Element));
+		const walk = (el: Element, shownAbove: boolean, movingAbove: boolean) => {
 			if (el.matches('script, style, template, noscript, [role="tooltip"]')) return;
 			const css = getComputedStyle(el);
 			const shown = shownAbove && css.display !== 'none' && css.visibility !== 'hidden' && el.getClientRects().length > 0;
+			const moving = movingAbove || endless.has(el);
 			const attrs = [...el.attributes]
 				.filter((a) => !TRANSIENT.test(a.name))
 				.map((a) => `${a.name}=${a.name === 'style' ? ownStyle(el) : /^(id|for|aria-(labelledby|controls|owns|activedescendant|flowto|details|errormessage))$/.test(a.name) ? ref(a.value) : a.value}`)
@@ -160,12 +163,12 @@ function installReader(): void {
 				.map((n) => n.textContent)
 				.join('')
 				.trim();
-			const look = shown ? `${css.display} ${css.visibility} ${css.opacity} ${css.color} ${css.backgroundColor} ${css.borderColor} ${css.transform} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}` : '';
+			const look = !shown ? '' : moving ? 'moving' : `${css.display} ${css.visibility} ${css.opacity} ${css.color} ${css.backgroundColor} ${css.borderColor} ${css.transform} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`;
 			const scrolled = el.scrollTop || el.scrollLeft ? `${Math.round(el.scrollTop)},${Math.round(el.scrollLeft)}` : '';
 			out[paths.get(el)!] = { d: describe(el), a: attrs, t: text, s: shown ? 1 : 0, l: look, c: scrolled };
-			for (const c of el.children) walk(c, shown || css.display === 'contents');
+			for (const c of el.children) walk(c, shown || css.display === 'contents', moving);
 		};
-		walk(document.body, true);
+		walk(document.body, true, false);
 		const focused = document.activeElement && document.activeElement !== document.body ? (paths.get(document.activeElement) ?? '') : '';
 		out['@focus'] = { d: focused, a: '', t: '', s: 1, l: '', c: '' };
 		out['@scroll'] = { d: 'the window', a: '', t: '', s: 1, l: '', c: `${Math.round(scrollY)},${Math.round(scrollX)}` };

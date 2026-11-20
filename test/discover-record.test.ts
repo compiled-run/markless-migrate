@@ -13,6 +13,7 @@ import { cutsOf } from '../src/discover/report.ts';
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
 const PAGE = `<!doctype html><html><head><style>
 .ring:focus { outline: 3px solid red } .hov:hover { background: yellow } .addon { cursor: text } [hidden] { display: none }
+@keyframes spin { to { transform: rotate(360deg) } } .spin { animation: spin 0.7s linear infinite }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0) }
 </style></head><body>
 <p id="clock">0</p>
@@ -33,6 +34,7 @@ const PAGE = `<!doctype html><html><head><style>
 <button id="b-switch" type="button" role="switch" aria-checked="false">Wifi</button>
 <div aria-expanded="false"><button type="button">Inner trigger</button></div>
 <table role="grid"><tr><td><button type="button">15</button></td></tr></table>
+<div><svg class="spin" width="16" height="16"><path d="M0 0h12v4H0z"/></svg><button type="button" id="b-gen">Generate</button></div>
 <button type="button" class="tip">Hint</button><button type="button">Again</button><button type="button">Again</button><button type="button">Again</button>
 <a href="#x"><span id="in-link" role="button">In a link</span></a>
 <div style="height: 1500px"></div>
@@ -98,6 +100,7 @@ test('each press is read as the shape of what it changed, past focus rings, hove
 	assert.equal(byName('Nothing')?.shape, 'inert');
 	assert.equal(byName('Rerender')?.shape, 'inert', 'a style that only drops animation-duration and a class with no look is not a change');
 	assert.equal(byName('Hint')?.shape, 'inert', 'what shows only while the pointer is on it is the hover');
+	assert.equal(byName('Generate')?.shape, 'inert', 'a spinner beside it turns on its own: its box is never the same twice');
 	assert.ok(facts.drift >= 1, 'the clock changes on its own');
 });
 
