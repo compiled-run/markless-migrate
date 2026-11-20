@@ -4,7 +4,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyze } from 'yuku/analyzer';
-import { ClosureProject, type Span } from '../closure-reads.ts';
+import { ClosureProject, SpanIndex, type Span } from '../closure-reads.ts';
 import { ROOT } from '../code-closure.ts';
 import { declarationClosure, type ClosureStatement, type DataDir } from '../declaration-closure.ts';
 import type { Node, SwitchCase } from 'yuku';
@@ -101,7 +101,7 @@ export async function checkerVersion(): Promise<CheckerVersion> {
 	const command = await checkCommand();
 	const closure = await declarationClosure([{ file: CLI, names: command.names }], { dataDirs: DATA_DIRS, skip: command.runs.map((s) => ({ file: CLI, start: s.start })), opaque: [fileURLToPath(import.meta.url), join(ROOT, 'src/closure-reads.ts')] });
 	const spans: Span[] = [...closure.statements, ...command.statements.map((st) => ({ file: CLI, start: st.start, end: st.end }))];
-	const found = new ClosureProject(new Set(spans.map((sp) => sp.file))).reads(spans, []);
+	const found = new ClosureProject(new Set(spans.map((sp) => sp.file))).reads(new SpanIndex(spans), new SpanIndex([]));
 	// A whole-environment read is allowed only inside a declaration WHOLE_ENV names, with its reason.
 	const allowed = closure.statements.filter((st) => `${relative(ROOT, st.file)} ${st.name}` in WHOLE_ENV);
 	const unplaced = found.sites.filter((site) => !allowed.some((st) => st.file === site.file && site.at >= st.start && site.at < st.end)).map((site) => `${relative(ROOT, site.file)}:${site.at} ${site.why}`);
