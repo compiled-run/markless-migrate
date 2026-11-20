@@ -10,6 +10,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { body, parseDocument, walk, type Element } from '../src/convert/dom.ts';
 import { LAYER_FILL, SERVED_LAYER_BYTES, layerTable } from '../src/convert/document.ts';
+import { authorIdNames, layerNames } from '../src/convert/layer-ids.ts';
 import { capturePhoneUses } from '../src/convert/phone-uses.ts';
 import { PHONE } from '../parts/reveal.ts';
 import { SwitchPlan } from '../src/convert/stateful.ts';
@@ -95,4 +96,19 @@ test('a served layer recorded at the phone viewport is preloaded and mounted onl
 	const table = layerTable(new Map([['/', [{ key: 'p:1', markup, shell, fill: `<p>${'x'.repeat(SERVED_LAYER_BYTES)}</p>`, viewport: 'mobile' }]]]));
 	const path = table.served[0]!.path;
 	assert.ok(table.files.some((f) => f.source.includes(`<link rel="preload" href="${path}" as="fetch" crossorigin="anonymous" fetchpriority="low" media="${PHONE}" /><template data-mm-layer-src="${path}" data-mm-layer-keys="p:1" data-mm-viewport="mobile">`)));
+});
+
+test("a phone layer's own ids are renamed where the page's desktop markup holds them, so its label still names its field", () => {
+	const page = parseDocument('<body><div data-slot="sidebar"><label for="search">Search</label><input id="search"></div></body>');
+	const layer = () => [...walk(body(parseDocument('<body><div role="dialog"><label for="search">Search</label><input id="search"></div></body>')))].filter((el) => el.tagName === 'div') as Element[];
+	assert.deepEqual([...authorIdNames([{ key: 'p:1', kept: layer(), otherViewport: true }], walk(body(page)))[0]!], [['search', 'search-2']]);
+	assert.deepEqual([...authorIdNames([{ key: 'p:1', kept: layer() }], walk(body(page)))[0]!], [], "a desktop layer keeps the ids it was recorded with");
+});
+
+test("a phone layer's generated ids name nothing in the page: the desktop markup keeps its own ids, and the Sheet's title still labels it", () => {
+	const sheet = [...walk(body(parseDocument('<body><div role="dialog" aria-labelledby="radix-_r_1_"><h2 id="radix-_r_1_">Sidebar</h2></div></body>')))].filter((el) => el.tagName === 'div') as Element[];
+	const named = layerNames([{ key: 'p:1', kept: sheet, inPage: true, otherViewport: true }]);
+	assert.equal(named.page.has('radix-_r_1_'), false);
+	assert.match(named.each[0]!.get('radix-_r_1_') ?? '', /^mm-/);
+	assert.equal(layerNames([{ key: 'p:1', kept: sheet, inPage: true }]).page.has('radix-_r_1_'), true, 'a desktop layer names the page ids it shares, as before');
 });

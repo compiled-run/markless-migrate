@@ -8,6 +8,8 @@ export interface CapturedLayer {
 	readonly kept: readonly Element[];
 	/** The layer whose content holds this one's trigger, when the capture knows it (a submenu opened from its menu). */
 	readonly from?: string;
+	/** Recorded at another viewport than the page's document (a phone's Sheet beside the desktop sidebar): the original never shows both, so the page's ids are taken. */
+	readonly otherViewport?: boolean;
 }
 
 /**
@@ -95,7 +97,9 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 	for (const [key, names] of own) if (names.has(key)) keys.set(key, names.get(key)!);
 	// A trigger in the page names the layer it opens by its key, before any other layer holding that id from another load.
 	const page = new Map(keys);
-	for (const names of own.values()) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
+	// A layer of another viewport was captured on a load whose ids the page's never shared: only its key names a page element.
+	const apart = new Set(layers.filter((l) => l.otherViewport).map((l) => l.key));
+	for (const [key, names] of own) if (!apart.has(key)) for (const [from, to] of names) if (!page.has(from)) page.set(from, to);
 	const opener = new Map<string, string>();
 	for (const l of layers) if (l.from !== undefined && own.has(l.from)) opener.set(l.key, l.from);
 	for (const l of layers)
@@ -123,11 +127,13 @@ const ID_REFERENCES = new Set(['for', 'form', 'list', 'headers', 'popovertarget'
 
 /**
  * New names for the ids an author wrote that a layer holds and an earlier layer of the page holds too (two popover
- * demos' `width` fields): the port keeps every layer in the page, so each later copy names its own (`width-2`).
+ * demos' `width` fields): the port keeps every layer in the page, so each later copy names its own (`width-2`). A layer
+ * of another viewport also names its own where the page holds the id.
  */
 export function authorIdNames(layers: readonly CapturedLayer[], page: Iterable<Element>): Map<string, string>[] {
 	const used = new Set<string>();
 	for (const el of page) if (attr(el, 'id')) used.add(attr(el, 'id')!);
+	const onPage = new Set(used);
 	const own = layers.map((l) => {
 		const ids = new Set<string>();
 		for (const top of l.kept) for (const el of walk(top)) if (attr(el, 'id')) ids.add(attr(el, 'id')!);
@@ -135,10 +141,10 @@ export function authorIdNames(layers: readonly CapturedLayer[], page: Iterable<E
 		return [...ids].filter((id) => id !== l.key && !GENERATED_ID.test(id));
 	});
 	const held = new Set<string>();
-	return own.map((ids) => {
+	return own.map((ids, i) => {
 		const names = new Map<string, string>();
 		for (const id of ids) {
-			if (!held.has(id)) {
+			if (!held.has(id) && !(layers[i]!.otherViewport && onPage.has(id))) {
 				held.add(id);
 				continue;
 			}
