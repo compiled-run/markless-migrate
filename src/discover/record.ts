@@ -1,16 +1,18 @@
-// Presses every control a visitor would press on one page of the original, that no recorder's ARIA contract already uses,
-// and keeps what each press visibly or audibly changed: the controls the port would otherwise ship as static markup.
+// Presses each control of an original page no recorder takes and keeps what each press visibly or audibly changed.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Browser } from 'playwright';
-import { openPage } from '../check/browser.ts';
+import type { Browser, Page } from 'playwright';
+import { isLoopback, openPage, type OpenPage } from '../check/browser.ts';
 import { finishAnimations, settle as settleLoad } from '../check/capture.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { captureEnv } from '../convert/capture-env.ts';
-import { scriptsStill, settle, STILL_MS, trackSettling } from '../convert/settle.ts';
+import { SCRIPTS_STILL_CAP_MS } from '../convert/capture.ts';
+import { LATE_MARKS_MS, REVEAL_CLICKS } from '../convert/reveal.ts';
+import { requestsDone, scriptsStill, settle, STILL_MS, trackSettling } from '../convert/settle.ts';
+import { SELECTOR as TOGGLE_CONTROLS } from '../convert/toggles.ts';
 
 /** How a press changed the page: back by itself, back on the next press, unchanged by the next press, or more states. */
 export type Shape = 'inert' | 'transient' | 'toggle' | 'one-way' | 'cycle' | 'sequence';
@@ -20,7 +22,7 @@ export type Stopped = 'blocked' | 'navigates' | 'window' | 'download' | 'dialog'
 export interface Change {
 	/** The element, as tag, role, data-slot and a few words of its text or label. */
 	readonly at: string;
-	readonly what: 'text' | 'attribute' | 'added' | 'removed' | 'shown' | 'hidden' | 'look' | 'focus' | 'scroll' | 'announced';
+	readonly what: 'text' | 'attribute' | 'added' | 'removed' | 'shown' | 'hidden' | 'look' | 'focus' | 'scroll' | 'announced' | 'address';
 	readonly name?: string;
 	readonly before?: string;
 	readonly after?: string;
@@ -59,8 +61,12 @@ export interface DiscoverFacts {
 	/** Pressables left alone, by why: inside a form, a submit, a link, a destructive name, hidden, disabled, a reveal's. */
 	readonly excluded: Readonly<Record<string, number>>;
 	readonly controls: readonly PressedControl[];
-	/** Controls not pressed because one like them was, by the first one's name and signature: how many more there were. */
+	/** Controls not pressed because one like them was, by the sig#nth of the one pressed in their place: how many more there were. */
 	readonly repeats?: Readonly<Record<string, number>>;
+	/** Pressables left to the reveals or the toggles by their own selectors: checked against what those recorded. */
+	readonly left?: readonly LeftControl[];
+	/** The time stop ended the presses before every control: the page is recorded again next time. */
+	readonly cut?: boolean;
 	/** Elements that changed with no press (a clock, an autoplaying carousel): never counted as a press's change. */
 	readonly drift: number;
 	readonly reloads: number;
@@ -71,35 +77,43 @@ export interface DiscoverFacts {
 export interface DiscoverOptions {
 	/** The old page's key (key.ts): a recording made from another page is recorded again. */
 	readonly page?: string;
+	/** The time stop per page, when not MAX_ROUTE_MS. */
+	readonly limitMs?: number;
 }
 
-const VIEWPORT = VIEWPORTS[0]!;
-const STILL_CAP_MS = 3000;
-/** After a press went still, how long the page may take to come back by itself (a spinner, a "Copied" label) or go on. */
-const AFTER_CAP_MS = 5000;
+const VIEWPORT = VIEWPORTS[0] ?? { name: 'desktop', width: 1280, height: 800, isMobile: false };
+/** Three presses tell a three-state cycle (Start Listening) from a sequence; the fourth tells a sequence from a longer cycle. */
 const MAX_PRESSES = 4;
+/** A clock that ticks once a second, the commonest thing a page changes by itself, changes twice in this watch. */
 const DRIFT_WATCH_MS = 2000;
+/** Four times the most pressables on any page of the 18-route shadcn sample (49). */
 const MAX_CONTROLS = 200;
-/** A page's presses stop after this long; the controls not reached are counted, never guessed. */
+/** About twice the slowest page of the 18-route shadcn sample (134 s). */
 const MAX_ROUTE_MS = 240_000;
+/** Two presses of a repeat agreed on every repeat in the sample (19 Copy, 16 View Code, 10 Drag to reorder). */
+const REPEATS = 2;
+/** What a reader reads per control: the 47-node suggestion reply is named by its first few. */
 const KEPT_CHANGES = 12;
 
 /** Each control is pressed up to MAX_PRESSES times: only ever against a copy of the original served on this machine. */
 export function assertLocal(origin: string): void {
-	const host = new URL(origin).hostname.replace(/^\[|\]$/g, '');
-	if (host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host)) return;
+	if (isLoopback(origin)) return;
 	throw new Error(`discovery presses each control of the original up to ${MAX_PRESSES} times, so it runs only against a local copy, not ${origin}`);
 }
 
-/**
- * In every document of the context, before its own scripts: a request that is not a GET (fetch, XMLHttpRequest, a form
- * sent from code) is refused in the page and noted, so nothing a press does writes to the original's server. A beacon
- * (analytics) is dropped without a note. Done in the page: intercepting every request in Node costs a convert's CPU.
- */
+// The page's first guard against writes; openPage's route, with sendWrites off, holds back any that get past it.
 function holdWrites(): void {
 	const g = globalThis as typeof globalThis & { __mmWrites__?: string[] };
 	if (g.__mmWrites__) return;
-	const writes: string[] = [];
+	// A frame of the page (an about:blank one a script fills) writes into the page's list, the one read after a press.
+	const top = (() => {
+		try {
+			return window.top === window ? undefined : (window.top as typeof g | null)?.__mmWrites__;
+		} catch {
+			return undefined;
+		}
+	})();
+	const writes: string[] = top ?? [];
 	g.__mmWrites__ = writes;
 	const write = (method: string | undefined) => !['GET', 'HEAD', 'OPTIONS'].includes((method ?? 'GET').toUpperCase());
 	const path = (url: string | URL) => {
@@ -125,11 +139,11 @@ function holdWrites(): void {
 	const send = XMLHttpRequest.prototype.send;
 	XMLHttpRequest.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
 		const what = held.get(this);
-		if (!what) return send.call(this, body);
+		if (what === undefined) return send.call(this, body);
 		writes.push(what);
 		queueMicrotask(() => this.dispatchEvent(new ProgressEvent('error')));
 	};
-	if (navigator.sendBeacon) navigator.sendBeacon = () => true;
+	if (navigator.sendBeacon) navigator.sendBeacon = (url) => (writes.push(`POST ${path(url)}`), true);
 	for (const name of ['submit', 'requestSubmit'] as const) {
 		const real = HTMLFormElement.prototype[name] as (this: HTMLFormElement, ...a: unknown[]) => void;
 		HTMLFormElement.prototype[name] = function (this: HTMLFormElement, ...a: unknown[]) {
@@ -137,6 +151,21 @@ function holdWrites(): void {
 			writes.push(`${this.method.toUpperCase()} ${path(this.action)}`);
 		} as never;
 	}
+	// A form a script sends by clicking its own submit button, or a submit a visitor presses.
+	addEventListener(
+		'submit',
+		(event) => {
+			const form = event.target instanceof HTMLFormElement ? event.target : undefined;
+			if (!form || !write(form.method)) return;
+			event.preventDefault();
+			writes.push(`${form.method.toUpperCase()} ${path(form.action)}`);
+		},
+		true,
+	);
+	const socketSend = WebSocket.prototype.send;
+	WebSocket.prototype.send = function (this: WebSocket) {
+		writes.push(`WebSocket ${path(this.url)}`);
+	} as typeof socketSend;
 }
 
 /** In every document of the context: reads the page for comparison, and keeps what live regions announce between reads. */
@@ -156,10 +185,10 @@ function installReader(): void {
 		return `${el.tagName.toLowerCase()}${role ? `[role=${role}]` : ''}${slot ? `[data-slot=${slot}]` : ''}${words ? ` "${words}"` : ''}`;
 	};
 	const ownStyle = (el: Element) => {
-		const s = (el as HTMLElement).style;
+		const s = el instanceof HTMLElement || el instanceof SVGElement ? el.style : undefined;
 		if (!s) return '';
 		const kept: string[] = [];
-		for (let i = 0; i < s.length; i++) if (!/^(animation|transition)/.test(s[i]!)) kept.push(`${s[i]}:${s.getPropertyValue(s[i]!)}`);
+		for (const name of Array.from(s)) if (!/^(animation|transition)/.test(name)) kept.push(`${name}:${s.getPropertyValue(name)}`);
 		return kept.sort().join(';');
 	};
 	// What an id reference points at, by the element's path: a regenerated id naming the same element is no change.
@@ -198,7 +227,7 @@ function installReader(): void {
 		};
 		name(document.body, 'body');
 		// An element a running endless animation moves (a spinner) and all inside it: their look is never the same twice.
-		const endless = new Set(document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).map((a) => (a.effect as KeyframeEffect | null)?.target).filter((t): t is Element => t instanceof Element));
+		const endless = new Set(document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).map((a) => (a.effect instanceof KeyframeEffect ? a.effect.target : null)).filter((t): t is Element => t instanceof Element));
 		const walk = (el: Element, shownAbove: boolean, movingAbove: boolean) => {
 			if (el.matches('script, style, template, noscript, [role="tooltip"]')) return;
 			const css = getComputedStyle(el);
@@ -228,8 +257,8 @@ function installReader(): void {
 	};
 	type Change = { at: string; what: string; name?: string; before?: string; after?: string };
 	const diff = (a: number, b: number, ignore: readonly string[], pressed: string): { changed: string[]; changes: Change[] } => {
-		const A = readings[a]!;
-		const B = readings[b]!;
+		const A = readings[a] ?? {};
+		const B = readings[b] ?? {};
 		const skip = new Set(ignore);
 		const changed: string[] = [];
 		const changes: Change[] = [];
@@ -239,14 +268,15 @@ function installReader(): void {
 			const y = B[key];
 			if (key === '@focus') {
 				// Focus landing on the pressed control (or in it), or leaving to nothing, is the press itself.
-				if (x!.d !== y!.d && y!.d && y!.d !== pressed && !y!.d.startsWith(`${pressed}>`)) (changed.push(y!.d), changes.push({ at: B[y!.d]?.d ?? y!.d, what: 'focus' }));
+				const to = y?.d ?? '';
+				if (x?.d !== to && to && to !== pressed && !to.startsWith(`${pressed}>`)) (changed.push(to), changes.push({ at: B[to]?.d ?? to, what: 'focus' }));
 				continue;
 			}
 			// The window's own scroll moves under a press for reasons of its own (a late layout above, scroll anchoring): never a change.
 			if (key === '@scroll') continue;
 			if (!x || !y) {
-				const it = (x ?? y)!;
-				if (it.s) (changed.push(key), changes.push({ at: it.d, what: x ? 'removed' : 'added' }));
+				const it = x ?? y;
+				if (it?.s) (changed.push(key), changes.push({ at: it.d, what: x ? 'removed' : 'added' }));
 				continue;
 			}
 			if (!x.s && !y.s) continue;
@@ -261,13 +291,19 @@ function installReader(): void {
 				const ay = attrs(y.a);
 				// An ARIA state, name or a meaningful attribute counts; a class, style or data- attribute only when the element looks different.
 				const named = [...new Set([...ax.keys(), ...ay.keys()])].filter((n) => ax.get(n) !== ay.get(n) && ARIA.test(n));
-				if (named.length) (changed.push(key), changes.push({ at: y.d, what: 'attribute', name: named[0], before: ax.get(named[0]!)?.slice(0, 80), after: ay.get(named[0]!)?.slice(0, 80) }));
+				const [first] = named;
+				if (first !== undefined) (changed.push(key), changes.push({ at: y.d, what: 'attribute', name: first, before: ax.get(first)?.slice(0, 80), after: ay.get(first)?.slice(0, 80) }));
 				else if (x.l !== y.l && !own) (changed.push(key), changes.push({ at: y.d, what: 'look', before: x.l, after: y.l }));
 			} else if (x.l !== y.l && !own) (changed.push(key), changes.push({ at: y.d, what: 'look', before: x.l, after: y.l }));
 		}
+		// A box that only grew or shrank around another change (a body taller by a reply) is that change, not one of its own.
+		const sizeOnly = (x: string | undefined, y: string | undefined) => x !== undefined && y !== undefined && x.slice(0, x.lastIndexOf(' ')) === y.slice(0, y.lastIndexOf(' '));
+		const keep = changed.map((key, i) => !(changes[i]?.what === 'look' && sizeOnly(changes[i]?.before, changes[i]?.after) && changed.some((other) => other.startsWith(`${key}>`))));
+		const kept = changed.filter((_, i) => keep[i]);
+		const told = changes.filter((_, i) => keep[i]);
 		// What a person reads first: text, ARIA and elements coming and going before a box that grew around them.
 		const rank = ['text', 'attribute', 'added', 'removed', 'shown', 'hidden', 'focus', 'announced', 'scroll', 'look'];
-		return { changed, changes: changes.sort((p, q) => rank.indexOf(p.what) - rank.indexOf(q.what)) };
+		return { changed: kept, changes: told.sort((p, q) => rank.indexOf(p.what) - rank.indexOf(q.what)) };
 	};
 	g.__mmDiscover__ = {
 		read,
@@ -283,6 +319,7 @@ function installReader(): void {
 }
 
 interface Reader {
+	/** Set once per document: the same id after a press means the address changed in the same document. */
 	read(): number;
 	diff(a: number, b: number, ignore: readonly string[], pressed: string): { changed: string[]; changes: Change[] };
 	path(el: Element): string;
@@ -300,11 +337,33 @@ interface Candidate {
 	readonly ancestors: readonly string[];
 }
 
+/** A pressable left to another recorder by that recorder's own selector: checked against what it recorded. */
+export interface LeftControl {
+	readonly to: 'reveals' | 'toggles';
+	readonly sig: string;
+	readonly nth: number;
+	readonly name: string;
+}
+
+interface Found {
+	readonly candidates: Candidate[];
+	readonly excluded: Record<string, number>;
+	readonly repeats: Record<string, number>;
+	readonly left: LeftControl[];
+}
+
 /** In the page: every pressable, the ones left alone counted by why, the rest marked `data-mm-discover="<n>"` in document order. */
-function findCandidates(destructive: string): { readonly candidates: Candidate[]; readonly excluded: Record<string, number>; readonly repeats: Record<string, number> } {
-	const DESTRUCTIVE = new RegExp(destructive, 'i');
-	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
-	const labelSigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+function findCandidates(o: { readonly destructive: string; readonly reveals: string; readonly toggles: string; readonly repeats: number }): Found {
+	const DESTRUCTIVE = new RegExp(o.destructive, 'i');
+	const words = (s: string | null | undefined) => (s ?? '').trim().replace(/\s+/g, ' ');
+	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${words(el.textContent).slice(0, 60)}`;
+	const labelSigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${words(el.getAttribute('aria-label') ?? el.textContent).slice(0, 60)}`;
+	// The accessible name as the browser builds it, near enough: labelledby, label, the text, an image's alt or an svg's title, the title.
+	const nameOf = (el: Element) => {
+		const by = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).map((id) => (id ? document.getElementById(id)?.textContent : '')).join(' ');
+		const pictured = [...el.querySelectorAll('img[alt], svg title')].map((x) => x.getAttribute('alt') ?? x.textContent).join(' ');
+		return words(by) || words(el.getAttribute('aria-label')) || words(el.textContent) || words(pictured) || words(el.getAttribute('title'));
+	};
 	const counts = new Map<string, number>();
 	const order = new Map<Element, number>();
 	const pairs = new Map<Element, number>();
@@ -318,33 +377,32 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 		pairs.set(el, counts.get(pair) ?? 0);
 		counts.set(pair, (counts.get(pair) ?? 0) + 1);
 	}
+	const at = (el: Element) => `${sigOf(el)}#${order.get(el) ?? 0}`;
 	const ROLE = 'button, [role="button"], summary, [role="treeitem"]';
-	// What a reveal uses by ARIA's own marks, the controls convert already reads for the content they hold back.
-	// What the toggles recorder uses by ARIA: it records both states, and fails loudly on one it could not.
-	const TOGGLES = '[role="checkbox"], [role="switch"], [role="radio"], [aria-pressed]';
-	const REVEALS = '[aria-expanded], [aria-haspopup]:not([aria-haspopup="false"]), [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="combobox"]';
 	const FIELD = 'input, textarea, select, option, [contenteditable]:not([contenteditable="false"]), label';
 	const cursorOf = (el: Element | null) => (el ? getComputedStyle(el).cursor : '');
 	const excluded: Record<string, number> = {};
 	const out: Candidate[] = [];
+	const left: LeftControl[] = [];
 	const leave = (why: string) => void (excluded[why] = (excluded[why] ?? 0) + 1);
-	// A control repeated on the page (each code block's Copy) is pressed this many times; the rest are like them.
-	const REPEATS = 2;
 	const seen = new Map<string, { n: number; first: string }>();
 	const repeats: Record<string, number> = {};
-	// Grouped by signature and accessible name: the first REPEATS are pressed, the rest counted against the first one's name.
+	// A repeat is the same control in the same place: its signature, name and the nearest element around it with a slot,
+	// a role or an id. A grid's cells repeat by their grid alone (a calendar's days); a treegrid's rows each expand their own.
 	const repeat = (el: Element, name: string) => {
-		const key = `${sigOf(el)}\u0000${name}`;
-		const got = seen.get(key) ?? { n: 0, first: `"${name}" (${sigOf(el)}#${order.get(el) ?? 0})` };
+		const grid = el.closest('[role="grid"]');
+		const around = el.parentElement?.closest('[data-slot], [role], [id]');
+		const key = grid ? `grid ${at(grid)}` : `${sigOf(el)}\u0000${name}\u0000${around ? at(around) : ''}`;
+		const got = seen.get(key) ?? { n: 0, first: at(el) };
 		seen.set(key, { ...got, n: got.n + 1 });
-		if (got.n + 1 <= REPEATS) return false;
+		if (got.n + 1 <= o.repeats) return false;
 		repeats[got.first] = (repeats[got.first] ?? 0) + 1;
 		return true;
 	};
 	// The one control inside an element a reveal uses (a trigger rendered around a button).
 	const wrappedBy = (el: Element) => {
-		const wrapper = el.parentElement?.closest(REVEALS);
-		return Boolean(wrapper) && [...wrapper!.querySelectorAll(ROLE)].every((x) => x === el);
+		const wrapper = el.parentElement?.closest(o.reveals);
+		return wrapper ? [...wrapper.querySelectorAll(ROLE)].every((x) => x === el) : false;
 	};
 	for (const el of document.body.querySelectorAll('*')) {
 		if (el.closest('template')) continue;
@@ -353,35 +411,40 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 		const byCursor = !byRole && (cursor === 'pointer' || cursor === 'text') && cursorOf(el.parentElement) !== cursor && !el.matches(FIELD) && !el.closest(ROLE) && !el.querySelector(ROLE);
 		if (!byRole && !byCursor) continue;
 		const css = getComputedStyle(el);
-		const name = (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60) || `${el.tagName.toLowerCase()}${el.getAttribute('data-slot') ? `[data-slot=${el.getAttribute('data-slot')}]` : ''}`;
+		const name = nameOf(el).slice(0, 60);
 		if (el.closest('a[href], area[href]')) leave('link');
-		else if (el.closest('form') || (el as HTMLButtonElement).form) leave('in a form');
+		else if (el.closest('form') || (el instanceof HTMLButtonElement && el.form)) leave('in a form');
 		else if (el.matches('[type="submit"]')) leave('submit');
-		else if (DESTRUCTIVE.test(name) || DESTRUCTIVE.test(el.getAttribute('title') ?? '')) leave('destructive name');
+		else if (DESTRUCTIVE.test(`${name} ${el.getAttribute('title') ?? ''}`)) leave('destructive name');
+		// With no name there is nothing to tell a destructive control from a harmless one by.
+		else if (!name) leave('no accessible name');
 		else if (el.matches(':disabled, [aria-disabled="true"]') || el.closest('[inert]')) leave('disabled');
 		else if (css.display === 'none' || css.visibility === 'hidden' || !el.getClientRects().length || el.closest('[aria-hidden="true"]')) leave('hidden');
-		else if (el.matches(REVEALS) || el.closest('[role="menu"], [role="menubar"], [role="listbox"], [role="tablist"]') || wrappedBy(el)) leave('a reveal uses it');
-		else if (el.closest('[role="grid"], [role="treegrid"]')) leave('in a grid');
-		else if (el.matches(TOGGLES)) leave('a toggle uses it');
+		else if (el.matches(o.reveals) || wrappedBy(el)) (leave('left to the reveals'), left.push({ to: 'reveals', sig: sigOf(el), nth: order.get(el) ?? 0, name }));
+		else if (el.matches(o.toggles)) (leave('left to the toggles'), left.push({ to: 'toggles', sig: sigOf(el), nth: order.get(el) ?? 0, name }));
 		else if (repeat(el, name)) leave('same as a control pressed');
 		else {
 			const ancestors: string[] = [];
-			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(`${sigOf(up)}#${order.get(up) ?? 0}`);
+			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
 			el.setAttribute('data-mm-discover', String(out.length));
 			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors });
 		}
 	}
-	return { candidates: out, excluded, repeats };
+	return { candidates: out, excluded, repeats, left };
 }
 
 /** The nearest element holding the pressed control and every element its press changed, as a path from the body. */
 export function holderPath(pressed: string, changed: readonly string[]): string | undefined {
 	if (!pressed) return undefined;
-	const paths = [pressed, ...changed.filter((p) => p.startsWith('body'))].map((p) => p.split('>'));
+	const [own, ...others] = [pressed, ...changed.filter((p) => p.startsWith('body'))].map((p) => p.split('>'));
+	if (!own) return undefined;
 	const common: string[] = [];
-	for (let i = 0; paths.every((p) => p[i] !== undefined && p[i] === paths[0]![i]); i++) common.push(paths[0]![i]!);
+	for (const [i, step] of own.entries()) {
+		if (!others.every((p) => p[i] === step)) break;
+		common.push(step);
+	}
 	// A press that changed only its own element is held by its parent: the control is not its own demo.
-	if (common.length === paths[0]!.length) common.pop();
+	if (common.length === own.length) common.pop();
 	return common.join('>');
 }
 
@@ -408,113 +471,154 @@ function sigsAt(paths: readonly string[]): string[] {
 
 const fileOf = (dir: string, route: string) => join(dir, `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`);
 
-/**
- * Presses each unclaimed pressable of the page at desktop width, at most MAX_PRESSES times, and keeps what changed. A press
- * that sends anything but a GET, leaves the page, opens a window or a dialog is stopped and marked, never classified. A page
- * a press left changed is loaded again before the next control.
- */
+const isFacts = (x: unknown): x is DiscoverFacts & { page?: string } => typeof x === 'object' && x !== null && typeof (x as DiscoverFacts).route === 'string' && Array.isArray((x as DiscoverFacts).controls) && typeof (x as DiscoverFacts).ms === 'number';
+
+/** Presses each pressable of the page at desktop width up to MAX_PRESSES times; a press that writes, leaves or opens something is stopped and named. */
 export async function recordDiscovery(browser: Browser, origin: string, route: string, dir: string, options: DiscoverOptions = {}): Promise<DiscoverFacts> {
 	assertLocal(origin);
 	const file = fileOf(dir, route);
-	const kept = await readFile(file, 'utf8').then((t) => JSON.parse(t) as DiscoverFacts & { page?: string }, () => undefined);
-	if (kept && kept.route === route && kept.page === options.page) {
+	const kept: unknown = await readFile(file, 'utf8').then((t) => JSON.parse(t) as unknown, () => undefined);
+	if (isFacts(kept) && kept.route === route && kept.page === options.page) {
 		const { page: _, ...facts } = kept;
 		return facts;
 	}
 	const started = Date.now();
 	const url = new URL(route, origin).href;
-	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORT);
-	await trackSettling(context);
-	await context.addInitScript(installReader);
-	// Set by the handlers below while a press is read: what stopped it.
+	// openPage's route holds back every write the page's own guard misses (a worker's, a native form's).
+	const env = captureEnv(origin, { sendWrites: false });
+	let session: OpenPage | undefined;
+	let page: Page | undefined;
 	let stopped: { shape: Stopped; why: string } | undefined;
 	const stop = (shape: Stopped, why: string) => void (stopped ??= { shape, why });
-	await context.addInitScript(holdWrites);
-	context.on('page', (other) => {
-		if (other === page) return;
-		stop('window', other.url());
-		other.close().catch(() => {});
-	});
-	page.on('download', (d) => (stop('download', d.suggestedFilename()), d.cancel().catch(() => {})));
-	page.on('dialog', (d) => (stop('dialog', d.message().slice(0, 80)), d.dismiss().catch(() => {})));
-	page.on('framenavigated', (frame) => {
-		if (frame === page.mainFrame() && frame.url() !== url) stop('navigates', new URL(frame.url()).pathname);
-	});
-	const read = () => page.evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.read());
-	const forget = () => page.evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.forget());
-	const announcedSince = () => page.evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.announced());
-	// A write the page tried since the last look: the press is stopped, its state after unknown.
-	const wrote = async () => {
-		const tried = await page.evaluate(() => (globalThis as { __mmWrites__?: string[] }).__mmWrites__?.splice(0) ?? []).catch((): string[] => []);
-		if (tried.length) stop('blocked', tried[0]!);
+	let movedTo: string | undefined;
+	let docId = '';
+	let writesSeen = 0;
+	const at = (): Page => {
+		if (!page) throw new Error('discovery: no page open');
+		return page;
 	};
-	const diff = (a: number, b: number, ignore: readonly string[], pressed: string) => page.evaluate(([a, b, ignore, pressed]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.diff(a, b, ignore, pressed), [a, b, ignore, pressed] as const);
+	const open = async () => {
+		await session?.context.close().catch(() => {});
+		session = await openPage(browser, env, VIEWPORT);
+		const opened = session;
+		page = opened.page;
+		writesSeen = 0;
+		await trackSettling(opened.context);
+		await opened.context.addInitScript(installReader);
+		await opened.context.addInitScript(holdWrites);
+		opened.context.on('page', (other) => {
+			if (other === opened.page) return;
+			stop('window', other.url());
+			other.close().catch(() => {});
+		});
+		opened.page.on('download', (d) => (stop('download', d.suggestedFilename()), d.cancel().catch(() => {})));
+		opened.page.on('dialog', (d) => (stop('dialog', d.message().slice(0, 80)), d.dismiss().catch(() => {})));
+		opened.page.on('framenavigated', (frame) => {
+			if (frame === opened.page.mainFrame() && frame.url() !== url) movedTo = frame.url();
+		});
+	};
+	const read = () => at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.read());
+	const forget = () => at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.forget());
+	const announcedSince = () => at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.announced());
+	const diff = (a: number, b: number, ignore: readonly string[], pressed: string) => at().evaluate(([a, b, ignore, pressed]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.diff(a, b, ignore, pressed), [a, b, ignore, pressed] as const);
+	// What a press tried that would leave the page or write: the press is stopped, the page after it unknown. An address
+	// the same document took (a filter written to the URL) is a change of the page, not a navigation.
+	const looked = async (changes: Change[]) => {
+		const tried = await at().evaluate(() => (globalThis as { __mmWrites__?: string[] }).__mmWrites__?.splice(0) ?? []).catch((): string[] => []);
+		const held = session?.log.writes.slice(writesSeen) ?? [];
+		writesSeen += held.length;
+		const write = tried[0] ?? held[0]?.line;
+		if (write) stop('blocked', write);
+		if (movedTo !== undefined) {
+			const same = (await at().evaluate(() => (globalThis as { __mmDoc__?: string }).__mmDoc__).catch(() => undefined)) === docId;
+			if (same) changes.push({ at: 'the address', what: 'address', before: new URL(url).pathname + new URL(url).search, after: new URL(movedTo).pathname + new URL(movedTo).search });
+			else stop('navigates', new URL(movedTo).pathname);
+			movedTo = undefined;
+		}
+	};
 	const load = async () => {
-		await loadPage(page, url);
-		await settleLoad(page);
-		await page.evaluate(() => scrollTo(0, 0));
-		await finishAnimations(page);
-		await scriptsStill(page, STILL_CAP_MS).catch(() => undefined);
+		await open();
+		await loadPage(at(), url);
+		// A local copy that redirects elsewhere is not a local copy any more.
+		assertLocal(at().url());
+		await settleLoad(at());
+		await at().evaluate(() => scrollTo(0, 0));
+		await finishAnimations(at());
+		await scriptsStill(at(), SCRIPTS_STILL_CAP_MS).catch(() => undefined);
+		// Set from here, not by the page: capture's environment fixes the page's Math.random, so a page-made id repeats.
+		docId = `${Date.now()}-${reloads}`;
+		await at().evaluate((id) => void ((globalThis as { __mmDoc__?: string }).__mmDoc__ = id), docId);
 		stopped = undefined;
+		movedTo = undefined;
+		writesSeen = session?.log.writes.length ?? 0;
 	};
-	// Two frames: what a press showed at once, before a timer put it back (a spinner, a "Copied" label).
-	const frames = () => page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
-	// scriptsStill's test on the same settle tracker, polled in the page: one round trip per wait, not one per 20 ms.
+	const frames = () => at().evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+	// scriptsStill's test on the same settle tracker, polled in the page, then what still moves finished: a transition
+	// half run reads as a state of its own.
 	const still = async () => {
-		await page.mouse.move(0, 0);
-		await page
+		await at().mouse.move(0, 0);
+		await at()
 			.waitForFunction(
 				([cap, quiet, t0]) => {
 					const seen = (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(Math.max(0, cap - (performance.now() - t0)));
 					return !seen || (seen.busy === 0 && seen.still >= quiet);
 				},
-				[STILL_CAP_MS, STILL_MS, await page.evaluate(() => performance.now())] as const,
-				{ polling: 50, timeout: STILL_CAP_MS },
+				[SCRIPTS_STILL_CAP_MS, STILL_MS, await at().evaluate(() => performance.now())] as const,
+				{ polling: 50, timeout: SCRIPTS_STILL_CAP_MS },
 			)
 			.catch(() => undefined);
+		await finishAnimations(at()).catch(() => {});
 	};
+	const find = () => at().evaluate(findCandidates, { destructive: DESTRUCTIVE.source, reveals: REVEAL_CLICKS, toggles: TOGGLE_CONTROLS, repeats: REPEATS });
 	const controls: PressedControl[] = [];
 	let candidates: Candidate[] = [];
 	let excluded: Record<string, number> = {};
 	let repeats: Record<string, number> = {};
+	let left: LeftControl[] = [];
 	let drift: string[] = [];
 	let reloads = 0;
+	let cut = false;
+	const limit = options.limitMs ?? MAX_ROUTE_MS;
+	const late = () => Date.now() - started > limit;
 	try {
 		await load();
-		({ candidates, excluded, repeats } = await page.evaluate(findCandidates, DESTRUCTIVE.source));
+		({ candidates, excluded, repeats, left } = await find());
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
-		// What changes on its own over a wait as long as a press's: never a press's doing.
 		const idle0 = await read();
-		await settle(page, AFTER_CAP_MS);
+		await settle(at(), LATE_MARKS_MS);
 		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
-		await page.waitForTimeout(DRIFT_WATCH_MS);
+		await at().waitForTimeout(DRIFT_WATCH_MS);
 		const idle1 = await read();
 		drift = (await diff(idle0, idle1, [], '')).changed;
 		let fresh = true;
 		// The reading a control that left the page as it found it ended on: compared with the next control's first.
 		let lastRead: number | undefined;
-		// Per stateful control, the elements its first press changed: one that changed only what the page changes on its own is inert.
+		// Per stateful control, the elements its first press changed: one that changed only what the page changes by itself is inert.
 		const moved = new Map<number, string[]>();
-		// Holders are named on the page as it loads, before any press changed their text.
 		const pending: [number, string][] = [];
 		const name = async () => {
-			const sigs = await page.evaluate(sigsAt, pending.map(([, path]) => path));
-			for (const [i, [at, path]] of pending.entries()) if (sigs[i]) controls[at] = { ...controls[at]!, holder: { path, at: sigs[i]! } };
+			const sigs = await at().evaluate(sigsAt, pending.map(([, path]) => path));
+			for (const [i, [index, path]] of pending.entries()) {
+				const sig = sigs[i];
+				const control = controls[index];
+				if (sig && control) controls[index] = { ...control, holder: { path, at: sig } };
+			}
 			pending.splice(0);
 		};
 		for (const [index, c] of candidates.slice(0, MAX_CONTROLS).entries()) {
-			if (Date.now() - started > MAX_ROUTE_MS) {
-				excluded[`past ${MAX_ROUTE_MS / 1000} s on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index;
+			if (late()) {
+				excluded[`past ${limit / 1000} s on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index;
+				cut = true;
 				break;
 			}
 			if (!fresh) {
 				await load();
 				reloads++;
-				await page.evaluate(findCandidates, DESTRUCTIVE.source);
+				await find();
 				await name();
 			}
 			fresh = true;
-			const control = page.locator(`[data-mm-discover="${index}"]`).first();
+			const control = at().locator(`[data-mm-discover="${index}"]`).first();
 			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
 			if (!(await control.count())) {
 				controls.push({ ...base, shape: 'unpressable', why: 'not on the page once loaded again' });
@@ -522,8 +626,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			await control.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
 			// Focus left on the last control would move with this press: its ring going is not this press's doing.
-			await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
-			// What the scroll into view set off (a table of contents marking the heading in view) settles first.
+			await at().evaluate(() => (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement.blur() : undefined));
 			await frames();
 			await still();
 			const pressed = await control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)).catch(() => '');
@@ -533,37 +636,43 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			await announcedSince();
 			const states = [await read()];
 			lastRead = undefined;
-			const press = async (): Promise<boolean> =>
-				control.click({ timeout: 5000 }).then(
+			const press = async (): Promise<boolean> => {
+				const ok = await control.click({ timeout: 5000 }).then(
 					() => true,
 					() => false,
 				);
+				// What a press fetched (a chunk, a GET it waits on) comes before the page is read.
+				await requestsDone(at(), SCRIPTS_STILL_CAP_MS).catch(() => {});
+				return ok;
+			};
 			const changesFrom = (a: number, b: number) => diff(a, b, drift, pressed);
 			if (!(await press())) {
 				controls.push({ ...base, shape: 'unpressable', why: 'the press did not reach it' });
 				fresh = false;
 				continue;
 			}
-			await page.mouse.move(0, 0);
+			await at().mouse.move(0, 0);
 			await frames();
-			const quick = await changesFrom(states[0]!, await read());
+			const quick = await changesFrom(states[0] ?? 0, await read());
 			await still();
 			let settled = await read();
-			// A page the press changed is given its later timers too: a spinner gone, a reply streamed in.
-			if (!stopped && (await changesFrom(states[0]!, settled)).changed.length) {
-				await settle(page, AFTER_CAP_MS);
+			if (!stopped && (await changesFrom(states[0] ?? 0, settled)).changed.length) {
+				await settle(at(), LATE_MARKS_MS);
 				await still();
 				settled = await read();
 			}
 			const announced = await announcedSince();
-			await wrote();
+			const address: Change[] = [];
+			await looked(address);
+			if (address.length) fresh = false;
 			if (stopped) {
-				controls.push({ ...base, shape: stopped.shape, why: stopped.why });
+				const s = stopped as { shape: Stopped; why: string };
+				controls.push({ ...base, shape: s.shape, why: s.why });
 				fresh = false;
 				continue;
 			}
-			const first = await changesFrom(states[0]!, settled);
-			const said: Change[] = announced.map((a) => ({ at: a.slice(0, a.indexOf(':')), what: 'announced', after: a.slice(a.indexOf(':') + 2) }));
+			const first = await changesFrom(states[0] ?? 0, settled);
+			const said: Change[] = [...address, ...announced.map((a): Change => ({ at: a.slice(0, a.indexOf(':')), what: 'announced', after: a.slice(a.indexOf(':') + 2) }))];
 			if (!first.changed.length && !quick.changed.length && !said.length) {
 				controls.push({ ...base, shape: 'inert' });
 				lastRead = settled;
@@ -573,15 +682,14 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				// What only showed while the pointer was on the control (a tooltip) is the hover's, not the press's.
 				await control.hover({ timeout: 2000 }).catch(() => {});
 				await frames();
-				await scriptsStill(page, STILL_CAP_MS).catch(() => undefined);
-				const hovered = (await changesFrom(states[0]!, await read())).changed;
+				await scriptsStill(at(), SCRIPTS_STILL_CAP_MS).catch(() => undefined);
+				const hovered = (await changesFrom(states[0] ?? 0, await read())).changed;
 				await still();
 				const own = quick.changed.filter((p) => !hovered.some((h) => p === h || p.startsWith(`${h}>`)));
 				if (!own.length && !said.length) {
 					controls.push({ ...base, shape: 'inert' });
 					lastRead = await read();
-				}
-				else {
+				} else {
 					if (!said.length) moved.set(controls.length, own);
 					controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
 				}
@@ -592,15 +700,19 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const holder = holderPath(pressed, first.changed);
 			let shape: Shape | undefined;
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {
+				if (late()) {
+					cut = true;
+					break;
+				}
 				await press();
 				await still();
-				await settle(page, AFTER_CAP_MS);
+				await settle(at(), LATE_MARKS_MS);
 				await still();
-				await wrote();
+				await looked([]);
 				if (stopped) break;
 				const now = await read();
 				let same = -1;
-				for (const [i, s] of states.entries()) if (!(await changesFrom(s, now)).changed.length) (same = i);
+				for (const [i, s] of states.entries()) if (!(await changesFrom(s, now)).changed.length) same = i;
 				if (same === 0) shape = n === 2 ? 'toggle' : 'cycle';
 				else if (same === states.length - 1) shape = 'one-way';
 				else if (same > 0) shape = 'sequence';
@@ -614,22 +726,31 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			if (holder) pending.push([controls.length, holder]);
 			moved.set(controls.length, said.length ? [] : first.changed);
 			controls.push({ ...base, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
+			if (cut) {
+				excluded[`past ${limit / 1000} s on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index - 1;
+				break;
+			}
 		}
-		// What the page turned out to change on its own (learned between controls) is taken back from every press it fooled.
-		const own = (path: string) => drift.some((d) => path === d || path.startsWith(`${d}>`));
-		for (const [at, paths] of moved) if (paths.length && paths.every(own)) controls[at] = { ...controls[at]!, shape: 'inert', changes: [], states: 1 };
+		// What the page turned out to change by itself (learned between controls) is taken back from every press it fooled: by the same element only.
+		for (const [index, paths] of moved) {
+			const control = controls[index];
+			if (control && paths.length && paths.every((p) => drift.includes(p))) controls[index] = { ...control, shape: 'inert', changes: [], states: 1 };
+		}
 		if (pending.length) {
 			await load();
 			await name();
 		}
 	} catch (error) {
-		const message = (error as Error).message.split('\n')[0]!;
-		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
+		const message = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
+		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
 	} finally {
-		await context.close().catch(() => {});
+		await session?.context.close().catch(() => {});
 	}
-	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started };
-	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
+	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}) };
+	// A page the time stop cut short is recorded again next time, never read back as whole.
+	if (!cut) {
+		await mkdir(dir, { recursive: true });
+		await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
+	}
 	return facts;
 }

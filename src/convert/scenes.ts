@@ -17,6 +17,9 @@ export interface Frame {
 	readonly tree: SceneNode;
 }
 
+/** The label signature (tag|data-slot|label) of the control an edge's `control` names (`<signature>#<n>`, then `|<use>` for a field). */
+export const edgeLabel = (control: string): string => control.slice(0, control.lastIndexOf('#') < 0 ? control.length : control.lastIndexOf('#'));
+
 /** One use of a control, from a settled state to the next, with every frame the demo showed on the way. */
 export interface Edge {
 	readonly from: number;

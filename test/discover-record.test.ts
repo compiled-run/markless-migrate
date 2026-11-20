@@ -128,14 +128,18 @@ test('a press that writes to a server is blocked and not read; one that leaves t
 
 test('destructive names, forms, links and reveals are never pressed', () => {
 	for (const name of ['Delete account', 'Inside a form', 'In a link', 'Menu', 'Wifi']) assert.equal(byName(name), undefined, name);
-	assert.equal(facts.excluded['a toggle uses it'], 1);
-	assert.equal(facts.excluded['a reveal uses it'], 2, 'a trigger and the one button inside another');
-	assert.equal(facts.excluded['in a grid'], 1);
+	assert.equal(facts.excluded['left to the toggles'], 1);
+	assert.equal(facts.excluded['left to the reveals'], 2, 'a trigger and the one button inside another');
+	assert.deepEqual(facts.left?.map((l) => [l.to, l.name]), [['reveals', 'Menu'], ['toggles', 'Wifi'], ['reveals', 'Inner trigger']]);
+	assert.equal(byName('15')?.shape, 'inert', 'a grid no recording holds is pressed');
 	assert.equal(facts.excluded['same as a control pressed'], 1);
 	assert.equal(facts.controls.filter((c) => c.name === 'Again').length, 2);
-	assert.deepEqual(facts.repeats, { '"Again" (button||Again#0)': 1 });
+	assert.deepEqual(facts.repeats, { 'button||Again#0': 1 });
 	assert.equal(cutsOf({ excluded: { 'past 240 s on the page': 3 } }), '3 not reached (past 240 s on the page)');
-	assert.match(cutsOf({ excluded: facts.excluded, repeats: facts.repeats }), /1 in grids.*1 same as a control pressed: 1 like "Again" \(button\|\|Again#0\)/);
+	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>() };
+	assert.match(cutsOf(routeDiscovery(facts, none)), /1 same as a control pressed: 1 like "Again" \(button\|\|Again#0\)/);
+	const unlooked = routeDiscovery(facts, { ...none, controls: new Set(['button||Menu#0']) }).unknown.filter((u) => u.why?.startsWith('left to'));
+	assert.deepEqual(unlooked.map((u) => [u.name, u.why]), [['Wifi', 'left to the toggles, which recorded nothing for it'], ['Inner trigger', 'left to the reveals, which recorded nothing for it']], 'what the reveals recorded is theirs; the rest no one looked at');
 	assert.equal(facts.excluded['destructive name'], 1);
 	assert.equal(facts.excluded['in a form'], 1);
 	assert.equal(facts.excluded['link'], 1);
@@ -154,7 +158,7 @@ test('a recording is read back for the same page key, and claimed controls are n
 	assert.equal(routeDiscovery(facts, { ...none, holders: new Set([kbd.ancestors[0]!]) }).dead.find((d) => d.name === 'K')?.held, true);
 	const route = routeDiscovery(facts, none);
 	assert.deepEqual(route.dead.map((d) => d.name).sort(), ['Create', 'Drag to reorder', 'K', 'Load reply', 'Show more', 'Start Listening']);
-	assert.deepEqual(route.unknown.map((u) => u.shape).sort(), ['blocked', 'blocked', 'navigates']);
+	assert.deepEqual(route.unknown.filter((u) => !u.why?.startsWith('left to')).map((u) => u.shape).sort(), ['blocked', 'blocked', 'navigates']);
 	const store = await mkdtemp(join(tmpdir(), 'mm-discover-store-'));
 	const first = await discoveryReport(store, { '/': route });
 	assert.equal(first.count, 6);
@@ -188,7 +192,8 @@ export default function Page() @{
 	const done = await finishDiscovery(app, draft);
 	assert.deepEqual(done.routes['/']!.dead.map((d) => d.name), ['Start Listening', 'Suggest'], 'a handler around a control answers it only for the widget it is held in');
 	assert.match(done.routes['/']!.dead[0]!.what, /inside a widget a recording ports, which does not answer this press/);
-	assert.deepEqual(done.routes['/']!.answered?.map((a) => [a.name, a.by.split(' ')[0]]), [['Copy', 'site-part'], ['Show more', 'markless'], ['Next month', 'markless']]);
+	assert.deepEqual(done.routes['/']!.handled?.map((a) => [a.name, a.by.split(' ')[0]]), [['Copy', 'site-part'], ['Show more', 'markless'], ['Next month', 'markless']]);
 	assert.equal(done.count, 2);
+	assert.equal(done.handled, 3, 'a handler on the port is counted apart: its effect is not compared');
 	await rm(app, { recursive: true, force: true });
 });

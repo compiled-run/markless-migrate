@@ -1,5 +1,4 @@
-// The discovery recordings live apart from every other kind, as the prefetch ones do: one folder per version of this
-// recorder's module graph, one file per route holding the key of the old page it was recorded from.
+// Discovery recordings live apart from every other kind, as prefetch's do: a folder per recorder version, a file per route.
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';

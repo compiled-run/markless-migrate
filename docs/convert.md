@@ -151,37 +151,48 @@ with no message. So convert also presses, on each page of the original at deskto
 
 - every `button`, `[role=button]`, `summary` and `[role=treeitem]`, and every element the page's CSS gives a pointer or
   text cursor its parent does not have (an input group's addon that focuses its field), each marked with how it was found;
-- never one inside a form or a link, a submit, a disabled or hidden one, one whose name ends a session or deletes
-  (`src/check/destructive.ts`), or one a reveal uses by its ARIA marks (`aria-expanded`, `aria-haspopup`, tabs, menus,
-  options, comboboxes).
+- never one inside a form or a link, a submit, a disabled or hidden one, one with no accessible name, one whose
+  accessible name (`aria-labelledby`, `aria-label`, its text, an image's `alt` or an svg's `title`, its `title`) ends a
+  session or deletes (`src/check/destructive.ts`), or one the reveals or the toggles take by their own selectors
+  (`REVEAL_CLICKS`, `toggles.ts`'s `SELECTOR`). Those are named per route and checked against what those recorders
+  recorded: one they recorded nothing for is reported as not looked at.
 
 Each press is read against the page before it: an element added, removed, shown or hidden, its text, an ARIA state or
 name, how it looks (display, visibility, opacity, colours, transform, size), focus moving to another element, a scroller's
 scroll, and any text a live region announced. A class, style or `data-` change that changes no look is not a change, nor an
 `animation-*` or `transition-*` style, an id reference renamed to the same element, a tooltip, hover or focus style (the
 pointer leaves and the control is focused before the first reading), or what changes on the page with no press at all
-(a clock). The page is read once its scripts stop (`scriptsStill`), and again once its timers have run: a page that came
-back by itself is `transient`. Otherwise the control is pressed again, up to four times: back at the start is a `toggle`
-(or a `cycle` of three or more states), unchanged by the next press `one-way`. A press that sends anything but a GET is
-aborted and reported as writing to a server, its state after the press unknown; one that leaves the page, opens a
-window, a download or a dialog is stopped and named. A page a press left changed is loaded again before the next
-control. Discovery runs only against a copy of the original on this machine (`localhost`, `127.x`): it presses each
-control up to four times.
+(a clock: an element that changes with no press is taken back from a press only when that same element is all it
+changed). The page is read once the requests a press started are done and its scripts stop (`scriptsStill`), with
+animations finished, and again once its timers have run: a page that came back by itself is `transient`. Otherwise the control is pressed again, up to four times: back at the start is a `toggle`
+(or a `cycle` of three or more states), unchanged by the next press `one-way`. A request other than GET, HEAD or
+OPTIONS is held back twice: in the page (`fetch`, `XMLHttpRequest`, `sendBeacon`, a form's `submit()` and
+`requestSubmit()`, a native submission, a WebSocket's `send`) and, for what gets past that (a worker's fetch), by the
+browser's route. Either is reported as writing to a server, its state after the press unknown. A press that loads
+another document, opens a window, a download or a dialog is stopped and named; one that only changes the address of the
+same document (a filter written to the URL) is a change. A page a press left changed is loaded again, in a new
+browser context, before the next control. Discovery runs only against a copy of the original on this machine
+(`localhost`, `127.0.0.1`, `::1`), checked again after every load (a redirect elsewhere stops it): it presses each control up to
+four times.
 
 A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
 toggles, switches, notifications and hover delays), a recorded demo's uses include it, or the site names it (a theme
 toggle). One that only sits inside a widget a recording ports whole (a carousel, slider, chart, table, accordion, form or
 day picker) is ported only if the written port answers it: a table's paging is the table's, its drag handle is not. After convert writes the app, the
 port itself is asked about each one left (the ledger's sandbox, `src/discover/ported.ts`): a press its own Markless
-handler or a site or library part answers is ported too, named in `answered` with what answered it. The rest that changed
-the page are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
+handler or a site or library part answers has a handler there, named in `handled` with what answered it and counted
+apart ("has a handler, effect not compared"): what that handler does is not compared with the original. One whose
+handler throws there stays dead. The rest that changed the page are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
 and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
-last run of the same store (`.migrate/convert/discover/last.json`: new and cleared). Each cut is said per route too: the
-controls not reached before the page's 240 s stop (and the route named), grid cells, and repeats (a control is pressed
-twice per page by its signature and name, and the rest are counted against the first one). The pipeline's
-`dead-controls` job fails while there are any; nothing waits on it, so the port is still built, checked and deployed,
-but the run is red. A pull request's run of the pipeline (which proves the pipeline on a fixed subset) lists them in
-its summary without failing.
+last run of the same store (`.migrate/convert/discover/last.json`, which keeps the dead controls by route; the count is
+derived from it: new and cleared). Each cut is said per route too: the controls not reached before the page's 240 s stop
+(and the route named) and repeats (a control is pressed twice per page by its signature, name and the nearest element
+around it with a slot, role or id, a grid's cells by their grid; the rest count with the first one, dead with it). A
+route whose discovery failed or stopped before every control is not looked at in full: it clears nothing, keeps its
+last findings, and is not kept as a recording. The pipeline's `dead-controls` job fails while there are dead controls
+or such routes; nothing waits on it, so the port is still built, checked and deployed, but the run is red. A pull
+request's run of the pipeline (which proves the pipeline on a fixed subset) lists them in its summary without failing;
+a missing report, or one that did not look, fails every run. A report an earlier run made (a kept emit) says which.
 Recordings are kept in `.migrate/convert/discover/v-<recorder>/` as the prefetch ones are.
 
 ### How to iterate on a port

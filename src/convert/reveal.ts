@@ -97,6 +97,9 @@ const CONTROLS: readonly (readonly [selector: string, action: RevealAction])[] =
 	['[data-slot="context-menu-trigger"]', 'contextmenu'],
 ];
 
+/** The controls the reveals press by their ARIA marks (what they hold back opens on a click). */
+export const REVEAL_CLICKS = CONTROLS.filter(([, action]) => action === 'click').map(([selector]) => selector).join(', ');
+
 // A hover trigger rendered through its child (Radix asChild, Base UI render) carries the child's data-slot: Radix's keeps
 // its data-state, Base UI's its generated id. Hovered in a pass of its own, cached apart from the controls above.
 const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [
