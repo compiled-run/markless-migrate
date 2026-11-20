@@ -86,10 +86,10 @@ export interface DiscoverOptions {
 const VIEWPORT = VIEWPORTS[0] ?? { name: 'desktop', width: 1280, height: 800, isMobile: false };
 /** Three presses tell a three-state cycle (Start Listening) from a sequence; the fourth tells a sequence from a longer cycle. */
 const MAX_PRESSES = 4;
-/** A clock that ticks once a second, the commonest thing a page changes by itself, changes twice in this watch. */
-const DRIFT_WATCH_MS = 2000;
 /** Four times the most pressables on any page of the 18-route shadcn sample (49). */
 const MAX_CONTROLS = 200;
+/** A clock that ticks once a second, the commonest thing a page changes by itself, changes at least once in this watch; what it misses is learned between controls. */
+const DRIFT_WATCH_MS = 1100;
 /** Four times the most presses any page of the 18-route shadcn sample took (41): a bound that cuts a page at the same control every run. */
 const MAX_PAGE_PRESSES = 160;
 /** Seven times the slowest page of the sample (134 s): only a page that stopped answering reaches it, and it is an error, not a cut. */
@@ -620,14 +620,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		await load();
 		({ candidates, excluded, repeats, left } = await find());
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
-		const idle0 = await read();
-		await settle(at(), LATE_MARKS_MS);
+		const idle = await read();
 		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
 		await at().waitForTimeout(DRIFT_WATCH_MS);
-		const idle1 = await read();
-		drift = (await diff(idle0, idle1, [], '')).changed;
+		drift = (await diff(idle, await read(), [], '')).changed;
 		let fresh = true;
-		// The reading a control that left the page as it found it ended on: compared with the next control's first.
+		// The reading a control that left the page as it found it ended on: what changed from it before the next press is the page's own.
 		let lastRead: number | undefined;
 		// Per stateful control, the elements its first press changed: one that changed only what the page changes by itself is inert.
 		const moved = new Map<number, string[]>();
@@ -663,6 +661,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				reloads++;
 				await find();
 				await name();
+				lastRead = await read();
 			}
 			fresh = true;
 			const control = at().locator(`[data-mm-discover="${index}"]`).first();
@@ -671,6 +670,18 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			await control.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+			// What covers the control's centre takes a click there: one a click cannot reach is named at once, not after the click's timeout.
+			const covered = await control
+				.evaluate((el) => {
+					const r = el.getBoundingClientRect();
+					const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+					return !r.width || !r.height ? 'it has no size' : hit && hit !== el && !el.contains(hit) && !hit.contains(el) ? `covered at its centre by ${hit.tagName.toLowerCase()}` : hit ? '' : 'its centre is off the page';
+				})
+				.catch(() => 'it went from the page');
+			if (covered) {
+				controls.push({ ...base, shape: 'unpressable', why: `the press did not reach it: ${covered}` });
+				continue;
+			}
 			// Focus left on the last control would move with this press: its ring going is not this press's doing.
 			await at().evaluate(() => (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement.blur() : undefined));
 			await frames();
@@ -744,6 +755,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			fresh = false;
+			let back: number | undefined;
 			states.push(settled);
 			const holder = holderPath(pressed, first.changed);
 			let shape: Shape | undefined;
@@ -758,7 +770,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				const now = await read();
 				let same = -1;
 				for (const [i, s] of states.entries()) if (!(await changesFrom(s, now)).changed.length) same = i;
-				if (same === 0) shape = n === 2 ? 'toggle' : 'cycle';
+				if (same === 0) {
+					shape = n === 2 ? 'toggle' : 'cycle';
+					// Back to the reading the page loaded with, the pressed control's own look included: no reload is needed before the next control.
+					const start = states[0];
+					if (start !== undefined && !(await diff(start, now, drift, '')).changed.length) back = now;
+				}
 				else if (same === states.length - 1) shape = 'one-way';
 				else if (same > 0) shape = 'sequence';
 				else states.push(now);
@@ -771,6 +788,10 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			if (holder) pending.push([controls.length, holder]);
 			moved.set(controls.length, said.length ? [] : first.changed);
 			controls.push({ ...base, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
+			if (back !== undefined) {
+				fresh = true;
+				lastRead = back;
+			}
 		}
 		// What the page turned out to change by itself (learned between controls) is taken back from every press it fooled: by the same element only.
 		for (const [index, paths] of moved) {
