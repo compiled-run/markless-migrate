@@ -5,7 +5,7 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { copyAssets, copyStaticDir, MANAGED_ASSETS, pruneUnreferenced, readManaged, referencedAssets, resourcePaths, writeManaged } from './assets.ts';
-import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
+import { capturePage, SCRIPTS_STILL_CAP_MS, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
@@ -250,7 +250,14 @@ export interface ConvertReport {
 	readonly unported: readonly { readonly part: string; readonly routes: number }[];
 	/** Where the app's code builds a class with no fixed start (`${size}-text`, `[a, b].join('-')`): the stylesheet cut cannot see those classes, so their rules may be cut. */
 	readonly unseenClassBuilders?: readonly string[];
+	/** Recorded recharts charts convert could not place on their route: that route ships the chart without its tooltip, so the run fails. */
+	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
+	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
+	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
 }
+
+/** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
+export const convertFailed = (report: ConvertReport): boolean => !report.routes.length || Boolean(report.failedCaptures) || report.unplacedCharts.length > 0;
 
 /** The page file a route is served from: `/` is `pages/index.tsrx`, a path with routes under it is its folder's index. */
 export function pageFile(pathname: string, folders: ReadonlySet<string>): string {
@@ -1842,7 +1849,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const failedCaptures = [...failed].map(([route, reason]) => ({ route, reason }));
 	if (failedCaptures.length) captures = captures.filter((ref) => !failed.has(ref.route));
 	captures = captures.map((ref) => storedCapture(browser, options.old, ref, captureDirs.get(ref.route)!));
-	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: failedCaptures, failedCaptures: failedCaptures.length, endpoints: [], unported: [] };
+	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: failedCaptures, failedCaptures: failedCaptures.length, endpoints: [], unported: [], unplacedCharts: [], stillCapped: [] };
 	const usagePath = join(state, 'usage.json');
 	const librariesPath = join(state, 'libraries.json');
 	const hasUsage = await stat(usagePath).then(() => true, () => false);
@@ -1863,6 +1870,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	log(`parts resolved by: ${resolver.name}`);
 	const dropped: Dropped = new Map();
 	const styles = new Map<string, string>();
+	const stillCapped: { route: string; viewports: readonly string[] }[] = [];
 	const unconverted: { route: string; reason: string }[] = failedCaptures.map((f) => ({ route: f.route, reason: `its capture failed: ${f.reason}` }));
 	// React Aria calendars on Markless state, with React Aria's messages for each locale from the old source; the layers
 	// prepare() writes bind the ones their popovers show.
@@ -1907,6 +1915,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		racLayer.route = ref.route;
 		templatePorts.routes = [ref.route];
 		const capture = await ref.load();
+		if (capture.stillCapped?.length) stillCapped.push({ route: ref.route, viewports: capture.stillCapped });
 		runtimeScripts = await runtimes.among(capture.server);
 		prepared.set(ref.route, prepare(capture, revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 		for (const e of racPageEmpties.get(ref.route) ?? []) {
@@ -2133,8 +2142,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const charts = new ChartPlan();
 	let chartCount = 0;
+	const unplacedCharts: { route: string; chart: string }[] = [];
 	for (const [route, p] of prepared) {
 		const placed = charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+		for (const chart of charts.unplaced.splice(0)) {
+			unplacedCharts.push({ route, chart });
+			log(`chart not placed ${route}: ${chart}`);
+		}
 		// The charts' CSS rides the page's own stylesheet, as its body styles do: one request less before first paint.
 		if (placed) p.bodyCss.unshift(CHART_CSS);
 		chartCount += placed;
@@ -2683,6 +2697,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		endpoints,
 		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
 		...(used.unseen.length ? { unseenClassBuilders: used.unseen } : {}),
+		unplacedCharts,
+		stillCapped,
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 	if (!options.only?.length) await writeFile(join(state, 'convert', CONVERT_INPUTS), JSON.stringify({ pageOrderFrom: options.pageOrderFrom ?? null } satisfies ConvertInputs));
@@ -2698,5 +2714,7 @@ export function summarizeConvert(report: ConvertReport): string {
 	if (report.unported.length) lines.push(`Library parts no port implements yet (${report.unported.length}):`, ...report.unported.slice(0, 12).map((u) => `  ${u.part}: ${u.routes} routes`));
 	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
 	if (report.unseenClassBuilders?.length) lines.push(`Classes built with no fixed start, which the stylesheet cut cannot see (${report.unseenClassBuilders.length}): ${report.unseenClassBuilders.slice(0, 12).join(', ')}`);
+	for (const c of report.unplacedCharts) lines.push(`  chart not placed ${c.route}: ${c.chart} (ships without its tooltip)`);
+	if (report.stillCapped.length) lines.push(`Pages still drawing at the ${SCRIPTS_STILL_CAP_MS / 1000} s wait, read mid-frame: ${report.stillCapped.map((c) => `${c.route} (${c.viewports.join(', ')})`).join('; ')}`);
 	return `${lines.join('\n')}\n`;
 }

@@ -1169,6 +1169,8 @@ export class ChartPlan {
 	private readonly bindings = new Map<Tree, Binding>();
 	private readonly shown = new Set<Tree>();
 	private n = 0;
+	/** The recorded charts `add` could not place, each with why; the caller takes them per page. */
+	readonly unplaced: string[] = [];
 
 	bind(el: Tree): Binding | undefined {
 		return this.bindings.get(el);
@@ -1183,12 +1185,19 @@ export class ChartPlan {
 		for (const chart of charts) {
 			const at = wrappers[chart.index];
 			const wrapper = at && text(at) === chart.sig.split('|').slice(2).join('|') ? at : locate(chart.sig, chart.nth);
-			if (!wrapper || this.bindings.has(wrapper)) continue;
+			const named = `chart ${chart.index + 1} (${JSON.stringify(chart.sig.split('|').slice(2).join('|'))})`;
+			if (!wrapper || this.bindings.has(wrapper)) {
+				this.unplaced.push(`${named}: ${wrapper ? 'its element is another recorded chart\'s' : 'no element of the settled document has its text'}`);
+				continue;
+			}
 			const kids = childrenOf(wrapper).filter(isElement);
 			const svg = kids.find((e) => e.tagName === 'svg');
 			const tip = kids.find((e) => classes(e).includes('recharts-tooltip-wrapper'));
 			const legend = kids.find((e) => classes(e).includes('recharts-legend-wrapper'));
-			if (!svg) continue;
+			if (!svg) {
+				this.unplaced.push(`${named}: its element holds no SVG`);
+				continue;
+			}
 			const name = `chart${this.n++}`;
 			const v = `${name}v`;
 			const many = chart.variants.length > 1;

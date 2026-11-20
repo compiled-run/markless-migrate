@@ -71,7 +71,7 @@
 		"test/convert-layer-path.test.ts": {"shard":5,"seconds":1},
 		"test/convert-layers.test.ts": {"shard":3,"seconds":2},
 		"test/convert-limit.test.ts": {"shard":1,"seconds":1},
-		"test/convert-motion-capture.test.ts": {"shard":4,"seconds":6},
+		"test/convert-motion-capture.test.ts": {"shard":4,"seconds":24},
 		"test/convert-page-body.test.ts": {"shard":2,"seconds":1},
 		"test/convert-page-parts.test.ts": {"shard":3,"seconds":28},
 		"test/convert-query-variants.test.ts": {"shard":3,"seconds":1},

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { animationLag, ChartPlan, exactSegments, gridOf, spare, spareCounts, template } from '../src/convert/charts.ts';
 import { attr, body, find, parseDocument, textContent, walk } from '../src/convert/dom.ts';
+import { convertFailed, summarizeConvert, type ConvertReport } from '../src/convert/index.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 
 const textOf = (el: Parameters<typeof textContent>[0]) => textContent(el).trim();
@@ -31,6 +32,26 @@ test('a recharts chart: the active point in state(), the tooltip and the SVG\'s 
 	assert.match(out, /<div class="recharts-tooltip-wrapper" style="visibility: hidden">@if \(chart0 >= 0\) \{ <><div><span>\{chart0t\[chart0\]\[0\]\}<\/span><\/div><\/> \}<\/div>/);
 	assert.match(out, /<g class=\{chart0 >= 0 \? \(chart0w0v0c0\[chart0\] \?\? undefined\) : "layer"\}><path d="M0"><\/path>@if \(chart0 >= 0\) \{ <><g class="recharts-active-dot"><circle cx=\{chart0w0v0a0\[chart0\]\[0\]\} cy=\{chart0w0v0a0\[chart0\]\[1\]\}><\/circle><\/g><\/> \}<\/g>/);
 	assert.deepEqual(plan.bind(wrapper)?.declare, ['let chart0 = state(-1);', 'const chart0t = [["March"],["April"]];', 'const chart0w0v0a0 = [["5","6"],["15","7"]];', 'const chart0w0v0c0 = ["layer","layer recharts-active-shape"];']);
+});
+
+test('a recorded chart its settled document does not hold is named, not dropped', () => {
+	// The settled document read before recharts drew the labels the recording's text has.
+	const doc = parseDocument('<body><div class="recharts-wrapper"><svg class="recharts-surface"><g class="layer"></g></svg></div></body>');
+	const plan = new ChartPlan();
+	const variant = { mode: 'x' as const, segments: [[0, 10, 0]] as [number, number, number][], states: [{ tooltip: '<b>Jan</b>', x: 1, y: null, added: [], changed: [] }], points: {}, elements: 1 };
+	assert.equal(plan.add(body(doc), [{ sig: 'div||JanFeb186305', nth: 2, width: 100, height: 50, view: [5, 5, 90, 40], variants: [variant], drivers: [], index: 0, widths: [] }], () => undefined, (h) => h), 0);
+	assert.deepEqual(plan.unplaced, ['chart 1 ("JanFeb186305"): no element of the settled document has its text']);
+});
+
+test('the convert report names each route with an unplaced chart, which fails the run, and each page read while still drawing, which does not', () => {
+	const base: ConvertReport = { routes: [{ route: '/a', page: 'pages/a.tsrx' } as never], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: [], failedCaptures: 0, endpoints: [], unported: [], unplacedCharts: [], stillCapped: [] };
+	assert.equal(convertFailed(base), false);
+	const drawing = { ...base, stillCapped: [{ route: '/live', viewports: ['desktop', 'mobile'] }] };
+	assert.equal(convertFailed(drawing), false);
+	assert.match(summarizeConvert(drawing), /still drawing at the 3 s wait, read mid-frame: \/live \(desktop, mobile\)/);
+	const unplaced = { ...base, unplacedCharts: [{ route: '/view/x', chart: 'chart 1 ("JanFeb"): no element of the settled document has its text' }] };
+	assert.equal(convertFailed(unplaced), true);
+	assert.match(summarizeConvert(unplaced), /chart not placed \/view\/x: chart 1 \("JanFeb"\)/);
 });
 
 test('a tooltip the old page shows at rest (recharts\' defaultIndex) starts the chart\'s state() on the point it shows', () => {

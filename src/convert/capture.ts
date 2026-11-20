@@ -12,6 +12,7 @@ import { fontPreloadsInFirstScreen, LATE_CANDIDATE, lateFontsInFirstScreen, mark
 import { instancePropMarks, instanceSpecs, legacyInstanceProps, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 import { restoreScrollState, watchScrollState } from './scroll-state.ts';
+import { scriptsStill, trackSettling } from './settle.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
 export interface CapturedPage {
@@ -45,10 +46,23 @@ export interface CapturedPage {
 	readonly instanceProps?: number;
 	/** FONT_FACTS when the page's web fonts were read (fonts.ts); a capture without them is taken again. */
 	readonly fonts?: number;
+	/** SCRIPTS_STILL when `settled` was read once the page's scripts stopped drawing; a capture without it is taken again. */
+	readonly scripts?: number;
+	/** The viewports whose page was still drawing when the wait for its scripts ran out: `settled` is read mid-frame there. */
+	readonly stillCapped?: readonly string[];
 }
 
 /** The version of the font facts a capture records: lateFonts, the first-screen fonts, offscreenFontPreloads and swapFontPreloads. */
 export const FONT_FACTS = 4;
+
+/**
+ * The settled document is read once the page's scripts stop drawing, at most this long after it settled: recharts draws
+ * a line or pie for 1.5 s after it mounts (a pie 0.4 s later) and adds its labels at the end. Measured on ui.shadcn.com:
+ * chart pages went still 0.7 to 1.3 s after settling, a carousel 1.6 s, the home page, a docs page, /blocks and
+ * /examples/dashboard within 3 ms.
+ */
+export const SCRIPTS_STILL_CAP_MS = 3000;
+export const SCRIPTS_STILL = 2;
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
 
@@ -106,7 +120,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
 	const marks = pageMarks();
-	if (cached && cached.route === route && cached.motion === CAPTURE_MOTION && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS) return cached;
+	if (cached && cached.route === route && cached.motion === CAPTURE_MOTION && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS && cached.scripts === SCRIPTS_STILL) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
@@ -117,10 +131,12 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	let swapFirstScreenFonts: string[] = [];
 	let offscreenFontPreloads: string[] = [];
 	let swapFontPreloads: string[] = [];
+	const stillCapped: string[] = [];
 	for (const viewport of viewports) {
 		const env = captureEnv(origin);
 		const { context, page } = await openPage(browser, env, viewport);
 		await context.addInitScript(watchMotionQuery);
+		await trackSettling(context);
 		let asked = true;
 		try {
 			const response = await loadPage(page, new URL(route, origin).href);
@@ -132,6 +148,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await settle(page);
 			await page.evaluate(restoreScrollState).catch(() => 0);
 			await finishAnimations(page);
+			if ((await scriptsStill(page, SCRIPTS_STILL_CAP_MS)) === undefined) stillCapped.push(viewport.name);
 			await keepCommandEmpty(page);
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
 			await page.evaluate(markInstanceProps, { specs: instanceSpecs(), added: false }).catch(() => {});
@@ -162,7 +179,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		}
 		if (asked) reducedMotion[viewport.name] = await reducedDocument(browser, origin, route, viewport);
 	}
-	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, ...(Object.keys(reducedMotion).length ? { reducedMotion } : {}), images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, ...(Object.keys(reducedMotion).length ? { reducedMotion } : {}), images, marks: marksOf(marks), fonts: FONT_FACTS, scripts: SCRIPTS_STILL, ...(stillCapped.length ? { stillCapped } : {}), ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { convert, summarizeConvert } from './convert/index.ts';
+import { convert, convertFailed, summarizeConvert } from './convert/index.ts';
 import { readOverrides, rulesOff } from './overrides.ts';
 import { EMBEDS_DIR, EMBEDS_FILE, readEmbeds } from './embed/file.ts';
 import { ADAPTERS, installAdapter, staleAdapter } from './embed/adapters/index.ts';
@@ -1329,7 +1329,7 @@ async function main(argv: string[]): Promise<number> {
 				return 0;
 			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
-			if (!report.routes.length || report.failedCaptures) return 1;
+			if (convertFailed(report)) return 1;
 			const mode = values.ledger ?? 'fail';
 			if (!values.source || mode === 'off') return 0;
 			// Two threads after convert: each reads the whole port, and convert's own memory is still held.
