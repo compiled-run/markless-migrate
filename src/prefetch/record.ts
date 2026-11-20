@@ -503,7 +503,7 @@ async function experiment(browser: Browser, origin: string, route: string, full:
 		const phaseEnd = new Map<string, number>();
 		for (const r of beforeClick) phaseEnd.set(r.phase, Math.max(phaseEnd.get(r.phase) ?? 0, r.end ?? r.start));
 		const speculative = navigational.filter((r) => r.phase !== 'load').map((r) => ({ ...r, end: r.end ?? phaseEnd.get(r.phase) ?? r.start }));
-		return { shapes, fullLoads, links: links.length, triggers, concurrency: maxInFlight(speculative), bytesBeforeClick, ...(prefetchedClick ? { prefetchedClick } : {}), ...(revisit ? { revisit } : {}), hints, requests, ...(unobserved ? { unobserved } : {}), ...(pressActivated ? { pressActivated } : {}) };
+		return { shapes, fullLoads, links: links.length, targets: [...new Set(links.map((l) => l.target))].sort(), triggers, concurrency: maxInFlight(speculative), bytesBeforeClick, ...(prefetchedClick ? { prefetchedClick } : {}), ...(revisit ? { revisit } : {}), hints, requests, ...(unobserved ? { unobserved } : {}), ...(pressActivated ? { pressActivated } : {}) };
 	} finally {
 		await run.close();
 	}

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { urlPattern } from '../check/templates.ts';
 import type { PrefetchFacts } from './facts.ts';
-import { keepCurrent, prefetchDir, prefetchPageKey } from './key.ts';
+import { keepCurrent, prefetchDir, prefetchPageKey, prefetchVersion } from './key.ts';
 import { recordPrefetch } from './record.ts';
 
 /** The router's own rules (whether a click or a revisit fetches again, which networks it prefetches on) are the same on every page: they are read on the first pages of the site's largest URL patterns, the clicks on this many, the network conditions on the first `CONDITION_PAGES` of those. */
@@ -17,6 +17,19 @@ export function fullRecordings(allRoutes: readonly string[]): { readonly full: S
 	for (const route of [...allRoutes].sort()) (byPattern.get(urlPattern(route)) ?? byPattern.set(urlPattern(route), []).get(urlPattern(route))!).push(route);
 	const largest = [...byPattern].map(([pattern, routes]) => ({ pattern, first: routes[0]!, size: routes.length })).sort((a, b) => b.size - a.size || (a.pattern < b.pattern ? -1 : 1));
 	return { full: new Set(largest.slice(0, FULL_PAGES).map((g) => g.first)), conditions: new Set(largest.slice(0, CONDITION_PAGES).map((g) => g.first)) };
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+/** The pages a stored prefetch.json holds, only when this recorder version wrote it: an older recorder's facts are not read. */
+export function storedFacts(parsed: unknown, version: string): Record<string, PrefetchFacts> {
+	if (!isObject(parsed) || parsed.version !== version || !isObject(parsed.routes)) return {};
+	const out: Record<string, PrefetchFacts> = {};
+	for (const [route, facts] of Object.entries(parsed.routes)) {
+		if (!isObject(facts) || facts.route !== route || !isObject(facts.triggers) || !isObject(facts.hints)) continue;
+		out[route] = { ...(facts as unknown as Omit<PrefetchFacts, 'requests'>), requests: [] };
+	}
+	return out;
 }
 
 export interface PrefetchRecorder {
@@ -38,10 +51,11 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 	const { full, conditions } = fullRecordings(allRoutes);
 	const recorded = new Map<string, PrefetchFacts>();
 	// What the last convert recorded: a partial convert decides from it and its own pages together, never from its pages alone.
-	const stored = await readFile(join(state, 'prefetch.json'), 'utf8').then((t) => (JSON.parse(t) as { routes?: Record<string, Omit<PrefetchFacts, 'requests'>> }).routes ?? {}, () => ({}));
+	const version = await prefetchVersion();
+	const stored = await readFile(join(state, 'prefetch.json'), 'utf8').then((t) => storedFacts(JSON.parse(t), version), () => ({}));
 	const listed = new Set(allRoutes);
 	const merged = () => {
-		const out = new Map<string, PrefetchFacts>(Object.entries(stored).filter(([route]) => listed.has(route)).map(([route, facts]) => [route, { ...facts, requests: [] }]));
+		const out = new Map<string, PrefetchFacts>(Object.entries(stored).filter(([route]) => listed.has(route)));
 		for (const [route, facts] of recorded) out.set(route, facts);
 		return out;
 	};
@@ -68,7 +82,7 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 		fromBefore: () => [...merged().keys()].filter((r) => !recorded.has(r)).length,
 		save: async () => {
 			const routes = Object.fromEntries([...merged()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([route, { requests: _, ...facts }]) => [route, facts]));
-			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ routes }, null, 1));
+			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ version, routes }, null, 1));
 		},
 	};
 }

@@ -3,8 +3,9 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { budgetOf, routerOptions, routerPrefetchSupport } from '../src/convert/prefetch-config.ts';
-import { prefetchRecorder } from '../src/prefetch/convert.ts';
+import { routerOptions, routerPrefetchSupport } from '../src/convert/prefetch-config.ts';
+import { prefetchRecorder, storedFacts } from '../src/prefetch/convert.ts';
+import { prefetchVersion } from '../src/prefetch/key.ts';
 import { decidePrefetch, declaredTriggers, MAX_CONCURRENCY } from '../src/prefetch/decide.ts';
 import type { ConditionResult, PrefetchFacts, Trigger, TriggerEvidence } from '../src/prefetch/facts.ts';
 
@@ -22,10 +23,17 @@ test('an original that fetches links as they come into view on every network: th
 	assert.equal(d.revisitFromMemory, true);
 });
 
-test('an original that fetches nothing ahead: intent alone', () => {
+test('an original that fetches nothing ahead, its hover, focus and press tried: intent alone, on fast connections only', () => {
 	const d = decidePrefetch([page('/a', { load: e(10, 0), viewport: e(4, 0), hover: e(2, 0), focus: e(2, 0), pointerdown: e(2, 0) })]);
-	assert.deepEqual(d.setting, { intent: 'all', viewport: 'none', idle: 'none', concurrency: 2 });
-	assert.ok(d.reasons.some((r) => /fetches nothing before a click/.test(r.says)));
+	assert.deepEqual(d.setting, { intent: 'fast', viewport: 'none', idle: 'none', concurrency: 2 });
+	assert.ok(d.reasons.some((r) => /fetches nothing before a click.*on fast connections only/.test(r.says)), JSON.stringify(d.reasons));
+});
+
+test('intent the original could not be tried on stays on every network; tried and never fired, fast connections only', () => {
+	assert.equal(decidePrefetch([page('/a', { viewport: e(4, 8) })]).setting.intent, 'all', 'every link was fetched in view before it could be hovered');
+	const tried = decidePrefetch([page('/a', { viewport: e(4, 8), hover: e(2, 0) })]);
+	assert.equal(tried.setting.intent, 'fast');
+	assert.ok(tried.reasons.some((r) => /tried on the original and fetched nothing/.test(r.says)));
 });
 
 test('an original that fetches on hover only on fast connections: intent on fast connections, nothing more eager', () => {
@@ -40,6 +48,11 @@ test('an original that fetches in view only on fast connections: viewport on fas
 
 test('a trigger never tried under other networks is set for every network, so the port is not the less eager side', () => {
 	assert.equal(decidePrefetch([page('/a', { viewport: e(4, 8) })]).setting.viewport, 'all');
+});
+
+test('tried only on 4G is untested on slow networks, so every network; tried on a slow one where it stopped, fast only', () => {
+	assert.equal(decidePrefetch([page('/a', { viewport: e(4, 8) }, { conditions: { '4g': { viewport: true }, 'no-info': { viewport: true } } })]).setting.viewport, 'all');
+	assert.equal(decidePrefetch([page('/a', { viewport: e(4, 8) }, { conditions: { '4g': { viewport: true }, '3g': { viewport: false } } })]).setting.viewport, 'fast');
 });
 
 test('an original that fetches every link at load: idle and viewport on, with what the router cannot do said', () => {
@@ -59,28 +72,42 @@ test('a page whose recording failed is left out and named', () => {
 	assert.equal(d.pages, 1);
 });
 
-test('the router options carry the setting only when the app\'s router takes it, and only the triggers it names', () => {
+test('the router options carry the setting only when the app\'s router takes it, built as data, and say why not otherwise', () => {
 	const setting = { intent: 'all', viewport: 'all', idle: 'none', concurrency: 5 } as const;
 	const networks = ['none', 'fast', 'all'];
-	assert.equal(routerOptions(setting, undefined), '');
-	assert.equal(routerOptions(setting, { triggers: ['intent', 'viewport', 'idle'], networks }), "{ prefetch: { intent: 'all', viewport: 'all', idle: 'none', concurrency: 5 } }");
-	assert.equal(routerOptions(setting, { triggers: ['intent'], networks }), "{ prefetch: { intent: 'all', concurrency: 5 } }");
-	assert.throws(() => routerOptions(setting, { triggers: ['intent'], networks: ['on', 'off'] }), /takes on, off for intent, not all/, 'a value the router does not take fails loudly');
+	assert.deepEqual(routerOptions(setting, { triggers: ['intent', 'viewport', 'idle'], networks }), { args: '{"prefetch":{"intent":"all","viewport":"all","idle":"none","concurrency":5}}', missing: [] });
+	assert.deepEqual(routerOptions(setting, { triggers: ['intent'], networks }), { args: '{"prefetch":{"intent":"all","concurrency":5}}', missing: ['viewport'] });
+	assert.deepEqual(routerOptions(setting, { triggers: ['intent'], networks: ['on', 'off'] }), { notApplied: "the app's router takes on, off for intent, not all" }, 'a value the router does not take leaves the setting out and says why');
+	assert.deepEqual(routerOptions(setting, { refused: 'too old', says: 'old' }), { notApplied: 'old' });
+	assert.ok(!('budget' in JSON.parse((routerOptions(setting, { triggers: ['intent', 'viewport', 'idle'], networks }) as { args: string }).args).prefetch), "the port's budget is the router's own: never derived from the original's bytes");
 });
 
 test('vite.config.ts hands the router those options, and nothing when there are none', async () => {
 	const { viteConfig } = await import('../src/convert/index.ts');
-	assert.match(viteConfig([], { vercel: [] }, "{ prefetch: { intent: 'all', concurrency: 2 } }"), /router\(\{ prefetch: \{ intent: 'all', concurrency: 2 \} \}\)\]/);
+	assert.ok(viteConfig([], { vercel: [] }, '{"prefetch":{"intent":"all","concurrency":2}}').includes('router({"prefetch":{"intent":"all","concurrency":2}})]'));
 	assert.match(viteConfig([]), /router\(\)\]/);
 });
 
-test('declared hints the recording could not see fetched stand for what the page does, never for nothing ahead', () => {
-	const hints = { links: [{ rel: 'prefetch', href: '/a' }], speculationRules: [{ prefetch: [{ source: 'document', eagerness: 'moderate' }] }] };
-	const d = decidePrefetch([page('/a', { load: e(10, 0), viewport: e(4, 0) }, { hints, unobserved: 'not seen' })]);
+test('declared hints the recording could not see fetched stand for what the page does, when they name its link targets', () => {
+	const hints = { links: [{ rel: 'prefetch', href: '/b' }], speculationRules: [{ prefetch: [{ source: 'document', eagerness: 'moderate' }] }] };
+	const d = decidePrefetch([page('/a', { load: e(10, 0), viewport: e(4, 0) }, { hints, targets: ['/b', '/c'], unobserved: 'not seen' })]);
 	assert.equal(d.setting.idle, 'all', JSON.stringify(d.setting));
 	assert.equal(d.setting.intent, 'all');
 	assert.ok(d.reasons.some((r) => /declare prefetch hints the recording could not see/.test(r.says)));
-	assert.deepEqual([...declaredTriggers({ links: [], speculationRules: [{ prefetch: [{ source: 'list', urls: ['/x'] }] }, { prerender: [{ source: 'document', eagerness: 'conservative' }] }] })].sort(), ['pointerdown', 'visible']);
+	assert.deepEqual([...declaredTriggers({ hints: { links: [], speculationRules: [{ prefetch: [{ source: 'list', urls: ['/c'] }] }, { prerender: [{ source: 'document', eagerness: 'conservative' }] }] }, targets: ['/c'] })].sort(), ['pointerdown', 'visible']);
+});
+
+test('a prefetch hint for a file that is not one of the page\'s link targets (a script chunk) is not fetching pages', () => {
+	const chunk = { hints: { links: [{ rel: 'prefetch', href: '/_next/static/chunks/12.js' }], speculationRules: [{ prefetch: [{ source: 'list', urls: ['/api/x'] }] }] }, targets: ['/b'] };
+	assert.deepEqual([...declaredTriggers(chunk)], []);
+	assert.equal(decidePrefetch([page('/a', { load: e(10, 0), viewport: e(4, 0) }, { ...chunk, unobserved: 'not seen' })]).setting.idle, 'none');
+});
+
+test('the original\'s bytes ahead are reported as a fact, never turned into a budget that could stop the port', () => {
+	const d = decidePrefetch([page('/a', { load: e(10, 0), viewport: e(4, 0) }, { hints: { links: [{ rel: 'prefetch', href: '/b' }], speculationRules: [] }, targets: ['/b'], unobserved: 'not seen' })]);
+	assert.equal(d.aheadBytes, 0);
+	assert.equal(d.setting.idle, 'all');
+	assert.ok(!('budgetCap' in d));
 });
 
 test('a timer after load reads as fetching at load, a first scroll as fetching in view', () => {
@@ -101,10 +128,10 @@ test('Save-Data is named by trigger, and a few links fetched at load under Save-
 	assert.ok(!none.reasons.some((r) => /Under Save-Data/.test(r.says)));
 });
 
-test('repeated condition runs that disagreed are said, and the port takes the more eager reading', () => {
+test('repeated condition runs that disagreed are said as the recorder decided them: by the majority of three', () => {
 	const d = decidePrefetch([page('/a', { viewport: e(4, 8) }, { conditions: { '3g': { viewport: true, runs: 3, disagreed: ['viewport'] } } })]);
 	assert.equal(d.setting.viewport, 'all');
-	assert.ok(d.reasons.some((r) => /disagreed on viewport on 3g/.test(r.says)));
+	assert.ok(d.reasons.some((r) => r.says === 'Repeated runs disagreed on viewport on 3g; the recording kept the majority of three runs (a tie counts as fired).'));
 });
 
 test('the router support says why it cannot take the setting: not installed, or too old', async () => {
@@ -124,11 +151,10 @@ test('the router support says why it cannot take the setting: not installed, or 
 	try {
 		assert.equal(((await routerPrefetchSupport(await app())) as { refused?: string }).refused, 'not installed');
 		assert.equal(((await routerPrefetchSupport(await app('export const router = () => ({});'))) as { refused?: string }).refused, 'too old');
+		assert.equal(((await routerPrefetchSupport(await app('throw new Error("dist is broken");'))) as { refused?: string }).refused, 'unloadable', 'a router that fails to load leaves the setting out, never stops the convert');
+		assert.equal(((await routerPrefetchSupport(await app('export const PREFETCH_TRIGGERS = "intent";'))) as { refused?: string }).refused, 'unreadable');
 		const current = await app("export const router = () => ({}); export const PREFETCH_TRIGGERS = ['intent', 'viewport', 'idle']; export const PREFETCH_NETWORKS = ['none', 'fast', 'all'];");
 		assert.deepEqual(await routerPrefetchSupport(current), { triggers: ['intent', 'viewport', 'idle'], networks: ['none', 'fast', 'all'] });
-		const budgeted = await app("export const router = () => ({}); export const PREFETCH_TRIGGERS = ['intent', 'viewport', 'idle']; export const PREFETCH_NETWORKS = ['none', 'fast', 'all']; export const PREFETCH_DEFAULTS = { intent: 'all', viewport: 'none', idle: 'fast', concurrency: 2, budget: 2097152 };");
-		assert.equal(((await routerPrefetchSupport(budgeted)) as { defaultBudget?: number }).defaultBudget, 2097152, 'the default is read from the router, not restated');
-		assert.equal(routerOptions({ intent: 'all', viewport: 'all', idle: 'none', concurrency: 2 }, { refused: 'too old', says: '' }), '');
 	} finally {
 		for (const dir of apps) await rm(dir, { recursive: true, force: true });
 	}
@@ -137,7 +163,7 @@ test('the router support says why it cannot take the setting: not installed, or 
 test('a partial convert decides from the last convert\'s pages and its own, and keeps the others in prefetch.json', async () => {
 	const state = await mkdtemp(join(tmpdir(), 'mm-state-'));
 	try {
-		const stored = { routes: { '/a': page('/a', { viewport: e(4, 8) }), '/b': page('/b', { viewport: e(4, 8) }), '/gone': page('/gone', {}) } };
+		const stored = { version: await prefetchVersion(), routes: { '/a': page('/a', { viewport: e(4, 8) }), '/b': page('/b', { viewport: e(4, 8) }), '/gone': page('/gone', {}) } };
 		await writeFile(join(state, 'prefetch.json'), JSON.stringify(stored));
 		const recorder = await prefetchRecorder(state, 'http://127.0.0.1:9', ['/a', '/b', '/c'], () => {});
 		assert.deepEqual(recorder.recorded().map((f) => f.route).sort(), ['/a', '/b'], 'a page no longer listed is not read');
@@ -150,15 +176,11 @@ test('a partial convert decides from the last convert\'s pages and its own, and 
 	}
 });
 
-test('the budget is 1.5 times the original\'s page data ahead per page view, never above the router\'s default, and none without fetching ahead', () => {
-	const mib = 1024 * 1024;
-	const d = decidePrefetch([page('/a', { visible: { ...e(10, 10), bytes: 400_000 }, viewport: { ...e(4, 20), bytes: 600_000 } })]);
-	assert.equal(d.aheadBytes, 1_000_000);
-	assert.equal(d.budgetCap, 1_500_000);
-	const support = { triggers: ['intent', 'viewport', 'idle'], networks: ['none', 'fast', 'all'], defaultBudget: 2 * mib };
-	assert.equal(budgetOf(d.setting, d.budgetCap, support), 1_500_000);
-	assert.equal(budgetOf(d.setting, 10 * mib, support), 2 * mib, 'never above the default');
-	assert.equal(budgetOf({ intent: 'all', viewport: 'none', idle: 'none', concurrency: 2 }, d.budgetCap, support), undefined, 'intent is not budgeted');
-	assert.equal(budgetOf(d.setting, d.budgetCap, { ...support, defaultBudget: undefined }), undefined, 'a router without a budget gets none');
-	assert.equal(routerOptions(d.setting, support, d.budgetCap), `{ prefetch: { intent: 'all', viewport: 'all', idle: 'none', concurrency: 2, budget: 1500000 } }`);
+test('a stored prefetch.json another recorder version wrote, or of another shape, is not read', async () => {
+	const version = await prefetchVersion();
+	const facts = page('/a', { viewport: e(4, 8) });
+	assert.deepEqual(Object.keys(storedFacts({ version, routes: { '/a': facts } }, version)), ['/a']);
+	assert.deepEqual(storedFacts({ version: 'older', routes: { '/a': facts } }, version), {});
+	assert.deepEqual(storedFacts({ routes: { '/a': facts } }, version), {});
+	assert.deepEqual(storedFacts({ version, routes: { '/a': { route: '/b' } } }, version), {});
 });
