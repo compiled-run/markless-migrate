@@ -38,6 +38,12 @@ export const CREDENTIALS: Readonly<Record<string, string>> = {
 	MARKLESS_MIGRATE_TOKEN: "the token the checked app's requests send",
 };
 
+/** Variables that only change what the checker prints about itself, never a result: no part of the key, so a shard that profiles reuses what one that did not kept. */
+export const DIAGNOSTICS: Readonly<Record<string, string>> = {
+	MARKLESS_MIGRATE_PROFILE: 'prints where each route spent its time',
+	MARKLESS_MIGRATE_STACK: "prints an error's stack in place of its message",
+};
+
 /** Folders the checker reads as data, not code, and what it reads of each. */
 const DATA_DIRS: readonly DataDir[] = [
 	{ dir: ROOT, by: join(CHECK, 'probe-parts.ts'), read: async () => JSON.stringify(await partSelectors(ROOT)) },
@@ -115,7 +121,7 @@ export async function checkerVersion(): Promise<CheckerVersion> {
 	const text = await readFile(CLI, 'utf8');
 	for (const s of command.statements) part('check command', text.slice(s.start, s.end));
 	for (const [name, value] of closure.parts) part(name, value);
-	for (const name of [...found.env].sort()) part(`env ${name}`, name in CREDENTIALS ? (process.env[name] ? 'set' : '\0unset') : (process.env[name] ?? '\0unset'));
+	for (const name of [...found.env].sort()) if (!(name in DIAGNOSTICS)) part(`env ${name}`, name in CREDENTIALS ? (process.env[name] ? 'set' : '\0unset') : (process.env[name] ?? '\0unset'));
 	// The one whole-environment read that can change a result: whether PageSpeed Insights runs.
 	part('psi key', psiKey() ? 'found' : 'none');
 	if (problems.length) part('problems', `${problems.join('\n')}\n${randomUUID()}`);

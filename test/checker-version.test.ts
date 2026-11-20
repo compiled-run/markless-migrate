@@ -48,12 +48,18 @@ test("editing code the check command runs changes the checker's version; the con
 		assert.equal(await after('src/plan/command.ts', inside('export async function planCommand')), false, 'the planner');
 		assert.equal(await after('parts/cmdk.ts', (t) => `${t}\n// a comment, no selector\n`), false, "a part's code the checker never runs, its selectors the same");
 		assert.equal(await after('parts/cmdk.ts', (t) => `${t}\nexport const PROBE_EDIT = '[data-probe-edit]';\n`), true, 'a selector the widget probes read');
-		const variable = base.env.find((e) => e.startsWith('MARKLESS_MIGRATE_') && e !== 'MARKLESS_MIGRATE_TOKEN')!;
+		const variable = base.env.find((e) => e.startsWith('MARKLESS_MIGRATE_') && !['MARKLESS_MIGRATE_TOKEN', 'MARKLESS_MIGRATE_PROFILE', 'MARKLESS_MIGRATE_STACK'].includes(e))!;
 		process.env[variable] = '987';
 		try {
 			assert.notEqual((await mod.checkerVersion()).version, base.version, `${variable}, which the checker reads`);
 		} finally {
 			delete process.env[variable];
+		}
+		process.env.MARKLESS_MIGRATE_PROFILE = '1';
+		try {
+			assert.equal((await mod.checkerVersion()).version, base.version, 'check.yml profiles its shards and check-select does not: a diagnostic switch is no part of the key');
+		} finally {
+			delete process.env.MARKLESS_MIGRATE_PROFILE;
 		}
 		const before = process.env.GH_TOKEN;
 		process.env.GH_TOKEN = 'one';
