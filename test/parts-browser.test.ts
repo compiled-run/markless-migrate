@@ -815,6 +815,34 @@ test('recharts: the pointer picks the point whose range it is in, the tooltip go
 	await page.close();
 });
 
+test('recharts: a click keeps the tooltip on the point under the pointer, as recharts ranks the hovered point above the one focus picked for the keys', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 99, 0], [100, 199, 1], [200, 300, 2]], sp: [5, 95], p: [[50, null], [150, null], [250, null]], k: [[0, 50, 60], [1, 150, 60], [2, 250, 60]] });
+	const page = await open(
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart="1"><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div></div><button>after</button>`,
+		['recharts'],
+	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => {
+		(window as unknown as { seen: number[] }).seen = [];
+		document.querySelector('.recharts-wrapper')!.addEventListener('mmchart', (e) => (window as unknown as { seen: number[] }).seen.push((e as CustomEvent<number>).detail));
+	});
+	const seen = () => page.evaluate(() => (window as unknown as { seen: number[] }).seen.at(-1));
+	await page.mouse.move(300, 100, { steps: 3 });
+	assert.equal(await seen(), 2);
+	await page.mouse.down();
+	await page.mouse.up();
+	assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'svg', 'the click focused the chart');
+	assert.equal(await seen(), 2, 'the click left the tooltip on the hovered point, not on the first one');
+	assert.match(await tooltipAt(page, /translate\(250px, /), /translate\(250px, /);
+	await page.mouse.move(5, 5);
+	assert.equal(await seen(), -1, "the click's own index set the keys' point inactive, so leaving hides the tooltip");
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await seen(), 1, 'the keys go on from the point focus gave them');
+	await page.mouse.move(300, 100, { steps: 3 });
+	assert.equal(await seen(), 2, 'the hovered point wins over the keys');
+	await page.close();
+});
+
 test('Base UI dialog locks scroll as @base-ui/utils useScrollLock does: the body stops scrolling (a stable gutter on <html> where scrollbars take room), put back on close', async () => {
 	const page = await open(
 		`<main style="height:3000px"><button data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dlg" type="button">Open Dialog</button></main>
