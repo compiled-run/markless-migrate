@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { body, parseDocument } from '../src/convert/dom.ts';
 import { ReactStatePlan } from '../src/convert/react-state.ts';
@@ -156,7 +156,7 @@ if (import.meta.main) {
 	} else if (!what) {
 		const m = await measure();
 		const over = overBudget(m);
-		const summary = `| | measured | budget |\n|---|---|---|\n| routes | ${m.routes} | |\n| convert time | ${m.seconds} s | |\n| convert CPU time | ${m.cpuSeconds} s | ${BUDGET.cpuSeconds} s |\n| React-state matching | ${m.matchMs} ms | ${BUDGET.matchMs} ms |\n| peak live heap | ${m.peakLiveMb} MB | ${BUDGET.liveMb} MB |\n| peak heap used | ${m.peakHeapMb} MB | ${BUDGET.heapMb} MB |\n| peak RSS | ${m.peakRssMb} MB | |\n\n${over.length ? `Over budget:\n${over.map((o) => `- ${o}`).join('\n')}` : 'Within budget.'}\n`;
+		const summary = `| | measured | budget |\n|---|---|---|\n| runner CPU | ${cpus()[0]?.model ?? 'unknown'} × ${cpus().length} | |\n| routes | ${m.routes} | |\n| convert time | ${m.seconds} s | |\n| convert CPU time | ${m.cpuSeconds} s | ${BUDGET.cpuSeconds} s |\n| React-state matching | ${m.matchMs} ms | ${BUDGET.matchMs} ms |\n| peak live heap | ${m.peakLiveMb} MB | ${BUDGET.liveMb} MB |\n| peak heap used | ${m.peakHeapMb} MB | ${BUDGET.heapMb} MB |\n| peak RSS | ${m.peakRssMb} MB | |\n\n${over.length ? `Over budget:\n${over.map((o) => `- ${o}`).join('\n')}` : 'Within budget.'}\n`;
 		process.stdout.write(summary);
 		if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, `## Convert budget\n\n${summary}`, { flag: 'a' });
 		process.exit(over.length ? 1 : 0);
