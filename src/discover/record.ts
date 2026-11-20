@@ -75,6 +75,8 @@ const STILL_CAP_MS = 3000;
 const AFTER_CAP_MS = 5000;
 const MAX_PRESSES = 4;
 const MAX_CONTROLS = 200;
+/** A page's presses stop after this long; the controls not reached are counted, never guessed. */
+const MAX_ROUTE_MS = 240_000;
 const KEPT_CHANGES = 12;
 
 /** Each control is pressed up to MAX_PRESSES times: only ever against a copy of the original served on this machine. */
@@ -267,6 +269,14 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 	const excluded: Record<string, number> = {};
 	const out: Candidate[] = [];
 	const leave = (why: string) => void (excluded[why] = (excluded[why] ?? 0) + 1);
+	// A control repeated on the page (each code block's Copy) is pressed this many times; the rest are like them.
+	const REPEATS = 2;
+	const seen = new Map<string, number>();
+	// The one control inside an element a reveal uses (a trigger rendered around a button).
+	const wrappedBy = (el: Element) => {
+		const wrapper = el.parentElement?.closest(REVEALS);
+		return Boolean(wrapper) && [...wrapper!.querySelectorAll(ROLE)].every((x) => x === el);
+	};
 	for (const el of document.body.querySelectorAll('*')) {
 		if (el.closest('template')) continue;
 		const byRole = el.matches(ROLE);
@@ -281,8 +291,10 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 		else if (DESTRUCTIVE.test(name) || DESTRUCTIVE.test(el.getAttribute('title') ?? '')) leave('destructive name');
 		else if (el.matches(':disabled, [aria-disabled="true"]') || el.closest('[inert]')) leave('disabled');
 		else if (css.display === 'none' || css.visibility === 'hidden' || !el.getClientRects().length || el.closest('[aria-hidden="true"]')) leave('hidden');
-		else if (el.matches(REVEALS) || el.closest('[role="menu"], [role="menubar"], [role="listbox"], [role="tablist"]')) leave('a reveal uses it');
+		else if (el.matches(REVEALS) || el.closest('[role="menu"], [role="menubar"], [role="listbox"], [role="tablist"]') || wrappedBy(el)) leave('a reveal uses it');
+		else if (el.closest('[role="grid"], [role="treegrid"]')) leave('in a grid');
 		else if (el.matches(TOGGLES)) leave('a toggle uses it');
+		else if ((seen.set(sigOf(el), (seen.get(sigOf(el)) ?? 0) + 1).get(sigOf(el)) ?? 0) > REPEATS) leave('same as a control pressed');
 		else {
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(`${sigOf(up)}#${order.get(up) ?? 0}`);
@@ -377,6 +389,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		await scriptsStill(page, STILL_CAP_MS).catch(() => undefined);
 		stopped = undefined;
 	};
+	// Two frames: what a press showed at once, before a timer put it back (a spinner, a "Copied" label).
+	const frames = () => page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
 	const still = async () => {
 		await page.mouse.move(0, 0);
 		await scriptsStill(page, STILL_CAP_MS).catch(() => undefined);
@@ -404,6 +418,10 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			pending.splice(0);
 		};
 		for (const [index, c] of candidates.slice(0, MAX_CONTROLS).entries()) {
+			if (Date.now() - started > MAX_ROUTE_MS) {
+				excluded[`past ${MAX_ROUTE_MS / 1000} s on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index;
+				break;
+			}
 			if (!fresh) {
 				await load();
 				reloads++;
@@ -420,6 +438,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			await control.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
 			// Focus left on the last control would move with this press: its ring going is not this press's doing.
 			await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+			// What the scroll into view set off (a table of contents marking the heading in view) settles first.
+			await frames();
 			await still();
 			const pressed = await control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)).catch(() => '');
 			await forget();
@@ -430,8 +450,6 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 					() => true,
 					() => false,
 				);
-			// Two frames after a press: what it showed at once, before a timer put it back (a spinner, a "Copied" label).
-			const frames = () => page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
 			const changesFrom = (a: number, b: number) => diff(a, b, drift, pressed);
 			if (!(await press())) {
 				controls.push({ ...base, shape: 'unpressable', why: 'the press did not reach it' });
@@ -462,7 +480,15 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			if (!first.changed.length) {
-				controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
+				// What only showed while the pointer was on the control (a tooltip) is the hover's, not the press's.
+				await control.hover({ timeout: 2000 }).catch(() => {});
+				await frames();
+				await scriptsStill(page, STILL_CAP_MS).catch(() => undefined);
+				const hovered = (await changesFrom(states[0]!, await read())).changed;
+				await still();
+				const own = quick.changed.filter((p) => !hovered.some((h) => p === h || p.startsWith(`${h}>`)));
+				if (!own.length && !said.length) controls.push({ ...base, shape: 'inert' });
+				else controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
 				continue;
 			}
 			fresh = false;

@@ -30,6 +30,9 @@ const PAGE = `<!doctype html><html><head><style>
 <form><button id="b-form" type="button">Inside a form</button></form>
 <button id="b-menu" type="button" aria-expanded="false">Menu</button>
 <button id="b-switch" type="button" role="switch" aria-checked="false">Wifi</button>
+<div aria-expanded="false"><button type="button">Inner trigger</button></div>
+<table role="grid"><tr><td><button type="button">15</button></td></tr></table>
+<button type="button" class="tip">Hint</button><button type="button">Again</button><button type="button">Again</button><button type="button">Again</button>
 <a href="#x"><span id="in-link" role="button">In a link</span></a>
 <div style="height: 1500px"></div>
 <script>
@@ -46,6 +49,9 @@ document.getElementById('b-drag').onclick = () => { document.getElementById('liv
 document.getElementById('b-post').onclick = () => { fetch('/save', { method: 'POST', body: 'x' }).then(() => { document.getElementById('reply').textContent = 'Saved'; }, () => {}); };
 document.getElementById('b-go').onclick = () => { location.href = '/other'; };
 document.getElementById('b-delete').onclick = () => { window.__deleted = true; document.body.dataset.deleted = '1'; };
+const tip = document.querySelector('.tip'); let shown;
+tip.addEventListener('pointerenter', () => { shown = document.createElement('div'); shown.textContent = 'A hint'; document.body.append(shown); });
+tip.addEventListener('pointerleave', () => { const s = shown; setTimeout(() => s?.remove(), 300); });
 document.getElementById('b-form').onclick = () => { window.__formPressed = true; };
 </script></body></html>`;
 
@@ -90,6 +96,7 @@ test('each press is read as the shape of what it changed, past focus rings, hove
 	assert.equal(byName('Create')?.shape, 'transient');
 	assert.equal(byName('Nothing')?.shape, 'inert');
 	assert.equal(byName('Rerender')?.shape, 'inert', 'a style that only drops animation-duration and a class with no look is not a change');
+	assert.equal(byName('Hint')?.shape, 'inert', 'what shows only while the pointer is on it is the hover');
 	assert.ok(facts.drift >= 1, 'the clock changes on its own');
 });
 
@@ -114,10 +121,13 @@ test('a press that writes to a server is blocked and not read; one that leaves t
 test('destructive names, forms, links and reveals are never pressed', () => {
 	for (const name of ['Delete account', 'Inside a form', 'In a link', 'Menu', 'Wifi']) assert.equal(byName(name), undefined, name);
 	assert.equal(facts.excluded['a toggle uses it'], 1);
+	assert.equal(facts.excluded['a reveal uses it'], 2, 'a trigger and the one button inside another');
+	assert.equal(facts.excluded['in a grid'], 1);
+	assert.equal(facts.excluded['same as a control pressed'], 1);
+	assert.equal(facts.controls.filter((c) => c.name === 'Again').length, 2);
 	assert.equal(facts.excluded['destructive name'], 1);
 	assert.equal(facts.excluded['in a form'], 1);
 	assert.equal(facts.excluded['link'], 1);
-	assert.equal(facts.excluded['a reveal uses it'], 1);
 });
 
 test('a recording is read back for the same page key, and claimed controls are not dead', async () => {
