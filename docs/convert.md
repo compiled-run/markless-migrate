@@ -175,6 +175,20 @@ browser context, before the next control. Discovery runs only against a copy of 
 (`localhost`, `127.0.0.1`, `::1`), checked again after every load (a redirect elsewhere stops it): it presses each control up to
 four times.
 
+Discovery runs after the route's other recorders. A control one of their control lists uses (the reveals', toggles',
+switches', notifications', hover delays') is theirs and is not pressed; the claims are part of the recording's key. The
+same control on several routes is pressed once: the first route in convert's order that shows it owns it, and a later
+route counts it from that route's result ("same as <route>") when either the result left no lasting markup change a
+scene would record (inert, transient, unpressable, or a focus or scroll move), compared by what changed, text and all;
+or the control sits in a layout landmark outside main (header, nav, aside, footer, `src/check/landmarks.ts`) whose
+markup is the same on both routes. A control is grouped with others by that landmark and its markup, or else by the
+tag, slot and role of the component around it, with its signature and name. One inside a widget a recording ports whole
+is always pressed. A counted control stands only while the owner's result is the one it was counted from: the
+recording is made again otherwise. Every 10th route presses one counted control of each group anyway; a result other
+than the owner's names the group, fails that run's routes that counted from it, and has the group pressed on every route
+next run (`discover/v-<recorder>/unshared.json`). The written port is still asked about every counted control on its own
+route, so a count never hides a control that is dead on one route's port.
+
 A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
 toggles, switches, notifications and hover delays), a recorded demo's uses include it, or the site names it (a theme
 toggle). One that only sits inside a widget a recording ports whole (a carousel, slider, chart, table, accordion, form or

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { discoveryReport, draftReport } from '../src/discover/convert.ts';
+import { discoverRecorder, discoveryReport, draftReport, routeDiscovery } from '../src/discover/convert.ts';
 import { recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
 import { discoveryMarkdown, type RouteDiscovery } from '../src/discover/report.ts';
 
@@ -56,6 +56,11 @@ on('g-slow', () => fetch('/slow').then((r) => r.text()).then((t) => { document.g
 let step = 0; on('g-step', () => out('step ' + ++step));
 </script></body></html>`;
 
+// Two routes with the same header and the same code-block Copy, each with a control of its own; the Copy on the second says something else.
+const CHROME = (own: string, copied: string) => `<!doctype html><html><body><header><button type="button" id="theme" aria-pressed="false">Theme</button><button type="button" id="hint">Hint</button></header><main><div data-slot="code"><button type="button" class="copy">Copy</button></div><p id="out"></p><button type="button" id="own">${own}</button></main>
+<script>document.querySelector('.copy').onclick = (e) => { e.target.textContent = '${copied}'; setTimeout(() => (e.target.textContent = 'Copy'), 300); };
+document.getElementById('own').onclick = () => { document.getElementById('out').textContent = '${own} pressed'; };</script></body></html>`;
+
 const SMALL = (n: number) => `<!doctype html><html><body><p id="out">0</p>${Array.from({ length: n }, (_, i) => `<button type="button" id="s${i}">Item ${i}</button>`).join('')}<script>document.querySelectorAll('button').forEach((b) => (b.onclick = () => (document.getElementById('out').textContent = b.id)));</script></body></html>`;
 
 // A clock in a box: pressing what changes only the clock is no change, pressing what grows its box beside it is one.
@@ -78,6 +83,7 @@ before(async () => {
 		const url = new URL(req.url ?? '/', 'http://x');
 		if (url.pathname === '/slow') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('the slow answer'), 1500);
 		if (url.pathname === '/away') return void res.writeHead(302, { location: `http://away.test:${(server.address() as AddressInfo).port}/small` }).end();
+		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname === '/chrome-odd' ? 'Done' : 'Copied'));
 		const html = url.pathname === '/' ? GUARDS : url.pathname === '/drift' ? DRIFT : url.pathname === '/one' ? SMALL(1) : url.pathname.startsWith('/small') ? SMALL(3) : '<!doctype html><p>Other</p>';
 		res.writeHead(200, { 'content-type': 'text/html' }).end(html);
 	});
@@ -204,4 +210,27 @@ test("a route not looked at in full clears none of its last findings, and the st
 	const third = await discoveryReport(store, { '/a': route({ cut: true }), '/b': route() });
 	assert.equal(third.before?.count, 3, "what /a found before it failed stands; /b's Play was cleared");
 	await rm(store, { recursive: true, force: true });
+});
+
+test('the same control on a later route is counted from the first route that shows it, under rules (a) and (b), and every 10th route checks one', async () => {
+	const state = await mkdtemp(join(tmpdir(), 'mm-discover-shared-'));
+	const order = ['/chrome-first', '/chrome-second', ...Array.from({ length: 7 }, (_, i) => `/skipped-${i}`), '/chrome-odd'];
+	const rec = await discoverRecorder(state, origin, () => {}, order);
+	for (const r of order.filter((r) => r.startsWith('/skipped'))) rec.skip(r);
+	const [first, second, odd] = await Promise.all(['/chrome-first', '/chrome-second', '/chrome-odd'].map((r) => rec.record(browser, r)));
+	const by = (f: typeof first | undefined, name: string) => f?.controls.find((c) => c.name === name);
+	assert.equal(by(first, 'Copy')?.shape, 'transient');
+	assert.equal(by(first, 'Copy')?.sameAs, undefined, 'the first route presses what it owns');
+	assert.equal(by(second, 'Copy')?.sameAs?.route, '/chrome-first', 'rule (a): a press that left nothing lasting is counted');
+	assert.equal(by(second, 'Hint')?.sameAs?.route, '/chrome-first', 'rule (b): the same landmark markup');
+	assert.equal(by(second, 'chrome-second')?.sameAs, undefined, "a page's own control is pressed");
+	assert.ok(second);
+	assert.match(routeDiscovery(second, { controls: new Set(), holders: new Set(), scenes: [], names: new Set() }).dead.find((d) => d.name === 'Copy')?.what ?? '', /same as \/chrome-first/);
+	assert.equal(by(odd, 'Copy')?.sameAs, undefined, 'the 10th route presses one of each group');
+	assert.deepEqual(odd?.spotMismatch?.map((m) => [m.name, m.owner]), [['Copy', '/chrome-first']], 'its "Done" is not the owner\'s "Copied"');
+	await rec.save();
+	const again = await discoverRecorder(state, origin, () => {}, ['/chrome-first', '/chrome-second']);
+	const [, second2] = await Promise.all(['/chrome-first', '/chrome-second'].map((r) => again.record(browser, r)));
+	assert.equal(by(second2, 'Copy')?.sameAs, undefined, 'a group a spot check found wrong is pressed on every route next run');
+	await rm(state, { recursive: true, force: true });
 });

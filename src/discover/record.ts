@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page, Request } from 'playwright';
 import { isLoopback, openPage, type OpenPage } from '../check/browser.ts';
+import { LAYOUT_LANDMARKS } from '../check/landmarks.ts';
 import { finishAnimations, settle as settleLoad } from '../check/capture.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
 import { loadPage } from '../check/infrastructure.ts';
@@ -42,6 +43,10 @@ export interface PressedControl {
 	/** Each ancestor's sig#nth, nearest first: what holds the control (a recorded demo, carousel or table). */
 	readonly ancestors: readonly string[];
 	readonly shape: Shape | Stopped;
+	/** What the same control on other routes is grouped by (Candidate.group). */
+	readonly group?: string;
+	/** Not pressed here: counted from the route that owns its group, whose result (by hash) it carries. */
+	readonly sameAs?: { readonly route: string; readonly hash: string };
 	/**
 	 * Where what the press changed sits: the nearest element holding the control and every element it changed, as its path
 	 * from the body (`body>div2>main1`: tag and occurrence among its siblings of that tag) and its sig#nth.
@@ -67,6 +72,10 @@ export interface DiscoverFacts {
 	readonly left?: readonly LeftControl[];
 	/** Controls another recording's control list uses: not pressed. */
 	readonly claimedSkipped?: number;
+	/** Every group the page shows, counted or pressed: what later routes are owned by. */
+	readonly groups?: readonly string[];
+	/** Spot checks whose press did another thing than the owner's: that group's counts are not trusted. */
+	readonly spotMismatch?: readonly { readonly name: string; readonly owner: string; readonly group: string }[];
 	/** The press budget ended the presses before every control: the same page is cut at the same control every time. */
 	readonly cut?: boolean;
 	/** Elements that changed with no press (a clock, an autoplaying carousel): never counted as a press's change. */
@@ -81,10 +90,31 @@ export interface Claimed {
 	/** sig#nth. */
 	readonly controls: readonly string[];
 	readonly names: readonly string[];
+	/** Widgets a recording ports whole, sig#nth: a control inside one is pressed here, never counted from another route. */
+	readonly holders?: readonly string[];
 }
+
+/** The same control across routes: the first route in the convert's order that shows a group presses it; later ones count from it. */
+export interface Shared {
+	/** This route's groups, announced; resolves, once every earlier route announced its own, to the earlier owner of each group that has one. */
+	owners(groups: readonly string[]): Promise<ReadonlyMap<string, string>>;
+	/** The owner's result for a group, once it pressed it (undefined when it did not). */
+	result(owner: string, group: string): Promise<PressedControl | undefined>;
+	publish(group: string, control: PressedControl | undefined): void;
+	/** Every 10th route presses one counted control of each group anyway and compares it with the owner's. */
+	readonly spot: boolean;
+	done(): void;
+}
+
+/** A pressed result as the kind of thing it did: its shape and what changed, text and all. */
+export const resultHash = (c: Pick<PressedControl, 'shape' | 'states' | 'changes'>): string => createHash('sha256').update(JSON.stringify([c.shape, c.states ?? 0, (c.changes ?? []).map((x) => [x.what, x.name ?? '', x.before ?? '', x.after ?? ''])])).digest('base64url').slice(0, 12);
+
+// Rule (a): a result that left no lasting markup change a scene would record (a "Copied" mark that goes, a focus move) can be counted anywhere; (b) a layout landmark's control can be counted on a route whose landmark has the same markup.
+const countable = (c: PressedControl, layout: boolean): boolean => layout || c.shape === 'inert' || c.shape === 'transient' || c.shape === 'unpressable' || (c.changes ?? []).every((x) => x.what === 'focus' || x.what === 'scroll');
 
 export interface DiscoverOptions {
 	readonly claimed?: Claimed;
+	readonly shared?: Shared;
 	/** The old page's key (key.ts): a recording made from another page is recorded again. */
 	readonly page?: string;
 	/** The press budget per page, when not MAX_PAGE_PRESSES. */
@@ -333,7 +363,6 @@ function installReader(): void {
 }
 
 interface Reader {
-	/** Set once per document: the same id after a press means the address changed in the same document. */
 	read(): number;
 	diff(a: number, b: number, ignore: readonly string[], pressed: string): { changed: string[]; changes: Change[] };
 	path(el: Element): string;
@@ -349,6 +378,10 @@ interface Candidate {
 	readonly name: string;
 	readonly found: 'role' | 'cursor';
 	readonly ancestors: readonly string[];
+	/** What the same control on another route is grouped with: its layout landmark and that landmark's markup, or its surrounding component's tag, slot and role. */
+	readonly group: string;
+	/** It sits in a layout landmark outside main. */
+	readonly layout: boolean;
 }
 
 /** A pressable left to another recorder by that recorder's own selector: checked against what it recorded. */
@@ -370,7 +403,7 @@ interface Found {
 }
 
 /** In the page: every pressable, the ones left alone counted by why, the rest marked `data-mm-discover="<n>"` in document order. */
-function findCandidates(o: { readonly destructive: string; readonly reveals: string; readonly toggles: string; readonly repeats: number }): Found {
+function findCandidates(o: { readonly destructive: string; readonly reveals: string; readonly toggles: string; readonly repeats: number; readonly landmarks: string }): Found {
 	const DESTRUCTIVE = new RegExp(o.destructive, 'i');
 	const words = (s: string | null | undefined) => (s ?? '').trim().replace(/\s+/g, ' ');
 	const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${words(el.textContent).slice(0, 60)}`;
@@ -456,7 +489,13 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
 			el.setAttribute('data-mm-discover', String(out.length));
-			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors });
+			const landmark = el.closest('main, [role="main"]') ? null : el.closest(o.landmarks);
+			const around = el.parentElement?.closest('[data-slot], [role], [id]');
+			const shape = (e: Element | null | undefined) => (e ? `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${e.getAttribute('role') ?? ''}` : '');
+			let markup = 2166136261;
+			if (landmark) for (const ch of landmark.outerHTML) markup = Math.imul(markup ^ ch.charCodeAt(0), 16777619);
+			const group = landmark ? `layout|${shape(landmark)}|${(markup >>> 0).toString(16)}|${sigOf(el)}|${name}|${order.get(el) ?? 0}` : `component|${shape(around)}|${sigOf(el)}|${name}`;
+			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors, group, layout: Boolean(landmark) });
 		}
 	}
 	return { candidates: out, excluded, repeats, left: [...left, ...grids.values()] };
@@ -500,6 +539,16 @@ function sigsAt(paths: readonly string[]): string[] {
 
 const fileOf = (dir: string, route: string) => join(dir, `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`);
 
+// What this route owns (a group no earlier route shows), its first result for each, for the routes after it.
+function publishOwned(shared: Shared, owners: ReadonlyMap<string, string>, controls: readonly PressedControl[]): void {
+	const seen = new Set<string>();
+	for (const c of controls) {
+		if (!c.group || c.sameAs || owners.has(c.group) || seen.has(c.group)) continue;
+		seen.add(c.group);
+		shared.publish(c.group, c);
+	}
+}
+
 const isFacts = (x: unknown): x is DiscoverFacts & { page?: string; claims?: string } => typeof x === 'object' && x !== null && typeof (x as DiscoverFacts).route === 'string' && Array.isArray((x as DiscoverFacts).controls) && typeof (x as DiscoverFacts).ms === 'number';
 
 /** Presses each pressable of the page at desktop width up to MAX_PRESSES times; a press that writes, leaves or opens something is stopped and named. */
@@ -509,9 +558,23 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	const kept: unknown = await readFile(file, 'utf8').then((t) => JSON.parse(t) as unknown, () => undefined);
 	// The claims a recording was made with are part of its key, by content.
 	const claimKey = options.claimed ? createHash('sha256').update(JSON.stringify([[...options.claimed.controls].sort(), [...options.claimed.names].sort()])).digest('hex').slice(0, 16) : '';
+	const shared = options.shared;
 	if (isFacts(kept) && kept.route === route && kept.page === options.page && (kept.claims ?? '') === claimKey) {
 		const { page: _, claims: __, ...facts } = kept;
-		return facts;
+		if (!shared) return facts;
+		// A count from another route stands only while that route's result is the one it was counted from.
+		const owners = await shared.owners(facts.groups ?? []);
+		let current = true;
+		for (const c of facts.controls) {
+			if (!c.sameAs || !c.group) continue;
+			const o = owners.get(c.group) === c.sameAs.route ? await shared.result(c.sameAs.route, c.group) : undefined;
+			if (!o || resultHash(o) !== c.sameAs.hash) current = false;
+		}
+		if (current) {
+			publishOwned(shared, owners, facts.controls);
+			shared.done();
+			return facts;
+		}
 	}
 	const claimedControls = new Set(options.claimed?.controls ?? []);
 	const claimedNames = new Set(options.claimed?.names ?? []);
@@ -616,8 +679,13 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			.catch(() => undefined);
 		await finishAnimations(at()).catch(() => {});
 	};
-	const find = () => at().evaluate(findCandidates, { destructive: DESTRUCTIVE.source, reveals: REVEAL_CLICKS, toggles: TOGGLE_CONTROLS, repeats: REPEATS });
+	const find = () => at().evaluate(findCandidates, { destructive: DESTRUCTIVE.source, reveals: REVEAL_CLICKS, toggles: TOGGLE_CONTROLS, repeats: REPEATS, landmarks: LAYOUT_LANDMARKS });
 	const controls: PressedControl[] = [];
+	let owners: ReadonlyMap<string, string> = new Map();
+	const holders = new Set(options.claimed?.holders ?? []);
+	const spotted = new Set<string>();
+	const spots: { at: number; owner: string; o: PressedControl }[] = [];
+	const spotMismatch: { name: string; owner: string; group: string }[] = [];
 	let candidates: Candidate[] = [];
 	let excluded: Record<string, number> = {};
 	let repeats: Record<string, number> = {};
@@ -634,6 +702,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	try {
 		await load();
 		({ candidates, excluded, repeats, left } = await find());
+		owners = shared ? await shared.owners(candidates.map((c) => c.group)) : new Map();
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
 		const idle = await read();
 		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
@@ -665,7 +734,19 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				claimedSkipped++;
 				continue;
 			}
-			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors };
+			const base = { sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found, ancestors: c.ancestors, group: c.group };
+			const owner = owners.get(c.group);
+			if (shared && owner && !c.ancestors.some((a) => holders.has(a))) {
+				const o = await shared.result(owner, c.group);
+				if (o && countable(o, c.layout)) {
+					if (!shared.spot || spotted.has(c.group)) {
+						controls.push({ ...base, shape: o.shape, ...(o.states ? { states: o.states } : {}), ...(o.changes ? { changes: o.changes } : {}), sameAs: { route: owner, hash: resultHash(o) } });
+						continue;
+					}
+					spotted.add(c.group);
+					spots.push({ at: controls.length, owner, o });
+				}
+			}
 			// The same control (signature and name) in another place, once REPEATS of it did the same kind of thing, is counted like the first.
 			const alike = controls.filter((p) => p.sig === c.sig && p.name === c.name);
 			const [like] = alike;
@@ -822,13 +903,19 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			await load();
 			await name();
 		}
+		for (const { at: i, owner, o } of spots) {
+			const got = controls[i];
+			if (got && resultHash(got) !== resultHash(o)) spotMismatch.push({ name: got.name, owner, group: got.group ?? '' });
+		}
+		if (shared) publishOwned(shared, owners, controls);
 	} catch (error) {
 		const message = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
 		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
 	} finally {
 		await session?.context.close().catch(() => {});
+		shared?.done();
 	}
-	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}), ...(claimedSkipped ? { claimedSkipped } : {}) };
+	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}), ...(claimedSkipped ? { claimedSkipped } : {}), ...(shared ? { groups: [...new Set(candidates.map((c) => c.group))] } : {}), ...(spotMismatch.length ? { spotMismatch } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}), ...(claimKey ? { claims: claimKey } : {}) }));
 	return facts;

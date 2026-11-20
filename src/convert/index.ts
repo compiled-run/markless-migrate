@@ -1552,7 +1552,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			),
 		);
 		prefetchRead.catch(() => {});
-		discovering = await discoverRecorder(state, options.old, log);
+		discovering = await discoverRecorder(state, options.old, log, routes);
 		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
@@ -1854,17 +1854,24 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			discovering.notRun
 				? []
 				: routes.map((r) =>
-						pageOf.get(r)?.then((ref) => {
-							if (!ref || ref.status !== 200 || failed.has(r)) return undefined;
+						(pageOf.get(r) ?? Promise.resolve(undefined)).then((ref) => {
+							if (!ref || ref.status !== 200 || failed.has(r)) return void discovering?.skip(r);
 							const claims = claimsOf(r);
 							return discoverSlots(async () => {
-								const got = await browsers.retried(r, (browser) => (discovering ? discovering.record(browser, r, { controls: [...claims.controls], names: [...claims.names] }) : Promise.reject(new Error('discovery not set up'))), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0] ?? '' }));
+								const got = await browsers.retried(r, (browser) => (discovering ? discovering.record(browser, r, { controls: [...claims.controls], names: [...claims.names], holders: [...claims.holders] }) : Promise.reject(new Error('discovery not set up'))), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0] ?? '' }));
 								if (!('value' in got)) discovering?.unknown(r, got.failed);
 							});
 						}),
 					),
 		);
-		for (const [route, facts] of discovering.recorded) discovered[route] = routeDiscovery(facts, claimsOf(route));
+		await discovering.save();
+		// A group a spot check found counted wrongly: every route that counted from it this run is not looked at in full.
+		const wrong = new Set([...discovering.recorded.values()].flatMap((f) => (f.spotMismatch ?? []).map((m) => m.group)));
+		for (const [route, facts] of discovering.recorded) {
+			const r = routeDiscovery(facts, claimsOf(route));
+			const untrusted = facts.controls.filter((c) => c.sameAs && c.group && wrong.has(c.group)).length;
+			discovered[route] = untrusted ? { ...r, untrusted } : r;
+		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
 			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] }))))));

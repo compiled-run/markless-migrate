@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
-import { assertLocal, recordDiscovery, type Claimed, type DiscoverFacts, type PressedControl } from './record.ts';
+import { assertLocal, recordDiscovery, type Claimed, type DiscoverFacts, type PressedControl, type Shared } from './record.ts';
 import { deadCount, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
 
 export { discoveryMarkdown, summarizeDiscovery, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
@@ -40,6 +40,8 @@ export function claimed(c: PressedControl, claims: Claims): 'control' | 'holder'
 export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDiscovery {
 	const mine = facts.controls.filter((c) => claimed(c, claims) !== 'control');
 	const held = (c: PressedControl) => claimed(c, claims) === 'holder';
+	const sameAs: Record<string, number> = {};
+	for (const c of facts.controls) if (c.sameAs) sameAs[c.sameAs.route] = (sameAs[c.sameAs.route] ?? 0) + 1;
 	const like = facts.repeats ?? {};
 	const named = new Map(facts.controls.map((c) => [`${c.sig}#${c.nth}`, c.name]));
 	// A control left to the reveals or the toggles by their selector that they recorded nothing for: no one looked at it.
@@ -52,10 +54,12 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		pressed: facts.controls.length,
 		claimed: (facts.claimedSkipped ?? 0) + facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
 		inert: mine.filter((c) => c.shape === 'inert' && !held(c)).length,
-		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: line(c), ...(like[`${c.sig}#${c.nth}`] ? { repeated: like[`${c.sig}#${c.nth}`] } : {}) })),
+		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: `${line(c)}${c.sameAs ? ` (same as ${c.sameAs.route})` : ''}`, ...(like[`${c.sig}#${c.nth}`] ? { repeated: like[`${c.sig}#${c.nth}`] } : {}) })),
 		unknown: [...mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })), ...unlooked.map((l) => ({ name: l.name, shape: 'unpressable' as const, left: l.to, why: `left to the ${l.to}, which recorded nothing for it` })), ...loose.map((l) => ({ name: l.name, shape: 'unpressable' as const, left: 'grids' as const, why: `a grid of ${l.cells ?? 0} cells no recording holds, its cells not pressed` }))],
 		excluded: facts.excluded,
 		...(Object.keys(like).length ? { repeats: Object.fromEntries(Object.entries(like).map(([at, n]) => [`"${named.get(at) ?? ''}" (${at})`, n])) } : {}),
+		...(Object.keys(sameAs).length ? { sameAs } : {}),
+		...(facts.spotMismatch?.length ? { spotMismatch: facts.spotMismatch.map(({ name, owner }) => ({ name, owner })) } : {}),
 		seconds: Math.round(facts.ms / 100) / 10,
 		...(facts.cut ? { cut: true } : {}),
 		...(facts.error ? { error: facts.error } : {}),
@@ -64,7 +68,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 
 const LAST = 'last.json';
 
-const incompleteOf = (routes: Readonly<Record<string, RouteDiscovery>>) => Object.entries(routes).filter(([, r]) => r.error || r.cut).map(([route]) => route).sort();
+const incompleteOf = (routes: Readonly<Record<string, RouteDiscovery>>) => Object.entries(routes).filter(([, r]) => r.error || r.cut || r.untrusted || r.spotMismatch?.length).map(([route]) => route).sort();
 const sum = (routes: Readonly<Record<string, RouteDiscovery>>) => ({
 	count: Object.values(routes).reduce((n, r) => n + deadCount(r), 0),
 	deadRoutes: Object.values(routes).filter((r) => r.dead.length).length,
@@ -137,10 +141,70 @@ export interface DiscoverRecorder {
 	/** What the other recorders' control lists claim on the route: not pressed. */
 	readonly record: (browser: Browser, route: string, claimed?: Claimed) => Promise<DiscoverFacts>;
 	readonly unknown: (route: string, why: string) => void;
+	/** A route discovery does not look at: it owns no group. */
+	readonly skip: (route: string) => void;
+	/** Keeps the groups a spot check found counted wrongly, so the next run presses them on every route. */
+	readonly save: () => Promise<void>;
 	readonly recorded: ReadonlyMap<string, DiscoverFacts>;
 }
 
-export async function discoverRecorder(state: string, origin: string, log: (line: string) => void): Promise<DiscoverRecorder> {
+const UNSHARED = 'unshared.json';
+
+interface Deferred<T> {
+	readonly promise: Promise<T>;
+	resolve(value: T): void;
+}
+const deferred = <T>(): Deferred<T> => {
+	let resolve: (value: T) => void = () => {};
+	const promise = new Promise<T>((done) => (resolve = done));
+	return { promise, resolve };
+};
+
+/** The groups shared across routes, owned in the convert's route order so the same routes own them every run. */
+function sharedControls(order: readonly string[], unshared: ReadonlySet<string>): (route: string) => Shared {
+	const announced = new Map<string, Deferred<ReadonlySet<string>>>();
+	const results = new Map<string, Deferred<PressedControl | undefined>>();
+	const finished = new Set<string>();
+	const announce = (route: string) => announced.get(route) ?? announced.set(route, deferred()).get(route) ?? deferred();
+	const result = (route: string, group: string) => {
+		const key = `${route}\u0000${group}`;
+		let got = results.get(key);
+		if (!got) {
+			got = deferred();
+			results.set(key, got);
+			if (finished.has(route)) got.resolve(undefined);
+		}
+		return got;
+	};
+	return (route) => {
+		const index = order.indexOf(route);
+		const earlier = index < 0 ? [] : order.slice(0, index);
+		return {
+			spot: index % 10 === 9,
+			owners: async (groups) => {
+				announce(route).resolve(new Set(groups));
+				const sets = await Promise.all(earlier.map((r) => announce(r).promise));
+				const out = new Map<string, string>();
+				for (const g of groups) {
+					if (unshared.has(g)) continue;
+					const i = sets.findIndex((set) => set.has(g));
+					const owner = earlier[i];
+					if (owner) out.set(g, owner);
+				}
+				return out;
+			},
+			result: (owner, group) => result(owner, group).promise,
+			publish: (group, control) => result(route, group).resolve(control),
+			done: () => {
+				announce(route).resolve(new Set());
+				finished.add(route);
+				for (const [key, got] of results) if (key.startsWith(`${route}\u0000`)) got.resolve(undefined);
+			},
+		};
+	};
+}
+
+export async function discoverRecorder(state: string, origin: string, log: (line: string) => void, order: readonly string[] = []): Promise<DiscoverRecorder> {
 	const store = join(state, 'convert');
 	const recorded = new Map<string, DiscoverFacts>();
 	try {
@@ -148,21 +212,25 @@ export async function discoverRecorder(state: string, origin: string, log: (line
 	} catch (error) {
 		const notRun = error instanceof Error ? error.message : String(error);
 		log(`  dead controls not looked for: ${notRun}`);
-		return { notRun, record: async () => Promise.reject(new Error(notRun)), unknown: () => {}, recorded };
+		return { notRun, record: async () => Promise.reject(new Error(notRun)), unknown: () => {}, skip: () => {}, save: async () => {}, recorded };
 	}
 	await keepCurrent(store);
 	const dir = await discoverDir(store);
+	const kept: unknown = await readFile(join(dir, UNSHARED), 'utf8').then((t) => JSON.parse(t) as unknown, () => []);
+	const unshared = new Set(Array.isArray(kept) ? kept.filter((g): g is string => typeof g === 'string') : []);
+	const sharedFor = sharedControls(order, unshared);
 	const failed = (route: string, why: string): DiscoverFacts => {
 		const facts: DiscoverFacts = { route, browser: 'chromium', candidates: 0, excluded: {}, controls: [], drift: 0, reloads: 0, ms: 0, error: why };
 		log(`  discovery of ${route} failed: ${why}`);
 		recorded.set(route, facts);
+		sharedFor(route).done();
 		return facts;
 	};
 	return {
 		record: async (browser, route, claimed) => {
 			const page = await discoverPageKey(origin, route);
 			try {
-				const facts = await recordDiscovery(browser, origin, route, dir, { page, ...(claimed ? { claimed } : {}) });
+				const facts = await recordDiscovery(browser, origin, route, dir, { page, ...(claimed ? { claimed } : {}), ...(order.length ? { shared: sharedFor(route) } : {}) });
 				if (facts.error) log(`  discovery of ${route} stopped: ${facts.error}`);
 				recorded.set(route, facts);
 				return facts;
@@ -171,7 +239,13 @@ export async function discoverRecorder(state: string, origin: string, log: (line
 			}
 		},
 		unknown: (route, why) => void failed(route, why),
+		skip: (route) => sharedFor(route).done(),
+		save: async () => {
+			const wrong = [...recorded.values()].flatMap((f) => (f.spotMismatch ?? []).map((m) => m.group));
+			if (!wrong.length) return;
+			await mkdir(dir, { recursive: true });
+			await writeFile(join(dir, UNSHARED), JSON.stringify([...new Set([...unshared, ...wrong])].sort()));
+		},
 		recorded,
 	};
 }
-

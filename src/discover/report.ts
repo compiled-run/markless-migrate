@@ -37,6 +37,12 @@ export interface RouteDiscovery {
 	readonly seconds: number;
 	/** The press budget ended the presses before every control: the route's last findings stand. */
 	readonly cut?: boolean;
+	/** Controls counted from the route that owns their group, by that route. */
+	readonly sameAs?: Readonly<Record<string, number>>;
+	/** Spot checks here that did another thing than the owner: that group is pressed on every route next run. */
+	readonly spotMismatch?: readonly { readonly name: string; readonly owner: string }[];
+	/** Controls counted from a group a spot check found wrong this run: the route is not looked at in full. */
+	readonly untrusted?: number;
 	readonly error?: string;
 }
 
@@ -62,10 +68,12 @@ export interface DiscoveryReport {
 export const deadCount = (r: Pick<RouteDiscovery, 'dead'>): number => r.dead.reduce((n, d) => n + 1 + (d.repeated ?? 0), 0);
 
 /** What a route's presses left out on purpose, said in full: the time stop, grids, repeats (by the control pressed in their place). */
-export function cutsOf(r: Pick<RouteDiscovery, 'excluded' | 'repeats'>): string {
+export function cutsOf(r: Pick<RouteDiscovery, 'excluded' | 'repeats' | 'sameAs'>): string {
 	const parts: string[] = [];
 	for (const [why, n] of Object.entries(r.excluded)) if (why.startsWith('past ')) parts.push(`${n} not reached (${why})`);
 	if (r.excluded['in a grid']) parts.push(`${r.excluded['in a grid']} in grids, left to the recording that holds each`);
+	const counted = Object.entries(r.sameAs ?? {});
+	if (counted.length) parts.push(`${counted.reduce((n, [, k]) => n + k, 0)} counted from the route that owns them: ${counted.map(([route, k]) => `${k} same as ${route}`).join(', ')}`);
 	const repeats = Object.entries(r.repeats ?? {});
 	if (repeats.length) parts.push(`${repeats.reduce((n, [, k]) => n + k, 0)} same as a control pressed: ${repeats.map(([like, k]) => `${k} like ${like}`).join(', ')}`);
 	return parts.join('; ');
@@ -82,6 +90,8 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 		for (const d of r.dead) lines.push(`  dead control on ${route}: "${d.name}" ${d.what}${d.repeated ? ` (and ${d.repeated} like it)` : ''}`);
 		for (const h of r.handled ?? []) lines.push(`  has a handler, effect not compared, on ${route}: "${h.name}" (${h.by})`);
 		for (const u of r.unknown) lines.push(`  not read on ${route}: "${u.name}" ${unknownLine(u)}`);
+		for (const m of r.spotMismatch ?? []) lines.push(`  spot check on ${route}: "${m.name}" did another thing than on ${m.owner}; it is pressed on every route next run`);
+		if (r.untrusted) lines.push(`  not looked at in full on ${route}: ${r.untrusted} counted from a group a spot check found wrong`);
 		if (r.error) lines.push(`  discovery on ${route} stopped: ${r.error}`);
 		const cut = cutsOf(r);
 		if (cut) lines.push(`  cut on ${route}: ${cut}`);
