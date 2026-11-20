@@ -477,11 +477,19 @@ jobs:
         uses: ./.github/actions/setup
       - if: needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true'
         uses: oven-sh/setup-bun@v2
-      - if: (needs.prepare.outputs.emit-run == '' || env.VERIFY == 'true') && needs.prepare.outputs.store-run != ''
+      - if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.store-run != ''
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.prepare.outputs.store-name }}
           run-id: ${{ needs.prepare.outputs.store-run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/store-archive
+      # A kept app is verified against the recordings it was converted from, which its own run kept; the latest store may be another branch's.
+      - if: needs.prepare.outputs.emit-run != '' && env.VERIFY == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.store-name }}
+          run-id: ${{ needs.prepare.outputs.emit-run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/store-archive
       - if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
@@ -551,7 +559,7 @@ jobs:
           name: ${{ needs.prepare.outputs.store-name }}
           path: ${{ runner.temp }}/store-out/store.tar.zst
           compression-level: 0
-          retention-days: 30
+          retention-days: 90
       - name: Pack the converted app
         run: |
           set -euo pipefail

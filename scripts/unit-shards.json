@@ -35,6 +35,7 @@
 		"test/check-progress.test.ts": {"shard":2,"seconds":16},
 		"test/check-shards.test.ts": {"shard":2,"seconds":9},
 		"test/checker-noise.test.ts": {"shard":1,"seconds":849},
+		"test/checker-version.test.ts": {"shard":5,"seconds":12},
 		"test/choices-pages.test.ts": {"shard":5,"seconds":26},
 		"test/choices-values.test.ts": {"shard":5,"seconds":6},
 		"test/chosen-template.test.ts": {"shard":4,"seconds":1},
