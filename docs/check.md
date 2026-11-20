@@ -142,7 +142,7 @@ route's slowest control and a table per route; `report.json` carries the same as
 ### Navigation timing: from the press on a link to the next page
 
 Part of page load (`src/check/nav-timing.ts`, `src/check/nav-timing-verdicts.ts`). On the representatives of the
-site's largest template groups (`--nav-timing-layouts`, default 4, chosen over every page of the site so each shard
+site's largest template groups (`--nav-timing-layouts`, default 3, chosen over every page of the site so each shard
 times the same ones), a fresh visitor loads the page and follows two links of each shared navigation (the sidebar, a
 nav, the header; at phone width a nav, the header and the content), each to a page not seen yet, then comes back to
 the first of them by its link: first visits and a revisit. The links are chosen by walking them on the old app first,
@@ -205,8 +205,8 @@ Holm's step-down, at the route's share of 5% for the whole check (5% divided by 
 identical sites go red in at most 5% of whole checks. Fewer than 7 runs a side can then never tell a row apart, which
 is why 7 is the least the flag takes. In a simulation (`test/nav-timing-verdicts.test.ts`: run-to-run machine noise
 shared by a run's presses, an old page with two clusters, 600 routes over 3 seeds), 8 runs went red on identical sites
-on 0.8 to 1.2% of routes with the default cells (3.3 to 4.6% of checks of 4 routes) and caught 100 ms added to one cell
-on 96 to 97% of routes; with every cell, 0.3 to 0.8% of routes (1.3 to 3.3% of checks) and 80 to 83%. A faster
+on 0.8 to 1.3% of routes with the default cells (2.5 to 3.9% of checks of 3 routes) and caught 100 ms added to one cell
+on 96 to 97% of routes; with every cell, 0.8 to 1.2% of routes (2.5 to 3.5% of checks) and 88 to 91%. A faster
 row passes the same correction the other way, so the summary does not overstate wins.
 
 A red row names its cause, the first that explains it: `did not arrive`, `refetched on revisit` (the old page showed it
@@ -225,7 +225,9 @@ The summary leads with the resting mouse and touch rows, the instant press last,
 the new page is faster, level, slower and not checked, with the median gap. Where the new page is slower or only level,
 it also estimates what fetching ahead as much as the old page would cost it before the presses, from the old page's
 page data ahead and each side's page data size. `report.json` keeps every press under the route's `load.navTiming`.
-See the pull request that set the default for its measured cost per layout. The check budget (`scripts/check-budget.ts`) times
+On ui.shadcn.com (the original against a port on Cloudflare, a Mac mini) the default cells with 8 runs took 43 min a
+layout, so the default 3 layouts are about 2.2 runner-hours a check, spread over the shards that hold them; every cell
+is about four times that. The check budget (`scripts/check-budget.ts`) times
 one cell, 7 runs a side, on its page, held to a bound of its own.
 
 ### Widget probes: what a library's widgets do between the clicks

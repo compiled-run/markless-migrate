@@ -317,7 +317,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
             at once (default 2), --no-slow-network leaves it out. markless-migrate network measures any
             pages the same way, side by side.
           - Navigation timing, on by default: on the representatives of the site's largest template groups
-            (--nav-timing-layouts, default 4), a fresh visitor follows two links of each shared navigation
+            (--nav-timing-layouts, default 3), a fresh visitor follows two links of each shared navigation
             (sidebar, nav, header) and comes back to the first, old and new in turn, --nav-timing-runs a
             side (default 8, 7 to 16), timed from the press until the address has changed and the page's
             own content (its main landmark) differs. Six cells: Chromium resting 250 ms on a fast line and

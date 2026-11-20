@@ -44,9 +44,9 @@ export const FULL_CELLS: readonly NavCellSpec[] = [
 /**
  * Runs a side per cell. Runs are compared by their medians, and the check's 5% is shared by the routes it times and then
  * by each route's rows (nav-timing-verdicts.ts): fewer than 7 runs a side can never tell a row apart. In a simulation
- * with run-to-run machine noise shared by a run's presses and 4 routes, 8 runs with the default cells went red on
- * identical sites in 3.3 to 4.6% of checks and caught 100 ms added to one cell on 96 to 97% of routes (every cell: 1.3 to
- * 3.3%, 80 to 83%); see `test/nav-timing-verdicts.test.ts`.
+ * with run-to-run machine noise shared by a run's presses and 3 timed routes, 8 runs with the default cells went red on
+ * identical sites in 2.5 to 3.9% of checks and caught 100 ms added to one cell on 96 to 97% of routes (every cell: 2.5 to
+ * 3.5%, 88 to 91%); see `test/nav-timing-verdicts.test.ts`.
  */
 export const DEFAULT_NAV_RUNS = 8;
 
@@ -71,7 +71,8 @@ export const NAV_DEADLINE_MS = 3 * 60 * 60_000;
 const GIVE_UP_RUNS = 2;
 /** A run during which this process stalled this long is taken again, at most twice. */
 const STALL_LIMIT_MS = 1000;
-export const DEFAULT_NAV_LAYOUTS = 4;
+/** Measured on ui.shadcn.com (original against candidate 11 on Cloudflare, Mac mini): 43 min a layout with the default cells and 8 runs, so 3 layouts is about 2.2 runner-hours a check. */
+export const DEFAULT_NAV_LAYOUTS = 3;
 /** The fixed amount of navigation timing the check budget (scripts/check-budget.ts) measures on its page: one cell, the fewest runs that can go red. */
 export const BUDGET_NAV_WORK = ['--nav-timing-cell', 'chromium/fast/dwell-250', '--nav-timing-runs', '7'] as const;
 
