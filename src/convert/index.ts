@@ -31,6 +31,7 @@ import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, unrecordedToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { capturePhoneUses } from './phone-uses.ts';
 import { QWIK_CONTEXT_PROPS, QWIK_HANDLER_MARKS, announced, triggerPorts, useMarkupLibraries, bindMount, bindParts, bodyHandlers, mountingPorts, registryPath, writeRegistries, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { markCompositions, useCompositions, type CompositionFact } from './compositions.ts';
@@ -108,7 +109,8 @@ function withPartImports(source: string, dir: string, registries: Registries): s
 	const baseToastNames = ['baseToastAdd', 'baseToastViewport', 'BASE_TOAST_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
 	if (baseToastNames.length) out = out.replace('\n', `\nimport { ${baseToastNames.join(', ')} } from '${dir}/base-ui/toast.ts';\n`);
 	if (/\bscrollToMessage\(/.test(out)) out = out.replace('\n', `\nimport { scrollToMessage } from '${dir}/shadcn/message-scroller.ts';\n`);
-	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
+	const switchNames = ['writeCookies', 'onPhone'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (switchNames.length) out = out.replace('\n', `\nimport { ${switchNames.join(', ')} } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
 	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose', 'dayPickerField', 'dayPickerTyped', 'dayPickerRead', 'dayPickerFieldKey'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
 	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
@@ -480,7 +482,7 @@ const insertedContent = new Set<Element>();
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
-let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[]; imports?: readonly string[] }[] = [];
+let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[]; imports?: readonly string[]; viewport?: string }[] = [];
 let siteComponents: readonly SiteComponent[] = [];
 // What a carried handler's library calls become on the page being emitted (set once the notification plan has placed its toasters).
 let portedCall: (el: Element, port: string) => PortedCall | undefined = () => undefined;
@@ -1079,7 +1081,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		const rename = names.each[i]!;
 		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept, l.trigger);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
-		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}), ...(site ? { imports: [componentImport(site, '../../..')] } : {}) });
+		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}), ...(site ? { imports: [componentImport(site, '../../..')] } : {}), ...(l.reveal.viewport !== 'desktop' ? { viewport: l.reveal.viewport } : {}) });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
 		if (markup && l.trigger && !attr(l.trigger, 'id') && !attr(l.trigger, 'aria-controls') && !triggerKeys.has(l.trigger)) triggerKeys.set(l.trigger, key);
 	}
@@ -1437,6 +1439,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
+	// Per route, the switches (`sig#nth`) whose use on a phone opens a layer instead (phone-uses.ts).
+	const phoneSwitched = new Map<string, ReadonlySet<string>>();
 	const submitted = new Map<string, FormCapture['forms']>();
 	const notified = new Map<string, readonly Notify[]>();
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
@@ -1585,6 +1589,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			formLibs?: readonly CapturedForm[];
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
+			phoneSwitches?: ReadonlySet<string>;
 			floating?: readonly QwikFloating[];
 		}
 		const readRoute = async (route: string, ref: CapturedRef, browser: Browser, running: Promise<unknown>[]): Promise<RouteFacts> => {
@@ -1749,6 +1754,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(async () => captureRacCalendars(browser, options.old, route, (await atFor(route, 'rac-calendars')), opening));
 			}
 			await side;
+			// What a recorded switch opens on a phone, where the original renders another branch for it.
+			if (reveal && facts.switches?.length) {
+				const phone = await limit(async () => capturePhoneUses(browser, options.old, route, (await atFor(route, 'phone')), switchSelectors, facts.switches!, (await page()).settled));
+				const taken = new Set((reveals ?? []).map((r) => r.key));
+				const placed = phone.filter((r) => !taken.has(r.key));
+				for (const r of phone) if (taken.has(r.key)) log(`  phone layer of ${r.key} on ${route} not placed: a desktop reveal has its key`);
+				if (placed.length) {
+					log(`phone layers ${route} (${placed.length})`);
+					reveals = [...(reveals ?? []), ...placed];
+					facts.phoneSwitches = new Set(placed.map((r) => `${r.sig}#${r.nth ?? 0}`));
+				}
+			}
 			facts.reveals = reveals;
 			return facts;
 		};
@@ -1776,7 +1793,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 							await Promise.allSettled(running);
 						}
 					};
-					return (await guarded(route, ['reveals', 'toggles', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars'], read)) ?? {};
+					return (await guarded(route, ['reveals', 'toggles', 'phone', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars'], read)) ?? {};
 				}),
 			),
 		);
@@ -1828,6 +1845,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.formLibs) formLibsRead.set(route, f.formLibs);
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
+			if (f.phoneSwitches) phoneSwitched.set(route, f.phoneSwitches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
 		});
 		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
@@ -2121,7 +2139,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, extras] of bodyParts.extras) if (extras.some((el) => [...walk(el)].some((x) => notifyPlan.hosts(x)))) ownExtras.set(route, extras);
 	const switchPlan = new SwitchPlan();
 	let switchGroups = 0;
-	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
+	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element), phoneSwitched.get(route));
 	if (switchGroups) {
 		log(`site switches on Markless state: ${switchGroups}`);
 		templatePorts.plan('switch');

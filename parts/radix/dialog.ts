@@ -1,6 +1,6 @@
 import { installDialog } from './dialog-engine.ts';
 import { announceOpen, followOpen, followsOpen } from '../open-state.ts';
-import { layersFor, closestTrigger, layerKey, layerSlot } from '../reveal.ts';
+import { layersFor, closestByLayer, closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
 // content (and overlay) are mounted from their templates, then dialog-engine.ts (the shared port's engine, which does
@@ -10,13 +10,13 @@ import { layersFor, closestTrigger, layerKey, layerSlot } from '../reveal.ts';
 const TRIGGER = '[aria-haspopup="dialog"][aria-controls]:is([data-slot$="dialog-trigger"], [data-slot="sheet-trigger"], [data-slot="drawer-trigger"], [data-mm-part$="dialog-trigger"], [data-mm-part="drawer-trigger"])';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 // A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
-// A trigger whose child has a -trigger data-slot of its own (shadcn's AttachmentTrigger) is known by its layer's content.
+// A trigger with a -trigger data-slot of its own (shadcn's AttachmentTrigger, the sidebar-trigger opening the mobile Sheet) is known by its layer's content.
 const isDialogSlot = (slot: string) => /(dialog|sheet|drawer)-trigger$/.test(slot);
+const BY_LAYER = '[aria-haspopup="dialog"][aria-controls], [data-mm-key]:not([aria-haspopup]):not([data-state])';
 function triggerOf(target: Element): HTMLElement | null {
-	const trigger = target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls], [data-mm-key]:not([aria-haspopup]):not([data-state])', isDialogSlot);
+	const trigger = target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, BY_LAYER, isDialogSlot);
 	if (trigger) return trigger;
-	for (let el = target.closest<HTMLElement>('[aria-haspopup="dialog"][aria-controls]'); el; el = el.parentElement?.closest<HTMLElement>('[aria-haspopup="dialog"][aria-controls]') ?? null) if (isDialogSlot(layerSlot(el))) return el;
-	return null;
+	return closestByLayer(target, BY_LAYER, isDialogSlot);
 }
 // data-mm-part: a Close the source renders through its child (asChild), which gives the element its own data-slot.
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"], [data-mm-part$="dialog-close"], [data-mm-part="drawer-close"], [data-mm-part$="dialog-cancel"], [data-mm-part$="dialog-action"]';

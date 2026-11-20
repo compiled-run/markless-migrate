@@ -3,6 +3,7 @@ import { GENERATED_ID } from './factor.ts';
 import { APP_URL_TOKEN, emitElement, lit, type Binding } from './tsrx.ts';
 import { createHash } from 'node:crypto';
 import type { PartUse } from './parts.ts';
+import { PHONE } from '../../parts/reveal.ts';
 
 const GENERATED_ALL = new RegExp(GENERATED_ID.source, 'g');
 const TAG_KINDS = ['meta', 'link', 'title', 'script', 'base'] as const;
@@ -178,7 +179,7 @@ export const SERVED_LAYER_BYTES = 16_384;
 /** Where a served layer's shell takes its content: the shell's mark, given the file's path once it is known. */
 export const LAYER_FILL = '@@MM_LAYER_FILL@@';
 
-export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string; readonly declare?: readonly string[]; readonly imports?: readonly string[] }[]>): LayerTable {
+export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string; readonly declare?: readonly string[]; readonly imports?: readonly string[]; readonly viewport?: string }[]>): LayerTable {
 	const ids = new Map<string, number>();
 	const files: { file: string; source: string }[] = [];
 	const served: { path: string; html: string }[] = [];
@@ -201,7 +202,10 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 				const keys = [...new Set([...layer.shell.matchAll(/ data-mm-layer="([^"]*)"/g)].map((m) => m[1]!))];
 				const origin = layer.fill.includes(APP_URL_TOKEN) || layer.shell.includes(APP_URL_TOKEN) ? ' data-mm-app-url={APP_URL}' : '';
 				const shell = layer.shell.split(LAYER_FILL).join(path);
-				const servedMarkup = (src: string) => `<link rel="preload" href=${src} as="fetch" crossorigin="anonymous" fetchpriority="low" /><template data-mm-layer-src=${src} data-mm-layer-keys=${lit(keys.join(' '))}${origin}>${layer.imports?.length ? '' : shell}</template>${layer.imports?.length ? shell : ''}`;
+				// A layer recorded at the phone viewport is fetched only on a phone.
+				const phone = layer.viewport === 'mobile' ? ` media=${lit(PHONE)}` : '';
+				const width = layer.viewport ? ` data-mm-viewport=${lit(layer.viewport)}` : '';
+				const servedMarkup = (src: string) => `<link rel="preload" href=${src} as="fetch" crossorigin="anonymous" fetchpriority="low"${phone} /><template data-mm-layer-src=${src} data-mm-layer-keys=${lit(keys.join(' '))}${width}${origin}>${layer.imports?.length ? '' : shell}</template>${layer.imports?.length ? shell : ''}`;
 				// The file is fetched while the page loads, at low priority, and the parts' fetch of it takes that response.
 				body = `${origin ? `\tconst APP_URL: string = import.meta.env.VITE_APP_URL ?? '';\n` : ''}\t<>${servedMarkup(lit(path))}</>\n`;
 				if (!origin && !layer.imports?.length) servedBy.set(`Layer${n}`, { path, shell: JSON.stringify([layer.shell, keys]), markup: (src) => servedMarkup(`{${src}}`) });
