@@ -65,7 +65,7 @@ export interface DiscoverFacts {
 	readonly repeats?: Readonly<Record<string, number>>;
 	/** Pressables left to the reveals or the toggles by their own selectors: checked against what those recorded. */
 	readonly left?: readonly LeftControl[];
-	/** The time stop ended the presses before every control: the page is recorded again next time. */
+	/** The press budget ended the presses before every control: the same page is cut at the same control every time. */
 	readonly cut?: boolean;
 	/** Elements that changed with no press (a clock, an autoplaying carousel): never counted as a press's change. */
 	readonly drift: number;
@@ -77,8 +77,10 @@ export interface DiscoverFacts {
 export interface DiscoverOptions {
 	/** The old page's key (key.ts): a recording made from another page is recorded again. */
 	readonly page?: string;
-	/** The time stop per page, when not MAX_ROUTE_MS. */
-	readonly limitMs?: number;
+	/** The press budget per page, when not MAX_PAGE_PRESSES. */
+	readonly maxPresses?: number;
+	/** The hang guard per page, when not HANG_MS. */
+	readonly hangMs?: number;
 }
 
 const VIEWPORT = VIEWPORTS[0] ?? { name: 'desktop', width: 1280, height: 800, isMobile: false };
@@ -88,8 +90,10 @@ const MAX_PRESSES = 4;
 const DRIFT_WATCH_MS = 2000;
 /** Four times the most pressables on any page of the 18-route shadcn sample (49). */
 const MAX_CONTROLS = 200;
-/** About twice the slowest page of the 18-route shadcn sample (134 s). */
-const MAX_ROUTE_MS = 240_000;
+/** Four times the most presses any page of the 18-route shadcn sample took (41): a bound that cuts a page at the same control every run. */
+const MAX_PAGE_PRESSES = 160;
+/** Seven times the slowest page of the sample (134 s): only a page that stopped answering reaches it, and it is an error, not a cut. */
+const HANG_MS = 900_000;
 /** Two presses of a repeat agreed on every repeat in the sample (19 Copy, 16 View Code, 10 Drag to reorder): the rest are counted like them. */
 const REPEATS = 2;
 /** What a reader reads per control: the 47-node suggestion reply is named by its first few. */
@@ -606,8 +610,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	let drift: string[] = [];
 	let reloads = 0;
 	let cut = false;
-	const limit = options.limitMs ?? MAX_ROUTE_MS;
-	const late = () => Date.now() - started > limit;
+	const budget = options.maxPresses ?? MAX_PAGE_PRESSES;
+	const hang = options.hangMs ?? HANG_MS;
+	let presses = 0;
+	const hung = () => {
+		if (Date.now() - started > hang) throw new Error(`stopped after ${hang / 1000} s on the page: it stopped answering`);
+	};
 	try {
 		await load();
 		({ candidates, excluded, repeats, left } = await find());
@@ -634,8 +642,9 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			pending.splice(0);
 		};
 		for (const [index, c] of candidates.slice(0, MAX_CONTROLS).entries()) {
-			if (late()) {
-				excluded[`past ${limit / 1000} s on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index;
+			hung();
+			if (presses >= budget) {
+				excluded[`past ${budget} presses on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index;
 				cut = true;
 				break;
 			}
@@ -674,6 +683,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const states = [await read()];
 			lastRead = undefined;
 			const press = async (): Promise<boolean> => {
+				presses++;
 				const since = Date.now();
 				const ok = await control.click({ timeout: 5000 }).then(
 					() => true,
@@ -738,10 +748,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const holder = holderPath(pressed, first.changed);
 			let shape: Shape | undefined;
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {
-				if (late()) {
-					cut = true;
-					break;
-				}
+				hung();
 				await press();
 				await still();
 				await settle(at(), LATE_MARKS_MS);
@@ -764,10 +771,6 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			if (holder) pending.push([controls.length, holder]);
 			moved.set(controls.length, said.length ? [] : first.changed);
 			controls.push({ ...base, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
-			if (cut) {
-				excluded[`past ${limit / 1000} s on the page`] = Math.min(candidates.length, MAX_CONTROLS) - index - 1;
-				break;
-			}
 		}
 		// What the page turned out to change by itself (learned between controls) is taken back from every press it fooled: by the same element only.
 		for (const [index, paths] of moved) {
@@ -785,10 +788,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		await session?.context.close().catch(() => {});
 	}
 	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}) };
-	// A page the time stop cut short is recorded again next time, never read back as whole.
-	if (!cut) {
-		await mkdir(dir, { recursive: true });
-		await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
-	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
 	return facts;
 }

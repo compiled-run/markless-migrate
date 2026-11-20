@@ -136,12 +136,16 @@ test('a page that redirects off this machine is refused after it loads, and the 
 	assert.equal(await readdir(dir).then((f) => f.length), kept);
 });
 
-test('a page cut short by the time stop is said to be, and recorded again next time', async () => {
+test('a page past its press budget is cut at the same control every run; one that stops answering is an error, never kept', async () => {
 	const own = await mkdtemp(join(tmpdir(), 'mm-discover-cut-'));
-	const facts = await recordDiscovery(browser, origin, '/small-cut', own, { limitMs: 1 });
+	const facts = await recordDiscovery(browser, origin, '/small-cut', own, { maxPresses: 1 });
 	assert.equal(facts.cut, true);
-	assert.equal(facts.excluded['past 0.001 s on the page'], 3);
-	assert.deepEqual(await readdir(own), [], 'a cut page is not kept');
+	assert.equal(facts.controls.length, 1);
+	assert.equal(facts.excluded['past 1 presses on the page'], 2);
+	assert.equal((await readdir(own)).length, 1, 'a cut by the budget is the same next time: kept');
+	const hung = await recordDiscovery(browser, origin, '/small-hang', own, { hangMs: 1 });
+	assert.match(hung.error ?? '', /stopped after 0.001 s on the page/);
+	assert.equal((await readdir(own)).length, 1, 'an error is recorded again next time');
 	await rm(own, { recursive: true, force: true });
 });
 

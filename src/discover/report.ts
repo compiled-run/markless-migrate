@@ -35,7 +35,7 @@ export interface RouteDiscovery {
 	/** Repeats not pressed, by the pressed control they are like (`"name" (sig#nth)`). */
 	readonly repeats?: Readonly<Record<string, number>>;
 	readonly seconds: number;
-	/** The presses stopped before every control (the time stop): the route's last findings stand. */
+	/** The press budget ended the presses before every control: the route's last findings stand. */
 	readonly cut?: boolean;
 	readonly error?: string;
 }
