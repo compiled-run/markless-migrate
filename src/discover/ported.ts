@@ -30,24 +30,32 @@ export async function portAnswers(app: string, wanted: ReadonlyMap<string, reado
 			}
 			const registry = await registryOf(app, page);
 			const html = renderRoute(port, page, route) + renderRoute(port, DOCUMENT, route);
+			let shown = false;
 			for (const c of controls) {
-				sandbox.show(html);
+				if (!shown) sandbox.show(html);
+				shown = true;
 				const doc = sandbox.window.document as unknown as Document;
 				const target = nthBySig(doc, c.sig, c.nth);
 				if (!target) {
 					answers.set(`${c.sig}#${c.nth}`, 'not on the port');
 					continue;
 				}
+				const watch = new (sandbox.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver(() => {});
+				watch.observe(doc.body, { subtree: true, childList: true, attributes: true, characterData: true });
 				let by = 'none';
 				for (const event of ['click', 'pointerdown', 'keydown']) {
 					const answer = await sandbox.answer(target, event, registry, { library: true });
 					await sandbox.settle();
-					if (answer.by !== 'none') {
-						by = answer.by === 'threw' ? `${answer.where} (threw outside a browser)` : `${answer.by} ${answer.where}`.trim();
-						break;
-					}
+					// A Markless handler around the control (a demo's recorded uses, played from its container) answers only what
+					// was recorded: that is the scene's claim to make, not this one's.
+					if (answer.by === 'none' || (answer.by === 'markless' && answer.where !== target.getAttribute('data-mm-ledger'))) continue;
+					by = answer.by === 'threw' ? `${answer.where} (threw outside a browser)` : `${answer.by} ${answer.where}`.trim();
+					break;
 				}
 				answers.set(`${c.sig}#${c.nth}`, by);
+				// The next control is tried on the page as it was rendered.
+				if (watch.takeRecords().length) shown = false;
+				watch.disconnect();
 			}
 		}
 	} finally {
