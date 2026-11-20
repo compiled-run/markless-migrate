@@ -38,6 +38,11 @@ export interface PressedControl {
 	/** Each ancestor's sig#nth, nearest first: what holds the control (a recorded demo, carousel or table). */
 	readonly ancestors: readonly string[];
 	readonly shape: Shape | Stopped;
+	/**
+	 * Where what the press changed sits: the nearest element holding the control and every element it changed, as its path
+	 * from the body (`body>div2>main1`: tag and occurrence among its siblings of that tag) and its sig#nth.
+	 */
+	readonly holder?: { readonly path: string; readonly at: string };
 	/** The states one control showed before it came back or the presses ran out, the first included. */
 	readonly states?: number;
 	readonly changes?: readonly Change[];
@@ -176,7 +181,7 @@ function installReader(): void {
 			const y = B[key];
 			if (key === '@focus') {
 				// Focus landing on the pressed control (or in it), or leaving to nothing, is the press itself.
-				if (x!.d !== y!.d && y!.d && y!.d !== pressed && !y!.d.startsWith(`${pressed}>`)) (changed.push(key), changes.push({ at: B[y!.d]?.d ?? y!.d, what: 'focus' }));
+				if (x!.d !== y!.d && y!.d && y!.d !== pressed && !y!.d.startsWith(`${pressed}>`)) (changed.push(y!.d), changes.push({ at: B[y!.d]?.d ?? y!.d, what: 'focus' }));
 				continue;
 			}
 			if (key === '@scroll') {
@@ -281,6 +286,38 @@ function findCandidates(destructive: string): { readonly candidates: Candidate[]
 	return { candidates: out, excluded };
 }
 
+/** The nearest element holding the pressed control and every element its press changed, as a path from the body. */
+export function holderPath(pressed: string, changed: readonly string[]): string | undefined {
+	if (!pressed) return undefined;
+	const paths = [pressed, ...changed.filter((p) => p.startsWith('body'))].map((p) => p.split('>'));
+	const common: string[] = [];
+	for (let i = 0; paths.every((p) => p[i] !== undefined && p[i] === paths[0]![i]); i++) common.push(paths[0]![i]!);
+	// A press that changed only its own element is held by its parent: the control is not its own demo.
+	if (common.length === paths[0]!.length) common.pop();
+	return common.join('>');
+}
+
+/** In the page as loaded: the sig#nth of the element at each path, the signature scenes and the emit find it by. */
+function sigsAt(paths: readonly string[]): string[] {
+	const sigOf = (e: Element) => `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${(e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+	const order = new Map<Element, number>();
+	const counts = new Map<string, number>();
+	for (const el of document.body.querySelectorAll('*')) {
+		if (el.closest('template')) continue;
+		const sig = sigOf(el);
+		order.set(el, counts.get(sig) ?? 0);
+		counts.set(sig, (counts.get(sig) ?? 0) + 1);
+	}
+	return paths.map((path) => {
+		let el: Element | null = document.body;
+		for (const step of path.split('>').slice(1)) {
+			const [, tag, n] = /^([a-z0-9-]+?)(\d+)$/.exec(step) ?? [];
+			el = el ? ([...el.children].filter((c) => c.tagName.toLowerCase() === tag)[Number(n) - 1] ?? null) : null;
+		}
+		return el ? `${sigOf(el)}#${order.get(el) ?? 0}` : '';
+	});
+}
+
 const fileOf = (dir: string, route: string) => join(dir, `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`);
 
 /**
@@ -352,11 +389,19 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		const idle1 = await read();
 		drift = (await diff(idle0, idle1, [], '')).changed;
 		let fresh = true;
+		// Holders are named on the page as it loads, before any press changed their text.
+		const pending: [number, string][] = [];
+		const name = async () => {
+			const sigs = await page.evaluate(sigsAt, pending.map(([, path]) => path));
+			for (const [i, [at, path]] of pending.entries()) if (sigs[i]) controls[at] = { ...controls[at]!, holder: { path, at: sigs[i]! } };
+			pending.splice(0);
+		};
 		for (const [index, c] of candidates.slice(0, MAX_CONTROLS).entries()) {
 			if (!fresh) {
 				await load();
 				reloads++;
 				await page.evaluate(findCandidates, DESTRUCTIVE.source);
+				await name();
 			}
 			fresh = true;
 			const control = page.locator(`[data-mm-discover="${index}"]`).first();
@@ -415,6 +460,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			fresh = false;
 			states.push(settled);
+			const holder = holderPath(pressed, first.changed);
 			let shape: Shape | undefined;
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {
 				await press();
@@ -435,7 +481,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				controls.push({ ...base, shape: s.shape, why: `${s.why}, on a later press` });
 				continue;
 			}
+			if (holder) pending.push([controls.length, holder]);
 			controls.push({ ...base, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
+		}
+		if (pending.length) {
+			await load();
+			await name();
 		}
 	} catch (error) {
 		const message = (error as Error).message.split('\n')[0]!;

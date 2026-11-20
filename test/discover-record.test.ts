@@ -97,6 +97,8 @@ test('a press that only moves focus, or only announces, is a change', () => {
 	assert.equal(kbd?.found, 'cursor');
 	assert.equal(kbd?.shape, 'one-way');
 	assert.ok(kbd?.changes?.some((c) => c.what === 'focus'));
+	assert.equal(kbd?.holder?.path, 'body>div4', 'the field and its addon are held by their group');
+	assert.match(kbd?.holder?.at ?? '', /^div\|\|K#0$/);
 	const drag = byName('Drag to reorder');
 	assert.ok(drag?.changes?.some((c) => c.what === 'announced' || (c.what === 'text' && c.after === 'Draggable item 1 was dropped.')));
 });
