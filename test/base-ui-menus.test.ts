@@ -20,8 +20,8 @@ before(async () => {
 });
 after(() => browser.close());
 
-async function open(body: string, ports: readonly string[], choices: Record<string, unknown> = {}, floating = FLOATING_STUB): Promise<Page> {
-	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+async function open(body: string, ports: readonly string[], choices: Record<string, unknown> = {}, floating = FLOATING_STUB, touch = false): Promise<Page> {
+	const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, ...(touch ? { hasTouch: true, isMobile: true } : {}) });
 	const registry = registryModule(ports, '.');
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
@@ -435,6 +435,24 @@ test("a closed Base UI select's backdrop goes inert at once and away once the li
 	assert.equal(await backdrop(), 'hidden inert');
 	await press(page, 'Enter');
 	assert.equal(await backdrop(), 'shown');
+	await page.close();
+});
+
+test('a tap opens an item-aligned Base UI select and leaves it open on the chosen value, as SelectRoot opens on the mousedown that follows the touch, after the tap has hit the trigger', async () => {
+	const chosen = select.replace('<span data-slot="select-value">Select a fruit', '<span data-slot="select-value">Banana').replace('aria-selected="false" tabindex="-1" data-slot="select-item"><div>Banana', 'aria-selected="true" tabindex="-1" data-slot="select-item"><div>Banana');
+	const page = await open(chosen, ['base-ui/select'], {}, FLOATING_STUB, true);
+	await withValue(page);
+	await page.locator('#base').tap();
+	await settled(page);
+	assert.match(await state(page), /^true focus=Banana highlighted=Banana/, 'the tap that opened the list did not choose the option it put under the finger');
+	assert.equal(await selectState(page), 'Banana input=');
+	await page.locator('[role="option"]', { hasText: 'Grapes' }).tap();
+	await settled(page);
+	assert.equal(await selectState(page), 'Grapes input=');
+	assert.match(await state(page), /^false /);
+	await page.locator('#base').tap();
+	await settled(page);
+	assert.match(await state(page), /^true focus=Grapes highlighted=Grapes/);
 	await page.close();
 });
 
