@@ -170,8 +170,10 @@ control up to four times.
 
 A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
 toggles, switches, notifications and hover delays), holds it (a carousel, slider, chart, table, accordion, form or day
-picker), or a recorded demo's uses include it, or the site names it (a theme toggle). The rest that changed the page
-are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
+picker), or a recorded demo's uses include it, or the site names it (a theme toggle). After convert writes the app, the
+port itself is asked about each one left (the ledger's sandbox, `src/discover/ported.ts`): a press its own Markless
+handler or a site or library part answers is ported too, named in `answered` with what answered it. The rest that changed
+the page are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
 and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
 last run of the same store (`.migrate/convert/discover/last.json`: new and cleared). Each cut is said per route too: the
 controls not reached before the page's 240 s stop (and the route named), grid cells, and repeats (a control is pressed

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { convert, convertFailed, summarizeConvert } from './convert/index.ts';
+import { finishDiscovery } from './discover/convert.ts';
 import { readOverrides, rulesOff } from './overrides.ts';
 import { EMBEDS_DIR, EMBEDS_FILE, readEmbeds } from './embed/file.ts';
 import { ADAPTERS, installAdapter, staleAdapter } from './embed/adapters/index.ts';
@@ -1321,12 +1322,17 @@ async function main(argv: string[]): Promise<number> {
 			if (!values.old) fail('convert needs --old <origin>');
 			const recordKeys = values['record-keys'] ? new Map(Object.entries(JSON.parse(await readFile(resolve(values['record-keys']), 'utf8')) as Record<string, string>)) : undefined;
 			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
-			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), ...(recordKeys ? { recordKeys } : {}), log: (line) => out(`${line}\n`) });
+			let report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), ...(values['page-order-from'] ? { pageOrderFrom: values['page-order-from'] } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), ...(values['capture-only'] ? { captureOnly: true } : {}), ...(values.reuse ? { reuse: true } : {}), ...(recordKeys ? { recordKeys } : {}), log: (line) => out(`${line}\n`) });
 			if (values['capture-only']) {
 				// A page whose capture failed keeps no recording: the convert after this records it again, and fails if it fails there.
 				for (const f of report.unconverted) out(`not captured ${f.route}: ${f.reason}\n`);
 				out(`Captured into ${join(cwd, STATE_DIR, 'convert')}${report.unconverted.length ? ` (${report.unconverted.length} page${report.unconverted.length === 1 ? '' : 's'} not captured)` : ''}\n`);
 				return 0;
+			}
+			// The written port asked about each control the recordings left dead, then compared with the last run.
+			if (report.deadControls) {
+				report = { ...report, deadControls: await finishDiscovery(cwd, report.deadControls) };
+				await writeFile(join(cwd, STATE_DIR, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 			}
 			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
 			if (convertFailed(report)) return 1;

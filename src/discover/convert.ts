@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
 import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from './record.ts';
+import { portAnswers } from './ported.ts';
 import type { DeadControl, DiscoveryReport, RouteDiscovery } from './report.ts';
 
 export { discoveryMarkdown, summarizeDiscovery, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
@@ -55,6 +56,34 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 }
 
 const LAST = 'last.json';
+
+/** The report as convert leaves it: dead by the recordings alone, before the written port is asked (`finishDiscovery`). */
+export function draftReport(routes: Readonly<Record<string, RouteDiscovery>>, notRun?: string): DiscoveryReport {
+	return { routes, count: Object.values(routes).reduce((n, r) => n + r.dead.length, 0), deadRoutes: Object.values(routes).filter((r) => r.dead.length).length, ...(notRun ? { notRun } : {}) };
+}
+
+const UNANSWERED = new Set(['none', 'not on the port']);
+
+/**
+ * The written port asked about each control the recordings left dead: one its own Markless handler or a part answers is
+ * ported. The rest are the dead controls, compared with the last run of the same store.
+ */
+export async function finishDiscovery(app: string, draft: DiscoveryReport): Promise<DiscoveryReport> {
+	if (draft.notRun) return draft;
+	const wanted = new Map(Object.entries(draft.routes).filter(([, r]) => r.dead.length).map(([route, r]) => [route, r.dead] as const));
+	const answers = await portAnswers(app, wanted);
+	const routes = Object.fromEntries(
+		Object.entries(draft.routes).map(([route, r]) => {
+			const got = answers.get(route);
+			if (!got) return [route, r];
+			const by = (d: DeadControl) => got.get(`${d.sig}#${d.nth}`) ?? 'none';
+			const answered = r.dead.filter((d) => !UNANSWERED.has(by(d)));
+			const dead = r.dead.filter((d) => UNANSWERED.has(by(d))).map((d) => (by(d) === 'not on the port' ? { ...d, what: `${d.what} (not found on the port by its signature)` } : d));
+			return [route, { ...r, claimed: r.claimed + answered.length, dead, ...(answered.length ? { answered: answered.map((d) => ({ name: d.name, by: by(d) })) } : {}) }];
+		}),
+	);
+	return discoveryReport(join(app, '.migrate', 'convert'), routes);
+}
 
 /** The report over every route, with the last run's dead controls (kept in the store) compared and this run's kept for the next. */
 export async function discoveryReport(store: string, routes: Readonly<Record<string, RouteDiscovery>>, notRun?: string): Promise<DiscoveryReport> {

@@ -10,7 +10,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
-import { discoverRecorder, discoveryReport, routeDiscovery, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
+import { discoverRecorder, draftReport, routeDiscovery, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
 import { atRest } from './at-rest.ts';
 import { captureRouteReveals, incompleteCapture, openDialogAtLoad, captureBaseSubmenus, captureNestedReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, markChosenHref, optionsShown, scrollBinding, type Choice } from './choices.ts';
@@ -2733,7 +2733,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		...(used.unseen.length ? { unseenClassBuilders: used.unseen } : {}),
 		unplacedCharts,
 		stillCapped,
-		...(discovering ? { deadControls: await discoveryReport(join(state, 'convert'), discovered, discovering.notRun) } : {}),
+		...(discovering ? { deadControls: draftReport(discovered, discovering.notRun) } : {}),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 	if (!options.only?.length) await writeFile(join(state, 'convert', CONVERT_INPUTS), JSON.stringify({ pageOrderFrom: options.pageOrderFrom ?? null } satisfies ConvertInputs));

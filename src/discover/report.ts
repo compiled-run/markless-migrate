@@ -23,6 +23,8 @@ export interface RouteDiscovery {
 	/** Pressed, but what the press did was not read: it wrote to a server (blocked), left the page, opened a window or a dialog. */
 	readonly unknown: readonly { readonly name: string; readonly shape: PressedControl['shape']; readonly why?: string }[];
 	readonly excluded: Readonly<Record<string, number>>;
+	/** Controls the recordings left out that the written port answers anyway, and what answers each (a site part, a handler). */
+	readonly answered?: readonly { readonly name: string; readonly by: string }[];
 	/** Repeats not pressed, by the pressed control they are like. */
 	readonly repeats?: Readonly<Record<string, number>>;
 	readonly seconds: number;
