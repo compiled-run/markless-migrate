@@ -586,3 +586,27 @@ reduced motion is red) and `test/motion.test.ts`. The CLI and MCP record it by d
 The report also lists the old stylesheets' motion rules (a transition or animation outside reduced motion)
 whose selector matched no element that moved in any recorded interaction; their values stay the css
 dimension's business.
+
+## How the original prefetches (2026-11-19)
+
+Built: convert records, per page, what the original fetches ahead of a click and what triggers it, by experiment
+(`src/prefetch/`, [convert.md](convert.md#how-the-original-fetches-pages-ahead-of-a-click)). Proven by
+`test/prefetch-record.test.ts` on six small sites written as plain scripts (hover, press, in view, at load, plain
+links, in view only on a fast connection) and `test/prefetch-facts.test.ts`; on ui.shadcn.com it finds the pages'
+data at `{path}?_rsc=*`, fetched as links come into view on every network condition, revisits answered from memory.
+
+### What still slips through, from this work
+
+- Chromium only: a router that prefetches differently in Firefox or Safari is recorded as Chromium sees it.
+  Speculation Rules are read from the page as declared; whether Chromium's own prefetch of them was used is not told
+  apart from a fetch the page made.
+- Network conditions are an emulated `navigator.connection` (and a `Save-Data` header) plus one real slow link: a
+  router that measures the link some other way is seen only on that slow link. Conditions are tried on the first pages of
+  the two largest URL patterns only, with one link per trigger (three runs where the first says a trigger stopped).
+  Clicks and revisits are tried on the four largest patterns' first pages only.
+- A request belongs to a link when its URL names the link's target on segment edges and two targets (or a click) share
+  that URL shape. A router that fetches a page under an id (`/data/8f3a.json`) is not recognised, and shows as fetching
+  nothing ahead.
+- A page that fetches on a timer later than 3 s after its load went quiet is read as fetching during a scroll.
+- Touch (`touchstart`) is not tried apart from the pointer; a hover delay over 500 ms is read as no hover prefetch;
+  the revisit is about 2 s after leaving, so a client cache shorter than that is not seen.

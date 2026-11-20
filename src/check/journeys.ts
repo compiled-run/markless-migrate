@@ -17,6 +17,7 @@ import { availableParallelism } from 'node:os';
 import { STRUCTURE_ENGINE, type Structure } from './structure.ts';
 import { closedBy, describeStep, describeTarget, near, SECTION } from './journeys-compare.ts';
 import { compositeWidgets, controlPattern, focusEntry, MAX_PATTERN_WIDGETS, outsidePoint, PATTERN_BUDGET_MS, PATTERN_SAMPLES, patternJourneys, TOOLTIP_PROBES, TOOLTIP_WAIT_MS, typeaheadLetter, unsafeChoice, widgetState, type PatternKey, type PatternWidget } from './patterns.ts';
+import { DESTRUCTIVE } from './destructive.ts';
 
 export interface Target {
 	readonly role: string;
@@ -166,7 +167,6 @@ const SAMPLES = 2;
 export const CLICKABLE = 'clickable';
 // A clickable's name keeps this many characters of its text; a name that long is matched as the start of the text.
 const NAME_KEPT = 80;
-const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** The time a page's journeys are sized by (one journey per NOMINAL_JOURNEY_MS of it); the time cap is a multiple of it. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
 const BUDGET_PER_CONTROL_MS = 3_000;
