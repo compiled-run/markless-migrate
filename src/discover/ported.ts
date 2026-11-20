@@ -9,6 +9,8 @@ export interface PortControl {
 	readonly nth: number;
 	readonly labelSig?: string;
 	readonly pair?: number;
+	/** It sits inside a widget a recording ports whole: that widget's own handler around it answers for it. */
+	readonly held?: boolean;
 }
 
 /** Per route, per sig#nth: what answered its press on the port (`site part 3`, a Markless handler's file), `none`, or `not on the port`. */
@@ -48,9 +50,9 @@ export async function portAnswers(app: string, wanted: ReadonlyMap<string, reado
 				for (const event of ['click', 'pointerdown', 'keydown']) {
 					const answer = await sandbox.answer(target, event, registry, { library: true });
 					await sandbox.settle();
-					// A Markless handler around the control (a demo's recorded uses, played from its container) answers only what
-					// was recorded: that is the scene's claim to make, not this one's.
-					if (answer.by === 'none' || (answer.by === 'markless' && answer.where !== target.getAttribute('data-mm-ledger'))) continue;
+					// A Markless handler around the control answers it when it is the recorded widget's own (a day picker's); around
+					// anything else it is a demo's recorded uses, which answer only what was recorded: the scene's claim, not this one.
+					if (answer.by === 'none' || (answer.by === 'markless' && !c.held && answer.where !== target.getAttribute('data-mm-ledger'))) continue;
 					by = answer.by === 'threw' ? `${answer.where} (threw outside a browser)` : `${answer.by} ${answer.where}`.trim();
 					break;
 				}
