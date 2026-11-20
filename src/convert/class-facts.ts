@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { builtStarts, parseModule, withBuilt } from './built-classes.ts';
+import { readdir, readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { builtStarts, classFacts, MODULE, parseModule, withBuilt, type ClassFacts } from './built-classes.ts';
 import { classTokens } from './used-css.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree from yuku and yuku-tsrx, walked generically
@@ -13,8 +13,8 @@ interface ModuleFacts {
 	readonly elements: readonly string[];
 	/** The app modules it imports, statically or dynamically. */
 	readonly imports: readonly string[];
-	/** The starts of the classes its template literals build (built-classes.ts). */
-	readonly starts: readonly string[];
+	/** What its templates say about the classes they build (built-classes.ts). */
+	readonly classes?: ClassFacts;
 }
 
 function literal(node: Node): Node | undefined {
@@ -26,7 +26,7 @@ function literal(node: Node): Node | undefined {
 
 function factsOf(file: string, text: string): ModuleFacts {
 	const program: Node = parseModule(file, text);
-	if (!program) return { strings: [text], elements: [], imports: [], starts: [] };
+	if (!program) return { strings: [text], elements: [], imports: [] };
 	const markup = new Set<Node>();
 	const strings: string[] = [];
 	const imports: string[] = [];
@@ -51,7 +51,7 @@ function factsOf(file: string, text: string): ModuleFacts {
 		for (const key of Object.keys(node)) if (key !== 'parent' && typeof node[key] === 'object') visit(node[key]);
 	};
 	visit(program);
-	return { strings, starts: builtStarts(program), elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
+	return { strings, ...(MODULE.test(file) ? { classes: classFacts(program) } : {}), elements: [...markup].map((n) => n.value as string), imports: imports.filter((s) => s.startsWith('.') && !/\.(?:css|svg|png|json|woff2?)(?:\?|$)/.test(s)).map((s) => resolve(dirname(file), s)) };
 }
 
 /**
@@ -77,12 +77,14 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 		}
 		return undefined;
 	};
+	let lib: Promise<string[]> | undefined;
+	const libModules = () => (lib ??= readdir(join(app, 'lib'), { recursive: true, withFileTypes: true }).then((es) => es.filter((e) => e.isFile() && MODULE.test(e.name)).map((e) => join(e.parentPath, e.name)), () => []));
 	return async (entries) => {
 		const seen = new Set<string>();
 		const roots = new Set(entries.map((e) => resolve(app, e)));
 		const queue = [...roots];
 		const strings: string[] = [];
-		const starts: string[] = [];
+		const classes: ClassFacts[] = [];
 		const elements: string[][] = [];
 		while (queue.length) {
 			const file = queue.pop()!;
@@ -91,11 +93,16 @@ export function codeClasses(app: string): (entries: readonly string[]) => Promis
 			const f = await facts(file, roots.has(file));
 			if (!f) continue;
 			strings.push(...f.strings);
-			starts.push(...f.starts);
+			if (f.classes) classes.push(f.classes);
 			for (const c of f.elements) elements.push(c.split(/\s+/).filter(Boolean));
 			queue.push(...f.imports);
 		}
-		return { elements, floating: withBuilt(classTokens(strings), starts) };
+		// Every lib/ module counts, as usedStylesheets counts it: the parts and the site's code run on every page.
+		for (const file of await libModules()) if (!seen.has(file)) {
+			const f = await facts(file, false);
+			if (f?.classes) classes.push(f.classes);
+		}
+		return { elements, floating: withBuilt(classTokens(strings), builtStarts(classes)) };
 	};
 }
 

@@ -106,7 +106,7 @@ test("a class the page's code builds from a template (`style-${name}`) can be on
 	const dir = await mkdtemp(join(tmpdir(), 'mm-class-facts-'));
 	await mkdir(join(dir, 'lib'), { recursive: true });
 	await writeFile(join(dir, 'page.tsrx'), `import { classes } from './lib/design.ts';\nexport default function Page() @{\n\t<div class="a"></div>\n}\n`);
-	await writeFile(join(dir, 'lib', 'design.ts'), 'export const classes = (style: string, color: string) => [`style-${style}`, `base-color-${color} x`];\n');
+	await writeFile(join(dir, 'lib', 'design.ts'), 'export const classes = (style: string, color: string) => [`style-${style}`, `base-color-${color} x`];\ndocument.body.className = classes(location.search, location.hash).join(location.hash);\n');
 	const facts = await codeClasses(dir)(['page.tsrx']);
 	for (const t of ['style-mira', 'style-vega', 'base-color-neutral', 'x']) assert.ok(facts.floating.has(t), t);
 	for (const t of ['a', 'mira', 'color-neutral']) assert.ok(!facts.floating.has(t), t);
