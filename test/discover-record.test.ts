@@ -142,11 +142,12 @@ test('a recording is read back for the same page key, and claimed controls are n
 	assert.deepEqual(again, facts);
 	const listen = byName('Start Listening')!;
 	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>() };
-	assert.equal(claimed(listen, none), false);
-	assert.equal(claimed(listen, { ...none, controls: new Set([`${listen.sig}#${listen.nth}`]) }), true);
+	assert.equal(claimed(listen, none), undefined);
+	assert.equal(claimed(listen, { ...none, controls: new Set([`${listen.sig}#${listen.nth}`]) }), 'control');
 	const kbd = byName('K')!;
-	assert.equal(claimed(kbd, { ...none, scenes: [{ holder: kbd.ancestors[0]!, labels: new Set([kbd.labelSig]) }] }), true);
-	assert.equal(claimed(kbd, { ...none, holders: new Set([kbd.ancestors[0]!]) }), true);
+	assert.equal(claimed(kbd, { ...none, scenes: [{ holder: kbd.ancestors[0]!, labels: new Set([kbd.labelSig]) }] }), 'control');
+	assert.equal(claimed(kbd, { ...none, holders: new Set([kbd.ancestors[0]!]) }), 'holder', 'a widget a recording ports whole leaves its other controls to the port to answer');
+	assert.equal(routeDiscovery(facts, { ...none, holders: new Set([kbd.ancestors[0]!]) }).dead.find((d) => d.name === 'K')?.held, true);
 	const route = routeDiscovery(facts, none);
 	assert.deepEqual(route.dead.map((d) => d.name).sort(), ['Create', 'Drag to reorder', 'K', 'Load reply', 'Show more', 'Start Listening']);
 	assert.deepEqual(route.unknown.map((u) => u.shape).sort(), ['blocked', 'navigates']);
@@ -176,11 +177,12 @@ export default function Page() @{
 		await mkdir(dirname(join(app, file)), { recursive: true });
 		await writeFile(join(app, file), text);
 	}
-	const dead = (name: string, slot = '') => ({ name, sig: `button|${slot}|${name}`, nth: 0, found: 'role' as const, shape: 'toggle' as const, what: '' });
-	const draft = draftReport({ '/': { candidates: 3, found: { role: 3, cursor: 0 }, pressed: 3, claimed: 0, inert: 0, dead: [dead('Copy', 'copy-button'), dead('Show more'), dead('Start Listening')], unknown: [], excluded: {}, seconds: 1 } });
+	const dead = (name: string, slot = '', held = false) => ({ name, sig: `button|${slot}|${name}`, nth: 0, found: 'role' as const, shape: 'toggle' as const, what: '', ...(held ? { held } : {}) });
+	const draft = draftReport({ '/': { candidates: 3, found: { role: 3, cursor: 0 }, pressed: 3, claimed: 0, inert: 0, dead: [dead('Copy', 'copy-button', true), dead('Show more'), dead('Start Listening', '', true)], unknown: [], excluded: {}, seconds: 1 } });
 	assert.equal(draft.count, 3);
 	const done = await finishDiscovery(app, draft);
 	assert.deepEqual(done.routes['/']!.dead.map((d) => d.name), ['Start Listening']);
+	assert.match(done.routes['/']!.dead[0]!.what, /inside a widget a recording ports, which does not answer this press/);
 	assert.deepEqual(done.routes['/']!.answered?.map((a) => [a.name, a.by.split(' ')[0]]), [['Copy', 'site-part'], ['Show more', 'markless']]);
 	assert.equal(done.count, 1);
 	await rm(app, { recursive: true, force: true });

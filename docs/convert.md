@@ -169,8 +169,9 @@ control. Discovery runs only against a copy of the original on this machine (`lo
 control up to four times.
 
 A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
-toggles, switches, notifications and hover delays), holds it (a carousel, slider, chart, table, accordion, form or day
-picker), or a recorded demo's uses include it, or the site names it (a theme toggle). After convert writes the app, the
+toggles, switches, notifications and hover delays), a recorded demo's uses include it, or the site names it (a theme
+toggle). One that only sits inside a widget a recording ports whole (a carousel, slider, chart, table, accordion, form or
+day picker) is ported only if the written port answers it: a table's paging is the table's, its drag handle is not. After convert writes the app, the
 port itself is asked about each one left (the ledger's sandbox, `src/discover/ported.ts`): a press its own Markless
 handler or a site or library part answers is ported too, named in `answered` with what answered it. The rest that changed
 the page are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),

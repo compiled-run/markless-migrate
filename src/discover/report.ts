@@ -8,6 +8,8 @@ export interface DeadControl {
 	readonly found: PressedControl['found'];
 	readonly shape: PressedControl['shape'];
 	readonly states?: number;
+	/** It sits inside a widget a recording ports whole (a table, a carousel): dead only if the written port does not answer it. */
+	readonly held?: boolean;
 	/** What the press changed on the original, in a line. */
 	readonly what: string;
 }

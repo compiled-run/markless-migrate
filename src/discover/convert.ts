@@ -30,24 +30,29 @@ const line = (c: PressedControl): string => {
 	return `${how}${what.length ? `: ${what.join('; ')}` : ''}`;
 };
 
-/** A pressed control the other recordings already port. */
-export function claimed(c: PressedControl, claims: Claims): boolean {
-	if (claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return true;
-	if (c.ancestors.some((a) => claims.holders.has(a))) return true;
-	return claims.scenes.some((s) => c.ancestors.includes(s.holder) && s.labels.has(c.labelSig));
+/**
+ * A pressed control the other recordings already port: `control` when a recording uses it itself (or a scene's uses
+ * include it), `holder` when it only sits inside a widget a recording ports whole, which says nothing of this control
+ * (a table's drag handle), so the written port is asked about it.
+ */
+export function claimed(c: PressedControl, claims: Claims): 'control' | 'holder' | undefined {
+	if (claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return 'control';
+	if (claims.scenes.some((s) => c.ancestors.includes(s.holder) && s.labels.has(c.labelSig))) return 'control';
+	return c.ancestors.some((a) => claims.holders.has(a)) ? 'holder' : undefined;
 }
 
 /** One route's discovery: the stateful controls no recording ports, and what was pressed but not read. */
 export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDiscovery {
-	const mine = facts.controls.filter((c) => !claimed(c, claims));
+	const mine = facts.controls.filter((c) => claimed(c, claims) !== 'control');
+	const held = (c: PressedControl) => claimed(c, claims) === 'holder';
 	return {
 		candidates: facts.candidates,
 		found: { role: facts.controls.filter((c) => c.found === 'role').length, cursor: facts.controls.filter((c) => c.found === 'cursor').length },
 		pressed: facts.controls.length,
-		claimed: facts.controls.length - mine.length,
-		inert: mine.filter((c) => c.shape === 'inert').length,
-		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), what: line(c) })),
-		unknown: mine.filter((c) => STOPPED.has(c.shape) || c.shape === 'unpressable').map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })),
+		claimed: facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
+		inert: mine.filter((c) => c.shape === 'inert' && !held(c)).length,
+		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: line(c) })),
+		unknown: mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })),
 		excluded: facts.excluded,
 		...(facts.repeats ? { repeats: facts.repeats } : {}),
 		seconds: Math.round(facts.ms / 100) / 10,
@@ -78,7 +83,7 @@ export async function finishDiscovery(app: string, draft: DiscoveryReport): Prom
 			if (!got) return [route, r];
 			const by = (d: DeadControl) => got.get(`${d.sig}#${d.nth}`) ?? 'none';
 			const answered = r.dead.filter((d) => !UNANSWERED.has(by(d)));
-			const dead = r.dead.filter((d) => UNANSWERED.has(by(d))).map((d) => (by(d) === 'not on the port' ? { ...d, what: `${d.what} (not found on the port by its signature)` } : d));
+			const dead = r.dead.filter((d) => UNANSWERED.has(by(d))).map((d) => (by(d) === 'not on the port' ? { ...d, what: `${d.what} (not found on the port by its signature)` } : d.held ? { ...d, what: `${d.what} (inside a widget a recording ports, which does not answer this press)` } : d));
 			return [route, { ...r, claimed: r.claimed + answered.length, dead, ...(answered.length ? { answered: answered.map((d) => ({ name: d.name, by: by(d) })) } : {}) }];
 		}),
 	);
