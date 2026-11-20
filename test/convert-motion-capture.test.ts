@@ -134,7 +134,8 @@ test('a one-shot timer due within the wait for scripts is waited for; one due af
 });
 
 test('a page that navigates itself while the wait for scripts reads it is waited for on the page it went to', { timeout: 120_000 }, async () => {
-	const pages: Record<string, string> = { '/': '<!doctype html><title>A</title><p>first</p><script>setTimeout(() => location.replace("/b"), 300);</script>', '/b': '<!doctype html><title>B</title><p>second</p>' };
+	// The first page draws every frame until it is gone, so the wait cannot end on it before the navigation commits.
+	const pages: Record<string, string> = { '/': '<!doctype html><title>A</title><p id="f">first</p><script>(function draw() { document.getElementById("f").dataset.t = String(performance.now()); requestAnimationFrame(draw); })(); setTimeout(() => location.replace("/b"), 300);</script>', '/b': '<!doctype html><title>B</title><p>second</p>' };
 	const server = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(pages[req.url ?? '/'] ?? ''));
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	const browser = await chromium.launch();
