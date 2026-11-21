@@ -1,0 +1,4 @@
+{
+	"reference": { "commit": "ea953ec785f8d58ac2eee50909e8cd604171a7e8", "cpuSeconds": 92 },
+	"budget": { "liveMb": 190, "heapMb": 330, "cpuSeconds": 120, "matchMs": 400 }
+}
