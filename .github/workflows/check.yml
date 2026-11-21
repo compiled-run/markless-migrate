@@ -524,8 +524,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/times"
-          # A sliced route's joining part times only itself: its record says the route was checked in parts, so the next plan slices it again.
-          node scripts/check-shards.ts times "$APP/.migrate" "$RUNNER_TEMP/times/route-times.json" ${SLICES:+--sliced} || true
+          node scripts/check-shards.ts times "$APP/.migrate" "$RUNNER_TEMP/times/route-times.json" || true
       - uses: actions/upload-artifact@v4
         if: always() && env.PARTIAL != 'true'
         with:

@@ -348,17 +348,17 @@ test("check-select's reused results, downloaded beside the shards' reports, are 
 	}
 });
 
-test("a route checked in parts stays in parts: its record names it sliced, since its time is only the joining part's", async () => {
+test("a route checked in parts stays in parts: the joining part's record (shard past SLICED_SHARD) holds only its own time", async () => {
 	const { execFileSync } = await import('node:child_process');
 	const dir = await mkdtemp(join(tmpdir(), 'sliced-times-'));
 	try {
-		await mkdir(join(dir, '.migrate'), { recursive: true });
-		await writeFile(join(dir, '.migrate/report.json'), JSON.stringify({ routes: [{ route: '/blocks', ok: true, failures: [], timing: { ms: 1_645_571 } }] }));
-		execFileSync(process.execPath, ['scripts/check-shards.ts', 'times', join(dir, '.migrate'), join(dir, 'route-times.json'), '--sliced'], { stdio: 'ignore' });
-		const { routes } = JSON.parse(await readFile(join(dir, 'route-times.json'), 'utf8')) as { routes: { route: string; sliced?: boolean }[] };
-		assert.deepEqual(routes.map((r) => [r.route, r.sliced]), [['/blocks', true]]);
+		const part = join(dir, `check-times-${SLICED_SHARD + 1}`);
+		await mkdir(join(part, '.migrate'), { recursive: true });
+		await writeFile(join(part, '.migrate/report.json'), JSON.stringify({ routes: [{ route: '/blocks', ok: true, failures: [], timing: { ms: 1_645_571 } }] }));
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'times', join(part, '.migrate'), join(part, 'route-times.json')], { stdio: 'ignore' });
+		await writeFile(join(dir, 'other.json'), JSON.stringify({ routes: [{ route: '/a', timing: { ms: 60_000 } }] }));
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'times-join', join(dir, 'earlier.json'), join(part, 'route-times.json'), join(dir, 'other.json')], { stdio: 'ignore' });
 		await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/blocks', '/a'] }));
-		await writeFile(join(dir, 'earlier.json'), JSON.stringify({ routes: [...routes, { route: '/a', ok: true, timing: { ms: 60_000 } }] }));
 		execFileSync(process.execPath, ['scripts/check-shards.ts', 'split', join(dir, 'targets.json'), '2', join(dir, 'out'), join(dir, 'earlier.json'), '--slice-over', '3600'], { stdio: 'ignore' });
 		const sliced = JSON.parse(await readFile(join(dir, 'out/sliced.json'), 'utf8')) as { route: string; slices: number }[];
 		assert.deepEqual(sliced.map((r) => [r.route, r.slices]), [['/blocks', 2]], 'under three quarters of its timeout by the joining part alone, it is still sliced');

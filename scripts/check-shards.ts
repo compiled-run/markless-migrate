@@ -6,7 +6,8 @@
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
 // routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
 // results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago; `times <.migrate dir>
-// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline), for a later run's `split`; `survey-join <site targets.json>
+// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline), for a later run's `split`;
+// `times-join <out.json> <route-times.json>...` joins a run's route times, a sliced route's joining part's (check-times-<n> past SLICED_SHARD) marked sliced; `survey-join <site targets.json>
 // <out.json> <slice survey.json>...` joins the layout surveys of the site's slices in the site's order. The merged summary also tells the
 // original served, the old-side store's counts and the runner time of each part of the check.
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -222,15 +223,15 @@ export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<stri
 }
 
 /** Each route's time in a shard's .migrate folder (its report, or the progress files of a shard stopped before one), as a report of routes and timings only. */
-export async function routeTimes(dir: string, sliced = false): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string }; sliced?: true }[]> {
-	const out: { route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string }; sliced?: true }[] = [];
+export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[]> {
+	const out: { route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[] = [];
 	for (const { routes } of await reports(dir)) {
 		for (const r of routes as Timed[]) {
 			const ms = tookMs(r);
 			if (ms === undefined) continue;
 			// How far a stopped or time-capped route got stays with its time, so the next run's estimate scales it up (estimatesOf).
 			const why = r.infrastructure ? { infrastructure: { ...(r.infrastructure.cause ? { cause: r.infrastructure.cause } : {}), message: r.infrastructure.message ?? `timed out after ${ms / 1000} s` } } : {};
-			out.push({ ...(r.timing ? { route: r.route, timing: { ms }, ...why } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` }, ...why }), ...(sliced ? { sliced: true as const } : {}) });
+			out.push(r.timing ? { route: r.route, timing: { ms }, ...why } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` }, ...why });
 		}
 	}
 	return out;
@@ -495,7 +496,7 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === 'times' && a && b) {
-		const routes = await routeTimes(a, process.argv.includes('--sliced'));
+		const routes = await routeTimes(a);
 		await writeFile(b, `${JSON.stringify({ routes })}\n`);
 		console.log(`${routes.length} route times`);
 		return;
@@ -568,7 +569,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>, newest run first...] [--slice-over <seconds>] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>, newest run first...] [--slice-over <seconds>] | times <.migrate dir> <out.json> | times-join <out.json> <route-times.json>... | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
 	process.exit(2);
 }
 
