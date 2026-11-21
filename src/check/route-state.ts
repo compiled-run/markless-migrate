@@ -11,7 +11,9 @@ interface Stated {
 }
 
 /** A failure that says what was not verified rather than what differs: a control no journey used, or a check stopped at --timeout. */
-export const isUnverified = (f: { readonly check: string }): boolean => f.check.startsWith(NOT_EXERCISED) || f.check === 'the check of this route';
+/** The failure of a route whose check stopped before its end (its timeout, a crash part way). */
+export const CHECK_STOPPED = 'the check of this route';
+export const isUnverified = (f: { readonly check: string }): boolean => f.check.startsWith(NOT_EXERCISED) || f.check === CHECK_STOPPED;
 
 export function routeState(r: Stated): RouteState {
 	const open = (r.failures ?? []).filter((f) => !f.accepted);

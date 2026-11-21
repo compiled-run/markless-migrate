@@ -325,6 +325,7 @@ jobs:
           node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).routes.length ? 0 : 1)' "$RUNNER_TEMP/slices/shard-$SLICE.json" || exit 0
           cd "$APP"
           mkdir -p "$RUNNER_TEMP/survey"
+          # pipeline.yml's check-select keys reuse by these options too (CHECK_ARGS): an option added here goes there.
           # shellcheck disable=SC2086
           node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$OLD" --targets "$RUNNER_TEMP/slices/shard-$SLICE.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --write-layout-survey "$RUNNER_TEMP/survey/layout-survey-$SLICE.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY") $FLAGS --no-cache
       - uses: actions/upload-artifact@v4
@@ -483,6 +484,7 @@ jobs:
           status=0
           # Template groups and layout owners are made over the whole site, so page load, visual, responsiveness and motion run on one page per group of the site, and each shared control on one route of it.
           # --busy-cpu: each representative's controls are also used with the runner's CPUs kept busy, in all three engines.
+          # pipeline.yml's check-select keys reuse by these options too (CHECK_ARGS): an option added here goes there.
           # shellcheck disable=SC2086
           node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --site-targets "$GITHUB_WORKSPACE/$TARGETS" --layout-survey "$RUNNER_TEMP/survey/layout-survey.json" $(node "$GITHUB_WORKSPACE/scripts/ci-flags.ts" check "$CONCURRENCY" "$TIMEOUT") $REUSE $DATASET ${SLICES:-} $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
           tail -n 40 "$RUNNER_TEMP/check.txt"
@@ -629,6 +631,11 @@ jobs:
         with:
           name: ${{ inputs.artifacts }}check-shards
           path: shards/check-shards
+      # The pipeline's check-select results it reused (none when this workflow runs alone): in the report and the gate as a shard's.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ inputs.artifacts }}check-reused
+          path: shards/check-reused
       - name: Merge
         env:
           BUILD: ${{ needs.plan.outputs.build || format('artifact {0}', inputs.build-artifact) }}
@@ -637,7 +644,7 @@ jobs:
           set -euo pipefail
           # A shard that wrote no report has each of its routes listed as not checked.
           node scripts/check-shards.ts merge shards merged shards/check-shards --original "$ORIGINAL"
-          reported=$(find shards -name report.json | wc -l)
+          reported=$(find shards -path 'shards/*check-[0-9]*/*' -name report.json | wc -l)
           { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
       # Every shard's kept results in one entry, which the next run's shards restore whatever way it deals the routes.
       - name: The old side as earlier runs joined it
@@ -657,12 +664,13 @@ jobs:
           key: check-old-joined-${{ env.SITE }}-${{ github.run_id }}
       - name: Join kept results
         if: inputs.reuse != 'false'
-        run: node scripts/check-shards.ts keep shards reuse >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/check-shards.ts keep shards "$APP/.migrate/reuse" >> "$GITHUB_STEP_SUMMARY"
+      # Saved at the path the shards and check-select restore it to: a cache saved at another path is another cache, never restored.
       - name: Keep results for later runs
         if: inputs.reuse != 'false'
         uses: actions/cache/save@v4
         with:
-          path: reuse
+          path: ${{ env.APP }}/.migrate/reuse
           key: check-reuse-${{ env.SITE }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         with:

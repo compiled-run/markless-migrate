@@ -76,6 +76,7 @@ import { observeTouch } from './touch.ts';
 import type { TouchOptions } from './touch-compare.ts';
 import type { InventoryRoutes, Served } from './unlisted.ts';
 import { bodyText, request } from './http.ts';
+import { CHECK_STOPPED } from './route-state.ts';
 
 export interface CheckOptions {
 	readonly oldOrigin: string;
@@ -753,7 +754,7 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	const deadline: Deadline =
 		stalled || failedLately || lastAnswer === undefined
 			? { infrastructure: { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` } }
-			: { failure: { route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime } };
+			: { failure: { route, dimension: 'http', check: CHECK_STOPPED, expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime } };
 	log?.record({ stage: 'deadline', req: '', value: deadline }, true);
 	return deadlineResult(route, deadline, found);
 }

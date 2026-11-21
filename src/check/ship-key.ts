@@ -5,6 +5,13 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { OVERRIDES_FILE } from '../overrides.ts';
+import { INVENTORY_FILE, STATE_DIR } from '../status.ts';
+import { SWITCHED_FILE } from '../switch/state.ts';
+import { ACCEPTED_FILE } from './accepted.ts';
+import { checkOptionsKey } from './check-options.ts';
+import { checkerVersion } from './checker-version.ts';
+import { CHECK_STOPPED } from './route-state.ts';
 import type { RouteResult } from './types.ts';
 
 export interface Closures {
@@ -64,9 +71,9 @@ export function reuseKey(versions: Readonly<Record<string, string>>, parts: read
 
 export type Reused = RouteResult & { readonly reused: { readonly key: string; readonly checkedAt: string }; readonly loads?: Record<string, string> };
 
-/** A kept result only when it compared the whole route: never one cut short by the network, a bot wall or `--only`. */
+/** A kept result only when it compared the whole route: never one cut short by the network, a bot wall, `--only` or its timeout. */
 export async function writeReusable(dir: string, key: string, result: RouteResult & { readonly loads?: Record<string, string> }, checkedAt: string): Promise<void> {
-	if (result.infrastructure || result.blocked || result.only || result.reused) return;
+	if (result.infrastructure || result.blocked || result.only || result.reused || result.failures.some((f) => f.check === CHECK_STOPPED)) return;
 	await mkdir(dir, { recursive: true });
 	const path = join(dir, `${key}.json`);
 	await writeFile(`${path}.tmp`, JSON.stringify({ checkedAt, result }));
@@ -83,26 +90,44 @@ export async function readReusable(dir: string, key: string): Promise<Reused | u
 }
 
 /**
- * What decides a key besides the route itself: this checkout's checker and converter (git tree of src/ and scripts/), and
- * the Markless packages the port names. Undefined when either is unknown, so nothing is reused.
+ * What decides a key besides the route itself: the checker's version (the check command's code, checker-version.ts), the
+ * Markless packages the port names, the app's state files a check reads, and the options of the check (`checkArgs`, its command line). Undefined when the port names none, so nothing is reused.
  */
-export async function shipVersions(appDir: string, git: (args: string[]) => Promise<string | undefined>): Promise<Record<string, string> | undefined> {
-	const [src, scripts] = await Promise.all([git(['rev-parse', 'HEAD:src']), git(['rev-parse', 'HEAD:scripts'])]);
-	const dirty = await git(['status', '--porcelain', '--', 'src', 'scripts']);
-	if (!src?.trim() || !scripts?.trim() || dirty === undefined || dirty.trim()) return undefined;
+export async function shipVersions(appDir: string, checkArgs: readonly string[]): Promise<Record<string, string> | undefined> {
 	let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } };
 	try {
 		pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
 	} catch {
 		return undefined;
 	}
-	const markless = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.pnpm?.overrides })
-		.filter(([name]) => name.startsWith('@markless/'))
+	const markless = toolchain(pkg);
+	if (!markless) return undefined;
+	return { checker: (await checkerVersion()).version, markless, state: await appStateVersion(appDir), options: checkOptionsKey(checkArgs) };
+}
+
+// The packages that build what the port ships besides its own code: the bundler under Vite+.
+const TOOLCHAIN = new Set(['vite', 'vite-plus', 'rolldown']);
+
+/** The Markless packages a port's package.json names and the build toolchain's, each with its spec; empty when it names no Markless package. */
+export function toolchain(pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } }): string {
+	const named = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.pnpm?.overrides });
+	if (!named.some(([name]) => name.startsWith('@markless/'))) return '';
+	return named
+		.filter(([name]) => name.startsWith('@markless/') || TOOLCHAIN.has(name) || name.startsWith('@voidzero-dev/'))
 		.sort(([a], [b]) => (a < b ? -1 : 1))
 		.map(([name, spec]) => `${name}@${spec}`)
 		.join(' ');
-	if (!markless) return undefined;
-	return { checker: `${src.trim()} ${scripts.trim()}`, markless };
+}
+
+/** The app's state files a check reads (accepted differences, overrides, switched routes, the inventory), by their bytes. */
+export async function appStateVersion(appDir: string): Promise<string> {
+	const hash = createHash('sha256');
+	for (const file of [ACCEPTED_FILE, OVERRIDES_FILE, SWITCHED_FILE, INVENTORY_FILE]) {
+		const bytes = await readFile(join(appDir, STATE_DIR, file)).catch(() => undefined);
+		hash.update(`${file}\0${bytes ? `${bytes.length}\0` : 'absent\0'}`);
+		if (bytes) hash.update(bytes);
+	}
+	return hash.digest('base64url');
 }
 
 export interface ReuseSelection {

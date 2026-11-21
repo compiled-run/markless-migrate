@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import { Analyzer, type Module } from 'yuku/analyzer';
 import type { Node } from 'yuku';
-import { ROOT } from '../code-closure.ts';
+import { ROOT } from './code-closure.ts';
 
 export interface Span {
 	readonly file: string;
@@ -16,6 +16,8 @@ export interface ClosureReads {
 	/** Module-level bindings the code reads that code outside it assigns or mutates (`path name`). */
 	readonly state: ReadonlySet<string>;
 	readonly problems: readonly string[];
+	/** Where each environment problem is: the file (absolute), the offset, and why. */
+	readonly sites: readonly { readonly file: string; readonly at: number; readonly why: string }[];
 }
 
 const PROCESS = new Set(['process', 'node:process']);
@@ -149,6 +151,7 @@ export class ClosureProject {
 		const env = new Set<string>();
 		const state = new Set<string>();
 		const problems: string[] = [];
+		const sites: { file: string; at: number; why: string }[] = [];
 		for (const file of spans.files) {
 			const m = this.analyzer.module(file);
 			if (!m) {
@@ -158,11 +161,14 @@ export class ClosureProject {
 			for (const use of this.envOf(m)) {
 				if (!spans.holds(file, use.node)) continue;
 				if (use.name) env.add(use.name);
-				else problems.push(`${relative(ROOT, file)}:${use.node.start} ${use.problem ?? ''}`);
+				else {
+					sites.push({ file, at: use.node.start, why: use.problem ?? '' });
+					problems.push(`${relative(ROOT, file)}:${use.node.start} ${use.problem ?? ''}`);
+				}
 			}
 			for (const changed of this.changesOf(m)) if (spans.holds(file, changed.declaration) && changed.sites.some((site) => !spans.holds(site.file, site.node) && recording.holds(site.file, site.node))) state.add(changed.binding);
 		}
-		return { env, state, problems };
+		return { env, state, problems, sites };
 	}
 }
 

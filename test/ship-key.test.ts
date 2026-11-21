@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { keepChecked, readClosures, readReusable, referencedFiles, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
+import { appStateVersion, toolchain, keepChecked, readClosures, readReusable, referencedFiles, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
 import type { RouteResult } from '../src/check/types.ts';
 
 const page = (file: string, chunk: string, text = 'Hello') =>
@@ -74,12 +74,13 @@ test('a kept result is read back marked reused, with the key and when it was che
 	assert.equal(await readReusable(dir, 'k2'), undefined);
 });
 
-test('a result that compared nothing (unreachable, a bot wall, one dimension only) is never kept', async () => {
+test('a result that compared nothing or part of the route (unreachable, a bot wall, one dimension only, stopped at its timeout) is never kept', async () => {
 	const dir = await mkdtemp(join(tmpdir(), 'ship-'));
 	await writeReusable(dir, 'k1', result({ ok: false, infrastructure: { message: 'timeout' } as never }), 'now');
 	await writeReusable(dir, 'k2', result({ ok: false, blocked: { message: 'wall' } as never }), 'now');
 	await writeReusable(dir, 'k3', result({ only: 'load' }), 'now');
-	assert.deepEqual(await readdir(dir), []);
+	await writeReusable(dir, 'k4', result({ ok: false, failures: [{ route: '/a', dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: 'incomplete: timed out after 3600 s', hint: '' }] }), 'now');
+	assert.deepEqual(await readdir(dir), [], 'a route stopped at --timeout part way compared only part of itself');
 });
 
 test('a run reuses the routes whose served HTML and code are as they were, and checks the rest', async () => {
@@ -152,4 +153,31 @@ test('a stylesheet, a script outside the packs, the old page or a response the p
 test("a file only the hosting platform serves (Vercel's /_vercel/insights) is not a file the route ships, so it never leaves the route without a key", () => {
 	const html = '<html><head><link rel="stylesheet" href="/app.css"><script defer src="/_vercel/insights/script.js"></script><script defer src="/_vercel/speed-insights/script.js"></script><script src="https://cdn.example/x.js"></script></head></html>';
 	assert.deepEqual(referencedFiles(html, 'http://127.0.0.1:3000'), ['http://127.0.0.1:3000/app.css']);
+});
+
+test("the app's state a check reads (accepted differences, overrides, switched routes, the inventory) is part of the key", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'ship-app-'));
+	try {
+		await mkdir(join(app, '.migrate'));
+		const before = await appStateVersion(app);
+		assert.equal(await appStateVersion(app), before);
+		for (const file of ['accepted.json', 'overrides.json', 'switched.json', 'inventory.json']) {
+			await writeFile(join(app, '.migrate', file), '{"x":1}');
+			const written = await appStateVersion(app);
+			assert.notEqual(written, before, file);
+			await writeFile(join(app, '.migrate', file), '{"x":2}');
+			assert.notEqual(await appStateVersion(app), written, `${file} edited`);
+			await rm(join(app, '.migrate', file));
+		}
+		assert.equal(await appStateVersion(app), before);
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
+});
+
+test("the Markless packages and the build toolchain the port names are in the key; a port naming no Markless package has none", () => {
+	const pkg = { dependencies: { '@markless/core': 'file:./.markless-local/markless-core-0.9.0.tgz', react: '19.0.0' }, devDependencies: { 'vite-plus': '1.3.0' }, pnpm: { overrides: { vite: 'npm:@voidzero-dev/vite-plus-core@1.3.0' } } };
+	assert.equal(toolchain(pkg), '@markless/core@file:./.markless-local/markless-core-0.9.0.tgz vite@npm:@voidzero-dev/vite-plus-core@1.3.0 vite-plus@1.3.0');
+	assert.notEqual(toolchain({ ...pkg, devDependencies: { 'vite-plus': '1.4.0' } }), toolchain(pkg), 'another Vite+ builds other bytes');
+	assert.equal(toolchain({ devDependencies: { 'vite-plus': '1.3.0' } }), '');
 });
