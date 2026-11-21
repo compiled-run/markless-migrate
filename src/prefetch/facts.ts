@@ -79,6 +79,8 @@ export interface PrefetchFacts {
 	/** Navigation loads a new document (no in-place router). */
 	readonly fullLoads: boolean;
 	readonly links: number;
+	/** The pages the page's same-origin links go to, sorted: what a prefetch hint must name to count as fetching a page. */
+	readonly targets?: readonly string[];
 	readonly triggers: Readonly<Partial<Record<Trigger, TriggerEvidence>>>;
 	/** The most navigational requests in flight at once before any click. */
 	readonly concurrency: number;

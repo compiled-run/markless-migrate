@@ -64,6 +64,7 @@ export const UNKEYED_INPUTS: Readonly<Record<string, string>> = {
 	'.migrate/inventory.json': "which routes are recorded: each route's recordings are keyed by its own page and what its recorders are handed",
 	// It carries the time plan ran, so keying its bytes recorded everything again after every re-plan.
 	'.migrate/usage.json': 'whether the TanStack table and form-library recorders run at all: a recording it turns on is made then, and one it turns off is not read',
+	'.migrate/prefetch.json': "convert's own output: the last convert's prefetch facts, read back for the router's prefetch setting, never handed to a recorder",
 };
 
 /** Module state a recorder reads that code outside it sets, and the key part that holds what is set. */

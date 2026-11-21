@@ -2,7 +2,7 @@
 // drops the mirror that was first and runs it again from the next one, once per mirror (docs/ci-process.md "Caches"):
 //   node scripts/apt-mirror-fallback.ts -- <install command...>
 import { spawn, spawnSync } from 'node:child_process';
-import { accessSync, constants, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const MIRRORS_FILE = '/etc/apt/apt-mirrors.txt';
@@ -49,17 +49,44 @@ export function routeSecurity(text: string): string | undefined {
 	return changed ? out : undefined;
 }
 
-/** The repository URIs an apt source file names (deb822 `URIs:` or one-line `deb`), comments left out. */
+/** The repository URIs an apt source file configures: deb822 stanzas (`URIs:`, folded lines, `Enabled: no` skipped) or one-line `deb`/`deb-src` entries, comments left out. */
 export function sourceUris(text: string): string[] {
-	return text.split('\n').flatMap((line) => {
-		const uris = /^URIs:\s*(.*)$/.exec(line);
-		if (uris) return uris[1]!.split(/\s+/).filter(Boolean);
-		const deb = /^deb(?:-src)?\s+(?:\[[^\]]*\]\s+)?(\S+)/.exec(line);
-		return deb ? [deb[1]!] : [];
-	});
+	const uris: string[] = [];
+	let fields = new Map<string, string>();
+	let field: string | undefined;
+	const close = () => {
+		if (fields.get('enabled')?.toLowerCase() !== 'no') uris.push(...(fields.get('uris') ?? '').split(/\s+/).filter(Boolean));
+		fields = new Map();
+		field = undefined;
+	};
+	for (const raw of text.split('\n')) {
+		const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+		if (line.startsWith('#')) continue;
+		if (!line.trim()) {
+			close();
+			continue;
+		}
+		if (line[0] === ' ' || line[0] === '\t') {
+			if (field) fields.set(field, `${fields.get(field) ?? ''} ${line.trim()}`);
+			continue;
+		}
+		const [type = '', ...rest] = line.split(/\s+/);
+		if (type === 'deb' || type === 'deb-src') {
+			const after = rest.join(' ');
+			const uri = (after.startsWith('[') ? after.slice(after.indexOf(']') + 1) : after).trim().split(/\s+/)[0];
+			if (uri) uris.push(uri);
+			continue;
+		}
+		const colon = line.indexOf(':');
+		if (colon <= 0) continue;
+		field = line.slice(0, colon).toLowerCase();
+		fields.set(field, line.slice(colon + 1).trim());
+	}
+	close();
+	return uris;
 }
 
-// packages.microsoft.com has answered 403 and failed apt-get update; a file is dropped only when every source in it is that host.
+// The browsers' packages do not come from packages.microsoft.com, which has failed apt-get update with 403s; a file is dropped only when every source in it is that host.
 const MICROSOFT = /^https?:\/\/packages\.microsoft\.com\//;
 export const onlyMicrosoft = (text: string) => {
 	const uris = sourceUris(text);
@@ -79,10 +106,10 @@ export type Outcome = { readonly kind: 'ok' } | { readonly kind: 'stalled' } | {
 export interface Io {
 	readonly read: () => string | undefined;
 	readonly write: (text: string) => void;
-	readonly sources: () => { readonly file: string; readonly text: string }[];
+	readonly sources: () => { readonly file: string; readonly text: string; readonly modified: Date }[];
 	readonly writeSource: (file: string, text: string) => void;
 	readonly removeSource: (file: string) => void;
-	/** The repositories apt itself reads, from `apt-get indextargets`. */
+	/** The repositories apt itself reads from the source files, from `apt-get indextargets` with no downloaded index required. */
 	readonly repositories: () => string[];
 	readonly run: (command: readonly string[], seconds: number) => Promise<Outcome>;
 	/** Before the next attempt: stop what the last one left running as root, and repair an interrupted dpkg. */
@@ -95,11 +122,17 @@ export async function install(command: readonly string[], io: Io, seconds = ATTE
 	for (const { file, text } of io.sources()) {
 		if (!onlyMicrosoft(text)) continue;
 		io.removeSource(file);
-		io.log(`apt source ${file} reads only packages.microsoft.com, which has answered 403; removed`);
+		io.log(`apt source ${file} reads only packages.microsoft.com, which the browsers' system packages do not come from and which has failed apt-get update before; removed without contacting it`);
 	}
 	const listing = () => io.sources().map(({ file, text }) => `${file}: ${sourceUris(text).join(' ') || '(no sources)'}`).join('; ') || 'no source files';
 	io.log(`apt sources: ${listing()}`);
-	if (!io.repositories().length) {
+	const files = io.sources();
+	if (!files.some(({ text }) => sourceUris(text).length)) {
+		for (const { file, text, modified } of files) {
+			io.log(`--- ${file} (modified ${modified.toISOString()}, ${Buffer.byteLength(text)} bytes)`);
+			for (const line of text ? text.replace(/\n$/, '').split('\n') : ['(empty)']) io.log(line);
+		}
+		io.log('--- end of apt source files');
 		io.log(`::error::apt has no package source on this runner, so no mirror can help (${listing()})`);
 		return 1;
 	}
@@ -200,11 +233,11 @@ export function systemIo(file = MIRRORS_FILE): Io {
 		sources: () => {
 			const dir = '/etc/apt/sources.list.d';
 			const files = ['/etc/apt/sources.list', ...(existsSync(dir) ? readdirSync(dir).filter((f) => /\.(list|sources)$/.test(f)).map((f) => `${dir}/${f}`) : [])];
-			return files.filter((f) => existsSync(f)).map((f) => ({ file: f, text: readFileSync(f, 'utf8') }));
+			return files.filter((f) => existsSync(f)).map((f) => ({ file: f, text: readFileSync(f, 'utf8'), modified: statSync(f).mtime }));
 		},
 		writeSource: put,
 		removeSource: (f) => void spawnSync('sudo', ['rm', '-f', f], { stdio: 'inherit' }),
-		repositories: () => [...new Set((spawnSync('apt-get', ['indextargets', '--format', '$(REPO_URI)'], { encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean))],
+		repositories: () => [...new Set((spawnSync('apt-get', ['indextargets', '-o', 'APT::Get::IndexTargets::ReleaseInfo=false', '--format', '$(REPO_URI)'], { encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean))],
 		// sudo does not pass on a signal sent from its own process group, so a stopped attempt leaves apt-get running as root, holding the lock.
 		settle: async () => {
 			const running = () => spawnSync('pgrep', ['-x', 'apt-get|dpkg']).status === 0;
