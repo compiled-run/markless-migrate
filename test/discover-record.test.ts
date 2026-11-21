@@ -62,13 +62,11 @@ document.getElementById('b-form').onclick = () => { window.__formPressed = true;
 </script></body></html>`;
 
 // Three Like in one box (the third an in-page repeat) and a Copy in each of three boxes (the third skipped once two did alike).
-const REPEATS = `<!doctype html><html><body><p id="liked"></p><p id="copied"></p>
-<div id="likes"><button type="button">Like</button><button type="button">Like</button><button type="button">Like</button></div>
-<div id="c1"><button type="button">Copy</button></div><div id="c2"><button type="button">Copy</button></div><div id="c3"><button type="button">Copy</button></div>
+const REPEATS = `<!doctype html><html><body>
+<div id="likes"><button type="button">Like</button><button type="button">Like</button><button type="button">Like</button><p></p></div>
+<div id="c1"><button type="button">Copy</button><p></p></div><div id="c2"><button type="button">Copy</button><p></p></div><div id="c3"><button type="button">Copy</button><p></p></div>
 <script>
-const flip = (id) => { const p = document.getElementById(id); p.textContent = p.textContent ? '' : id; };
-document.querySelectorAll('#likes button').forEach((b) => (b.onclick = () => flip('liked')));
-document.querySelectorAll('[id^=c] button').forEach((b) => (b.onclick = () => flip('copied')));
+document.querySelectorAll('button').forEach((b) => (b.onclick = () => { const p = b.parentElement.querySelector('p'); p.textContent = p.textContent ? '' : 'pressed'; }));
 </script></body></html>`;
 
 let browser: Browser;
@@ -191,11 +189,16 @@ test('both skips keep each repeat by its place, and the repeats of a control a r
 		'button||Like#0': [{ sig: 'button||Like', nth: 2, labelSig: 'button||Like', pair: 2, name: 'Like', found: 'role' }],
 		'button||Copy#0': [{ sig: 'button||Copy', nth: 2, labelSig: 'button||Copy', pair: 2, name: 'Copy', found: 'role' }],
 	}, 'the in-page repeat past two in a box, and the same control once two of it did alike');
-	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>() };
+	const none: Claims = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>(), owned: new Map<string, string>() };
 	const copy = all.controls.find((c) => c.name === 'Copy' && c.nth === 0)!;
-	const byScene = routeDiscovery(all, { ...none, scenes: [{ holder: copy.ancestors[0]!, labels: new Set([copy.labelSig]) }] });
+	const byScene = routeDiscovery(all, { ...none, scenes: [{ holder: copy.holder?.at ?? '', listed: SCENE_CONTROLS, labels: new Set([copy.labelSig]) }] });
 	assert.deepEqual(byScene.dead.filter((d) => d.name === 'Copy').map((d) => [d.nth, d.shape]), [[1, 'toggle'], [2, 'toggle']], 'the pressed Copy a recorded demo takes is its; its repeat is not');
 	assert.match(byScene.dead.find((d) => d.name === 'Copy' && d.nth === 2)?.what ?? '', /a repeat of one a recording ports/);
+	const likes = all.controls.filter((c) => c.name === 'Like');
+	const root = likes[0]?.path?.split('>').slice(0, -1).join('>') ?? '';
+	const usesAt = new Map(likes.map((c) => [c.path?.slice(root.length + 1) ?? '', { recorded: 2, skipped: 0, why: '', back: true }]));
+	const byPlace = routeDiscovery(all, { ...none, scenes: [{ holder: likes[0]?.holder?.at ?? '', listed: SCENE_CONTROLS, labels: new Set<string>(), root, usesAt }] });
+	assert.deepEqual(byPlace.dead.filter((d) => d.name === 'Like').map((d) => [d.nth, d.shape]), [[2, 'toggle']], 'both pressed Likes are the demo\'s by their place; the repeat no scene use took is asked of the port');
 	const likeClaim = { controls: ['button||Like#0'], names: [] };
 	const skipped = await recordDiscovery(browser, origin, '/repeats', own, { claimed: likeClaim });
 	assert.equal(skipped.claimedSkipped, 1);
