@@ -14,7 +14,7 @@ import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { shareLayoutLater } from '../src/check/report-judge.ts';
-import { routeState } from '../src/check/route-state.ts';
+import { CHECK_STOPPED, routeState } from '../src/check/route-state.ts';
 
 interface Targets {
 	readonly routes: string[];
@@ -387,7 +387,7 @@ export async function lostUploads(dir: string): Promise<string[]> {
 }
 
 /** Routes the run did not check to the end: not checked at all, or stopped at --timeout part way. Any of them makes the run red. */
-export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
+export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === CHECK_STOPPED));
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : routeState(r) === 'incomplete' ? 'incomplete' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;

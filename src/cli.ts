@@ -55,6 +55,7 @@ import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { changedSince, git, gitHead, selectChanged } from './check/changed.ts';
+import { CHECK_OPTIONS, checkOptionsKey, TIMING_FLAGS } from './check/check-options.ts';
 import { keepChecked, readClosures, selectReusable, shipVersions, type ReuseSelection } from './check/ship-key.ts';
 import { VERSION } from './version.ts';
 import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
@@ -552,48 +553,6 @@ function timeoutOption(value: string | undefined): { timeoutMs?: number } {
 	return { timeoutMs: seconds * 1000 };
 }
 
-const TIMING_FLAGS = {
-	'no-responsiveness': { type: 'boolean' },
-	'interaction-budget': { type: 'string' },
-	'cpu-throttle': { type: 'string' },
-	'network-latency': { type: 'string' },
-	'interaction-controls': { type: 'string' },
-	'no-motion': { type: 'boolean' },
-	'no-embeds': { type: 'boolean' },
-	'no-probes': { type: 'boolean' },
-	'no-control-parity': { type: 'boolean' },
-	'control-webkit': { type: 'boolean' },
-	'busy-cpu': { type: 'boolean' },
-	'no-behaviours': { type: 'boolean' },
-	'no-media': { type: 'boolean' },
-	'no-touch': { type: 'boolean' },
-	touch: { type: 'string' },
-	'no-navigation': { type: 'boolean' },
-	'no-load': { type: 'boolean' },
-	'load-runs': { type: 'string' },
-	'load-cpu': { type: 'string' },
-	'psi-key': { type: 'string' },
-	'psi-runs': { type: 'string' },
-	'no-psi': { type: 'boolean' },
-	'slow-network': { type: 'string', multiple: true },
-	'slow-network-browser': { type: 'string', multiple: true },
-	'slow-network-runs': { type: 'string' },
-	'slow-network-control': { type: 'string' },
-	'slow-network-concurrency': { type: 'string' },
-	'no-slow-network': { type: 'boolean' },
-	'no-nav-timing': { type: 'boolean' },
-	'nav-timing-runs': { type: 'string' },
-	'nav-timing-layouts': { type: 'string' },
-	'nav-timing-cell': { type: 'string', multiple: true },
-	'nav-timing-cells': { type: 'string' },
-	'no-waste': { type: 'boolean' },
-	'waste-profile': { type: 'string' },
-	'js-budget': { type: 'string' },
-	'waste-maps': { type: 'string' },
-	reference: { type: 'string', multiple: true },
-	'nav-entries': { type: 'string' },
-	'nav-destinations': { type: 'string' },
-} as const;
 
 function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: string; 'nav-destinations'?: string }, routes: readonly string[] | undefined): CheckOptions['navigation'] {
 	if (values['no-navigation']) return undefined;
@@ -1072,59 +1031,7 @@ async function main(argv: string[]): Promise<number> {
 			return planCommand(rest, cwd, out, fail);
 		case 'check': {
 			if (rest[0] === 'judge') return judgeCheck(rest.slice(1), cwd);
-			const { values } = parseArgs({
-				args: rest,
-				options: {
-					observations: { type: 'string' },
-					original: { type: 'string' },
-					old: { type: 'string' },
-					new: { type: 'string' },
-					route: { type: 'string', multiple: true },
-					json: { type: 'boolean' },
-					open: { type: 'boolean' },
-					source: { type: 'string' },
-					'old-hash-routes': { type: 'boolean' },
-					data: { type: 'string' },
-					'live-window': { type: 'string' },
-					staging: { type: 'boolean' },
-					block: { type: 'string', multiple: true },
-					allow: { type: 'string', multiple: true },
-					'no-freeze': { type: 'boolean' },
-					'server-clock': { type: 'boolean' },
-					time: { type: 'string' },
-					seed: { type: 'string' },
-					timezone: { type: 'string' },
-					locale: { type: 'string' },
-					auth: { type: 'string' },
-					header: { type: 'string', multiple: true },
-					cookie: { type: 'string', multiple: true },
-					'user-agent': { type: 'string' },
-					all: { type: 'boolean' },
-					'allow-unchecked': { type: 'boolean' },
-					changed: { type: 'boolean' },
-					reuse: { type: 'string' },
-					closures: { type: 'string' },
-					concurrency: { type: 'string' },
-					'new-source': { type: 'string' },
-					'journey-budget': { type: 'string' },
-					'max-journeys': { type: 'string' },
-					'journey-depth': { type: 'string' },
-					timeout: { type: 'string' },
-					only: { type: 'string' },
-					'every-dimension': { type: 'boolean' },
-					'no-cache': { type: 'boolean' },
-					resume: { type: 'boolean' },
-					targets: { type: 'string' },
-					'write-targets': { type: 'string' },
-					'site-targets': { type: 'string' },
-					'layout-survey': { type: 'string' },
-					'write-layout-survey': { type: 'string' },
-					slices: { type: 'string' },
-					'slice-dir': { type: 'string' },
-					slice: { type: 'string' },
-					...TIMING_FLAGS,
-				},
-			});
+			const { values } = parseArgs({ args: rest, options: CHECK_OPTIONS });
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
 			const slicing = sliceOptions(values.slices, values['slice-dir'], values.slice, cwd);
@@ -1177,7 +1084,7 @@ async function main(argv: string[]): Promise<number> {
 			let reuse: ReuseSelection | undefined;
 			if (values.reuse) {
 				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
-				const versions = await shipVersions(cwd);
+				const versions = await shipVersions(cwd, rest);
 				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
 				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
 				if (!versions) out('--reuse: nothing reused, the port names no Markless packages.\n');

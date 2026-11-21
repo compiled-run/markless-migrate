@@ -29,10 +29,14 @@ export const WHOLE_ENV: Readonly<Record<string, string>> = {
 	'src/check/psi.ts psiKey': "whether a PageSpeed key is found: in the key ('psi key')",
 };
 
-/** Variables the checker reads that hold a credential: keyed by whether one is set, as a new token every CI job checks alike. */
+/** Variables the checker reads that hold a credential CI makes anew for every job: keyed by whether one is set, as every job's checks alike. */
 export const CREDENTIALS: Readonly<Record<string, string>> = {
 	GH_TOKEN: 'a GitHub token',
 	GITHUB_TOKEN: 'a GitHub token',
+};
+
+/** Fixed secrets the checker reads: keyed by a hash of the value, as another one can be served other content, and never written out. */
+export const SECRETS: Readonly<Record<string, string>> = {
 	MARKLESS_MIGRATE_TOKEN: "the token the checked app's requests send",
 };
 
@@ -115,7 +119,8 @@ export async function checkerVersion(): Promise<CheckerVersion> {
 	const text = await readFile(CLI, 'utf8');
 	for (const s of command.statements) part('check command', text.slice(s.start, s.end));
 	for (const [name, value] of closure.parts) part(name, value);
-	for (const name of [...found.env].sort()) if (!(name in DIAGNOSTICS)) part(`env ${name}`, name in CREDENTIALS ? (process.env[name] ? 'set' : '\0unset') : (process.env[name] ?? '\0unset'));
+	const valueOf = (name: string, value: string | undefined) => (name in CREDENTIALS ? (value ? 'set' : '\0unset') : value === undefined ? '\0unset' : name in SECRETS ? createHash('sha256').update(value).digest('base64url') : value);
+	for (const name of [...found.env].sort()) if (!(name in DIAGNOSTICS)) part(`env ${name}`, valueOf(name, process.env[name]));
 	// The one whole-environment read that can change a result: whether PageSpeed Insights runs.
 	part('psi key', psiKey() ? 'found' : 'none');
 	if (problems.length) part('problems', `${problems.join('\n')}\n${randomUUID()}`);

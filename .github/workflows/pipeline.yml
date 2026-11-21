@@ -809,9 +809,13 @@ jobs:
           SHARDS: ${{ inputs.check-shards || '2' }}
           # Keyed as check.yml's shards check, which have no token: whether one is set is part of the checker's version.
           GH_TOKEN: ''
+          CHECK_FLAGS: ${{ inputs.check-flags }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/select/check-reused"
+          # The options check.yml's shards check with (its Check step), which every route's key holds.
+          CHECK_ARGS="$(node scripts/ci-flags.ts check) --site-targets $TARGETS --layout-survey layout-survey.json ${CHECK_FLAGS}"
+          export CHECK_ARGS
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           t=$(date +%s)
           result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select" ${ROUTES:+"$GITHUB_WORKSPACE/$ROUTES"})
@@ -828,7 +832,7 @@ jobs:
         with:
           name: pl-check-select
           path: ${{ runner.temp }}/select
-      # Named like a check shard's artifact so check.yml's merge joins the reused results and keeps their entries for later runs.
+      # check.yml's merge downloads it beside the shards' artifacts: its report and gate hold these results, and it keeps their entries for later runs.
       - uses: actions/upload-artifact@v4
         with:
           name: check-reused
@@ -837,6 +841,16 @@ jobs:
             ${{ env.APP }}/.migrate/reuse
           include-hidden-files: true
           if-no-files-found: warn
+      # Nothing left for check.yml: what was reused is the run's whole report, and its gate the verdict deploy waits on.
+      - if: steps.select.outputs.shards == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-merged
+          path: ${{ runner.temp }}/reused-merged
+          retention-days: 30
+      - name: Every reused route checked to the end
+        if: steps.select.outputs.shards == '0'
+        run: node scripts/check-shards.ts gate "$RUNNER_TEMP/reused-merged"
       - if: always()
         run: echo "{\"stage\":\"check select\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"
       - if: always()
@@ -868,9 +882,10 @@ jobs:
       max_parallel: ${{ inputs.check-max-parallel || '10' }}
       priority: ${{ inputs.priority }}
 
+  # The verdict is check.yml's merge, or check-select's own when it reused every route: a check skipped for any other reason is none.
   deploy:
-    needs: [build, check]
-    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
+    needs: [build, check-select, check]
+    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && needs.check-select.result == 'success' && (needs.check.result == 'success' || (needs.check.result == 'skipped' && needs.check-select.outputs.shards == '0')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

@@ -80,6 +80,15 @@ test("editing code the check command runs changes the checker's version; the con
 		assert.equal((await mod.checkerVersion()).version, one, "a credential counts by whether one is set, not by its value");
 		if (before === undefined) delete process.env.GH_TOKEN;
 		else process.env.GH_TOKEN = before;
+		const token = process.env.MARKLESS_MIGRATE_TOKEN;
+		process.env.MARKLESS_MIGRATE_TOKEN = 'account-one';
+		const first = await mod.checkerVersion();
+		process.env.MARKLESS_MIGRATE_TOKEN = 'account-two';
+		const second = await mod.checkerVersion();
+		assert.notEqual(second.version, first.version, "the token the checked app's requests send is a fixed secret: another account's can serve other content");
+		assert.ok(!JSON.stringify(second).includes('account-two'), 'its value is never in what the version reports');
+		if (token === undefined) delete process.env.MARKLESS_MIGRATE_TOKEN;
+		else process.env.MARKLESS_MIGRATE_TOKEN = token;
 	} finally {
 		await rm(repo, { recursive: true, force: true });
 	}
