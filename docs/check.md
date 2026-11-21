@@ -209,7 +209,10 @@ on 0.8 to 1.3% of routes with the default cells (2.5 to 3.9% of checks of 3 rout
 on 96 to 97% of routes; with every cell, 0.8 to 1.2% of routes (2.5 to 3.5% of checks) and 88 to 91%. A faster
 row passes the same correction the other way, so the summary does not overstate wins.
 
-A red row names its cause, the first that explains it: `did not arrive`, `refetched on revisit` (the old page showed it
+A red row names its cause, the first that explains it: `did not arrive`, `prefetch ruled out (<reason>)` and `budget
+spent` (from the router's own marks on the page shown, `markless:prefetch-skipped` with Save-Data, a hidden tab or
+the network as its reason, and `markless:prefetch-budget-spent`; their names are read from `PREFETCH_MARKS` in the
+installed `@markless/router/vite`, and with a router that exports none the summary says these two cannot be told), `refetched on revisit` (the old page showed it
 again with no fetch, the new one fetched), `prefetch cancelled`, `prefetched too late` (fetched ahead but still
 arriving at the press), `not prefetched`, `main thread` (long frames account for half the gap or more), `larger
 payload` (the new page's data over 1.25 times the old one's), else `unexplained`. Page data fetched ahead of the

@@ -19,7 +19,7 @@ const NOISE_CAP_MIN_MS = 50;
 /** Bytes before the presses are reported beside the times; with no noise model for them yet they never make a row red. */
 export const BYTES_REPORT_FACTOR = 1.5;
 
-export type Cause = 'did not arrive' | 'not prefetched' | 'prefetched too late' | 'prefetch cancelled' | 'refetched on revisit' | 'larger payload' | 'main thread' | 'unexplained';
+export type Cause = 'did not arrive' | 'budget spent' | `prefetch ruled out (${string})` | 'not prefetched' | 'prefetched too late' | 'prefetch cancelled' | 'refetched on revisit' | 'larger payload' | 'main thread' | 'unexplained';
 
 export interface NavRow {
 	readonly browser: string;
@@ -66,12 +66,22 @@ function runValue(run: NavRun, kind: StepKind, presses: number): { readonly valu
 	return { value: median(mine.map((c) => c.ms!)) };
 }
 
+function mostCommon(values: readonly string[]): string {
+	const counts = new Map<string, number>();
+	for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+	return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0]?.[0] ?? '';
+}
+
 /** The cause that explains the gap: what the original had that the port lacked, earliest in the press's path first. */
 function causeOf(kind: StepKind, o: readonly NavClick[], n: readonly NavClick[], gap: number): Cause {
 	const oServed = share(o, (c) => c.served);
 	const nServed = share(n, (c) => c.served);
 	if (kind === 'revisit' && oServed > nServed + 0.25) return 'refetched on revisit';
 	if (oServed > nServed + 0.25 || share(o, (c) => c.ahead === 'arrived') > share(n, (c) => c.ahead === 'arrived') + 0.25) {
+		// The router says why it did not fetch ahead: that names the cause better than anything read from outside.
+		const reasons = n.flatMap((c) => (c.ruledOut ? [c.ruledOut] : []));
+		if (reasons.length >= n.length / 4) return `prefetch ruled out (${mostCommon(reasons)})`;
+		if (share(n, (c) => c.budgetSpent === true) >= 0.25) return 'budget spent';
 		if (share(n, (c) => c.ahead === 'cancelled') >= 0.25) return 'prefetch cancelled';
 		return share(n, (c) => c.ahead === 'arriving') >= 0.25 ? 'prefetched too late' : 'not prefetched';
 	}
@@ -205,7 +215,10 @@ const kb = (b: number) => `${Math.round(b / 1024)} kB`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const PROFILE_WORDS: Readonly<Record<string, string>> = { fast: 'a fast line', 'cpu-4x': 'a fast line with the CPU 4x slower', 'slow-4g': 'slow 4G (1.6 Mbit/s, 150 ms)' };
 const MODE_WORDS: Readonly<Record<string, string>> = { instant: 'pressed the instant the pointer arrives', 'dwell-100': 'pressed 100 ms after the pointer arrives', 'dwell-250': 'pressed 250 ms after the pointer arrives', 'dwell-400': 'pressed 400 ms after the pointer arrives', touch: 'tapped' };
-const CAUSE_HINT: Readonly<Record<Cause, string>> = {
+const RULED_OUT_HINT = "The port's router ruled out fetching ahead on the page shown (the reason in brackets: Save-Data, a hidden tab, or a network it judged too slow), where the original still fetched ahead. Where the reason is the network, the router's `'fast'` setting is what stops it; the original fetched on that network.";
+const hintOf = (cause: Cause): string => (cause.startsWith('prefetch ruled out') ? RULED_OUT_HINT : CAUSE_HINT[cause as keyof typeof CAUSE_HINT]);
+const CAUSE_HINT: Readonly<Record<Exclude<Cause, `prefetch ruled out (${string})`>, string>> = {
+	'budget spent': "The port's router had spent its budget for fetching ahead on the page shown before the press, so this page was not fetched ahead where the original's was. Its page data is larger than the original's or it fetched more pages ahead; a smaller page, or a budget the router allows, brings it back.",
 	'did not arrive': 'The port did not show the next page for a press that showed it on the original: the address did not change, the content never did, or it took longer than the check waits (20 s). That is the slowest result a press can have.',
 	'not prefetched': "The original had this page's data before the press and the port did not. Fetch it as early as the original does: the port's router prefetch setting (convert's report, `prefetch`) should start it on the same trigger.",
 	'prefetched too late': "The port started fetching this page before the press but later than the original, so it was still arriving when the press came: start it on the original's trigger (in view, or at load) instead of on hover.",
@@ -232,7 +245,7 @@ export function navTimingFailures(route: string, timing: RouteNavTiming | { read
 				r.cause === 'did not arrive'
 					? `not shown: ${r.reason}`
 					: `${Math.round(r.new!)} ms over ${r.runs.new} runs: ${Math.round(r.gap!)} ms later, beyond the ${Math.round(r.band)} ms band (p = ${r.p.toFixed(4)}, under the ${r.alpha?.toFixed(4)} its rank among the route's rows needs); ${pct(r.served.new)} answered without a fetch, ${kb(r.bytesBefore.new)} before each press, ${kb(r.dataAfter.new)} of page data after${r.mainThread ? `, ${r.mainThread.new} ms of long frames against ${r.mainThread.old}` : ''}${r.otherHosts ? `; data from ${r.otherHosts.join(', ')} not matched to a page` : ''}: ${r.cause}`,
-			hint: CAUSE_HINT[r.cause ?? 'unexplained'],
+			hint: hintOf(r.cause ?? 'unexplained'),
 		}));
 }
 
@@ -279,6 +292,7 @@ export function navTimingLines(timing: RouteNavTiming | { readonly unavailable: 
 		`Navigation timing, press to next page shown, original -> port, ${set} (${Math.round(timing.ms / 60000)} min): ${tally}`,
 		...sorted.map((r) => `  ${r.browser} ${r.profile} ${r.mode} ${r.kind}: ${ms(r.old)} -> ${ms(r.new)}${r.gap !== undefined ? ` (${r.gap > 0 ? '+' : ''}${Math.round(r.gap)}, band ${Math.round(r.band)})` : ''}, served without a fetch ${pct(r.served.old)} -> ${pct(r.served.new)}, page data before the press ${kb(r.bytesBefore.old)} -> ${kb(r.bytesBefore.new)}, after ${kb(r.bytesAfter.old)} -> ${kb(r.bytesAfter.new)}${r.otherHosts ? `, data host not matched: ${r.otherHosts.join(', ')}` : ''}: ${r.verdict}${r.cause ? ` (${r.cause})` : ''}${r.reason ? ` (${r.reason})` : ''}`),
 		...listed,
+		...(timing.marks ? [] : ["  the installed router names no prefetch marks (PREFETCH_MARKS): 'budget spent' and 'prefetch ruled out' cannot be told apart from 'not prefetched'"]),
 		...byteRows(timing).map((b) => `  page data fetched ahead of the presses, ${b.browser} ${b.profile}: ${kb(b.old)} -> ${kb(b.new)}${b.over ? `, over ${BYTES_REPORT_FACTOR}x (reported, not judged: no noise bound for bytes yet)` : ''}`),
 		...(cost ? [`  fetching ahead as much as the original would cost the port about ${kb(cost.estimate)} before the presses (the original fetches ${kb(cost.old)}; a page's data is ${kb(cost.pageNew)} on the port, ${kb(cost.pageOld)} on the original)`] : []),
 	];
