@@ -5,6 +5,13 @@ export const UNSHARED = 'unshared';
 /** One route in this many checks a counted control of each group: on the sample, one press per group per 10 routes, under 2% of its presses. */
 const SPOT_EVERY = 10;
 
+/** Whether a route spot-checks its counts: chosen by its path, so the same routes do it whatever the shards hold. */
+export function isSpot(route: string): boolean {
+	let h = 2166136261;
+	for (const ch of route) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+	return (h >>> 0) % SPOT_EVERY === 0;
+}
+
 interface Deferred<T> {
 	readonly promise: Promise<T>;
 	resolve(value: T): void;
@@ -35,7 +42,7 @@ export function sharedControls(order: readonly string[], unshared: ReadonlySet<s
 		const index = order.indexOf(route);
 		const earlier = index < 0 ? [] : order.slice(0, index);
 		return {
-			spot: index % SPOT_EVERY === SPOT_EVERY - 1,
+			spot: isSpot(route),
 			inRun: (other) => order.includes(other),
 			earlier: (other) => earlier.includes(other),
 			counts: (group) => !unshared.has(group),

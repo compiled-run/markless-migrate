@@ -109,7 +109,7 @@ export interface Shared {
 	earlier(route: string): boolean;
 	/** The group may be counted at all (a spot check has not found it counted wrongly). */
 	counts(group: string): boolean;
-	/** Every 10th route presses one counted control of each group anyway and compares it with the owner's. */
+	/** About one route in ten, chosen by its path, presses one counted control of each group anyway and compares it with the owner's. */
 	readonly spot: boolean;
 	done(): void;
 }

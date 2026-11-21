@@ -232,7 +232,7 @@ inside such a landmark, and an unpressable one never: both say something of the 
 tag, slot and role of the component around it, with its signature and name. One inside a widget a recording ports whole
 is always pressed. A counted control stands only while the route it names still has the result it was counted from (that
 route's result in this run, or its kept recording when another capture shard made it): the recording is made again
-otherwise. Each capture shard owns groups by its own routes' order, and spot-checks every 10th of its own routes. Every 10th route presses one counted control of each group anyway; a result other
+otherwise. Each capture shard owns groups by its own routes' order. About one route in ten, chosen by a hash of its path so the same routes do it whatever the shards hold, presses one counted control of each group anyway; a result other
 than the owner's names the group, fails that run's routes that counted from it, and has the group pressed on every route
 next run (`discover/v-<recorder>/unshared-*.json`, one file per run that found any, read together). The written port is
 still asked about every counted control that is stateful on its own route.

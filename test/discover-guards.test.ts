@@ -11,6 +11,7 @@ import { chromium, type Browser } from 'playwright';
 import { discoverRecorder, discoveryReport, draftReport, routeDiscovery } from '../src/discover/convert.ts';
 import { recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
 import { discoveryMarkdown, type RouteDiscovery } from '../src/discover/report.ts';
+import { isSpot, sharedControls } from '../src/discover/shared.ts';
 
 const GUARDS = `<!doctype html><html><body>
 <p id="out">0</p>
@@ -71,6 +72,9 @@ const DRIFT = `<!doctype html><html><body><div id="box"><p id="clock">0</p><p id
 document.getElementById('tick').onclick = () => { document.getElementById('clock').textContent = String(++t); };
 document.getElementById('grow').onclick = () => { document.getElementById('note').textContent = 'A longer note than before'; };</script></body></html>`;
 
+// A route of that name that is (or is not) a spot route: spot routes are chosen by their path.
+const named = (base: string, spot: boolean) => [base, ...Array.from({ length: 200 }, (_, k) => `${base}-${k}`)].find((r) => isSpot(r) === spot) ?? base;
+
 let browser: Browser;
 let server: Server;
 let origin: string;
@@ -84,7 +88,7 @@ before(async () => {
 		const url = new URL(req.url ?? '/', 'http://x');
 		if (url.pathname === '/slow') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('the slow answer'), 1500);
 		if (url.pathname === '/away') return void res.writeHead(302, { location: `http://away.test:${(server.address() as AddressInfo).port}/small` }).end();
-		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname === '/chrome-odd' ? 'Done' : 'Copied', url.pathname === '/chrome-many' ? 3 : 1));
+		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname.startsWith('/chrome-odd') ? 'Done' : 'Copied', url.pathname.startsWith('/chrome-many') ? 3 : 1));
 		const html = url.pathname === '/' ? GUARDS : url.pathname === '/drift' ? DRIFT : url.pathname === '/one' ? SMALL(1) : url.pathname.startsWith('/small') ? SMALL(3) : '<!doctype html><p>Other</p>';
 		res.writeHead(200, { 'content-type': 'text/html' }).end(html);
 	});
@@ -214,9 +218,9 @@ test("a route not looked at in full clears none of its last findings, and the st
 	await rm(store, { recursive: true, force: true });
 });
 
-test('the same control on a later route is counted from the first route that shows it, under rules (a) and (b), and every 10th route checks one', async () => {
+test('the same control on a later route is counted from the first route that shows it, under rules (a) and (b), and a spot route checks one', async () => {
 	const state = await mkdtemp(join(tmpdir(), 'mm-discover-shared-'));
-	const order = ['/chrome-first', '/chrome-second', ...Array.from({ length: 7 }, (_, i) => `/skipped-${i}`), '/chrome-odd'];
+	const order = [named('/chrome-first', false), named('/chrome-second', false), named('/chrome-odd', true)];
 	const run = async (routes: readonly string[], claimed?: Record<string, { controls: string[]; names: string[]; holders: string[] }>) => {
 		const rec = await discoverRecorder(state, origin, () => {}, routes);
 		for (const r of routes.filter((r) => r.startsWith('/skipped'))) rec.skip(r);
@@ -227,30 +231,38 @@ test('the same control on a later route is counted from the first route that sho
 	const by = (f: DiscoverFacts | undefined, name: string) => f?.controls.find((c) => c.name === name);
 	const [first, second, odd] = await run(order);
 	assert.equal(by(first, 'Copy')?.sameAs, undefined, 'the first route presses what it owns');
-	assert.equal(by(second, 'Copy')?.sameAs?.route, '/chrome-first', 'rule (a): a transient is counted');
-	assert.equal(by(second, 'Hint')?.sameAs?.route, '/chrome-first', 'rule (b): a layout control that changes markup, in the same landmark markup');
+	assert.equal(by(second, 'Copy')?.sameAs?.route, order[0], 'rule (a): a transient is counted');
+	assert.equal(by(second, 'Hint')?.sameAs?.route, order[0], 'rule (b): a layout control that changes markup, in the same landmark markup');
 	assert.equal(by(second, 'Nothing')?.sameAs, undefined, 'an inert result outside the layout is never counted');
 	assert.equal(by(second, 'chrome-second')?.sameAs, undefined, "a page's own control is pressed");
 	assert.ok(second);
 	assert.match(routeDiscovery(second, { controls: new Set(), holders: new Set(), scenes: [], names: new Set() }).dead.find((d) => d.name === 'Copy')?.what ?? '', /same as \/chrome-first/);
-	assert.equal(by(odd, 'Copy')?.sameAs, undefined, 'the 10th route presses one of each group');
-	assert.deepEqual(odd?.spotMismatch?.map((m) => [m.name, m.owner]), [['Copy', '/chrome-first']], 'its "Done" is not the owner\'s "Copied"');
+	assert.equal(by(odd, 'Copy')?.sameAs, undefined, 'a spot route presses one of each group');
+	assert.deepEqual(odd?.spotMismatch?.map((m) => [m.name, m.owner]), [['Copy', order[0]]], 'its "Done" is not the owner\'s "Copied"');
 	// Read back: the count still matches the owner's result; the spot route is recorded again and its group is pressed everywhere.
 	const [, second2, odd2] = await run(order);
-	assert.equal(by(second2, 'Hint')?.sameAs?.route, '/chrome-first', 'a kept count whose owner did the same is read back');
+	assert.equal(by(second2, 'Hint')?.sameAs?.route, order[0], 'a kept count whose owner did the same is read back');
 	assert.equal(by(second2, 'Copy')?.sameAs, undefined, 'a group a spot check found wrong is pressed on every route next run');
 	assert.deepEqual([odd2?.spotMismatch, by(odd2, 'Copy')?.sameAs], [undefined, undefined], 'and the route that found it is no longer red');
-	const [, held] = await run(['/chrome-first', '/chrome-second'], { '/chrome-second': { controls: [], names: [], holders: ['header||ThemeHintA hint#0', 'header||ThemeHint#0'] } });
+	const [, held] = await run([order[0] ?? '', order[1] ?? ''], { [order[1] ?? '']: { controls: [], names: [], holders: ['header||ThemeHintA hint#0', 'header||ThemeHint#0'] } });
 	assert.equal(by(held, 'Hint')?.sameAs, undefined, 'never counted inside a widget a recording holds');
 	await rm(state, { recursive: true, force: true });
 });
 
+test('spot routes are chosen by their path, so a shard of a few routes checks the same routes the whole run does', () => {
+	const spot = named('/docs/a', true);
+	const plain = named('/docs/b', false);
+	const many = [...Array.from({ length: 23 }, (_, i) => `/other-${i}`), spot, plain];
+	for (const order of [[spot], [plain, spot], many]) assert.equal(sharedControls(order, new Set())(spot).spot, true, order.join(' '));
+	for (const order of [[plain], [spot, plain], many]) assert.equal(sharedControls(order, new Set())(plain).spot, false, order.join(' '));
+	assert.ok(Array.from({ length: 400 }, (_, i) => isSpot(`/r-${i}`)).filter(Boolean).length > 20, 'about one route in ten');
+});
+
 test('a spot check compares the control it pressed, even when the same control after it is skipped as a repeat', async () => {
 	const state = await mkdtemp(join(tmpdir(), 'mm-discover-spot-'));
-	const order = ['/chrome-first', ...Array.from({ length: 8 }, (_, i) => `/skipped-${i}`), '/chrome-many'];
+	const order = [named('/chrome-first', false), named('/chrome-many', true)];
 	const rec = await discoverRecorder(state, origin, () => {}, order);
-	for (const r of order.filter((r) => r.startsWith('/skipped'))) rec.skip(r);
-	const [, many] = await Promise.all(['/chrome-first', '/chrome-many'].map((r) => rec.record(browser, r)));
+	const [, many] = await Promise.all(order.map((r) => rec.record(browser, r)));
 	assert.equal(many?.spotMismatch, undefined, 'three Copy buttons that do what the owner did: no mismatch');
 	assert.equal(many?.controls.filter((c) => c.name === 'Copy' && !c.sameAs).length, 1, 'one is pressed as the spot check');
 	await rm(state, { recursive: true, force: true });
