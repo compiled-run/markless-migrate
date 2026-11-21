@@ -87,3 +87,25 @@ test("the marked elements written on their values' state compile with Markless",
 	assert.deepEqual(collectTsrxModuleDiagnostics(result).filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`), [], source);
 	assert.ok(source.includes('@switch (iv0)'));
 });
+
+test('the frame sends its icon library to the holders only when it differs from what they show, so nothing runs until the library changes', async () => {
+	const holders = [new EventTarget(), new EventTarget()];
+	const got: string[] = [];
+	for (const h of holders) h.addEventListener('mmvariant', (event) => got.push(event instanceof CustomEvent ? String(event.detail) : ''));
+	Reflect.set(globalThis, 'document', { querySelectorAll: () => holders });
+	Reflect.set(globalThis, 'CSS', { escape: (s: string) => s });
+	try {
+		const { showVariant } = await import('../parts/variants.ts');
+		showVariant('iconLibrary', 'lucide', 'lucide');
+		assert.deepEqual(got, [], 'the library the page loaded with is not sent');
+		showVariant('iconLibrary', 'tabler', 'lucide');
+		assert.deepEqual(got, ['tabler', 'tabler']);
+		showVariant('iconLibrary', 'tabler', 'lucide');
+		assert.equal(got.length, 2, 'nor the one already shown');
+		showVariant('iconLibrary', 'lucide', 'lucide');
+		assert.deepEqual(got.slice(2), ['lucide', 'lucide'], 'going back is sent');
+	} finally {
+		Reflect.deleteProperty(globalThis, 'document');
+		Reflect.deleteProperty(globalThis, 'CSS');
+	}
+});
