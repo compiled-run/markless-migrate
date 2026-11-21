@@ -13,6 +13,7 @@ import { TRACKER_HOSTS, type BlockList } from './trackers.ts';
 import type { WasteCheckOptions, WasteReport } from './waste.ts';
 import type { PsiOptions, PsiResult } from './psi.ts';
 import type { RouteNetwork, SlowNetworkOptions } from './slow-network.ts';
+import type { NavTimingOptions, RouteNavTiming } from './nav-timing.ts';
 
 export interface LoadOptions {
 	/** Lighthouse runs per side and route, old and new taken in turn; default 5, and as many again when a metric is worse but not yet beyond noise. */
@@ -31,6 +32,8 @@ export interface LoadOptions {
 	readonly network?: SlowNetworkOptions;
 	/** What the new page's first click did not need, by owner (waste.ts); left out unless given. */
 	readonly waste?: WasteCheckOptions;
+	/** In-page navigations timed from the press to the next page shown, old and new, per browser, network and pointer (nav-timing.ts); left out unless given. */
+	readonly navTiming?: NavTimingOptions;
 }
 
 export interface AppBypass {
@@ -199,6 +202,8 @@ export interface RouteLoad {
 	readonly network?: RouteNetwork | { readonly unavailable: string };
 	/** The new page's first-click waste: shown beside the rest, a warning when over budget, never red. */
 	readonly waste?: WasteReport | { readonly unavailable: string };
+	/** In-page navigations, old against new: red where the new page shows the next page later beyond the old page's noise. */
+	readonly navTiming?: RouteNavTiming | { readonly unavailable: string; readonly failed?: true };
 }
 
 /** Paint times are read from frames at 60 Hz: a smaller difference cannot be seen. */

@@ -142,6 +142,52 @@ browser is not loaded again for it); a recording the browser died under twice le
 decision and never fails the page. A first recording takes about 10 s a page, about 25 s on each of the
 four pages with clicks and about 100 s on the two the conditions are tried on (measured on ui.shadcn.com's docs pages).
 
+From those facts convert chooses the port's prefetch setting (`src/prefetch/decide.ts`) and writes it as the Markless
+router's options in `vite.config.ts` (`router({"prefetch":{"intent":...,"viewport":...,"idle":...,"concurrency":...}})`,
+through `src/convert/prefetch-config.ts`, the one file that knows the router's shape):
+
+- A trigger counts for the site when it fetched on most of the pages that could tell: at least half the links it could
+  tell about at load, any link for the others.
+- The port is at least as eager as the original wherever the original fetches ahead, never more: fetched as links
+  come into view becomes `viewport`; links on screen fetched once loaded becomes `idle`; hover, focus or press becomes
+  `intent`. Links off screen fetched at load have no router setting; `idle` and `viewport` come nearest, and the
+  report says the port is later there. Viewport on every network makes idle add nothing, so idle is then off.
+- On which networks: a trigger the original fired on 3g, 2g, slow-2g or the real slow link is `'all'`. It is `'fast'`
+  only when it was tried on one of those slow networks, did not fire there, and fired with 4g or no connection
+  information. A trigger never tried on a slow network is `'all'`, the side that cannot leave the port less eager. The
+  router never fetches ahead under Save-Data: where the original does, the report names the triggers.
+- Intent: where the original fetches on hover, focus or press, the port does too, on the same networks. Where those
+  were tried on the original and fetched nothing (whether or not it fetches ahead otherwise), `intent: 'fast'`: the port
+  stays quick on good connections, and a visitor on a slow one pays for nothing the original did not fetch. Where they
+  could not be tried (every link tried had been fetched already), `intent: 'all'`.
+- Fetched on a timer after load counts as fetched at load; fetched once the visitor first scrolls, as fetched in view.
+  A page that declares prefetch hints the recording could not see fetched is taken at its hints' word, counting only
+  hints that name one of the page's own link targets (a hint for a script file is not a page): a prefetch link or an
+  `immediate`/`eager` Speculation Rule as fetched once loaded, `moderate` as hover, `conservative` as a press.
+- `concurrency` is the most speculative page fetches the original had in flight at once, at most 6: a browser opens 6
+  connections to a host over HTTP/1.1, so a seventh fetch waits anyway, and over HTTP/2 more at once only share the
+  same bandwidth.
+- No `budget` is written: the router's own default stands. The original's page data fetched ahead in one page view (at
+  load, on a timer and while scrolling, the median over pages) is reported as a fact; it is in the original's units,
+  not the port's, so it cannot say when the port should stop. The navigation timing check measures what the result
+  costs in time.
+- A partial convert (`--only`) decides from its own pages and, for the rest, the facts the last convert kept in
+  `.migrate/prefetch.json` (read only when the same recorder version wrote it), so it never changes the app-wide
+  setting from a few pages alone.
+
+`.migrate/convert/report.json` carries the decision as `prefetch`: the setting, each reason in plain words ("The
+original fetches a link's page when the link comes into view, on every network we tried, slow ones too (2 of 2
+pages)"), the links the original fetched at load by name, whether its revisits were answered from memory, and the next
+more eager setting, which convert never applies (the navigation timing check prices it). It is written into
+`vite.config.ts` only when the app's router says it takes it (`PREFETCH_TRIGGERS` and `PREFETCH_NETWORKS` from
+`@markless/router/vite`, read from the installed package); a trigger the router does not list is left out and named in
+`missing`. Otherwise the report says `applied: false` with the reason in `notApplied`, and the router's defaults
+stand: the router is not installed (install the app's dependencies and convert again), cannot be loaded, is older than
+the setting, exports the lists in another shape, or does not take a value the decision chose; `vite.config.ts` was
+kept from before (a partial convert: it holds what the last full convert wrote, which may be older); or convert ran
+without `--source` and does not write `vite.config.ts`. None of these stops the convert: the setting is an
+improvement the app can do without, and the report and log say it was not applied.
+
 ### How to iterate on a port
 
 Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the

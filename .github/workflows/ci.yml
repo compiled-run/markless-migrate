@@ -137,17 +137,60 @@ jobs:
           node scripts/check-budget.ts measure . "$RUNNER_TEMP/head.json"
           node scripts/check-budget.ts compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
 
-  # A convert's peak live heap on a fixed multi-route site (scripts/convert-budget.ts states the bound and how it was measured).
+  # A convert's peak memory, and its CPU time beside a fixed reference tree on the same runner (scripts/convert-budget.ts states the bounds).
   convert-budget:
     name: Convert budget
     needs: changes
     if: needs.changes.outputs.tested != 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # The limits and the fixture are main's, so a change that edits them is judged by main's and the summary says so.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.merge_group.base_sha || (github.event_name == 'push' && github.event.before) || 'main' }}
+          path: .budget-main
+          sparse-checkout: |
+            scripts/convert-budget.json
+            scripts/convert-budget-fixture.ts
+            test/corpus/site.ts
+          sparse-checkout-cone-mode: false
+      - id: limits
+        run: |
+          file=.budget-main/scripts/convert-budget.json
+          fixture=.budget-main/scripts/convert-budget-fixture.ts
+          if [ ! -f "$file" ]; then echo "main has no scripts/convert-budget.json yet: this change's own limits are used"; file=scripts/convert-budget.json; fi
+          if [ ! -f "$fixture" ]; then echo "main has no scripts/convert-budget-fixture.ts yet: this change's own fixture is used"; fixture=scripts/convert-budget-fixture.ts; fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "fixture=$fixture" >> "$GITHUB_OUTPUT"
+          echo "commit=$(node -p "require('./$file').reference.commit")" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        id: reference
+        continue-on-error: true
+        with:
+          ref: ${{ steps.limits.outputs.commit }}
+          path: .budget-reference
       - uses: ./.github/actions/setup
-      - run: node scripts/convert-budget.ts
+      - uses: actions/cache/restore@v4
+        id: reference-modules
+        with:
+          path: .budget-reference/node_modules
+          key: convert-budget-reference-${{ runner.os }}-${{ steps.limits.outputs.commit }}
+      - id: reference-install
+        if: steps.reference.outcome == 'success' && steps.reference-modules.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile --dir .budget-reference
+      # The reference's own Playwright's browser, so a Playwright upgrade on main does not leave the reference without one.
+      - if: steps.reference.outcome == 'success'
+        continue-on-error: true
+        run: cd .budget-reference && timeout 600 pnpm exec playwright install chromium
+      - if: steps.reference-install.outcome == 'success' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .budget-reference/node_modules
+          key: convert-budget-reference-${{ runner.os }}-${{ steps.limits.outputs.commit }}
+      - run: node scripts/convert-budget.ts judge .budget-reference . "${{ steps.limits.outputs.file }}" "${{ steps.limits.outputs.fixture }}"
 
   # The checker's mutation suites were 60% of a pull request's runner time; they run in the merge queue and on main.
   mutation:
