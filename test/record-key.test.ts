@@ -7,7 +7,7 @@ import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { analyze } from 'yuku/analyzer';
 import { expectedStatus, unexpectedStatus } from '../src/check/expected-status.ts';
-import { ROOT } from '../src/code-closure.ts';
+import { resolveSpecifier, ROOT } from '../src/code-closure.ts';
 import { HANDLES, INDEX, recordingFacts, STORE } from '../src/convert/record-facts.ts';
 import { FORMAT, givenDigest, oldPageSource, OPTIONS_READ, pageKey, pageStatus, readVisits, RECORDING_VERSION, recordDirKey, RecordDirs, recordingVersions, UNKEYED_INPUTS, VISITS, type KindVersion } from '../src/convert/record-key.ts';
 
@@ -28,7 +28,7 @@ test("a page's key carries its status and ignores the order of its head's meta a
 	assert.equal(oldPageSource(200, '<p>no head</p>'), '200\n<p>no head</p>');
 });
 
-test('what a recorder is handed is keyed by its data, in any key order; a handle at the top counts by place, and a function or class inside is refused', () => {
+test('what a recorder is handed is keyed by its data, in any key order; a handle at the top counts by place, and any other function or a class is refused', () => {
 	assert.equal(givenDigest([{ a: 1, b: ['x', { c: true }] }]), givenDigest([{ b: ['x', { c: true }], a: 1 }]));
 	assert.notEqual(givenDigest([{ a: 1 }]), givenDigest([{ a: 2 }]));
 	assert.notEqual(givenDigest(['ab', 'c']), givenDigest(['a', 'bc']));
@@ -37,8 +37,13 @@ test('what a recorder is handed is keyed by its data, in any key order; a handle
 	assert.notEqual(givenDigest([{ a: undefined }]), givenDigest([{}]));
 	// eslint-disable-next-line no-sparse-arrays
 	assert.notEqual(givenDigest([[, 1]]), givenDigest([[1, ,]]), 'a hole counts by its place');
-	assert.equal(givenDigest([() => 1, 'x']), givenDigest([() => 2, 'x']), 'a log or a limit handed at the top is no data');
-	assert.notEqual(givenDigest([() => 1, 'x']), givenDigest(['x']));
+	const log = () => 1;
+	const limit = () => 2;
+	const handles = new Set([log, limit]);
+	assert.equal(givenDigest([log, 'x'], handles), givenDigest([limit, 'x'], handles), 'a log or a limit handed at the top is no data');
+	assert.notEqual(givenDigest([log, 'x'], handles), givenDigest(['x'], handles));
+	assert.throws(() => givenDigest([() => 3, 'x'], handles), /a function at argument 1 that is none of convert's handles/, 'a function the static check could not see is refused when recorded');
+	assert.throws(() => givenDigest([log]), /none of convert's handles/);
 	assert.equal(givenDigest([new Map([['b', 1], ['a', 2]])]), givenDigest([new Map([['a', 2], ['b', 1]])]));
 	assert.throws(() => givenDigest([{ pick: () => true }]), /function inside argument 1\.pick/);
 	assert.throws(() => givenDigest([new Date(0)]), /Date instance/);
@@ -154,25 +159,27 @@ test('every recording convert makes goes through record, each recorder attribute
 	assert.ok(facts.inputs.includes('lib/site/instance-props.json') && facts.inputs.includes('lib/site/controls.json'), 'what the recorders are set up from is an input');
 	for (const [kind, v] of Object.entries(await recordingVersions())) assert.deepEqual(v.problems, [], kind);
 
-	// Each function of src/convert a recording browser is handed: one index.ts imports is a recorder of a kind.
+	// Each function index.ts imports, from any folder of the repository, that takes a browser first is a recorder of a kind.
 	const recorders = new Set(Object.values(kinds).flat());
 	const index = analyze(await readFile(INDEX, 'utf8'), { path: INDEX });
-	const imported = new Set(index.imports.filter((i) => !i.typeOnly && i.name).map((i) => `src/convert/${i.specifier.replace(/^\.\//, '')} ${i.name}`));
-	for (const name of (await readdir(join(ROOT, 'src/convert'))).filter((f) => f.endsWith('.ts'))) {
-		const file = join(ROOT, 'src/convert', name);
-		const mod = analyze(await readFile(file, 'utf8'), { path: file });
-		const browser = mod.imports.find((i) => i.specifier === 'playwright' && i.name === 'Browser')?.local;
-		if (!browser) continue;
-		for (const e of mod.exports) {
-			const decl = e.local?.declarations[0];
-			const fn = decl ? mod.parentOf(decl) : null;
-			const first = fn?.type === 'FunctionDeclaration' ? fn.params[0] : undefined;
-			const typeName = first?.type === 'Identifier' && first.typeAnnotation?.typeAnnotation.type === 'TSTypeReference' ? first.typeAnnotation.typeAnnotation.typeName : undefined;
-			if (typeName?.type !== 'Identifier' || mod.referenceOf(typeName)?.binding?.id !== browser.id) continue;
-			const id = `src/convert/${name} ${e.name}`;
-			if (imported.has(id)) assert.ok(recorders.has(id), `${id} takes a browser and index.ts imports it, but records through no kind`);
-		}
+	let checked = 0;
+	for (const i of index.imports) {
+		if (i.typeOnly || !i.name || i.isNamespace) continue;
+		const target = resolveSpecifier(INDEX, i.specifier);
+		if (target.kind !== 'file' || !target.path.endsWith('.ts')) continue;
+		const mod = analyze(await readFile(target.path, 'utf8'), { path: target.path });
+		const browser = mod.imports.find((x) => x.specifier === 'playwright' && x.name === 'Browser')?.local;
+		const decl = browser ? mod.resolveExport(i.name)?.binding?.declarations[0] : undefined;
+		const up = decl ? mod.parentOf(decl) : null;
+		const fn = up?.type === 'FunctionDeclaration' ? up : up?.type === 'VariableDeclarator' && (up.init?.type === 'ArrowFunctionExpression' || up.init?.type === 'FunctionExpression') ? up.init : undefined;
+		const first = fn?.params[0];
+		const typeName = first?.type === 'Identifier' && first.typeAnnotation?.typeAnnotation.type === 'TSTypeReference' ? first.typeAnnotation.typeAnnotation.typeName : undefined;
+		if (!browser || typeName?.type !== 'Identifier' || mod.referenceOf(typeName)?.binding?.id !== browser.id) continue;
+		checked++;
+		const id = `${relative(ROOT, target.path)} ${i.name}`;
+		assert.ok(recorders.has(id), `${id} takes a browser and index.ts imports it, but records through no kind`);
 	}
+	assert.ok(checked >= Object.values(kinds).flat().length, 'every recorder is among the imports checked');
 });
 
 test('without an old site id, no recording is read back', async () => {
@@ -237,7 +244,7 @@ export async function recordB(browser: unknown, origin: string, route: string, d
 	'starred.ts': `export function starred() {\n\treturn 2;\n}\n`,
 	'ns.ts': `export function nsFn() {\n\treturn 3;\n}\nexport function nsOther() {\n\treturn 4;\n}\n`,
 	'table.ts': `function inner() {\n\treturn 5;\n}\nexport const table = { go: inner };\n`,
-	'env-helper.ts': `import { env } from 'node:process';\nexport function fromEnv() {\n\treturn [process.env.FIXTURE_ONE, env.FIXTURE_TWO];\n}\n`,
+	'env-helper.ts': `import { env } from 'node:process';\nexport function fromEnv() {\n\treturn [process.env.FIXTURE_ONE, env.FIXTURE_TWO, (globalThis as { process: NodeJS.Process }).process.env.FIXTURE_THREE];\n}\n`,
 	'shared.ts': `export function both() {\n\treturn 6;\n}\n`,
 	'only-b.ts': `export function only() {\n\treturn 7;\n}\n`,
 	'data.txt': 'data\n',
@@ -255,7 +262,7 @@ test('an edit to code reached through each sort of edge changes exactly the kind
 		const base = await versions();
 		assert.deepEqual(Object.keys(base).sort(), ['a', 'b']);
 		for (const [kind, v] of Object.entries(base)) assert.deepEqual(v.problems, [], kind);
-		assert.deepEqual(base.a?.env, ['FIXTURE_ONE', 'FIXTURE_TWO'], 'process.env and node:process env, read in a helper');
+		assert.deepEqual(base.a?.env, ['FIXTURE_ONE', 'FIXTURE_THREE', 'FIXTURE_TWO'], 'process.env, node:process env and globalThis.process.env, read in a helper');
 		const changed = async (file: string, edit: (text: string) => string) => {
 			const text = await readFile(join(dir, file), 'utf8');
 			await writeFile(join(dir, file), edit(text));
@@ -282,7 +289,7 @@ test('an edit to code reached through each sort of edge changes exactly the kind
 			['index.ts', inside('const log = (line: string) => void line'), ['a', 'b'], 'the orchestration every recording runs under'],
 		];
 		for (const [file, edit, kinds, why] of expected) assert.deepEqual(await changed(file, edit), kinds, why);
-		for (const [name, kinds] of [['FIXTURE_ONE', ['a']], ['FIXTURE_TWO', ['a']], ['FIXTURE_UNREAD', []]] as const) {
+		for (const [name, kinds] of [['FIXTURE_ONE', ['a']], ['FIXTURE_TWO', ['a']], ['FIXTURE_THREE', ['a']], ['FIXTURE_UNREAD', []]] as const) {
 			process.env[name] = 'set';
 			try {
 				const after = await versions();
@@ -310,6 +317,8 @@ test('what the key cannot place makes the kind that holds it record every time: 
 	assert.match((await problems({ 'env-helper.ts': `export function fromEnv() {\n\tconst name = 'X';\n\treturn process.env[name];\n}\n` })).a, /reads the environment other than by a variable's name/);
 	assert.match((await problems({ 'env-helper.ts': `import { env } from 'node:process';\nexport function fromEnv() {\n\treturn { ...env };\n}\n` })).a, /reads the environment other than by a variable's name/);
 	assert.match((await problems({ 'env-helper.ts': `export function fromEnv() {\n\tconst { env } = process;\n\treturn env.X;\n}\n` })).a, /uses process other than by one of its fields/);
+	assert.match((await problems({ 'env-helper.ts': `export function fromEnv() {\n\treturn globalThis['process'].env.FIXTURE_ONE;\n}\n` })).a, /uses process other than by one of its fields/);
+	assert.match((await problems({ 'env-helper.ts': `export function fromEnv(name: string) {\n\treturn (globalThis as Record<string, unknown>)[name];\n}\n` })).a, /reads a global by a computed name/);
 	assert.match((await problems({ 'only-b.ts': `export function only() {\n\treturn import.meta.glob;\n}\n` })).b, /import\.meta\.glob, which names no file/);
 	assert.match((await problems({ 'only-b.ts': `export function only(name: string) {\n\treturn import.meta.resolve(name);\n}\n` })).b, /import\.meta\.resolve of a computed specifier/);
 	const shared = await problems({
@@ -319,6 +328,15 @@ test('what the key cannot place makes the kind that holds it record every time: 
 	});
 	assert.match(shared.b, /shared\.ts cache, which another kind's recording changes/, "b reads what a's recorder sets");
 	assert.doesNotMatch(shared.a, /cache/, 'a sets it in its own code');
+	const sharedBy = (declaration: string, write: string, read: string) =>
+		problems({
+			'shared.ts': `${declaration}\nexport function both() {\n\treturn 6;\n}\n`,
+			'rec-a.ts': graph['rec-a.ts']?.replace("import { both } from './shared.ts';", "import { both, state } from './shared.ts';").replace('\tboth();\n', `\tboth();\n\t${write};\n`) ?? '',
+			'rec-b.ts': graph['rec-b.ts']?.replace("import { both } from './shared.ts';", "import { both, state } from './shared.ts';").replace('\tboth();\n', `\tboth();\n\t${read};\n`) ?? '',
+		});
+	assert.match((await sharedBy('export const state = { pages: new Map<string, number>() };', "state.pages.set('k', 1)", "state.pages.get('k')")).b, /shared\.ts state, which another kind's recording changes/, 'a container changed through a nested member');
+	assert.match((await sharedBy('export const state = makeCache();\nfunction makeCache() {\n\treturn new Map<string, number>();\n}', "state.set('k', 1)", "state.get('k')")).b, /shared\.ts state, which another kind's recording changes/, 'a const made by a call');
+	assert.match((await sharedBy('export const state: Record<string, number> = Object.create(null);', 'state.k = 1', 'void state.k')).b, /shared\.ts state, which another kind's recording changes/, 'a const made by Object.create');
 });
 
 test("a function handed to a recorder must be one of convert's handles, never one written in place or another binding", async () => {

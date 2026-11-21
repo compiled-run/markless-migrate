@@ -21,6 +21,16 @@ export interface ClosureReads {
 }
 
 const PROCESS = new Set(['process', 'node:process']);
+// The global object's names, through which `process` can be read too.
+const GLOBALS = new Set(['globalThis', 'global']);
+const WRAPPERS = new Set(['ParenthesizedExpression', 'TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'TSTypeAssertion']);
+
+/** The node with the parentheses and type assertions around it. */
+function outer(m: Module, node: Node): Node {
+	let at = node;
+	for (let up = m.parentOf(at); up && WRAPPERS.has(up.type); up = m.parentOf(up)) at = up;
+	return at;
+}
 // Methods that change the container they are called on.
 const MUTATORS = new Set(['set', 'add', 'delete', 'clear', 'push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse', 'fill', 'copyWithin']);
 
@@ -87,11 +97,19 @@ export class ClosureProject {
 		for (const i of m.imports) if (i.local && PROCESS.has(i.specifier)) processImports.set(i.local.id, i.isNamespace || i.name === 'default' ? 'process' : 'env');
 		for (const ref of m.references) {
 			if (ref.inTypePosition) continue;
-			const sort = ref.binding ? processImports.get(ref.binding.id) : ref.name === 'process' ? 'process' : undefined;
+			let node: Node = ref.node;
+			let sort = ref.binding ? processImports.get(ref.binding.id) : ref.name === 'process' ? 'process' : undefined;
+			if (!ref.binding && GLOBALS.has(ref.name)) {
+				const field = m.parentOf(outer(m, node));
+				if (field?.type !== 'MemberExpression' || field.object !== outer(m, node)) continue;
+				const name = field.computed ? (field.property.type === 'Literal' && typeof field.property.value === 'string' ? field.property.value : undefined) : field.property.type === 'Identifier' ? field.property.name : undefined;
+				if (field.computed && name === undefined) out.push({ node, problem: 'reads a global by a computed name' });
+				else if (field.computed && name === 'process') out.push({ node, problem: 'uses process other than by one of its fields' });
+				else if (name === 'process') (node = field), (sort = 'process');
+			}
 			if (!sort) continue;
-			const node = ref.node;
-			const up = m.parentOf(node);
-			const member = up?.type === 'MemberExpression' && up.object === node && !up.computed ? up : undefined;
+			const up = m.parentOf(outer(m, node));
+			const member = up?.type === 'MemberExpression' && up.object === outer(m, node) && !up.computed ? up : undefined;
 			if (sort === 'env') {
 				out.push(member?.property.type === 'Identifier' ? { node, name: member.property.name } : { node, problem: "reads the environment other than by a variable's name" });
 				continue;
@@ -108,7 +126,7 @@ export class ClosureProject {
 		return out;
 	}
 
-	/** The module-level bindings of a file that can hold state (a `let`, or a container), with every place that changes them. */
+	/** The module-level bindings of a file that some code changes (a `let` assigned, or any binding's value changed in place), with every place that changes them. */
 	private changesOf(m: Module): readonly Changed[] {
 		const known = this.changes.get(m.path);
 		if (known) return known;
@@ -118,8 +136,6 @@ export class ClosureProject {
 			const declarator = declaration ? m.parentOf(declaration) : null;
 			const statement = declarator ? m.parentOf(declarator) : null;
 			if (declarator?.type !== 'VariableDeclarator' || statement?.type !== 'VariableDeclaration' || !declaration) continue;
-			const container = declarator.init?.type === 'NewExpression' || declarator.init?.type === 'ArrayExpression' || declarator.init?.type === 'ObjectExpression';
-			if (statement.kind === 'const' && !container) continue;
 			const sites = binding.findReferences().filter((use) => use.isWrite || mutates(use.module, use.node)).map((use) => ({ file: use.module.path, node: use.node }));
 			if (sites.length) out.push({ binding: `${relative(ROOT, m.path)} ${binding.name}`, declaration, sites });
 		}
@@ -156,14 +172,15 @@ export class ClosureProject {
 	}
 }
 
-/** Whether a reference changes what it names in place: `x.set(...)`, `x.y = ...`, `x[k]++`, `delete x.y`, `Object.assign(x, ...)`. */
+/** Whether a reference changes what it names in place, directly or through a member of it: `x.set(...)`, `x.y.set(...)`, `x.y = ...`, `x[k]++`, `delete x.y`, `Object.assign(x.y, ...)`. */
 function mutates(m: Module, node: Node): boolean {
-	const up = m.parentOf(node);
-	if (up?.type === 'CallExpression' && up.arguments[0] === node && up.callee.type === 'MemberExpression' && !up.callee.computed && up.callee.object.type === 'Identifier' && up.callee.object.name === 'Object' && up.callee.property.type === 'Identifier') return ['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf'].includes(up.callee.property.name);
-	if (up?.type !== 'MemberExpression' || up.object !== node) return false;
-	const above = m.parentOf(up);
-	if (above?.type === 'CallExpression' && above.callee === up) return !up.computed && up.property.type === 'Identifier' && MUTATORS.has(up.property.name);
-	if (above?.type === 'AssignmentExpression' && above.left === up) return true;
-	if (above?.type === 'UpdateExpression') return true;
-	return above?.type === 'UnaryExpression' && above.operator === 'delete';
+	let at = node;
+	for (let up = m.parentOf(at); up?.type === 'MemberExpression' && up.object === at; up = m.parentOf(at)) at = up;
+	const up = m.parentOf(at);
+	if (up?.type === 'CallExpression' && up.arguments[0] === at && up.callee.type === 'MemberExpression' && !up.callee.computed && up.callee.object.type === 'Identifier' && up.callee.object.name === 'Object' && up.callee.property.type === 'Identifier') return ['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf'].includes(up.callee.property.name);
+	if (at === node || at.type !== 'MemberExpression') return false;
+	if (up?.type === 'CallExpression' && up.callee === at) return !at.computed && at.property.type === 'Identifier' && MUTATORS.has(at.property.name);
+	if (up?.type === 'AssignmentExpression' && up.left === at) return true;
+	if (up?.type === 'UpdateExpression') return true;
+	return up?.type === 'UnaryExpression' && up.operator === 'delete';
 }

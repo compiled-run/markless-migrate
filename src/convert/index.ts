@@ -258,8 +258,8 @@ export interface ConvertReport {
 	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
-	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it. */
-	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string };
+	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it; `fromLastConvert` names the pages whose facts the last convert recorded from the same old page, and why this convert did not. */
+	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string; readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[] };
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
@@ -1418,6 +1418,8 @@ export const ROUTES: Readonly<Record<string, { readonly tags: readonly number[];
  */
 export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const log = options.log ?? (() => {});
+	const width = Math.max(1, options.concurrency ?? 4);
+	const limit = limiter(width);
 	const app = options.app;
 	const state = join(app, '.migrate');
 	const planned = JSON.parse(await readFile(join(state, 'inventory.json'), 'utf8')) as { routes: { route: string; status: number }[]; allRoutes?: { route: string; status?: number; contentType?: string; redirectsTo?: string }[] };
@@ -1440,8 +1442,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route) ?? '') : fetchPageKey(options.old, route)));
 		return source;
 	};
+	// The functions a recorder may be handed (HANDLES in record-facts.ts): any other is refused when its recording is keyed.
+	const handles = new Set<unknown>([log, limit]);
 	const atFor = async (route: string, kind: string, given: readonly unknown[]) => {
-		const staged = await dirs.stage(route, await pageKeyOf(route), kind, given);
+		const staged = await dirs.stage(route, await pageKeyOf(route), kind, given, handles);
 		const kinds = keyedDirs.get(route) ?? new Map<string, Set<string>>();
 		keyedDirs.set(route, kinds);
 		kinds.set(kind, (kinds.get(kind) ?? new Set<string>()).add(staged.dir));
@@ -1469,9 +1473,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const said: string[] = [];
 	const browsers = await new Relauncher<Browser>(() => chromium.launch({ logger: { isEnabled: (name) => name === 'browser', log: (_name, _severity, message) => void (said.push(String(message)) > 8 && said.shift()) } }), log, () => said.slice(-3).join(' / ')).start();
 	const browser = browsers.shared;
-	const width = Math.max(1, options.concurrency ?? 4);
 	let captures: CapturedRef[];
-	let prefetchDecision: PrefetchDecision | undefined;
+	let prefetchDecision: (PrefetchDecision & { readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[] }) | undefined;
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
@@ -1498,7 +1501,6 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	layerChoices = choices;
 	const failed = new Map<string, string>();
 	try {
-		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
 		const reading = limiter(width * 2);
 		// What a failed capture of a route wrote since it started, of these kinds (every kind if none named), is removed: no part-recording is kept.
@@ -1562,7 +1564,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
 		// How the original fetches pages ahead of a click, a kind of its own (src/prefetch): before any form is sent to it.
-		const prefetching = await prefetchRecorder(state, htmlRoutes, recordings.prefetch?.version ?? `unkeyed-${randomUUID()}`, log);
+		const prefetching = await prefetchRecorder(state, htmlRoutes, recordings.prefetch?.version ?? `unkeyed-${randomUUID()}`, pageKeyOf, log);
 		// Its own slots: most of a recording is waiting on the page, which should not hold a capture's slot meanwhile. A page
 		// is recorded only once its capture worked, so a page that kills the browser is not loaded again for it; and a
 		// recording the browser died under is an unknown page to the decision, never a failed capture.
@@ -1836,8 +1838,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
 		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
 		await prefetching.save();
-		prefetchDecision = decidePrefetch(prefetching.recorded());
-		if (prefetching.fromBefore()) log(`prefetch: decided from ${prefetching.recorded().length} pages, ${prefetching.fromBefore()} of them as the last convert recorded them`);
+		const fromLastConvert = prefetching.fromBefore().map((route) => ({ route, why: failed.has(route) ? `its capture failed in this convert: ${failed.get(route)}` : routes.includes(route) ? 'not recorded in this convert' : 'not converted in this convert' }));
+		prefetchDecision = { ...decidePrefetch(prefetching.recorded()), fromLastConvert };
+		if (fromLastConvert.length) log(`prefetch: decided from ${prefetching.recorded().length} pages, ${fromLastConvert.length} of them as the last convert recorded them from the same old page`);
+		for (const { route, why } of fromLastConvert) if (routes.includes(route)) log(`  prefetch facts of ${route} are the last convert's: ${why}`);
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
 			const f = read[i]!;

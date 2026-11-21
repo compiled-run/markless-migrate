@@ -135,8 +135,8 @@ export async function recorderVersions(app?: string): Promise<Record<string, str
 	return Object.fromEntries(Object.entries(await recordingVersions(app)).map(([kind, v]) => [kind, v.version]));
 }
 
-/** Data handed to a recorder, as bytes of one canonical form: a function handed at the top is a handle (a log, a limit) and counts only by its place. */
-export function givenDigest(given: readonly unknown[]): string {
+/** Data handed to a recorder, as bytes of one canonical form: a function handed at the top must be one of `handles` (a log, a limit) and counts only by its place. */
+export function givenDigest(given: readonly unknown[], handles: ReadonlySet<unknown> = new Set()): string {
 	const hash = createHash('sha256');
 	const seen = new Set<object>();
 	const put = (value: unknown, path: string): void => {
@@ -176,15 +176,19 @@ export function givenDigest(given: readonly unknown[]): string {
 		}
 		seen.delete(obj);
 	};
-	given.forEach((v, i) => (typeof v === 'function' ? hash.update('f;') : put(v, `argument ${i + 1}`)));
+	given.forEach((v, i) => {
+		if (typeof v !== 'function') return put(v, `argument ${i + 1}`);
+		if (!handles.has(v)) throw new Error(`a recorder is handed a function at argument ${i + 1} that is none of convert's handles: what it does is no part of the recording's key`);
+		hash.update('f;');
+	});
 	return hash.digest('base64url');
 }
 
 /** The directory key of one recording: its kind and that kind's version, the route's page key, and the data handed to the recorder. */
-export function recordDirKey(versions: Readonly<Record<string, string>>, kind: string, page: string, given: readonly unknown[]): string {
+export function recordDirKey(versions: Readonly<Record<string, string>>, kind: string, page: string, given: readonly unknown[], handles?: ReadonlySet<unknown>): string {
 	const version = versions[kind];
 	if (version === undefined) throw new Error(`no recorder version for the recording kind ${kind}`);
-	return createHash('sha256').update(`${kind}\0${version}\0${page}\0${givenDigest(given)}`).digest('base64url');
+	return createHash('sha256').update(`${kind}\0${version}\0${page}\0${givenDigest(given, handles)}`).digest('base64url');
 }
 
 export const FORMAT = 'format.json';
@@ -247,8 +251,8 @@ export class RecordDirs {
 	 * kept directory, or a new one beside it that `commit` makes the kept one once the recorder succeeded. Only a committed
 	 * directory is named in the route's visit.
 	 */
-	async stage(route: string, page: string, kind: string, given: readonly unknown[]): Promise<Staged> {
-		const key = recordDirKey(this.versions, kind, page, given);
+	async stage(route: string, page: string, kind: string, given: readonly unknown[], handles?: ReadonlySet<unknown>): Promise<Staged> {
+		const key = recordDirKey(this.versions, kind, page, given, handles);
 		const kept = join(this.root, kind, key);
 		const note = () => {
 			let visit = this.visits.get(route);

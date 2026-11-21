@@ -10,6 +10,7 @@ import { closedOnExit } from '../check/close-on-exit.ts';
 import { NETWORK_PROFILES, startThrottle } from '../check/throttle.ts';
 import { CONDITIONS, learnShapes, maxInFlight, median, mayCarryPage, pageOf, shapeOf, targetOf, type Condition, type ConditionResult, type PrefetchFacts, type PrefetchLink, type PrefetchRequest, type Trigger, type TriggerEvidence } from './facts.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
+import { loadPage } from '../check/infrastructure.ts';
 import { writeRecording } from '../convert/recording-file.ts';
 
 const VIEWPORT = { width: 1280, height: 800 };
@@ -240,7 +241,7 @@ async function open(browser: Browser, origin: string, route: string, condition: 
 	const context = await newContext(browser, condition, headers);
 	const page = await context.newPage();
 	const log = watch(page, origin);
-	await page.goto(new URL(route, origin).href, { waitUntil: 'load', timeout: 60_000 });
+	await loadPage(page, new URL(route, origin).href, { timeout: 60_000 });
 	await quiet(page, log, 1500);
 	// A link that ends the session or deletes is never followed, pressed or hovered: the same words the journeys hold back.
 	const links = (await page.evaluate(readLinks)).filter((l) => !DESTRUCTIVE.test(`${l.target} ${l.text}`)).map((l) => ({ target: targetOf(l.target), region: l.region, visibleAtLoad: l.visible }));

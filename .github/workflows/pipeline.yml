@@ -405,6 +405,8 @@ jobs:
           env CAPTURE_ONLY=1 CONCURRENCY=3 RECORD_KEYS="$RUNNER_TEMP/inputs/record-keys.json" ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || status=$?
           mkdir -p "$RUNNER_TEMP/captured-out"
           (cd "$APP/.migrate/convert" && find . -type f -newer "$RUNNER_TEMP/capture-start" ! -name report.json -print0 | tar --null -T - -cf - | tar -xf - -C "$RUNNER_TEMP/captured-out")
+          # The store's format, older than the mark when the store came in it: without it a later --captures-from reads none of these visits.
+          if [ -f "$APP/.migrate/convert/format.json" ]; then cp "$APP/.migrate/convert/format.json" "$RUNNER_TEMP/captured-out/"; fi
           if [ "$status" -ne 0 ]; then tail -n 80 "$RUNNER_TEMP/capture.txt"; exit "$status"; fi
           tail -n 15 "$RUNNER_TEMP/capture.txt"
           node scripts/pipeline.ts receipt "$RUNNER_TEMP/receipts/capture-$SHARD.jsonl" capture shard="$SHARD" pages=$(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") failed=$(grep -c '^not captured ' "$RUNNER_TEMP/capture.txt" || true) recordings-written=$(find "$RUNNER_TEMP/captured-out" -type f ! -path '*/visits/*' ! -path '*/costs/*' ! -name format.json | wc -l) seconds=$(( $(date +%s) - t ))
@@ -459,11 +461,19 @@ jobs:
       - name: Take the kept converted app
         id: kept
         if: needs.prepare.outputs.emit-run != ''
+        env:
+          STORE_NAME: ${{ needs.prepare.outputs.store-name }}
         run: |
           set -euo pipefail
           tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
           cp "$RUNNER_TEMP/converted/store-run.txt" "$RUNNER_TEMP/store-run.txt"
-          echo "store-run=$(cat "$RUNNER_TEMP/store-run.txt")" >> "$GITHUB_OUTPUT"
+          store_run=$(cat "$RUNNER_TEMP/store-run.txt")
+          # Each run that keeps the app passes the name on, so the chain can outlive the store's 90 days.
+          if [ "$VERIFY" = true ] && [ -z "$(bash scripts/pipeline-artifact.sh in-run "$STORE_NAME" "$store_run")" ]; then
+            echo "::error::This kept converted app was converted from the recordings store $STORE_NAME of run $store_run, which has expired, so it cannot be verified. Dispatch this pipeline once with fresh: true on this branch: it converts again and keeps its own store, and later runs keep that app."
+            exit 1
+          fi
+          echo "store-run=$store_run" >> "$GITHUB_OUTPUT"
           if [ "$(cat "$RUNNER_TEMP/converted/emit-key.txt")" = "${{ needs.prepare.outputs.emit-key }}" ]; then
             how="kept (run ${{ needs.prepare.outputs.emit-run }})"
           else
