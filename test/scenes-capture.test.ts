@@ -47,7 +47,9 @@ test('a demo\'s controls are used from every state they lead to, and each use is
 		assert.equal(scenes.length, 1);
 		// A docs preview's recording is the file, and the shape, it was before discovered demos: kept recordings stay valid.
 		const file = `${createHash('sha256').update(`scenes:8:/|[data-slot="preview"] button|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`;
-		assert.deepEqual(Object.keys(JSON.parse(await readFile(join(dir, file), 'utf8')).scenes[0]), ['sig', 'nth', 'states', 'edges', 'skipped']);
+		const kept = JSON.parse(await readFile(join(dir, file), 'utf8')).scenes[0];
+		assert.deepEqual(Object.keys(kept), ['sig', 'nth', 'states', 'edges', 'skipped', 'skippedUses']);
+		assert.ok(kept.skippedUses.every((u: { from: number; why: string }) => u.from === 2 && /past 2 uses deep/.test(u.why)), 'the state two uses deep is reached but not explored: its uses are named');
 		const scene = scenes[0]!;
 		const log = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		const reply = 'Hello there friend';
@@ -240,6 +242,27 @@ test('a page-level demo is recorded from the element discovery found around its 
 		assert.deepEqual(scene.states.map(label), ['Processing audio', 'Live audio waveform', 'Audio waveform idle']);
 		assert.ok(scene.edges.every((e) => e.control.startsWith('button||')), 'the disclosure is left to the reveals');
 		assert.deepEqual(scene.edges.map((e) => [e.from, e.to]).sort(), [[0, 1], [1, 2], [2, 1]].sort());
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a state the search reaches but does not explore counts its uses as skipped, so a control past the depth is ported only in part', async () => {
+	const ROTATOR = '<!doctype html><html><body><div data-slot="preview"><p id="q">Quote 1</p><button type="button">Next</button></div><script>let n = 1; document.querySelector("button").onclick = () => { n = n % 6 + 1; document.getElementById("q").textContent = "Quote " + n; };</script></body></html>';
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(ROTATOR));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 8, depth: 4, settle: 200, max: 2000 });
+		const scene = scenes[0]!;
+		assert.equal(scene.states.length, 5, 'quotes 1 to 5: quote 5 is four uses deep');
+		assert.equal(scene.edges.length, 4);
+		assert.deepEqual(scene.skippedUses?.map((u) => [u.control, u.from]), [[scene.edges[0]!.control, 4]], 'Next from quote 5 is a use not recorded');
+		assert.match(scene.skippedUses?.[0]?.why ?? '', /past 4 uses deep/);
 	} finally {
 		await browser.close();
 		server.close();
