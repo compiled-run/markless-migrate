@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Browser, Locator, Page } from 'playwright';
@@ -16,6 +16,7 @@ import { dayPickerLabel, dayPickerModel, dayPickerView, type DayPickerEffect, ty
 import { attr, childrenOf, elementChildren, isElement, isText, walk, type Element, type Text } from './dom.ts';
 import { emitChildren, emitElement, mergeBindings, type Binding } from './tsrx.ts';
 import { parseFragment } from 'parse5';
+import { writeRecording } from './recording-file.ts';
 
 // react-day-picker's DayPicker on Markless state (parts/day-picker.ts). What each calendar on the old page was given is
 // read from its DayPicker context at two clock settings, so a date that follows today (a selection of `new Date()`, a
@@ -145,7 +146,7 @@ export async function captureDayPickers(browser: Browser, origin: string, route:
 	const ks = openers.map((o) => pickers.find((p) => p.opener?.sig === o.sig && p.opener.nth === o.nth)?.opener?.k);
 	const captured: CapturedPickers = { route, at: DEFAULT_FREEZE.time, pickers, later: await read(LATER, false, ks), behind: await read(DEFAULT_FREEZE.time, false, ks, BEHIND) };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(captured));
+	await writeRecording(file, JSON.stringify(captured));
 	return captured;
 }
 

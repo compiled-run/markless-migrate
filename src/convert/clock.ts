@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { DATE_TEXT, parseDate, type ClockRule, type DateText } from '../../parts/clock.ts';
@@ -10,6 +10,7 @@ import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { writeRecording } from './recording-file.ts';
 
 // The dates a page computes in the visitor's browser, told from the ones its server wrote: the route is loaded again at
 // day-picker.ts's second clock (LATER) and time zone (BEHIND), and a date that moves with either follows that clock or
@@ -165,6 +166,6 @@ export async function captureClock(browser: Browser, origin: string, route: stri
 	const marks = at.length ? clockMarks(at, await read({ ...DEFAULT_FREEZE, timezone: BEHIND }), await read({ ...DEFAULT_FREEZE, time: LATER })) : [];
 	const captured = { route, marks };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(captured));
+	await writeRecording(file, JSON.stringify(captured));
 	return captured;
 }

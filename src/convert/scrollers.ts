@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -8,6 +8,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, type Element as Parsed } from './dom.ts';
 import type { Binding } from './tsrx.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** A transcript scroller of the old page (@shadcn/react MessageScroller) and where it opened. */
 export interface ScrollerOpening {
@@ -53,7 +54,7 @@ export async function captureScrollers(browser: Browser, origin: string, route: 
 	}
 	const capture = { route, scrollers };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 

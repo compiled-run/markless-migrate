@@ -218,7 +218,9 @@ test("a shard whose log says it kept results or recorded old pages, but whose ar
 	await shard(1, '--reuse: kept 3 results for later runs.\nOld side from the cache (.migrate/cache): 0 reused because nothing the old page loads changed, 2 not cached yet.', ['reuse', 'cache/old']);
 	await shard(2, '--reuse: kept 2 results for later runs.\nOld side from the cache (.migrate/cache): 0 reused because nothing the old page loads changed, 1 not cached yet.', []);
 	await shard(3, '--reuse: kept 0 results for later runs.', []);
-	assert.deepEqual(await lostUploads(root), ['check-2 kept 2 results for later runs, but its artifact has none', 'check-2 recorded 1 old pages not cached before, but its artifact has no old-side entries']);
+	await shard(4, 'Old side from the cache (.migrate/cache): 3 reused because nothing the old page loads changed, 1 not cached yet; 0 written for later runs.', []);
+	await shard(5, 'Old side from the cache (.migrate/cache): 0 reused because nothing the old page loads changed, 2 not cached yet; 1 written for later runs.', []);
+	assert.deepEqual(await lostUploads(root), ['check-2 kept 2 results for later runs, but its artifact has none', 'check-2 wrote 1 old-side cache entries, but its artifact has none', 'check-5 wrote 1 old-side cache entries, but its artifact has none'], 'a miss it could not cache writes nothing, and nothing is lost');
 });
 
 test("a shard stopped before writing its report still gives each route it finished, from the results it wrote route by route", async () => {

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { CONVERT_INPUTS, type ConvertInputs } from './inputs.ts';
 import { WORKERS_COMPATIBILITY_DATE } from './workers.ts';
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -8,8 +8,10 @@ import { copyAssets, copyStaticDir, MANAGED_ASSETS, pruneUnreferenced, readManag
 import { capturePage, SCRIPTS_STILL_CAP_MS, type CapturedPage, type CapturedRef } from './capture.ts';
 import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
-import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
+import { fetchPageKey, pageStatus, recordingVersions, RecordDirs } from './record-key.ts';
+import { expectedStatus } from '../check/expected-status.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
+import { recordPrefetch } from '../prefetch/record.ts';
 import { decidePrefetch, type PrefetchDecision } from '../prefetch/decide.ts';
 import { routerOptions, routerPrefetchSupport } from './prefetch-config.ts';
 import { atRest } from './at-rest.ts';
@@ -58,7 +60,7 @@ import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { keepRouting, nextPattern, writeRouting, type EndpointPort, type TrailingOutput } from './endpoints.ts';
 import { bodyAfterModule, documentExtras, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, pageBody, pagesWiring, SERVED_LAYER_BYTES, splitBody, trailingExtras, type LayerTable } from './document.ts';
-import { captureOtps, OtpPlan } from './otp.ts';
+import { captureOtps, OtpPlan, type OtpCapture } from './otp.ts';
 import { useSiteInstanceProps, type InstanceSpec } from './instance-props.ts';
 import { componentImport, componentName, inPageComponent, layersName, pageComponentOf, readSiteComponents, siteComponentOf, siteImportedParts, withSiteImports, type SiteComponent } from './site-components.ts';
 import { fragmentPath } from '../cache/apply.ts';
@@ -256,8 +258,8 @@ export interface ConvertReport {
 	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
-	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it. */
-	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string };
+	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it; `fromLastConvert` names the pages whose facts the last convert recorded from the same old page, and why this convert did not. */
+	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string; readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[] };
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
@@ -1340,8 +1342,8 @@ function* writtenMarkup(pages: Iterable<Prepared>): Generator<Element> {
 }
 
 // Made outside the capture block: a loader made in it keeps every recording that block read alive until convert returns.
-function storedCapture(browser: Browser, origin: string, ref: CapturedRef, dir: string): CapturedRef {
-	return { route: ref.route, status: ref.status, load: () => capturePage(browser, origin, ref.route, dir) };
+function storedCapture(route: string, status: number, load: (route: string) => Promise<CapturedPage>): CapturedRef {
+	return { route, status, load: () => load(route) };
 }
 
 /** The body's elements; a body showing only text (a bare 404) first gets a <div> holding it, the page's root. */
@@ -1416,6 +1418,8 @@ export const ROUTES: Readonly<Record<string, { readonly tags: readonly number[];
  */
 export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const log = options.log ?? (() => {});
+	const width = Math.max(1, options.concurrency ?? 4);
+	const limit = limiter(width);
 	const app = options.app;
 	const state = join(app, '.migrate');
 	const planned = JSON.parse(await readFile(join(state, 'inventory.json'), 'utf8')) as { routes: { route: string; status: number }[]; allRoutes?: { route: string; status?: number; contentType?: string; redirectsTo?: string }[] };
@@ -1424,16 +1428,53 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const inventory = { routes: [...new Map([...planned.routes.map((r) => [r.route, { route: r.route, status: r.status, contentType: types.get(r.route)?.contentType }] as const), ...(planned.allRoutes ?? []).filter((r) => r.status !== undefined).map((r) => [r.route, { route: r.route, status: r.status!, contentType: r.contentType }] as const)]).values()] };
 	const htmlRoutes = inventory.routes.filter((r) => r.status === 200 && (r.contentType ?? 'text/html').includes('html')).map((r) => r.route);
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
-	siteComponents = await readSiteComponents(app);
 	useSiteInstanceProps(await readFile(join(app, 'lib', 'site', 'instance-props.json'), 'utf8').then((t) => JSON.parse(t) as InstanceSpec[], () => []));
+	// Each kind of a route's recordings is kept under a key of its old page, the code that records that kind and the data the recorder is given (record-key.ts).
+	const recordings = await recordingVersions(app);
+	const unkept = [...new Set(Object.values(recordings).flatMap((v) => v.problems))];
+	if (unkept.length) log(`recordings are made again and not read back: ${unkept[0]}${unkept.length > 1 ? ` (and ${unkept.length - 1} more)` : ''}`);
+	const dirs = await RecordDirs.open(join(state, 'convert'), Object.fromEntries(Object.entries(recordings).map(([kind, v]) => [kind, v.version])));
+	const sources = new Map<string, Promise<string>>();
+	// Per route, the directories of each kind its recordings went into.
+	const keyedDirs = new Map<string, Map<string, Set<string>>>();
+	const pageKeyOf = (route: string): Promise<string> => {
+		let source = sources.get(route);
+		if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route) ?? '') : fetchPageKey(options.old, route)));
+		return source;
+	};
+	// The functions a recorder may be handed (HANDLES in record-facts.ts): any other is refused when its recording is keyed.
+	const handles = new Set<unknown>([log, limit]);
+	const atFor = async (route: string, kind: string, given: readonly unknown[]) => {
+		const staged = await dirs.stage(route, await pageKeyOf(route), kind, given, handles);
+		const kinds = keyedDirs.get(route) ?? new Map<string, Set<string>>();
+		keyedDirs.set(route, kinds);
+		kinds.set(kind, (kinds.get(kind) ?? new Set<string>()).add(staged.dir));
+		return staged;
+	};
+	/**
+	 * Every recording of the old site: the recorder writes into the directory of its kind, the route's page and what it is
+	 * given, kept only once it succeeds, and refused when the browser's load of the page answers another status than the key's.
+	 */
+	const record = async <A extends unknown[], R>(kind: string, recorder: (browser: Browser, origin: string, route: string, dir: string, ...given: A) => Promise<R>, browser: Browser, route: string, ...given: A): Promise<R> => {
+		const target = await atFor(route, kind, given);
+		const status = pageStatus(await pageKeyOf(route));
+		const run = () => recorder(browser, options.old, route, target.dir, ...given);
+		try {
+			// A redirect's key holds the redirect; the browser follows it, so its answer is not compared.
+			const got = status !== undefined && (status < 300 || status >= 400) ? await expectedStatus.run({ url: new URL(route, options.old).href, status }, run) : await run();
+			await target.commit();
+			return got;
+		} catch (error) {
+			await target.abandon();
+			throw error;
+		}
+	};
 	// Chromium's last lines of output, said in the log if it dies.
 	const said: string[] = [];
 	const browsers = await new Relauncher<Browser>(() => chromium.launch({ logger: { isEnabled: (name) => name === 'browser', log: (_name, _severity, message) => void (said.push(String(message)) > 8 && said.shift()) } }), log, () => said.slice(-3).join(' / ')).start();
 	const browser = browsers.shared;
-	const width = Math.max(1, options.concurrency ?? 4);
 	let captures: CapturedRef[];
-	let prefetchDecision: PrefetchDecision | undefined;
-	const captureDirs = new Map<string, string>();
+	let prefetchDecision: (PrefetchDecision & { readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[] }) | undefined;
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
@@ -1454,35 +1495,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const tablesRead = new Map<string, readonly CapturedTable[]>();
 	const formLibsRead = new Map<string, readonly CapturedForm[]>();
 	const floatingRead = new Map<string, readonly QwikFloating[]>();
+	const otpsRead = new Map<string, OtpCapture['fields']>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
 	layerChoices = choices;
 	const failed = new Map<string, string>();
 	try {
-		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
 		const reading = limiter(width * 2);
-		// Each route's recordings are kept under a key made from its old page as the server sends it (record-key.ts).
-		const dirs = await RecordDirs.open(join(state, 'convert'));
-		const recorder = await recorderVersions();
-		const sources = new Map<string, Promise<string>>();
-		// Per route, the directories of its own key its recordings went into.
-		const keyedDirs = new Map<string, Map<string, string>>();
-		const atFor = async (route: string, kind: string): Promise<string> => {
-			let source = sources.get(route);
-			if (!source) sources.set(route, (source = options.recordKeys?.has(route) ? Promise.resolve(options.recordKeys.get(route)!) : fetchRecordKey(recorder, options.old, route)));
-			const key = await source;
-			const dir = await dirs.dir(route, key, kind);
-			if (dir === join(state, 'convert', kind, key)) (keyedDirs.get(route) ?? keyedDirs.set(route, new Map()).get(route)!).set(kind, dir);
-			return dir;
-		};
 		// What a failed capture of a route wrote since it started, of these kinds (every kind if none named), is removed: no part-recording is kept.
 		const discard = (route: string, kinds?: readonly string[]) => async (since: number) => {
-			for (const [kind, dir] of keyedDirs.get(route) ?? []) {
+			for (const [kind, written] of keyedDirs.get(route) ?? []) {
 				if (kinds && !kinds.includes(kind)) continue;
-				for (const name of await readdir(dir, { recursive: true }).catch((): string[] => [])) {
-					const file = join(dir, name);
-					if (((await stat(file).catch(() => undefined))?.mtimeMs ?? -1) >= since) await rm(file, { force: true });
+				for (const dir of written) {
+					for (const name of await readdir(dir, { recursive: true }).catch((): string[] => [])) {
+						const file = join(dir, name);
+						if (((await stat(file).catch(() => undefined))?.mtimeMs ?? -1) >= since) await rm(file, { force: true });
+					}
 				}
 			}
 		};
@@ -1523,10 +1552,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		let capturedCount = 0;
 		const pageOf = new Map(
 			captureRoutes.map((route) => {
-				const ref = guarded(route, ['captures'], (browser) => limit(async () => capturePage(browser, options.old, route, (await atFor(route, 'captures'))))).then((got): CapturedRef | undefined => {
+				const ref = guarded(route, ['captures'], (browser) => limit(async () => record('captures', capturePage, browser, route))).then((got): CapturedRef | undefined => {
 					if (!got) return undefined;
 					log(`captured ${++capturedCount}/${captureRoutes.length} ${route}`);
-					return { route, status: got.status, load: async () => capturePage(browser, options.old, route, (await atFor(route, 'captures'))) };
+					return { route, status: got.status, load: async () => record('captures', capturePage, browser, route) };
 				});
 				ref.catch(() => {});
 				return [route, ref] as const;
@@ -1535,28 +1564,28 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r, c.text ?? ''] as const));
 		// How the original fetches pages ahead of a click, a kind of its own (src/prefetch): before any form is sent to it.
-		const prefetching = await prefetchRecorder(state, options.old, htmlRoutes, log);
+		const prefetching = await prefetchRecorder(state, htmlRoutes, recordings.prefetch?.version ?? `unkeyed-${randomUUID()}`, pageKeyOf, log);
 		// Its own slots: most of a recording is waiting on the page, which should not hold a capture's slot meanwhile. A page
 		// is recorded only once its capture worked, so a page that kills the browser is not loaded again for it; and a
 		// recording the browser died under is an unknown page to the decision, never a failed capture.
 		const prefetchSlots = limiter(width);
 		const prefetchRead = Promise.all(
 			routes.map((r) =>
-				pageOf.get(r)!.then((ref) => {
+				pageOf.get(r)?.then((ref) => {
 					if (!ref) return undefined;
 					return prefetchSlots(async () => {
-						const got = await browsers.retried(r, (browser) => prefetching.record(browser, r), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0]! }));
+						const got = await browsers.retried(r, (browser) => record('prefetch', recordPrefetch, browser, r, prefetching.options(r)).then((facts) => prefetching.kept(facts), (error: Error) => prefetching.unknown(r, error.message.split('\n')[0] ?? String(error), browser.version())), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0] ?? String(error) }));
 						if (!('value' in got)) prefetching.unknown(r, got.failed);
 					});
 				}),
 			),
 		);
 		prefetchRead.catch(() => {});
-		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
+		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => record('scenes', captureScenes, browser, r, selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
 		const notifies = listed.filter((x) => x.action === 'notify').flatMap((c) => routes.filter((r) => !c.routes || new RegExp(c.routes).test(r)).map((r) => [c.selector, r, c.template] as const));
-		const notifiesRead = eachLimited(limit, notifies, async ([selector, r, template]) => guarded(r, ['toggles'], async (browser) => captureNotifications(browser, options.old, r, (await atFor(r, 'toggles')), [selector], template))).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...(got[i]?.notifications ?? [])])));
+		const notifiesRead = eachLimited(limit, notifies, async ([selector, r, template]) => guarded(r, ['toggles'], async (browser) => record('toggles', captureNotifications, browser, r, [selector], template))).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...(got[i]?.notifications ?? [])])));
 		notifiesRead.catch(() => {});
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
@@ -1586,6 +1615,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			toggles?: readonly ToggleGroup[];
 			switches?: readonly Switch[];
 			floating?: readonly QwikFloating[];
+			otps?: OtpCapture['fields'];
 		}
 		const readRoute = async (route: string, ref: CapturedRef, browser: Browser, running: Promise<unknown>[]): Promise<RouteFacts> => {
 			const facts: RouteFacts = {};
@@ -1603,18 +1633,22 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
 					// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
 					await allSettled([
-						settled.some((html) => html.includes('data-slot="carousel"')) && limit(async () => captureCarousels(browser, options.old, route, (await atFor(route, 'toggles')))).then((r) => void (facts.carousels = r.carousels)),
-						settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"')) && limit(async () => captureSliders(browser, options.old, route, (await atFor(route, 'toggles')))).then((r) => void (facts.sliders = r.sliders)),
-						facts.dated && limit(async () => captureClock(browser, options.old, route, (await atFor(route, 'clock')))).then((r) => void (facts.clock = r.marks)),
-						facts.chart && captureCharts(browser, options.old, route, (await atFor(route, 'toggles')), limit).then((r) => void (facts.charts = r.charts)),
+						settled.some((html) => html.includes('data-slot="carousel"')) && limit(async () => record('toggles', captureCarousels, browser, route)).then((r) => void (facts.carousels = r.carousels)),
+						settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"')) && limit(async () => record('toggles', captureSliders, browser, route)).then((r) => void (facts.sliders = r.sliders)),
+						facts.dated && limit(async () => record('clock', captureClock, browser, route)).then((r) => void (facts.clock = r.marks)),
+						facts.chart && record('toggles', captureCharts, browser, route, limit).then((r) => void (facts.charts = r.charts)),
 					]);
 				})(),
 				(async () => {
 					// Where the old page placed each Qwik UI floating panel: its gutter and side are in no markup.
-					if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(async () => captureQwikFloating(browser, options.old, route, (await atFor(route, 'toggles'))))).panels;
+					if (reveal && ref.status === 200 && /\sq:container=/.test((await page()).server) && (await page()).server.includes('data-floating')) facts.floating = (await limit(async () => record('toggles', captureQwikFloating, browser, route))).panels;
 				})(),
 				(async () => {
-					if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(async () => captureScrollers(browser, options.old, route, (await atFor(route, 'toggles'))))).scrollers;
+					// Each input-otp field, used once on the old page for the caret its site renders and the text that shows its value.
+					if (reveal && Object.values((await page()).settled).some((html) => html.includes('data-input-otp-container'))) facts.otps = (await limit(async () => record('otps', captureOtps, browser, route))).fields;
+				})(),
+				(async () => {
+					if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(async () => record('toggles', captureScrollers, browser, route))).scrollers;
 				})(),
 				(async () => {
 					if (!reveal || ref.status !== 200) return;
@@ -1622,7 +1656,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					// What each TanStack table was given and showed in each state, where the settled page has a table.
 					if (usesTables && settled.some(mayHoldTable)) {
 						const shown = tablesShown((await page()).settled);
-						const captured = await limit(async () => captureTables(browser, options.old, route, (await atFor(route, 'tables')), log, shown));
+						const captured = await limit(async () => record('tables', captureTables, browser, route, log, shown));
 						for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
 						if (captured.notFound) log(`  tables on ${route} not found: ${captured.notFound}`);
 						if (captured.tables.length) facts.tables = captured.tables;
@@ -1633,14 +1667,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					const settled = Object.values((await page()).settled);
 					// What each form-library form was given and showed with each field's errors and values, where the page has a form.
 					if (usesFormLibs && settled.some((html) => /<form[\s>]/.test(html))) {
-						const captured = await limit(async () => captureFormLibraries(browser, options.old, route, (await atFor(route, 'form-libraries')), log));
+						const captured = await limit(async () => record('form-libraries', captureFormLibraries, browser, route, log));
 						for (const why of captured.skipped) log(`  form on ${route} not read: ${why}`);
 						if (captured.forms.length) facts.formLibs = captured.forms;
 					}
 				})(),
 				(async () => {
 					if (!reveal || !routes.includes(route)) return;
-					const toggles = await limit(async () => captureToggles(browser, options.old, route, (await atFor(route, 'toggles')), (await page()).settled.desktop)).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					const toggles = await limit(async () => record('toggles', captureToggles, browser, route, (await page()).settled.desktop)).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
 					const incomplete = unrecordedToggles(toggles);
 					if (incomplete) throw new Error(incomplete);
 					toggledCount++;
@@ -1649,7 +1683,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				})(),
 				(async () => {
 					if (!reveal || !routes.includes(route) || !switchSelectors.length) return;
-					const switches = await limit(async () => captureSwitches(browser, options.old, route, (await atFor(route, 'toggles')), switchSelectors, (await page()).settled.desktop)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					const switches = await limit(async () => record('toggles', captureSwitches, browser, route, switchSelectors, (await page()).settled.desktop)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
 					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
 					facts.switches = switches.switches;
 				})(),
@@ -1659,7 +1693,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			side.catch(() => {});
 			if (reveal && routes.includes(route)) {
 				const loadDialog = Object.values((await page()).settled).some(openDialogAtLoad);
-				const own = await captureRouteReveals(browser, options.old, route, (await atFor(route, 'reveals')), { extra, opens, loadDialog, settled: (await page()).settled }, limit);
+				const own = await record('reveals', captureRouteReveals, browser, route, { extra, opens, loadDialog, settled: (await page()).settled }, limit);
 				const incomplete = incompleteCapture(own);
 				if (incomplete) throw new Error(incomplete);
 				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
@@ -1669,7 +1703,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 			// React Aria tooltips and previews, on the pages whose server HTML has React Aria controls.
 			if (reveal && (await page()).server.includes('data-react-aria-pressable')) {
-				const hovers = [...(await limit(async () => captureRacHovers(browser, options.old, route, (await atFor(route, 'reveals'))))), ...((await page()).server.includes('role="combobox"') ? await limit(async () => captureRacComboInputs(browser, options.old, route, (await atFor(route, 'reveals')))) : [])];
+				const hovers = [...(await limit(async () => record('reveals', captureRacHovers, browser, route))), ...((await page()).server.includes('role="combobox"') ? await limit(async () => record('reveals', captureRacComboInputs, browser, route)) : [])];
 				const own = reveals ?? [];
 				const added = hovers.filter((h) => !own.some((r) => r.key === h.key));
 				if (added.length) reveals = [...own, ...added];
@@ -1678,23 +1712,23 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				// React Aria and Radix submenus, where a revealed menu has an item that opens one; Radix's menus come back with their
 				// sub-triggers keyed, in place of the menus' own reveals.
 				const from = reveals;
-				const submenus = await limit(async () => captureRacSubmenus(browser, options.old, route, (await atFor(route, 'reveals')), from));
-				const radix = await limit(async () => captureRadixSubmenus(browser, options.old, route, (await atFor(route, 'reveals')), from));
+				const submenus = await limit(async () => record('reveals', captureRacSubmenus, browser, route, from));
+				const radix = await limit(async () => record('reveals', captureRadixSubmenus, browser, route, from));
 				const all = [...from.map((r) => radix.find((m) => same(m, r)) ?? r), ...[...submenus, ...radix].filter((s) => !from.some((r) => same(r, s) || r.key === s.key))];
 				if (all.length !== from.length || radix.length) reveals = all;
 				// Base UI submenus: the menus they open from come back with their triggers keyed, in place of the menus' own reveals.
 				const before = reveals;
-				const base = await limit(async () => captureBaseSubmenus(browser, options.old, route, (await atFor(route, 'reveals')), before));
+				const base = await limit(async () => record('reveals', captureBaseSubmenus, browser, route, before));
 				if (base.length) reveals = [...before.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !before.some((r) => same(r, s) || r.key === s.key))];
 				// Controls inside content another revealed in place (a file tree's nested folders), after the ones holding them.
 				const outer = reveals;
-				const nested = await limit(async () => captureNestedReveals(browser, options.old, route, (await atFor(route, 'reveals')), outer));
+				const nested = await limit(async () => record('reveals', captureNestedReveals, browser, route, outer));
 				if (nested.length) reveals = [...outer, ...nested.filter((n) => !outer.some((r) => r.key === n.key))];
 			}
 			// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 			const comboboxes = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
 			if (reveals && comboboxes.length) {
-				const found = (await limit(async () => captureComboboxEmpties(browser, options.old, route, (await atFor(route, 'toggles')), comboboxes))).empties;
+				const found = (await limit(async () => record('toggles', captureComboboxEmpties, browser, route, comboboxes))).empties;
 				reveals = reveals.map((r) => {
 					const html = found.find((f) => f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
 					return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
@@ -1722,7 +1756,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					visit(body(parseDocument(settled)));
 				}
 				if (fromLayers.length || inPage.length) {
-					const found = (await limit(async () => captureRacEmpties(browser, options.old, route, (await atFor(route, 'toggles')), [...fromLayers, ...inPage]))).empties;
+					const found = (await limit(async () => record('toggles', captureRacEmpties, browser, route, [...fromLayers, ...inPage]))).empties;
 					if (found.length) {
 						const mine = (f: ComboboxEmpty) => inPage.some((x) => x.sig === f.sig && x.nth === f.nth);
 						facts.racEmpties = found.filter(mine);
@@ -1735,18 +1769,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 			// Whether each accordion lets several items be open, where one revealed an item's content; React Aria's accordion
 			// panels are in the page while collapsed, so expanding one reveals nothing: its server HTML says it is there.
-			if (reveals?.some((r) => r.sig?.includes('|accordion-trigger|')) || /data-slot="accordion"[^>]*data-rac=/.test((await page()).server)) facts.accordions = (await limit(async () => captureAccordions(browser, options.old, route, (await atFor(route, 'toggles'))))).accordions;
+			if (reveals?.some((r) => r.sig?.includes('|accordion-trigger|')) || /data-slot="accordion"[^>]*data-rac=/.test((await page()).server)) facts.accordions = (await limit(async () => record('toggles', captureAccordions, browser, route))).accordions;
 			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
 			const others = (reveals ?? []).filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-			if (reveals && (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|')))) facts.hoverDelays = (await limit(async () => captureHoverDelays(browser, options.old, route, (await atFor(route, 'toggles')), others))).delays;
+			if (reveals && (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|')))) facts.hoverDelays = (await limit(async () => record('toggles', captureHoverDelays, browser, route, others))).delays;
 			if (reveal && ref.status === 200) {
 				const settled = Object.values((await page()).settled);
 				// What each react-day-picker calendar was given, where the settled page shows a month grid or a control's layer does (a date picker's trigger: read opened).
 				const openers = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-				if (openers.length || settled.some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) facts.pickers = await limit(async () => captureDayPickers(browser, options.old, route, (await atFor(route, 'day-pickers')), openers));
+				if (openers.length || settled.some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) facts.pickers = await limit(async () => record('day-pickers', captureDayPickers, browser, route, openers));
 				// What each React Aria calendar was given, where the settled page shows one.
 				const opening = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => racCalendar(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0, path: r.path }));
-				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(async () => captureRacCalendars(browser, options.old, route, (await atFor(route, 'rac-calendars')), opening));
+				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(async () => record('rac-calendars', captureRacCalendars, browser, route, opening));
 			}
 			await side;
 			facts.reveals = reveals;
@@ -1776,7 +1810,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 							await Promise.allSettled(running);
 						}
 					};
-					return (await guarded(route, ['reveals', 'toggles', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars'], read)) ?? {};
+					return (await guarded(route, ['reveals', 'toggles', 'clock', 'tables', 'form-libraries', 'day-pickers', 'rac-calendars', 'otps'], read)) ?? {};
 				}),
 			),
 		);
@@ -1793,8 +1827,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 				const run = listbox ? `${route}|${reveal.key}` : `${reveal.key}|${optionsShown(reveal)}`;
 				if (!choosing.has(run)) {
-					const dir = await atFor(route, 'choices');
-					const chosen = timed(route, async () => (await guarded(route, ['choices'], async (browser) => captureChoices(browser, options.old, route, reveal, dir, log, limit, Boolean((await pending).scrollers?.length)))) ?? {});
+					const chosen = timed(route, async () => (await guarded(route, ['choices'], async (browser) => record('choices', (b: Browser, origin: string, r: string, dir: string, shown: Reveal, scrollers: boolean) => captureChoices(b, origin, r, shown, dir, log, limit, scrollers), browser, route, reveal, Boolean((await pending).scrollers?.length)))) ?? {});
 					chosen.catch(() => {});
 					choosing.set(run, chosen);
 				}
@@ -1803,11 +1836,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		const read = await Promise.all(reads);
 		captures = (await Promise.all(captureRoutes.map((route) => pageOf.get(route)!))).filter((ref): ref is CapturedRef => ref !== undefined);
-		for (const ref of captures) captureDirs.set(ref.route, await atFor(ref.route, 'captures'));
 		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
 		await prefetching.save();
-		prefetchDecision = decidePrefetch(prefetching.recorded());
-		if (prefetching.fromBefore()) log(`prefetch: decided from ${prefetching.recorded().length} pages, ${prefetching.fromBefore()} of them as the last convert recorded them`);
+		const fromLastConvert = prefetching.fromBefore().map((route) => ({ route, why: failed.has(route) ? `its capture failed in this convert: ${failed.get(route)}` : routes.includes(route) ? 'not recorded in this convert' : 'not converted in this convert' }));
+		prefetchDecision = { ...decidePrefetch(prefetching.recorded()), fromLastConvert };
+		if (fromLastConvert.length) log(`prefetch: decided from ${prefetching.recorded().length} pages, ${fromLastConvert.length} of them as the last convert recorded them from the same old page`);
+		for (const { route, why } of fromLastConvert) if (routes.includes(route)) log(`  prefetch facts of ${route} are the last convert's: ${why}`);
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
 			const f = read[i]!;
@@ -1829,6 +1863,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (f.toggles) toggled.set(route, f.toggles);
 			if (f.switches) switched.set(route, f.switches);
 			if (f.floating?.length) floatingRead.set(route, f.floating);
+			if (f.otps) otpsRead.set(route, f.otps);
 		});
 		const chosenBy = new Map(await Promise.all([...choosing].map(async ([run, chosen]) => [run, await chosen] as const)));
 		for (const { route, reveal, run } of shownOn) {
@@ -1842,7 +1877,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
-			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => captureForms(browser, options.old, route, (await atFor(route, 'toggles'))).catch(() => ({ route, forms: [] }))))));
+			const forms = await eachLimited(limit, routes, async (route) => (failed.has(route) ? undefined : timed(route, async () => guarded(route, ['toggles'], async (browser) => record('toggles', captureForms, browser, route).catch(() => ({ route, forms: [] }))))));
 			for (const f of forms) if (f && !failed.has(f.route)) submitted.set(f.route, f.forms);
 		}
 		await dirs.save();
@@ -1855,8 +1890,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const failedCaptures = [...failed].map(([route, reason]) => ({ route, reason }));
 	if (failedCaptures.length) captures = captures.filter((ref) => !failed.has(ref.route));
-	captures = captures.map((ref) => storedCapture(browser, options.old, ref, captureDirs.get(ref.route)!));
+	const loadCapture = (route: string) => record('captures', capturePage, browser, route);
+	captures = captures.map((ref) => storedCapture(ref.route, ref.status, loadCapture));
 	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: failedCaptures, failedCaptures: failedCaptures.length, endpoints: [], unported: [], unplacedCharts: [], stillCapped: [] };
+	// The site's own components are the emit's: read once the recordings are made, so no recording is keyed by them.
+	siteComponents = await readSiteComponents(app);
 	const usagePath = join(state, 'usage.json');
 	const librariesPath = join(state, 'libraries.json');
 	const hasUsage = await stat(usagePath).then(() => true, () => false);
@@ -2189,17 +2227,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
-	const otpRoutes = [...prepared].filter(([, p]) => [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined));
-	if (otpRoutes.length && options.reveal !== false) {
-		const otpBrowser = await chromium.launch();
-		try {
-			let fields = 0;
-			for (const [route, p] of otpRoutes) fields += otps.add((await captureOtps(otpBrowser, options.old, route, join(state, 'convert', 'toggles'))).fields, locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
-			if (fields) log(`input-otp fields on Markless state: ${fields}`);
-		} finally {
-			await otpBrowser.close();
-		}
+	let otpFields = 0;
+	for (const [route, p] of prepared) {
+		const fields = otpsRead.get(route);
+		if (fields && [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined)) otpFields += otps.add(fields, locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
 	}
+	if (otpFields) log(`input-otp fields on Markless state: ${otpFields}`);
 	const selects = new SelectPlan();
 	const racSelect = (el: Element) => attr(el, 'aria-haspopup') === 'listbox' && candidatesOf(el).some((c) => c.library === 'react-aria-components');
 	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });

@@ -1,4 +1,5 @@
 import type { BrowserContext, Frame, Page, Request, Response } from 'playwright';
+import { expectedStatus, unexpectedStatus } from './expected-status.ts';
 import type { Infrastructure, InfrastructureCause } from './types.ts';
 
 /** How long one page load may take before it is retried, then reported as an infrastructure failure. */
@@ -72,7 +73,10 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 		return oldest.length ? `; still waiting on ${oldest.map(([r, at]) => `${r.url().slice(0, 140)} (${r.resourceType()}, ${Math.round((Date.now() - at) / 1000)} s)`).join(', ')}` : '; no request was still waiting';
 	};
 	try {
-		return await loadWithRetry();
+		const response = await loadWithRetry();
+		const refused = expectedStatus.getStore() && unexpectedStatus(url, response?.status() ?? 0);
+		if (refused) throw new Error(refused);
+		return response;
 	} finally {
 		page.off('request', sent);
 		page.off('requestfinished', done);

@@ -124,6 +124,15 @@ test("a value change the page hears as a part's own event (onMmchoose) and a rec
 	assert.equal(entry(l, 19)?.by, 'recorded');
 });
 
+test("the port's files are in path order whichever read finishes first, so a tie between two alike elements picks the same one every run", async () => {
+	const app = join(dir, 'order');
+	const files: Record<string, string> = { 'components/converted/a.tsrx': `// ${'x'.repeat(8_000_000)}\nexport default function A() @{\n\t<><button>a</button></>\n}\n` };
+	for (let i = 0; i < 40; i++) files[`components/converted/b${String(i).padStart(2, '0')}.tsrx`] = `export default function B() @{\n\t<><button>b</button></>\n}\n`;
+	await write(app, files);
+	const keys = [...(await readPort(app)).keys()];
+	assert.deepEqual(keys, [...keys].sort());
+});
+
 test('a .tsrx page renders the @case its route selects, with the components it imports inlined', async () => {
 	const app = join(dir, 'render');
 	await write(app, {

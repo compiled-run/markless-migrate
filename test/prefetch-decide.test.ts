@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { routerOptions, routerPrefetchSupport } from '../src/convert/prefetch-config.ts';
 import { prefetchRecorder, storedFacts } from '../src/prefetch/convert.ts';
-import { prefetchVersion } from '../src/prefetch/key.ts';
 import { decidePrefetch, declaredTriggers, MAX_CONCURRENCY } from '../src/prefetch/decide.ts';
 import type { ConditionResult, PrefetchFacts, Trigger, TriggerEvidence } from '../src/prefetch/facts.ts';
+
+// The prefetch kind's record version (src/convert/record-key.ts), as convert hands it to the recorder.
+const VERSION = 'prefetch kind version';
 
 const e = (tested: number, fired: number): TriggerEvidence => ({ tested, fired, targets: Array.from({ length: fired }, (_, i) => `/p${i}`), bytes: fired * 1000, cancelled: 0 });
 const page = (route: string, triggers: Partial<Record<Trigger, TriggerEvidence>>, more: Partial<PrefetchFacts> = {}): PrefetchFacts => ({ route, browser: 'chromium', shapes: ['{path}.data'], fullLoads: false, links: 30, triggers, concurrency: 2, bytesBeforeClick: 0, hints: { links: [], speculationRules: [] }, requests: [], ...more });
@@ -160,27 +162,34 @@ test('the router support says why it cannot take the setting: not installed, or 
 	}
 });
 
-test('a partial convert decides from the last convert\'s pages and its own, and keeps the others in prefetch.json', async () => {
+test('a partial convert decides from the last convert\'s pages and its own, and keeps the others in prefetch.json, each read back only at the page it was recorded from', async () => {
 	const state = await mkdtemp(join(tmpdir(), 'mm-state-'));
 	try {
-		const stored = { version: await prefetchVersion(), routes: { '/a': page('/a', { viewport: e(4, 8) }), '/b': page('/b', { viewport: e(4, 8) }), '/gone': page('/gone', {}) } };
+		const at = (facts: object, page: string) => ({ ...facts, page });
+		const stored = { version: VERSION, routes: { '/a': at(page('/a', { viewport: e(4, 8) }), 'pa'), '/b': at(page('/b', { viewport: e(4, 8) }), 'pb'), '/d': at(page('/d', { load: e(4, 8) }), 'old-d'), '/gone': at(page('/gone', {}), 'pg') } };
 		await writeFile(join(state, 'prefetch.json'), JSON.stringify(stored));
-		const recorder = await prefetchRecorder(state, 'http://127.0.0.1:9', ['/a', '/b', '/c'], () => {});
-		assert.deepEqual(recorder.recorded().map((f) => f.route).sort(), ['/a', '/b'], 'a page no longer listed is not read');
-		assert.equal(recorder.fromBefore(), 2);
+		const pages: Record<string, string> = { '/a': 'pa', '/b': 'pb', '/c': 'pc', '/d': 'new-d' };
+		const recorder = await prefetchRecorder(state, ['/a', '/b', '/c', '/d'], VERSION, async (route) => pages[route] ?? '', () => {});
+		assert.deepEqual(recorder.recorded().map((f) => f.route).sort(), ['/a', '/b'], 'a page no longer listed, or whose old page changed since it was recorded, is not read');
+		assert.deepEqual(recorder.fromBefore(), ['/a', '/b']);
 		assert.equal(decidePrefetch(recorder.recorded()).setting.viewport, 'all');
+		recorder.kept(page('/c', { viewport: e(4, 8) }));
 		await recorder.save();
-		assert.deepEqual(Object.keys((JSON.parse(await readFile(join(state, 'prefetch.json'), 'utf8')) as { routes: object }).routes).sort(), ['/a', '/b']);
+		const saved = JSON.parse(await readFile(join(state, 'prefetch.json'), 'utf8')) as { routes: Record<string, { page?: string }> };
+		assert.deepEqual(Object.fromEntries(Object.entries(saved.routes).map(([route, f]) => [route, f.page])), { '/a': 'pa', '/b': 'pb', '/c': 'pc' }, 'each page is saved with the key of the old page it was recorded from');
 	} finally {
 		await rm(state, { recursive: true, force: true });
 	}
 });
 
 test('a stored prefetch.json another recorder version wrote, or of another shape, is not read', async () => {
-	const version = await prefetchVersion();
+	const version = VERSION;
 	const facts = page('/a', { viewport: e(4, 8) });
-	assert.deepEqual(Object.keys(storedFacts({ version, routes: { '/a': facts } }, version)), ['/a']);
-	assert.deepEqual(storedFacts({ version: 'older', routes: { '/a': facts } }, version), {});
-	assert.deepEqual(storedFacts({ routes: { '/a': facts } }, version), {});
-	assert.deepEqual(storedFacts({ version, routes: { '/a': { route: '/b' } } }, version), {});
+	const pages = new Map([['/a', 'pa']]);
+	assert.deepEqual(Object.keys(storedFacts({ version, routes: { '/a': { ...facts, page: 'pa' } } }, version, pages)), ['/a']);
+	assert.deepEqual(storedFacts({ version, routes: { '/a': facts } }, version, pages), {}, 'facts that name no page are not read');
+	assert.deepEqual(storedFacts({ version, routes: { '/a': { ...facts, page: 'older' } } }, version, pages), {});
+	assert.deepEqual(storedFacts({ version: 'older', routes: { '/a': { ...facts, page: 'pa' } } }, version, pages), {});
+	assert.deepEqual(storedFacts({ routes: { '/a': { ...facts, page: 'pa' } } }, version, pages), {});
+	assert.deepEqual(storedFacts({ version, routes: { '/a': { route: '/b', page: 'pa' } } }, version, pages), {});
 });

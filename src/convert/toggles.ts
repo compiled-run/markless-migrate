@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -9,6 +9,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { LATE_MARKS_MS } from './reveal.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, elementChildren, setAttr, walk, type Element as Tree } from './dom.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** A control as the old page showed it in one state: its attributes and its children's markup. */
 export interface ToggleState {
@@ -459,7 +460,7 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 	if (unrecorded.length) return { route, groups, skipped, unrecorded };
 	const capture: ToggleCapture = { route, groups, skipped };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -613,7 +614,7 @@ export async function captureSwitches(browser: Browser, origin: string, route: s
 	}
 	const capture: SwitchCapture = { route, switches, skipped };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -692,7 +693,7 @@ export async function captureForms(browser: Browser, origin: string, route: stri
 	}
 	const capture: FormCapture = { route, forms };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -825,7 +826,7 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 	}
 	const capture: NotifyCapture = { route, notifications };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -1025,7 +1026,7 @@ export async function captureAccordions(browser: Browser, origin: string, route:
 	}
 	const capture: AccordionCapture = { route, accordions };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -1111,7 +1112,7 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 	}
 	const capture = { route, delays };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -1247,7 +1248,7 @@ export async function captureCarousels(browser: Browser, origin: string, route: 
 	}
 	const capture = { route, carousels };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -1299,7 +1300,7 @@ export async function captureComboboxEmpties(browser: Browser, origin: string, r
 	}
 	const capture = { route, empties };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -1360,6 +1361,6 @@ export async function captureRacEmpties(browser: Browser, origin: string, route:
 	}
 	const capture = { route, empties };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }

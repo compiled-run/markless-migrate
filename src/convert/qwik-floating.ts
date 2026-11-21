@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -7,6 +7,7 @@ import { captureEnv } from './capture-env.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { attr, setAttr, walk, type Element as Tree } from './dom.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** Where the old page placed a Qwik UI floating panel against its anchor: floating-ui's placement and offset (its gutter). */
 export interface QwikFloating {
@@ -105,7 +106,7 @@ export async function captureQwikFloating(browser: Browser, origin: string, rout
 	}
 	const result = { route, panels };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(result));
+	await writeRecording(file, JSON.stringify(result));
 	return result;
 }
 

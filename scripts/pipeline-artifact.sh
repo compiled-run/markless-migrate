@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The pipeline's store of finished work: Actions artifacts named by the content key of what made them (pipeline.yml).
 #   pipeline-artifact.sh find <name>                                prints the run id of the newest unexpired artifact so named
+#   pipeline-artifact.sh in-run <name> <run id>                     prints the id of that run's unexpired artifact so named, if it has one
 #   pipeline-artifact.sh build <artifact> <url> <dest dir>          puts a build's output.tar.gz in <dest dir>: from <url> when
 #                                                                   given, else from the newest artifact so named
 # Needs GH_TOKEN (actions: read) and GITHUB_REPOSITORY.
@@ -9,6 +10,9 @@ newest() { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$1&per_page=2
 case "${1:-}" in
 	find)
 		newest "${2:?name}" .workflow_run.id
+		;;
+	in-run)
+		gh api "repos/$GITHUB_REPOSITORY/actions/runs/${3:?run id}/artifacts?name=${2:?name}&per_page=20" --jq '[.artifacts[] | select(.expired | not)] | .[0].id // empty'
 		;;
 	build)
 		name="${2:?artifact}" url="${3:-}" dest="${4:?dest}"
@@ -23,5 +27,5 @@ case "${1:-}" in
 		fi
 		[ -f "$dest/output.tar.gz" ] || { echo "no output.tar.gz in the build" >&2; exit 1; }
 		;;
-	*) echo "usage: $0 find <name> | build <artifact> <url> <dest dir>" >&2; exit 2 ;;
+	*) echo "usage: $0 find <name> | in-run <name> <run id> | build <artifact> <url> <dest dir>" >&2; exit 2 ;;
 esac
