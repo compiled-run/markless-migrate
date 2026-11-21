@@ -327,7 +327,7 @@ jobs:
         run: |
           set -euo pipefail
           git ls-files "$APP" > "$RUNNER_TEMP/app-files.txt"
-          values=(routes="$ROUTES" records="${{ steps.records.outputs.keys }}" plan="${{ steps.plan.outputs.key }}" state="$(cat "$APP"/.migrate/*.json | sha256sum | cut -c1-32)" page-order-from="$PAGE_ORDER_FROM")
+          values=(routes="$ROUTES" records="${{ steps.records.outputs.keys }}" plan="${{ steps.plan.outputs.key }}" state="$(cat "$APP"/.migrate/*.json | sha256sum | cut -c1-32)" page-order-from="$PAGE_ORDER_FROM" packs="app store-run")
           key=$(node scripts/pipeline.ts key emit "$SITE" "$APP" "$RUNNER_TEMP/app-files.txt" "${values[@]}")
           base=$(node scripts/pipeline.ts key emit-base "$SITE" "$APP" "$RUNNER_TEMP/app-files.txt" "${values[@]}")
           run=""
@@ -457,10 +457,13 @@ jobs:
         with:
           node-version: 24
       - name: Take the kept converted app
+        id: kept
         if: needs.prepare.outputs.emit-run != ''
         run: |
           set -euo pipefail
           tar -xzf "$RUNNER_TEMP/converted/app.tar.gz" -C "$APP"
+          cp "$RUNNER_TEMP/converted/store-run.txt" "$RUNNER_TEMP/store-run.txt"
+          echo "store-run=$(cat "$RUNNER_TEMP/store-run.txt")" >> "$GITHUB_OUTPUT"
           if [ "$(cat "$RUNNER_TEMP/converted/emit-key.txt")" = "${{ needs.prepare.outputs.emit-key }}" ]; then
             how="kept (run ${{ needs.prepare.outputs.emit-run }})"
           else
@@ -484,12 +487,12 @@ jobs:
           run-id: ${{ needs.prepare.outputs.store-run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/store-archive
-      # A kept app is verified against the recordings it was converted from, which its own run kept; the latest store may be another branch's.
+      # A kept app is verified against the recordings it was converted from (store-run.txt); the latest store may be another branch's.
       - if: needs.prepare.outputs.emit-run != '' && env.VERIFY == 'true'
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.prepare.outputs.store-name }}
-          run-id: ${{ needs.prepare.outputs.emit-run }}
+          run-id: ${{ steps.kept.outputs.store-run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/store-archive
       - if: needs.prepare.outputs.emit-run == '' && needs.prepare.outputs.capture != '[]'
@@ -566,6 +569,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/out"
           tar -czf "$RUNNER_TEMP/out/app.tar.gz" --exclude=node_modules --exclude=.migrate/convert -C "$APP" .
           echo "${{ needs.prepare.outputs.emit-key }}" > "$RUNNER_TEMP/out/emit-key.txt"
+          # The run whose store holds the recordings this app was converted from: this one, or the kept app's.
+          if [ -f "$RUNNER_TEMP/store-run.txt" ]; then cp "$RUNNER_TEMP/store-run.txt" "$RUNNER_TEMP/out/store-run.txt"; else echo "${{ github.run_id }}" > "$RUNNER_TEMP/out/store-run.txt"; fi
           cp "$RUNNER_TEMP/copied-parts.txt" "$RUNNER_TEMP/out/copied-parts.txt"
       - uses: actions/upload-artifact@v4
         with:
