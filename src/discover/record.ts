@@ -1184,10 +1184,10 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				const ready = refused ? undefined : await inPage('reading the page before the press again', () => at().evaluate(([i, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.before(i, undefined, cap, quiet), [index, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
 				if (ready && ready.covered !== 'gone') {
 					presses++;
-					await at().locator(`[data-mm-discover="${index}"]`).first().click({ timeout: CLICK_MS }).catch(() => {});
 					since = Date.now();
+					await at().locator(`[data-mm-discover="${index}"]`).first().click({ timeout: CLICK_MS }).catch(() => {});
 					await requestsDone(since, SCRIPTS_STILL_CAP_MS);
-					await at().mouse.move(0, 0);
+					await within(at().mouse.move(0, 0), 'moving the pointer away');
 					await lateMarks();
 					const last = controls.length - 1;
 					const pressedAgain = controls[last];
