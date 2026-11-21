@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
-import { captureScenes, type SceneNode } from '../src/convert/scenes.ts';
-import { SCENE_CONTROLS } from '../src/discover/convert.ts';
+import { captureScenes, edgeLabel, type SceneNode } from '../src/convert/scenes.ts';
+import { SCENE_CONTROLS, sceneUsesAt } from '../src/discover/convert.ts';
 
 const PAGE = `<!doctype html><html><body><main>
 <div data-slot="preview"><div role="log"><p>Hi</p></div><button data-slot="button" id="send">Send</button><button data-slot="button" id="reset" disabled>Reset</button></div>
@@ -263,6 +263,25 @@ test('a state the search reaches but does not explore counts its uses as skipped
 		assert.equal(scene.edges.length, 4);
 		assert.deepEqual(scene.skippedUses?.map((u) => [u.control, u.from]), [[scene.edges[0]!.control, 4]], 'Next from quote 5 is a use not recorded');
 		assert.match(scene.skippedUses?.[0]?.why ?? '', /past 4 uses deep/);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a discovered demo\'s controls are followed by their place in the demo, not their label, so an icon toggle\'s Pause is used too', async () => {
+	const PLAYER = '<!doctype html><html><body><div class="player"><button type="button" aria-label="Play"><svg width="10" height="10"></svg></button><p id="s">Stopped</p></div><script>const b = document.querySelector("button"); b.onclick = () => { const on = b.getAttribute("aria-label") === "Play"; b.setAttribute("aria-label", on ? "Pause" : "Play"); document.getElementById("s").textContent = on ? "Playing" : "Stopped"; };</script></body></html>';
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PLAYER));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 200, max: 2000 }, '', 'div||Stopped#0', ['button1']);
+		const scene = scenes[0]!;
+		assert.deepEqual(scene.edges.map((e) => [e.from, edgeLabel(e.control), e.at, e.to]), [[0, 'button||Play', 'button1', 1], [1, 'button||Pause', 'button1', 0]]);
+		assert.ok(sceneUsesAt(scene).get('button1')?.back, 'its way back to the first state is recorded');
 	} finally {
 		await browser.close();
 		server.close();
