@@ -322,14 +322,14 @@ async function listTsrx(dir: string, out: string[] = []): Promise<string[]> {
 /** Every `.tsrx` of a converted app (pages, converted components and layers, the site's own components), read. */
 export async function readPort(app: string): Promise<Map<string, PortFile>> {
 	const files = [...(await Promise.all(['pages', 'components', join('lib', 'site')].map((d) => listTsrx(join(app, d))))).flat(), join(app, 'document.tsrx')].sort();
+	const texts = await Promise.all(files.map((path) => readFile(path, 'utf8').catch(() => undefined)));
+	// Filled in path order, not as reads finish: the ledger breaks ties between alike elements by this order.
 	const out = new Map<string, PortFile>();
-	await Promise.all(
-		files.map(async (path) => {
-			const file = relative(app, path).split(sep).join('/');
-			const text = await readFile(path, 'utf8').catch(() => undefined);
-			if (text !== undefined) out.set(file, readPortFile(file, text));
-		}),
-	);
+	files.forEach((path, i) => {
+		const text = texts[i];
+		const file = relative(app, path).split(sep).join('/');
+		if (text !== undefined) out.set(file, readPortFile(file, text));
+	});
 	return out;
 }
 
