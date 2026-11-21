@@ -9,6 +9,7 @@ import { chromium, type Browser } from 'playwright';
 import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from '../src/discover/record.ts';
 import { claimed, discoveryMarkdown, discoveryReport, draftReport, finishDiscovery, labelFilter, membersIn, lostUses, MAX_DEMO_ELEMENTS, noScene, partly, routeDiscovery, sceneUses, shortKey, type Claims, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
 import { cutsOf } from '../src/discover/report.ts';
+import type { SceneNode } from '../src/convert/scenes.ts';
 
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
 const PAGE = `<!doctype html><html><head><style>
@@ -363,10 +364,15 @@ test('a control a scene ports only in part is said so and fails the job: uses th
 	assert.equal(discoveryMarkdown(draftReport({ '/': route })).failed, true, 'and the job fails on them as on a dead control');
 });
 
-test('a recorded demo is replaced only by a recording that keeps every use it had', () => {
-	const edge = (control: string) => ({ from: 0, control, to: 1, frames: [] });
-	assert.deepEqual(lostUses({ edges: [edge('textarea||Ask#0|fill'), edge('textarea||Ask#0|enter'), edge('button||Fix#0')] }, [{ edges: [edge('textarea||Ask#0|fill'), edge('button||Fix#0'), edge('button||New#0')] }]), ['textarea||Ask#0|enter']);
-	assert.deepEqual(lostUses({ edges: [edge('button||Fix#0')] }, [{ edges: [edge('button||Fix#0'), edge('button||New#0')] }]), []);
+test('a recorded demo is replaced only by a recording that keeps every use it had, by control and the state it was used from', () => {
+	const node = (text: string): SceneNode => ({ id: 1, tag: 'div', attrs: [], kids: [{ id: 2, text }] });
+	const states = [node('start'), node('asked'), node('fixed')];
+	const edge = (control: string, from = 0, to = 1) => ({ from, control, to, frames: [] });
+	assert.deepEqual(lostUses({ states, edges: [edge('textarea||Ask#0|fill'), edge('textarea||Ask#0|enter'), edge('button||Fix#0')] }, [{ states, edges: [edge('textarea||Ask#0|fill'), edge('button||Fix#0'), edge('button||New#0')] }]), ['textarea||Ask#0|enter from "start"']);
+	assert.deepEqual(lostUses({ states, edges: [edge('button||Fix#0')] }, [{ states, edges: [edge('button||Fix#0'), edge('button||New#0')] }]), []);
+	// The new recording keeps Fix from the start but loses Fix from the state Ask led to: a use lost, though the control is still there.
+	const fresh = [{ states: [node('start'), node('fixed')], edges: [edge('button||Fix#0', 0, 1)] }];
+	assert.deepEqual(lostUses({ states, edges: [edge('button||Fix#0', 0, 2), edge('button||Fix#0', 1, 2)] }, fresh), ['button||Fix#0 from "asked"']);
 });
 
 test('a page region (main, a layout landmark, the body) is never a demo', () => {
