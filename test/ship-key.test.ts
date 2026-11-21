@@ -100,7 +100,7 @@ test('a run reuses the routes whose served HTML and code are as they were, and c
 		const first = await selectReusable({ routes: ['/a', '/b', '/missing'], newOrigin, oldOrigin, closures: closures(base), versions, dir });
 		assert.deepEqual(first.check, ['/a', '/b', '/missing']);
 		assert.match(first.unkeyed.get('/missing') ?? '', /404/);
-		await keepChecked(dir, [result({ route: '/a' }), result({ route: '/b', ok: false })], first.keys, '2026-10-28T00:00:00.000Z', { newOrigin });
+		await keepChecked(dir, [result({ route: '/a', files: [] }), result({ route: '/b', ok: false, files: [] })], first.keys, '2026-10-28T00:00:00.000Z', { newOrigin });
 		// A new build: every pack renamed, and one module only /b runs changed.
 		chunk = 'CCCCCCCC';
 		const second = await selectReusable({ routes: ['/a', '/b', '/missing'], newOrigin, oldOrigin, closures: closures({ ...base, 'symbol:b:0': 'b9' }), versions, dir });
@@ -129,7 +129,7 @@ test('a stylesheet, a script outside the packs, the old page or a response the p
 		const [newOrigin, oldOrigin] = servers.map((s) => `http://127.0.0.1:${(s.address() as AddressInfo).port}`) as [string, string];
 		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
 		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir });
-		const keep = async (network: string[]) => keepChecked(dir, [result({ network: { old: [], new: network, server: { old: false, new: false } } })], (await select()).keys, '2026-10-28T00:00:00.000Z', { newOrigin });
+		const keep = async (network: string[]) => keepChecked(dir, [result({ files: [], network: { old: [], new: network, server: { old: false, new: false } } })], (await select()).keys, '2026-10-28T00:00:00.000Z', { newOrigin });
 		await keep(['browser GET {self}/api/data']);
 		assert.equal((await select()).reused.length, 1);
 		files['/site.css'] = 'p{color:blue}';
@@ -180,4 +180,40 @@ test("the Markless packages and the build toolchain the port names are in the ke
 	assert.equal(toolchain(pkg), '@markless/core@file:./.markless-local/markless-core-0.9.0.tgz vite@npm:@voidzero-dev/vite-plus-core@1.3.0 vite-plus@1.3.0');
 	assert.notEqual(toolchain({ ...pkg, devDependencies: { 'vite-plus': '1.4.0' } }), toolchain(pkg), 'another Vite+ builds other bytes');
 	assert.equal(toolchain({ devDependencies: { 'vite-plus': '1.3.0' } }), '');
+});
+
+test("an image, a font through the stylesheet, a pack or a later fetch the route's check loaded changing bytes means checking again, though the HTML names none of them", async () => {
+	const files: Record<string, string> = { '/site.css': '@font-face{src:url(/inter.woff2)}', '/inter.woff2': 'font1', '/hero.png': 'png1', '/build/chunk-AAAAAAAA.js': 'pack1', '/search.json': '[1]' };
+	const html = page('pages/a.tsrx', 'AAAAAAAA').replace('</head>', '<link rel="stylesheet" href="/site.css"></head>');
+	const server = createServer((req, res) => {
+		if (req.url === '/a') return void res.writeHead(200, { 'content-type': 'text/html' }).end(html);
+		const body = files[req.url ?? ''];
+		if (body === undefined) return void res.writeHead(404).end();
+		res.writeHead(200, { 'content-type': 'application/octet-stream' }).end(body);
+	});
+	const oldServer = createServer((_, res) => void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><p>old</p>'));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	await new Promise<void>((done) => oldServer.listen(0, '127.0.0.1', done));
+	try {
+		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
+		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
+		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir });
+		const keep = async () => keepChecked(dir, [result({ files: ['/a', '/build/chunk-AAAAAAAA.js', '/hero.png', '/inter.woff2', '/search.json', '/site.css'] })], (await select()).keys, '2026-11-21T00:00:00.000Z', { newOrigin });
+		await keep();
+		assert.equal((await select()).reused.length, 1);
+		for (const [file, bytes] of [['/hero.png', 'png2'], ['/inter.woff2', 'font2'], ['/build/chunk-AAAAAAAA.js', 'pack2'], ['/search.json', '[2]']] as const) {
+			await keep();
+			files[file] = bytes;
+			assert.equal((await select()).reused.length, 0, `${file} changed`);
+		}
+		await keep();
+		delete files['/hero.png'];
+		assert.equal((await select()).reused.length, 0, 'a file the route loaded is gone');
+		await keepChecked(dir, [result()], (await select()).keys, '2026-11-21T00:00:00.000Z', { newOrigin });
+		assert.equal((await select()).reused.length, 0, 'a result that does not say which files its check loaded is never reused');
+	} finally {
+		server.close();
+		oldServer.close();
+	}
 });

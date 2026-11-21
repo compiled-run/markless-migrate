@@ -1,7 +1,8 @@
 // A route's check is reused only while what it ships is unchanged: its served HTML (pack file names aside), the code hash
 // of every module it can run (the build's interaction closures, before packing), the bytes of every other file its HTML
-// names, the responses it fetched at load, OLD's HTML, and the checker's and Markless's versions. Pack hashes are left out
-// on purpose: a shared pack changes whenever any member does.
+// names, the responses it fetched at load, the bytes of every file of NEW its check fetched (images, fonts, the packs it
+// ran, later fetches), OLD's HTML, and the checker's and Markless's versions. Pack names stay out of the key itself: a
+// shared pack is renamed whenever any member changes, and only the packs this route fetched are compared.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -69,10 +70,13 @@ export function reuseKey(versions: Readonly<Record<string, string>>, parts: read
 	return hash.digest('base64url');
 }
 
-export type Reused = RouteResult & { readonly reused: { readonly key: string; readonly checkedAt: string }; readonly loads?: Record<string, string> };
+/** What a kept result was checked against beyond its key: the load-time responses (`loads`) and every file of NEW its check fetched (`bytes`), each as fetched again when it was kept. */
+type Kept = RouteResult & { readonly loads?: Record<string, string>; readonly bytes?: Record<string, string> };
+
+export type Reused = Kept & { readonly reused: { readonly key: string; readonly checkedAt: string } };
 
 /** A kept result only when it compared the whole route: never one cut short by the network, a bot wall, `--only` or its timeout. */
-export async function writeReusable(dir: string, key: string, result: RouteResult & { readonly loads?: Record<string, string> }, checkedAt: string): Promise<void> {
+export async function writeReusable(dir: string, key: string, result: Kept, checkedAt: string): Promise<void> {
 	if (result.infrastructure || result.blocked || result.only || result.reused || result.failures.some((f) => f.check === CHECK_STOPPED)) return;
 	await mkdir(dir, { recursive: true });
 	const path = join(dir, `${key}.json`);
@@ -82,7 +86,7 @@ export async function writeReusable(dir: string, key: string, result: RouteResul
 
 export async function readReusable(dir: string, key: string): Promise<Reused | undefined> {
 	try {
-		const { checkedAt, result } = JSON.parse(await readFile(join(dir, `${key}.json`), 'utf8')) as { checkedAt: string; result: RouteResult & { loads?: Record<string, string> } };
+		const { checkedAt, result } = JSON.parse(await readFile(join(dir, `${key}.json`), 'utf8')) as { checkedAt: string; result: Kept };
 		return { ...result, reused: { key, checkedAt } };
 	} catch {
 		return undefined;
@@ -170,6 +174,32 @@ async function fetchHash(url: string, headers: Record<string, string>): Promise<
 	}
 }
 
+async function fetchState(url: string, headers: Record<string, string>): Promise<string | undefined> {
+	try {
+		const res = await fetch(url, { headers, redirect: 'manual' });
+		return `${res.status} ${res.headers.get('content-type') ?? ''} ${res.headers.get('location') ?? ''} ${sha(new Uint8Array(await res.arrayBuffer()))}`;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Each of NEW's files a check fetched, as it answers now (status, type, redirect and bytes); undefined when one does not answer at all. */
+export async function fileStates(paths: readonly string[], origin: string, headers: Record<string, string>, cache = new Map<string, Promise<string | undefined>>()): Promise<Record<string, string> | undefined> {
+	const once = (path: string) => {
+		let state = cache.get(path);
+		if (!state) cache.set(path, (state = fetchState(new URL(path, origin).href, headers)));
+		return state;
+	};
+	const sorted = [...new Set(paths)].sort();
+	const states = await Promise.all(sorted.map(async (path) => [path, await once(path)] as const));
+	const out: Record<string, string> = {};
+	for (const [path, state] of states) {
+		if (state === undefined) return undefined;
+		out[path] = state;
+	}
+	return out;
+}
+
 // A browser GET of the port's own origin with nothing in it a check templated: it can be fetched again as it was.
 const PLAIN_LOAD = /^(?:\d+x )?browser GET \{self\}(\/[^\s{}]*)$/;
 
@@ -202,6 +232,7 @@ export async function selectReusable(input: { readonly routes: readonly string[]
 	const unkeyed = new Map<string, string>();
 	const files = new Map<string, Promise<string | undefined>>();
 	const fileHash = (url: string) => files.get(url) ?? files.set(url, fetchHash(url, headers)).get(url)!;
+	const fetched = new Map<string, Promise<string | undefined>>();
 	const page = async (origin: string, route: string, sendHeaders: boolean) => {
 		const res = await fetch(new URL(route, origin), { headers: sendHeaders ? headers : {}, redirect: 'manual' });
 		return { status: res.status, type: res.headers.get('content-type') ?? '', text: await res.text() };
@@ -238,21 +269,23 @@ export async function selectReusable(input: { readonly routes: readonly string[]
 		keys.set(route, key);
 		const kept = await readReusable(input.dir, key);
 		const loads = kept ? await loadHashes(kept.network?.new, input.newOrigin, headers) : undefined;
-		if (kept && kept.route === route && !kept.role && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads)) reused.push(kept);
+		const bytes = kept?.bytes ? await fileStates(Object.keys(kept.bytes), input.newOrigin, headers, fetched) : undefined;
+		if (kept && kept.route === route && !kept.role && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads) && bytes && JSON.stringify(bytes) === JSON.stringify(kept.bytes)) reused.push(kept);
 		else check.push(route);
 	}
 	return { check, reused, keys, unkeyed };
 }
 
-/** Keeps every route this run checked under its key, for the next run, with the responses it fetched at load as they are now. */
+/** Keeps every route this run checked under its key, for the next run, with the responses it fetched at load and every file of NEW it fetched, as they are now. */
 export async function keepChecked(dir: string, routes: readonly RouteResult[], keys: ReadonlyMap<string, string>, checkedAt: string, input: { readonly newOrigin: string; readonly headers?: Record<string, string> }): Promise<number> {
 	let kept = 0;
 	for (const result of routes) {
 		const key = !result.role || result.role === 'anonymous' ? keys.get(result.route) : undefined;
 		if (!key || result.reused) continue;
 		const loads = await loadHashes(result.network?.new, input.newOrigin, input.headers ?? {});
-		if (!loads) continue;
-		await writeReusable(dir, key, { ...result, loads }, checkedAt);
+		const bytes = result.files ? await fileStates(result.files, input.newOrigin, input.headers ?? {}) : undefined;
+		if (!loads || !bytes) continue;
+		await writeReusable(dir, key, { ...result, loads, bytes }, checkedAt);
 		kept++;
 	}
 	return kept;

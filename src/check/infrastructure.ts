@@ -129,10 +129,12 @@ export class Scope {
 	/** Requests the route's pages are waiting on, by when each was sent; when each origin last answered, and when a request last failed. */
 	readonly waiting = new Map<Request, { url: string; at: number }>();
 	readonly answered = new Map<string, number>();
+	/** The URL of every GET the route's pages had answered by a server, not by the checker standing in for it. */
+	readonly fetched = new Set<string>();
 	/** When each frame last committed a navigation. */
 	private readonly navigated = new WeakMap<Frame, number>();
 	failed = 0;
-	track(context: BrowserContext): void {
+	track(context: BrowserContext, answeredByChecker: (request: Request) => boolean = () => false): void {
 		if (this.closed) {
 			void context.close().catch(() => {});
 			throw new InfrastructureError({ cause: 'check timeout', message: 'the route check was stopped at its deadline' });
@@ -141,6 +143,9 @@ export class Scope {
 		context.on('close', () => this.contexts.delete(context));
 		context.on('page', (page) => page.on('framenavigated', (frame) => this.navigated.set(frame, Date.now())));
 		context.on('request', (request) => this.waiting.set(request, { url: request.url(), at: Date.now() }));
+		context.on('response', (response) => {
+			if (response.request().method() === 'GET' && !answeredByChecker(response.request())) this.fetched.add(response.url());
+		});
 		context.on('requestfinished', (request) => {
 			this.waiting.delete(request);
 			try {

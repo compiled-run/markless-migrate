@@ -51,7 +51,7 @@ import { observeMotion } from './motion.ts';
 import { observeScroll } from './scroll-motion.ts';
 import { observeDialogs } from './dialogs.ts';
 import { checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { contractLines, type NetworkRecord } from './network.ts';
+import { contractLines, sameApp, type NetworkRecord } from './network.ts';
 import { observeProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { CheckProgress } from './progress.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -728,7 +728,7 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 		if (first !== 'late') {
 			const timing = { ms: Date.now() - began, steps: [...stepsOf(route).done] };
 			log?.record({ stage: 'timing', req: '', value: timing });
-			const timed = { ...first, timing };
+			const timed = { ...first, timing, files: fetchedFiles(scope, run.new.origin) };
 			routeSteps.delete(route);
 			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
 			return timed;
@@ -757,6 +757,16 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 			: { failure: { route, dimension: 'http', check: CHECK_STOPPED, expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime } };
 	log?.record({ stage: 'deadline', req: '', value: deadline }, true);
 	return deadlineResult(route, deadline, found);
+}
+
+/** NEW's own files among what a route's pages fetched, by path and query. */
+export function fetchedFiles(scope: Pick<Scope, 'fetched'>, origin: string): string[] {
+	const out = new Set<string>();
+	for (const raw of scope.fetched) {
+		const url = URL.parse(raw);
+		if (url && /^https?:$/.test(url.protocol) && sameApp(url, origin)) out.add(`${url.pathname}${url.search}`);
+	}
+	return [...out].sort();
 }
 
 async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
