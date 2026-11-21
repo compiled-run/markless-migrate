@@ -105,6 +105,8 @@ export interface Shared {
 	publish(group: string, control: PressedControl | undefined): void;
 	/** The route is recorded in this run (its result comes from it), not only kept in the store from another shard's. */
 	inRun(route: string): boolean;
+	/** The route comes before this one in this run's order: only such a route's result is waited for. */
+	earlier(route: string): boolean;
 	/** The group may be counted at all (a spot check has not found it counted wrongly). */
 	counts(group: string): boolean;
 	/** Every 10th route presses one counted control of each group anyway and compares it with the owner's. */
@@ -724,6 +726,14 @@ const within = <T>(work: Promise<T>, what: string): Promise<T> => {
 	return Promise.race([work, late]).finally(() => clearTimeout(timer));
 };
 
+/** Another route's turn: it ends within its own hang guard, which publishes nothing when it fires, so this is longer. */
+const OTHER_ROUTE_MS = HANG_MS + STEP_MS;
+const waitFor = <T>(work: Promise<T>, what: string): Promise<T> => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<never>((_, fail) => (timer = setTimeout(() => fail(new Error(`stopped: ${what} did not come within ${OTHER_ROUTE_MS / 1000} s`)), OTHER_ROUTE_MS)));
+	return Promise.race([work, late]).finally(() => clearTimeout(timer));
+};
+
 // A page that stopped answering fails the route; any other failure of the step is the control's.
 const unlessStalled = <T>(fallback: T) => (error: unknown): T => {
 	if (error instanceof Error && error.message.startsWith('stopped:')) throw error;
@@ -744,12 +754,13 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		const { page: _, claims: __, ...facts } = kept;
 		if (!shared) return facts;
 		// A count stands while the route it names still has that result: from this run if it is recorded here, else its kept recording (another shard's).
-		await shared.owners(facts.groups ?? []);
+		await waitFor(shared.owners(facts.groups ?? []), 'the earlier routes announcing their controls');
 		let current = true;
 		for (const c of facts.controls) {
 			if (!c.sameAs || !c.group) continue;
 			const named = c.sameAs.route;
-			const o = !shared.counts(c.group) ? undefined : shared.inRun(named) ? await shared.result(named, c.group) : await keptResult(dir, named, c.group);
+			// A route later in this run's order may itself wait on this one: its count is stale, recorded again.
+			const o = !shared.counts(c.group) ? undefined : shared.inRun(named) ? (shared.earlier(named) ? await waitFor(shared.result(named, c.group), `${named}'s result for a counted control`) : undefined) : await keptResult(dir, named, c.group);
 			if (!o || resultHash(o) !== c.sameAs.hash) current = false;
 		}
 		// A recording with a spot mismatch is made again: its group is pressed on every route now.
@@ -885,7 +896,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	try {
 		await load();
 		({ candidates, excluded, repeats, repeatsOf, left } = await find());
-		owners = shared ? await shared.owners(candidates.map((c) => c.group)) : new Map();
+		owners = shared ? await waitFor(shared.owners(candidates.map((c) => c.group)), 'the earlier routes announcing their controls') : new Map();
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
 		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
 		drift = await inPage('watching the page', () => at().evaluate((ms) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.watch(ms), DRIFT_WATCH_MS));
@@ -928,7 +939,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			const owner = owners.get(c.group);
 			if (shared && owner && !c.ancestors.some((a) => holders.has(a))) {
-				const o = await shared.result(owner, c.group);
+				const o = await waitFor(shared.result(owner, c.group), `${owner}'s result for a counted control`);
 				if (o && countable(o, c.layout)) {
 					if (!shared.spot || spotted.has(c.group)) {
 						controls.push({ ...base, shape: o.shape, ...(o.states ? { states: o.states } : {}), ...(o.changes ? { changes: o.changes } : {}), sameAs: { route: owner, hash: resultHash(o) } });
@@ -947,7 +958,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			fresh = true;
 			const control = at().locator(`[data-mm-discover="${index}"]`).first();
-			await at().mouse.move(0, 0);
+			await within(at().mouse.move(0, 0), 'moving the pointer away');
 			// In view at once (Playwright's own scroll waits for a visibility an unpressable control never gets), hit-tested at its centre, focus off the last control, the page still.
 			const ready = await inPage('reading the page before the press', () =>
 				at().evaluate(([i, last, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.before(i, last ?? undefined, cap, quiet), [index, lastRead ?? null, SCRIPTS_STILL_CAP_MS, STILL_MS] as const),
@@ -995,7 +1006,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				continue;
 			}
 			const start = states[0] ?? 0;
-			await at().mouse.move(0, 0);
+			await within(at().mouse.move(0, 0), 'moving the pointer away');
 			const seen = await inPage('reading the press', () => at().evaluate(([start, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.after(start, drift, pressed, cap, quiet), [start, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
 			const { quick } = seen;
 			let { now: settled, first } = seen;
@@ -1047,7 +1058,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {
 				hung();
 				await press();
-				await at().mouse.move(0, 0);
+				await within(at().mouse.move(0, 0), 'moving the pointer away');
 				await lateMarks();
 				const after = await inPage('reading a later press', () => at().evaluate(([states, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.again(states, drift, pressed, cap, quiet), [states, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
 				looked(after, []);

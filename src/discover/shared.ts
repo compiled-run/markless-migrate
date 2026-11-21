@@ -37,6 +37,7 @@ export function sharedControls(order: readonly string[], unshared: ReadonlySet<s
 		return {
 			spot: index % SPOT_EVERY === SPOT_EVERY - 1,
 			inRun: (other) => order.includes(other),
+			earlier: (other) => earlier.includes(other),
 			counts: (group) => !unshared.has(group),
 			owners: async (groups) => {
 				announce(route).resolve(new Set(groups));

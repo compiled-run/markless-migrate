@@ -283,6 +283,33 @@ test('a count made in a shard against its own first route is accepted when every
 	await rm(state, { recursive: true, force: true });
 });
 
+test('a kept count that names a route later in this run\'s order is recorded again, not waited on, so two routes never wait on each other', { timeout: 120_000 }, async () => {
+	const state = await mkdtemp(join(tmpdir(), 'mm-discover-order-'));
+	const by = (f: DiscoverFacts | undefined, name: string) => f?.controls.find((c) => c.name === name);
+	const run = async (order: readonly string[]) => {
+		const rec = await discoverRecorder(state, origin, () => {}, order);
+		return Promise.all(order.map((r) => rec.record(browser, r)));
+	};
+	const [, third] = await run(['/chrome-second', '/chrome-third']);
+	assert.equal(by(third, 'Copy')?.sameAs?.route, '/chrome-second');
+	// The second route's recording is gone, so it is recorded fresh and, coming after the third now, counts from it.
+	const dir = join(state, 'convert', 'discover');
+	const [version] = await readdir(dir).then((d) => d.filter((x) => x.startsWith('v-')));
+	for (const f of await readdir(join(dir, version ?? ''))) {
+		const facts: unknown = JSON.parse(await readFile(join(dir, version ?? '', f), 'utf8'));
+		if (typeof facts === 'object' && facts !== null && 'route' in facts && facts.route === '/chrome-second') await rm(join(dir, version ?? '', f));
+	}
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const hung = new Promise<'hung'>((done) => (timer = setTimeout(() => done('hung'), 60_000)));
+	const got = await Promise.race([run(['/chrome-third', '/chrome-second']), hung]).finally(() => clearTimeout(timer));
+	assert.notEqual(got, 'hung', 'the two routes waited on each other');
+	if (got === 'hung') return;
+	const [third2, second2] = got;
+	assert.equal(by(third2, 'Copy')?.sameAs, undefined, 'the third owns the group now: it pressed its Copy');
+	assert.equal(by(second2, 'Copy')?.sameAs?.route, '/chrome-third');
+	await rm(state, { recursive: true, force: true });
+});
+
 test('a press costs a fixed handful of browser calls: the page reads, waits and compares in itself, and its scripts go in once per context', async () => {
 	const calls: Record<string, number> = {};
 	const probe = await browser.newPage();
