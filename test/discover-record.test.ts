@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from '../src/discover/record.ts';
-import { claimed, discoveryMarkdown, discoveryReport, draftReport, finishDiscovery, labelFilter, lostUses, MAX_DEMO_ELEMENTS, noScene, partly, routeDiscovery, sceneUses, shortKey, type Claims, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
+import { claimed, discoveryMarkdown, discoveryReport, draftReport, finishDiscovery, labelFilter, membersIn, lostUses, MAX_DEMO_ELEMENTS, noScene, partly, routeDiscovery, sceneUses, shortKey, type Claims, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
 import { cutsOf } from '../src/discover/report.ts';
 
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
@@ -285,6 +285,15 @@ export default function Page() @{
 	await rm(app, { recursive: true, force: true });
 });
 
+test('a discovered demo\'s toggle is ported only with its recorded way back, followed by its place whatever its label', () => {
+	const play: PressedControl = { sig: 'button||', nth: 0, labelSig: 'button||Play', name: 'Play', found: 'role', ancestors: ['div||Stopped#0'], shape: 'toggle', states: 2, path: 'body>div1>button1', changes: [{ at: 'x', what: 'attribute', name: 'aria-label', before: 'Play', after: 'Pause' }] };
+	const none: Claims = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	const scene = (back: boolean) => ({ holder: 'div||Stopped#0', listed: SCENE_CONTROLS, labels: new Set(['button||Play', ...(back ? ['button||Pause'] : [])]), root: 'body>div1', usesAt: new Map([['button1', { recorded: back ? 2 : 1, skipped: 0, why: '', back }]]) });
+	assert.equal(claimed(play, { ...none, scenes: [scene(false)] }), 'control');
+	assert.match(partly(play, { ...none, scenes: [scene(false)] }) ?? '', /no use of it back to the state the demo loads in was recorded/);
+	assert.equal(partly(play, { ...none, scenes: [scene(true)] }), undefined, 'Play and Pause both recorded: ported');
+});
+
 test('a scene is recorded around the outermost unported demo, or again over a recorded demo whose listing left the control out', () => {
 	type Holder = NonNullable<PressedControl['holder']>;
 	const control = (name: string, path: string, holder: string, ancestors: string[], over: Partial<PressedControl> & { h?: Partial<Holder> } = {}): PressedControl => {
@@ -309,7 +318,8 @@ test('a scene is recorded around the outermost unported demo, or again over a re
 		],
 		'the outer holder takes the inner one: two controls in one scene',
 	);
-	assert.deepEqual(holders[1]?.labels, ['Fix the build', 'Ask'], "a recorded demo recorded again keeps its own controls' labels");
+	assert.deepEqual(holders[1]?.labels, ['Ask'], "a recorded demo recorded again keeps its own controls' labels");
+	assert.deepEqual(holders.map((h) => membersIn(h)), [['div2>button1', 'div2>div3>button1'], ['button2']], 'the dead controls are followed by their place in the holder, not their label');
 	assert.equal(labelFilter(['Start Listening', 'Stop Listening', 'a+b']), '^(Start Listening|Stop Listening|a\\+b)$');
 	const route = routeDiscovery(page, { ...none, scenes: [] }, holders);
 	assert.ok(route.notes?.some((n) => /canvas .* not ported/.test(n)));

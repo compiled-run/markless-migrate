@@ -21,7 +21,16 @@ export interface Claims {
 	/** Widgets a recording ports whole (a carousel, a table, a chart): every control inside is theirs. sig#nth. */
 	readonly holders: ReadonlySet<string>;
 	/** Each recorded demo's container, the selector its controls were listed by, and the label signatures of those its uses were recorded for. */
-	readonly scenes: readonly { readonly holder: string; readonly listed: string; readonly labels: ReadonlySet<string>; /** Per label signature: the uses recorded and those not (a bound, a use that failed). */ readonly uses?: ReadonlyMap<string, { readonly recorded: number; readonly skipped: number; readonly why: string }> }[];
+	readonly scenes: readonly {
+		readonly holder: string;
+		readonly listed: string;
+		readonly labels: ReadonlySet<string>;
+		/** Per label signature: the uses recorded and those not (a bound, a use that failed). */
+		readonly uses?: ReadonlyMap<string, { readonly recorded: number; readonly skipped: number; readonly why: string }>;
+		/** A discovered demo's place on the page (its path from the body), and per control place in it the uses recorded and not. */
+		readonly root?: string;
+		readonly usesAt?: ReadonlyMap<string, { readonly recorded: number; readonly skipped: number; readonly why: string; readonly back: boolean }>;
+	}[];
 	/** Controls the site names in controls.json by their name (a theme toggle). */
 	readonly names: ReadonlySet<string>;
 	/** Every element another recording owns (its controls, widgets, demos), by `shortKey` of its sig#nth, with what it is. */
@@ -45,10 +54,17 @@ export const holderName = (at: string): string => at.split('|').slice(0, 2).join
  * uses include it and the demo holds everything its presses change; `holder` when it only sits inside a widget a
  * recording ports whole, which says nothing of this control (a table's drag handle), so the written port is asked about it.
  */
+/** A control's place in a discovered demo's scene, when the scene recorded uses of it there. */
+const placeIn = (c: Pick<PressedControl, 'path'>, s: Claims['scenes'][number]): string | undefined => {
+	if (s.root === undefined || !c.path?.startsWith(`${s.root}>`)) return undefined;
+	const at = c.path.slice(s.root.length + 1);
+	return s.usesAt?.has(at) ? at : undefined;
+};
+
 export function claimed(c: PressedControl, claims: Claims): 'control' | 'holder' | undefined {
 	if (claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return 'control';
 	const within = (scene: string) => (c.holder ? c.holder.at === scene || (c.holder.ancestors ?? []).includes(scene) : c.ancestors.includes(scene));
-	if (claims.scenes.some((s) => s.labels.has(c.labelSig) && within(s.holder))) return 'control';
+	if (claims.scenes.some((s) => (s.labels.has(c.labelSig) && within(s.holder)) || placeIn(c, s) !== undefined)) return 'control';
 	return c.ancestors.some((a) => claims.holders.has(a)) ? 'holder' : undefined;
 }
 
@@ -66,8 +82,10 @@ export interface SceneHolder {
 	readonly replaces?: string;
 	/** How many of its controls discovery found dead: each may lead to a state of its own, which the recording makes room for. */
 	readonly controls: number;
-	/** The labels the scene uses its controls by: the dead controls' own, what their presses relabel them to, and a recorded demo's own. */
+	/** The labels the scene uses a recorded demo's own controls by. */
 	readonly labels: readonly string[];
+	/** The dead controls' paths from the body: each is followed by its place in the holder, whatever its label. */
+	readonly members: readonly string[];
 }
 
 export { MAX_DEMO_ELEMENTS, MAX_DEMO_USES };
@@ -85,6 +103,25 @@ export function sceneUses(scene: Pick<Scene, 'edges' | 'skippedUses'>): Map<stri
 	return out;
 }
 
+/** Per control place in a discovered demo: the uses recorded and not, and whether a use of it leads back to the state the demo loads in. */
+export function sceneUsesAt(scene: Pick<Scene, 'edges' | 'skippedUses'>): Map<string, { recorded: number; skipped: number; why: string; back: boolean }> {
+	const out = new Map<string, { recorded: number; skipped: number; why: string; back: boolean }>();
+	const of = (at: string) => out.get(at) ?? out.set(at, { recorded: 0, skipped: 0, why: '', back: false }).get(at) ?? { recorded: 0, skipped: 0, why: '', back: false };
+	for (const e of scene.edges) {
+		if (e.at === undefined) continue;
+		const got = of(e.at);
+		got.recorded++;
+		if (e.to === 0 && e.from !== 0) got.back = true;
+	}
+	for (const u of scene.skippedUses ?? []) {
+		if (u.at === undefined) continue;
+		const got = of(u.at);
+		got.skipped++;
+		got.why ||= u.why;
+	}
+	return out;
+}
+
 /** The uses an old recording of a demo had that none of the new ones has: by control and the use made of it. */
 export function lostUses(old: Pick<Scene, 'edges'>, fresh: readonly Pick<Scene, 'edges'>[]): string[] {
 	const now = new Set(fresh.flatMap((s) => s.edges.map((e) => e.control)));
@@ -96,14 +133,24 @@ export function lostUses(old: Pick<Scene, 'edges'>, fresh: readonly Pick<Scene, 
  * activation (Enter, Space) is not replayed. Reported apart, and the job fails on it as on a dead control.
  */
 export function partly(c: PressedControl, claims: Claims): string | undefined {
+	if (claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return undefined;
+	const tag = c.sig.slice(0, c.sig.indexOf('|'));
+	const clickOnly = tag !== 'button' && tag !== 'summary' ? 'ported for its click only: a scene does not replay its keyboard activation (Enter, Space)' : undefined;
+	// A discovered demo's control, followed by its place: every use of it whatever its label, and its way back.
+	for (const s of claims.scenes) {
+		const at = placeIn(c, s);
+		const uses = at === undefined ? undefined : s.usesAt?.get(at);
+		if (!uses) continue;
+		if (uses.skipped) return `ported for ${uses.recorded} of ${uses.recorded + uses.skipped} uses: ${uses.skipped} not recorded (${uses.why})`;
+		if ((c.shape === 'toggle' || c.shape === 'cycle') && !uses.back) return 'ported only on its way from the first state: no use of it back to the state the demo loads in was recorded';
+		return clickOnly;
+	}
 	const within = (scene: string) => (c.holder ? c.holder.at === scene || (c.holder.ancestors ?? []).includes(scene) : c.ancestors.includes(scene));
 	const scene = claims.scenes.find((s) => s.labels.has(c.labelSig) && within(s.holder));
-	if (!scene || claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return undefined;
+	if (!scene) return undefined;
 	const uses = scene.uses?.get(c.labelSig);
 	if (uses?.skipped) return `ported for ${uses.recorded} of ${uses.recorded + uses.skipped} uses: ${uses.skipped} not recorded (${uses.why})`;
-	const tag = c.sig.slice(0, c.sig.indexOf('|'));
-	if (tag !== 'button' && tag !== 'summary') return 'ported for its click only: a scene does not replay its keyboard activation (Enter, Space)';
-	return undefined;
+	return clickOnly;
 }
 
 const focusMoved = (c: PressedControl) => (c.changes ?? []).some((x) => x.what === 'focus');
@@ -114,14 +161,14 @@ const markupChanged = (c: PressedControl) => (c.changes ?? []).some((x) => x.wha
 // A scene is recorded for a lasting markup change; a transient one (a "Copied" mark) is left to the port check.
 const sceneWorthy = (c: PressedControl, claims: Claims) => STATEFUL.has(c.shape) && c.shape !== 'transient' && !claimed(c, claims) && markupChanged(c);
 
-// A control's label and the labels its own press gives it (Start Listening, then Stop Listening).
-const labelsOf = (c: PressedControl) => [c.name, ...(c.changes ?? []).filter((x) => x.what === 'text' && x.before === c.name && x.after).map((x) => x.after ?? '')];
-
 // The label part of a scene's label signature (tag|data-slot|label).
 const labelOfSig = (sig: string) => sig.split('|').slice(2).join('|');
 
-/** The text filter a scene's uses take: the labels, whole, as captureScenes matches a control's label. */
-export const labelFilter = (labels: readonly string[]): string => `^(${[...new Set(labels)].map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`;
+/** The text filter a scene's uses take: the labels, whole, as captureScenes matches a control's label; none, no filter. */
+export const labelFilter = (labels: readonly string[]): string => (labels.length ? `^(${[...new Set(labels)].map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$` : '');
+
+/** The holder's dead controls by their place in it, as captureScenes follows them. */
+export const membersIn = (holder: Pick<SceneHolder, 'path' | 'members'>): string[] => holder.members.filter((p) => p.startsWith(`${holder.path}>`)).map((p) => p.slice(holder.path.length + 1));
 
 /** Why a scene-worthy control gets no scene, or none: its holder is the page, too large, drives a widget, overlaps what another recording owns, or its press is not repeatable. */
 export function noScene(c: PressedControl, claims: Claims, scene?: Claims['scenes'][number]): string | undefined {
@@ -153,16 +200,16 @@ export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[
 			const i = c.ancestors.indexOf(scene.holder);
 			const path = c.path ? c.path.split('>').slice(0, -(i + 1)).join('>') : '';
 			if (!path) return [];
-			return [{ path, at: scene.holder, canvas: Boolean(h.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1, labels: [...labelsOf(c), ...[...scene.labels].map(labelOfSig)] }];
+			return [{ path, at: scene.holder, canvas: Boolean(h.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1, labels: [...scene.labels].map(labelOfSig), members: c.path ? [c.path] : [] }];
 		}
-		return [{ path: h.path, at: h.at, canvas: Boolean(h.canvas), listed: SCENE_CONTROLS, controls: 1, labels: labelsOf(c) }];
+		return [{ path: h.path, at: h.at, canvas: Boolean(h.canvas), listed: SCENE_CONTROLS, controls: 1, labels: [], members: c.path ? [c.path] : [] }];
 	});
 	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) {
 		const outer = out.findIndex((o) => h.path === o.path || h.path.startsWith(`${o.path}>`));
 		const o = outer < 0 ? undefined : out[outer];
 		if (!o) out.push(h);
 		// Two holders nest only for the same recorded demo or for none: what an existing demo holds is never inside a new one (noScene).
-		else out[outer] = { ...o, ...(o.replaces ?? h.replaces ? { replaces: o.replaces ?? h.replaces } : {}), controls: o.controls + 1, labels: [...o.labels, ...h.labels] };
+		else out[outer] = { ...o, ...(o.replaces ?? h.replaces ? { replaces: o.replaces ?? h.replaces } : {}), controls: o.controls + 1, labels: [...o.labels, ...h.labels], members: [...o.members, ...h.members] };
 	}
 	return out;
 }
