@@ -188,6 +188,78 @@ kept from before (a partial convert: it holds what the last full convert wrote, 
 without `--source` and does not write `vite.config.ts`. None of these stops the convert: the setting is an
 improvement the app can do without, and the report and log say it was not applied.
 
+### Controls no recording ports (dead controls)
+
+Every other recorder finds its controls by a mark it knows: ARIA's (`aria-expanded`, a checkbox, a tab), a part's, or a
+selector the site lists in `lib/site/controls.json`. A plain button whose click the page's own state answers ("Start
+Listening", a suggestion that sends a reply, a file in a tree) carries none, and would be written out as static markup
+with no message. So convert also presses, on each page of the original at desktop width (`src/discover/record.ts`):
+
+- every `button`, `[role=button]`, `summary` and `[role=treeitem]`, and every element the page's CSS gives a pointer or
+  text cursor its parent does not have (an input group's addon that focuses its field), each marked with how it was found;
+- never one inside a form or a link, a submit, a disabled or hidden one, one with no accessible name, one whose
+  accessible name (`aria-labelledby`, `aria-label`, its text, an image's `alt` or an svg's `title`, its `title`) ends a
+  session or deletes (`src/check/destructive.ts`), or one the reveals or the toggles take by their own selectors
+  (`REVEAL_CLICKS`, `toggles.ts`'s `SELECTOR`). Those are named per route and checked against what those recorders
+  recorded: one they recorded nothing for is reported as not looked at.
+
+Each press is read against the page before it: an element added, removed, shown or hidden, its text, an ARIA state or
+name, how it looks (display, visibility, opacity, colours, transform, size), focus moving to another element, a scroller's
+scroll, and any text a live region announced. A class, style or `data-` change that changes no look is not a change, nor an
+`animation-*` or `transition-*` style, an id reference renamed to the same element, a tooltip, hover or focus style (the
+pointer leaves and the control is focused before the first reading), or what changes on the page with no press at all
+(a clock: an element that changes with no press is taken back from a press only when that same element is all it
+changed). The page is read once the requests a press started are done and its scripts stop (`scriptsStill`), with
+animations finished, and again once its timers have run: a page that came back by itself is `transient`. Otherwise the control is pressed again, up to four times: back at the start is a `toggle`
+(or a `cycle` of three or more states), unchanged by the next press `one-way`. A request other than GET, HEAD or
+OPTIONS is held back twice: in the page (`fetch`, `XMLHttpRequest`, `sendBeacon`, a form's `submit()` and
+`requestSubmit()`, a native submission, a WebSocket's `send`) and, for what gets past that (a worker's fetch), by the
+browser's route. Either is reported as writing to a server, its state after the press unknown. A `WebSocket.send` from a
+worker, or from a frame the page's guard is not installed in, passes both: a known limit. A press that loads
+another document, opens a window, a download or a dialog is stopped and named; one that only changes the address of the
+same document (a filter written to the URL) is a change. A page a press left changed is loaded again, in a new
+browser context, before the next control. Discovery runs only against a copy of the original on this machine
+(`localhost`, `127.0.0.1`, `::1`), checked again after every load (a redirect elsewhere stops it): it presses each control up to
+four times.
+
+Discovery runs after the route's other recorders. A control one of their control lists uses (the reveals', toggles',
+switches', notifications', hover delays') is theirs and is not pressed; the claims are part of the recording's key. The
+same control on several routes is pressed once: the first route in convert's order that shows it owns it, and a later
+route counts it from that route's result ("same as <route>") when the control sits in a layout landmark outside main
+(header, nav, aside, footer, `src/check/landmarks.ts`) whose markup is the same on both routes, or else when the owner's
+result was a transient (the same change, text and all) or only a focus or scroll move. An inert result is counted only
+inside such a landmark, and an unpressable one never: both say something of the owner's page only. A control is grouped with others by that landmark and its markup, or else by the
+tag, slot and role of the component around it, with its signature and name. One inside a widget a recording ports whole
+is always pressed. A counted control stands only while the route it names still has the result it was counted from (that
+route's result in this run, or its kept recording when another capture shard made it): the recording is made again
+otherwise. Each capture shard owns groups by its own routes' order. About one route in ten, chosen by a hash of its path so the same routes do it whatever the shards hold, presses one counted control of each group anyway; a result other
+than the owner's names the group, fails that run's routes that counted from it, and has the group pressed on every route
+next run (`discover/v-<recorder>/unshared-*.json`, one file per run that found any, read together). The written port is
+still asked about every counted control that is stateful on its own route.
+
+A pressed control is ported when another recording of the route uses it (its signature and occurrence among the reveals,
+toggles, switches, notifications and hover delays), a recorded demo's uses include it, or the site names it (a theme
+toggle). One that only sits inside a widget a recording ports whole (a carousel, slider, chart, table, accordion, form or
+day picker) is ported only if the written port answers it: a table's paging is the table's, its drag handle is not. After convert writes the app, the
+port itself is asked about each one left (the ledger's sandbox, `src/discover/ported.ts`): a press its own Markless
+handler or a site or library part answers has a handler there, named in `handled` with what answered it and counted
+apart ("has a handler, effect not compared"): what that handler does is not compared with the original. One whose
+handler throws there stays dead. The rest that changed the page are the route's dead controls: `.migrate/convert/report.json` lists them (`deadControls`, with what each press changed),
+and convert's summary prints "Ported with dead controls: N controls on M routes" with every one by route, against the
+last run of the same store (`.migrate/convert/discover/last.json`, which keeps the dead controls by route; the count is
+derived from it: new and cleared). Each cut is said per route too: the controls not reached once the page's presses reach 160
+(a budget: for the same route order and owners, a page is cut at the same control every run; a page still going after 900 s stopped answering and is an
+error), grid cells (never pressed: a grid a recording holds, a day picker or a table, is that
+recording's, and one no recording holds is named), and repeats (a control is pressed twice per page by its signature,
+name and the nearest element around it with a slot, role or id; the same control elsewhere on the page is counted like
+the first once two presses of it did the same kind of thing; the rest count with the first one, dead with it). A
+route whose discovery failed or was cut is not looked at in full: it clears nothing and keeps its last findings; a
+failure is not kept as a recording. The pipeline's `dead-controls` job fails while there are dead controls
+or such routes; nothing waits on it, so the port is still built, checked and deployed, but the run is red. A pull
+request's run of the pipeline (which proves the pipeline on a fixed subset) lists them in its summary without failing;
+a missing report, or one that did not look, fails every run. A report an earlier run made (a kept emit) says which.
+Recordings are kept in `.migrate/convert/discover/v-<recorder>/` as the prefetch ones are.
+
 ### How to iterate on a port
 
 Fixing a route does not need a full convert, a full build, a deploy or a site-wide check. `fix` converts only the

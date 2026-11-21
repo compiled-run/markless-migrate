@@ -10,6 +10,7 @@ import { eachLimited, limiter } from './limit.ts';
 import { Relauncher } from './relaunch.ts';
 import { fetchRecordKey, recorderVersions, RecordDirs } from './record-key.ts';
 import { prefetchRecorder } from '../prefetch/convert.ts';
+import { discoverRecorder, draftReport, routeDiscovery, summarizeDiscovery, type Claims, type DiscoveryReport, type RouteDiscovery } from '../discover/convert.ts';
 import { decidePrefetch, type PrefetchDecision } from '../prefetch/decide.ts';
 import { routerOptions, routerPrefetchSupport } from './prefetch-config.ts';
 import { atRest } from './at-rest.ts';
@@ -27,7 +28,7 @@ import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclos
 import { captureCharts, CHART_CSS, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureClock, DATED, type ClockMark } from './clock.ts';
-import { captureScenes, type Scene } from './scenes.ts';
+import { captureScenes, edgeLabel, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, unrecordedToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
@@ -256,6 +257,8 @@ export interface ConvertReport {
 	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
+	/** Controls that change the original's page when pressed and that no recording ports: static markup on the port, by route. */
+	readonly deadControls?: DiscoveryReport;
 	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it. */
 	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string };
 }
@@ -1458,6 +1461,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	optionValues = {};
 	layerChoices = choices;
 	const failed = new Map<string, string>();
+	let discovering: Awaited<ReturnType<typeof discoverRecorder>> | undefined;
+	const discovered: Record<string, RouteDiscovery> = {};
 	try {
 		const limit = limiter(width);
 		// Routes read at once, each holding its captures (a few MB) between its pages: twice the pages, so a slot is rarely idle.
@@ -1552,6 +1557,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			),
 		);
 		prefetchRead.catch(() => {});
+		discovering = await discoverRecorder(state, options.old, log, routes);
 		const scenesRead = eachLimited(limit, plays, async ([selector, r, text]) => guarded(r, ['scenes'], async (browser) => captureScenes(browser, options.old, r, (await atFor(r, 'scenes')), selector, undefined, text))).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...(got[i]?.scenes ?? []).map((scene) => ({ scene, listed: selector }))])));
 		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
@@ -1839,6 +1845,39 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			// Where an option went is its page's (written on the option), as is what it gave a form.
 			const chosen = Object.entries(found).filter(([, c]) => c.href !== undefined || c.value !== undefined || c.shown !== undefined || c.trigger !== undefined);
 			if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
+		}
+		// What each route's other recordings port, so the pressed controls they do not are named.
+		const at = (x: { readonly sig: string; readonly nth: number }) => `${x.sig}#${x.nth}`;
+		const themeNames = new Set(listed.flatMap((c) => (c.action === 'theme' && 'name' in c && typeof c.name === 'string' ? [c.name] : [])));
+		const claimsOf = (route: string): Claims => ({
+			controls: new Set([...(revealed.get(route) ?? []).flatMap((r) => (r.sig ? [`${r.sig}#${r.nth ?? 0}`] : [])), ...(toggled.get(route) ?? []).flatMap((g) => g.controls.map(at)), ...(switched.get(route) ?? []).map(at), ...(notified.get(route) ?? []).map(at), ...(hoverDelays.get(route) ?? []).map(at)]),
+			holders: new Set([...(carouselFacts.get(route) ?? []), ...(sliderFacts.get(route) ?? []), ...(chartFacts.get(route) ?? []), ...(scrollerOpenings.get(route) ?? []), ...(accordionModes.get(route) ?? []), ...(tablesRead.get(route) ?? []).flatMap((t) => [t, t.region]), ...(formLibsRead.get(route) ?? []), ...(pickers.get(route)?.pickers ?? [])].map(at)),
+			scenes: (scenes.get(route) ?? []).map(({ scene }) => ({ holder: at(scene), labels: new Set(scene.edges.map((e) => edgeLabel(e.control))) })),
+			names: themeNames,
+		});
+		// After the other recorders: a control one of them uses is theirs and is not pressed (its claim is part of the recording's key).
+		const discoverSlots = limiter(width);
+		await Promise.all(
+			discovering.notRun
+				? []
+				: routes.map((r) =>
+						(pageOf.get(r) ?? Promise.resolve(undefined)).then((ref) => {
+							if (!ref || ref.status !== 200 || failed.has(r)) return void discovering?.skip(r);
+							const claims = claimsOf(r);
+							return discoverSlots(async () => {
+								const got = await browsers.retried(r, (browser) => (discovering ? discovering.record(browser, r, { controls: [...claims.controls], names: [...claims.names], holders: [...claims.holders] }) : Promise.reject(new Error('discovery not set up'))), async () => {}).catch((error: Error) => ({ failed: error.message.split('\n')[0] ?? '' }));
+								if (!('value' in got)) discovering?.unknown(r, got.failed);
+							});
+						}),
+					),
+		);
+		await discovering.save();
+		// A group a spot check found counted wrongly: every route that counted from it this run is not looked at in full.
+		const wrong = new Set([...discovering.recorded.values()].flatMap((f) => (f.spotMismatch ?? []).map((m) => m.group)));
+		for (const [route, facts] of discovering.recorded) {
+			const r = routeDiscovery(facts, claimsOf(route));
+			const untrusted = facts.controls.filter((c) => c.sameAs && c.group && wrong.has(c.group)).length;
+			discovered[route] = untrusted ? { ...r, untrusted } : r;
 		}
 		// Forms last: every other capture reads the old site before any form is submitted to it.
 		if (reveal) {
@@ -2723,6 +2762,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		...(used.unseen.length ? { unseenClassBuilders: used.unseen } : {}),
 		unplacedCharts,
 		stillCapped,
+		...(discovering ? { deadControls: draftReport(discovered, discovering.notRun) } : {}),
 		...(prefetchReport ? { prefetch: prefetchReport } : {}),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
@@ -2740,6 +2780,7 @@ export function summarizeConvert(report: ConvertReport): string {
 	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
 	if (report.unseenClassBuilders?.length) lines.push(`Classes built with no fixed start, which the stylesheet cut cannot see (${report.unseenClassBuilders.length}): ${report.unseenClassBuilders.slice(0, 12).join(', ')}`);
 	for (const c of report.unplacedCharts) lines.push(`  chart not placed ${c.route}: ${c.chart} (ships without its tooltip)`);
+	if (report.deadControls) lines.push(...summarizeDiscovery(report.deadControls));
 	if (report.stillCapped.length) lines.push(`Pages still drawing at the ${SCRIPTS_STILL_CAP_MS / 1000} s wait, read mid-frame: ${report.stillCapped.map((c) => `${c.route} (${c.viewports.join(', ')})`).join('; ')}`);
 	return `${lines.join('\n')}\n`;
 }

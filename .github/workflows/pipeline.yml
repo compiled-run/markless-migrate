@@ -534,6 +534,13 @@ jobs:
           tar -czf "$RUNNER_TEMP/out/app.tar.gz" --exclude=node_modules --exclude=.migrate/convert -C "$APP" .
           echo "${{ needs.prepare.outputs.emit-key }}" > "$RUNNER_TEMP/out/emit-key.txt"
           cp "$RUNNER_TEMP/copied-parts.txt" "$RUNNER_TEMP/out/copied-parts.txt"
+          # The dead controls this app was converted with, for the dead-controls job; a kept app brings its own.
+          if [ -f "$APP/.migrate/convert/report.json" ]; then cp "$APP/.migrate/convert/report.json" "$RUNNER_TEMP/out/convert-report.json"
+          elif [ -f "$RUNNER_TEMP/converted/convert-report.json" ]; then
+            cp "$RUNNER_TEMP/converted/convert-report.json" "$RUNNER_TEMP/out/convert-report.json"
+            # Which run made it: the dead-controls job says the report is that run's, not this one's.
+            if [ -f "$RUNNER_TEMP/converted/convert-report-from.txt" ]; then cp "$RUNNER_TEMP/converted/convert-report-from.txt" "$RUNNER_TEMP/out/"; else echo "${{ needs.prepare.outputs.emit-run }}" > "$RUNNER_TEMP/out/convert-report-from.txt"; fi
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
@@ -550,6 +557,38 @@ jobs:
             ${{ runner.temp }}/convert.txt
             ${{ runner.temp }}/verify.txt
           if-no-files-found: ignore
+
+  # Controls the original's pages change when pressed that the port ships as static markup: red while there are any,
+  # named by route against the last run. Nothing waits on this job, so the port is still built, checked and deployed.
+  dead-controls:
+    needs: [prepare, emit]
+    if: ${{ !cancelled() && needs.emit.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: pl-${{ env.SITE }}-converted-${{ needs.prepare.outputs.emit-base }}
+          path: ${{ runner.temp }}/converted
+      - name: Dead controls
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -o pipefail
+          status=0
+          from=""
+          [ ! -f "$RUNNER_TEMP/converted/convert-report-from.txt" ] || from="$(cat "$RUNNER_TEMP/converted/convert-report-from.txt")"
+          node scripts/dead-controls.ts "$RUNNER_TEMP/converted/convert-report.json" "$from" | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          # A pull request's run proves the pipeline on a fixed subset: its dead controls are listed in the summary, a port's run
+          # fails on them. A report that is missing or did not look (exit 2) fails every run.
+          if [ "$EVENT" = pull_request ] && [ "$status" -eq 1 ]; then echo "::warning::dead controls listed in the job summary (a pull request's run does not fail on them)"; exit 0; fi
+          exit "$status"
 
   build:
     needs: [gate, prepare, emit]

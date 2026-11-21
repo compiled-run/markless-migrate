@@ -1,3 +1,4 @@
+import { LAYOUT_LANDMARKS } from './landmarks.ts';
 import { stat } from 'node:fs/promises';
 import { sessionDatabases, updateCount } from './live-data.ts';
 import { linkUrl, pageRouting, routeLinks, routePath, shownUrl } from './hash-routes.ts';
@@ -328,7 +329,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			const nth = seen.get(key) ?? 0;
 			seen.set(key, nth + 1);
 			if (!(await locator.isVisible().catch(() => false)) || ((await readPatiently(locator, (timeout) => locator.isDisabled({ timeout }))) ?? true)) continue;
-			const info = await readPatiently(locator, (timeout) => locator.evaluate(describeElement, undefined, { timeout }));
+			const info = await readPatiently(locator, (timeout) => locator.evaluate(describeElement, LAYOUT_LANDMARKS, { timeout }));
 			if (!info) continue;
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
@@ -370,11 +371,11 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		const nth = seen.get(name) ?? 0;
 		seen.set(name, nth + 1);
 		if (!(await locator.isVisible().catch(() => false))) continue;
-		const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
+		const info = await locator.evaluate(describeElement, LAYOUT_LANDMARKS, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 		if (info) add({ target: { role: 'summary', name, nth }, region: info.region, importance: importance(info) });
 	}
 	let unnamed = 0;
-	for (const c of await page.evaluate(clickables, { frameworkMarkup: FRAMEWORK_MARKUP_SELECTOR, kept: NAME_KEPT }).catch(() => [])) {
+	for (const c of await page.evaluate(clickables, { frameworkMarkup: FRAMEWORK_MARKUP_SELECTOR, kept: NAME_KEPT, landmarks: LAYOUT_LANDMARKS }).catch(() => [])) {
 		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++, ...(c.name ? {} : { structure: c.structure }) };
 		const base = { target, region: c.region, importance: importance(c), ...(c.name ? { kind: `${c.region || 'page'}|${CLICKABLE}|${c.name}|${c.structure.tag}` } : {}), ...(c.focusable ? { focusable: true } : {}) };
 		add(c.name && DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
@@ -387,11 +388,11 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 
 const REPEATS = 3;
 
-function describeElement(el: Element) {
+function describeElement(el: Element, landmarks: string) {
 	const handlers = (globalThis as { __markless_migrate_handlers__?: WeakSet<Element> }).__markless_migrate_handlers__;
 	const grid = el.closest('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table');
 	const main = el.closest('main, [role="main"]');
-	const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
+	const landmark = main ? null : el.closest(landmarks);
 	return {
 		href: el.getAttribute('href') ?? undefined,
 		type: (el.getAttribute('type') ?? '').toLowerCase(),
@@ -534,7 +535,7 @@ function contentsSections(): string[] {
 }
 
 /** Elements that answer a click or a key themselves but have no interactive role, each with its label and its index among the elements `labelled` finds for it. */
-function clickables({ frameworkMarkup, kept }: { frameworkMarkup: string; kept: number }) {
+function clickables({ frameworkMarkup, kept, landmarks }: { frameworkMarkup: string; kept: number; landmarks: string }) {
 	const handlers = (globalThis as { __markless_migrate_handlers__?: WeakSet<Element> }).__markless_migrate_handlers__;
 	if (!handlers) return [];
 	// The same expression as labelled(), written out here because a page with a CSP may refuse eval.
@@ -575,7 +576,7 @@ function clickables({ frameworkMarkup, kept }: { frameworkMarkup: string; kept: 
 			}
 		}
 		const main = el.closest('main, [role="main"]');
-		const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
+		const landmark = main ? null : el.closest(landmarks);
 		const scope = scopeOf(el);
 		const structure = { tag: el.localName, scope, index: [...document.querySelectorAll(el.localName)].filter((other) => scopeOf(other) === scope && other.checkVisibility({ visibilityProperty: true })).indexOf(el) };
 		return {

@@ -111,7 +111,7 @@ async function awaitSettled(page: Page, settled: string, selector: string): Prom
 
 // Controls that switch state in place, outside menus and listboxes (those are portaled layers, captured as reveals).
 // React Aria's Checkbox, Switch and Radio are a label around a visually hidden input: the label is the control.
-const SELECTOR = '[role="checkbox"], [role="switch"], [role="radio"], button[aria-pressed], label[data-rac]:has(input[type="checkbox"]), label[data-rac]:has(input[type="radio"])';
+export const SELECTOR = '[role="checkbox"], [role="switch"], [role="radio"], button[aria-pressed], label[data-rac]:has(input[type="checkbox"]), label[data-rac]:has(input[type="radio"])';
 
 // The selector is part of the key: controls it did not find before are captured again.
 const key = (route: string) => createHash('sha256').update(`toggles:${route}|${SELECTOR}|dependents|choice`).digest('hex').slice(0, 16);
