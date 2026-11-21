@@ -141,6 +141,8 @@ export interface ReuseSelection {
 	readonly keys: ReadonlyMap<string, string>;
 	/** Routes with no key, and why. */
 	readonly unkeyed: ReadonlyMap<string, string>;
+	/** How each keyed route is to be checked (checked-as.ts): a result is kept under its key only when it was checked so. */
+	readonly roles: ReadonlyMap<string, string>;
 }
 
 const sha = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('base64url');
@@ -224,12 +226,13 @@ export async function loadHashes(network: readonly string[] | undefined, newOrig
  * Each route's key from what NEW and OLD serve now: NEW's HTML and closures, every file NEW's HTML names outside the packs,
  * and OLD's HTML. A route whose key has a kept result, and whose load-time responses fetch as they did, is not checked again.
  */
-export async function selectReusable(input: { readonly routes: readonly string[]; readonly newOrigin: string; readonly oldOrigin: string; readonly headers?: Record<string, string>; readonly closures: Closures | undefined; readonly versions: Readonly<Record<string, string>>; readonly dir: string }): Promise<ReuseSelection> {
+export async function selectReusable(input: { readonly routes: readonly string[]; readonly newOrigin: string; readonly oldOrigin: string; readonly headers?: Record<string, string>; readonly closures: Closures | undefined; readonly versions: Readonly<Record<string, string>>; readonly dir: string; readonly checkedAs: (route: string) => string }): Promise<ReuseSelection> {
 	const headers = input.headers ?? {};
 	const check: string[] = [];
 	const reused: Reused[] = [];
 	const keys = new Map<string, string>();
 	const unkeyed = new Map<string, string>();
+	const roles = new Map<string, string>();
 	const files = new Map<string, Promise<string | undefined>>();
 	const fileHash = (url: string) => files.get(url) ?? files.set(url, fetchHash(url, headers)).get(url)!;
 	const fetched = new Map<string, Promise<string | undefined>>();
@@ -260,28 +263,30 @@ export async function selectReusable(input: { readonly routes: readonly string[]
 			fail(`${missing} did not load`);
 			continue;
 		}
-		const extra = { old: `${was.status} ${sha(was.text)}`, files: named.map((url, i) => `${url} ${hashes[i]}`).join('\n') };
+		const role = input.checkedAs(route);
+		const extra = { old: `${was.status} ${sha(was.text)}`, files: named.map((url, i) => `${url} ${hashes[i]}`).join('\n'), checkedAs: role };
 		const { key, why } = shipKey(route, now.text, input.closures, { ...input.versions, ...extra });
 		if (!key) {
 			fail(why!);
 			continue;
 		}
 		keys.set(route, key);
+		roles.set(route, role);
 		const kept = await readReusable(input.dir, key);
 		const loads = kept ? await loadHashes(kept.network?.new, input.newOrigin, headers) : undefined;
 		const bytes = kept?.bytes ? await fileStates(Object.keys(kept.bytes), input.newOrigin, headers, fetched) : undefined;
 		if (kept && kept.route === route && !kept.role && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads) && bytes && JSON.stringify(bytes) === JSON.stringify(kept.bytes)) reused.push(kept);
 		else check.push(route);
 	}
-	return { check, reused, keys, unkeyed };
+	return { check, reused, keys, unkeyed, roles };
 }
 
 /** Keeps every route this run checked under its key, for the next run, with the responses it fetched at load and every file of NEW it fetched, as they are now. */
-export async function keepChecked(dir: string, routes: readonly RouteResult[], keys: ReadonlyMap<string, string>, checkedAt: string, input: { readonly newOrigin: string; readonly headers?: Record<string, string> }): Promise<number> {
+export async function keepChecked(dir: string, routes: readonly RouteResult[], selection: Pick<ReuseSelection, 'keys' | 'roles'>, checkedAt: string, input: { readonly newOrigin: string; readonly headers?: Record<string, string> }): Promise<number> {
 	let kept = 0;
 	for (const result of routes) {
-		const key = !result.role || result.role === 'anonymous' ? keys.get(result.route) : undefined;
-		if (!key || result.reused) continue;
+		const key = !result.role || result.role === 'anonymous' ? selection.keys.get(result.route) : undefined;
+		if (!key || result.reused || result.checkedAs === undefined || result.checkedAs !== selection.roles.get(result.route)) continue;
 		const loads = await loadHashes(result.network?.new, input.newOrigin, input.headers ?? {});
 		const bytes = result.files ? await fileStates(result.files, input.newOrigin, input.headers ?? {}) : undefined;
 		if (!loads || !bytes) continue;

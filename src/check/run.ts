@@ -66,7 +66,8 @@ import { mapRules } from './sourcemap.ts';
 import { stateNoise, type StatesRequest, type StatesRow, type StatesViewportRow } from './states-compare.ts';
 import { explainDefaults, observeStates, observeStatesAgainst } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
-import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
+import type { TemplateGroup } from './templates.ts';
+import { checkedAs, siteGroups } from './checked-as.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
@@ -913,8 +914,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			if (kinds[i] === 'redirect') redirects.add(route);
 		});
 		const allPages = options.routes.filter((route) => !endpoints.has(route) && !redirects.has(route));
-		const groupPages = options.templates !== false && options.templates?.site ? [...new Set([...options.templates.site, ...allPages])] : allPages;
-		const groups: TemplateGroup[] = options.templates !== false && groupPages.length > (options.templates?.threshold ?? TEMPLATE_THRESHOLD) ? await groupTemplates(base.old, groupPages, options.templates?.patterns) : [];
+		const groups: TemplateGroup[] = await siteGroups(base.old, allPages, options.templates);
 		await event({ kind: 'plan', endpoints: [...endpoints], redirects: [...redirects], groups });
 		const { groupOf, light } = templateGroups(groups);
 		const coverages: RouteCoverage[] = [];
@@ -979,6 +979,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const pages = allPages;
 			const owners = layoutOwners(await layoutOf(roleRun, role));
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
+			const owned = options.layoutSurvey ? (route: string) => [...owners].filter(([, owner]) => owner === route).map(([signature]) => signature) : undefined;
 			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const key = { route, ...(role ? { role } : {}), kind: 'page' as const };
@@ -1014,8 +1015,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records), ...(live ? { live } : {}) });
 				}
 				if (observed) await observed.route(key, [...(failures.length ? [observed.row({ stage: 'data', req: '', value: failures })] : []), ...log.rows]);
-				const checkedAs = routeOutcome(groupOf, done, role, failures);
-				const kept = artifacts ? await artifacts.keep(checkedAs) : checkedAs;
+				const outcome = { ...routeOutcome(groupOf, done, role, failures), checkedAs: checkedAs(light(route), owned?.(route)) };
+				const kept = artifacts ? await artifacts.keep(outcome) : outcome;
 				await progress?.write(route, role, kept);
 				options.onRoute?.(kept);
 				return kept;

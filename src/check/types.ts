@@ -277,6 +277,8 @@ export interface RouteResult {
 	readonly newFiles?: readonly string[];
 	/** The old app serves the route and the new one answers 404 or 410. */
 	readonly notPorted?: boolean;
+	/** How the route was checked besides what it ships: in full or left to its representative, and the shared layout controls it exercised (checked-as.ts). */
+	readonly checkedAs?: string;
 	/** Every file of NEW the route's check fetched with GET (path and query), so `check --reuse` can tell when any of them changes. */
 	readonly files?: readonly string[];
 	/** Not checked this run: the route ships the same HTML and code as when this result was made (`check --reuse`). */

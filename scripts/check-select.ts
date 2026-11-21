@@ -4,7 +4,12 @@
 // does this over plain requests, so check's shards start only for routes whose shipped HTML or code changed.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { defaultEnv } from '../src/check/browser.ts';
+import { checkArgValues } from '../src/check/check-options.ts';
+import { routeRoles } from '../src/check/checked-as.ts';
+import { parseLayoutSurvey } from '../src/check/layout-survey.ts';
 import { readClosures, selectReusable, shipVersions } from '../src/check/ship-key.ts';
+import { readInventory } from '../src/status.ts';
 
 interface Targets {
 	readonly routes: string[];
@@ -22,9 +27,16 @@ const all = JSON.parse(await readFile(targetsFile, 'utf8')) as Targets;
 const converted = routesFile ? new Set((await readFile(routesFile, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)) : undefined;
 const targets: Targets = converted ? { ...all, routes: all.routes.filter((r) => converted.has(r)) } : all;
 // The command line check.yml's shards run check with (CHECK_ARGS), as far as it changes what is checked: in every route's key.
-const versions = await shipVersions(process.cwd(), (process.env.CHECK_ARGS ?? '').split(/\s+/).filter(Boolean));
+const checkArgs = (process.env.CHECK_ARGS ?? '').split(/\s+/).filter(Boolean);
+const versions = await shipVersions(process.cwd(), checkArgs);
+// Template groups and layout owners as the shards make them from the same options: what each route is checked as is in its key.
+const given = checkArgValues(checkArgs);
+const site = given['site-targets'] ? (JSON.parse(await readFile(given['site-targets'], 'utf8')) as Targets).routes : targets.routes;
+const survey = given['layout-survey'] ? parseLayoutSurvey(await readFile(given['layout-survey'], 'utf8'), given['layout-survey']) : undefined;
+const inventory = await readInventory(process.cwd());
+const checkedAs = await routeRoles({ old: defaultEnv(oldOrigin), site, templates: given['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [], site }, ...(survey ? { survey } : {}) });
 const closures = closuresFile ? await readFile(closuresFile, 'utf8').then(readClosures, () => undefined) : undefined;
-const selection = versions && closures ? await selectReusable({ routes: targets.routes, newOrigin, oldOrigin, closures, versions, dir: resolve(reuseDir) }) : undefined;
+const selection = versions && closures ? await selectReusable({ routes: targets.routes, newOrigin, oldOrigin, closures, versions, dir: resolve(reuseDir), checkedAs }) : undefined;
 const check = selection?.check ?? targets.routes;
 const reused = selection?.reused ?? [];
 await mkdir(join(out, 'check-reused'), { recursive: true });

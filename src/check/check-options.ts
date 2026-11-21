@@ -133,9 +133,14 @@ export const BY_PRESENCE: Readonly<Record<string, string>> = {
 /** Secrets among the options: keyed by a hash of the value, never written out. */
 export const SECRET_OPTIONS = new Set(['psi-key', 'header', 'cookie']);
 
+/** A `check` command line's options, parsed as the CLI parses them. */
+export function checkArgValues(args: readonly string[]) {
+	return parseArgs({ args: [...args], options: CHECK_OPTIONS, strict: true, allowPositionals: false }).values;
+}
+
 /** The options of a `check` command line that change what is checked, as one key part: what a kept result was checked with. */
 export function checkOptionsKey(args: readonly string[]): string {
-	const { values } = parseArgs({ args: [...args], options: CHECK_OPTIONS, strict: true, allowPositionals: false });
+	const values = checkArgValues(args);
 	const hash = createHash('sha256');
 	for (const name of Object.keys(CHECK_OPTIONS).sort()) {
 		const value = (values as Record<string, string | boolean | string[] | undefined>)[name];

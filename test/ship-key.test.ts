@@ -63,7 +63,7 @@ test('no key, so the route is checked, when what it can run is not known', () =>
 	assert.match(shipKey('/a', page('pages/a.tsrx', 'AAAAAAAA'), unhashed, versions).why ?? '', /no code hash/);
 });
 
-const result = (extra: Partial<RouteResult> = {}): RouteResult => ({ route: '/a', ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: {} as never, new: {} as never }, visualDiffs: [], shots: [], ...extra });
+const result = (extra: Partial<RouteResult> = {}): RouteResult => ({ route: '/a', ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: {} as never, new: {} as never }, visualDiffs: [], shots: [], checkedAs: 'as', ...extra });
 
 test('a kept result is read back marked reused, with the key and when it was checked', async () => {
 	const dir = await mkdtemp(join(tmpdir(), 'ship-'));
@@ -97,13 +97,13 @@ test('a run reuses the routes whose served HTML and code are as they were, and c
 		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
 		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
-		const first = await selectReusable({ routes: ['/a', '/b', '/missing'], newOrigin, oldOrigin, closures: closures(base), versions, dir });
+		const first = await selectReusable({ routes: ['/a', '/b', '/missing'], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: () => 'as' });
 		assert.deepEqual(first.check, ['/a', '/b', '/missing']);
 		assert.match(first.unkeyed.get('/missing') ?? '', /404/);
-		await keepChecked(dir, [result({ route: '/a', files: [] }), result({ route: '/b', ok: false, files: [] })], first.keys, '2026-10-28T00:00:00.000Z', { newOrigin });
+		await keepChecked(dir, [result({ route: '/a', files: [] }), result({ route: '/b', ok: false, files: [] })], first, '2026-10-28T00:00:00.000Z', { newOrigin });
 		// A new build: every pack renamed, and one module only /b runs changed.
 		chunk = 'CCCCCCCC';
-		const second = await selectReusable({ routes: ['/a', '/b', '/missing'], newOrigin, oldOrigin, closures: closures({ ...base, 'symbol:b:0': 'b9' }), versions, dir });
+		const second = await selectReusable({ routes: ['/a', '/b', '/missing'], newOrigin, oldOrigin, closures: closures({ ...base, 'symbol:b:0': 'b9' }), versions, dir, checkedAs: () => 'as' });
 		assert.deepEqual(second.check, ['/b', '/missing']);
 		assert.deepEqual(second.reused.map((r) => [r.route, r.reused.checkedAt]), [['/a', '2026-10-28T00:00:00.000Z']]);
 	} finally {
@@ -128,8 +128,8 @@ test('a stylesheet, a script outside the packs, the old page or a response the p
 	try {
 		const [newOrigin, oldOrigin] = servers.map((s) => `http://127.0.0.1:${(s.address() as AddressInfo).port}`) as [string, string];
 		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
-		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir });
-		const keep = async (network: string[]) => keepChecked(dir, [result({ files: [], network: { old: [], new: network, server: { old: false, new: false } } })], (await select()).keys, '2026-10-28T00:00:00.000Z', { newOrigin });
+		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: () => 'as' });
+		const keep = async (network: string[]) => keepChecked(dir, [result({ files: [], network: { old: [], new: network, server: { old: false, new: false } } })], await select(), '2026-10-28T00:00:00.000Z', { newOrigin });
 		await keep(['browser GET {self}/api/data']);
 		assert.equal((await select()).reused.length, 1);
 		files['/site.css'] = 'p{color:blue}';
@@ -198,8 +198,8 @@ test("an image, a font through the stylesheet, a pack or a later fetch the route
 		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
 		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
-		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir });
-		const keep = async () => keepChecked(dir, [result({ files: ['/a', '/build/chunk-AAAAAAAA.js', '/hero.png', '/inter.woff2', '/search.json', '/site.css'] })], (await select()).keys, '2026-11-21T00:00:00.000Z', { newOrigin });
+		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: () => 'as' });
+		const keep = async () => keepChecked(dir, [result({ files: ['/a', '/build/chunk-AAAAAAAA.js', '/hero.png', '/inter.woff2', '/search.json', '/site.css'] })], await select(), '2026-11-21T00:00:00.000Z', { newOrigin });
 		await keep();
 		assert.equal((await select()).reused.length, 1);
 		for (const [file, bytes] of [['/hero.png', 'png2'], ['/inter.woff2', 'font2'], ['/build/chunk-AAAAAAAA.js', 'pack2'], ['/search.json', '[2]']] as const) {
@@ -210,8 +210,44 @@ test("an image, a font through the stylesheet, a pack or a later fetch the route
 		await keep();
 		delete files['/hero.png'];
 		assert.equal((await select()).reused.length, 0, 'a file the route loaded is gone');
-		await keepChecked(dir, [result()], (await select()).keys, '2026-11-21T00:00:00.000Z', { newOrigin });
+		await keepChecked(dir, [result()], await select(), '2026-11-21T00:00:00.000Z', { newOrigin });
 		assert.equal((await select()).reused.length, 0, 'a result that does not say which files its check loaded is never reused');
+	} finally {
+		server.close();
+		oldServer.close();
+	}
+});
+
+test("a route kept as one its template's representative stood for is checked again once it is the representative, and when the shared layout controls it exercises change", async () => {
+	const { routeRoles } = await import('../src/check/checked-as.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const doc = '<!doctype html><html><body><main><h1>Doc</h1><button aria-expanded="false">Menu</button></main></body></html>';
+	const site = Array.from({ length: 22 }, (_, i) => `/docs/page-${String(i).padStart(2, '0')}`);
+	const server = createServer((req, res) => {
+		if (site.includes(req.url ?? '')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(page('pages/a.tsrx', 'AAAAAAAA'));
+		res.writeHead(404).end();
+	});
+	const oldServer = createServer((_, res) => void res.writeHead(200, { 'content-type': 'text/html' }).end(doc));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	await new Promise<void>((done) => oldServer.listen(0, '127.0.0.1', done));
+	try {
+		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
+		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
+		const route = '/docs/page-01';
+		const survey = (owner: string) => ({ version: 1 as const, roles: [{ role: null, routes: site.map((r) => ({ route: r, layout: r === owner ? ['nav button "Menu"'] : [], own: 0 })) }] });
+		const roles = (pages: readonly string[], owner: string) => routeRoles({ old: defaultEnv(oldOrigin), site: pages, templates: {}, survey: survey(owner) });
+		const select = async (pages: readonly string[], owner: string) => selectReusable({ routes: [route], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: await roles(pages, owner) });
+		const keep = async (pages: readonly string[], owner: string) => {
+			const checkedAs = (await roles(pages, owner))(route);
+			await keepChecked(dir, [result({ route, files: [], checkedAs })], await select(pages, owner), '2026-11-21T00:00:00.000Z', { newOrigin });
+		};
+		await keep(site, site[0]!);
+		assert.equal((await select(site, site[0]!)).reused.length, 1, 'kept while page-00 is the representative and the owner');
+		assert.equal((await select(site.slice(1), site[0]!)).reused.length, 0, 'page-00 left the site: page-01 is the representative now');
+		assert.equal((await select(site, route)).reused.length, 0, 'page-01 exercises the shared menu now');
+		await keepChecked(dir, [result({ route, files: [], checkedAs: 'something else' })], await select(site, site[0]!), '2026-11-21T00:00:00.000Z', { newOrigin });
+		assert.equal((await select(site, site[0]!)).reused.length, 1, 'a result checked in another role than its key says is not kept over the right one');
 	} finally {
 		server.close();
 		oldServer.close();

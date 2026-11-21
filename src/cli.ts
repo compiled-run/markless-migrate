@@ -57,6 +57,7 @@ import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, sta
 import { changedSince, git, gitHead, selectChanged } from './check/changed.ts';
 import { CHECK_OPTIONS, checkOptionsKey, TIMING_FLAGS } from './check/check-options.ts';
 import { keepChecked, readClosures, selectReusable, shipVersions, type ReuseSelection } from './check/ship-key.ts';
+import { routeRoles, type TemplateOptions } from './check/checked-as.ts';
 import { VERSION } from './version.ts';
 import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
@@ -355,9 +356,11 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --reuse <dir> keeps each route's result there under a key of what it ships: the HTML NEW
           serves (pack file names aside), the code hash of every module the route can run (the Markless
           build's interaction-closures.json, --closures, else .vercel/output/.markless/static/), the
-          bytes of every other file its HTML names, OLD's HTML, and the git trees of this checker and
-          the Markless packages the port names. A route whose key has a kept result, and whose load-time
-          responses fetch the same again, is not checked: its result is reported marked reused. A route
+          bytes of every other file its HTML names, OLD's HTML, the checker's code, the Markless
+          packages and options, and how the route is checked (in full or left to its template's
+          representative, and the shared layout controls it exercises). A route whose key has a kept
+          result, and whose every file its last check fetched (images, fonts, packs, later fetches)
+          answers the same again, is not checked: its result is reported marked reused. A route
           with no key (no Markless route script, a module without a hash) is always checked.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report. Every
           observation the check makes (each page load, replay, probe and parity reading, as rows, their
@@ -1081,6 +1084,11 @@ async function main(argv: string[]): Promise<number> {
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
 			const partial = !coverageOnly && Boolean(values.route?.length || values.targets || values.changed || loadOnly || embedsOnly);
+			if (values['layout-survey'] && values['write-layout-survey']) fail('--layout-survey reads a survey and --write-layout-survey makes one: pass one of them');
+			const layoutSurvey = values['layout-survey'] ? parseLayoutSurvey(await readFile(resolve(values['layout-survey']), 'utf8'), values['layout-survey']) : undefined;
+			// Without --site-targets, groups are made over every route asked for, the reused ones included, as the selection made them.
+			let site = values['site-targets'] ? (JSON.parse(await readFile(resolve(values['site-targets']), 'utf8')) as { routes: string[] }).routes : undefined;
+			const templates = (): TemplateOptions => (values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [], ...(site ? { site } : {}) });
 			let reuse: ReuseSelection | undefined;
 			if (values.reuse) {
 				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
@@ -1090,7 +1098,9 @@ async function main(argv: string[]): Promise<number> {
 				if (!versions) out('--reuse: nothing reused, the port names no Markless packages.\n');
 				else if (!closures) out(`--reuse: nothing reused, no closures at ${closuresFile}.\n`);
 				else {
-					reuse = await selectReusable({ routes: routes ?? [], newOrigin: values.new, oldOrigin: values.old, ...(bypass.headers ? { headers: bypass.headers } : {}), closures, versions, dir: resolve(values.reuse) });
+					site ??= routes ?? [];
+					const checkedAs = await routeRoles({ old: defaultEnv(values.old), site, templates: templates(), ...(layoutSurvey ? { survey: layoutSurvey } : {}) });
+					reuse = await selectReusable({ routes: routes ?? [], newOrigin: values.new, oldOrigin: values.old, ...(bypass.headers ? { headers: bypass.headers } : {}), closures, versions, dir: resolve(values.reuse), checkedAs });
 					routes = reuse.check;
 					const why = new Map<string, number>();
 					for (const reason of reuse.unkeyed.values()) why.set(reason.replace(/^\S+ /, ''), (why.get(reason.replace(/^\S+ /, '')) ?? 0) + 1);
@@ -1104,9 +1114,6 @@ async function main(argv: string[]): Promise<number> {
 			if (!surveying) requireNetworkBrowsers(load, values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
-			const site = values['site-targets'] ? (JSON.parse(await readFile(resolve(values['site-targets']), 'utf8')) as { routes: string[] }).routes : undefined;
-			if (values['layout-survey'] && values['write-layout-survey']) fail('--layout-survey reads a survey and --write-layout-survey makes one: pass one of them');
-			const layoutSurvey = values['layout-survey'] ? parseLayoutSurvey(await readFile(resolve(values['layout-survey']), 'utf8'), values['layout-survey']) : undefined;
 			const surveyTo = values['write-layout-survey'] ? resolve(values['write-layout-survey']) : undefined;
 			const newDir = resolve(values['new-source'] ?? cwd);
 			const commit = await gitHead(newDir);
@@ -1168,7 +1175,7 @@ async function main(argv: string[]): Promise<number> {
 				...(inventory && !probesOnly && !loadOnly && !embedsOnly ? { inventory: inventoryRoutes(inventory) } : {}),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
-				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [], ...(site ? { site } : {}) },
+				templates: templates(),
 				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
 				artifactsDir: join(cwd, STATE_DIR),
 				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
@@ -1181,7 +1188,7 @@ async function main(argv: string[]): Promise<number> {
 				return 0;
 			}
 			if (reuse) {
-				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse.keys, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
+				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
 				out(`--reuse: kept ${kept} result${kept === 1 ? '' : 's'} for later runs.\n`);
 				report = { ...report, ok: report.ok && reuse.reused.every((r) => r.ok), routes: [...report.routes, ...reuse.reused] };
 				await observations.event({ kind: 'reused', routes: reuse.reused });
