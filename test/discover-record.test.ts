@@ -6,9 +6,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { assertLocal, recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
-import { claimed, discoveryReport, draftReport, finishDiscovery, routeDiscovery } from '../src/discover/convert.ts';
+import { assertLocal, recordDiscovery, type DiscoverFacts, type PressedControl } from '../src/discover/record.ts';
+import { claimed, discoveryMarkdown, discoveryReport, draftReport, finishDiscovery, labelFilter, membersIn, lostUses, MAX_DEMO_ELEMENTS, noScene, partly, routeDiscovery, sceneUses, shortKey, type Claims, SCENE_CONTROLS, sceneHolders } from '../src/discover/convert.ts';
 import { cutsOf } from '../src/discover/report.ts';
+import type { SceneNode } from '../src/convert/scenes.ts';
 
 // One page of plain scripts, each control a shape of what a press can do; no framework is named.
 const PAGE = `<!doctype html><html><head><style>
@@ -137,7 +138,7 @@ test('destructive names, forms, links and reveals are never pressed', () => {
 	assert.equal(facts.controls.filter((c) => c.name === 'Again').length, 2);
 	assert.deepEqual(facts.repeats, { 'button||Again#0': 1 });
 	assert.equal(cutsOf({ excluded: { 'past 240 s on the page': 3 } }), '3 not reached (past 240 s on the page)');
-	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>() };
+	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>(), owned: new Map<string, string>() };
 	assert.match(cutsOf(routeDiscovery(facts, none)), /1 same as a control pressed: 1 like "Again" \(button\|\|Again#0\)/);
 	const unlooked = routeDiscovery(facts, { ...none, controls: new Set(['button||Menu#0']) }).unknown.filter((u) => u.why?.startsWith('left to'));
 	assert.deepEqual(unlooked.map((u) => [u.name, u.why]), [['Wifi', 'left to the toggles, which recorded nothing for it'], ['Inner trigger', 'left to the reveals, which recorded nothing for it']], 'what the reveals recorded is theirs; the rest no one looked at');
@@ -153,11 +154,11 @@ test('a recording is read back for the same page key, and claimed controls are n
 	const again = await recordDiscovery(browser, origin, '/', dir);
 	assert.deepEqual(again, facts);
 	const listen = byName('Start Listening')!;
-	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>() };
+	const none = { controls: new Set<string>(), holders: new Set<string>(), scenes: [], names: new Set<string>(), owned: new Map<string, string>() };
 	assert.equal(claimed(listen, none), undefined);
 	assert.equal(claimed(listen, { ...none, controls: new Set([`${listen.sig}#${listen.nth}`]) }), 'control');
 	const kbd = byName('K')!;
-	assert.equal(claimed(kbd, { ...none, scenes: [{ holder: kbd.ancestors[0]!, labels: new Set([kbd.labelSig]) }] }), 'control');
+	assert.equal(claimed(kbd, { ...none, scenes: [{ holder: kbd.ancestors[0]!, listed: 'div', labels: new Set([kbd.labelSig]) }] }), 'control');
 	assert.equal(claimed(kbd, { ...none, holders: new Set([kbd.ancestors[0]!]) }), 'holder', 'a widget a recording ports whole leaves its other controls to the port to answer');
 	assert.equal(routeDiscovery(facts, { ...none, holders: new Set([kbd.ancestors[0]!]) }).dead.find((d) => d.name === 'K')?.held, true);
 	const route = routeDiscovery(facts, none);
@@ -227,4 +228,98 @@ export default function Page() @{
 	assert.equal(done.count, 2);
 	assert.equal(done.handled, 3, 'a handler on the port is counted apart: its effect is not compared');
 	await rm(app, { recursive: true, force: true });
+});
+
+test('a discovered demo\'s toggle is ported only with its recorded way back, followed by its place whatever its label', () => {
+	const play: PressedControl = { sig: 'button||', nth: 0, labelSig: 'button||Play', name: 'Play', found: 'role', ancestors: ['div||Stopped#0'], shape: 'toggle', states: 2, path: 'body>div1>button1', changes: [{ at: 'x', what: 'attribute', name: 'aria-label', before: 'Play', after: 'Pause' }] };
+	const none: Claims = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	const scene = (back: boolean) => ({ holder: 'div||Stopped#0', listed: SCENE_CONTROLS, labels: new Set(['button||Play', ...(back ? ['button||Pause'] : [])]), root: 'body>div1', usesAt: new Map([['button1', { recorded: back ? 2 : 1, skipped: 0, why: '', back }]]) });
+	assert.equal(claimed(play, { ...none, scenes: [scene(false)] }), 'control');
+	assert.match(partly(play, { ...none, scenes: [scene(false)] }) ?? '', /no use of it back to the state the demo loads in was recorded/);
+	assert.equal(partly(play, { ...none, scenes: [scene(true)] }), undefined, 'Play and Pause both recorded: ported');
+});
+
+test('a scene is recorded around the outermost unported demo, or again over a recorded demo whose listing left the control out', () => {
+	type Holder = NonNullable<PressedControl['holder']>;
+	const control = (name: string, path: string, holder: string, ancestors: string[], over: Partial<PressedControl> & { h?: Partial<Holder> } = {}): PressedControl => {
+		const { h, ...rest } = over;
+		return { sig: `button||${name}`, nth: 0, labelSig: `button||${name}`, name, found: 'role', ancestors, shape: 'toggle', states: 2, path, holder: { path: holder, at: `${holder}#0`, canvas: name === 'Start Listening', size: 12, ancestors: ancestors.slice(1), inside: [], ...h }, changes: [{ at: 'x', what: 'text' }], ...rest };
+	};
+	const facts = (controls: PressedControl[]): DiscoverFacts => ({ route: '/', browser: 'chromium', candidates: controls.length, excluded: {}, drift: 0, reloads: 0, ms: 1, controls });
+	const none: Claims = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	const recorded = { holder: 'div|preview|demo#0', listed: 'textarea', labels: new Set(['textarea||Ask']) };
+	const page = facts([
+		control('Start Listening', 'body>div1>div2>button1', 'body>div1', ['div||card#0', 'div||page#0']),
+		control('Static', 'body>div1>div2>div3>button1', 'body>div1>div2', ['div||inner#0', 'div||card#0', 'div||page#0']),
+		control('Fix the build', 'body>div3>div1>button2', 'body>div3>div1', ['div|preview|demo#0', 'div||docs#0'], { h: { at: 'div|preview|demo#0', ancestors: ['div||docs#0'] } }),
+		control('K', 'body>div4>div1', 'body>div4', ['div|group|#0'], { changes: [{ at: 'x', what: 'focus' }] }),
+	]);
+	const holders = sceneHolders(page, { ...none, scenes: [recorded] });
+	assert.deepEqual(
+		holders.map((h) => [h.path, h.at, h.listed === SCENE_CONTROLS ? 'discovered' : h.listed, h.replaces ?? '', h.controls]),
+		[
+			['body>div1', 'body>div1#0', 'discovered', '', 2],
+			['body>div3>div1', 'div|preview|demo#0', `textarea, ${SCENE_CONTROLS}`, 'div|preview|demo#0', 1],
+		],
+		'the outer holder takes the inner one: two controls in one scene',
+	);
+	assert.deepEqual(holders[1]?.labels, ['Ask'], "a recorded demo recorded again keeps its own controls' labels");
+	assert.deepEqual(holders.map((h) => membersIn(h)), [['div2>button1', 'div2>div3>button1'], ['button2']], 'the dead controls are followed by their place in the holder, not their label');
+	assert.equal(labelFilter(['Start Listening', 'Stop Listening', 'a+b']), '^(Start Listening|Stop Listening|a\\+b)$');
+	const route = routeDiscovery(page, { ...none, scenes: [] }, holders);
+	assert.ok(route.notes?.some((n) => /canvas .* not ported/.test(n)));
+	assert.ok(route.notes?.some((n) => n.startsWith('"K" only moves focus')));
+});
+
+test('no scene is recorded over a widget, a page-sized or unsteady holder, what another recording owns, or for a transient press, and each is named', () => {
+	const at = (path: string) => `div||${path}#0`;
+	const control = (name: string, over: Partial<PressedControl> & { h?: Partial<NonNullable<PressedControl['holder']>> } = {}): PressedControl => {
+		const { h, ...rest } = over;
+		return { sig: `button||${name}`, nth: 0, labelSig: `button||${name}`, name, found: 'role', ancestors: [at('card'), at('page')], shape: 'toggle', states: 2, path: 'body>div1>button1', holder: { path: 'body>div1', at: at('card'), size: 12, ancestors: [at('page')], inside: [shortKey(at('card'))], ...h }, changes: [{ at: 'x', what: 'text' }], ...rest };
+	};
+	const none: Claims = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	const only = (c: PressedControl, claims = none) => ({ holders: sceneHolders({ route: '/', browser: 'chromium', candidates: 1, excluded: {}, drift: 0, reloads: 0, ms: 1, controls: [c] }, claims), note: routeDiscovery({ route: '/', browser: 'chromium', candidates: 1, excluded: {}, drift: 0, reloads: 0, ms: 1, controls: [c] }, claims).notes ?? [] });
+	assert.equal(only(control('Fine')).holders.length, 1);
+	const widget = only(control('Pick', { h: { widget: 'listbox' } }));
+	assert.deepEqual([widget.holders.length, widget.note], [0, ['"Pick" got no scene: its presses change the inside of a listbox, which a part drives']]);
+	const big = only(control('Big', { h: { size: MAX_DEMO_ELEMENTS + 1 } }));
+	assert.equal(big.holders.length, 0);
+	assert.match(big.note[0] ?? '', new RegExp(`of ${MAX_DEMO_ELEMENTS + 1} elements, over the ${MAX_DEMO_ELEMENTS}`));
+	assert.match(only(control('Body', { h: { path: 'body' } })).note[0] ?? '', /reaches across the page/);
+	assert.match(only(control('Dice', { unsteady: true })).note[0] ?? '', /left another page/);
+	const owned = only(control('Over'), { ...none, owned: new Map([[shortKey(at('card')), 'the widget div|']]) });
+	assert.deepEqual([owned.holders.length, owned.note[0]], [0, '"Over" got no scene: what holds it, div|, holds the widget div|, which another recording ports']);
+	assert.equal(only(control('Copy', { shape: 'transient' })).holders.length, 0, 'a transient press is left to the port check');
+	assert.equal(only(control('Copy', { shape: 'transient' })).note.length, 0);
+});
+
+test('a control a scene ports only in part is said so and fails the job: uses the bound cut, or a click only', () => {
+	const scene = { edges: [{ from: 0, control: 'button||Fix the build#0', to: 1, frames: [] }, { from: 0, control: 'button||Ask#0', to: 2, frames: [] }], skippedUses: [{ control: 'button||Ask#0', from: 1, why: 'past 14 states' }] };
+	const uses = sceneUses(scene);
+	assert.deepEqual(uses.get('button||Ask'), { recorded: 1, skipped: 1, why: 'past 14 states' });
+	const claims: Claims = { controls: new Set(), holders: new Set(), names: new Set(), owned: new Map(), scenes: [{ holder: 'div|preview|demo#0', listed: 'button', labels: new Set(['button||Ask', 'button||Fix the build', 'div||Open']), uses }] };
+	const control = (name: string, sig = `button||${name}`): PressedControl => ({ sig, nth: 0, labelSig: sig, name, found: 'role', ancestors: ['div|preview|demo#0'], shape: 'one-way', changes: [{ at: 'x', what: 'text' }] });
+	assert.equal(partly(control('Ask'), claims), 'ported for 1 of 2 uses: 1 not recorded (past 14 states)');
+	assert.equal(partly(control('Fix the build'), claims), undefined);
+	assert.match(partly(control('Open', 'div||Open'), claims) ?? '', /click only/);
+	const route = routeDiscovery({ route: '/', browser: 'chromium', candidates: 3, excluded: {}, drift: 0, reloads: 0, ms: 1, controls: [control('Ask'), control('Fix the build'), control('Open', 'div||Open')] }, claims);
+	assert.deepEqual(route.partly?.map((p) => p.name), ['Ask', 'Open']);
+	assert.deepEqual(route.dead, [], 'neither is dead: each is its own class');
+	assert.equal(discoveryMarkdown(draftReport({ '/': route })).failed, true, 'and the job fails on them as on a dead control');
+});
+
+test('a recorded demo is replaced only by a recording that keeps every use it had, by control and the state it was used from', () => {
+	const node = (text: string): SceneNode => ({ id: 1, tag: 'div', attrs: [], kids: [{ id: 2, text }] });
+	const states = [node('start'), node('asked'), node('fixed')];
+	const edge = (control: string, from = 0, to = 1) => ({ from, control, to, frames: [] });
+	assert.deepEqual(lostUses({ states, edges: [edge('textarea||Ask#0|fill'), edge('textarea||Ask#0|enter'), edge('button||Fix#0')] }, [{ states, edges: [edge('textarea||Ask#0|fill'), edge('button||Fix#0'), edge('button||New#0')] }]), ['textarea||Ask#0|enter from "start"']);
+	assert.deepEqual(lostUses({ states, edges: [edge('button||Fix#0')] }, [{ states, edges: [edge('button||Fix#0'), edge('button||New#0')] }]), []);
+	// The new recording keeps Fix from the start but loses Fix from the state Ask led to: a use lost, though the control is still there.
+	const fresh = [{ states: [node('start'), node('fixed')], edges: [edge('button||Fix#0', 0, 1)] }];
+	assert.deepEqual(lostUses({ states, edges: [edge('button||Fix#0', 0, 2), edge('button||Fix#0', 1, 2)] }, fresh), ['button||Fix#0 from "asked"']);
+});
+
+test('a page region (main, a layout landmark, the body) is never a demo', () => {
+	const c: PressedControl = { sig: 'button||Go', nth: 0, labelSig: 'button||Go', name: 'Go', found: 'role', ancestors: ['main||Go#0'], shape: 'one-way', path: 'body>main1>button1', holder: { path: 'body>main1', at: 'main||Go#0', size: 12, landmark: true }, changes: [{ at: 'x', what: 'text' }] };
+	assert.match(noScene(c, { controls: new Set(), holders: new Set(), names: new Set(), scenes: [], owned: new Map() }) ?? '', /a page landmark, which is never a demo/);
 });
