@@ -46,7 +46,7 @@ test('a demo\'s controls are used from every state they lead to, and each use is
 		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', limits);
 		assert.equal(scenes.length, 1);
 		// A docs preview's recording is the file, and the shape, it was before discovered demos: kept recordings stay valid.
-		const file = `${createHash('sha256').update(`scenes:8:/|[data-slot="preview"] button|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`;
+		const file = `${createHash('sha256').update(`scenes:9:/|[data-slot="preview"] button|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`;
 		const kept = JSON.parse(await readFile(join(dir, file), 'utf8')).scenes[0];
 		assert.deepEqual(Object.keys(kept), ['sig', 'nth', 'states', 'edges', 'skipped', 'skippedUses']);
 		assert.ok(kept.skippedUses.every((u: { from: number; why: string }) => u.from === 2 && /past 2 uses deep/.test(u.why)), 'the state two uses deep is reached but not explored: its uses are named');
@@ -282,6 +282,36 @@ test('a discovered demo\'s controls are followed by their place in the demo, not
 		const scene = scenes[0]!;
 		assert.deepEqual(scene.edges.map((e) => [e.from, edgeLabel(e.control), e.at, e.to]), [[0, 'button||Play', 'button1', 1], [1, 'button||Pause', 'button1', 0]]);
 		assert.ok(sceneUsesAt(scene).get('button1')?.back, 'its way back to the first state is recorded');
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a discovered demo\'s controls are the elements marked as it loads, followed through each replay: a button put before one moves no use onto itself', async () => {
+	const more = (rerender: boolean) => `<!doctype html><html><body><div class="more"><p id="t">Short</p><button type="button" id="m">Show more</button></div><script>
+const demo = document.querySelector('.more');
+const collapse = () => { document.getElementById('r')?.remove(); document.getElementById('m').textContent = 'Show more'; document.getElementById('t').textContent = 'Short'; };
+const expand = () => { const r = document.createElement('button'); r.type = 'button'; r.id = 'r'; r.textContent = 'Reset'; r.onclick = collapse; document.getElementById('m').before(r); document.getElementById('m').textContent = 'Show less'; document.getElementById('t').textContent = 'Long'; };
+const wire = () => { document.getElementById('m').onclick = () => (document.getElementById('m').textContent === 'Show more' ? expand() : collapse()); };
+wire();
+${rerender ? "document.getElementById('m').onclick = () => { demo.innerHTML = '<p id=\"t\">Long</p><button type=\"button\" id=\"m\">Show less</button>'; };" : ''}
+</script></body></html>`;
+	const server = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(more(req.url === '/rerender')));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const limits = { states: 4, depth: 3, settle: 200, max: 2000 };
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, limits, '', 'div||ShortShow more#0', ['button1']);
+		const scene = scenes[0]!;
+		assert.deepEqual(scene.edges.map((e) => [e.from, edgeLabel(e.control), e.at, e.to]), [[0, 'button||Show more', 'button1', 1], [1, 'button||Show less', 'button1', 0]], 'Reset, put where Show more was, is not the demo\'s control');
+		const again = (await captureScenes(browser, origin, '/rerender', dir, SCENE_CONTROLS, limits, '', 'div||ShortShow more#0', ['button1'])).scenes[0]!;
+		assert.deepEqual(again.edges.map((e) => [e.from, e.at]), [[0, 'button1']]);
+		assert.deepEqual(again.skippedUses?.map((u) => [u.from, u.at]), [[1, 'button1']], 'a control its press made anew is a use not recorded');
+		assert.match(again.skippedUses?.[0]?.why ?? '', /not the element the demo loaded with/);
 	} finally {
 		await browser.close();
 		server.close();

@@ -247,10 +247,40 @@ export function shape(node: SceneNode): string {
 
 const hash = (node: SceneNode) => createHash('sha256').update(shape(node)).digest('hex').slice(0, 16);
 
+interface Marks {
+	readonly at: WeakMap<Element, string>;
+	readonly sig: Record<string, string>;
+}
+
+// Runs in the page as the demo loads: each member, by its place then, is marked, so a replay follows the element itself.
+function markMembers([selector, index, members]: readonly [string, number, readonly string[]]): void {
+	const root = document.querySelectorAll(selector)[index];
+	const marks: Marks = { at: new WeakMap(), sig: {} };
+	(window as unknown as { __mmMembers: Marks }).__mmMembers = marks;
+	if (!root) return;
+	const wanted = new Set(members);
+	const placeOf = (el: Element) => {
+		const steps: string[] = [];
+		for (let e: Element | null = el; e && e !== root; e = e.parentElement) {
+			const tag = e.tagName.toLowerCase();
+			const same = e.parentElement ? [...e.parentElement.children].filter((c) => c.tagName.toLowerCase() === tag) : [e];
+			steps.unshift(`${tag}${same.indexOf(e) + 1}`);
+		}
+		return steps.join('>');
+	};
+	for (const el of root.querySelectorAll('*')) {
+		const place = placeOf(el);
+		if (!wanted.has(place)) continue;
+		marks.at.set(el, place);
+		marks.sig[place] = `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+	}
+}
+
 // Runs in the page: the demo's listed controls that can be used now, each by its tag, data-slot and text, and which
-// element with them it is inside the demo.
-function controlsIn([selector, index, listed, text, members]: readonly [string, number, string, string, readonly string[] | null]): { control: string; at: string }[] {
+// element with them it is inside the demo; a discovered demo's by the place its marked element had as the demo loaded.
+function controlsIn([selector, index, listed, text, members]: readonly [string, number, string, string, readonly string[] | null]): { controls: { control: string; at: string }[]; gone: { control: string; at: string }[] } {
 	const root = document.querySelectorAll(selector)[index]!;
+	const marks = (window as unknown as { __mmMembers?: Marks }).__mmMembers;
 	const placeOf = (el: Element) => {
 		const steps: string[] = [];
 		for (let e: Element | null = el; e && e !== root; e = e.parentElement) {
@@ -269,15 +299,22 @@ function controlsIn([selector, index, listed, text, members]: readonly [string, 
 		counts.set(sig, n + 1);
 		const r = el.getBoundingClientRect();
 		if (r.width < 1 || r.height < 1 || el.matches(':disabled, [aria-disabled="true"], [inert], [inert] *')) continue;
-		const at = placeOf(el);
-		// A discovered demo's controls are followed by their place, whatever their label in this state; a listing that names
+		const marked = members ? marks?.at.get(el) : undefined;
+		const at = marked ?? placeOf(el);
+		// A discovered demo's controls are its marked elements, whatever their label in this state; a listing that names
 		// its controls by text (Replay) leaves the demo's other controls alone.
 		const byText = text !== '' && (el.matches('textarea, input') || new RegExp(text).test(sig.split('|')[2] ?? ''));
-		if (members ? !members.includes(at) && !byText : text && !byText) continue;
+		if (members ? marked === undefined && !byText : text && !byText) continue;
 		if (el.matches('textarea, input:not([type]), input[type="text"], input[type="search"]')) for (const u of ['fill', 'clear', 'enter']) out.push({ control: `${sig}#${n}|${u}`, at });
 		else out.push({ control: `${sig}#${n}`, at });
 	}
-	return out;
+	const here = new Set<string>();
+	for (const el of root.querySelectorAll('*')) {
+		const place = marks?.at.get(el);
+		if (place !== undefined) here.add(place);
+	}
+	const gone = (members ?? []).filter((m) => !here.has(m)).map((m) => ({ control: `${marks?.sig[m] ?? m}#gone`, at: m }));
+	return { controls: out, gone };
 }
 
 async function use(page: Page, selector: string, index: number, listed: string, used: string): Promise<boolean> {
@@ -322,7 +359,7 @@ async function use(page: Page, selector: string, index: number, listed: string, 
  */
 export async function captureScenes(browser: Browser, origin: string, route: string, dir: string, listed: string, limits: SceneLimits = LIMITS, text = '', demo?: string, members?: readonly string[]): Promise<SceneCapture> {
 	const root = demo ? DEMO : PREVIEW;
-	const file = join(dir, `${createHash('sha256').update(`scenes:8:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}${demo ? `|demo:${demo}` : ''}${members ? `|members:${members.join(',')}` : ''}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`scenes:9:${route}|${listed}${text ? `|text:${text}` : ''}|${JSON.stringify(limits)}${demo ? `|demo:${demo}` : ''}${members ? `|members:${members.join(',')}` : ''}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as SceneCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, captureEnv(origin), VIEWPORTS[0]!);
@@ -335,6 +372,7 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 		await page.waitForTimeout(600);
 		await found();
 		await page.evaluate(install, [root, index] as const);
+		if (members) await page.evaluate(markMembers, [root, index, members] as const);
 		await page.evaluate(() => {
 			(window as unknown as { __mmSnap: unknown }).__mmSnap = (globalThis as unknown as { __mmSnapshot: () => unknown }).__mmSnapshot;
 		});
@@ -416,7 +454,8 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 			for (let at = 0; at < states.length && at < limits.states; at++) {
 				await fresh(demo.index);
 				for (const step of paths[at]!) await replay(step);
-				const controls = await page.evaluate(controlsIn, [root, demo.index, listed, text, members ?? null] as const);
+				const { controls, gone } = await page.evaluate(controlsIn, [root, demo.index, listed, text, members ?? null] as const);
+				for (const { control, at: place } of gone) skip(control, place, at, 'not the element the demo loaded with: a press made it anew or took it away');
 				// A state as deep as the search goes is not explored: each of its uses is one not recorded.
 				if (paths[at]!.length >= limits.depth) {
 					for (const { control, at: place } of controls) skip(control, place, at, `past ${limits.depth} uses deep`);
