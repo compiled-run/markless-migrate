@@ -62,6 +62,16 @@ export class Sandbox {
 
 	readonly app: string;
 
+	/** The page's document, as the DOM the parts are written against. */
+	get document(): Document {
+		return this.window.document as unknown as Document;
+	}
+
+	/** A mutation observer of the page's window. */
+	observer(callback: MutationCallback): MutationObserver {
+		return new (this.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver(callback);
+	}
+
 	private constructor(app: string) {
 		this.app = app;
 		this.install();
