@@ -224,6 +224,9 @@ function holdWrites(): void {
 	} as typeof socketSend;
 }
 
+/** The context's one init script: the write guard first, in its own try, so a reader that throws cannot leave the page unguarded. */
+export const pageScripts = (): string => `try { (${holdWrites.toString()})(); } finally { (${installReader.toString()})(); }`;
+
 /** In every document of the context: reads the page for comparison, and keeps what live regions announce between reads. */
 function installReader(): void {
 	type Entry = { d: string; a: string; t: string; s: 0 | 1; l: string; c: string };
@@ -821,7 +824,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		writesSeen = 0;
 		requests.clear();
 		await trackSettling(opened.context);
-		await opened.context.addInitScript({ content: `(${installReader.toString()})();(${holdWrites.toString()})();` });
+		await opened.context.addInitScript({ content: pageScripts() });
 		opened.context.on('page', (other) => {
 			if (other === opened.page) return;
 			stop('window', other.url());

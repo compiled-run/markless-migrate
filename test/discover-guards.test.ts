@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { discoverRecorder, discoveryReport, draftReport, routeDiscovery } from '../src/discover/convert.ts';
-import { recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
+import { pageScripts, recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
 import { discoveryMarkdown, type RouteDiscovery } from '../src/discover/report.ts';
 import { isSpot, sharedControls } from '../src/discover/shared.ts';
 
@@ -135,6 +135,19 @@ test('no press writes to the original, by any way a page can send, and each is n
 	assert.equal(facts.excluded['disabled'], 2, 'disabled, and under inert');
 	assert.equal(facts.excluded['no accessible name'], 1);
 	assert.equal(facts.excluded['destructive name'], 3, "an svg's title, aria-labelledby and a title");
+});
+
+test('the write guard goes into the page first and alone, so a reader that throws leaves it installed', async () => {
+	const context = await browser.newContext();
+	try {
+		await context.addInitScript(() => Reflect.deleteProperty(globalThis, 'MutationObserver'));
+		await context.addInitScript({ content: pageScripts() });
+		const page = await context.newPage();
+		await page.goto(`${origin}/one`);
+		assert.equal(await page.evaluate(() => Array.isArray(Reflect.get(globalThis, '__mmWrites__'))), true);
+	} finally {
+		await context.close();
+	}
 });
 
 test('a page that redirects off this machine is refused after it loads, and the failure is not kept', async () => {
