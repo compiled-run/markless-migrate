@@ -9,15 +9,22 @@ import { runCheck } from '../../src/check/run.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { ROOT, type App } from './harness.ts';
 
-function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.on('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			const address = server.address();
-			server.close(() => (typeof address === 'object' && address ? resolve(address.port) : reject(new Error('no port'))));
+// Ports handed out in this file: six servers start at once, and two must never be given the same one.
+const taken = new Set<number>();
+async function freePort(): Promise<number> {
+	for (;;) {
+		const port = await new Promise<number>((resolve, reject) => {
+			const server = createServer();
+			server.on('error', reject);
+			server.listen(0, '127.0.0.1', () => {
+				const address = server.address();
+				server.close(() => (typeof address === 'object' && address ? resolve(address.port) : reject(new Error('no port'))));
+			});
 		});
-	});
+		if (taken.has(port)) continue;
+		taken.add(port);
+		return port;
+	}
 }
 
 /** A copy of a dev fixture, optionally with one edit, served by Vite's dev server. */
@@ -33,11 +40,14 @@ async function startDev(fixture: string, name: string, edit?: { file: string; fi
 		assert.ok(text.includes(edit.find), `${edit.find} not in ${edit.file}`);
 		await writeFile(join(dir, edit.file), text.replace(edit.find, edit.replace));
 	}
+	// Ready means this copy's own server answers: a port another server took in between answers too, with its own app.
+	const id = `${fixture}-${name}-${process.pid}`;
+	await writeFile(join(dir, 'mm-dev-id.txt'), id);
 	const port = await freePort();
 	const child = spawn(join(dir, 'node_modules/.bin/vite'), ['--host', '127.0.0.1', '--port', String(port), '--strictPort', '--clearScreen', 'false'], { cwd: dir, stdio: 'ignore' });
 	const origin = `http://127.0.0.1:${port}`;
 	for (const deadline = Date.now() + 30_000; ; ) {
-		if (await fetch(origin).then((r) => r.body?.cancel().then(() => r.ok), () => false)) break;
+		if (await fetch(`${origin}/mm-dev-id.txt`).then((r) => r.text(), () => '').then((t) => t === id)) break;
 		if (Date.now() > deadline || child.exitCode !== null) throw new Error(`vite dev did not start for ${fixture} (${child.exitCode})`);
 		await new Promise((done) => setTimeout(done, 100));
 	}
