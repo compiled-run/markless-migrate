@@ -1,5 +1,6 @@
 import { DESIGN_SYSTEM_MESSAGE, DESIGN_SYSTEM_READY } from './create-messages.ts';
 import { parseParams, previewDesign, radiusFix, setParamsUpdate, updateSearch, type CreateParams, type CreateUpdate } from './create-params.ts';
+import { showVariant } from '../parts/variants.ts';
 
 // app/(app)/(create)/components/design-system-provider.tsx in the page /create shows in its iframe: the params (its URL's,
 // then each the designer posts, written back to its own URL in place) as the style and base color classes on <body>,
@@ -45,6 +46,8 @@ function apply(params: CreateParams): void {
 	themeStyle.replaceChildren(design.themeCss);
 	menuColor = { inverted: design.menuInverted, translucent: design.menuTranslucent };
 	updateMenuElements();
+	// IconPlaceholder: each icon the library's own, as convert recorded the page under each library; it loaded with the empty query's.
+	showVariant('iconLibrary', params.iconLibrary, parseParams('').iconLibrary);
 }
 
 /** setSearchParams with history "replace": the iframe's own URL takes the update, and the design follows. */
