@@ -156,10 +156,16 @@ test('a page that navigates itself while the wait for scripts reads it is waited
 test("the wait for scripts reads again once when its page's context was destroyed by a navigation, and names any other failure as it is", async () => {
 	const page = (errors: string[]) => {
 		const calls = { loads: 0 };
+		const frame = {};
+		const listeners = new Set<(f: object) => void>();
 		return {
 			calls,
+			mainFrame: () => frame,
+			on: (_event: string, fn: (f: object) => void) => void listeners.add(fn),
+			off: (_event: string, fn: (f: object) => void) => void listeners.delete(fn),
 			evaluate: async () => {
 				const next = errors.shift();
+				if (next?.includes('destroyed')) for (const fn of listeners) fn(frame);
 				if (next) throw new Error(next);
 				return { busy: 0, still: 500, later: 0 };
 			},
@@ -172,6 +178,30 @@ test("the wait for scripts reads again once when its page's context was destroye
 	assert.equal(navigated.calls.loads, 1, 'it waited for the page it went to');
 	await assert.rejects(scriptsStill(page(['page.evaluate: Target page, context or browser has been closed']) as never, 1000), /has been closed/);
 	await assert.rejects(scriptsStill(page(['Execution context was destroyed', 'Execution context was destroyed']) as never, 1000), /Execution context was destroyed/, 'a second destroyed context is not read past');
+});
+
+test('the wait for scripts reads the page a navigation went to only once that navigation commits, though the old page\'s load is already met', async () => {
+	// Playwright can reject the read before it has seen the commit: until then the old document's load state still holds.
+	let committed = false;
+	const frame = {};
+	const listeners = new Set<(f: object) => void>();
+	const page = {
+		mainFrame: () => frame,
+		on: (_event: string, fn: (f: object) => void) => void listeners.add(fn),
+		off: (_event: string, fn: (f: object) => void) => void listeners.delete(fn),
+		evaluate: async () => {
+			if (committed) return { busy: 0, still: 500, later: 0 };
+			setTimeout(() => {
+				committed = true;
+				for (const fn of [...listeners]) fn(frame);
+			}, 50);
+			throw new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation');
+		},
+		waitForTimeout: async () => {},
+		waitForLoadState: async () => {},
+	};
+	assert.equal(typeof (await scriptsStill(page as never, 1000)), 'number');
+	assert.equal(listeners.size, 0, 'it stops listening once read');
 });
 
 test('no convert module opens the old site with the check\'s own reduced-motion environment: every one runs through captureEnv', async () => {
