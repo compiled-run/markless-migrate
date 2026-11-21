@@ -46,8 +46,8 @@ function apply(params: CreateParams): void {
 	themeStyle.replaceChildren(design.themeCss);
 	menuColor = { inverted: design.menuInverted, translucent: design.menuTranslucent };
 	updateMenuElements();
-	// IconPlaceholder: each icon the library's own, as convert recorded the page under each library (lib/site/variants.json).
-	showVariant('iconLibrary', params.iconLibrary);
+	// IconPlaceholder: each icon the library's own, as convert recorded the page under each library; it loaded with the empty query's.
+	showVariant('iconLibrary', params.iconLibrary, parseParams('').iconLibrary);
 }
 
 /** setSearchParams with history "replace": the iframe's own URL takes the update, and the design follows. */
