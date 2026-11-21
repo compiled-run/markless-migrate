@@ -86,6 +86,9 @@ before(async () => {
 	server = createServer((req, res) => {
 		if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? 'GET')) writes.push(`${req.method} ${req.url}`);
 		const url = new URL(req.url ?? '/', 'http://x');
+		// A font that never comes holds document.fonts.ready, which the load's settle waits on.
+		if (url.pathname === '/never.woff2') return;
+		if (url.pathname === '/stuck') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><style>@font-face { font-family: Never; src: url(/never.woff2) } p { font-family: Never }</style><p>Waiting</p><button type="button">Press</button>');
 		if (url.pathname === '/slow') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('the slow answer'), 1500);
 		if (url.pathname === '/away') return void res.writeHead(302, { location: `http://away.test:${(server.address() as AddressInfo).port}/small` }).end();
 		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname.startsWith('/chrome-odd') ? 'Done' : 'Copied', url.pathname.startsWith('/chrome-many') ? 3 : 1));
@@ -101,6 +104,7 @@ before(async () => {
 });
 after(async () => {
 	await browser?.close();
+	server?.closeAllConnections();
 	await new Promise((done) => server?.close(done));
 	await rm(dir, { recursive: true, force: true });
 });
@@ -170,6 +174,15 @@ test('a page past its press budget is cut at the same control every run; one tha
 	const hung = await recordDiscovery(browser, origin, '/small-hang', own, { hangMs: 1 });
 	assert.match(hung.error ?? '', /stopped after 0.001 s on the page/);
 	assert.equal((await readdir(own)).length, 1, 'an error is recorded again next time');
+	await rm(own, { recursive: true, force: true });
+});
+
+test('a page whose load never settles stops at the hang guard, not later', { timeout: 120_000 }, async () => {
+	const own = await mkdtemp(join(tmpdir(), 'mm-discover-stuck-'));
+	const t0 = Date.now();
+	const facts = await recordDiscovery(browser, origin, '/stuck', own, { hangMs: 3000 });
+	assert.match(facts.error ?? '', /stopped after 3 s on the page/);
+	assert.ok(Date.now() - t0 < 15_000, `stopped after ${Date.now() - t0} ms`);
 	await rm(own, { recursive: true, force: true });
 });
 

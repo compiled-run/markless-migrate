@@ -556,6 +556,8 @@ export interface RepeatOf {
 	readonly nth: number;
 	readonly labelSig: string;
 	readonly pair: number;
+	readonly name: string;
+	readonly found: PressedControl['found'];
 }
 
 /** In the page: every pressable, the ones left alone counted by why, the rest marked `data-mm-discover="<n>"` in document order. */
@@ -603,14 +605,14 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 		landmarkHash.set(landmark, (h >>> 0).toString(16));
 	}
 	// A repeat: the same signature and name under the same nearest element with a slot, a role or an id.
-	const repeat = (el: Element, name: string) => {
+	const repeat = (el: Element, name: string, found: RepeatOf['found']) => {
 		const around = el.parentElement?.closest('[data-slot], [role], [id]');
 		const key = `${sigOf(el)}\u0000${name}\u0000${around ? at(around) : ''}`;
 		const got = seen.get(key) ?? { n: 0, first: at(el) };
 		seen.set(key, { ...got, n: got.n + 1 });
 		if (got.n + 1 <= o.repeats) return false;
 		repeats[got.first] = (repeats[got.first] ?? 0) + 1;
-		(repeatsOf[got.first] ??= []).push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0 });
+		(repeatsOf[got.first] ??= []).push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found });
 		return true;
 	};
 	// The one control inside an element a reveal uses (a trigger rendered around a button).
@@ -648,7 +650,7 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 				for (let up = grid.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
 				grids.set(key, { to: 'grids', sig: sigOf(grid), nth: order.get(grid) ?? 0, name: words(grid.getAttribute('aria-label') ?? '') || name, cells: 1, ancestors });
 			}
-		} else if (repeat(el, name)) leave('same as a control pressed');
+		} else if (repeat(el, name, byRole ? 'role' : 'cursor')) leave('same as a control pressed');
 		else {
 			const ancestors: string[] = [];
 			for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
@@ -816,10 +818,16 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		if (!page) throw new Error('discovery: no page open');
 		return page;
 	};
+	let over = false;
 	const open = async () => {
 		await session?.context.close().catch(() => {});
-		session = await openPage(browser, env, VIEWPORT);
-		const opened = session;
+		const opened = await openPage(browser, env, VIEWPORT);
+		// A load the hang guard gave up on opens nothing that outlives the route.
+		if (over) {
+			await opened.context.close().catch(() => {});
+			throw new Error('discovery: the route ended');
+		}
+		session = opened;
 		page = opened.page;
 		writesSeen = 0;
 		requests.clear();
@@ -862,7 +870,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			return within(work(), what);
 		}
 	};
-	const load = async () => {
+	const load = () => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const late = new Promise<never>((_, fail) => (timer = setTimeout(() => fail(new Error(`stopped after ${hang / 1000} s on the page: it did not finish loading`)), Math.max(0, hang - (Date.now() - started)))));
+		return Promise.race([loadOnce(), late]).finally(() => clearTimeout(timer));
+	};
+	const loadOnce = async () => {
 		await open();
 		await loadPage(at(), url);
 		// A local copy that redirects elsewhere is not a local copy any more.
@@ -936,7 +949,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const kind = (p: PressedControl) => `${p.shape}|${(p.changes ?? []).map((x) => x.what).join(',')}`;
 			if (like && alike.length >= REPEATS && alike.every((p) => kind(p) === kind(like))) {
 				repeats[`${like.sig}#${like.nth}`] = (repeats[`${like.sig}#${like.nth}`] ?? 0) + 1;
-				(repeatsOf[`${like.sig}#${like.nth}`] ??= []).push({ sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair });
+				(repeatsOf[`${like.sig}#${like.nth}`] ??= []).push({ sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair, name: c.name, found: c.found });
 				excluded['same as a control pressed'] = (excluded['same as a control pressed'] ?? 0) + 1;
 				continue;
 			}
@@ -1107,6 +1120,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		const message = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
 		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats, repeatsOf } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
 	} finally {
+		over = true;
 		await session?.context.close().catch(() => {});
 		shared?.done();
 	}

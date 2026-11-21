@@ -9,7 +9,8 @@ export interface DeadControl {
 	readonly labelSig?: string;
 	readonly pair?: number;
 	readonly found: PressedControl['found'];
-	readonly shape: PressedControl['shape'];
+	/** `not pressed`: a repeat of a control a recording takes, which was not pressed for that. */
+	readonly shape: PressedControl['shape'] | 'not pressed';
 	readonly states?: number;
 	/** It sits inside a widget a recording ports whole (a table, a carousel): dead only if the written port does not answer it. */
 	readonly held?: boolean;
