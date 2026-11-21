@@ -4,10 +4,14 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
-import { assertLocal, recordDiscovery, type Claimed, type DiscoverFacts, type PressedControl, type Shared } from './record.ts';
+import { REVEAL_CLICKS } from '../convert/reveal.ts';
+import { edgeLabel, type Scene } from '../convert/scenes.ts';
+import { SELECTOR as TOGGLE_CONTROLS } from '../convert/toggles.ts';
+import { assertLocal, MAX_DEMO_ELEMENTS, MAX_DEMO_USES, recordDiscovery, shortKey, type Claimed, type DiscoverFacts, type PressedControl, type Shared } from './record.ts';
 import { deadCount, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
 import { sharedControls, UNSHARED } from './shared.ts';
 
+export { shortKey };
 export { discoveryMarkdown, summarizeDiscovery, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
 
 /** What the other recordings of a route already port, by the signatures they key controls by. */
@@ -16,10 +20,12 @@ export interface Claims {
 	readonly controls: ReadonlySet<string>;
 	/** Widgets a recording ports whole (a carousel, a table, a chart): every control inside is theirs. sig#nth. */
 	readonly holders: ReadonlySet<string>;
-	/** Each recorded demo's container and the label signatures of the controls its uses were recorded for. */
-	readonly scenes: readonly { readonly holder: string; readonly labels: ReadonlySet<string> }[];
+	/** Each recorded demo's container, the selector its controls were listed by, and the label signatures of those its uses were recorded for. */
+	readonly scenes: readonly { readonly holder: string; readonly listed: string; readonly labels: ReadonlySet<string>; /** Per label signature: the uses recorded and those not (a bound, a use that failed). */ readonly uses?: ReadonlyMap<string, { readonly recorded: number; readonly skipped: number; readonly why: string }> }[];
 	/** Controls the site names in controls.json by their name (a theme toggle). */
 	readonly names: ReadonlySet<string>;
+	/** Every element another recording owns (its controls, widgets, demos), by `shortKey` of its sig#nth, with what it is. */
+	readonly owned: ReadonlyMap<string, string>;
 }
 
 const STATEFUL = new Set<PressedControl['shape']>(['transient', 'toggle', 'one-way', 'cycle', 'sequence']);
@@ -31,19 +37,154 @@ const line = (c: PressedControl): string => {
 	return `${how}${what.length ? `: ${what.join('; ')}` : ''}`;
 };
 
-/** `control` when a recording (or a scene's uses) takes the control itself; `holder` when it only sits in a widget a recording ports whole. */
+/** The name a holder is told by in a note: its tag and data-slot, from its sig#nth. */
+export const holderName = (at: string): string => at.split('|').slice(0, 2).join('|');
+
+/**
+ * A pressed control the other recordings already port: `control` when a recording uses it itself, or a recorded demo's
+ * uses include it and the demo holds everything its presses change; `holder` when it only sits inside a widget a
+ * recording ports whole, which says nothing of this control (a table's drag handle), so the written port is asked about it.
+ */
 export function claimed(c: PressedControl, claims: Claims): 'control' | 'holder' | undefined {
 	if (claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return 'control';
-	if (claims.scenes.some((s) => c.ancestors.includes(s.holder) && s.labels.has(c.labelSig))) return 'control';
+	const within = (scene: string) => (c.holder ? c.holder.at === scene || (c.holder.ancestors ?? []).includes(scene) : c.ancestors.includes(scene));
+	if (claims.scenes.some((s) => s.labels.has(c.labelSig) && within(s.holder))) return 'control';
 	return c.ancestors.some((a) => claims.holders.has(a)) ? 'holder' : undefined;
 }
 
-/** One route's discovery: the stateful controls no recording ports, and what was pressed but not read. */
-export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDiscovery {
+/** The controls a scene of a page-level demo records: what a visitor presses, less what the reveals or the toggles take by their own selectors. */
+export const SCENE_CONTROLS = `:is(button, [role="button"], summary, [role="treeitem"]):not(${REVEAL_CLICKS}, ${TOGGLE_CONTROLS}, [aria-expanded], [type="submit"], :disabled)`;
+
+export interface SceneHolder {
+	/** Path from the body as the page loaded, and the sig#nth convert finds it again by. */
+	readonly path: string;
+	readonly at: string;
+	readonly canvas: boolean;
+	/** The controls the scene records. */
+	readonly listed: string;
+	/** A recorded demo whose listing left these controls out: recorded again with them and its own, in its place. */
+	readonly replaces?: string;
+	/** How many of its controls discovery found dead: each may lead to a state of its own, which the recording makes room for. */
+	readonly controls: number;
+	/** The labels the scene uses its controls by: the dead controls' own, what their presses relabel them to, and a recorded demo's own. */
+	readonly labels: readonly string[];
+}
+
+export { MAX_DEMO_ELEMENTS, MAX_DEMO_USES };
+
+/** Per control label (tag|data-slot|label): the uses a scene recorded and those it did not, with why. */
+export function sceneUses(scene: Pick<Scene, 'edges' | 'skippedUses'>): Map<string, { recorded: number; skipped: number; why: string }> {
+	const out = new Map<string, { recorded: number; skipped: number; why: string }>();
+	const at = (control: string) => out.get(edgeLabel(control)) ?? out.set(edgeLabel(control), { recorded: 0, skipped: 0, why: '' }).get(edgeLabel(control)) ?? { recorded: 0, skipped: 0, why: '' };
+	for (const e of scene.edges) at(e.control).recorded++;
+	for (const u of scene.skippedUses ?? []) {
+		const got = at(u.control);
+		got.skipped++;
+		got.why ||= u.why;
+	}
+	return out;
+}
+
+/** The uses an old recording of a demo had that none of the new ones has: by control and the use made of it. */
+export function lostUses(old: Pick<Scene, 'edges'>, fresh: readonly Pick<Scene, 'edges'>[]): string[] {
+	const now = new Set(fresh.flatMap((s) => s.edges.map((e) => e.control)));
+	return [...new Set(old.edges.map((e) => e.control))].filter((c) => !now.has(c));
+}
+
+/**
+ * A control a scene ports only in part: some of its uses were not recorded, or it is not a native button, so its keyboard
+ * activation (Enter, Space) is not replayed. Reported apart, and the job fails on it as on a dead control.
+ */
+export function partly(c: PressedControl, claims: Claims): string | undefined {
+	const within = (scene: string) => (c.holder ? c.holder.at === scene || (c.holder.ancestors ?? []).includes(scene) : c.ancestors.includes(scene));
+	const scene = claims.scenes.find((s) => s.labels.has(c.labelSig) && within(s.holder));
+	if (!scene || claims.controls.has(`${c.sig}#${c.nth}`) || claims.names.has(c.name)) return undefined;
+	const uses = scene.uses?.get(c.labelSig);
+	if (uses?.skipped) return `ported for ${uses.recorded} of ${uses.recorded + uses.skipped} uses: ${uses.skipped} not recorded (${uses.why})`;
+	const tag = c.sig.slice(0, c.sig.indexOf('|'));
+	if (tag !== 'button' && tag !== 'summary') return 'ported for its click only: a scene does not replay its keyboard activation (Enter, Space)';
+	return undefined;
+}
+
+const focusMoved = (c: PressedControl) => (c.changes ?? []).some((x) => x.what === 'focus');
+
+// A press that only moves focus or the scroll (and the rings that focus draws) changes no markup a scene could replay: a part's job.
+const markupChanged = (c: PressedControl) => (c.changes ?? []).some((x) => x.what !== 'focus' && x.what !== 'scroll' && !(focusMoved(c) && x.what === 'look'));
+
+// A scene is recorded for a lasting markup change; a transient one (a "Copied" mark) is left to the port check.
+const sceneWorthy = (c: PressedControl, claims: Claims) => STATEFUL.has(c.shape) && c.shape !== 'transient' && !claimed(c, claims) && markupChanged(c);
+
+// A control's label and the labels its own press gives it (Start Listening, then Stop Listening).
+const labelsOf = (c: PressedControl) => [c.name, ...(c.changes ?? []).filter((x) => x.what === 'text' && x.before === c.name && x.after).map((x) => x.after ?? '')];
+
+// The label part of a scene's label signature (tag|data-slot|label).
+const labelOfSig = (sig: string) => sig.split('|').slice(2).join('|');
+
+/** The text filter a scene's uses take: the labels, whole, as captureScenes matches a control's label. */
+export const labelFilter = (labels: readonly string[]): string => `^(${[...new Set(labels)].map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`;
+
+/** Why a scene-worthy control gets no scene, or none: its holder is the page, too large, drives a widget, overlaps what another recording owns, or its press is not repeatable. */
+export function noScene(c: PressedControl, claims: Claims, scene?: Claims['scenes'][number]): string | undefined {
+	if (c.unsteady) return 'pressed again from a fresh load it left another page (a time or a random value), which a scene would replay as one';
+	const h = c.holder;
+	if (!h || h.path === 'body') return 'what its presses change reaches across the page';
+	if (h.landmark) return `what its presses change sits in ${holderName(h.at)}, a page landmark, which is never a demo`;
+	if ((h.size ?? 0) > MAX_DEMO_ELEMENTS) return `what its presses change sits in ${holderName(h.at)} of ${h.size} elements, over the ${MAX_DEMO_ELEMENTS} a demo holds`;
+	if (h.widget) return `its presses change the inside of a ${h.widget}, which a part drives`;
+	if (scene && !(h.at === scene.holder || (h.ancestors ?? []).includes(scene.holder))) return `what its presses change reaches outside the recorded demo ${holderName(scene.holder)}`;
+	const inside = new Set(h.inside ?? []);
+	const owner = [...claims.owned].find(([key, what]) => inside.has(key) && (!scene || what !== `the recorded demo ${holderName(scene.holder)}`));
+	return owner ? `what holds it, ${holderName(scene?.holder ?? h.at)}, holds ${owner[1]}, which another recording ports` : undefined;
+}
+
+/**
+ * The elements whose controls a scene should record: a recorded demo the controls sit in (its listing left them out),
+ * recorded again with its own controls and them; or the element around each unclaimed stateful control and everything its
+ * presses change. Outermost first, none inside another; one that overlaps what another recording owns gets none.
+ */
+export function sceneHolders(facts: DiscoverFacts, claims: Claims): SceneHolder[] {
+	const out: SceneHolder[] = [];
+	const holders = facts.controls.filter((c) => sceneWorthy(c, claims)).flatMap((c): SceneHolder[] => {
+		const h = c.holder;
+		if (!h) return [];
+		const scene = claims.scenes.find((s) => c.ancestors.includes(s.holder));
+		if (noScene(c, claims, scene)) return [];
+		if (scene) {
+			const i = c.ancestors.indexOf(scene.holder);
+			const path = c.path ? c.path.split('>').slice(0, -(i + 1)).join('>') : '';
+			if (!path) return [];
+			return [{ path, at: scene.holder, canvas: Boolean(h.canvas), listed: `${scene.listed}, ${SCENE_CONTROLS}`, replaces: scene.holder, controls: 1, labels: [...labelsOf(c), ...[...scene.labels].map(labelOfSig)] }];
+		}
+		return [{ path: h.path, at: h.at, canvas: Boolean(h.canvas), listed: SCENE_CONTROLS, controls: 1, labels: labelsOf(c) }];
+	});
+	for (const h of holders.sort((a, b) => a.path.split('>').length - b.path.split('>').length)) {
+		const outer = out.findIndex((o) => h.path === o.path || h.path.startsWith(`${o.path}>`));
+		const o = outer < 0 ? undefined : out[outer];
+		if (!o) out.push(h);
+		// Two holders nest only for the same recorded demo or for none: what an existing demo holds is never inside a new one (noScene).
+		else out[outer] = { ...o, ...(o.replaces ?? h.replaces ? { replaces: o.replaces ?? h.replaces } : {}), controls: o.controls + 1, labels: [...o.labels, ...h.labels] };
+	}
+	return out;
+}
+
+/** One route's discovery: the stateful controls no recording ports, what was pressed but not read, and what scenes could not port. */
+export function routeDiscovery(facts: DiscoverFacts, claims: Claims, demos: readonly SceneHolder[] = [], skipped: readonly string[] = []): RouteDiscovery {
 	const mine = facts.controls.filter((c) => claimed(c, claims) !== 'control');
+	const inPart = facts.controls.flatMap((c) => {
+		const why = STATEFUL.has(c.shape) ? partly(c, claims) : undefined;
+		return why ? [{ name: c.name, why }] : [];
+	});
 	const held = (c: PressedControl) => claimed(c, claims) === 'holder';
 	const sameAs: Record<string, number> = {};
 	for (const c of facts.controls) if (c.sameAs) sameAs[c.sameAs.route] = (sameAs[c.sameAs.route] ?? 0) + 1;
+	const notes = [
+		...demos.filter((d) => d.canvas).map((d) => `a canvas in ${holderName(d.at)} draws from the page's own script, which the port does not keep: its drawing is not ported, only its markup's states`),
+		...mine.filter((c) => STATEFUL.has(c.shape) && !markupChanged(c)).map((c) => `"${c.name}" only moves focus or the scroll: no scene ports that, a part must`),
+		...mine.filter((c) => sceneWorthy(c, claims)).map((c) => `"${c.name}" got no scene: ${noScene(c, claims, claims.scenes.find((s) => c.ancestors.includes(s.holder))) ?? (demos.some((d) => c.path?.startsWith(`${d.path}>`)) ? 'its demo was recorded, but not this control\'s uses (see the demo\'s skipped uses)' : 'none was recorded')}`),
+		...facts.controls.filter((c) => claimed(c, claims) === 'control' && claims.scenes.some((s) => s.labels.has(c.labelSig)) && focusMoved(c) && markupChanged(c)).map((c) => `"${c.name}" is ported by its demo's scene except where its press moves focus, which a scene does not replay`),
+		...skipped,
+	];
+
 	const like = facts.repeats ?? {};
 	const likeOf = facts.repeatsOf ?? {};
 	const named = new Map(facts.controls.map((c) => [`${c.sig}#${c.nth}`, c.name]));
@@ -60,6 +201,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		return xs.filter((x) => !claims.controls.has(`${x.sig}#${x.nth}`) && !claims.names.has(x.name)).map((x) => ({ name: x.name, sig: x.sig, nth: x.nth, labelSig: x.labelSig, pair: x.pair, found: x.found, shape: c?.shape ?? 'not pressed', ...(c?.states ? { states: c.states } : {}), what: c ? `${line(c)} (a repeat of one a recording ports, not pressed)` : 'a repeat of a control a recording ports, not pressed' }));
 	});
 	return {
+		...(notes.length ? { notes } : {}),
 		candidates: facts.candidates,
 		found: { role: facts.controls.filter((c) => c.found === 'role').length, cursor: facts.controls.filter((c) => c.found === 'cursor').length },
 		pressed: facts.controls.length,
@@ -73,6 +215,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		...(facts.spotMismatch?.length ? { spotMismatch: facts.spotMismatch.map(({ name, owner }) => ({ name, owner })) } : {}),
 		seconds: Math.round(facts.ms / 100) / 10,
 		...(facts.cut ? { cut: true } : {}),
+		...(inPart.length ? { partly: inPart } : {}),
 		...(facts.error ? { error: facts.error } : {}),
 	};
 }
@@ -84,11 +227,12 @@ const sum = (routes: Readonly<Record<string, RouteDiscovery>>) => ({
 	count: Object.values(routes).reduce((n, r) => n + deadCount(r), 0),
 	deadRoutes: Object.values(routes).filter((r) => r.dead.length).length,
 	handled: Object.values(routes).reduce((n, r) => n + (r.handled ?? []).reduce((k, h) => k + 1 + (h.repeated ?? 0), 0), 0),
+	partly: Object.values(routes).reduce((n, r) => n + (r.partly?.length ?? 0), 0),
 	incomplete: incompleteOf(routes),
 });
 const totals = (routes: Readonly<Record<string, RouteDiscovery>>) => {
-	const { count, deadRoutes, handled, incomplete } = sum(routes);
-	return { count, deadRoutes, ...(handled ? { handled } : {}), ...(incomplete.length ? { incomplete } : {}) };
+	const { count, deadRoutes, handled, partly, incomplete } = sum(routes);
+	return { count, deadRoutes, ...(handled ? { handled } : {}), ...(partly ? { partly } : {}), ...(incomplete.length ? { incomplete } : {}) };
 };
 
 /** The report as convert leaves it: dead by the recordings alone, before the written port is asked (`finishDiscovery`). */

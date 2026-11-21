@@ -252,7 +252,7 @@
 		"test/routes.test.ts": {"shard":4,"seconds":1},
 		"test/run.test.ts": {"shard":4,"seconds":12},
 		"test/scene-plan.test.ts": {"shard":4,"seconds":5},
-		"test/scenes-capture.test.ts": {"shard":4,"seconds":85},
+		"test/scenes-capture.test.ts": {"shard":4,"seconds":95},
 		"test/scroll-and-dialogs.test.ts": {"shard":5,"seconds":1},
 		"test/self-urls.test.ts": {"shard":2,"seconds":25},
 		"test/serve-cloudflare-output.test.ts": {"shard":5,"seconds":5},
