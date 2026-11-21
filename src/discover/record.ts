@@ -6,14 +6,14 @@ import type { Browser, Page, Request } from 'playwright';
 import { isLoopback, openPage, type OpenPage } from '../check/browser.ts';
 import { LAYOUT_LANDMARKS } from '../check/landmarks.ts';
 import { COMPOSITE_ROLES } from '../check/patterns.ts';
-import { finishAnimations, settle as settleLoad } from '../check/capture.ts';
+import { settle as settleLoad } from '../check/capture.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
 import { captureEnv } from '../convert/capture-env.ts';
 import { SCRIPTS_STILL_CAP_MS } from '../convert/capture.ts';
 import { LATE_MARKS_MS, REVEAL_CLICKS } from '../convert/reveal.ts';
-import { scriptsStill, settle, STILL_MS, trackSettling } from '../convert/settle.ts';
+import { POLL_MS, STILL_MS, trackSettling } from '../convert/settle.ts';
 import { SELECTOR as TOGGLE_CONTROLS } from '../convert/toggles.ts';
 
 /** How a press changed the page: back by itself, back on the next press, unchanged by the next press, or more states. */
@@ -401,29 +401,170 @@ function installReader(widgets: readonly string[]): void {
 		}
 		return (h >>> 0).toString(16);
 	};
+	const drain = () => {
+		const out = announced;
+		announced = [];
+		return out;
+	};
+	const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+	const frames = () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+	type Settle = (within: number) => { busy: number; still: number; later: number };
+	const tracker = (): Settle | undefined => (globalThis as { __mmSettle__?: Settle }).__mmSettle__;
+	// No script busy and the document unchanged for `quiet`, polled every 50 ms for at most `cap`; then finite animations finished.
+	const finish = () => {
+		for (const a of document.getAnimations()) {
+			const end = a.playState === 'running' ? a.effect?.getComputedTiming().endTime : undefined;
+			if (typeof end === 'number' && Number.isFinite(end) && a.timeline === document.timeline) a.finish();
+		}
+	};
+	const quietFor = async (cap: number, quiet: number) => {
+		const t0 = performance.now();
+		for (;;) {
+			const seen = tracker()?.(Math.max(0, cap - (performance.now() - t0)));
+			if (!seen || (seen.busy === 0 && seen.still >= quiet) || performance.now() - t0 >= cap) return;
+			await sleep(50);
+		}
+	};
+	const still = async (cap: number, quiet: number) => {
+		await quietFor(cap, quiet);
+		finish();
+	};
+	// settle's page side: until nothing is due within `cap` and the document is unchanged for `quiet`; a timer due later waits out `cap`.
+	const settled = async (cap: number, quiet: number, poll: number): Promise<'still' | 'later' | 'cap'> => {
+		finish();
+		const t0 = performance.now();
+		for (;;) {
+			const left = cap - (performance.now() - t0);
+			if (left <= 0) return 'cap';
+			const seen = tracker()?.(left);
+			if (!seen || seen.later) return (await sleep(left), 'later');
+			if (seen.busy === 0 && Math.min(seen.still, performance.now() - t0) >= quiet) return 'still';
+			await sleep(Math.min(poll, left));
+		}
+	};
+	const marked = (index: number) => document.querySelector(`[data-mm-discover="${index}"]`);
+	const writes = () => (globalThis as { __mmWrites__?: string[] }).__mmWrites__?.splice(0) ?? [];
+	const doc = () => (globalThis as { __mmDoc__?: string }).__mmDoc__;
 	g.__mmDiscover__ = {
 		read,
 		diff,
 		widgetsOn,
 		hash,
 		path: (el: Element) => (read(), paths.get(el) ?? ''),
-		announced: () => {
-			const out = announced;
-			announced = [];
-			return out;
-		},
+		announced: drain,
 		forget: () => void readings.splice(0),
+		// Before a press, in one call: the control in view and hit, focus off, the page still, its place, what changed by itself since `lastRead`, and the first reading.
+		before: async (index: number, lastRead: number | undefined, cap: number, quiet: number) => {
+			const el = marked(index);
+			if (!el) return { covered: 'gone' };
+			el.scrollIntoView({ block: 'center', inline: 'center' });
+			const r = el.getBoundingClientRect();
+			const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			const covered = !r.width || !r.height ? 'it has no size' : hit && hit !== el && !el.contains(hit) && !hit.contains(el) ? `covered at its centre by ${hit.tagName.toLowerCase()}` : hit ? '' : 'its centre is off the page';
+			if (covered) return { covered };
+			if (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement) document.activeElement.blur();
+			await frames();
+			await still(cap, quiet);
+			read();
+			const pressed = paths.get(el) ?? '';
+			const drift = lastRead === undefined ? [] : diff(lastRead, read(), [], pressed).changed;
+			readings.splice(0);
+			drain();
+			return { covered: '', pressed, drift, start: read() };
+		},
+		// After the first press, in one call: what showed at once, what stayed once the page is still, and what it announced or tried to write.
+		after: async (start: number, drift: readonly string[], pressed: string, cap: number, quiet: number) => {
+			await frames();
+			const quick = diff(start, read(), drift, pressed);
+			await still(cap, quiet);
+			const now = read();
+			return { quick, now, first: diff(start, now, drift, pressed), announced: drain(), writes: writes(), doc: doc() };
+		},
+		// The page still again and read, with what it announced or tried to write since.
+		look: async (start: number, drift: readonly string[], pressed: string, cap: number, quiet: number) => {
+			await still(cap, quiet);
+			const now = read();
+			return { now, first: diff(start, now, drift, pressed), announced: drain(), writes: writes(), doc: doc() };
+		},
+		settled,
+		// What the page changes with no press over `ms`: one reading, a wait, another.
+		watch: async (ms: number) => {
+			const idle = read();
+			await sleep(ms);
+			return diff(idle, read(), [], '').changed;
+		},
+		// After the pointer went to the control: what still shows once its scripts are quiet, then the page still and read.
+		hovered: async (start: number, drift: readonly string[], pressed: string, cap: number, quiet: number) => {
+			await frames();
+			await quietFor(cap, quiet);
+			const hovered = diff(start, read(), drift, pressed).changed;
+			await still(cap, quiet);
+			return { hovered, now: read() };
+		},
+		// A load's end, in one call: at the top, animations finished, the page still, and the document's id set.
+		ready: async (id: string, cap: number, quiet: number) => {
+			scrollTo(0, 0);
+			await still(cap, quiet);
+			(globalThis as { __mmDoc__?: string }).__mmDoc__ = id;
+		},
+		// After a later press: read once still, and the last earlier reading it matches (-1 for none), and whether it matches the page as loaded, look and all.
+		again: async (states: readonly number[], previous: number, drift: readonly string[], pressed: string, cap: number, quiet: number) => {
+			await still(cap, quiet);
+			const now = read();
+			let same = -1;
+			for (const [i, at] of states.entries()) if (!diff(at, now, drift, pressed).changed.length) same = i;
+			const first = states[0];
+			const step = diff(previous, now, drift, pressed).changed;
+			return { now, same, home: first !== undefined && !diff(first, now, drift, '').changed.length, step, widgets: widgetsOn(now, step), writes: writes(), doc: doc() };
+		},
+		// What a stateful first press reached: the widgets on the way to what it changed, and the reading as one value.
+		marks: (at: number, changed: readonly string[], drift: readonly string[]) => ({ widgets: widgetsOn(at, changed), hash: hash(at, drift) }),
+		// The page still, read as one value.
+		stillHash: async (drift: readonly string[], cap: number, quiet: number) => {
+			await still(cap, quiet);
+			return hash(read(), drift);
+		},
 	};
+}
+
+interface Before {
+	covered: string;
+	pressed?: string;
+	drift?: string[];
+	start?: number;
+}
+
+interface Diff {
+	changed: string[];
+	changes: Change[];
+}
+
+interface Looked {
+	now: number;
+	first: Diff;
+	announced: string[];
+	writes: string[];
+	doc: string | undefined;
 }
 
 interface Reader {
 	read(): number;
 	widgetsOn(index: number, keys: readonly string[]): [number, string][];
 	hash(index: number, ignore: readonly string[]): string;
-	diff(a: number, b: number, ignore: readonly string[], pressed: string): { changed: string[]; changes: Change[] };
+	diff(a: number, b: number, ignore: readonly string[], pressed: string): Diff;
 	path(el: Element): string;
 	announced(): string[];
 	forget(): void;
+	before(index: number, lastRead: number | undefined, cap: number, quiet: number): Promise<Before>;
+	after(start: number, drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<Looked & { quick: Diff }>;
+	look(start: number, drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<Looked>;
+	settled(cap: number, quiet: number, poll: number): Promise<'still' | 'later' | 'cap'>;
+	ready(id: string, cap: number, quiet: number): Promise<void>;
+	watch(ms: number): Promise<string[]>;
+	hovered(start: number, drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<{ hovered: string[]; now: number }>;
+	again(states: readonly number[], previous: number, drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<{ now: number; same: number; home: boolean; step: string[]; widgets: [number, string][]; writes: string[]; doc: string | undefined }>;
+	marks(at: number, changed: readonly string[], drift: readonly string[]): { widgets: [number, string][]; hash: string };
+	stillHash(drift: readonly string[], cap: number, quiet: number): Promise<string>;
 }
 
 interface Candidate {
@@ -694,11 +835,26 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	// The page's open requests by when each started: a press waits only on those it started, never on one the page holds open.
 	const requests = new Map<Request, number>();
 	let lastEnded = 0;
-	const pressedRequestsDone = async (since: number) => {
-		const t0 = Date.now();
-		const open = () => [...requests.values()].some((t) => t >= since);
-		while (Date.now() - t0 < SCRIPTS_STILL_CAP_MS && (open() || (lastEnded >= since && Date.now() - lastEnded < STILL_MS))) await at().waitForTimeout(20);
-	};
+	let requestMoved: (() => void) | undefined;
+	// Until no request started since `since` is open and none ended for STILL_MS, at most `cap`: woken by the requests' own events.
+	const requestsDone = (since: number, cap: number) =>
+		new Promise<void>((done) => {
+			const t0 = Date.now();
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const check = () => {
+				clearTimeout(timer);
+				const open = [...requests.values()].some((t) => t >= since);
+				const quiet = lastEnded >= since ? STILL_MS - (Date.now() - lastEnded) : 0;
+				const left = cap - (Date.now() - t0);
+				if (left <= 0 || (!open && quiet <= 0)) {
+					requestMoved = undefined;
+					return done();
+				}
+				requestMoved = check;
+				timer = setTimeout(check, open ? left : Math.min(quiet, left));
+			};
+			check();
+		});
 	const at = (): Page => {
 		if (!page) throw new Error('discovery: no page open');
 		return page;
@@ -711,15 +867,14 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		writesSeen = 0;
 		requests.clear();
 		await trackSettling(opened.context);
-		await opened.context.addInitScript(installReader, WIDGET_ROLES);
-		await opened.context.addInitScript(holdWrites);
+		await opened.context.addInitScript({ content: `(${installReader.toString()})(${JSON.stringify(WIDGET_ROLES)});(${holdWrites.toString()})();` });
 		opened.context.on('page', (other) => {
 			if (other === opened.page) return;
 			stop('window', other.url());
 			other.close().catch(() => {});
 		});
-		opened.page.on('request', (r) => void requests.set(r, Date.now()));
-		const ended = (r: Request) => void (requests.delete(r) && (lastEnded = Date.now()));
+		opened.page.on('request', (r) => (requests.set(r, Date.now()), requestMoved?.()));
+		const ended = (r: Request) => void (requests.delete(r) && ((lastEnded = Date.now()), requestMoved?.()));
 		opened.page.on('requestfinished', ended);
 		opened.page.on('requestfailed', ended);
 		opened.page.on('download', (d) => (stop('download', d.suggestedFilename()), d.cancel().catch(() => {})));
@@ -729,22 +884,25 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		});
 	};
 	const read = () => within(at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.read()), 'reading the page');
-	const forget = () => within(at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.forget()), 'clearing the readings');
-	const announcedSince = () => within(at().evaluate(() => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.announced()), 'reading the announcements');
-	const widgetsOn = (index: number, keys: readonly string[]) => within(at().evaluate(([i, k]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.widgetsOn(i, k), [index, keys] as const), 'reading the widgets');
-	const diff = (a: number, b: number, ignore: readonly string[], pressed: string) => within(at().evaluate(([a, b, ignore, pressed]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.diff(a, b, ignore, pressed), [a, b, ignore, pressed] as const), 'comparing two readings');
 	// A write or another document stops the press; an address the same document took (a filter in the URL) is a change.
-	const looked = async (changes: Change[]) => {
-		const tried = await at().evaluate(() => (globalThis as { __mmWrites__?: string[] }).__mmWrites__?.splice(0) ?? []).catch((): string[] => []);
+	const looked = (seen: { writes: readonly string[]; doc: string | undefined }, changes: Change[]) => {
 		const held = session?.log.writes.slice(writesSeen) ?? [];
 		writesSeen += held.length;
-		const write = tried[0] ?? held[0]?.line;
+		const write = seen.writes[0] ?? held[0]?.line;
 		if (write) stop('blocked', write);
 		if (movedTo !== undefined) {
-			const same = (await at().evaluate(() => (globalThis as { __mmDoc__?: string }).__mmDoc__).catch(() => undefined)) === docId;
-			if (same) changes.push({ at: 'the address', what: 'address', before: new URL(url).pathname + new URL(url).search, after: new URL(movedTo).pathname + new URL(movedTo).search });
+			if (seen.doc === docId) changes.push({ at: 'the address', what: 'address', before: new URL(url).pathname + new URL(url).search, after: new URL(movedTo).pathname + new URL(movedTo).search });
 			else stop('navigates', new URL(movedTo).pathname);
 			movedTo = undefined;
+		}
+	};
+	// A step cut by the page's own navigation is asked once more, of the page it went to, which tells the press that it left.
+	const inPage = async <T>(what: string, work: () => Promise<T>): Promise<T> => {
+		try {
+			return await within(work(), what);
+		} catch (error) {
+			if (!(error instanceof Error && error.message.includes('Execution context was destroyed'))) throw error;
+			return within(work(), what);
 		}
 	};
 	const load = async () => {
@@ -753,31 +911,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		// A local copy that redirects elsewhere is not a local copy any more.
 		assertLocal(at().url());
 		await settleLoad(at());
-		await at().evaluate(() => scrollTo(0, 0));
-		await finishAnimations(at());
-		await scriptsStill(at(), SCRIPTS_STILL_CAP_MS).catch(() => undefined);
 		// Set from here, not by the page: capture's environment fixes the page's Math.random, so a page-made id repeats.
 		docId = `${Date.now()}-${reloads}`;
-		await at().evaluate((id) => void ((globalThis as { __mmDoc__?: string }).__mmDoc__ = id), docId);
+		await inPage('the page settling', () => at().evaluate(([id, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.ready(id, cap, quiet), [docId, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
 		stopped = undefined;
 		movedTo = undefined;
 		writesSeen = session?.log.writes.length ?? 0;
-	};
-	const frames = () => within(at().evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))), 'waiting two frames');
-	// scriptsStill's test polled in the page, then animations finished: a half-run transition is no state of its own.
-	const still = async () => {
-		await at().mouse.move(0, 0);
-		await at()
-			.waitForFunction(
-				([cap, quiet, t0]) => {
-					const seen = (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(Math.max(0, cap - (performance.now() - t0)));
-					return !seen || (seen.busy === 0 && seen.still >= quiet);
-				},
-				[SCRIPTS_STILL_CAP_MS, STILL_MS, await at().evaluate(() => performance.now())] as const,
-				{ polling: 50, timeout: SCRIPTS_STILL_CAP_MS },
-			)
-			.catch(() => undefined);
-		await finishAnimations(at()).catch(() => {});
 	};
 	const find = () => within(at().evaluate(findCandidates, { destructive: DESTRUCTIVE.source, reveals: REVEAL_CLICKS, toggles: TOGGLE_CONTROLS, repeats: REPEATS, landmarks: LAYOUT_LANDMARKS }), 'finding the controls');
 	const controls: PressedControl[] = [];
@@ -804,10 +943,8 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		({ candidates, excluded, repeats, left } = await find());
 		owners = shared ? await shared.owners(candidates.map((c) => c.group)) : new Map();
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
-		const idle = await read();
 		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
-		await at().waitForTimeout(DRIFT_WATCH_MS);
-		drift = (await diff(idle, await read(), [], '')).changed;
+		drift = await inPage('watching the page', () => at().evaluate((ms) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.watch(ms), DRIFT_WATCH_MS));
 		let fresh = true;
 		// The reading a control that left the page as it found it ended on: what changed from it before the next press is the page's own.
 		let lastRead: number | undefined;
@@ -825,8 +962,6 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			pending.splice(0);
 		};
-		// The page's own changes are learned as the route goes: the hash leaves out what is known by then.
-		const hashOf = (index: number) => within(at().evaluate(([i, d]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.hash(i, d), [index, drift] as const), 'reading the page as one value');
 		for (const [index, c] of candidates.slice(0, MAX_CONTROLS).entries()) {
 			hung();
 			if (presses >= budget) {
@@ -869,66 +1004,71 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			}
 			fresh = true;
 			const control = at().locator(`[data-mm-discover="${index}"]`).first();
-			if (!(await control.count())) {
+			await at().mouse.move(0, 0);
+			// In view at once (Playwright's own scroll waits for a visibility an unpressable control never gets), hit-tested at its centre, focus off the last control, the page still.
+			const ready = await inPage('reading the page before the press', () =>
+				at().evaluate(([i, last, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.before(i, last ?? undefined, cap, quiet), [index, lastRead ?? null, SCRIPTS_STILL_CAP_MS, STILL_MS] as const),
+			).catch(unlessStalled<Before>({ covered: 'it went from the page' }));
+			if (ready.covered === 'gone') {
 				controls.push({ ...base, shape: 'unpressable', why: 'not on the page once loaded again' });
 				continue;
 			}
-			// Scrolled in the page, at once: Playwright's own scroll waits for a visibility an unpressable control never gets.
-			await control.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
-			// What covers the control's centre takes a click there: one a click cannot reach is named at once, not after the click's timeout.
-			const covered = await within(
-				control.evaluate((el) => {
-					const r = el.getBoundingClientRect();
-					const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-					return !r.width || !r.height ? 'it has no size' : hit && hit !== el && !el.contains(hit) && !hit.contains(el) ? `covered at its centre by ${hit.tagName.toLowerCase()}` : hit ? '' : 'its centre is off the page';
-				}),
-				'the hit test',
-			).catch(unlessStalled('it went from the page'));
-			if (covered) {
-				controls.push({ ...base, shape: 'unpressable', why: `the press did not reach it: ${covered}` });
+			if (ready.covered) {
+				controls.push({ ...base, shape: 'unpressable', why: `the press did not reach it: ${ready.covered}` });
 				continue;
 			}
-			// Focus left on the last control would move with this press: its ring going is not this press's doing.
-			await at().evaluate(() => (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement.blur() : undefined));
-			await frames();
-			await still();
-			const pressed = await within(control.evaluate((el) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.path(el)), 'reading the control\'s place').catch(unlessStalled(''));
+			const pressed = ready.pressed ?? '';
 			// What changed since the last control's last reading, with no press between: the page's own (a clock), never a press's.
-			if (lastRead !== undefined) drift = [...new Set([...drift, ...(await diff(lastRead, await read(), [], pressed)).changed])];
-			await forget();
-			await announcedSince();
-			const states = [await read()];
+			if (lastRead !== undefined) drift = [...new Set([...drift, ...(ready.drift ?? [])])];
+			const states = [ready.start ?? 0];
 			lastRead = undefined;
+			let since = 0;
 			const press = async (): Promise<boolean> => {
 				presses++;
-				const since = Date.now();
+				since = Date.now();
 				const ok = await control.click({ timeout: CLICK_MS }).then(
 					() => true,
 					() => false,
 				);
 				// What a press fetched (a chunk, a GET it waits on) comes before the page is read.
-				await pressedRequestsDone(since).catch(() => {});
+				await requestsDone(since, SCRIPTS_STILL_CAP_MS);
 				return ok;
 			};
-			const changesFrom = (a: number, b: number) => diff(a, b, drift, pressed);
+			// settle's wait for late marks: the page's side in the page, the requests this press started from their events.
+			const lateMarks = async () => {
+				const t0 = Date.now();
+				for (;;) {
+					const left = LATE_MARKS_MS - (Date.now() - t0);
+					if (left <= 0) return;
+					const how = await inPage('waiting for late marks', () => at().evaluate(([cap, quiet, poll]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.settled(cap, quiet, poll), [left, STILL_MS, POLL_MS] as const));
+					const busy = [...requests.values()].some((t) => t >= since) || (lastEnded >= since && Date.now() - lastEnded < STILL_MS);
+					if (how !== 'still' || !busy) return;
+					await requestsDone(since, LATE_MARKS_MS - (Date.now() - t0));
+				}
+			};
 			if (!(await press())) {
 				controls.push({ ...base, shape: 'unpressable', why: 'the press did not reach it' });
 				fresh = false;
 				continue;
 			}
+			const start = states[0] ?? 0;
 			await at().mouse.move(0, 0);
-			await frames();
-			const quick = await changesFrom(states[0] ?? 0, await read());
-			await still();
-			let settled = await read();
-			if (!stopped && (await changesFrom(states[0] ?? 0, settled)).changed.length) {
-				await settle(at(), LATE_MARKS_MS);
-				await still();
-				settled = await read();
+			const seen = await inPage('reading the press', () => at().evaluate(([start, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.after(start, drift, pressed, cap, quiet), [start, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+			const { quick } = seen;
+			let { now: settled, first } = seen;
+			const announced = [...seen.announced];
+			const tried = [...seen.writes];
+			let doc = seen.doc;
+			if (!stopped && first.changed.length) {
+				await lateMarks();
+				const late = await inPage('reading the press once late marks are in', () => at().evaluate(([start, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.look(start, drift, pressed, cap, quiet), [start, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+				({ now: settled, first } = late);
+				announced.push(...late.announced);
+				tried.push(...late.writes);
+				doc = late.doc;
 			}
-			const announced = await announcedSince();
 			const address: Change[] = [];
-			await looked(address);
+			looked({ writes: tried, doc }, address);
 			if (address.length) fresh = false;
 			const stopFirst = halted();
 			if (stopFirst) {
@@ -936,7 +1076,6 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				fresh = false;
 				continue;
 			}
-			const first = await changesFrom(states[0] ?? 0, settled);
 			const said: Change[] = [...address, ...announced.map((a): Change => ({ at: a.slice(0, a.indexOf(':')), what: 'announced', after: a.slice(a.indexOf(':') + 2) }))];
 			if (!first.changed.length && !quick.changed.length && !said.length) {
 				controls.push({ ...base, shape: 'inert' });
@@ -946,14 +1085,11 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			if (!first.changed.length) {
 				// What only showed while the pointer was on the control (a tooltip) is the hover's, not the press's.
 				await control.hover({ timeout: HOVER_MS }).catch(() => {});
-				await frames();
-				await scriptsStill(at(), SCRIPTS_STILL_CAP_MS).catch(() => undefined);
-				const hovered = (await changesFrom(states[0] ?? 0, await read())).changed;
-				await still();
+				const { hovered, now } = await inPage('reading the hover', () => at().evaluate(([start, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.hovered(start, drift, pressed, cap, quiet), [start, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
 				const own = quick.changed.filter((p) => !hovered.some((h) => p === h || p.startsWith(`${h}>`)));
 				if (!own.length && !said.length) {
 					controls.push({ ...base, shape: 'inert' });
-					lastRead = await read();
+					lastRead = now;
 				} else {
 					if (!said.length) moved.set(controls.length, own);
 					controls.push({ ...base, path: pressed, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
@@ -965,30 +1101,27 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			states.push(settled);
 			// Everything any press changed, and the widgets on the way to it: what holds the control is sized from them all.
 			const all = new Set(first.changed);
-			const widgets = await widgetsOn(settled, first.changed);
-			const firstHash = await hashOf(settled);
+			// The page's own changes are learned as the route goes: the hash leaves out what is known by then.
+			const marks = await inPage('reading what the press reached', () => at().evaluate(([at, changed, drift]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.marks(at, changed, drift), [settled, first.changed, drift] as const));
+			const widgets = [...marks.widgets];
 			let previous = settled;
 			let shape: Shape | undefined;
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {
 				hung();
 				await press();
-				await still();
-				await settle(at(), LATE_MARKS_MS);
-				await still();
-				await looked([]);
+				await at().mouse.move(0, 0);
+				await lateMarks();
+				const after = await inPage('reading a later press', () => at().evaluate(([states, previous, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.again(states, previous, drift, pressed, cap, quiet), [states, previous, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+				looked(after, []);
 				if (halted()) break;
-				const now = await read();
-				const step = (await changesFrom(previous, now)).changed;
-				for (const k of step) all.add(k);
-				widgets.push(...(await widgetsOn(now, step)));
+				const { now, same } = after;
+				for (const k of after.step) all.add(k);
+				widgets.push(...after.widgets);
 				previous = now;
-				let same = -1;
-				for (const [i, s] of states.entries()) if (!(await changesFrom(s, now)).changed.length) same = i;
 				if (same === 0) {
 					shape = n === 2 ? 'toggle' : 'cycle';
 					// Back to the reading the page loaded with, the pressed control's own look included: no reload is needed before the next control.
-					const start = states[0];
-					if (start !== undefined && !(await diff(start, now, drift, '')).changed.length) back = now;
+					if (after.home) back = now;
 				}
 				else if (same === states.length - 1) shape = 'one-way';
 				else if (same > 0) shape = 'sequence';
@@ -1016,25 +1149,21 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				reloads++;
 				await find();
 				await name();
-				const again = at().locator(`[data-mm-discover="${index}"]`).first();
 				// Named by now: a holder a scene refuses anyway (a page region, too large, a widget's) is not pressed again.
 				const h = controls[controls.length - 1]?.holder;
 				const refused = !h || h.landmark || (h.size ?? 0) > MAX_DEMO_ELEMENTS || h.widget;
-				if (!refused && (await again.count())) {
-					await again.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
-					await at().evaluate(() => (document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement.blur() : undefined));
-					await frames();
-					await still();
+				const ready = refused ? undefined : await inPage('reading the page before the press again', () => at().evaluate(([i, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.before(i, undefined, cap, quiet), [index, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+				if (ready && ready.covered !== 'gone') {
 					presses++;
-					const since = Date.now();
-					await again.click({ timeout: CLICK_MS }).catch(() => {});
-					await pressedRequestsDone(since).catch(() => {});
-					await still();
-					await settle(at(), LATE_MARKS_MS);
-					await still();
+					await at().locator(`[data-mm-discover="${index}"]`).first().click({ timeout: CLICK_MS }).catch(() => {});
+					since = Date.now();
+					await requestsDone(since, SCRIPTS_STILL_CAP_MS);
+					await at().mouse.move(0, 0);
+					await lateMarks();
 					const last = controls.length - 1;
-					const control = controls[last];
-					if (control && (await hashOf(await read())) !== firstHash) controls[last] = { ...control, unsteady: true };
+					const pressedAgain = controls[last];
+					const hash = await inPage('reading the page as one value', () => at().evaluate(([drift, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.stillHash(drift, cap, quiet), [drift, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+					if (pressedAgain && hash !== marks.hash) controls[last] = { ...pressedAgain, unsteady: true };
 				}
 			}
 			if (back !== undefined) {
