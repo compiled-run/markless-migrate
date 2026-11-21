@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEFAULT_CELLS, DEFAULT_NAV_RUNS, FULL_CELLS, MAX_NAV_RUNS, type NavCell, type NavClick, type NavRun, type NavStep, type RouteNavTiming } from '../src/check/nav-timing.ts';
-import { bandOf, byteRows, navRows, navTally, navTimingFailures, navTimingUnmeasured } from '../src/check/nav-timing-verdicts.ts';
+import { DEFAULT_CELLS, DEFAULT_NAV_RUNS, FULL_CELLS, routerMarkNames, MAX_NAV_RUNS, type NavCell, type NavClick, type NavRun, type NavStep, type RouteNavTiming } from '../src/check/nav-timing.ts';
+import { bandOf, byteRows, navRows, navTally, navTimingFailures, navTimingLines, navTimingUnmeasured } from '../src/check/nav-timing-verdicts.ts';
 
 const STEPS: readonly NavStep[] = [
 	{ target: '/a', region: 'aside', kind: 'first' },
@@ -125,4 +125,25 @@ test('the noise band over the most runs the flag allows takes well under a secon
 	const started = performance.now();
 	bandOf(values);
 	assert.ok(performance.now() - started < 1000);
+});
+
+test('the router\'s own marks name the cause: guessing ruled out (with its reason) first, then its budget spent', () => {
+	const r = seeded(21);
+	const served = () => ({ ahead: 'arrived' as const, served: true, fetched: false, dataAfter: 0 });
+	const cause = (newMore: (s: NavStep) => Partial<NavClick>) => navRows(timing([cell(runs(r, 120, DEFAULT_NAV_RUNS, 0, served), runs(r, 120, DEFAULT_NAV_RUNS, 250, newMore))], 1)).find((x) => x.kind === 'first')!.cause;
+	assert.equal(cause(() => ({ budgetSpent: true })), 'budget spent');
+	assert.equal(cause(() => ({ ruledOut: 'save-data' })), 'prefetch ruled out (save-data)');
+	assert.equal(cause(() => ({ ruledOut: 'network', budgetSpent: true })), 'prefetch ruled out (network)');
+	assert.equal(cause(() => ({})), 'not prefetched', 'without marks the cause is what it was');
+	const failure = navTimingFailures('/docs', timing([cell(runs(r, 120, DEFAULT_NAV_RUNS, 0, served), runs(r, 120, DEFAULT_NAV_RUNS, 250, () => ({ ruledOut: 'network' })))], 1))[0]!;
+	assert.match(failure.hint, /ruled out fetching ahead/);
+});
+
+test('the mark names come from the installed router\'s PREFETCH_MARKS; a router without them names none', async () => {
+	assert.deepEqual(await routerMarkNames(async () => ({ PREFETCH_MARKS: ['a:spent', 'a:skipped'] })), ['a:spent', 'a:skipped']);
+	assert.equal(await routerMarkNames(async () => ({ router: () => ({}) })), undefined);
+	assert.equal(await routerMarkNames(async () => ({ PREFETCH_MARKS: 'a' })), undefined);
+	assert.equal(await routerMarkNames(async () => Promise.reject(new Error('no router'))), undefined);
+	assert.match(navTimingLines(timing([cell(runs(seeded(2), 120), runs(seeded(3), 120))])).join('\n'), /names no prefetch marks/);
+	assert.doesNotMatch(navTimingLines({ ...timing([cell(runs(seeded(2), 120), runs(seeded(3), 120))]), marks: ['a'] }).join('\n'), /names no prefetch marks/);
 });
