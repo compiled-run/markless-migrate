@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { discoverRecorder, discoveryReport, draftReport, routeDiscovery } from '../src/discover/convert.ts';
+import { discoverRecorder, discoveryReport, draftReport, noScene, routeDiscovery, sceneHolders } from '../src/discover/convert.ts';
 import { pageScripts, recordDiscovery, type DiscoverFacts } from '../src/discover/record.ts';
 import { discoveryMarkdown, type RouteDiscovery } from '../src/discover/report.ts';
 import { isSpot, sharedControls } from '../src/discover/shared.ts';
@@ -92,6 +92,9 @@ before(async () => {
 		if (url.pathname === '/slow') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('the slow answer'), 1500);
 		if (url.pathname === '/away') return void res.writeHead(302, { location: `http://away.test:${(server.address() as AddressInfo).port}/small` }).end();
 		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname.startsWith('/chrome-odd') ? 'Done' : 'Copied', url.pathname.startsWith('/chrome-many') ? 3 : 1));
+		if (url.pathname === '/pager') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><header><a href="/">Home</a></header><main><div class="card"><header><h3>Results</h3></header><p id="page">Page 1</p><nav aria-label="pagination"><button type="button" id="next">Next</button></nav><footer>Card footer</footer></div></main><script>let n = 1; document.getElementById("next").onclick = () => { document.getElementById("page").textContent = "Page " + ++n; };</script></body></html>');
+		if (url.pathname === '/cart') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><div id="app"><header><span id="count">0</span></header><main><button type="button" id="add">Add to cart</button><p id="msg"></p></main></div><script>let n = 0; document.getElementById("add").onclick = () => { document.getElementById("count").textContent = String(++n); document.getElementById("msg").textContent = "Added " + n; };</script></body></html>');
+		if (url.pathname === '/slowreply') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><div class="demo"><button type="button" id="load">Load reply</button><p id="out"></p></div><script>document.getElementById("load").onclick = () => fetch("/slow").then((r) => r.text()).then((t) => { document.getElementById("out").textContent = t; });</script></body></html>');
 		const html = url.pathname === '/' ? GUARDS : url.pathname === '/drift' ? DRIFT : url.pathname === '/one' ? SMALL(1) : url.pathname.startsWith('/small') ? SMALL(3) : '<!doctype html><p>Other</p>';
 		res.writeHead(200, { 'content-type': 'text/html' }).end(html);
 	});
@@ -152,6 +155,34 @@ test('the write guard goes into the page first and alone, so a reader that throw
 	} finally {
 		await context.close();
 	}
+});
+
+test('the steadiness re-press waits on the requests its own click started, so a slow answer does not make the control unsteady', async () => {
+	const facts = await recordDiscovery(browser, origin, '/slowreply', await mkdtemp(join(tmpdir(), 'mm-discover-steady-')));
+	const load = facts.controls.find((c) => c.name === 'Load reply');
+	assert.ok(load?.changes?.some((c) => c.what === 'text' && c.after === 'the slow answer'), 'the first press read the answer');
+	assert.equal(load?.unsteady, undefined, 'the second press from a fresh load read the same answer');
+});
+
+test('a holder around main or a layout landmark is a page, never a demo: no scene, and the report says why', async () => {
+	const facts = await recordDiscovery(browser, origin, '/cart', await mkdtemp(join(tmpdir(), 'mm-discover-cart-')));
+	const add = facts.controls.find((c) => c.name === 'Add to cart');
+	assert.equal(add?.holder?.path, 'body>div1', 'what the press changed sits in the app root, around the header and main');
+	assert.ok(add?.holder?.landmark, 'the app root holds main and the header');
+	const none = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	assert.deepEqual(sceneHolders(facts, none), []);
+	assert.ok(add);
+	assert.match(noScene(add, none) ?? '', /around a page landmark \(\w+\): a page region, never a demo/);
+});
+
+test('a demo holding its own header, footer or nav (a card, a pager) is a demo: only main and page-level landmarks make a page region', async () => {
+	const facts = await recordDiscovery(browser, origin, '/pager', await mkdtemp(join(tmpdir(), 'mm-discover-pager-')));
+	const next = facts.controls.find((c) => c.name === 'Next');
+	assert.equal(next?.holder?.path, 'body>main1>div1', 'what the press changed sits in the card');
+	assert.equal(next?.holder?.landmark, undefined, 'its header, nav and footer sit inside main');
+	const none = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	assert.ok(next);
+	assert.equal(noScene(next, none), undefined);
 });
 
 test('a page that redirects off this machine is refused after it loads, and the failure is not kept', async () => {
@@ -262,7 +293,7 @@ test('the same control on a later route is counted from the first route that sho
 	assert.equal(by(second, 'Nothing')?.sameAs, undefined, 'an inert result outside the layout is never counted');
 	assert.equal(by(second, 'chrome-second')?.sameAs, undefined, "a page's own control is pressed");
 	assert.ok(second);
-	assert.match(routeDiscovery(second, { controls: new Set(), holders: new Set(), scenes: [], names: new Set() }).dead.find((d) => d.name === 'Copy')?.what ?? '', /same as \/chrome-first/);
+	assert.match(routeDiscovery(second, { controls: new Set(), holders: new Set(), scenes: [], names: new Set(), owned: new Map() }).dead.find((d) => d.name === 'Copy')?.what ?? '', /same as \/chrome-first/);
 	assert.equal(by(odd, 'Copy')?.sameAs, undefined, 'a spot route presses one of each group');
 	assert.deepEqual(odd?.spotMismatch?.map((m) => [m.name, m.owner]), [['Copy', order[0]]], 'its "Done" is not the owner\'s "Copied"');
 	// Read back: the count still matches the owner's result; the spot route is recorded again and its group is pressed everywhere.

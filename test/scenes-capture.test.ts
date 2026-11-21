@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // What a demo's own controls did on the old page, recorded frame by frame (src/convert/scenes.ts), on a page whose Send
 // shows a typing row, then streams a reply in, and whose Reset clears it.
 import assert from 'node:assert/strict';
@@ -8,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
-import { captureScenes, type SceneNode } from '../src/convert/scenes.ts';
+import { captureScenes, edgeLabel, type SceneNode } from '../src/convert/scenes.ts';
+import { SCENE_CONTROLS, sceneUsesAt } from '../src/discover/convert.ts';
 
 const PAGE = `<!doctype html><html><body><main>
 <div data-slot="preview"><div role="log"><p>Hi</p></div><button data-slot="button" id="send">Send</button><button data-slot="button" id="reset" disabled>Reset</button></div>
@@ -40,8 +42,14 @@ test('a demo\'s controls are used from every state they lead to, and each use is
 	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
 	const browser = await chromium.launch();
 	try {
-		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 400, max: 5000 });
+		const limits = { states: 3, depth: 2, settle: 400, max: 5000 };
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', limits);
 		assert.equal(scenes.length, 1);
+		// A docs preview's recording is the file, and the shape, it was before discovered demos: kept recordings stay valid.
+		const file = `${createHash('sha256').update(`scenes:9:/|[data-slot="preview"] button|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`;
+		const kept = JSON.parse(await readFile(join(dir, file), 'utf8')).scenes[0];
+		assert.deepEqual(Object.keys(kept), ['sig', 'nth', 'states', 'edges', 'skipped', 'skippedUses']);
+		assert.ok(kept.skippedUses.every((u: { from: number; why: string }) => u.from === 2 && /past 2 uses deep/.test(u.why)), 'the state two uses deep is reached but not explored: its uses are named');
 		const scene = scenes[0]!;
 		const log = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		const reply = 'Hello there friend';
@@ -201,6 +209,109 @@ test('a use whose demo pauses on a timer of its own for longer than the quiet th
 		const replay = scenes[0]!.edges.find((e) => e.from === 0)!;
 		const step = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		assert.deepEqual(replay.frames.map((f) => step(f.tree)), ['1 of 3 done', '2 of 3 done', '3 of 3 done']);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+// A page-level demo, as on ui.shadcn.com's /preview pages: a card with no docs preview around it, found by the sig#nth discovery gave.
+const CARD = `<!doctype html><html><body><main><h1>Preview</h1>
+<div class="card"><div role="img" aria-label="Processing audio"><canvas width="40" height="10"></canvas></div>
+<button type="button" id="listen">Start Listening</button><button type="button" aria-expanded="false">More</button></div>
+<script>
+const labels = ['Processing audio', 'Live audio waveform', 'Audio waveform idle'];
+let s = 0;
+document.getElementById('listen').onclick = (e) => { s = s === 1 ? 2 : 1; document.querySelector('[role=img]').setAttribute('aria-label', labels[s]); e.target.textContent = s === 1 ? 'Stop Listening' : 'Start Listening'; };
+</script></main></body></html>`;
+
+test('a page-level demo is recorded from the element discovery found around its control, with only the controls no ARIA mark claims', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(CARD));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		await assert.rejects(captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 300, max: 3000 }, '', 'div||Gone#0'), /the demo div\|\|Gone#0 is not on \/ as it loads/);
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 300, max: 3000 }, '', 'div||Start ListeningMore#0');
+		assert.equal(scenes.length, 1);
+		const scene = scenes[0]!;
+		assert.match(scene.sig, /^div\|\|Start Listening/);
+		const label = (n: SceneNode) => ((n as Extract<SceneNode, { kids: unknown }>).kids[0] as Extract<SceneNode, { attrs: unknown }>).attrs.find(([k]) => k === 'aria-label')?.[1];
+		assert.deepEqual(scene.states.map(label), ['Processing audio', 'Live audio waveform', 'Audio waveform idle']);
+		assert.ok(scene.edges.every((e) => e.control.startsWith('button||')), 'the disclosure is left to the reveals');
+		assert.deepEqual(scene.edges.map((e) => [e.from, e.to]).sort(), [[0, 1], [1, 2], [2, 1]].sort());
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a state the search reaches but does not explore counts its uses as skipped, so a control past the depth is ported only in part', async () => {
+	const ROTATOR = '<!doctype html><html><body><div data-slot="preview"><p id="q">Quote 1</p><button type="button">Next</button></div><script>let n = 1; document.querySelector("button").onclick = () => { n = n % 6 + 1; document.getElementById("q").textContent = "Quote " + n; };</script></body></html>';
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(ROTATOR));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 8, depth: 4, settle: 200, max: 2000 });
+		const scene = scenes[0]!;
+		assert.equal(scene.states.length, 5, 'quotes 1 to 5: quote 5 is four uses deep');
+		assert.equal(scene.edges.length, 4);
+		assert.deepEqual(scene.skippedUses?.map((u) => [u.control, u.from]), [[scene.edges[0]!.control, 4]], 'Next from quote 5 is a use not recorded');
+		assert.match(scene.skippedUses?.[0]?.why ?? '', /past 4 uses deep/);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a discovered demo\'s controls are followed by their place in the demo, not their label, so an icon toggle\'s Pause is used too', async () => {
+	const PLAYER = '<!doctype html><html><body><div class="player"><button type="button" aria-label="Play"><svg width="10" height="10"></svg></button><p id="s">Stopped</p></div><script>const b = document.querySelector("button"); b.onclick = () => { const on = b.getAttribute("aria-label") === "Play"; b.setAttribute("aria-label", on ? "Pause" : "Play"); document.getElementById("s").textContent = on ? "Playing" : "Stopped"; };</script></body></html>';
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PLAYER));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 200, max: 2000 }, '', 'div||Stopped#0', ['button1']);
+		const scene = scenes[0]!;
+		assert.deepEqual(scene.edges.map((e) => [e.from, edgeLabel(e.control), e.at, e.to]), [[0, 'button||Play', 'button1', 1], [1, 'button||Pause', 'button1', 0]]);
+		assert.ok(sceneUsesAt(scene).get('button1')?.back, 'its way back to the first state is recorded');
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a discovered demo\'s controls are the elements marked as it loads, followed through each replay: a button put before one moves no use onto itself', async () => {
+	const more = (rerender: boolean) => `<!doctype html><html><body><div class="more"><p id="t">Short</p><button type="button" id="m">Show more</button></div><script>
+const demo = document.querySelector('.more');
+const collapse = () => { document.getElementById('r')?.remove(); document.getElementById('m').textContent = 'Show more'; document.getElementById('t').textContent = 'Short'; };
+const expand = () => { const r = document.createElement('button'); r.type = 'button'; r.id = 'r'; r.textContent = 'Reset'; r.onclick = collapse; document.getElementById('m').before(r); document.getElementById('m').textContent = 'Show less'; document.getElementById('t').textContent = 'Long'; };
+const wire = () => { document.getElementById('m').onclick = () => (document.getElementById('m').textContent === 'Show more' ? expand() : collapse()); };
+wire();
+${rerender ? "document.getElementById('m').onclick = () => { demo.innerHTML = '<p id=\"t\">Long</p><button type=\"button\" id=\"m\">Show less</button>'; };" : ''}
+</script></body></html>`;
+	const server = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(more(req.url === '/rerender')));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		const limits = { states: 4, depth: 3, settle: 200, max: 2000 };
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, limits, '', 'div||ShortShow more#0', ['button1']);
+		const scene = scenes[0]!;
+		assert.deepEqual(scene.edges.map((e) => [e.from, edgeLabel(e.control), e.at, e.to]), [[0, 'button||Show more', 'button1', 1], [1, 'button||Show less', 'button1', 0]], 'Reset, put where Show more was, is not the demo\'s control');
+		const again = (await captureScenes(browser, origin, '/rerender', dir, SCENE_CONTROLS, limits, '', 'div||ShortShow more#0', ['button1'])).scenes[0]!;
+		assert.deepEqual(again.edges.map((e) => [e.from, e.at]), [[0, 'button1']]);
+		assert.deepEqual(again.skippedUses?.map((u) => [u.from, u.at]), [[1, 'button1']], 'a control its press made anew is a use not recorded');
+		assert.match(again.skippedUses?.[0]?.why ?? '', /not the element the demo loaded with/);
 	} finally {
 		await browser.close();
 		server.close();
