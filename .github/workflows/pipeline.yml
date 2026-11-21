@@ -792,6 +792,8 @@ jobs:
         id: select
         env:
           SHARDS: ${{ inputs.check-shards || '2' }}
+          # Keyed as check.yml's shards check, which have no token: whether one is set is part of the checker's version.
+          GH_TOKEN: ''
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/select/check-reused"

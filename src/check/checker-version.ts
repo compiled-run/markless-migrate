@@ -36,10 +36,11 @@ export const CREDENTIALS: Readonly<Record<string, string>> = {
 	MARKLESS_MIGRATE_TOKEN: "the token the checked app's requests send",
 };
 
-/** Variables that only change what the checker prints about itself, never a result: no part of the key, so a shard that profiles reuses what one that did not kept. */
+/** Variables that only change what the checker says about itself (what it prints, the provenance it writes), never a result: no part of the key, so a shard that profiles, or runs on another runner, reuses what another kept. */
 export const DIAGNOSTICS: Readonly<Record<string, string>> = {
 	MARKLESS_MIGRATE_PROFILE: 'prints where each route spent its time',
 	MARKLESS_MIGRATE_STACK: "prints an error's stack in place of its message",
+	RUNNER_NAME: "names the machine in an original dataset's provenance (src/data/original/run-produce.ts); every CI job runs on another",
 };
 
 /** Folders the checker reads as data, not code, and what it reads of each. */

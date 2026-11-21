@@ -64,6 +64,15 @@ test("editing code the check command runs changes the checker's version; the con
 		} finally {
 			delete process.env.MARKLESS_MIGRATE_PROFILE;
 		}
+		const perJob = ['RUNNER_NAME', 'RUNNER_TEMP', 'RUNNER_TRACKING_ID', 'RUNNER_WORKSPACE', 'GITHUB_JOB', 'GITHUB_RUN_ID', 'GITHUB_RUN_NUMBER', 'GITHUB_RUN_ATTEMPT', 'GITHUB_ACTION', 'GITHUB_ENV', 'GITHUB_OUTPUT', 'GITHUB_STATE', 'GITHUB_STEP_SUMMARY', 'GITHUB_PATH', 'GITHUB_SHA', 'GITHUB_REF'];
+		const saved = perJob.map((name) => [name, process.env[name]] as const);
+		for (const name of perJob) process.env[name] = `${name} of another job`;
+		try {
+			assert.equal((await mod.checkerVersion()).version, base.version, 'check-select and every check shard run on different runners: what GitHub sets per job is no part of the key');
+		} finally {
+			for (const [name, value] of saved) if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
 		const before = process.env.GH_TOKEN;
 		process.env.GH_TOKEN = 'one';
 		const one = (await mod.checkerVersion()).version;
