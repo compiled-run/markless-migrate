@@ -366,3 +366,19 @@ test("a route checked in parts stays in parts: its record names it sliced, since
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("earlier runs' route times are joined with each sliced part's record marked sliced by its shard number, written before parts said so themselves", async () => {
+	const { execFileSync } = await import('node:child_process');
+	const dir = await mkdtemp(join(tmpdir(), 'times-join-'));
+	try {
+		for (const [shard, routes] of [[2, [{ route: '/a', timing: { ms: 60_000 } }]], [SLICED_SHARD + 1, [{ route: '/accordion', timing: { ms: 1_532_037 } }]]] as const) {
+			await mkdir(join(dir, `check-times-${shard}`), { recursive: true });
+			await writeFile(join(dir, `check-times-${shard}`, 'route-times.json'), JSON.stringify({ routes }));
+		}
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'times-join', join(dir, 'report.json'), join(dir, 'check-times-2/route-times.json'), join(dir, `check-times-${SLICED_SHARD + 1}/route-times.json`)], { stdio: 'ignore' });
+		const { routes } = JSON.parse(await readFile(join(dir, 'report.json'), 'utf8')) as { routes: { route: string; sliced?: boolean }[] };
+		assert.deepEqual(routes.map((r) => [r.route, Boolean(r.sliced)]), [['/a', false], ['/accordion', true]]);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

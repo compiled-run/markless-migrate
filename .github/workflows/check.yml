@@ -214,7 +214,7 @@ jobs:
             dir="$RUNNER_TEMP/earlier/$i"
             if gh run download "$run" -R "$GITHUB_REPOSITORY" -p '*check-times-*' -D "$dir" 2>/dev/null && [ -n "$(find "$dir" -name route-times.json)" ]; then
               # shellcheck disable=SC2046
-              node -e 'const fs=require("fs");const [out,...files]=process.argv.slice(1);fs.writeFileSync(out,JSON.stringify({routes:files.flatMap(f=>JSON.parse(fs.readFileSync(f,"utf8")).routes)}))' "$dir/report.json" $(find "$dir" -name route-times.json)
+              node scripts/check-shards.ts times-join "$dir/report.json" $(find "$dir" -name route-times.json)
             elif ! gh run download "$run" -R "$GITHUB_REPOSITORY" -n check-merged -D "$dir" 2>/dev/null; then rm -rf "$dir"; continue; fi
             echo "route times from run $run"
             i=$((i + 1))

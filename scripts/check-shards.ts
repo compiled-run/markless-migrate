@@ -484,6 +484,16 @@ async function main(): Promise<void> {
 		console.log(`${joined.roles.map((r) => r.routes.length).join(', ')} surveyed routes from ${files.length} slices`);
 		return;
 	}
+	if (command === 'times-join' && a) {
+		// A joining part of a sliced route uploads check-times-<n> with n past SLICED_SHARD: its record is the route checked in parts.
+		const routes: Timed[] = [];
+		for (const file of process.argv.slice(4)) {
+			const shard = Number(/check-times-(\d+)/.exec(file)?.[1] ?? 0);
+			for (const r of (JSON.parse(await readFile(file, 'utf8')) as { routes?: Timed[] }).routes ?? []) routes.push(shard > SLICED_SHARD ? { ...r, sliced: true } : r);
+		}
+		await writeFile(a, `${JSON.stringify({ routes })}\n`);
+		return;
+	}
 	if (command === 'times' && a && b) {
 		const routes = await routeTimes(a, process.argv.includes('--sliced'));
 		await writeFile(b, `${JSON.stringify({ routes })}\n`);
