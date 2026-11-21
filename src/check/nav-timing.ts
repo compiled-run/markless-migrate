@@ -119,6 +119,10 @@ export interface NavClick {
 	readonly fullLoad: boolean;
 	/** Hosts other than the app's own the press fetched from before the paint: not matched to a page on either side. */
 	readonly otherHosts?: readonly string[];
+	/** The router marked the page shown as having spent its budget for fetching ahead before the press. */
+	readonly budgetSpent?: true;
+	/** The router marked fetching ahead as ruled out on the page shown, and why (`save-data`, `hidden`, `network`). */
+	readonly ruledOut?: string;
 	readonly error?: string;
 }
 
@@ -142,6 +146,8 @@ export interface NavCell extends NavCellSpec {
 
 export interface RouteNavTiming {
 	readonly route: string;
+	/** The router's prefetch mark names read; absent when the installed router names none, so budget and ruled-out causes cannot be told. */
+	readonly marks?: readonly string[];
 	/** Which cells ran: the default six, every cell, or ones named with --nav-timing-cell. */
 	readonly set?: NavCellSet;
 	/** How many routes the check times: each shares the check's significance (nav-timing-verdicts.ts). */
@@ -162,6 +168,8 @@ export interface NavTimingOptions {
 	readonly hosts?: Readonly<Record<string, string>>;
 	/** Defaults to `NAV_DEADLINE_MS`. */
 	readonly deadlineMs?: number;
+	/** The router's prefetch mark names; defaults to `PREFETCH_MARKS` from the installed `@markless/router/vite`. */
+	readonly marks?: readonly string[];
 }
 
 const TYPES: Readonly<Record<NetworkBrowser, BrowserType>> = { chromium, firefox, webkit };
@@ -175,8 +183,20 @@ async function launch(name: NetworkBrowser, throttle: Throttle): Promise<Browser
 
 // Set before the page's own scripts in every document: the press, the paint of the next page's content (kept in
 // sessionStorage, so a new document reads what the old one saw) and long animation frames, all on the epoch clock.
-function instrument(): void {
+function instrument(markNames: readonly string[]): void {
 	const S = sessionStorage;
+	// The router's own marks for the page shown: its budget spent ({ page, bytes }), or guessing ruled out ({ page, reason }).
+	const marks: { page: string; bytes?: number; reason?: string }[] = [];
+	(window as unknown as { __mmMarks: typeof marks }).__mmMarks = marks;
+	try {
+		new PerformanceObserver((list) => {
+			for (const e of list.getEntries()) {
+				const detail = (e as PerformanceMark).detail as { page?: unknown; bytes?: unknown; reason?: unknown } | null;
+				if (!markNames.includes(e.name) || typeof detail?.page !== 'string') continue;
+				marks.push({ page: detail.page, ...(typeof detail.bytes === 'number' ? { bytes: detail.bytes } : {}), ...(typeof detail.reason === 'string' ? { reason: detail.reason } : {}) });
+			}
+		}).observe({ type: 'mark', buffered: true });
+	} catch {}
 	const now = () => performance.timeOrigin + performance.now();
 	const press = (e: Event) => {
 		if (e.isTrusted && S.getItem('__mmNavArmed') === '1' && !S.getItem('__mmNavDown')) S.setItem('__mmNavDown', String(now()));
@@ -399,11 +419,11 @@ function hash(text: string): number {
 }
 
 /** One sequence on one side: a fresh visitor loads the route and follows each step's link by `mode`. */
-export async function navRun(browser: Browser, name: NetworkBrowser, origin: string, route: string, steps: readonly NavStep[], spec: NavCellSpec): Promise<NavRun> {
+export async function navRun(browser: Browser, name: NetworkBrowser, origin: string, route: string, steps: readonly NavStep[], spec: NavCellSpec, markNames: readonly string[] = []): Promise<NavRun> {
 	const context = await browser.newContext(contextOptions(spec));
 	const watch = stallWatch();
 	try {
-		await context.addInitScript(instrument);
+		await context.addInitScript(instrument, [...markNames]);
 		const page = await context.newPage();
 		if (spec.profile === 'cpu-4x' && name === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: NAV_PROFILES[spec.profile].cpu });
 		const log = logRequests(page, origin);
@@ -412,7 +432,7 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 		const targets = await page.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].filter((a) => a.origin === location.origin).map((a) => a.pathname + a.search)).then((t) => [...new Set(t.map(targetOf))]);
 		const clicks: NavClick[] = [];
 		const notMade: NavClick[] = [];
-		const raw: { step: NavStep; got: { down: number; paint: number; sameDoc: boolean; loaf: [number, number][]; path: string; sig: string } | undefined; pressAt: number; paintAt: number; since: number; why?: string }[] = [];
+		const raw: { step: NavStep; got: { down: number; paint: number; sameDoc: boolean; loaf: [number, number][]; path: string; sig: string } | undefined; pressAt: number; paintAt: number; since: number; spent: boolean; ruledOut?: string; why?: string }[] = [];
 		let since = log.all.length;
 		for (const step of steps) {
 			await park(page, spec.mode);
@@ -432,7 +452,8 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 				sessionStorage.setItem('__mmNavArmed', '1');
 				(window as unknown as { __mmNavDoc: number }).__mmNavDoc = 1;
 				(window as unknown as { __mmNavWatch: () => void }).__mmNavWatch();
-				return want;
+				const shown = (window as unknown as { __mmMarks?: { page: string; bytes?: number; reason?: string }[] }).__mmMarks?.filter((m) => m.page === location.pathname) ?? [];
+				return { ...want, spent: shown.some((m) => m.bytes !== undefined), ruledOut: shown.find((m) => m.reason !== undefined)?.reason };
 			});
 			await press(page, context, name, spec.mode, at);
 			const read = () => page.evaluate(() => ({ down: Number(sessionStorage.getItem('__mmNavDown') ?? NaN), paint: Number(sessionStorage.getItem('__mmNavPaint') ?? NaN), sameDoc: (window as unknown as { __mmNavDoc?: number }).__mmNavDoc === 1, loaf: (window as unknown as { __mmLoaf: [number, number][] }).__mmLoaf, path: location.pathname, sig: (window as unknown as { __mmNavSig?: () => string }).__mmNavSig?.() ?? '' }));
@@ -449,7 +470,7 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 			for (const r of log.all.slice(since)) if (r.at >= pressAt && r.at <= paintAt) (r as { phase: string }).phase = `click ${step.target}`;
 			// When the next page never showed, say which half of the evidence was missing: the address, or the content.
 			const why = !got || !Number.isFinite(got.down) ? 'the press never reached the page' : Number.isFinite(got.paint) ? undefined : got.path === before.path ? `the address stayed ${before.path} for ${PAINT_TIMEOUT_MS / 1000} s` : got.sig === before.sig ? `the address changed to ${got.path} but the page's content did not, in ${PAINT_TIMEOUT_MS / 1000} s` : `no new content painted within ${PAINT_TIMEOUT_MS / 1000} s`;
-			raw.push({ step, got, pressAt, paintAt, since, ...(why ? { why } : {}) });
+			raw.push({ step, got, pressAt, paintAt, since, spent: before.spent, ...(before.ruledOut ? { ruledOut: before.ruledOut } : {}), ...(why ? { why } : {}) });
 			await quiet(page, log, 500, SETTLE_MS * 4);
 			await page.waitForTimeout(SETTLE_MS);
 			since = log.all.length;
@@ -464,7 +485,7 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 		const own = log.all.filter((r) => !r.host);
 		const shapes = learnShapes(own, targets, firsts);
 		const pageData = (r: Logged) => mayCarryPage(r) && (pageOf(r, shapes, targets) !== undefined || r.type === 'document');
-		for (const { step, got, pressAt, paintAt, since: from, why } of raw) {
+		for (const { step, got, pressAt, paintAt, since: from, why, spent, ruledOut } of raw) {
 			// Page data fetched since the step before settled, through the scroll to the link and the pointer resting on it, until the press.
 			const beforeBytes = log.all.slice(from).filter((r) => !r.host && r.at < pressAt && pageData(r)).reduce((sum, r) => sum + (r.bytes ?? 0), 0);
 			const bare = (path: string) => targetOf(path.split('?', 1)[0]!);
@@ -490,6 +511,8 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 				...(name === 'chromium' && loaf !== undefined ? { mainThreadMs: Math.round(loaf) } : {}),
 				fullLoad: got ? !got.sameDoc : false,
 				...(otherHosts.length ? { otherHosts } : {}),
+				...(spent ? { budgetSpent: true } : {}),
+				...(ruledOut ? { ruledOut } : {}),
 				...(why ? { error: why } : {}),
 			});
 		}
@@ -502,6 +525,13 @@ export async function navRun(browser: Browser, name: NetworkBrowser, origin: str
 	} finally {
 		await context.close().catch(() => {});
 	}
+}
+
+/** `PREFETCH_MARKS` from the installed `@markless/router/vite`, or undefined for a router that names none. */
+export async function routerMarkNames(load: () => Promise<unknown> = () => import('@markless/router/vite')): Promise<readonly string[] | undefined> {
+	const loaded: unknown = await load().catch(() => undefined);
+	const names = typeof loaded === 'object' && loaded !== null && 'PREFETCH_MARKS' in loaded ? loaded.PREFETCH_MARKS : undefined;
+	return Array.isArray(names) && names.every((n) => typeof n === 'string') ? names : undefined;
 }
 
 /** The routes timed: the representatives of the site's `layouts` largest template groups that this run measures, or its first pages when the site has no groups. */
@@ -519,6 +549,7 @@ export function navTimedRoutes(groups: readonly { readonly representative: strin
  */
 export async function measureNavTiming(origins: { readonly old: string; readonly new: string }, route: string, options: NavTimingOptions = {}): Promise<RouteNavTiming> {
 	const started = Date.now();
+	const marks = options.marks ?? (await routerMarkNames());
 	const deadline = started + (options.deadlineMs ?? NAV_DEADLINE_MS);
 	const runs = Math.min(MAX_NAV_RUNS, Math.max(4, options.runs ?? DEFAULT_NAV_RUNS));
 	const specs = options.cells ?? (options.full ? FULL_CELLS : DEFAULT_CELLS);
@@ -552,8 +583,8 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 				return steps;
 			};
 			const steady = async (origin: string, steps: readonly NavStep[], spec: NavCellSpec): Promise<NavRun> => {
-				let run = await navRun(browser, name, origin, route, steps, spec);
-				for (let retake = 0; retake < 2 && (run.stalledMs ?? 0) >= STALL_LIMIT_MS; retake++) run = await navRun(browser, name, origin, route, steps, spec);
+				let run = await navRun(browser, name, origin, route, steps, spec, marks ?? []);
+				for (let retake = 0; retake < 2 && (run.stalledMs ?? 0) >= STALL_LIMIT_MS; retake++) run = await navRun(browser, name, origin, route, steps, spec, marks ?? []);
 				return run;
 			};
 			// Unmeasured: wakes both servers and fills their caches, so a fresh deploy is not compared cold against a warm one.
@@ -593,5 +624,5 @@ export async function measureNavTiming(origins: { readonly old: string; readonly
 			await throttle.close();
 		}
 	}
-	return { route, set, cells, ms: Date.now() - started, ...(options.layouts ? { layouts: options.layouts } : {}) };
+	return { route, set, cells, ms: Date.now() - started, ...(options.layouts ? { layouts: options.layouts } : {}), ...(marks ? { marks } : {}) };
 }

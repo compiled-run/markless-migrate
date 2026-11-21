@@ -249,14 +249,34 @@ async function dependentMarkup(page: Page, indexes: readonly number[]): Promise<
 	}, indexes);
 }
 
+/** The label a visitor clicks to use a control a click cannot reach: the one around it, else its hidden input's (Base UI's). */
+async function labelOf(page: Page, id: number) {
+	const handle = await page.evaluateHandle((id) => {
+		const el = (window as unknown as { __mmToggles: Element[] }).__mmToggles[id];
+		if (!el) return null;
+		const input = el.nextElementSibling;
+		return el.closest('label') ?? (input instanceof HTMLInputElement ? input.labels?.[0] : undefined) ?? null;
+	}, id);
+	return handle.asElement() ?? undefined;
+}
+
+// Per page, the controls used through their label once a click could not reach them.
+const throughLabel = new WeakMap<Page, Set<number>>();
+
 async function use(page: Page, id: number): Promise<string | undefined> {
 	const handle = await page.evaluateHandle((id) => (window as unknown as { __mmToggles: Element[] }).__mmToggles[id]!, id);
 	const el = handle.asElement();
 	if (!el) return 'not found';
+	let labelled = throughLabel.get(page);
+	if (!labelled) throughLabel.set(page, (labelled = new Set()));
+	const target = (labelled.has(id) ? await labelOf(page, id) : undefined) ?? el;
 	try {
-		await el.click({ timeout: 2000 });
+		await target.click({ timeout: 2000 });
 	} catch (error) {
-		return `could not click: ${(error as Error).message.split('\n')[0]}`;
+		const failed = `could not click: ${(error as Error).message.split('\n')[0]}`;
+		const label = target === el ? await labelOf(page, id) : undefined;
+		if (!label || !(await label.click({ timeout: 2000 }).then(() => true, () => false))) return failed;
+		labelled.add(id);
 	}
 	await page.waitForTimeout(150);
 	await finishAnimations(page).catch(() => {});

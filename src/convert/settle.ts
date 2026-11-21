@@ -1,4 +1,4 @@
-import type { BrowserContext, Page, Request } from 'playwright';
+import type { BrowserContext, Frame, Page, Request } from 'playwright';
 
 /** How long a page must have been still (no change to the document, no request ending, no scheduler slice) to be settled. */
 export const STILL_MS = 100;
@@ -184,22 +184,44 @@ export async function settle(page: Page, capMs: number): Promise<void> {
 export async function scriptsStill(page: Page, capMs: number): Promise<number | undefined> {
 	const start = Date.now();
 	let navigated = false;
-	for (;;) {
-		const left = capMs - (Date.now() - start);
-		if (left <= 0) return undefined;
-		let seen: { busy: number; still: number } | undefined;
-		try {
-			seen = await page.evaluate((within) => (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(within), left);
-		} catch (error) {
-			// A page that navigates itself is read on the page it went to, whose tracker the context's init script installed.
-			if (navigated || !/Execution context was destroyed/.test(String(error))) throw error;
-			navigated = true;
-			await page.waitForLoadState('load');
-			continue;
+	let commits = 0;
+	let wake: (() => void) | undefined;
+	const onNavigated = (frame: Frame) => {
+		if (frame !== page.mainFrame()) return;
+		commits++;
+		wake?.();
+	};
+	page.on('framenavigated', onNavigated);
+	try {
+		for (;;) {
+			const left = capMs - (Date.now() - start);
+			if (left <= 0) return undefined;
+			const commitsBefore = commits;
+			let seen: { busy: number; still: number } | undefined;
+			try {
+				seen = await page.evaluate((within) => (globalThis as { __mmSettle__?: (within: number) => { busy: number; still: number } }).__mmSettle__?.(within), left);
+			} catch (error) {
+				// A page that navigates itself is read on the page it went to, once its commit is seen: until then the old page's load holds.
+				if (navigated || !/Execution context was destroyed/.test(String(error))) throw error;
+				navigated = true;
+				if (commits === commitsBefore) {
+					let timer: NodeJS.Timeout | undefined;
+					await new Promise<void>((done) => {
+						wake = done;
+						timer = setTimeout(done, left);
+					});
+					clearTimeout(timer);
+					wake = undefined;
+				}
+				await page.waitForLoadState('load');
+				continue;
+			}
+			if (!seen) throw new Error('scriptsStill: the page has no settle tracker (trackSettling on its context before it loads)');
+			if (seen.busy === 0 && seen.still >= STILL_MS) return Date.now() - start;
+			await page.waitForTimeout(Math.min(POLL_MS, left));
 		}
-		if (!seen) throw new Error('scriptsStill: the page has no settle tracker (trackSettling on its context before it loads)');
-		if (seen.busy === 0 && seen.still >= STILL_MS) return Date.now() - start;
-		await page.waitForTimeout(Math.min(POLL_MS, left));
+	} finally {
+		page.off('framenavigated', onNavigated);
 	}
 }
 

@@ -8,8 +8,9 @@ import { navRows, navTimingFailures, navTimingUnmeasured } from '../src/check/na
 // In-place routers over the same pages, each page's data 150 ms from the server. Every page has the same site title in an
 // <h1>: the content that changes is the main landmark. `ahead` fetches a page when its link is hovered and keeps it;
 // `plain` fetches only on the click and keeps nothing; `stuck` changes the address and never the content.
-type Kind = 'ahead' | 'plain' | 'stuck';
+type Kind = 'ahead' | 'plain' | 'stuck' | 'spent';
 const router = (kind: Kind) => `
+${kind === 'spent' ? "performance.mark('test:budget-spent', { detail: { page: location.pathname, bytes: 3000000 } }); const mark = () => performance.mark('test:budget-spent', { detail: { page: location.pathname, bytes: 3000000 } }); const push = history.pushState.bind(history); history.pushState = (...a) => { push(...a); mark(); };" : ''}
 const kept = new Map();
 const ahead = ${kind === 'ahead'};
 const data = (path) => { const hit = ahead && kept.get(path); if (hit) return hit; const p = fetch(path + '.data').then((r) => r.json()); if (ahead) kept.set(path, p); return p; };
@@ -36,7 +37,7 @@ function site(kind: Kind): Server {
 const servers = new Map<string, Server>();
 const origin: Record<string, string> = {};
 before(async () => {
-	for (const [name, kind] of [['ahead', 'ahead'], ['ahead2', 'ahead'], ['plain', 'plain'], ['stuck', 'stuck']] as const) {
+	for (const [name, kind] of [['ahead', 'ahead'], ['ahead2', 'ahead'], ['plain', 'plain'], ['stuck', 'stuck'], ['spent', 'spent']] as const) {
 		const server = site(kind);
 		await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 		servers.set(name, server);
@@ -94,4 +95,12 @@ test('an original that never shows the next page leaves the route not checked, n
 test('the deadline stops the route with what it has, and what it did not reach is not checked', async () => {
 	const timing = await measureNavTiming({ old: origin.ahead!, new: origin.ahead2! }, '/home', { ...options, deadlineMs: 1 });
 	assert.match(navTimingUnmeasured(timing)!, /deadline/);
+});
+
+test('a port whose router marks its budget spent on the page shown is red as budget spent, the mark names given as the router exports them', async () => {
+	const timing = await measureNavTiming({ old: origin.ahead!, new: origin.spent! }, '/home', { ...options, marks: ['test:budget-spent', 'test:skipped'] });
+	const first = navRows(timing).find((r) => r.kind === 'first')!;
+	assert.equal(first.verdict, 'slower', JSON.stringify(first));
+	assert.equal(first.cause, 'budget spent');
+	assert.deepEqual(timing.marks, ['test:budget-spent', 'test:skipped']);
 });
