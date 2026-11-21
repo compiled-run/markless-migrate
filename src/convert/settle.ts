@@ -2,7 +2,7 @@ import type { BrowserContext, Page, Request } from 'playwright';
 
 /** How long a page must have been still (no change to the document, no request ending, no scheduler slice) to be settled. */
 export const STILL_MS = 100;
-const POLL_MS = 20;
+export const POLL_MS = 20;
 
 /**
  * Init script, run in every document before its own scripts (self-contained): counts what the page still has to run,

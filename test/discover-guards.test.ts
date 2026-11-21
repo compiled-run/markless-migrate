@@ -282,3 +282,37 @@ test('a count made in a shard against its own first route is accepted when every
 	assert.notDeepEqual(by(third3, 'Copy')?.sameAs, by(third, 'Copy')?.sameAs, 'the count that named a changed result is not read back');
 	await rm(state, { recursive: true, force: true });
 });
+
+test('a press costs a fixed handful of browser calls: the page reads, waits and compares in itself, and its scripts go in once per context', async () => {
+	const calls: Record<string, number> = {};
+	const probe = await browser.newPage();
+	const restore: (() => void)[] = [];
+	const count = (proto: object, label: string, names: readonly string[]) => {
+		for (const name of names) {
+			const real: unknown = Reflect.get(proto, name);
+			if (typeof real !== 'function') continue;
+			Reflect.set(proto, name, function (this: unknown, ...args: unknown[]) {
+				calls[`${label}.${name}`] = (calls[`${label}.${name}`] ?? 0) + 1;
+				return Reflect.apply(real, this, args);
+			});
+			restore.push(() => Reflect.set(proto, name, real));
+		}
+	};
+	count(Object.getPrototypeOf(probe), 'page', ['evaluate', 'waitForTimeout', 'waitForFunction']);
+	count(Object.getPrototypeOf(probe.locator('body')), 'locator', ['evaluate', 'count', 'click']);
+	count(Object.getPrototypeOf(probe.context()), 'context', ['addInitScript', 'newPage']);
+	await probe.close();
+	try {
+		const facts = await recordDiscovery(browser, origin, '/small-calls', await mkdtemp(join(tmpdir(), 'mm-discover-calls-')));
+		const pressed = facts.controls.filter((c) => c.shape !== 'unpressable').length;
+		assert.equal(pressed, 3);
+		const evaluations = (calls['page.evaluate'] ?? 0) + (calls['locator.evaluate'] ?? 0) + (calls['locator.count'] ?? 0) + (calls['page.waitForFunction'] ?? 0);
+		const loads = calls['context.newPage'] ?? 0;
+		const clicks = calls['locator.click'] ?? 0;
+		assert.ok(evaluations <= 8 * loads + 3 * clicks, `${evaluations} evaluations for ${loads} loads and ${clicks} presses`);
+		assert.equal(calls['page.waitForTimeout'] ?? 0, 0, 'every wait is in the page or on the requests\' own events');
+		assert.ok((calls['context.addInitScript'] ?? 0) <= 5 * loads, `${calls['context.addInitScript']} init scripts on ${loads} contexts`);
+	} finally {
+		for (const r of restore) r();
+	}
+});
