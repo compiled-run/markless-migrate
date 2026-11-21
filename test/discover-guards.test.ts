@@ -92,6 +92,7 @@ before(async () => {
 		if (url.pathname === '/slow') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('the slow answer'), 1500);
 		if (url.pathname === '/away') return void res.writeHead(302, { location: `http://away.test:${(server.address() as AddressInfo).port}/small` }).end();
 		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname.startsWith('/chrome-odd') ? 'Done' : 'Copied', url.pathname.startsWith('/chrome-many') ? 3 : 1));
+		if (url.pathname === '/slowreply') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><div class="demo"><button type="button" id="load">Load reply</button><p id="out"></p></div><script>document.getElementById("load").onclick = () => fetch("/slow").then((r) => r.text()).then((t) => { document.getElementById("out").textContent = t; });</script></body></html>');
 		const html = url.pathname === '/' ? GUARDS : url.pathname === '/drift' ? DRIFT : url.pathname === '/one' ? SMALL(1) : url.pathname.startsWith('/small') ? SMALL(3) : '<!doctype html><p>Other</p>';
 		res.writeHead(200, { 'content-type': 'text/html' }).end(html);
 	});
@@ -152,6 +153,13 @@ test('the write guard goes into the page first and alone, so a reader that throw
 	} finally {
 		await context.close();
 	}
+});
+
+test('the steadiness re-press waits on the requests its own click started, so a slow answer does not make the control unsteady', async () => {
+	const facts = await recordDiscovery(browser, origin, '/slowreply', await mkdtemp(join(tmpdir(), 'mm-discover-steady-')));
+	const load = facts.controls.find((c) => c.name === 'Load reply');
+	assert.ok(load?.changes?.some((c) => c.what === 'text' && c.after === 'the slow answer'), 'the first press read the answer');
+	assert.equal(load?.unsteady, undefined, 'the second press from a fresh load read the same answer');
 });
 
 test('a page that redirects off this machine is refused after it loads, and the failure is not kept', async () => {
