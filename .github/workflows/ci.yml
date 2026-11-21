@@ -146,18 +146,24 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # The limits are main's, so a change that edits them is judged by main's values and says so.
+      # The limits and the fixture are main's, so a change that edits them is judged by main's and the summary says so.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.merge_group.base_sha || (github.event_name == 'push' && github.event.before) || 'main' }}
           path: .budget-main
-          sparse-checkout: scripts/convert-budget.json
+          sparse-checkout: |
+            scripts/convert-budget.json
+            scripts/convert-budget-fixture.ts
+            test/corpus/site.ts
           sparse-checkout-cone-mode: false
       - id: limits
         run: |
           file=.budget-main/scripts/convert-budget.json
+          fixture=.budget-main/scripts/convert-budget-fixture.ts
           if [ ! -f "$file" ]; then echo "main has no scripts/convert-budget.json yet: this change's own limits are used"; file=scripts/convert-budget.json; fi
+          if [ ! -f "$fixture" ]; then echo "main has no scripts/convert-budget-fixture.ts yet: this change's own fixture is used"; fixture=scripts/convert-budget-fixture.ts; fi
           echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "fixture=$fixture" >> "$GITHUB_OUTPUT"
           echo "commit=$(node -p "require('./$file').reference.commit")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         id: reference
@@ -175,12 +181,16 @@ jobs:
         if: steps.reference.outcome == 'success' && steps.reference-modules.outputs.cache-hit != 'true'
         continue-on-error: true
         run: pnpm install --frozen-lockfile --dir .budget-reference
+      # The reference's own Playwright's browser, so a Playwright upgrade on main does not leave the reference without one.
+      - if: steps.reference.outcome == 'success'
+        continue-on-error: true
+        run: cd .budget-reference && timeout 600 pnpm exec playwright install chromium
       - if: steps.reference-install.outcome == 'success' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: .budget-reference/node_modules
           key: convert-budget-reference-${{ runner.os }}-${{ steps.limits.outputs.commit }}
-      - run: node scripts/convert-budget.ts judge .budget-reference . "${{ steps.limits.outputs.file }}"
+      - run: node scripts/convert-budget.ts judge .budget-reference . "${{ steps.limits.outputs.file }}" "${{ steps.limits.outputs.fixture }}"
 
   # The checker's mutation suites were 60% of a pull request's runner time; they run in the merge queue and on main.
   mutation:
