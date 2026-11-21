@@ -3,10 +3,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import { RETRY_BACKOFF_MS } from '../check/infrastructure.ts';
 import { ROOT } from '../code-closure.ts';
 import { declarationClosure, type DeclarationClosure } from '../declaration-closure.ts';
 import { INDEX, recordingFacts, STORE, type RecordingFacts } from './record-facts.ts';
-import { ClosureProject, SpanIndex, type Span } from './record-reads.ts';
+import { ClosureProject, SpanIndex, type Span } from '../closure-reads.ts';
 
 /** The store's format: a store written in another is emptied of its recordings once, never read. */
 export const RECORDING_VERSION = 5;
@@ -37,13 +38,20 @@ export function pageStatus(page: string): number | undefined {
 	return page.indexOf('.') > 0 && Number.isInteger(status) ? status : undefined;
 }
 
-/** The key of a route's old page, from one plain request for it (no browser). An unreachable page's key matches nothing kept. */
-export async function fetchPageKey(origin: string, route: string, headers: Readonly<Record<string, string>> = {}): Promise<string> {
-	try {
-		const response = await fetch(new URL(route, origin), { headers: { ...headers }, redirect: 'manual' });
-		return pageKey(origin, route, response.status, await response.text());
-	} catch (error) {
-		return `unreachable-${createHash('sha256').update(String(error) + randomUUID()).digest('hex').slice(0, 8)}`;
+/**
+ * The key of a route's old page, from a plain request for it (no browser), asked once more after `backoffMs` when the request
+ * fails or the server errs, as a page load is. An unreachable page's key matches nothing kept.
+ */
+export async function fetchPageKey(origin: string, route: string, headers: Readonly<Record<string, string>> = {}, backoffMs = RETRY_BACKOFF_MS): Promise<string> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			const response = await fetch(new URL(route, origin), { headers: { ...headers }, redirect: 'manual' });
+			const text = await response.text();
+			if (response.status < 500 || attempt === 1) return pageKey(origin, route, response.status, text);
+		} catch (error) {
+			if (attempt === 1) return `unreachable-${createHash('sha256').update(String(error) + randomUUID()).digest('hex').slice(0, 8)}`;
+		}
+		await new Promise((done) => setTimeout(done, backoffMs));
 	}
 }
 

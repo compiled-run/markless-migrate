@@ -318,3 +318,51 @@ test('a shard the slicing leaves with no routes is not dealt: every route sliced
 	await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/dashboard', '/date-picker'], endpoints: [], redirects: [] }));
 	assert.deepEqual(matrix(2), [], 'both routes sliced: no plain shard');
 });
+
+test("check-select's reused results, downloaded beside the shards' reports, are in the merged report and the gate as the shards' own are", async () => {
+	const { execFileSync, spawnSync } = await import('node:child_process');
+	const dir = await mkdtemp(join(tmpdir(), 'merge-reused-'));
+	try {
+		const at = { checkedAt: '2026-11-20T00:00:00.000Z', key: 'k' };
+		await mkdir(join(dir, 'shards/check-1'), { recursive: true });
+		await writeFile(join(dir, 'shards/check-1/report.json'), JSON.stringify({ routes: [{ route: '/fresh', ok: true, failures: [] }] }));
+		// The artifact's layout: its two paths' common folder is the runner's work folder.
+		await mkdir(join(dir, 'shards/check-reused/_temp/select/check-reused'), { recursive: true });
+		const reused = [{ route: '/kept-green', ok: true, failures: [], reused: at }, { route: '/kept-red', ok: false, failures: [{ dimension: 'css', check: 'computed style of link "Home"' }], reused: at }];
+		await writeFile(join(dir, 'shards/check-reused/_temp/select/check-reused/report.json'), JSON.stringify({ ok: false, routes: reused }));
+		await mkdir(join(dir, 'shards/check-shards'), { recursive: true });
+		await writeFile(join(dir, 'shards/check-shards/shard-1.json'), JSON.stringify({ routes: ['/fresh'] }));
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'merge', join(dir, 'shards'), join(dir, 'merged'), join(dir, 'shards/check-shards')], { stdio: 'ignore' });
+		const merged = (await readReport(join(dir, 'merged/report.json'))).routes ?? [];
+		assert.deepEqual(merged.map((r) => [r.route, r.ok, Boolean(r.reused)]).sort(), [['/fresh', true, false], ['/kept-green', true, true], ['/kept-red', false, true]]);
+		assert.match(await readFile(join(dir, 'merged/summary.md'), 'utf8'), /^2 green, 1 red, of 3; 2 reused/);
+		assert.equal(spawnSync(process.execPath, ['scripts/check-shards.ts', 'gate', join(dir, 'merged')]).status, 0, 'a reused red is a result, as a checked red is');
+		// Nothing left for the shards: check-select's own merge of what it reused is the run's report, and its gate the verdict.
+		const stopped = { ...reused[0], route: '/kept-stopped', ok: false, failures: [{ dimension: 'http', check: 'the check of this route' }] };
+		await mkdir(join(dir, 'select/check-reused'), { recursive: true });
+		await writeFile(join(dir, 'select/check-reused/report.json'), JSON.stringify({ ok: false, routes: [...reused, stopped] }));
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'merge', join(dir, 'select/check-reused'), join(dir, 'reused-merged')], { stdio: 'ignore' });
+		assert.equal(spawnSync(process.execPath, ['scripts/check-shards.ts', 'gate', join(dir, 'reused-merged')]).status, 1, 'a reused route not checked to the end fails the gate, as a checked one does');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("a route checked in parts stays in parts: its record names it sliced, since its time is only the joining part's", async () => {
+	const { execFileSync } = await import('node:child_process');
+	const dir = await mkdtemp(join(tmpdir(), 'sliced-times-'));
+	try {
+		await mkdir(join(dir, '.migrate'), { recursive: true });
+		await writeFile(join(dir, '.migrate/report.json'), JSON.stringify({ routes: [{ route: '/blocks', ok: true, failures: [], timing: { ms: 1_645_571 } }] }));
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'times', join(dir, '.migrate'), join(dir, 'route-times.json'), '--sliced'], { stdio: 'ignore' });
+		const { routes } = JSON.parse(await readFile(join(dir, 'route-times.json'), 'utf8')) as { routes: { route: string; sliced?: boolean }[] };
+		assert.deepEqual(routes.map((r) => [r.route, r.sliced]), [['/blocks', true]]);
+		await writeFile(join(dir, 'targets.json'), JSON.stringify({ routes: ['/blocks', '/a'] }));
+		await writeFile(join(dir, 'earlier.json'), JSON.stringify({ routes: [...routes, { route: '/a', ok: true, timing: { ms: 60_000 } }] }));
+		execFileSync(process.execPath, ['scripts/check-shards.ts', 'split', join(dir, 'targets.json'), '2', join(dir, 'out'), join(dir, 'earlier.json'), '--slice-over', '3600'], { stdio: 'ignore' });
+		const sliced = JSON.parse(await readFile(join(dir, 'out/sliced.json'), 'utf8')) as { route: string; slices: number }[];
+		assert.deepEqual(sliced.map((r) => [r.route, r.slices]), [['/blocks', 2]], 'under three quarters of its timeout by the joining part alone, it is still sliced');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

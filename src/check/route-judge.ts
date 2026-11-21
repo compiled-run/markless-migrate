@@ -28,6 +28,7 @@ import { MAX_UNLISTED, unlistedCandidates, unlistedFailures, type InventoryRoute
 import { answerFloor, judgeInTurn, judgeTiming, type Samples } from './timing-verdicts.ts';
 import { DIMENSIONS, REPRESENTATIVE_ONLY, type Blocked, type Coverage, type Dimension, type Failure, type Infrastructure, type RouteCapture, type RouteResult, type Shot, type SourceLink, type Viewport } from './types.ts';
 import type { WallHit } from './browser.ts';
+import { CHECK_STOPPED } from './route-state.ts';
 
 /** A row the judge asked for that the recorded run never made: the live run stopped before it (its deadline), or the judge asks for other observations than the run made. */
 export class Unobserved extends Error {
@@ -165,7 +166,7 @@ export function loadTimeout(route: string, error: unknown, [oldOrigin, newOrigin
 /** A route whose check stopped part way (the page navigated away while it was captured, a script broke the page): red with why, and every other route is still checked. */
 export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: readonly [string, string]): RouteResult {
 	const message = (error instanceof Error ? error.message : String(error)).split('\n')[0]!.split(oldOrigin).join('OLD').split(newOrigin).join('NEW');
-	return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `it stopped: ${message}`, hint: HINTS.checkStopped }], []);
+	return partialResult(route, [{ route, dimension: 'http', check: CHECK_STOPPED, expected: 'the check runs to the end', actual: `it stopped: ${message}`, hint: HINTS.checkStopped }], []);
 }
 
 /** A route's check that stopped at its deadline: what its finished steps found, and why it stopped. */

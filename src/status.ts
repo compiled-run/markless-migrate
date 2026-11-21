@@ -11,6 +11,7 @@ import { isSwitched, readSwitched } from './switch/state.ts';
 import { timingHeadlines, type RouteTiming } from './check/responsiveness-summary.ts';
 
 export const STATE_DIR = '.migrate';
+export const INVENTORY_FILE = 'inventory.json';
 
 export interface RouteState {
 	readonly route: string;
@@ -65,7 +66,7 @@ export async function readResults(cwd: string): Promise<Record<string, RouteStat
 }
 
 export async function readInventory(cwd: string): Promise<Inventory | undefined> {
-	return readJson<Inventory>(join(cwd, STATE_DIR, 'inventory.json'));
+	return readJson<Inventory>(join(cwd, STATE_DIR, INVENTORY_FILE));
 }
 
 export async function recordResults(cwd: string, report: Report, extra: { readonly commit?: string } = {}): Promise<void> {

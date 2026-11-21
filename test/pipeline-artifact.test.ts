@@ -7,12 +7,12 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { ROOT } from '../src/code-closure.ts';
 
-function run(listings: Record<string, object>, args: readonly string[]): string {
+function run(listings: Record<string, object> | 'down', args: readonly string[]): string {
 	const bin = mkdtempSync(join(tmpdir(), 'mm-gh-'));
 	try {
 		writeFileSync(join(bin, 'listings.json'), JSON.stringify(listings));
 		const gh = join(bin, 'gh');
-		writeFileSync(gh, `#!/usr/bin/env bash\n[ "$1" = api ] && [ "$3" = --jq ] || exit 9\njq -c --arg url "$2" '.[$url] // {"artifacts":[]}' "${join(bin, 'listings.json')}" | jq -r "$4"\n`);
+		writeFileSync(gh, listings === 'down' ? '#!/usr/bin/env bash\necho "HTTP 502: Bad Gateway" >&2\nexit 1\n' : `#!/usr/bin/env bash\n[ "$1" = api ] && [ "$3" = --jq ] || exit 9\njq -c --arg url "$2" '.[$url] // {"artifacts":[]}' "${join(bin, 'listings.json')}" | jq -r "$4"\n`);
 		chmodSync(gh, 0o755);
 		return execFileSync('bash', [join(ROOT, 'scripts/pipeline-artifact.sh'), ...args], { env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}`, GITHUB_REPOSITORY: 'o/r' }, encoding: 'utf8' }).trim();
 	} finally {
@@ -25,4 +25,5 @@ test('in-run names the artifact a run still holds under a name, and nothing once
 	assert.equal(run({ [url]: { artifacts: [{ id: 7, name: 'pl-site-recordings', expired: false }] } }, ['in-run', 'pl-site-recordings', '41']), '7');
 	assert.equal(run({ [url]: { artifacts: [{ id: 7, name: 'pl-site-recordings', expired: true }] } }, ['in-run', 'pl-site-recordings', '41']), '');
 	assert.equal(run({}, ['in-run', 'pl-site-recordings', '41']), '');
+	assert.throws(() => run('down', ['in-run', 'pl-site-recordings', '41']), /could not ask GitHub/, 'an API that fails is not an expired store');
 });

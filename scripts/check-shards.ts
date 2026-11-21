@@ -14,7 +14,7 @@ import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { shareLayoutLater } from '../src/check/report-judge.ts';
-import { routeState } from '../src/check/route-state.ts';
+import { CHECK_STOPPED, routeState } from '../src/check/route-state.ts';
 
 interface Targets {
 	readonly routes: string[];
@@ -158,7 +158,7 @@ async function write(dir: string, routes: readonly ReportRoute[], data?: Dataset
 	console.log(text.split('\n')[0]);
 }
 
-type Timed = ReportRoute & { readonly timing?: { readonly ms: number; readonly steps?: readonly { readonly name: string; readonly ms: number }[] } };
+type Timed = ReportRoute & { readonly timing?: { readonly ms: number; readonly steps?: readonly { readonly name: string; readonly ms: number }[] }; /** Checked in parts: its time is the joining part's alone. */ readonly sliced?: boolean };
 
 /** How long a route took: its timing, or for a route stopped at its deadline, the deadline (it took at least that). */
 function tookMs(r: Timed): number | undefined {
@@ -203,9 +203,10 @@ export interface SlicedRoute {
 // A route whose estimate comes this close to its timeout is sliced too: one that took 7005 s of 7200 finishes on one runner and stops on a slower one.
 const SLICE_MARGIN = 0.75;
 
-export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, number>, overMs: number): { kept: Targets; sliced: SlicedRoute[] } {
-	const long = targets.routes.filter((r) => (estimates.get(r) ?? 0) > overMs * SLICE_MARGIN);
-	const sliced = long.map((route, k) => ({ shard: SLICED_SHARD + k + 1, route, slices: Math.min(MAX_SLICES, Math.max(2, Math.ceil(estimates.get(route)! / overMs))) }));
+export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, number>, overMs: number, inParts: ReadonlySet<string> = new Set()): { kept: Targets; sliced: SlicedRoute[] } {
+	// A route last checked in parts stays so: its time is the joining part's alone, not what it takes whole.
+	const long = targets.routes.filter((r) => inParts.has(r) || (estimates.get(r) ?? 0) > overMs * SLICE_MARGIN);
+	const sliced = long.map((route, k) => ({ shard: SLICED_SHARD + k + 1, route, slices: Math.min(MAX_SLICES, Math.max(2, Math.ceil((estimates.get(route) ?? 0) / overMs))) }));
 	return { kept: { ...targets, routes: targets.routes.filter((r) => !long.includes(r)) }, sliced };
 }
 
@@ -221,15 +222,15 @@ export function costsOf(...newestFirst: readonly (readonly Timed[])[]): Map<stri
 }
 
 /** Each route's time in a shard's .migrate folder (its report, or the progress files of a shard stopped before one), as a report of routes and timings only. */
-export async function routeTimes(dir: string): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[]> {
-	const out: { route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string } }[] = [];
+export async function routeTimes(dir: string, sliced = false): Promise<{ route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string }; sliced?: true }[]> {
+	const out: { route: string; timing?: { ms: number }; infrastructure?: { cause?: string; message?: string }; sliced?: true }[] = [];
 	for (const { routes } of await reports(dir)) {
 		for (const r of routes as Timed[]) {
 			const ms = tookMs(r);
 			if (ms === undefined) continue;
 			// How far a stopped or time-capped route got stays with its time, so the next run's estimate scales it up (estimatesOf).
 			const why = r.infrastructure ? { infrastructure: { ...(r.infrastructure.cause ? { cause: r.infrastructure.cause } : {}), message: r.infrastructure.message ?? `timed out after ${ms / 1000} s` } } : {};
-			out.push(r.timing ? { route: r.route, timing: { ms }, ...why } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` }, ...why });
+			out.push({ ...(r.timing ? { route: r.route, timing: { ms }, ...why } : { route: r.route, infrastructure: { message: `timed out after ${ms / 1000} s` }, ...why }), ...(sliced ? { sliced: true as const } : {}) });
 		}
 	}
 	return out;
@@ -387,7 +388,7 @@ export async function lostUploads(dir: string): Promise<string[]> {
 }
 
 /** Routes the run did not check to the end: not checked at all, or stopped at --timeout part way. Any of them makes the run red. */
-export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
+export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === CHECK_STOPPED));
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : routeState(r) === 'incomplete' ? 'incomplete' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;
@@ -460,7 +461,7 @@ async function main(): Promise<void> {
 		const seen = new Set<string>();
 		const newest = earlier.flat().filter((r) => !seen.has(r.route) && seen.add(r.route));
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
-		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000) : { kept: targets, sliced: [] };
+		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000, new Set(newest.filter((r) => (r as Timed).sliced).map((r) => r.route))) : { kept: targets, sliced: [] };
 		// A shard left with no routes once the long ones are sliced out checks nothing: its endpoints and redirects go to the first one with routes.
 		const dealt = split(kept, Number(b), costs);
 		const shards = dealt.filter((s) => s.routes.length);
@@ -484,7 +485,7 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === 'times' && a && b) {
-		const routes = await routeTimes(a);
+		const routes = await routeTimes(a, process.argv.includes('--sliced'));
 		await writeFile(b, `${JSON.stringify({ routes })}\n`);
 		console.log(`${routes.length} route times`);
 		return;

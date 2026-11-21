@@ -47,6 +47,8 @@ export interface PrefetchRecorder {
 	readonly recorded: () => readonly PrefetchFacts[];
 	/** The pages of those that came from the last convert. */
 	readonly fromBefore: () => readonly string[];
+	/** Listed pages whose last convert's facts are not read back and that this convert has not recorded, each with why. */
+	readonly unread: () => readonly { readonly route: string; readonly why: string }[];
 }
 
 /** The recordings themselves are kept by convert's `record` under the prefetch kind's key (src/convert/record-key.ts); `version` is that kind's, `pageOf` a route's page key. */
@@ -59,8 +61,12 @@ export async function prefetchRecorder(state: string, allRoutes: readonly string
 	const storedRoutes = isObject(parsed) && isObject(parsed.routes) ? Object.keys(parsed.routes).filter((route) => listed.has(route)) : [];
 	const pages = new Map(await Promise.all(storedRoutes.map(async (route) => [route, await pageOf(route)] as const)));
 	const stored = storedFacts(parsed, version, pages);
-	const changed = storedRoutes.length - Object.keys(stored).length;
-	if (changed) log(`prefetch: ${changed} pages of the last convert's prefetch.json are not read back: recorded by another recorder version or from an old page that has changed since`);
+	const stale = new Map<string, string>();
+	for (const route of storedRoutes) {
+		if (route in stored) continue;
+		const facts = isObject(parsed) && isObject(parsed.routes) ? parsed.routes[route] : undefined;
+		stale.set(route, isObject(parsed) && parsed.version !== version ? "its last convert's facts were recorded by another prefetch recorder version" : isObject(facts) && typeof facts.page === 'string' && facts.page !== pages.get(route) ? "its last convert's facts were recorded from an old page that has changed since" : "its last convert's facts cannot be read");
+	}
 	const merged = () => {
 		const out = new Map<string, PrefetchFacts>(Object.entries(stored).filter(([route]) => listed.has(route)));
 		for (const [route, facts] of recorded) out.set(route, facts);
@@ -80,6 +86,7 @@ export async function prefetchRecorder(state: string, allRoutes: readonly string
 		},
 		recorded: () => [...merged().values()],
 		fromBefore: () => [...merged().keys()].filter((r) => !recorded.has(r)).sort(),
+		unread: () => [...stale].filter(([route]) => !recorded.has(route)).sort(([a], [b]) => (a < b ? -1 : 1)).map(([route, why]) => ({ route, why })),
 		save: async () => {
 			const routes = Object.fromEntries(await Promise.all([...merged()].sort(([a], [b]) => (a < b ? -1 : 1)).map(async ([route, { requests: _, ...facts }]) => [route, { ...facts, page: await pageOf(route) }] as const)));
 			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ version, routes }, null, 1));
