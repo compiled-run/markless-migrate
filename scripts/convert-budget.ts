@@ -1,6 +1,7 @@
 // A convert's peak memory and its own CPU time on a fixed multi-route site (ci.yml's "Convert budget" job):
-//   node scripts/convert-budget.ts               converts the fixture in a child process and exits 1 when it is over BUDGET
-//   node scripts/convert-budget.ts measure <out> writes the measure as JSON without judging it
+//   node scripts/convert-budget.ts paired <main> converts the fixture with <main>'s tree and this one on this runner, main, this, main,
+//                                                and exits 1 when this one is over BUDGET at the bound's speed (judgePaired)
+//   node scripts/convert-budget.ts measure <out> writes one tree's measure as JSON without judging it
 // The fixture is the corpus micro-site at COPIES paths each, every page carrying the same large search dialog in its header and
 // one site stylesheet, as the ui.shadcn.com pages do: memory a convert holds per page grows with the routes here as it does there.
 // It has no old source, so what the source resolvers keep is not measured here; libraries.json carries STATE_COMPONENTS
@@ -9,8 +10,8 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { cpus, tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { body, parseDocument } from '../src/convert/dom.ts';
 import { ReactStatePlan } from '../src/convert/react-state.ts';
 import type { StateComponent } from '../src/library/types.ts';
@@ -34,8 +35,41 @@ const SIDEBAR_LINKS = 400;
  *   this tree                                               matching 19-24 ms; convert CPU 29-33 s
  * and on ubuntu-latest (#656's run) this tree's matching took 82 ms and its convert 92 s of CPU. matchMs is about five times
  * that figure (the regression is about forty times over it), cpuSeconds about 1.3 times.
+ * cpuSeconds holds at that run's speed: the same tree read 79 s to 125 s on GitHub's runners (AWS, AMD EPYC 9V45, 9V74 and
+ * 7763), so it is judged paired, never on one reading (judgePaired, docs/ci-process.md "Convert budget").
  */
 export const BUDGET = { liveMb: 190, heapMb: 330, cpuSeconds: 120, matchMs: 400 } as const;
+
+/**
+ * Main's convert CPU time at the bound's speed. ea953ec7 (#656, 92 s at that speed) and 6aa0b1bf converted in turn, three
+ * times each, on one Mac mini on 2026-11-20: 46, 48, 45 s and 50, 56, 52 s; the lower of each, 50 / 45 times 92 s, is 102 s.
+ * A change whose figure leaves the margin sets the anchor to it, so it stays main's.
+ */
+export const ANCHOR = { cpuSeconds: 102, margin: 0.1 } as const;
+
+export interface PairedVerdict {
+	/** The lower of main's readings on this runner: noise only adds CPU time, and a lower base only makes head's figure larger. */
+	readonly base: number;
+	readonly head: number;
+	readonly ratio: number;
+	/** head over base times main's anchor: head's CPU time on the runner the bound was set on. */
+	readonly atBoundSpeed: number;
+	readonly over?: string;
+	readonly stale?: string;
+	/** One head reading over the bound or off its anchor is read again; the lower of the two is judged. */
+	readonly readHeadAgain: boolean;
+}
+
+/** Head's CPU time at the bound's speed, from main's and head's readings on one runner and main's own anchor (`baseAnchor`). */
+export function judgePaired(bases: readonly number[], heads: readonly number[], baseAnchor: number, headAnchor: number = baseAnchor, budget: number = BUDGET.cpuSeconds, margin: number = ANCHOR.margin): PairedVerdict {
+	const base = Math.min(...bases);
+	const head = Math.min(...heads);
+	const ratio = Math.round((head / base) * 1000) / 1000;
+	const atBoundSpeed = Math.round((head / base) * baseAnchor);
+	const over = atBoundSpeed > budget ? `convert CPU time at the bound's speed: ${atBoundSpeed} s, over ${budget} s` : undefined;
+	const stale = Math.abs(atBoundSpeed - headAnchor) > margin * headAnchor ? `stale anchor: this tree converts in ${atBoundSpeed} s at the bound's speed against an anchor of ${headAnchor} s (margin ${Math.round(margin * 100)}%); set ANCHOR.cpuSeconds to ${atBoundSpeed} in this change` : undefined;
+	return { base, head, ratio, atBoundSpeed, ...(over ? { over } : {}), ...(stale ? { stale } : {}), readHeadAgain: heads.length < 2 && (over !== undefined || stale !== undefined) };
+}
 
 // Shaped as shadcn's SliderControlled: a div around a label and the value's text, beside a slider.
 const stateComponents = Array.from({ length: STATE_COMPONENTS }, (_, i): StateComponent => ({
@@ -87,12 +121,11 @@ setInterval(() => { globalThis.gc(); live = Math.max(live, process.memoryUsage()
 process.on('exit', () => { tick(); const u = process.resourceUsage(); writeFileSync(process.env.BUDGET_PEAK_FILE, JSON.stringify({ live, heap, rss, cpu: (u.userCPUTime + u.systemCPUTime) / 1e6 })); });
 `;
 
-/** Each way the measure is over BUDGET, in words; none is within it. */
+/** Each way the measure is over BUDGET, in words, but CPU time, which judgePaired judges; none is within it. */
 export function overBudget(m: Measure, budget: typeof BUDGET = BUDGET): string[] {
 	const out: string[] = [];
 	if (m.peakLiveMb > budget.liveMb) out.push(`peak live heap: ${m.peakLiveMb} MB, over ${budget.liveMb} MB`);
 	if (m.peakHeapMb > budget.heapMb) out.push(`peak heap used: ${m.peakHeapMb} MB, over ${budget.heapMb} MB`);
-	if (m.cpuSeconds > budget.cpuSeconds) out.push(`convert CPU time: ${m.cpuSeconds} s, over ${budget.cpuSeconds} s`);
 	if (m.matchMs > budget.matchMs) out.push(`React-state matching: ${m.matchMs} ms, over ${budget.matchMs} ms`);
 	return out;
 }
@@ -107,6 +140,8 @@ export interface Measure {
 	readonly peakLiveMb: number;
 	readonly peakHeapMb: number;
 	readonly peakRssMb: number;
+	/** ANCHOR.cpuSeconds in the tree measured; a tree from before it has none. */
+	readonly anchorSeconds?: number;
 }
 
 /** The fixture's pages, each with the sidebar, read once; the time ReactStatePlan takes to look for every component on them. */
@@ -137,7 +172,7 @@ export async function measure(): Promise<Measure> {
 		});
 		const peak = JSON.parse(await readFile(peakFile, 'utf8')) as { live: number; heap: number; rss: number; cpu: number };
 		const mb = (b: number) => Math.round(b / 2 ** 20);
-		return { routes: routes.length, seconds: Math.round((Date.now() - began) / 1000), cpuSeconds: Math.round(peak.cpu), matchMs: matchMs(), peakLiveMb: mb(peak.live), peakHeapMb: mb(peak.heap), peakRssMb: mb(peak.rss) };
+		return { routes: routes.length, seconds: Math.round((Date.now() - began) / 1000), cpuSeconds: Math.round(peak.cpu), matchMs: matchMs(), peakLiveMb: mb(peak.live), peakHeapMb: mb(peak.heap), peakRssMb: mb(peak.rss), anchorSeconds: ANCHOR.cpuSeconds };
 	} finally {
 		server.closeAllConnections();
 		server.close();
@@ -153,15 +188,34 @@ if (import.meta.main) {
 		if (report.routes.length < routes.length) throw new Error(`convert wrote ${report.routes.length} of ${routes.length} routes`);
 	} else if (what === 'measure' && a) {
 		await writeFile(a, `${JSON.stringify(await measure(), null, 1)}\n`);
-	} else if (!what) {
-		const m = await measure();
-		const over = overBudget(m);
-		const summary = `| | measured | budget |\n|---|---|---|\n| routes | ${m.routes} | |\n| convert time | ${m.seconds} s | |\n| convert CPU time | ${m.cpuSeconds} s | ${BUDGET.cpuSeconds} s |\n| React-state matching | ${m.matchMs} ms | ${BUDGET.matchMs} ms |\n| peak live heap | ${m.peakLiveMb} MB | ${BUDGET.liveMb} MB |\n| peak heap used | ${m.peakHeapMb} MB | ${BUDGET.heapMb} MB |\n| peak RSS | ${m.peakRssMb} MB | |\n\n${over.length ? `Over budget:\n${over.map((o) => `- ${o}`).join('\n')}` : 'Within budget.'}\n`;
+	} else if (what === 'paired' && a) {
+		const dir = await mkdtemp(join(tmpdir(), 'convert-budget-paired-'));
+		let n = 0;
+		const read = async (tree: string): Promise<Measure> => {
+			const out = join(dir, `${n++}.json`);
+			await new Promise<void>((done, fail) => spawn(process.execPath, [join(tree, 'scripts/convert-budget.ts'), 'measure', out], { cwd: tree, stdio: 'inherit' }).on('close', (code) => (code === 0 ? done() : fail(new Error(`${tree}: measure exited ${code}`)))));
+			return JSON.parse(await readFile(out, 'utf8')) as Measure;
+		};
+		const main = resolve(a);
+		const here = resolve(import.meta.dirname, '..');
+		const bases = [await read(main)];
+		const heads = [await read(here)];
+		bases.push(await read(main));
+		const baseAnchor = bases[0]?.anchorSeconds ?? ANCHOR.cpuSeconds;
+		const judge = () => judgePaired(bases.map((m) => m.cpuSeconds), heads.map((m) => m.cpuSeconds), baseAnchor);
+		if (judge().readHeadAgain) heads.push(await read(here));
+		const v = judge();
+		await rm(dir, { recursive: true, force: true });
+		const [m] = heads;
+		if (!m) throw new Error('no head reading');
+		const over = [...overBudget(m), ...(v.over ? [v.over] : []), ...(v.stale ? [v.stale] : [])];
+		const list = (ms: readonly Measure[], f: (m: Measure) => number, unit: string) => ms.map((x) => `${f(x)} ${unit}`).join(', ');
+		const summary = `| | measured | budget |\n|---|---|---|\n| runner CPU | ${cpus()[0]?.model ?? 'unknown'} × ${cpus().length} | |\n| routes | ${m.routes} | |\n| convert time, main / this tree | ${list(bases, (x) => x.seconds, 's')} / ${list(heads, (x) => x.seconds, 's')} | |\n| convert CPU time, main | ${list(bases, (x) => x.cpuSeconds, 's')} (lower: ${v.base} s) | |\n| convert CPU time, this tree | ${list(heads, (x) => x.cpuSeconds, 's')} (lower: ${v.head} s) | |\n| this tree over main | ${v.ratio} | |\n| main at the bound's speed (anchor) | ${baseAnchor} s | |\n| convert CPU time at the bound's speed | ${v.atBoundSpeed} s | ${BUDGET.cpuSeconds} s |\n| React-state matching | ${m.matchMs} ms | ${BUDGET.matchMs} ms |\n| peak live heap | ${m.peakLiveMb} MB | ${BUDGET.liveMb} MB |\n| peak heap used | ${m.peakHeapMb} MB | ${BUDGET.heapMb} MB |\n| peak RSS | ${m.peakRssMb} MB | |\n\n${over.length ? `Over budget:\n${over.map((o) => `- ${o}`).join('\n')}` : 'Within budget.'}\n`;
 		process.stdout.write(summary);
 		if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, `## Convert budget\n\n${summary}`, { flag: 'a' });
 		process.exit(over.length ? 1 : 0);
 	} else {
-		process.stderr.write('usage: convert-budget.ts [measure <out.json>]\n');
+		process.stderr.write('usage: convert-budget.ts paired <main tree> | measure <out.json>\n');
 		process.exit(2);
 	}
 }

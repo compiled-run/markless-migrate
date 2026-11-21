@@ -137,17 +137,25 @@ jobs:
           node scripts/check-budget.ts measure . "$RUNNER_TEMP/head.json"
           node scripts/check-budget.ts compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
 
-  # A convert's peak live heap on a fixed multi-route site (scripts/convert-budget.ts states the bound and how it was measured).
+  # A convert's peak memory and its CPU time at the bound's speed, main converted beside it on the same runner (scripts/convert-budget.ts states the bounds).
   convert-budget:
     name: Convert budget
     needs: changes
     if: needs.changes.outputs.tested != 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # main, whatever a stacked pull request's base is: the anchor is main's cost.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.merge_group.base_sha || (github.event_name == 'push' && github.event.before) || 'main' }}
+          path: .budget-main
       - uses: ./.github/actions/setup
-      - run: node scripts/convert-budget.ts
+      - run: |
+          pnpm install --frozen-lockfile --dir .budget-main
+          (cd .budget-main && timeout 600 pnpm exec playwright install chromium)
+      - run: node scripts/convert-budget.ts paired .budget-main
 
   # The checker's mutation suites were 60% of a pull request's runner time; they run in the merge queue and on main.
   mutation:
