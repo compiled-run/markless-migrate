@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { discoverDir, discoverPageKey, keepCurrent, KIND } from './key.ts';
 import { REVEAL_CLICKS } from '../convert/reveal.ts';
-import { edgeLabel, type Scene } from '../convert/scenes.ts';
+import { edgeLabel, shape, type Scene, type SceneNode } from '../convert/scenes.ts';
 import { SELECTOR as TOGGLE_CONTROLS } from '../convert/toggles.ts';
 import { assertLocal, MAX_DEMO_ELEMENTS, MAX_DEMO_USES, recordDiscovery, shortKey, type Claimed, type DiscoverFacts, type PressedControl, type Shared } from './record.ts';
 import { deadCount, type DeadControl, type DiscoveryReport, type RouteDiscovery } from './report.ts';
@@ -122,10 +122,20 @@ export function sceneUsesAt(scene: Pick<Scene, 'edges' | 'skippedUses'>): Map<st
 	return out;
 }
 
-/** The uses an old recording of a demo had that none of the new ones has: by control and the use made of it. */
-export function lostUses(old: Pick<Scene, 'edges'>, fresh: readonly Pick<Scene, 'edges'>[]): string[] {
-	const now = new Set(fresh.flatMap((s) => s.edges.map((e) => e.control)));
-	return [...new Set(old.edges.map((e) => e.control))].filter((c) => !now.has(c));
+const textOf = (n: SceneNode): string => ('text' in n ? n.text : n.kids.map(textOf).join(' '));
+
+/** The uses an old recording of a demo had that none of the new ones has: by control and the state it was used from. */
+export function lostUses(old: Pick<Scene, 'edges' | 'states'>, fresh: readonly Pick<Scene, 'edges' | 'states'>[]): string[] {
+	const use = (s: Pick<Scene, 'states'>, e: Scene['edges'][number]) => {
+		const from = s.states[e.from];
+		return `${e.control}\u0000${from ? shape(from) : e.from}`;
+	};
+	const now = new Set(fresh.flatMap((s) => s.edges.map((e) => use(s, e))));
+	const lost = old.edges.filter((e) => !now.has(use(old, e))).map((e) => {
+		const from = old.states[e.from];
+		return `${e.control} from "${from ? textOf(from).replace(/\s+/g, ' ').trim().slice(0, 40) : `state ${e.from}`}"`;
+	});
+	return [...new Set(lost)];
 }
 
 /**
