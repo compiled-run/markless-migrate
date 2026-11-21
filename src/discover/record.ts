@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { Browser, Page, Request } from 'playwright';
 import { isLoopback, openPage, type OpenPage } from '../check/browser.ts';
 import { LAYOUT_LANDMARKS } from '../check/landmarks.ts';
+import { COMPOSITE_ROLES } from '../check/patterns.ts';
 import { settle as settleLoad } from '../check/capture.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
 import { loadPage } from '../check/infrastructure.ts';
@@ -51,7 +52,25 @@ export interface PressedControl {
 	 * Where what the press changed sits: the nearest element holding the control and every element it changed, as its path
 	 * from the body (`body>div2>main1`: tag and occurrence among its siblings of that tag) and its sig#nth.
 	 */
-	readonly holder?: { readonly path: string; readonly at: string };
+	readonly holder?: {
+		readonly path: string;
+		readonly at: string;
+		readonly canvas?: boolean;
+		/** Elements inside it. */
+		readonly size?: number;
+		/** Each ancestor's sig#nth, nearest first, as the page loaded. */
+		readonly ancestors?: readonly string[];
+		/** `shortKey` of every element inside it and itself, as the page loaded: to check it against what other recordings own. */
+		readonly inside?: readonly string[];
+		/** An ARIA widget a part drives on the way from it to an element the presses changed (a listbox, a menu). */
+		readonly widget?: string;
+		/** It is the body, main or a layout landmark: a page region, never a demo. */
+		readonly landmark?: boolean;
+	};
+	/** Pressed again from a fresh load, it left another page (a time, a random value): a scene would replay one of them. */
+	readonly unsteady?: boolean;
+	/** The control's own path from the body, as the page loaded. */
+	readonly path?: string;
 	/** The states one control showed before it came back or the presses ran out, the first included. */
 	readonly states?: number;
 	readonly changes?: readonly Change[];
@@ -225,11 +244,11 @@ function holdWrites(): void {
 }
 
 /** The context's one init script: the write guard first, in its own try, so a reader that throws cannot leave the page unguarded. */
-export const pageScripts = (): string => `try { (${holdWrites.toString()})(); } finally { (${installReader.toString()})(); }`;
+export const pageScripts = (): string => `try { (${holdWrites.toString()})(); } finally { (${installReader.toString()})(${JSON.stringify(WIDGET_ROLES)}); }`;
 
 /** In every document of the context: reads the page for comparison, and keeps what live regions announce between reads. */
-function installReader(): void {
-	type Entry = { d: string; a: string; t: string; s: 0 | 1; l: string; c: string };
+function installReader(widgets: readonly string[]): void {
+	type Entry = { d: string; a: string; t: string; s: 0 | 1; l: string; c: string; r: string };
 	const g = globalThis as typeof globalThis & { __mmDiscover__?: unknown };
 	if (g.__mmDiscover__) return;
 	const readings: Record<string, Entry>[] = [];
@@ -305,13 +324,13 @@ function installReader(): void {
 			const look = !shown ? '' : moving ? 'moving' : `${css.display} ${css.visibility} ${css.opacity} ${css.color} ${css.backgroundColor} ${css.borderColor} ${css.transform} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`;
 			const scrolled = el.scrollTop || el.scrollLeft ? `${Math.round(el.scrollTop)},${Math.round(el.scrollLeft)}` : '';
 			const at = paths.get(el);
-			if (at !== undefined) out[at] = { d: describe(el), a: attrs, t: text, s: shown ? 1 : 0, l: look, c: scrolled };
+			if (at !== undefined) out[at] = { d: describe(el), a: attrs, t: text, s: shown ? 1 : 0, l: look, c: scrolled, r: el.getAttribute('role') ?? '' };
 			for (const c of el.children) walk(c, shown || css.display === 'contents', moving);
 		};
 		walk(document.body, true, false);
 		const focused = document.activeElement && document.activeElement !== document.body ? (paths.get(document.activeElement) ?? '') : '';
-		out['@focus'] = { d: focused, a: '', t: '', s: 1, l: '', c: '' };
-		out['@scroll'] = { d: 'the window', a: '', t: '', s: 1, l: '', c: `${Math.round(scrollY)},${Math.round(scrollX)}` };
+		out['@focus'] = { d: focused, a: '', t: '', s: 1, l: '', c: '', r: '' };
+		out['@scroll'] = { d: 'the window', a: '', t: '', s: 1, l: '', c: `${Math.round(scrollY)},${Math.round(scrollX)}`, r: '' };
 		readings.push(out);
 		return readings.length - 1;
 	};
@@ -365,6 +384,30 @@ function installReader(): void {
 		const rank = ['text', 'attribute', 'added', 'removed', 'shown', 'hidden', 'focus', 'announced', 'scroll', 'look'];
 		return { changed: kept, changes: told.sort((p, q) => rank.indexOf(p.what) - rank.indexOf(q.what)) };
 	};
+	// The ARIA widgets a part drives, on the way from the body to each changed element (or the element itself), with their depth.
+	const WIDGETS = new Set(widgets);
+	const widgetsOn = (index: number, keys: readonly string[]): [number, string][] => {
+		const R = readings[index] ?? {};
+		const out: [number, string][] = [];
+		for (const key of keys) {
+			const steps = key.split('>');
+			for (let d = 1; d <= steps.length; d++) {
+				const role = R[steps.slice(0, d).join('>')]?.r ?? '';
+				if (WIDGETS.has(role)) out.push([d, role]);
+			}
+		}
+		return out;
+	};
+	// A reading as one value, the page's own changes left out: two loads that pressed alike compare equal.
+	const hash = (index: number, ignore: readonly string[]): string => {
+		const skip = new Set(ignore);
+		let h = 2166136261;
+		for (const [k, e] of Object.entries(readings[index] ?? {}).sort(([a], [b]) => (a < b ? -1 : 1))) {
+			if (skip.has(k) || k.startsWith('@') || !e.s) continue;
+			for (const c of `${k}\u0000${e.a}\u0000${e.t}\u0000${e.l}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+		}
+		return (h >>> 0).toString(16);
+	};
 	const drain = () => {
 		const out = announced;
 		announced = [];
@@ -412,6 +455,8 @@ function installReader(): void {
 	g.__mmDiscover__ = {
 		read,
 		diff,
+		widgetsOn,
+		hash,
 		path: (el: Element) => (read(), paths.get(el) ?? ''),
 		announced: drain,
 		forget: () => void readings.splice(0),
@@ -470,13 +515,21 @@ function installReader(): void {
 			(globalThis as { __mmDoc__?: string }).__mmDoc__ = id;
 		},
 		// After a later press: read once still, and the last earlier reading it matches (-1 for none), and whether it matches the page as loaded, look and all.
-		again: async (states: readonly number[], drift: readonly string[], pressed: string, cap: number, quiet: number) => {
+		again: async (states: readonly number[], previous: number, drift: readonly string[], pressed: string, cap: number, quiet: number) => {
 			await still(cap, quiet);
 			const now = read();
 			let same = -1;
 			for (const [i, at] of states.entries()) if (!diff(at, now, drift, pressed).changed.length) same = i;
 			const first = states[0];
-			return { now, same, home: first !== undefined && !diff(first, now, drift, '').changed.length, writes: writes(), doc: doc() };
+			const step = diff(previous, now, drift, pressed).changed;
+			return { now, same, home: first !== undefined && !diff(first, now, drift, '').changed.length, step, widgets: widgetsOn(now, step), writes: writes(), doc: doc() };
+		},
+		// What a stateful first press reached: the widgets on the way to what it changed, and the reading as one value.
+		marks: (at: number, changed: readonly string[], drift: readonly string[]) => ({ widgets: widgetsOn(at, changed), hash: hash(at, drift) }),
+		// The page still, read as one value.
+		stillHash: async (drift: readonly string[], cap: number, quiet: number) => {
+			await still(cap, quiet);
+			return hash(read(), drift);
 		},
 	};
 }
@@ -503,6 +556,8 @@ interface Looked {
 
 interface Reader {
 	read(): number;
+	widgetsOn(index: number, keys: readonly string[]): [number, string][];
+	hash(index: number, ignore: readonly string[]): string;
 	diff(a: number, b: number, ignore: readonly string[], pressed: string): Diff;
 	path(el: Element): string;
 	announced(): string[];
@@ -514,7 +569,9 @@ interface Reader {
 	ready(id: string, cap: number, quiet: number): Promise<void>;
 	watch(ms: number): Promise<string[]>;
 	hovered(start: number, drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<{ hovered: string[]; now: number }>;
-	again(states: readonly number[], drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<{ now: number; same: number; home: boolean; writes: string[]; doc: string | undefined }>;
+	again(states: readonly number[], previous: number, drift: readonly string[], pressed: string, cap: number, quiet: number): Promise<{ now: number; same: number; home: boolean; step: string[]; widgets: [number, string][]; writes: string[]; doc: string | undefined }>;
+	marks(at: number, changed: readonly string[], drift: readonly string[]): { widgets: [number, string][]; hash: string };
+	stillHash(drift: readonly string[], cap: number, quiet: number): Promise<string>;
 }
 
 interface Candidate {
@@ -678,8 +735,8 @@ export function holderPath(pressed: string, changed: readonly string[]): string 
 	return common.join('>');
 }
 
-/** In the page as loaded: the sig#nth of the element at each path, the signature scenes and the emit find it by. */
-function sigsAt(paths: readonly string[]): string[] {
+/** What holds a press, found on the page as it loads: its sig#nth (what scenes and the emit find it by), ancestors, whether it holds a canvas, and every element inside it. */
+function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: string }): { at: string; canvas: boolean; ancestors: string[]; inside: string[]; landmark: boolean }[] {
 	const sigOf = (e: Element) => `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${(e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const order = new Map<Element, number>();
 	const counts = new Map<string, number>();
@@ -689,15 +746,22 @@ function sigsAt(paths: readonly string[]): string[] {
 		order.set(el, counts.get(sig) ?? 0);
 		counts.set(sig, (counts.get(sig) ?? 0) + 1);
 	}
+	const at = (e: Element) => `${sigOf(e)}#${order.get(e) ?? 0}`;
 	return paths.map((path) => {
 		let el: Element | null = document.body;
 		for (const step of path.split('>').slice(1)) {
 			const [, tag, n] = /^([a-z0-9-]+?)(\d+)$/.exec(step) ?? [];
 			el = el ? ([...el.children].filter((c) => c.tagName.toLowerCase() === tag)[Number(n) - 1] ?? null) : null;
 		}
-		return el ? `${sigOf(el)}#${order.get(el) ?? 0}` : '';
+		if (!el) return { at: '', canvas: false, ancestors: [], inside: [], landmark: false };
+		const ancestors: string[] = [];
+		for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
+		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at), landmark: el === document.body || el.matches(`main, [role="main"], ${landmarks}`) };
 	});
 }
+
+/** The short key an element's sig#nth is kept under in `holder.inside`. */
+export const shortKey = (at: string): string => createHash('sha256').update(at).digest('base64url').slice(0, 10);
 
 const fileOf = (dir: string, route: string) => join(dir, `${createHash('sha256').update(route).digest('hex').slice(0, 16)}.json`);
 
@@ -717,6 +781,12 @@ function publishPressed(shared: Shared, controls: readonly PressedControl[]): vo
 	}
 }
 
+/** The widgets a part drives: the composite roles, and the single ones a part opens or moves (a combobox, a slider, a dialog). */
+const WIDGET_ROLES: readonly string[] = [...COMPOSITE_ROLES, 'combobox', 'slider', 'dialog', 'alertdialog'];
+/** A holder past this many elements is a page section around demos (the carousel docs area, 1,498), never a demo. */
+export const MAX_DEMO_ELEMENTS = 600;
+/** The most uses a discovered demo's scene records: the busiest demo on the sample (the AI Elements suggestions) recorded 119. */
+export const MAX_DEMO_USES = 120;
 /** Playwright's wait for a control to take a click (stable, enabled, not covered): what the hit test let through takes it at once. */
 const CLICK_MS = 5000;
 /** The hover that tells a tooltip's change from the press's: a control that just took a click takes the pointer at once. */
@@ -908,13 +978,15 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		let lastRead: number | undefined;
 		// Per stateful control, the elements its first press changed: one that changed only what the page changes by itself is inert.
 		const moved = new Map<number, string[]>();
-		const pending: [number, string][] = [];
+		// Holders are named on the page as it loads, before any press changed their text.
+		const pending: { at: number; path: string; widget?: string }[] = [];
 		const name = async () => {
-			const sigs = await within(at().evaluate(sigsAt, pending.map(([, path]) => path)), 'naming the holders');
-			for (const [i, [index, path]] of pending.entries()) {
-				const sig = sigs[i];
-				const control = controls[index];
-				if (sig && control) controls[index] = { ...control, holder: { path, at: sig } };
+			const found = await within(at().evaluate(holdersAt, { paths: pending.map((h) => h.path), landmarks: LAYOUT_LANDMARKS }), 'naming the holders');
+			for (const [i, h] of pending.entries()) {
+				const got = found[i];
+				const control = controls[h.at];
+				if (!got?.at || !control) continue;
+				controls[h.at] = { ...control, holder: { path: h.path, at: got.at, ...(got.canvas ? { canvas: true } : {}), size: got.inside.length, ancestors: got.ancestors, inside: [...new Set(got.inside.map(shortKey))], ...(h.widget ? { widget: h.widget } : {}), ...(got.landmark ? { landmark: true } : {}) } };
 			}
 			pending.splice(0);
 		};
@@ -1049,24 +1121,32 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 					lastRead = now;
 				} else {
 					if (!said.length) moved.set(controls.length, own);
-					controls.push({ ...base, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
+					controls.push({ ...base, path: pressed, shape: 'transient', states: 2, changes: [...quick.changes, ...said].slice(0, KEPT_CHANGES) });
 				}
 				continue;
 			}
 			fresh = false;
 			let back: number | undefined;
 			states.push(settled);
-			const holder = holderPath(pressed, first.changed);
+			// Everything any press changed, and the widgets on the way to it: what holds the control is sized from them all.
+			const all = new Set(first.changed);
+			// The page's own changes are learned as the route goes: the hash leaves out what is known by then.
+			const marks = await inPage('reading what the press reached', () => at().evaluate(([at, changed, drift]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.marks(at, changed, drift), [settled, first.changed, drift] as const));
+			const widgets = [...marks.widgets];
+			let previous = settled;
 			let shape: Shape | undefined;
 			for (let n = 2; n <= MAX_PRESSES && !shape; n++) {
 				hung();
 				await press();
 				await within(at().mouse.move(0, 0), 'moving the pointer away');
 				await lateMarks();
-				const after = await inPage('reading a later press', () => at().evaluate(([states, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.again(states, drift, pressed, cap, quiet), [states, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+				const after = await inPage('reading a later press', () => at().evaluate(([states, previous, drift, pressed, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.again(states, previous, drift, pressed, cap, quiet), [states, previous, drift, pressed, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
 				looked(after, []);
 				if (halted()) break;
 				const { now, same } = after;
+				for (const k of after.step) all.add(k);
+				widgets.push(...after.widgets);
+				previous = now;
 				if (same === 0) {
 					shape = n === 2 ? 'toggle' : 'cycle';
 					// Back to the reading the page loaded with, the pressed control's own look included: no reload is needed before the next control.
@@ -1081,9 +1161,40 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				controls.push({ ...base, shape: stopLater.shape, why: `${stopLater.why}, on a later press` });
 				continue;
 			}
-			if (holder) pending.push([controls.length, holder]);
+			const holder = holderPath(pressed, [...all]);
+			if (holder) {
+				const depth = holder.split('>').length;
+				const widget = widgets.find(([d]) => d >= depth)?.[1];
+				pending.push({ at: controls.length, path: holder, ...(widget ? { widget } : {}) });
+			}
 			moved.set(controls.length, said.length ? [] : first.changed);
-			controls.push({ ...base, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
+			controls.push({ ...base, path: pressed, shape: shape ?? 'sequence', states: states.length, changes: [...first.changes, ...said].slice(0, KEPT_CHANGES) });
+			// The first press again, from a fresh load: one that leaves another page is not one a scene can replay.
+			// Only a lasting markup change outside the layout could get a scene: only that is pressed again.
+			if (presses < budget && !c.layout && first.changes.some((x) => x.what !== 'focus' && x.what !== 'scroll')) {
+				back = undefined;
+				hung();
+				await load();
+				reloads++;
+				await find();
+				await name();
+				// Named by now: a holder a scene refuses anyway (a page region, too large, a widget's) is not pressed again.
+				const h = controls[controls.length - 1]?.holder;
+				const refused = !h || h.landmark || (h.size ?? 0) > MAX_DEMO_ELEMENTS || h.widget;
+				const ready = refused ? undefined : await inPage('reading the page before the press again', () => at().evaluate(([i, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.before(i, undefined, cap, quiet), [index, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+				if (ready && ready.covered !== 'gone') {
+					presses++;
+					await at().locator(`[data-mm-discover="${index}"]`).first().click({ timeout: CLICK_MS }).catch(() => {});
+					since = Date.now();
+					await requestsDone(since, SCRIPTS_STILL_CAP_MS);
+					await at().mouse.move(0, 0);
+					await lateMarks();
+					const last = controls.length - 1;
+					const pressedAgain = controls[last];
+					const hash = await inPage('reading the page as one value', () => at().evaluate(([drift, cap, quiet]) => (globalThis as unknown as { __mmDiscover__: Reader }).__mmDiscover__.stillHash(drift, cap, quiet), [drift, SCRIPTS_STILL_CAP_MS, STILL_MS] as const));
+					if (pressedAgain && hash !== marks.hash) controls[last] = { ...pressedAgain, unsteady: true };
+				}
+			}
 			if (back !== undefined) {
 				fresh = true;
 				lastRead = back;

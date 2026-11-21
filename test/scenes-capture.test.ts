@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // What a demo's own controls did on the old page, recorded frame by frame (src/convert/scenes.ts), on a page whose Send
 // shows a typing row, then streams a reply in, and whose Reset clears it.
 import assert from 'node:assert/strict';
@@ -9,6 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { captureScenes, type SceneNode } from '../src/convert/scenes.ts';
+import { SCENE_CONTROLS } from '../src/discover/convert.ts';
 
 const PAGE = `<!doctype html><html><body><main>
 <div data-slot="preview"><div role="log"><p>Hi</p></div><button data-slot="button" id="send">Send</button><button data-slot="button" id="reset" disabled>Reset</button></div>
@@ -40,8 +42,12 @@ test('a demo\'s controls are used from every state they lead to, and each use is
 	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
 	const browser = await chromium.launch();
 	try {
-		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', { states: 3, depth: 2, settle: 400, max: 5000 });
+		const limits = { states: 3, depth: 2, settle: 400, max: 5000 };
+		const { scenes } = await captureScenes(browser, origin, '/', dir, '[data-slot="preview"] button', limits);
 		assert.equal(scenes.length, 1);
+		// A docs preview's recording is the file, and the shape, it was before discovered demos: kept recordings stay valid.
+		const file = `${createHash('sha256').update(`scenes:8:/|[data-slot="preview"] button|${JSON.stringify(limits)}`).digest('hex').slice(0, 16)}.json`;
+		assert.deepEqual(Object.keys(JSON.parse(await readFile(join(dir, file), 'utf8')).scenes[0]), ['sig', 'nth', 'states', 'edges', 'skipped']);
 		const scene = scenes[0]!;
 		const log = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		const reply = 'Hello there friend';
@@ -201,6 +207,39 @@ test('a use whose demo pauses on a timer of its own for longer than the quiet th
 		const replay = scenes[0]!.edges.find((e) => e.from === 0)!;
 		const step = (n: SceneNode) => texts((n as Extract<SceneNode, { kids: unknown }>).kids[0]!);
 		assert.deepEqual(replay.frames.map((f) => step(f.tree)), ['1 of 3 done', '2 of 3 done', '3 of 3 done']);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+// A page-level demo, as on ui.shadcn.com's /preview pages: a card with no docs preview around it, found by the sig#nth discovery gave.
+const CARD = `<!doctype html><html><body><main><h1>Preview</h1>
+<div class="card"><div role="img" aria-label="Processing audio"><canvas width="40" height="10"></canvas></div>
+<button type="button" id="listen">Start Listening</button><button type="button" aria-expanded="false">More</button></div>
+<script>
+const labels = ['Processing audio', 'Live audio waveform', 'Audio waveform idle'];
+let s = 0;
+document.getElementById('listen').onclick = (e) => { s = s === 1 ? 2 : 1; document.querySelector('[role=img]').setAttribute('aria-label', labels[s]); e.target.textContent = s === 1 ? 'Stop Listening' : 'Start Listening'; };
+</script></main></body></html>`;
+
+test('a page-level demo is recorded from the element discovery found around its control, with only the controls no ARIA mark claims', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(CARD));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-scenes-'));
+	const browser = await chromium.launch();
+	try {
+		await assert.rejects(captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 300, max: 3000 }, '', 'div||Gone#0'), /the demo div\|\|Gone#0 is not on \/ as it loads/);
+		const { scenes } = await captureScenes(browser, origin, '/', dir, SCENE_CONTROLS, { states: 4, depth: 3, settle: 300, max: 3000 }, '', 'div||Start ListeningMore#0');
+		assert.equal(scenes.length, 1);
+		const scene = scenes[0]!;
+		assert.match(scene.sig, /^div\|\|Start Listening/);
+		const label = (n: SceneNode) => ((n as Extract<SceneNode, { kids: unknown }>).kids[0] as Extract<SceneNode, { attrs: unknown }>).attrs.find(([k]) => k === 'aria-label')?.[1];
+		assert.deepEqual(scene.states.map(label), ['Processing audio', 'Live audio waveform', 'Audio waveform idle']);
+		assert.ok(scene.edges.every((e) => e.control.startsWith('button||')), 'the disclosure is left to the reveals');
+		assert.deepEqual(scene.edges.map((e) => [e.from, e.to]).sort(), [[0, 1], [1, 2], [2, 1]].sort());
 	} finally {
 		await browser.close();
 		server.close();

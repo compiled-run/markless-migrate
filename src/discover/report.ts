@@ -39,6 +39,8 @@ export interface RouteDiscovery {
 	readonly seconds: number;
 	/** The press budget ended the presses before every control: the route's last findings stand. */
 	readonly cut?: boolean;
+	/** Stateful controls a scene ports only in part (uses not recorded, or click only): the job fails on them. */
+	readonly partly?: readonly { readonly name: string; readonly why: string }[];
 	/** Controls counted from the route that owns their group, by that route. */
 	readonly sameAs?: Readonly<Record<string, number>>;
 	/** Spot checks here that did another thing than the owner: that group is pressed on every route next run. */
@@ -46,6 +48,8 @@ export interface RouteDiscovery {
 	/** Controls counted from a group a spot check found wrong this run: the route is not looked at in full. */
 	readonly untrusted?: number;
 	readonly error?: string;
+	/** What a scene of a page-level demo could not port: a script-drawn canvas, a press that only moves focus. */
+	readonly notes?: readonly string[];
 }
 
 export interface DiscoveryReport {
@@ -56,6 +60,8 @@ export interface DiscoveryReport {
 	readonly deadRoutes: number;
 	/** Controls with a handler on the port whose effect is not compared. */
 	readonly handled?: number;
+	/** Controls a scene ports only in part. */
+	readonly partly?: number;
 	/** Routes whose discovery failed or stopped before every control: their last findings stand, and a port run fails. */
 	readonly incomplete?: readonly string[];
 	/** Against the last run of the same store, when there is one. */
@@ -92,9 +98,11 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 	const before = report.before ? ` (last run: ${report.before.count}; ${report.before.added.length} new, ${report.before.cleared.length} cleared)` : '';
 	const lines = [`Ported with dead controls: ${report.count} controls on ${report.deadRoutes} of ${Object.keys(report.routes).length} routes${before}.`];
 	if (report.handled) lines.push(`Has a handler on the port, effect not compared: ${report.handled} controls${notAsked(report) ? `, ${notAsked(report)} of them repeats of one, not asked of the port` : ''}.`);
+	if (report.partly) lines.push(`Ported only in part: ${report.partly} controls.`);
 	if (report.incomplete?.length) lines.push(`Routes not looked at in full (their last findings stand): ${report.incomplete.join(', ')}.`);
 	for (const [route, r] of Object.entries(report.routes).sort(([a], [b]) => (a < b ? -1 : 1))) {
 		for (const d of r.dead) lines.push(`  dead control on ${route}: "${d.name}" ${d.what}${d.repeated ? ` (and ${d.repeated} like it)` : ''}`);
+		for (const p of r.partly ?? []) lines.push(`  ported only in part on ${route}: "${p.name}" ${p.why}`);
 		for (const h of r.handled ?? []) lines.push(`  has a handler, effect not compared, on ${route}: "${h.name}" (${h.by})${h.repeated ? `, and ${h.repeated} like it not asked of the port` : ''}`);
 		for (const u of r.unknown) lines.push(`  not read on ${route}: "${u.name}" ${unknownLine(u)}`);
 		for (const m of r.spotMismatch ?? []) lines.push(`  spot check on ${route}: "${m.name}" did another thing than on ${m.owner}; it is pressed on every route next run`);
@@ -102,6 +110,7 @@ export function summarizeDiscovery(report: DiscoveryReport): string[] {
 		if (r.error) lines.push(`  discovery on ${route} stopped: ${r.error}`);
 		const cut = cutsOf(r);
 		if (cut) lines.push(`  cut on ${route}: ${cut}`);
+		for (const n of r.notes ?? []) lines.push(`  on ${route}: ${n}`);
 	}
 	for (const t of report.thrown ?? []) lines.push(`  the port threw outside a browser while asked: ${t}`);
 	for (const n of report.before?.added ?? []) lines.push(`  new since the last run: ${n}`);
@@ -116,10 +125,11 @@ const unknownLine = (u: RouteDiscovery['unknown'][number]): string =>
 export function discoveryMarkdown(report: DiscoveryReport | undefined): { readonly text: string; readonly failed: boolean; readonly missing: boolean } {
 	if (!report) return { text: '### Dead controls: unknown\n\nThe convert report has no dead-controls section: this convert did not look for them.\n', failed: true, missing: true };
 	if (report.notRun) return { text: `### Dead controls: not looked for\n\n${report.notRun}\n`, failed: true, missing: true };
-	const routes = Object.entries(report.routes).filter(([, r]) => r.dead.length || r.handled?.length || r.unknown.length || r.error || r.cut || cutsOf(r)).sort(([a], [b]) => (a < b ? -1 : 1));
+	const routes = Object.entries(report.routes).filter(([, r]) => r.dead.length || r.partly?.length || r.handled?.length || r.unknown.length || r.error || r.cut || cutsOf(r)).sort(([a], [b]) => (a < b ? -1 : 1));
 	const lines = [`### Ported with dead controls: ${report.count} controls on ${report.deadRoutes} of ${Object.keys(report.routes).length} routes`, ''];
 	if (report.from) lines.push(`This report is the one ${report.from} made: the emit was kept from it.`, '');
 	if (report.handled) lines.push(`Has a handler on the port, effect not compared: ${report.handled} controls${notAsked(report) ? `, ${notAsked(report)} of them repeats of one, not asked of the port` : ''}.`, '');
+	if (report.partly) lines.push(`Ported only in part: ${report.partly} controls.`, '', ...Object.entries(report.routes).flatMap(([route, r]) => (r.partly ?? []).map((p) => `- ${route} "${p.name}": ${p.why}`)), '');
 	if (report.incomplete?.length) lines.push(`Not looked at in full (failed or stopped; their last findings stand): ${report.incomplete.join(', ')}.`, '');
 	if (report.before) lines.push(`Last run of this store: ${report.before.count}. New: ${report.before.added.length}. Cleared: ${report.before.cleared.length}.`, '', ...report.before.added.map((n) => `- new: ${n}`), ...report.before.cleared.map((n) => `- cleared: ${n}`), '');
 	else lines.push('No earlier run of this store to compare with.', '');
@@ -130,5 +140,5 @@ export function discoveryMarkdown(report: DiscoveryReport | undefined): { readon
 			'|---|---|---|---|---|---|',
 			...routes.map(([route, r]) => `| ${route} | ${deadCount(r)} | ${r.handled?.length ?? 0} | ${r.unknown.length}${r.error ? ` (failed: ${cell(r.error)})` : ''} | ${cell([...r.dead.map((d) => `"${d.name}" ${d.shape}${d.repeated ? ` +${d.repeated} like it` : ''}`), ...(r.handled ?? []).map((h) => `"${h.name}" handler`), ...r.unknown.map((u) => `"${u.name}" ${u.left ? `not pressed (${u.left})` : u.shape}`)].join('; '))} | ${cell(cutsOf(r))} |`),
 		);
-	return { text: `${lines.join('\n')}\n`, failed: report.count > 0 || Boolean(report.incomplete?.length), missing: false };
+	return { text: `${lines.join('\n')}\n`, failed: report.count > 0 || Boolean(report.partly) || Boolean(report.incomplete?.length), missing: false };
 }
