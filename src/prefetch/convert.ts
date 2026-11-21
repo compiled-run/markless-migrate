@@ -1,10 +1,10 @@
 // Convert's side of the prefetch recordings: which pages get the full experiment, and the site's facts kept in `.migrate`.
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { urlPattern } from '../check/templates.ts';
 import type { PrefetchFacts } from './facts.ts';
-import { keepCurrent, prefetchDir, prefetchPageKey } from './key.ts';
+import { keepCurrent, prefetchDir, prefetchPageKey, prefetchVersion } from './key.ts';
 import { recordPrefetch } from './record.ts';
 
 /** The router's own rules (whether a click or a revisit fetches again, which networks it prefetches on) are the same on every page: they are read on the first pages of the site's largest URL patterns, the clicks on this many, the network conditions on the first `CONDITION_PAGES` of those. */
@@ -19,12 +19,29 @@ export function fullRecordings(allRoutes: readonly string[]): { readonly full: S
 	return { full: new Set(largest.slice(0, FULL_PAGES).map((g) => g.first)), conditions: new Set(largest.slice(0, CONDITION_PAGES).map((g) => g.first)) };
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+/** The pages a stored prefetch.json holds, only when this recorder version wrote it: an older recorder's facts are not read. */
+export function storedFacts(parsed: unknown, version: string): Record<string, PrefetchFacts> {
+	if (!isObject(parsed) || parsed.version !== version || !isObject(parsed.routes)) return {};
+	const out: Record<string, PrefetchFacts> = {};
+	for (const [route, facts] of Object.entries(parsed.routes)) {
+		if (!isObject(facts) || facts.route !== route || !isObject(facts.triggers) || !isObject(facts.hints)) continue;
+		out[route] = { ...(facts as unknown as Omit<PrefetchFacts, 'requests'>), requests: [] };
+	}
+	return out;
+}
+
 export interface PrefetchRecorder {
 	readonly record: (browser: Browser, route: string) => Promise<PrefetchFacts>;
 	/** A page whose recording could not finish (the browser died under it twice): unknown to the decision, recorded again next time. */
 	readonly unknown: (route: string, why: string) => void;
 	/** Writes what was recorded to `.migrate/prefetch.json`, without the raw requests. */
 	readonly save: () => Promise<void>;
+	/** Every listed page's facts: this convert's, and the last convert's for pages it did not record. */
+	readonly recorded: () => readonly PrefetchFacts[];
+	/** How many of those came from the last convert. */
+	readonly fromBefore: () => number;
 }
 
 export async function prefetchRecorder(state: string, origin: string, allRoutes: readonly string[], log: (line: string) => void): Promise<PrefetchRecorder> {
@@ -33,6 +50,15 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 	const dir = await prefetchDir(store);
 	const { full, conditions } = fullRecordings(allRoutes);
 	const recorded = new Map<string, PrefetchFacts>();
+	// What the last convert recorded: a partial convert decides from it and its own pages together, never from its pages alone.
+	const version = await prefetchVersion();
+	const stored = await readFile(join(state, 'prefetch.json'), 'utf8').then((t) => storedFacts(JSON.parse(t), version), () => ({}));
+	const listed = new Set(allRoutes);
+	const merged = () => {
+		const out = new Map<string, PrefetchFacts>(Object.entries(stored).filter(([route]) => listed.has(route)));
+		for (const [route, facts] of recorded) out.set(route, facts);
+		return out;
+	};
 	// Not kept: the route is recorded again next time, and the decision reads it as unknown.
 	const unknown = (route: string, why: string, browser = 'chromium'): PrefetchFacts => {
 		const facts: PrefetchFacts = { route, browser, shapes: [], fullLoads: false, links: 0, triggers: {}, concurrency: 0, bytesBeforeClick: 0, hints: { links: [], speculationRules: [] }, requests: [], error: why };
@@ -52,9 +78,11 @@ export async function prefetchRecorder(state: string, origin: string, allRoutes:
 			}
 		},
 		unknown: (route, why) => void unknown(route, why),
+		recorded: () => [...merged().values()],
+		fromBefore: () => [...merged().keys()].filter((r) => !recorded.has(r)).length,
 		save: async () => {
-			const routes = Object.fromEntries([...recorded].sort(([a], [b]) => (a < b ? -1 : 1)).map(([route, { requests: _, ...facts }]) => [route, facts]));
-			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ routes }, null, 1));
+			const routes = Object.fromEntries([...merged()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([route, { requests: _, ...facts }]) => [route, facts]));
+			await writeFile(join(state, 'prefetch.json'), JSON.stringify({ version, routes }, null, 1));
 		},
 	};
 }

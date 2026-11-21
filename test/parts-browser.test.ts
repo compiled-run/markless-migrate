@@ -843,6 +843,22 @@ test('recharts: a click keeps the tooltip on the point under the pointer, as rec
 	await page.close();
 });
 
+test("shadcn's InputGroupAddon: a click on the addon focuses its group's input, as its onClick does; a click on a button in it does not", async () => {
+	const page = await open(
+		`<div data-slot="input-group" role="group"><input data-slot="input-group-control" id="q" placeholder="Search"><div data-slot="input-group-addon" data-align="inline-end"><kbd data-slot="kbd">⌘K</kbd><button data-slot="input-group-button" id="go">Go</button></div></div><div data-slot="input-group" role="group"><div data-slot="input-group-addon">https://</div><input data-slot="input-group-control" id="url"></div><button id="other">other</button>`,
+		['shadcn/input-group'],
+	);
+	const focused = () => page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName);
+	await page.click('kbd');
+	assert.equal(await focused(), 'q');
+	await page.click('#other');
+	await page.getByText('https://').click();
+	assert.equal(await focused(), 'url', "each addon focuses its own group's input");
+	await page.click('#go');
+	assert.equal(await focused(), 'go', 'a button inside the addon keeps the focus its press gave it');
+	await page.close();
+});
+
 test('Base UI dialog locks scroll as @base-ui/utils useScrollLock does: the body stops scrolling (a stable gutter on <html> where scrollbars take room), put back on close', async () => {
 	const page = await open(
 		`<main style="height:3000px"><button data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dlg" type="button">Open Dialog</button></main>

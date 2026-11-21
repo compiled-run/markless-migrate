@@ -15,6 +15,7 @@ import type { SourceFacts } from './source-facts.ts';
 import type { TemplateGroup } from './templates.ts';
 import { loadFailures, psiFailures } from './load-verdicts.ts';
 import { networkFailures } from './slow-network-verdicts.ts';
+import { navTimingFailures } from './nav-timing-verdicts.ts';
 import { ANONYMOUS, type Dimension, type Failure, type LoginResult, type Report, type RouteCoverage, type RouteNavigation, type RouteResult, type Viewport } from './types.ts';
 import type { RouteLoad } from './load.ts';
 import type { RouteContext } from './route-judge.ts';
@@ -193,7 +194,7 @@ export function applyLoads(routes: readonly RouteResult[], loads: ReadonlyMap<st
 		const load = anonymous(r) ? loads.get(r.route) : undefined;
 		if (!load) return r;
 		// Real PageSpeed Insights, when it answered, is the gate; the calibrated lab stands in for it otherwise.
-		const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load)), ...networkFailures(r.route, load.network)];
+		const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load)), ...networkFailures(r.route, load.network), ...navTimingFailures(r.route, load.navTiming)];
 		return r.only ? { ...r, load, failures, ok: failures.length === 0, dimensions: { ...r.dimensions, load: failures.length ? 'fail' : 'pass' } } : withFailures(r, failures, { load });
 	});
 }
