@@ -64,8 +64,10 @@ export interface PressedControl {
 		readonly inside?: readonly string[];
 		/** An ARIA widget a part drives on the way from it to an element the presses changed (a listbox, a menu). */
 		readonly widget?: string;
-		/** It is the body, main or a layout landmark: a page region, never a demo. */
+		/** It is, or holds, the body, main or a layout landmark: a page region, never a demo. */
 		readonly landmark?: boolean;
+		/** The landmark it holds, when it is not one itself. */
+		readonly holds?: string;
 	};
 	/** Pressed again from a fresh load, it left another page (a time, a random value): a scene would replay one of them. */
 	readonly unsteady?: boolean;
@@ -736,7 +738,7 @@ export function holderPath(pressed: string, changed: readonly string[]): string 
 }
 
 /** What holds a press, found on the page as it loads: its sig#nth (what scenes and the emit find it by), ancestors, whether it holds a canvas, and every element inside it. */
-function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: string }): { at: string; canvas: boolean; ancestors: string[]; inside: string[]; landmark: boolean }[] {
+function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: string }): { at: string; canvas: boolean; ancestors: string[]; inside: string[]; landmark: boolean; holds?: string }[] {
 	const sigOf = (e: Element) => `${e.tagName.toLowerCase()}|${e.getAttribute('data-slot') ?? ''}|${(e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 	const order = new Map<Element, number>();
 	const counts = new Map<string, number>();
@@ -756,7 +758,9 @@ function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: 
 		if (!el) return { at: '', canvas: false, ancestors: [], inside: [], landmark: false };
 		const ancestors: string[] = [];
 		for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
-		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at), landmark: el === document.body || el.matches(`main, [role="main"], ${landmarks}`) };
+		const inner = el.querySelector(`main, [role="main"], ${landmarks}`);
+		const holds = inner ? (inner.getAttribute('role') ?? inner.tagName.toLowerCase()) : undefined;
+		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at), landmark: el === document.body || el.matches(`main, [role="main"], ${landmarks}`) || Boolean(holds), ...(holds ? { holds } : {}) };
 	});
 }
 
@@ -986,7 +990,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 				const got = found[i];
 				const control = controls[h.at];
 				if (!got?.at || !control) continue;
-				controls[h.at] = { ...control, holder: { path: h.path, at: got.at, ...(got.canvas ? { canvas: true } : {}), size: got.inside.length, ancestors: got.ancestors, inside: [...new Set(got.inside.map(shortKey))], ...(h.widget ? { widget: h.widget } : {}), ...(got.landmark ? { landmark: true } : {}) } };
+				controls[h.at] = { ...control, holder: { path: h.path, at: got.at, ...(got.canvas ? { canvas: true } : {}), size: got.inside.length, ancestors: got.ancestors, inside: [...new Set(got.inside.map(shortKey))], ...(h.widget ? { widget: h.widget } : {}), ...(got.landmark ? { landmark: true } : {}), ...(got.holds ? { holds: got.holds } : {}) } };
 			}
 			pending.splice(0);
 		};

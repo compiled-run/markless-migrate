@@ -175,7 +175,7 @@ export function noScene(c: PressedControl, claims: Claims, scene?: Claims['scene
 	if (c.unsteady) return 'pressed again from a fresh load it left another page (a time or a random value), which a scene would replay as one';
 	const h = c.holder;
 	if (!h || h.path === 'body') return 'what its presses change reaches across the page';
-	if (h.landmark) return `what its presses change sits in ${holderName(h.at)}, a page landmark, which is never a demo`;
+	if (h.landmark) return h.holds ? `what its presses change sits in ${holderName(h.at)}, around a page landmark (${h.holds}): a page region, never a demo` : `what its presses change sits in ${holderName(h.at)}, a page landmark, which is never a demo`;
 	if ((h.size ?? 0) > MAX_DEMO_ELEMENTS) return `what its presses change sits in ${holderName(h.at)} of ${h.size} elements, over the ${MAX_DEMO_ELEMENTS} a demo holds`;
 	if (h.widget) return `its presses change the inside of a ${h.widget}, which a part drives`;
 	if (scene && !(h.at === scene.holder || (h.ancestors ?? []).includes(scene.holder))) return `what its presses change reaches outside the recorded demo ${holderName(scene.holder)}`;
