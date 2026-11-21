@@ -92,6 +92,7 @@ before(async () => {
 		if (url.pathname === '/slow') return void setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('the slow answer'), 1500);
 		if (url.pathname === '/away') return void res.writeHead(302, { location: `http://away.test:${(server.address() as AddressInfo).port}/small` }).end();
 		if (url.pathname.startsWith('/chrome-')) return void res.writeHead(200, { 'content-type': 'text/html' }).end(CHROME(url.pathname.slice(8), url.pathname.startsWith('/chrome-odd') ? 'Done' : 'Copied', url.pathname.startsWith('/chrome-many') ? 3 : 1));
+		if (url.pathname === '/pager') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><header><a href="/">Home</a></header><main><div class="card"><header><h3>Results</h3></header><p id="page">Page 1</p><nav aria-label="pagination"><button type="button" id="next">Next</button></nav><footer>Card footer</footer></div></main><script>let n = 1; document.getElementById("next").onclick = () => { document.getElementById("page").textContent = "Page " + ++n; };</script></body></html>');
 		if (url.pathname === '/cart') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><div id="app"><header><span id="count">0</span></header><main><button type="button" id="add">Add to cart</button><p id="msg"></p></main></div><script>let n = 0; document.getElementById("add").onclick = () => { document.getElementById("count").textContent = String(++n); document.getElementById("msg").textContent = "Added " + n; };</script></body></html>');
 		if (url.pathname === '/slowreply') return void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><html><body><div class="demo"><button type="button" id="load">Load reply</button><p id="out"></p></div><script>document.getElementById("load").onclick = () => fetch("/slow").then((r) => r.text()).then((t) => { document.getElementById("out").textContent = t; });</script></body></html>');
 		const html = url.pathname === '/' ? GUARDS : url.pathname === '/drift' ? DRIFT : url.pathname === '/one' ? SMALL(1) : url.pathname.startsWith('/small') ? SMALL(3) : '<!doctype html><p>Other</p>';
@@ -172,6 +173,16 @@ test('a holder around main or a layout landmark is a page, never a demo: no scen
 	assert.deepEqual(sceneHolders(facts, none), []);
 	assert.ok(add);
 	assert.match(noScene(add, none) ?? '', /around a page landmark \(\w+\): a page region, never a demo/);
+});
+
+test('a demo holding its own header, footer or nav (a card, a pager) is a demo: only main and page-level landmarks make a page region', async () => {
+	const facts = await recordDiscovery(browser, origin, '/pager', await mkdtemp(join(tmpdir(), 'mm-discover-pager-')));
+	const next = facts.controls.find((c) => c.name === 'Next');
+	assert.equal(next?.holder?.path, 'body>main1>div1', 'what the press changed sits in the card');
+	assert.equal(next?.holder?.landmark, undefined, 'its header, nav and footer sit inside main');
+	const none = { controls: new Set<string>(), holders: new Set<string>(), names: new Set<string>(), scenes: [], owned: new Map<string, string>() };
+	assert.ok(next);
+	assert.equal(noScene(next, none), undefined);
 });
 
 test('a page that redirects off this machine is refused after it loads, and the failure is not kept', async () => {

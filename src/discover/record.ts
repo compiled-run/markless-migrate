@@ -751,6 +751,8 @@ function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: 
 		counts.set(sig, (counts.get(sig) ?? 0) + 1);
 	}
 	const at = (e: Element) => `${sigOf(e)}#${order.get(e) ?? 0}`;
+	// A card's header or a pager's nav is the card's: only main and a landmark no section, article, main, aside or nav holds is the page's.
+	const pageLevel = (e: Element) => e.matches('main, [role="main"]') || (e.matches(landmarks) && !e.parentElement?.closest('article, section, main, [role="main"], aside, nav, [role="complementary"], [role="navigation"]'));
 	return paths.map((path) => {
 		let el: Element | null = document.body;
 		for (const step of path.split('>').slice(1)) {
@@ -760,9 +762,9 @@ function holdersAt({ paths, landmarks }: { paths: readonly string[]; landmarks: 
 		if (!el) return { at: '', canvas: false, ancestors: [], inside: [], landmark: false };
 		const ancestors: string[] = [];
 		for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) ancestors.push(at(up));
-		const inner = el.querySelector(`main, [role="main"], ${landmarks}`);
+		const inner = [...el.querySelectorAll(`main, [role="main"], ${landmarks}`)].find(pageLevel);
 		const holds = inner ? (inner.getAttribute('role') ?? inner.tagName.toLowerCase()) : undefined;
-		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at), landmark: el === document.body || el.matches(`main, [role="main"], ${landmarks}`) || Boolean(holds), ...(holds ? { holds } : {}) };
+		return { at: at(el), canvas: Boolean(el.querySelector('canvas')), ancestors, inside: [el, ...el.querySelectorAll('*')].filter((e) => !e.closest('template')).map(at), landmark: el === document.body || pageLevel(el) || Boolean(holds), ...(holds ? { holds } : {}) };
 	});
 }
 
