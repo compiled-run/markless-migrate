@@ -68,6 +68,8 @@ export interface DiscoverFacts {
 	readonly controls: readonly PressedControl[];
 	/** Controls not pressed because one like them was, by the sig#nth of the one pressed in their place: how many more there were. */
 	readonly repeats?: Readonly<Record<string, number>>;
+	/** Each of those repeats, by the sig#nth of the one pressed in their place: every one is asked of the written port. */
+	readonly repeatsOf?: Readonly<Record<string, readonly RepeatOf[]>>;
 	/** Pressables left to the reveals or the toggles by their own selectors: checked against what those recorded. */
 	readonly left?: readonly LeftControl[];
 	/** Controls another recording's control list uses: not pressed. */
@@ -539,7 +541,16 @@ interface Found {
 	readonly candidates: Candidate[];
 	readonly excluded: Record<string, number>;
 	readonly repeats: Record<string, number>;
+	readonly repeatsOf: Record<string, RepeatOf[]>;
 	readonly left: LeftControl[];
+}
+
+/** A repeat not pressed, as the written port is searched for it. */
+export interface RepeatOf {
+	readonly sig: string;
+	readonly nth: number;
+	readonly labelSig: string;
+	readonly pair: number;
 }
 
 /** In the page: every pressable, the ones left alone counted by why, the rest marked `data-mm-discover="<n>"` in document order. */
@@ -577,6 +588,7 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 	const leave = (why: string) => void (excluded[why] = (excluded[why] ?? 0) + 1);
 	const seen = new Map<string, { n: number; first: string }>();
 	const repeats: Record<string, number> = {};
+	const repeatsOf: Record<string, RepeatOf[]> = {};
 	const grids = new Map<string, LeftControl>();
 	// Each landmark's markup, read before this pass marks any control in it.
 	const landmarkHash = new Map<Element, string>();
@@ -593,6 +605,7 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 		seen.set(key, { ...got, n: got.n + 1 });
 		if (got.n + 1 <= o.repeats) return false;
 		repeats[got.first] = (repeats[got.first] ?? 0) + 1;
+		(repeatsOf[got.first] ??= []).push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0 });
 		return true;
 	};
 	// The one control inside an element a reveal uses (a trigger rendered around a button).
@@ -642,7 +655,7 @@ function findCandidates(o: { readonly destructive: string; readonly reveals: str
 			out.push({ sig: sigOf(el), nth: order.get(el) ?? 0, labelSig: labelSigOf(el), pair: pairs.get(el) ?? 0, name, found: byRole ? 'role' : 'cursor', ancestors, group, layout: Boolean(landmark) });
 		}
 	}
-	return { candidates: out, excluded, repeats, left: [...left, ...grids.values()] };
+	return { candidates: out, excluded, repeats, repeatsOf, left: [...left, ...grids.values()] };
 }
 
 /** The nearest element holding the pressed control and every element its press changed, as a path from the body. */
@@ -858,6 +871,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	let candidates: Candidate[] = [];
 	let excluded: Record<string, number> = {};
 	let repeats: Record<string, number> = {};
+	let repeatsOf: Record<string, RepeatOf[]> = {};
 	let left: LeftControl[] = [];
 	let drift: string[] = [];
 	let reloads = 0;
@@ -870,7 +884,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 	};
 	try {
 		await load();
-		({ candidates, excluded, repeats, left } = await find());
+		({ candidates, excluded, repeats, repeatsOf, left } = await find());
 		owners = shared ? await shared.owners(candidates.map((c) => c.group)) : new Map();
 		if (candidates.length > MAX_CONTROLS) excluded[`past ${MAX_CONTROLS} on the page`] = candidates.length - MAX_CONTROLS;
 		// An observation window, not a settle: what a page changes on its own (a clock's tick) shows only over time.
@@ -908,6 +922,7 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 			const kind = (p: PressedControl) => `${p.shape}|${(p.changes ?? []).map((x) => x.what).join(',')}`;
 			if (like && alike.length >= REPEATS && alike.every((p) => kind(p) === kind(like))) {
 				repeats[`${like.sig}#${like.nth}`] = (repeats[`${like.sig}#${like.nth}`] ?? 0) + 1;
+				(repeatsOf[`${like.sig}#${like.nth}`] ??= []).push({ sig: c.sig, nth: c.nth, labelSig: c.labelSig, pair: c.pair });
 				excluded['same as a control pressed'] = (excluded['same as a control pressed'] ?? 0) + 1;
 				continue;
 			}
@@ -1076,12 +1091,12 @@ export async function recordDiscovery(browser: Browser, origin: string, route: s
 		if (shared) publishPressed(shared, controls);
 	} catch (error) {
 		const message = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
-		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
+		return { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats, repeatsOf } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, error: message };
 	} finally {
 		await session?.context.close().catch(() => {});
 		shared?.done();
 	}
-	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}), ...(claimedSkipped ? { claimedSkipped } : {}), ...(shared ? { groups: [...new Set(candidates.map((c) => c.group))] } : {}), ...(spotMismatch.length ? { spotMismatch } : {}) };
+	const facts: DiscoverFacts = { route, browser: `chromium ${browser.version()}`, candidates: candidates.length, excluded, ...(Object.keys(repeats).length ? { repeats, repeatsOf } : {}), ...(left.length ? { left } : {}), controls, drift: drift.length, reloads, ms: Date.now() - started, ...(cut ? { cut: true } : {}), ...(claimedSkipped ? { claimedSkipped } : {}), ...(shared ? { groups: [...new Set(candidates.map((c) => c.group))] } : {}), ...(spotMismatch.length ? { spotMismatch } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}), ...(claimKey ? { claims: claimKey } : {}) }));
 	return facts;

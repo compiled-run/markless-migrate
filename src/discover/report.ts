@@ -15,8 +15,10 @@ export interface DeadControl {
 	readonly held?: boolean;
 	/** What the press changed on the original, in a line. */
 	readonly what: string;
-	/** Controls like it that were not pressed (repeats), dead with it. */
+	/** Controls like it that were not pressed (repeats), dead with it until the written port is asked about each. */
 	readonly repeated?: number;
+	/** Each of those repeats, as the written port is searched for it. */
+	readonly repeatsOf?: readonly { readonly sig: string; readonly nth: number; readonly labelSig?: string; readonly pair?: number }[];
 }
 
 export interface RouteDiscovery {

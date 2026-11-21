@@ -45,6 +45,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 	const sameAs: Record<string, number> = {};
 	for (const c of facts.controls) if (c.sameAs) sameAs[c.sameAs.route] = (sameAs[c.sameAs.route] ?? 0) + 1;
 	const like = facts.repeats ?? {};
+	const likeOf = facts.repeatsOf ?? {};
 	const named = new Map(facts.controls.map((c) => [`${c.sig}#${c.nth}`, c.name]));
 	// A control left to the reveals or the toggles by their selector that they recorded nothing for: no one looked at it.
 	const unlooked = (facts.left ?? []).filter((l) => l.to !== 'grids' && !claims.controls.has(`${l.sig}#${l.nth}`) && !claims.names.has(l.name));
@@ -56,7 +57,7 @@ export function routeDiscovery(facts: DiscoverFacts, claims: Claims): RouteDisco
 		pressed: facts.controls.length,
 		claimed: (facts.claimedSkipped ?? 0) + facts.controls.length - mine.length + mine.filter((c) => held(c) && !STATEFUL.has(c.shape)).length,
 		inert: mine.filter((c) => c.shape === 'inert' && !held(c)).length,
-		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: `${line(c)}${c.sameAs ? ` (same as ${c.sameAs.route})` : ''}`, ...(like[`${c.sig}#${c.nth}`] ? { repeated: like[`${c.sig}#${c.nth}`] } : {}) })),
+		dead: mine.filter((c) => STATEFUL.has(c.shape)).map((c) => ({ name: c.name, sig: c.sig, nth: c.nth, labelSig: c.labelSig, ...(c.pair !== undefined ? { pair: c.pair } : {}), found: c.found, shape: c.shape, ...(c.states ? { states: c.states } : {}), ...(held(c) ? { held: true } : {}), what: `${line(c)}${c.sameAs ? ` (same as ${c.sameAs.route})` : ''}`, ...(like[`${c.sig}#${c.nth}`] ? { repeated: like[`${c.sig}#${c.nth}`] } : {}), ...(likeOf[`${c.sig}#${c.nth}`]?.length ? { repeatsOf: likeOf[`${c.sig}#${c.nth}`] } : {}) })),
 		unknown: [...mine.filter((c) => (STOPPED.has(c.shape) || c.shape === 'unpressable') && !held(c)).map((c) => ({ name: c.name, shape: c.shape, ...(c.why ? { why: c.why } : {}) })), ...unlooked.map((l) => ({ name: l.name, shape: 'unpressable' as const, left: l.to, why: `left to the ${l.to}, which recorded nothing for it` })), ...loose.map((l) => ({ name: l.name, shape: 'unpressable' as const, left: 'grids' as const, why: `a grid of ${l.cells ?? 0} cells no recording holds, its cells not pressed` }))],
 		excluded: facts.excluded,
 		...(Object.keys(like).length ? { repeats: Object.fromEntries(Object.entries(like).map(([at, n]) => [`"${named.get(at) ?? ''}" (${at})`, n])) } : {}),
@@ -90,7 +91,14 @@ export function draftReport(routes: Readonly<Record<string, RouteDiscovery>>, no
 /** Asks the written port about each control left dead: a handler there moves it to `handled` (effect not compared), one that throws stays dead. */
 export async function finishDiscovery(app: string, draft: DiscoveryReport): Promise<DiscoveryReport> {
 	if (draft.notRun) return draft;
-	const wanted = new Map(Object.entries(draft.routes).filter(([, r]) => r.dead.length).map(([route, r]) => [route, r.dead] as const));
+	// Every repeat is asked too: the same control elsewhere on the page may be wired where the one pressed is not, or the other way.
+	const each = (r: RouteDiscovery): DeadControl[] =>
+		r.dead.flatMap(({ repeated, repeatsOf, ...d }) => {
+			// A repeat with no identity (a recording from before they were kept) still counts with the one pressed.
+			const unasked = (repeated ?? 0) - (repeatsOf?.length ?? 0);
+			return [{ ...d, ...(unasked > 0 ? { repeated: unasked } : {}) }, ...(repeatsOf ?? []).map((x): DeadControl => ({ ...d, ...x, what: `${d.what} (a repeat of the one pressed, read from its press)` }))];
+		});
+	const wanted = new Map(Object.entries(draft.routes).filter(([, r]) => r.dead.length).map(([route, r]) => [route, each(r)] as const));
 	// The sandbox (happy-dom) is loaded only here, after convert: convert itself never holds it.
 	const { portAnswers } = await import('./ported.ts');
 	const thrown: string[] = [];
@@ -100,14 +108,15 @@ export async function finishDiscovery(app: string, draft: DiscoveryReport): Prom
 			const got = answers.get(route);
 			if (!got) return [route, r];
 			const by = (d: DeadControl) => got.get(`${d.sig}#${d.nth}`) ?? { by: 'none' };
-			const handled = r.dead.filter((d) => by(d).by === 'handler');
+			const asked = each(r);
+			const handled = asked.filter((d) => by(d).by === 'handler');
 			const note = (d: DeadControl) => {
 				const a = by(d);
 				if (a.by === 'missing') return { ...d, what: `${d.what} (not found on the port by its signature)` };
 				if (a.by === 'threw') return { ...d, what: `${d.what} (its handler on the port, ${a.where}, threw)` };
 				return d.held ? { ...d, what: `${d.what} (inside a widget a recording ports, which does not answer this press)` } : d;
 			};
-			const dead = r.dead.filter((d) => by(d).by !== 'handler').map(note);
+			const dead = asked.filter((d) => by(d).by !== 'handler').map(note);
 			return [route, { ...r, dead, ...(handled.length ? { handled: handled.map((d) => ({ name: d.name, by: by(d).where ?? '', ...(d.repeated ? { repeated: d.repeated } : {}) })) } : {}) }];
 		}),
 	);
