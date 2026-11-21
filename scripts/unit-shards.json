@@ -92,6 +92,7 @@
 		"test/convert-toggles.test.ts": {"shard":4,"seconds":1},
 		"test/convert-usage.test.ts": {"shard":5,"seconds":1},
 		"test/convert-used-css.test.ts": {"shard":1,"seconds":1},
+		"test/convert-variants.test.ts": {"shard":5,"seconds":15},
 		"test/convert.test.ts": {"shard":2,"seconds":1},
 		"test/corpus-verify.test.ts": {"shard":3,"seconds":1},
 		"test/coverage-fallback.test.ts": {"shard":4,"seconds":1},

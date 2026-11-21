@@ -33,6 +33,7 @@ const typing = new WeakMap<Popup, Typing>();
 let lastMove = -1;
 // When a submenu the pointer left closed: what lies under the pointer then is not hovered either.
 let quietSince = -1;
+
 let deferred = false;
 let keysMoved = false;
 let watching = false;
@@ -46,7 +47,7 @@ function watchMoves(): void {
 			keysMoved = false;
 			if (!deferred) return;
 			deferred = false;
-			if (event.target instanceof Element) pointerover(event.target);
+			if (event.target instanceof Element) over(event.target, true);
 		},
 		true,
 	);
@@ -261,7 +262,12 @@ export function closesOnClick(item: Element): boolean {
 	const own = item.closest('[data-mm-close-on-click]')?.getAttribute('data-mm-close-on-click') ?? null;
 	return own === null || own === '' ? !item.matches('[role="menuitemradio"], [role="menuitemcheckbox"]') : own !== 'false';
 }
+// Base UI highlights an item on mousemove: an over is answered by the move after it, so one no move follows (WebKit's, as
+// a choice re-lays the menu out under a still pointer) highlights nothing.
 export function pointerover(target: Element): boolean {
+	return over(target, false);
+}
+function over(target: Element, moved: boolean): boolean {
 	const bar = triggerOf(target);
 	if (bar?.closest('[role="menubar"]') && !popupFor(bar)) {
 		const open = barTriggers(bar).map((t) => popupFor(t)).find(Boolean);
@@ -270,7 +276,7 @@ export function pointerover(target: Element): boolean {
 	const p = popupOf(target);
 	if (!p || !p.popup.matches('[role="menu"]')) return false;
 	watchMoves();
-	if (lastMove <= Math.max(p.openedAt, quietSince)) {
+	if (!moved || lastMove <= Math.max(p.openedAt, quietSince)) {
 		deferred = true;
 		return true;
 	}
