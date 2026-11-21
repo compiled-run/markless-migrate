@@ -2,7 +2,7 @@
 // as each link scrolls into view, on hover, on focus and on a press that is not a click, whether a click and a revisit
 // fetch again, and on a template group's first page whether each of those still happens under other network conditions.
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Request } from 'playwright';
@@ -10,6 +10,8 @@ import { closedOnExit } from '../check/close-on-exit.ts';
 import { NETWORK_PROFILES, startThrottle } from '../check/throttle.ts';
 import { CONDITIONS, learnShapes, maxInFlight, median, mayCarryPage, pageOf, shapeOf, targetOf, type Condition, type ConditionResult, type PrefetchFacts, type PrefetchLink, type PrefetchRequest, type Trigger, type TriggerEvidence } from './facts.ts';
 import { DESTRUCTIVE } from '../check/destructive.ts';
+import { loadPage } from '../check/infrastructure.ts';
+import { writeRecording } from '../convert/recording-file.ts';
 
 const VIEWPORT = { width: 1280, height: 800 };
 const QUIET_MS = 800;
@@ -239,7 +241,7 @@ async function open(browser: Browser, origin: string, route: string, condition: 
 	const context = await newContext(browser, condition, headers);
 	const page = await context.newPage();
 	const log = watch(page, origin);
-	await page.goto(new URL(route, origin).href, { waitUntil: 'load', timeout: 60_000 });
+	await loadPage(page, new URL(route, origin).href, { timeout: 60_000 });
 	await quiet(page, log, 1500);
 	// A link that ends the session or deletes is never followed, pressed or hovered: the same words the journeys hold back.
 	const links = (await page.evaluate(readLinks)).filter((l) => !DESTRUCTIVE.test(`${l.target} ${l.text}`)).map((l) => ({ target: targetOf(l.target), region: l.region, visibleAtLoad: l.visible }));
@@ -582,7 +584,7 @@ export async function recordPrefetch(browser: Browser, origin: string, route: st
 	// A condition run that failed is not kept: the next convert tries it again rather than reading the failure back.
 	if (Object.values(conditions ?? {}).some((c) => c?.error)) return facts;
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
+	await writeRecording(file, JSON.stringify({ ...facts, ...(options.page ? { page: options.page } : {}) }));
 	return facts;
 }
 

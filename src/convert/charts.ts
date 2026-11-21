@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseFragment } from 'parse5';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
@@ -10,6 +10,7 @@ import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { attr, childrenOf, elementChildren, inner, isElement, outer, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 import type { Limit } from './limit.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** What a recharts chart shows for one active data point, as the old page drew it with that point active. */
 export interface ChartState {
@@ -798,7 +799,7 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 	const known = cached?.route === route && !cached.charts.some(stale) ? cached.charts : undefined;
 	if (known && known.some((c) => c.start === undefined)) {
 		for (const chart of known) if (chart.start === undefined) await findStart(browser, origin, route, chart);
-		await writeFile(file, JSON.stringify({ route, charts: known }));
+		await writeRecording(file, JSON.stringify({ route, charts: known }));
 	}
 	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
 	const missing = known && !known.length ? [] : CHART_WIDTHS.filter((w) => !have.has(w));
@@ -824,7 +825,7 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 	for (const chart of charts) if (chart.start === undefined) await findStart(browser, origin, route, chart);
 	const capture = { route, charts };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -15,6 +15,7 @@ import { attr, childrenOf, elementChildren, inner as innerOf, isElement, isText,
 import { LATE_FONT } from '../../parts/late-fonts.ts';
 import { emitChildren, lit, mergeBindings, type Binding } from './tsrx.ts';
 import { chosenTemplate } from './chosen-template.ts';
+import { writeRecording } from './recording-file.ts';
 
 // What a page's TanStack Table (v9, @tanstack/react-table's useTable) was given and how it showed each state, read from
 // the old page's React tree and by using the table there. The port runs @tanstack/table-core on that data over Markless
@@ -1059,7 +1060,7 @@ export async function captureTables(browser: Browser, origin: string, route: str
 	if (notFound) return { route, tables, skipped, notFound };
 	const capture: TableCapture = { route, tables, skipped };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 

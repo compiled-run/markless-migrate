@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -12,6 +12,7 @@ import { attr, childrenOf, elementChildren, isElement, isText, outer, setAttr, t
 import { matchSource, type SourceForm } from './form-schemas.ts';
 import { recordNotification, type Notify } from './toggles.ts';
 import { emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
+import { writeRecording } from './recording-file.ts';
 
 // What a page's form library (react-hook-form, TanStack Form, Formisch) was given and how its form showed each field's
 // state, read from the old page's React tree and by using the form there. The port validates with the site's own schema
@@ -684,7 +685,7 @@ export async function captureFormLibraries(browser: Browser, origin: string, rou
 	}
 	const capture: FormLibraryCapture = { route, forms, skipped };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 

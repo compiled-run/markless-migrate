@@ -54,7 +54,7 @@ function canonicalFile(path: string, text: string, erase: boolean): string {
 	}
 }
 
-const SKIP = new Set(['node_modules', 'captures', 'prerender', 'report.json', 'sources.json']);
+const SKIP = new Set(['node_modules', 'captures', 'prerender', 'report.json', 'sources.json', 'visits', 'costs']);
 function files(root: string, dir = root, out: string[] = []): string[] {
 	for (const name of readdirSync(dir)) {
 		if (SKIP.has(name) || name === 'dev') continue;

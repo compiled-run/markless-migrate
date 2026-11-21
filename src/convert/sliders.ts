@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -7,6 +7,7 @@ import { captureEnv } from './capture-env.ts';
 import { settle } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { writeRecording } from './recording-file.ts';
 
 export interface SliderFacts {
 	readonly sig: string;
@@ -68,6 +69,6 @@ export async function captureSliders(browser: Browser, origin: string, route: st
 	}
 	const capture = { route, sliders };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }

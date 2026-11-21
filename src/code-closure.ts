@@ -131,6 +131,14 @@ export async function moduleEdges(file: string, source?: string): Promise<{ read
 				return;
 			case 'CallExpression': {
 				const name = calleeName(node.callee);
+				if (isImportMeta(node.callee, 'resolve')) {
+					handled.add(node.callee);
+					const spec = literal(node.arguments[0]);
+					if (spec === undefined) unresolved.push(`${at(node)} import.meta.resolve of a computed specifier`);
+					else add(spec, node, false, spec.startsWith('.') || spec.startsWith('/'));
+					return;
+				}
+				if (name === 'createRequire' && isImportMeta(node.arguments[0], 'url')) handled.add(node.arguments[0]);
 				const requires = name === 'require' || name === 'require.resolve' || (node.callee.type === 'CallExpression' && calleeName(node.callee.callee) === 'createRequire');
 				if (requires) {
 					dynamic(node, node.arguments[0]);
@@ -144,9 +152,15 @@ export async function moduleEdges(file: string, source?: string): Promise<{ read
 				}
 				return;
 			}
+			case 'BinaryExpression':
+				// `import.meta.url === \`file://${process.argv[1]}\``: whether the module is the entry, no file read.
+				for (const side of [node.left, node.right]) if (isImportMeta(side, 'url')) handled.add(side);
+				return;
 			case 'MemberExpression':
+				if (node.object?.type !== 'MetaProperty' || handled.has(node)) return;
 				// Whatever else is read through the module's own path is taken to be under its folder.
-				if ((isImportMeta(node, 'dirname') || isImportMeta(node, 'filename')) && !handled.has(node)) add('./', node, false, true);
+				if (isImportMeta(node, 'dirname') || isImportMeta(node, 'filename') || isImportMeta(node, 'url')) add('./', node, false, true);
+				else if (!isImportMeta(node, 'main')) unresolved.push(`${at(node)} import.meta.${node.property?.name ?? '[computed]'}, which names no file`);
 				return;
 		}
 	});

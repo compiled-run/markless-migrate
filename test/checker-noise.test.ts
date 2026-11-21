@@ -139,7 +139,7 @@ test('the old side is reused from the cache while nothing the old page loads has
 	const cacheDir = await mkdtemp(join(tmpdir(), 'mm-cache-'));
 	const first = await check(old, next, { cacheDir });
 	assert.equal(first.routes[0]!.ok, true, open(first.routes[0]!.failures).join('\n'));
-	assert.deepEqual(first.cache, { hit: 0, miss: 2, changed: 0, 'stale-checker': 0 });
+	assert.deepEqual(first.cache, { hit: 0, miss: 2, changed: 0, 'stale-checker': 0, written: 2 }, 'both misses are written for the next run');
 	const second = await check(old, next, { cacheDir });
 	assert.equal(second.routes[0]!.ok, true);
 	assert.equal(second.cache?.hit, 2, 'captures and journeys');

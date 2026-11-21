@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { openPage } from '../check/browser.ts';
@@ -13,6 +13,7 @@ import { instancePropMarks, instanceSpecs, legacyInstanceProps, markInstanceProp
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 import { restoreScrollState, watchScrollState } from './scroll-state.ts';
 import { scriptsStill, trackSettling } from './settle.ts';
+import { writeRecording } from './recording-file.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
 export interface CapturedPage {
@@ -181,7 +182,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	}
 	const captured: CapturedPage = { route, status, server, settled, motion: CAPTURE_MOTION, ...(Object.keys(reducedMotion).length ? { reducedMotion } : {}), images, marks: marksOf(marks), fonts: FONT_FACTS, scripts: SCRIPTS_STILL, ...(stillCapped.length ? { stillCapped } : {}), ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(swapFirstScreenFonts.length ? { swapFirstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}), ...(swapFontPreloads.length ? { swapFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(captured));
+	await writeRecording(file, JSON.stringify(captured));
 	return captured;
 }
 

@@ -10,6 +10,9 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { convert } from '../src/convert/index.ts';
 
+// Recordings are read back only for a named old site (record-key.ts): this one is the server below.
+process.env.MIGRATE_ORIGINAL_ID = 'capture-only-fixture';
+
 const PAGES: Record<string, string> = {
 	'/': '<!doctype html><html lang="en"><head><title>Home</title></head><body><main><h1>Home</h1><a href="/about">About</a></main></body></html>',
 	'/about': '<!doctype html><html lang="en"><head><title>About</title></head><body><main><h1>About</h1><a href="/">Home</a></main></body></html>',

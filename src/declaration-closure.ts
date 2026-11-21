@@ -7,7 +7,7 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHILD_KEYS } from 'yuku/ast';
 import { moduleEdges, resolveSpecifier, ROOT, type Target } from './code-closure.ts';
-import { keyName, patternNames, type N } from './source/js.ts';
+import { keyName, patternNames, rootName, type N } from './source/js.ts';
 
 interface Parsed {
 	readonly file: string;
@@ -25,7 +25,9 @@ interface Parsed {
 	/** Top-level statements run at load for their effect (a constant's initializer counts once something reads the constant). */
 	readonly effects: readonly N[];
 	/** Loads made from inside code (import(), require, new URL(…, import.meta.url), paths beside the module), by offset. */
-	readonly inner: readonly { readonly at: number; readonly target: Target }[];
+	readonly inner: readonly { readonly at: number; readonly target: Target; readonly read: boolean }[];
+	/** Declarations kept as load-time effects only because their initializer runs code. */
+	readonly declEffects: ReadonlySet<N>;
 	readonly unresolved: readonly { readonly at: number | undefined; readonly why: string }[];
 }
 
@@ -85,11 +87,14 @@ async function load(file: string): Promise<Parsed> {
 	const stars: Target[] = [];
 	const loads: Target[] = [];
 	const effects: N[] = [];
+	const declEffects = new Set<N>();
+	const initialized: N[] = [];
 	const structural = new Set<number>();
 	const declare = (decl: N, stmt: N): boolean => {
 		if (decl.type === 'VariableDeclaration') {
 			if (decl.declare) return true;
 			for (const d of decl.declarations as N[]) for (const name of patternNames(d.id)) decls.set(name, stmt);
+			if ((decl.declarations as N[]).some((d) => d.init && runsAtLoad(d.init))) initialized.push(stmt);
 			return true;
 		}
 		if (decl.type === 'FunctionDeclaration' || decl.type === 'ClassDeclaration' || decl.type === 'TSEnumDeclaration' || decl.type === 'TSModuleDeclaration') {
@@ -146,8 +151,21 @@ async function load(file: string): Promise<Parsed> {
 			}
 		} else if (!declare(stmt, stmt)) effects.push(stmt);
 	}
-	const inner = found.edges.filter((e) => !e.typeOnly && !structural.has(offset(e.site))).map((e) => ({ at: offset(e.site), target: e.target }));
-	return { file, text, ok: Boolean(found.program), body, decls, imports, exports, reexports, stars, loads, effects, inner, unresolved };
+	// An initializer that calls this repository's code at load runs it whether or not anything reads what it declares.
+	for (const stmt of initialized) {
+		const project = (name: string | undefined) => !!name && (decls.has(name) || imports.get(name)?.target.kind === 'file');
+		let calls = false;
+		visit(stmt, (n) => {
+			if (calls || DEFERRED.has(n.type)) return false;
+			if ((n.type === 'CallExpression' || n.type === 'NewExpression') && project(rootName(n.callee))) calls = true;
+		});
+		if (calls) {
+			effects.push(stmt);
+			declEffects.add(stmt);
+		}
+	}
+	const inner = found.edges.filter((e) => !e.typeOnly && !structural.has(offset(e.site))).map((e) => ({ at: offset(e.site), target: e.target, read: e.read === true }));
+	return { file, text, ok: Boolean(found.program), body, decls, imports, exports, reexports, stars, loads, effects, declEffects, inner, unresolved };
 }
 
 async function filesIn(dir: string): Promise<string[]> {
@@ -161,9 +179,18 @@ async function filesIn(dir: string): Promise<string[]> {
 	return out;
 }
 
+export interface ClosureStatement {
+	readonly file: string;
+	readonly start: number;
+	readonly end: number;
+	readonly name: string;
+}
+
 export interface DeclarationClosure {
 	/** Each top-level statement the entries can run, as `path:offset name`, sorted. */
 	readonly units: readonly string[];
+	/** The same statements: the file (absolute), where each starts and ends, and the name it declares. */
+	readonly statements: readonly ClosureStatement[];
 	/** Files taken whole: loaded as a module namespace, opened beside a module, or not a module at all. */
 	readonly files: readonly string[];
 	readonly packages: Readonly<Record<string, string>>;
@@ -194,9 +221,11 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 		return p;
 	};
 
-	const target = (t: Target, why: string): void => {
+	// `read`: a file opened by its path (read, injected into a page, resolved) counts by its bytes, comments and all.
+	const target = (t: Target, why: string, read = false): void => {
 		if (t.kind === 'package') packages[t.name] = t.version;
 		else if (t.kind === 'unresolved') unresolved.add(`${why}: ${t.why}`);
+		else if (t.kind === 'file' && read) raw.add(t.path);
 		else if (t.kind === 'file') queue.push(() => wholeFile(t.path));
 		else if (t.kind === 'dir') queue.push(async () => {
 			for (const f of await filesIn(t.path)) await wholeFile(f);
@@ -216,7 +245,7 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 			if (t.kind === 'file') queue.push(() => loadModule(t.path).then(() => {}));
 			else target(t, relative(ROOT, file));
 		}
-		for (const stmt of mod.effects) unit(mod, stmt, '(runs at load)');
+		for (const stmt of mod.effects) unit(mod, stmt, '(runs at load)', !mod.declEffects.has(stmt));
 		return mod;
 	};
 	const wholeFile = async (file: string): Promise<void> => {
@@ -228,13 +257,24 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 		for (const name of mod.reexports.keys()) queue.push(() => exported(file, name));
 		for (const star of mod.stars) target(star, relative(ROOT, file));
 	};
-	const unit = (mod: Parsed, stmt: N, name: string): void => {
+	// A declaration run at load but read by nothing: its calls run, the files its paths name are not read until something reads it.
+	const unread = new Set<string>();
+	const reads = (mod: Parsed, stmt: N) => {
+		for (const e of mod.inner) if (e.read && e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`, true);
+	};
+	const unit = (mod: Parsed, stmt: N, name: string, readsToo = true): void => {
 		const units = reached.get(mod.file) ?? reached.set(mod.file, new Map()).get(mod.file)!;
-		if (units.has(stmt.start)) return;
+		const id = `${mod.file}\0${stmt.start}`;
+		if (units.has(stmt.start)) {
+			if (readsToo && unread.delete(id)) reads(mod, stmt);
+			return;
+		}
 		units.set(stmt.start, { node: stmt, name });
 		for (const ref of references(stmt)) queue.push(() => local(mod.file, ref));
 		for (const u of mod.unresolved) if (u.at !== undefined && u.at >= stmt.start && u.at < stmt.end) unresolved.add(u.why);
-		for (const e of mod.inner) if (e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`);
+		for (const e of mod.inner) if (!e.read && e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`);
+		if (readsToo) reads(mod, stmt);
+		else unread.add(id);
 	};
 	const local = async (file: string, name: string): Promise<void> => {
 		const mod = await loadModule(file);
@@ -280,17 +320,19 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 
 	const parts: [string, string | Uint8Array][] = [];
 	const units: string[] = [];
-	for (const file of [...reached.keys()].sort()) {
+	const statements: ClosureStatement[] = [];
+	for (const [file, reachedHere] of [...reached].sort(([a], [b]) => (a < b ? -1 : 1))) {
 		const mod = await parseFile(file);
-		for (const [start, { node, name }] of [...reached.get(file)!].sort(([a], [b]) => a - b)) {
+		for (const [start, { node, name }] of [...reachedHere].sort(([a], [b]) => a - b)) {
 			units.push(`${relative(ROOT, file)}:${start} ${name}`);
+			statements.push({ file, start, end: node.end, name });
 			parts.push([`unit ${relative(ROOT, file)}`, mod.text.slice(start, node.end)]);
 		}
 	}
 	const files = [...raw].sort();
 	for (const file of files) parts.push([`file ${relative(ROOT, file)}`, await readFile(file)]);
 	for (const [name, version] of Object.entries(packages).sort(([a], [b]) => (a < b ? -1 : 1))) parts.push([`package ${name}`, version]);
-	return { units, files, packages, unresolved: [...unresolved].sort(), parts };
+	return { units, statements, files, packages, unresolved: [...unresolved].sort(), parts };
 }
 
 /** A key over the entries' declaration closure and `extra`; unique per call when any load in it is unresolved. */

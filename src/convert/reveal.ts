@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Browser, BrowserContext, ElementHandle, Page } from 'playwright';
@@ -13,6 +13,7 @@ import { requestsDone, settle, trackSettling } from './settle.ts';
 import { instancePropMarks, instanceSpecs, markInstanceProps } from './instance-props.ts';
 import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 import type { Limit } from './limit.ts';
+import { writeRecording } from './recording-file.ts';
 
 // What the old page's React tree knows of the content a gesture added, written on it before it is read.
 async function markAdded(page: Page): Promise<void> {
@@ -26,7 +27,7 @@ async function markedCache(file: string, route: string): Promise<Reveal[] | unde
 	if (!cached || cached.route !== route) return undefined;
 	return missingMarks(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.marks ?? {}, addedMarks()).length ? undefined : cached.reveals;
 }
-const saveMarked = (file: string, route: string, reveals: readonly Reveal[]) => writeFile(file, JSON.stringify({ route, reveals, marks: marksOf(addedMarks()) }));
+const saveMarked = (file: string, route: string, reveals: readonly Reveal[]) => writeRecording(file, JSON.stringify({ route, reveals, marks: marksOf(addedMarks()) }));
 
 /** How a control shows what it holds back. */
 /** `copy`: a click whose effect kept is what it writes to the clipboard. `download`: the file it saves (name, type, text). */
@@ -560,7 +561,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		// Only the controls whose content a newer mark reads are used again; every other reveal is kept as it was.
 		const taken = await retake(browser, origin, route, stale, extra, controls, viewports, pass.dismiss);
 		const capture: RevealCapture = { route, reveals: cached.reveals.map((r) => taken.get(r) ?? r), skipped: cached.skipped, marks: marksOf(marks) };
-		await writeFile(file, JSON.stringify(capture));
+		await writeRecording(file, JSON.stringify(capture));
 		return capture;
 	}
 	const reveals: Reveal[] = [];
@@ -629,7 +630,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	if (lost.length || oneViewport.length) return { route, reveals, skipped, ...(lost.length ? { lost } : {}), ...(oneViewport.length ? { oneViewport } : {}) };
 	const capture: RevealCapture = { route, reveals, skipped, marks: marksOf(marks) };
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify(capture));
+	await writeRecording(file, JSON.stringify(capture));
 	return capture;
 }
 
@@ -1182,7 +1183,7 @@ export async function captureBaseSubmenus(browser: Browser, origin: string, rout
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: [...marked, ...out] }));
+	await writeRecording(file, JSON.stringify({ route, reveals: [...marked, ...out] }));
 	return [...marked, ...out];
 }
 
@@ -1251,6 +1252,6 @@ export async function captureNestedReveals(browser: Browser, origin: string, rou
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	await writeRecording(file, JSON.stringify({ route, reveals: out }));
 	return out;
 }

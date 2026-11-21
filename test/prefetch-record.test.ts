@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
+import { expectedStatus } from '../src/check/expected-status.ts';
 import { agreed, recordPrefetch } from '../src/prefetch/record.ts';
 
 // Each site is a prefix with its own way of fetching pages ahead, written as plain scripts so no framework is named.
@@ -165,4 +166,12 @@ test('one run under a condition never decides alone: the majority of three does,
 	assert.deepEqual(agreed([{ viewport: false }, { viewport: false }, { viewport: true }]), { runs: 3, viewport: false, disagreed: ['viewport'] });
 	assert.deepEqual(agreed([{ error: 'x' }, { viewport: true }]), { runs: 2, viewport: true });
 	assert.equal(agreed([{ error: 'x' }, { error: 'y' }]).error, 'x');
+});
+
+test('a prefetch recording of a page that answers the browser another status than its key is refused, never kept', async () => {
+	const url = new URL('/gone/p0', origin).href;
+	await assert.rejects(
+		expectedStatus.run({ url, status: 200 }, () => recordPrefetch(browser, origin, '/gone/p0', join(dir, 'gone'))),
+		/answered 404 to the browser and 200 to the request its recordings are keyed by/,
+	);
 });

@@ -446,5 +446,5 @@ export interface Report {
 	/** In-place navigation compared with fresh loads on the new app: pages sampled, page loads it made and how long it took. */
 	readonly navigation?: { readonly destinations: number; readonly pairs: number; readonly inPlace: number; readonly loads: number; readonly ms: number };
 	/** How OLD's captures and journeys were found in the cache between runs: reused, never written, or not reused because a response the old page loaded or the checker changed. */
-	readonly cache?: { readonly hit: number; readonly miss: number; readonly changed: number; readonly 'stale-checker': number };
+	readonly cache?: { readonly hit: number; readonly miss: number; readonly changed: number; readonly 'stale-checker': number; readonly written?: number };
 }
