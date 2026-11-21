@@ -298,6 +298,7 @@
 		"test/timing-verdicts.test.ts": {"shard":4,"seconds":1},
 		"test/toggles-capture.test.ts": {"shard":3,"seconds":9},
 		"test/toggles-first-use.test.ts": {"shard":3,"seconds":20},
+		"test/toggles-label.test.ts": {"shard":4,"seconds":15},
 		"test/toggles-mixed-initial.test.ts": {"shard":5,"seconds":3},
 		"test/touch.test.ts": {"shard":1,"seconds":24},
 		"test/trial.test.ts": {"shard":2,"seconds":2},
