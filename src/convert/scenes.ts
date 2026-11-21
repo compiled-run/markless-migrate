@@ -400,10 +400,14 @@ export async function captureScenes(browser: Browser, origin: string, route: str
 			};
 			bump(first);
 			for (let at = 0; at < states.length && at < limits.states; at++) {
-				if (paths[at]!.length >= limits.depth) continue;
 				await fresh(demo.index);
 				for (const step of paths[at]!) await replay(step);
 				const controls = await page.evaluate(controlsIn, [root, demo.index, listed, text] as const);
+				// A state as deep as the search goes is not explored: each of its uses is one not recorded.
+				if (paths[at]!.length >= limits.depth) {
+					for (const control of controls) skip(control, at, `past ${limits.depth} uses deep`);
+					continue;
+				}
 				for (const control of controls) {
 					if (edges.some((e) => e.from === at && e.control === control)) continue;
 					if (limits.uses !== undefined && used >= limits.uses) {
