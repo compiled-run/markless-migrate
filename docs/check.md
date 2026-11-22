@@ -532,6 +532,10 @@ reports the navigation dimension as skipped.
 
 `--resume` is refused with `--reuse`: a route read back from a stopped run may have checked another build.
 
+A reused red route is red in the report exactly as a fresh one. In CI neither blocks the deploy: the
+pipeline's gate fails only on routes not checked to the end (not checked, or stopped at `--timeout`),
+and a red route, fresh or reused, is in the report without stopping the deploy.
+
 ## Observations, and judging a check again
 
 Everything a check observes in a browser or over HTTP is kept as data, apart from what it decides: each

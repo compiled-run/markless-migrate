@@ -366,6 +366,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           answers the same again, is not checked: its result is reported marked reused, with in-place
           navigation into it not checked (that depends on the pages it is entered from). A route
           with no key (no Markless route script, a module without a hash) is always checked.
+          A red route, fresh or reused, is in the report; in CI it does not block the deploy, whose
+          gate fails only on routes not checked to the end. See docs/check.md, "Kept results".
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report. Every
           observation the check makes (each page load, replay, probe and parity reading, as rows, their
           screenshots kept once by content) goes to .migrate/observations/, or --observations <dir>.
