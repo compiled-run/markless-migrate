@@ -8,7 +8,7 @@ import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMet
 import { GATED, networkHeadline, routeVerdicts } from './slow-network-verdicts.ts';
 import { overBudget, referenceLine, wasteHeadline, wasteHtml } from './waste.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
-import { partialLine } from './summary.ts';
+import { partialLine, reusedLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import type { Filmstrip, MotionInteraction } from './motion-compare.ts';
 import { remaining, type Status } from '../status.ts';
@@ -253,7 +253,7 @@ function route(r: RouteResult, index: number, forced?: { readonly reason: string
 	if (r.infrastructure) return infrastructureSection(r, index);
 	const warning = forced ? `<p class="forced"><span class="badge fail">forced, not proven</span> Served from the new app although this check is not green${forced.by ? `; forced by ${esc(forced.by)}` : ''}: ${esc(forced.reason)}</p>` : '';
 	const dims = Object.entries(r.dimensions)
-		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
+		.map(([d, state]) => `<li class="${state}">${esc(d)}${r.reused && d === 'navigation' && state === 'skipped' ? ' (not checked: reused)' : ''}</li>`)
 		.join('');
 	const rows = r.failures
 		.map((f) => `<tr${f.accepted ? ' class="accepted"' : ''}><td>${f.accepted ? `<span class="badge accepted">${f.accepted.automatic ? 'accepted automatically' : 'accepted'}</span> ` : ''}${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}${f.id ? `<br><small>id ${esc(f.id)}</small>` : ''}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${f.accepted?.automatic ? `${esc(acceptedLabel(f.accepted))}. Evidence: ${esc(f.accepted.reason)}` : f.accepted ? `Accepted by ${esc(f.accepted.by)} on ${esc(f.accepted.date)}: ${esc(f.accepted.reason)}` : `${esc(f.hint)}${where(f)}`}</td></tr>`)
@@ -265,6 +265,7 @@ function route(r: RouteResult, index: number, forced?: { readonly reason: string
 	return `<section class="route" id="route-${index}">
 <h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : r.notPorted ? 'not ported' : 'red'}</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
 ${warning}
+${r.reused ? `<p class="reused"><span class="badge reused">reused</span> ${esc(reusedLine(r.reused))}</p>` : ''}
 <ul class="dims" aria-label="Dimensions">${dims}</ul>
 <p class="weight">${r.endpoint ? `Not a page: compared as ${esc(r.endpoint)}` : `JavaScript on the wire ${kb(w.old.downloaded)} → ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} → ${kb(w.new.executed)} (uncompressed)`}</p>
 ${r.states ? `<details class="states"><summary>CSS states and conditions from the old stylesheets: ${r.states.checked.length} forced and compared${r.states.skipped.length ? `, ${r.states.skipped.length} not forced` : ''}</summary><ul>${r.states.checked.map((x) => `<li>${esc(x)}</li>`).join('')}${r.states.skipped.map((x) => `<li class="skipped">not forced: ${esc(x)}</li>`).join('')}</ul></details>` : ''}
@@ -294,7 +295,7 @@ h2 { font-size: 18px; margin: 24px 0 8px; }
 h3 { font-size: 15px; margin: 16px 0 8px; }
 small, .weight { color: var(--muted); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; color: white; font-size: 12px; font-weight: 600; vertical-align: 2px; }
-.badge.pass { background: var(--pass); } .badge.fail { background: var(--fail); } .badge.blocked, .badge.accepted { background: var(--muted); }
+.badge.pass { background: var(--pass); } .badge.fail { background: var(--fail); } .badge.blocked, .badge.accepted, .badge.reused { background: var(--muted); }
 .role { border-top: 2px solid var(--ink); margin-top: 24px; }
 .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0; list-style: none; }
 .toc a { color: inherit; }

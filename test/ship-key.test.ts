@@ -6,7 +6,10 @@ import { test } from 'node:test';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { appStateVersion, oldSideVersion, toolchain, keepChecked, readClosures, readReusable, referencedFiles, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
-import type { RouteResult } from '../src/check/types.ts';
+import type { Report, RouteResult } from '../src/check/types.ts';
+import { renderHtml } from '../src/check/html.ts';
+import { routeState } from '../src/check/route-state.ts';
+import { summarize } from '../src/check/summary.ts';
 
 const page = (file: string, chunk: string, text = 'Hello') =>
 	`<!doctype html><html><head><script type="importmap">{"imports":{"@markless/c/abc":"/build/chunk-${chunk}.js"}}</script><script type="@markless/core/route">{"file":"${file}","resume":["/build/chunk-${chunk}.js","$x"]}</script></head><body><p>${text}</p><script data-markless-resume-module="/build/chunk-${chunk}.js"></script></body></html>`;
@@ -284,6 +287,47 @@ test('a reused result reports in-place navigation into it as not checked, and a 
 		assert.equal(accepted?.ok, true, 'an accepted navigation difference does not stop reuse');
 		assert.equal(accepted?.dimensions.navigation, 'skipped');
 		assert.equal(accepted?.dimensions.rendered, 'pass', 'every other dimension as it was checked');
+	} finally {
+		server.close();
+		oldServer.close();
+	}
+});
+
+test('navigation into a reused route is reported as not checked in the summary, the HTML report and the route state, apart from a fresh route no link reached, and a route red from navigation is not passed on as green', async () => {
+	const server = createServer((req, res) => {
+		if (req.url === '/a') return void res.writeHead(200, { 'content-type': 'text/html' }).end(page('pages/a.tsrx', 'AAAAAAAA'));
+		res.writeHead(404).end();
+	});
+	const oldServer = createServer((_, res) => void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><p>old</p>'));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	await new Promise<void>((done) => oldServer.listen(0, '127.0.0.1', done));
+	try {
+		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
+		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
+		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: () => 'as' });
+		const dimensions = { ...({} as RouteResult['dimensions']), rendered: 'pass' as const, navigation: 'fail' as const };
+		const failure = { route: '/a', dimension: 'navigation' as const, check: 'in place from /', expected: 'x', actual: 'y', hint: '' };
+		await keepChecked(dir, [result({ ok: false, files: [], dimensions, failures: [failure], navigation: { from: ['/'] } })], await select(), '2026-11-22T00:00:00.000Z', { newOrigin });
+		const red = await select();
+		assert.equal(red.reused.length, 0);
+		const merged = (fresh: readonly RouteResult[]): Report => ({ version: 1, old: oldOrigin, new: newOrigin, startedAt: 'x', ok: fresh.every((r) => r.ok) && red.reused.every((r) => r.ok), routes: [...fresh, ...red.reused] });
+		const again = merged([result({ ok: false, dimensions, failures: [failure] })]);
+		assert.equal(again.ok, false, 'checked again and still red from navigation: the report is red');
+		assert.deepEqual(again.routes.map(routeState), ['differs']);
+		await keepChecked(dir, [result({ files: [], dimensions: { ...dimensions, navigation: 'pass' }, navigation: { from: ['/'] } })], red, '2026-11-22T00:00:00.000Z', { newOrigin });
+		const reused = (await select()).reused;
+		assert.equal(reused.length, 1);
+		const fresh = result({ route: '/b', dimensions: { ...dimensions, navigation: 'skipped' } });
+		const report: Report = { version: 1, old: oldOrigin, new: newOrigin, startedAt: 'x', ok: true, routes: [fresh, ...reused] };
+		const text = summarize(report).split('\n');
+		const at = (route: string) => text.findIndex((l) => l.includes(` ${route} `));
+		assert.match(text[at('/a') + 1] ?? '', /reused from 2026-11-22: .*in-place navigation into it not checked this run/);
+		assert.doesNotMatch(text[at('/b') + 1] ?? '', /reused/, 'a fresh route that was not a navigation destination carries no such line');
+		const html = renderHtml(report);
+		assert.match(html, /navigation \(not checked: reused\)/);
+		assert.equal(html.match(/not checked: reused/g)?.length, 1, 'only the reused route');
+		assert.match(html, /badge reused">reused<\/span> reused from 2026-11-22/);
 	} finally {
 		server.close();
 		oldServer.close();
