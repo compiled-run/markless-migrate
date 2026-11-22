@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { analyze, type Module } from 'yuku/analyzer';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 // Attributes every library uses alike say nothing about which part drives an element.
@@ -27,9 +28,8 @@ async function collect(root: string): Promise<PartSelectors[]> {
 	for (const file of files.sort()) {
 		const source = await readFile(file, 'utf8').catch(() => '');
 		const selectors = new Set<string>();
-		for (const m of source.matchAll(/(['"`])((?:(?!\1)[^\\\n])*\[[^\n]*?)\1/g)) {
-			const text = m[2]!;
-			if (text.includes('${') || text.length > 400) continue;
+		for (const text of stringValues(analyze(source, { path: file }))) {
+			if (!text.includes('[') || text.includes('\n') || text.length > 400) continue;
 			for (const alternative of alternatives(text)) {
 				const positive = alternative.replace(/:not\((?:[^()]|\([^()]*\))*\)/g, '');
 				if ([...positive.matchAll(/\[\s*([\w-]+)/g)].some((a) => !GENERIC.test(a[1]!))) selectors.add(alternative.trim());
@@ -38,6 +38,16 @@ async function collect(root: string): Promise<PartSelectors[]> {
 		if (selectors.size) out.push({ file: relative(root, file), selectors: [...selectors] });
 	}
 	return out;
+}
+
+/** The string literals of a module, and its templates that hold no expression, in source order. */
+function stringValues(m: Module): string[] {
+	const out: { at: number; text: string }[] = [];
+	for (const n of m.findAll(['Literal', 'TemplateLiteral'])) {
+		if (n.type === 'Literal' && typeof n.value === 'string') out.push({ at: n.start, text: n.value });
+		else if (n.type === 'TemplateLiteral' && n.expressions.length === 0 && n.quasis[0]?.value.cooked != null) out.push({ at: n.start, text: n.quasis[0].value.cooked });
+	}
+	return out.sort((a, b) => a.at - b.at).map((v) => v.text);
 }
 
 /** A selector list's alternatives, split at its top-level commas. */

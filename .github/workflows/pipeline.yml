@@ -112,6 +112,7 @@ on:
       - scripts/pipeline.ts
       - scripts/pipeline-artifact.sh
       - scripts/check-select.ts
+      - .github/workflows/survey.yml
 
 permissions:
   contents: read
@@ -205,6 +206,19 @@ jobs:
       - env:
           ID: ${{ steps.resolve.outputs.id || steps.publish.outputs.id }}
         run: echo "Original $ID" >> "$GITHUB_STEP_SUMMARY"
+
+  # The site's layout survey, on the original only, while the port converts and builds: check-select keys each route by the
+  # shared controls it exercises, and check.yml's shards read the same survey.
+  survey:
+    needs: original
+    if: ${{ !cancelled() && needs.original.result == 'success' }}
+    uses: ./.github/workflows/survey.yml
+    with:
+      site: ${{ inputs.site || 'shadcn-ui' }}
+      app: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
+      targets: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
+      original: ${{ needs.original.outputs.id }}
+      flags: ${{ inputs.check-flags }}
 
   # A build made elsewhere (build-url) is the converted app already built: the run starts at the check.
   prepare:
@@ -469,9 +483,12 @@ jobs:
           cp "$RUNNER_TEMP/converted/store-run.txt" "$RUNNER_TEMP/store-run.txt"
           store_run=$(cat "$RUNNER_TEMP/store-run.txt")
           # Each run that keeps the app passes the name on, so the chain can outlive the store's 90 days.
-          if [ "$VERIFY" = true ] && [ -z "$(bash scripts/pipeline-artifact.sh in-run "$STORE_NAME" "$store_run")" ]; then
-            echo "::error::This kept converted app was converted from the recordings store $STORE_NAME of run $store_run, which has expired, so it cannot be verified. Dispatch this pipeline once with fresh: true on this branch: it converts again and keeps its own store, and later runs keep that app."
-            exit 1
+          if [ "$VERIFY" = true ]; then
+            found=$(bash scripts/pipeline-artifact.sh in-run "$STORE_NAME" "$store_run") || { echo "::error::Could not ask GitHub whether run $store_run still holds the recordings store $STORE_NAME: run this job again."; exit 1; }
+            if [ -z "$found" ]; then
+              echo "::error::This kept converted app was converted from the recordings store $STORE_NAME of run $store_run, which has expired, so it cannot be verified. Dispatch this pipeline once with fresh: true on this branch: it converts again and keeps its own store, and later runs keep that app."
+              exit 1
+            fi
           fi
           echo "store-run=$store_run" >> "$GITHUB_OUTPUT"
           if [ "$(cat "$RUNNER_TEMP/converted/emit-key.txt")" = "${{ needs.prepare.outputs.emit-key }}" ]; then
@@ -762,10 +779,11 @@ jobs:
           if-no-files-found: ignore
 
   # Which routes ship what they shipped when last checked (check --reuse's key: NEW's HTML and the code each can run, the
-  # files it names, OLD's HTML, the checker's version): those reuse their result, and only the rest go to check's shards.
+  # files it names, OLD's HTML, the checker's version, how the route is checked; then every file its last check fetched):
+  # those reuse their result, and only the rest go to check's shards.
   check-select:
-    needs: [build, original]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.original.result == 'success' && needs.build.outputs.run != 'mac' }}
+    needs: [build, original, survey]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.original.result == 'success' && needs.survey.result == 'success' && needs.build.outputs.run != 'mac' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
@@ -796,6 +814,10 @@ jobs:
           token: ${{ github.token }}
       - run: bash "deploy/$SITE/ci-serve.sh" old
       - run: bash "deploy/$SITE/ci-serve.sh" new "file://$RUNNER_TEMP/build/output.tar.gz"
+      - uses: actions/download-artifact@v4
+        with:
+          name: check-layout-survey
+          path: ${{ runner.temp }}/survey
       - name: Restore results from earlier runs
         if: env.FRESH != 'true'
         uses: actions/cache/restore@v4
@@ -807,9 +829,16 @@ jobs:
         id: select
         env:
           SHARDS: ${{ inputs.check-shards || '2' }}
+          # Keyed as check.yml's shards check, which have no token: whether one is set is part of the checker's version.
+          GH_TOKEN: ''
+          CHECK_FLAGS: ${{ inputs.check-flags }}
+          MIGRATE_ORIGINAL_ID: ${{ needs.original.outputs.id }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/select/check-reused"
+          # The options check.yml's shards check with (its Check step), which every route's key holds; check-select reads the site and survey from them.
+          CHECK_ARGS="$(node scripts/ci-flags.ts shard "$GITHUB_WORKSPACE/$TARGETS" "$RUNNER_TEMP/survey/layout-survey.json") ${CHECK_FLAGS}"
+          export CHECK_ARGS
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           t=$(date +%s)
           result=$(cd "$APP" && node "$GITHUB_WORKSPACE/scripts/check-select.ts" "$GITHUB_WORKSPACE/$TARGETS" http://localhost:4000 http://127.0.0.1:3000 .migrate/reuse "$closures" "$RUNNER_TEMP/select" ${ROUTES:+"$GITHUB_WORKSPACE/$ROUTES"})
@@ -826,7 +855,7 @@ jobs:
         with:
           name: pl-check-select
           path: ${{ runner.temp }}/select
-      # Named like a check shard's artifact so check.yml's merge joins the reused results and keeps their entries for later runs.
+      # check.yml's merge downloads it beside the shards' artifacts: its report and gate hold these results, and it keeps their entries for later runs.
       - uses: actions/upload-artifact@v4
         with:
           name: check-reused
@@ -835,6 +864,16 @@ jobs:
             ${{ env.APP }}/.migrate/reuse
           include-hidden-files: true
           if-no-files-found: warn
+      # Nothing left for check.yml: what was reused is the run's whole report, and its gate the verdict deploy waits on.
+      - if: steps.select.outputs.shards == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-merged
+          path: ${{ runner.temp }}/reused-merged
+          retention-days: 30
+      - name: Every reused route checked to the end
+        if: steps.select.outputs.shards == '0'
+        run: node scripts/check-shards.ts gate "$RUNNER_TEMP/reused-merged"
       - if: always()
         run: echo "{\"stage\":\"check select\",\"seconds\":$(( $(date +%s) - STARTED ))}" >> "$RUNNER_TEMP/receipts/check-select.jsonl"
       - if: always()
@@ -845,7 +884,7 @@ jobs:
           if-no-files-found: ignore
 
   check:
-    needs: [build, check-select, original]
+    needs: [build, check-select, original, survey]
     if: ${{ !cancelled() && needs.check-select.result == 'success' && needs.check-select.outputs.shards != '0' }}
     uses: ./.github/workflows/check.yml
     # check.yml's original job asks for write, which it uses only when run alone and nothing is published yet.
@@ -862,13 +901,15 @@ jobs:
       build-artifact: pl-${{ inputs.site || 'shadcn-ui' }}-build-${{ needs.build.outputs.key }}
       build-url: ${{ inputs.build-url }}
       only-artifact: pl-check-select
+      surveyed: given
       reuse: ${{ inputs.fresh && 'false' || 'true' }}
       max_parallel: ${{ inputs.check-max-parallel || '10' }}
       priority: ${{ inputs.priority }}
 
+  # The verdict is check.yml's merge, or check-select's own when it reused every route: a check skipped for any other reason is none.
   deploy:
-    needs: [build, check]
-    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && (needs.check.result == 'success' || needs.check.result == 'skipped') }}
+    needs: [build, check-select, check]
+    if: ${{ !cancelled() && inputs.deploy != '' && inputs.deploy != 'none' && needs.build.result == 'success' && needs.build.outputs.run != 'mac' && needs.check-select.result == 'success' && (needs.check.result == 'success' || (needs.check.result == 'skipped' && needs.check-select.outputs.shards == '0')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

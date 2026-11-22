@@ -258,8 +258,8 @@ export interface ConvertReport {
 	readonly unplacedCharts: readonly { readonly route: string; readonly chart: string }[];
 	/** Pages still drawing when capture's wait for their scripts ran out, by viewport: written from a mid-frame document. */
 	readonly stillCapped: readonly { readonly route: string; readonly viewports: readonly string[] }[];
-	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it; `fromLastConvert` names the pages whose facts the last convert recorded from the same old page, and why this convert did not. */
-	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string; readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[] };
+	/** The port's prefetch setting, chosen from how the original fetched pages ahead, and whether vite.config.ts carries it; `fromLastConvert` names the pages whose facts the last convert recorded from the same old page, and why this convert did not; `leftOut` every listed page the decision does not read, and why. */
+	readonly prefetch?: PrefetchDecision & { readonly applied: boolean; readonly missing: readonly string[]; readonly notApplied?: string; readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[]; readonly leftOut: readonly { readonly route: string; readonly why: string }[] };
 }
 
 /** Whether the run fails: no page written, a capture that failed loudly, or a recorded chart that is not on its page. */
@@ -1474,7 +1474,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const browsers = await new Relauncher<Browser>(() => chromium.launch({ logger: { isEnabled: (name) => name === 'browser', log: (_name, _severity, message) => void (said.push(String(message)) > 8 && said.shift()) } }), log, () => said.slice(-3).join(' / ')).start();
 	const browser = browsers.shared;
 	let captures: CapturedRef[];
-	let prefetchDecision: (PrefetchDecision & { readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[] }) | undefined;
+	let prefetchDecision: (PrefetchDecision & { readonly fromLastConvert: readonly { readonly route: string; readonly why: string }[]; readonly leftOut: readonly { readonly route: string; readonly why: string }[] }) | undefined;
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
@@ -1839,9 +1839,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await Promise.all([scenesRead, notifiesRead, prefetchRead]);
 		await prefetching.save();
 		const fromLastConvert = prefetching.fromBefore().map((route) => ({ route, why: failed.has(route) ? `its capture failed in this convert: ${failed.get(route)}` : routes.includes(route) ? 'not recorded in this convert' : 'not converted in this convert' }));
-		prefetchDecision = { ...decidePrefetch(prefetching.recorded()), fromLastConvert };
+		const decided = new Set(prefetching.recorded().map((f) => f.route));
+		const unread = new Map(prefetching.unread().map((u) => [u.route, u.why]));
+		const leftOut = htmlRoutes.filter((route) => !decided.has(route)).map((route) => ({ route, why: [failed.has(route) ? `its capture failed in this convert: ${failed.get(route)}` : routes.includes(route) ? 'not recorded in this convert' : 'not converted in this convert', unread.get(route) ?? 'no convert has recorded it'].join('; ') }));
+		prefetchDecision = { ...decidePrefetch(prefetching.recorded()), fromLastConvert, leftOut };
 		if (fromLastConvert.length) log(`prefetch: decided from ${prefetching.recorded().length} pages, ${fromLastConvert.length} of them as the last convert recorded them from the same old page`);
 		for (const { route, why } of fromLastConvert) if (routes.includes(route)) log(`  prefetch facts of ${route} are the last convert's: ${why}`);
+		if (leftOut.length) log(`prefetch: ${leftOut.length} listed pages are not in the decision`);
+		for (const { route, why } of leftOut) if (routes.includes(route)) log(`  prefetch: ${route} is not in the decision: ${why}`);
 		captureRoutes.forEach((route, i) => {
 			if (failed.has(route)) return;
 			const f = read[i]!;

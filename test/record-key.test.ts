@@ -2,6 +2,8 @@
 // module graph), and the data its recorder is handed: an edit records again exactly the kinds whose code it is in.
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { test } from 'node:test';
@@ -9,7 +11,7 @@ import { analyze } from 'yuku/analyzer';
 import { expectedStatus, unexpectedStatus } from '../src/check/expected-status.ts';
 import { resolveSpecifier, ROOT } from '../src/code-closure.ts';
 import { HANDLES, INDEX, recordingFacts, STORE } from '../src/convert/record-facts.ts';
-import { FORMAT, givenDigest, oldPageSource, OPTIONS_READ, pageKey, pageStatus, readVisits, RECORDING_VERSION, recordDirKey, RecordDirs, recordingVersions, UNKEYED_INPUTS, VISITS, type KindVersion } from '../src/convert/record-key.ts';
+import { fetchPageKey, FORMAT, givenDigest, oldPageSource, OPTIONS_READ, pageKey, pageStatus, readVisits, RECORDING_VERSION, recordDirKey, RecordDirs, recordingVersions, UNKEYED_INPUTS, VISITS, type KindVersion } from '../src/convert/record-key.ts';
 
 // Every version below is read for one old site; without one, nothing is ever read back (its own test).
 process.env.MIGRATE_ORIGINAL_ID = 'test-original';
@@ -448,4 +450,20 @@ test("a recording refuses a load of its page that answers another status than th
 		assert.equal(unexpectedStatus(url, 200), undefined);
 		assert.equal(unexpectedStatus('http://localhost:4000/other', 500), undefined, 'a page the recorder goes on to is its own');
 	});
+});
+
+test("a page's key is taken again once after a server error or a failed request, as a load is: a passing 503 does not leave the route keyed by it", async () => {
+	let answers = 0;
+	let down = false;
+	const server = createServer((_, res) => void (down || ++answers === 1 ? res.writeHead(503).end('busy') : res.writeHead(200, { 'content-type': 'text/html' }).end('<p>ok</p>')));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	try {
+		const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		assert.equal(pageStatus(await fetchPageKey(origin, '/', {}, 10)), 200);
+		assert.equal(answers, 2);
+		down = true;
+		assert.equal(pageStatus(await fetchPageKey(origin, '/', {}, 10)), 503, 'an error that stays is the key: what is recorded under it is refused');
+	} finally {
+		server.close();
+	}
 });

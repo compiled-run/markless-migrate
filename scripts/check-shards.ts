@@ -6,7 +6,8 @@
 // `combine <out dir> --part <targets.json> <dir>... [--part ...]` joins runs that each checked part of every route (the
 // routes without page load, page load on the representatives) into one result per route; `keep <dir> <out dir>` joins the
 // results the shards kept for reuse (check --reuse), dropping any checked more than 30 days ago; `times <.migrate dir>
-// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline), for a later run's `split`; `survey-join <site targets.json>
+// <out.json>` writes a shard's route times, however it ended (a route stopped at its deadline as that deadline), for a later run's `split`;
+// `times-join <out.json> <route-times.json>...` joins a run's route times, a sliced route's joining part's (check-times-<n> past SLICED_SHARD) marked sliced; `survey-join <site targets.json>
 // <out.json> <slice survey.json>...` joins the layout surveys of the site's slices in the site's order. The merged summary also tells the
 // original served, the old-side store's counts and the runner time of each part of the check.
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -14,7 +15,7 @@ import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { shareLayoutLater } from '../src/check/report-judge.ts';
-import { routeState } from '../src/check/route-state.ts';
+import { CHECK_STOPPED, routeState } from '../src/check/route-state.ts';
 
 interface Targets {
 	readonly routes: string[];
@@ -158,7 +159,7 @@ async function write(dir: string, routes: readonly ReportRoute[], data?: Dataset
 	console.log(text.split('\n')[0]);
 }
 
-type Timed = ReportRoute & { readonly timing?: { readonly ms: number; readonly steps?: readonly { readonly name: string; readonly ms: number }[] } };
+type Timed = ReportRoute & { readonly timing?: { readonly ms: number; readonly steps?: readonly { readonly name: string; readonly ms: number }[] }; /** Checked in parts: its time is the joining part's alone. */ readonly sliced?: boolean };
 
 /** How long a route took: its timing, or for a route stopped at its deadline, the deadline (it took at least that). */
 function tookMs(r: Timed): number | undefined {
@@ -203,9 +204,10 @@ export interface SlicedRoute {
 // A route whose estimate comes this close to its timeout is sliced too: one that took 7005 s of 7200 finishes on one runner and stops on a slower one.
 const SLICE_MARGIN = 0.75;
 
-export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, number>, overMs: number): { kept: Targets; sliced: SlicedRoute[] } {
-	const long = targets.routes.filter((r) => (estimates.get(r) ?? 0) > overMs * SLICE_MARGIN);
-	const sliced = long.map((route, k) => ({ shard: SLICED_SHARD + k + 1, route, slices: Math.min(MAX_SLICES, Math.max(2, Math.ceil(estimates.get(route)! / overMs))) }));
+export function sliceLong(targets: Targets, estimates: ReadonlyMap<string, number>, overMs: number, inParts: ReadonlySet<string> = new Set()): { kept: Targets; sliced: SlicedRoute[] } {
+	// A route last checked in parts stays so: its time is the joining part's alone, not what it takes whole.
+	const long = targets.routes.filter((r) => inParts.has(r) || (estimates.get(r) ?? 0) > overMs * SLICE_MARGIN);
+	const sliced = long.map((route, k) => ({ shard: SLICED_SHARD + k + 1, route, slices: Math.min(MAX_SLICES, Math.max(2, Math.ceil((estimates.get(route) ?? 0) / overMs))) }));
 	return { kept: { ...targets, routes: targets.routes.filter((r) => !long.includes(r)) }, sliced };
 }
 
@@ -387,7 +389,7 @@ export async function lostUploads(dir: string): Promise<string[]> {
 }
 
 /** Routes the run did not check to the end: not checked at all, or stopped at --timeout part way. Any of them makes the run red. */
-export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === 'the check of this route'));
+export const unfinished = (routes: readonly ReportRoute[]): ReportRoute[] => routes.filter((r) => (r.infrastructure && !r.blocked) || r.failures?.some((f) => f.check === CHECK_STOPPED));
 
 const state = (r: ReportRoute) => (r.blocked ? 'blocked' : r.infrastructure ? 'not checked' : r.ok ? 'green' : r.notPorted ? 'not ported' : routeState(r) === 'incomplete' ? 'incomplete' : 'red');
 const cause = (f: { dimension: string; check: string }) => `${f.dimension}: ${f.check.replace(/ #\d+/g, '').replace(/\(main.*$/, '').replace(/"[^"]*"/g, '"…"').trim().slice(0, 90)}`;
@@ -410,7 +412,7 @@ export function summary(routes: readonly ReportRoute[], data?: Datasets, profile
 	const reused = routes.filter((r) => r.reused).length;
 	const left = unfinished(routes).length;
 	return [
-		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check` : ''}`,
+		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check, in-place navigation into them not checked` : ''}`,
 		'',
 		...accounts(routes, data, profile),
 		...(left ? [`**${left} of ${routes.length} routes were not checked to the end (not checked, or incomplete at --timeout), so this run is red.**`, ''] : []),
@@ -460,7 +462,7 @@ async function main(): Promise<void> {
 		const seen = new Set<string>();
 		const newest = earlier.flat().filter((r) => !seen.has(r.route) && seen.add(r.route));
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
-		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000) : { kept: targets, sliced: [] };
+		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000, new Set(newest.filter((r) => 'sliced' in r && r.sliced === true).map((r) => r.route))) : { kept: targets, sliced: [] };
 		// A shard left with no routes once the long ones are sliced out checks nothing: its endpoints and redirects go to the first one with routes.
 		const dealt = split(kept, Number(b), costs);
 		const shards = dealt.filter((s) => s.routes.length);
@@ -481,6 +483,16 @@ async function main(): Promise<void> {
 		const joined = joinSurveys(parts, (JSON.parse(await readFile(a, 'utf8')) as Targets).routes);
 		await writeFile(b, `${JSON.stringify(joined)}\n`);
 		console.log(`${joined.roles.map((r) => r.routes.length).join(', ')} surveyed routes from ${files.length} slices`);
+		return;
+	}
+	if (command === 'times-join' && a) {
+		// A joining part of a sliced route uploads check-times-<n> with n past SLICED_SHARD: its record is the route checked in parts.
+		const routes: Timed[] = [];
+		for (const file of process.argv.slice(4)) {
+			const shard = Number(/check-times-(\d+)/.exec(file)?.[1] ?? 0);
+			for (const r of (JSON.parse(await readFile(file, 'utf8')) as { routes?: Timed[] }).routes ?? []) routes.push(shard > SLICED_SHARD ? { ...r, sliced: true } : r);
+		}
+		await writeFile(a, `${JSON.stringify({ routes })}\n`);
 		return;
 	}
 	if (command === 'times' && a && b) {
@@ -557,7 +569,7 @@ async function main(): Promise<void> {
 		console.log(`${chosen.size} representatives of ${targets.routes.length} pages`);
 		return;
 	}
-	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>, newest run first...] [--slice-over <seconds>] | times <.migrate dir> <out.json> | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
+	console.error('usage: check-shards.ts split <targets.json> <n> <dir> [<earlier report.json>, newest run first...] [--slice-over <seconds>] | times <.migrate dir> <out.json> | times-join <out.json> <route-times.json>... | merge <reports dir> <out dir> [<shard files dir>] [--original <originalId>] | representatives <targets.json> <old origin> <out.json> | combine <out dir> --part <targets.json> <reports dir>... [--part ...] | keep <shards dir> <out dir> | gate <merged dir> | join-old <dir> <out dir> | uploaded <shards dir> | survey-join <site targets.json> <out.json> <slice survey.json>...');
 	process.exit(2);
 }
 

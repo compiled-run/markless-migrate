@@ -204,8 +204,23 @@ const PARSED = /\.[cm]?[jt]sx?$/;
 // The key's own machinery: a cache that keys itself by its code reaches these, and they record nothing.
 const OPAQUE = new Set([fileURLToPath(import.meta.url), fileURLToPath(new URL('./code-closure.ts', import.meta.url))]);
 
+export interface DataDir {
+	/** A folder (absolute) a module reads as data, not code. */
+	readonly dir: string;
+	/** The module that reads it (absolute). */
+	readonly by: string;
+	/** What the module reads of it: keyed in place of every file under the folder. */
+	readonly read: () => Promise<string>;
+}
+
 /** The declarations `entries` (a file and top-level names in it) can run, and the code every module they load runs at load. */
-export async function declarationClosure(entries: readonly { readonly file: string; readonly names: readonly string[] }[]): Promise<DeclarationClosure> {
+export async function declarationClosure(entries: readonly { readonly file: string; readonly names: readonly string[] }[], options: {
+	readonly dataDirs?: readonly DataDir[];
+	/** Top-level statements (by file and start offset) not followed: the caller keys what of them its entries run. */
+	readonly skip?: readonly { readonly file: string; readonly start: number }[];
+	/** Modules (absolute) not followed: a key's own machinery, which records and checks nothing. */
+	readonly opaque?: readonly string[];
+} = {}): Promise<DeclarationClosure> {
 	const reached = new Map<string, Map<number, { node: N; name: string }>>();
 	const loaded = new Set<string>();
 	const whole = new Set<string>();
@@ -222,8 +237,16 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 	};
 
 	// `read`: a file opened by its path (read, injected into a page, resolved) counts by its bytes, comments and all.
-	const target = (t: Target, why: string, read = false): void => {
-		if (t.kind === 'package') packages[t.name] = t.version;
+	const data = new Map<string, string>();
+	const target = (t: Target, why: string, read = false, from?: string): void => {
+		const dataDir = t.kind === 'dir' ? options.dataDirs?.find((d) => resolve(d.dir) === resolve(t.path) && d.by === from) : undefined;
+		if (dataDir) {
+			const name = `${relative(ROOT, dataDir.dir) || '.'} by ${relative(ROOT, dataDir.by)}`;
+			if (!data.has(name)) {
+				data.set(name, '');
+				queue.push(async () => void data.set(name, await dataDir.read()));
+			}
+		} else if (t.kind === 'package') packages[t.name] = t.version;
 		else if (t.kind === 'unresolved') unresolved.add(`${why}: ${t.why}`);
 		else if (t.kind === 'file' && read) raw.add(t.path);
 		else if (t.kind === 'file') queue.push(() => wholeFile(t.path));
@@ -232,7 +255,7 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 		});
 	};
 	const loadModule = async (file: string): Promise<Parsed | undefined> => {
-		if (OPAQUE.has(file)) return undefined;
+		if (OPAQUE.has(file) || options.opaque?.includes(file)) return undefined;
 		if (!PARSED.test(file)) {
 			raw.add(file);
 			return undefined;
@@ -260,9 +283,10 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 	// A declaration run at load but read by nothing: its calls run, the files its paths name are not read until something reads it.
 	const unread = new Set<string>();
 	const reads = (mod: Parsed, stmt: N) => {
-		for (const e of mod.inner) if (e.read && e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`, true);
+		for (const e of mod.inner) if (e.read && e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`, true, mod.file);
 	};
 	const unit = (mod: Parsed, stmt: N, name: string, readsToo = true): void => {
+		if (options.skip?.some((x) => x.file === mod.file && x.start === stmt.start)) return;
 		const units = reached.get(mod.file) ?? reached.set(mod.file, new Map()).get(mod.file)!;
 		const id = `${mod.file}\0${stmt.start}`;
 		if (units.has(stmt.start)) {
@@ -272,7 +296,7 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 		units.set(stmt.start, { node: stmt, name });
 		for (const ref of references(stmt)) queue.push(() => local(mod.file, ref));
 		for (const u of mod.unresolved) if (u.at !== undefined && u.at >= stmt.start && u.at < stmt.end) unresolved.add(u.why);
-		for (const e of mod.inner) if (!e.read && e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`);
+		for (const e of mod.inner) if (!e.read && e.at >= stmt.start && e.at < stmt.end) target(e.target, `${relative(ROOT, mod.file)}:${e.at}`, false, mod.file);
 		if (readsToo) reads(mod, stmt);
 		else unread.add(id);
 	};
@@ -332,6 +356,7 @@ export async function declarationClosure(entries: readonly { readonly file: stri
 	const files = [...raw].sort();
 	for (const file of files) parts.push([`file ${relative(ROOT, file)}`, await readFile(file)]);
 	for (const [name, version] of Object.entries(packages).sort(([a], [b]) => (a < b ? -1 : 1))) parts.push([`package ${name}`, version]);
+	for (const [name, value] of [...data].sort(([a], [b]) => (a < b ? -1 : 1))) parts.push([`data ${name}`, value]);
 	return { units, statements, files, packages, unresolved: [...unresolved].sort(), parts };
 }
 

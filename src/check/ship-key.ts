@@ -1,10 +1,16 @@
-// A route's check is reused only while what it ships is unchanged: its served HTML (pack file names aside), the code hash
-// of every module it can run (the build's interaction closures, before packing), the bytes of every other file its HTML
-// names, the responses it fetched at load, OLD's HTML, and the checker's and Markless's versions. Pack hashes are left out
-// on purpose: a shared pack changes whenever any member does.
+// A route's check is reused only while every input of its result is unchanged; docs/check.md "Kept results" lists them.
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join, relative, resolve } from 'node:path';
+import { OVERRIDES_FILE } from '../overrides.ts';
+import { INVENTORY_FILE, STATE_DIR } from '../status.ts';
+import { SWITCHED_FILE } from '../switch/state.ts';
+import { ACCEPTED_FILE } from './accepted.ts';
+import { checkArgValues, checkOptionsKey } from './check-options.ts';
+import { checkerVersion } from './checker-version.ts';
+import { NAVIGATION_SHOT } from './nav-parity.ts';
+import { DATA_DIR } from './data.ts';
+import { CHECK_STOPPED } from './route-state.ts';
 import type { RouteResult } from './types.ts';
 
 export interface Closures {
@@ -62,11 +68,22 @@ export function reuseKey(versions: Readonly<Record<string, string>>, parts: read
 	return hash.digest('base64url');
 }
 
-export type Reused = RouteResult & { readonly reused: { readonly key: string; readonly checkedAt: string }; readonly loads?: Record<string, string> };
+/** What a kept result was checked against beyond its key: the load-time responses (`loads`) and every file of NEW its check fetched (`bytes`), each as fetched again when it was kept. */
+type Kept = RouteResult & { readonly loads?: Record<string, string>; readonly bytes?: Record<string, string> };
 
-/** A kept result only when it compared the whole route: never one cut short by the network, a bot wall or `--only`. */
-export async function writeReusable(dir: string, key: string, result: RouteResult & { readonly loads?: Record<string, string> }, checkedAt: string): Promise<void> {
-	if (result.infrastructure || result.blocked || result.only || result.reused) return;
+export type Reused = Kept & { readonly reused: { readonly key: string; readonly checkedAt: string } };
+
+/** A kept result without what in-place navigation into it found, which depends on its entry pages: a reused route's navigation is not checked. Only for a result with no open navigation failure, so its verdict stands. */
+export function withoutNavigation(result: Reused): Reused {
+	const { navigation: _, ...rest } = result;
+	return { ...rest, failures: result.failures.filter((f) => f.dimension !== 'navigation'), shots: result.shots.filter((s) => !s.label.startsWith(NAVIGATION_SHOT)), dimensions: { ...result.dimensions, navigation: 'skipped' } };
+}
+
+const navigationRed = (result: RouteResult) => result.failures.some((f) => f.dimension === 'navigation' && !f.accepted);
+
+/** A kept result only when it compared the whole route: never one cut short by the network, a bot wall, `--only` or its timeout. */
+export async function writeReusable(dir: string, key: string, result: Kept, checkedAt: string): Promise<void> {
+	if (result.infrastructure || result.blocked || result.only || result.reused || result.failures.some((f) => f.check === CHECK_STOPPED)) return;
 	await mkdir(dir, { recursive: true });
 	const path = join(dir, `${key}.json`);
 	await writeFile(`${path}.tmp`, JSON.stringify({ checkedAt, result }));
@@ -75,7 +92,7 @@ export async function writeReusable(dir: string, key: string, result: RouteResul
 
 export async function readReusable(dir: string, key: string): Promise<Reused | undefined> {
 	try {
-		const { checkedAt, result } = JSON.parse(await readFile(join(dir, `${key}.json`), 'utf8')) as { checkedAt: string; result: RouteResult & { loads?: Record<string, string> } };
+		const { checkedAt, result } = JSON.parse(await readFile(join(dir, `${key}.json`), 'utf8')) as { checkedAt: string; result: Kept };
 		return { ...result, reused: { key, checkedAt } };
 	} catch {
 		return undefined;
@@ -83,26 +100,63 @@ export async function readReusable(dir: string, key: string): Promise<Reused | u
 }
 
 /**
- * What decides a key besides the route itself: this checkout's checker and converter (git tree of src/ and scripts/), and
- * the Markless packages the port names. Undefined when either is unknown, so nothing is reused.
+ * What decides a key besides the route itself: the checker's version (the check command's code, checker-version.ts), the
+ * Markless packages the port names, the app's state files a check reads, the old site's build and dataset, and the options
+ * of the check (`checkArgs`, its command line). `why` says what left it undefined, so nothing is reused.
  */
-export async function shipVersions(appDir: string, git: (args: string[]) => Promise<string | undefined>): Promise<Record<string, string> | undefined> {
-	const [src, scripts] = await Promise.all([git(['rev-parse', 'HEAD:src']), git(['rev-parse', 'HEAD:scripts'])]);
-	const dirty = await git(['status', '--porcelain', '--', 'src', 'scripts']);
-	if (!src?.trim() || !scripts?.trim() || dirty === undefined || dirty.trim()) return undefined;
+export async function shipVersions(appDir: string, checkArgs: readonly string[]): Promise<{ readonly versions?: Record<string, string>; readonly why?: string }> {
 	let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } };
 	try {
 		pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
 	} catch {
-		return undefined;
+		return { why: 'the port has no package.json' };
 	}
-	const markless = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.pnpm?.overrides })
-		.filter(([name]) => name.startsWith('@markless/'))
+	const markless = toolchain(pkg);
+	if (!markless) return { why: 'the port names no Markless packages' };
+	const old = await oldSideVersion(appDir, checkArgs);
+	if (!old.version) return { why: old.why ?? 'the old site is not known' };
+	return { versions: { checker: (await checkerVersion()).version, markless, state: await appStateVersion(appDir, checkArgs), options: checkOptionsKey(checkArgs), old: old.version } };
+}
+
+/** The old site beyond the HTML each key holds: the published original served (by its id) and the dataset `--original` reads (by its manifest's bytes). */
+export async function oldSideVersion(appDir: string, checkArgs: readonly string[], id = process.env.MIGRATE_ORIGINAL_ID): Promise<{ readonly version?: string; readonly why?: string }> {
+	if (!id) return { why: 'MIGRATE_ORIGINAL_ID names no build of the old site, whose images and data its HTML does not hold' };
+	const dataset = checkArgValues(checkArgs).original;
+	if (dataset === undefined) return { version: sha(`original ${id}\n`) };
+	const manifest = await readFile(resolve(appDir, dataset, 'manifest.json')).catch(() => undefined);
+	if (!manifest) return { why: `${dataset} holds no dataset manifest` };
+	return { version: sha(Buffer.concat([Buffer.from(`original ${id}\ndataset `), manifest])) };
+}
+
+// The packages that build what the port ships besides its own code: the bundler under Vite+.
+const TOOLCHAIN = new Set(['vite', 'vite-plus', 'rolldown']);
+
+/** The Markless packages a port's package.json names and the build toolchain's, each with its spec; empty when it names no Markless package. */
+export function toolchain(pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } }): string {
+	const named = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.pnpm?.overrides });
+	if (!named.some(([name]) => name.startsWith('@markless/'))) return '';
+	return named
+		.filter(([name]) => name.startsWith('@markless/') || TOOLCHAIN.has(name) || name.startsWith('@voidzero-dev/'))
 		.sort(([a], [b]) => (a < b ? -1 : 1))
 		.map(([name, spec]) => `${name}@${spec}`)
 		.join(' ');
-	if (!markless) return undefined;
-	return { checker: `${src.trim()} ${scripts.trim()}`, markless };
+}
+
+/** The app's state files a check reads (accepted differences, overrides, switched routes, the inventory, and under `--data replay` the recordings it serves), by their bytes. */
+export async function appStateVersion(appDir: string, checkArgs: readonly string[] = []): Promise<string> {
+	const hash = createHash('sha256');
+	const part = (name: string, bytes: Uint8Array | undefined) => {
+		hash.update(`${name}\0${bytes ? `${bytes.length}\0` : 'absent\0'}`);
+		if (bytes) hash.update(bytes);
+	};
+	for (const file of [ACCEPTED_FILE, OVERRIDES_FILE, SWITCHED_FILE, INVENTORY_FILE]) part(file, await readFile(join(appDir, STATE_DIR, file)).catch(() => undefined));
+	if (checkArgValues(checkArgs).data === 'replay') {
+		const dir = join(appDir, STATE_DIR, DATA_DIR);
+		const files = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
+		const paths = files.filter((f) => f.isFile()).map((f) => relative(dir, join(f.parentPath, f.name))).sort();
+		for (const path of paths) part(`${DATA_DIR}/${path}`, await readFile(join(dir, path)));
+	}
+	return hash.digest('base64url');
 }
 
 export interface ReuseSelection {
@@ -112,6 +166,8 @@ export interface ReuseSelection {
 	readonly keys: ReadonlyMap<string, string>;
 	/** Routes with no key, and why. */
 	readonly unkeyed: ReadonlyMap<string, string>;
+	/** How each keyed route is to be checked (checked-as.ts): a result is kept under its key only when it was checked so. */
+	readonly roles: ReadonlyMap<string, string>;
 }
 
 const sha = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('base64url');
@@ -145,6 +201,32 @@ async function fetchHash(url: string, headers: Record<string, string>): Promise<
 	}
 }
 
+async function fetchState(url: string, headers: Record<string, string>): Promise<string | undefined> {
+	try {
+		const res = await fetch(url, { headers, redirect: 'manual' });
+		return `${res.status} ${res.headers.get('content-type') ?? ''} ${res.headers.get('location') ?? ''} ${sha(new Uint8Array(await res.arrayBuffer()))}`;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Each of NEW's files a check fetched, as it answers now (status, type, redirect and bytes); undefined when one does not answer at all. */
+export async function fileStates(paths: readonly string[], origin: string, headers: Record<string, string>, cache = new Map<string, Promise<string | undefined>>()): Promise<Record<string, string> | undefined> {
+	const once = (path: string) => {
+		let state = cache.get(path);
+		if (!state) cache.set(path, (state = fetchState(new URL(path, origin).href, headers)));
+		return state;
+	};
+	const sorted = [...new Set(paths)].sort();
+	const states = await Promise.all(sorted.map(async (path) => [path, await once(path)] as const));
+	const out: Record<string, string> = {};
+	for (const [path, state] of states) {
+		if (state === undefined) return undefined;
+		out[path] = state;
+	}
+	return out;
+}
+
 // A browser GET of the port's own origin with nothing in it a check templated: it can be fetched again as it was.
 const PLAIN_LOAD = /^(?:\d+x )?browser GET \{self\}(\/[^\s{}]*)$/;
 
@@ -169,14 +251,16 @@ export async function loadHashes(network: readonly string[] | undefined, newOrig
  * Each route's key from what NEW and OLD serve now: NEW's HTML and closures, every file NEW's HTML names outside the packs,
  * and OLD's HTML. A route whose key has a kept result, and whose load-time responses fetch as they did, is not checked again.
  */
-export async function selectReusable(input: { readonly routes: readonly string[]; readonly newOrigin: string; readonly oldOrigin: string; readonly headers?: Record<string, string>; readonly closures: Closures | undefined; readonly versions: Readonly<Record<string, string>>; readonly dir: string }): Promise<ReuseSelection> {
+export async function selectReusable(input: { readonly routes: readonly string[]; readonly newOrigin: string; readonly oldOrigin: string; readonly headers?: Record<string, string>; readonly closures: Closures | undefined; readonly versions: Readonly<Record<string, string>>; readonly dir: string; readonly checkedAs: (route: string) => string }): Promise<ReuseSelection> {
 	const headers = input.headers ?? {};
 	const check: string[] = [];
 	const reused: Reused[] = [];
 	const keys = new Map<string, string>();
 	const unkeyed = new Map<string, string>();
+	const roles = new Map<string, string>();
 	const files = new Map<string, Promise<string | undefined>>();
 	const fileHash = (url: string) => files.get(url) ?? files.set(url, fetchHash(url, headers)).get(url)!;
+	const fetched = new Map<string, Promise<string | undefined>>();
 	const page = async (origin: string, route: string, sendHeaders: boolean) => {
 		const res = await fetch(new URL(route, origin), { headers: sendHeaders ? headers : {}, redirect: 'manual' });
 		return { status: res.status, type: res.headers.get('content-type') ?? '', text: await res.text() };
@@ -204,30 +288,34 @@ export async function selectReusable(input: { readonly routes: readonly string[]
 			fail(`${missing} did not load`);
 			continue;
 		}
-		const extra = { old: `${was.status} ${sha(was.text)}`, files: named.map((url, i) => `${url} ${hashes[i]}`).join('\n') };
+		const role = input.checkedAs(route);
+		const extra = { old: `${was.status} ${sha(was.text)}`, files: named.map((url, i) => `${url} ${hashes[i]}`).join('\n'), checkedAs: role };
 		const { key, why } = shipKey(route, now.text, input.closures, { ...input.versions, ...extra });
 		if (!key) {
 			fail(why!);
 			continue;
 		}
 		keys.set(route, key);
+		roles.set(route, role);
 		const kept = await readReusable(input.dir, key);
 		const loads = kept ? await loadHashes(kept.network?.new, input.newOrigin, headers) : undefined;
-		if (kept && kept.route === route && !kept.role && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads)) reused.push(kept);
+		const bytes = kept?.bytes ? await fileStates(Object.keys(kept.bytes), input.newOrigin, headers, fetched) : undefined;
+		if (kept && kept.route === route && !kept.role && !navigationRed(kept) && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads) && bytes && JSON.stringify(bytes) === JSON.stringify(kept.bytes)) reused.push(withoutNavigation(kept));
 		else check.push(route);
 	}
-	return { check, reused, keys, unkeyed };
+	return { check, reused, keys, unkeyed, roles };
 }
 
-/** Keeps every route this run checked under its key, for the next run, with the responses it fetched at load as they are now. */
-export async function keepChecked(dir: string, routes: readonly RouteResult[], keys: ReadonlyMap<string, string>, checkedAt: string, input: { readonly newOrigin: string; readonly headers?: Record<string, string> }): Promise<number> {
+/** Keeps every route this run checked under its key, for the next run, with the responses it fetched at load and every file of NEW it fetched, as they are now. */
+export async function keepChecked(dir: string, routes: readonly RouteResult[], selection: Pick<ReuseSelection, 'keys' | 'roles'>, checkedAt: string, input: { readonly newOrigin: string; readonly headers?: Record<string, string> }): Promise<number> {
 	let kept = 0;
 	for (const result of routes) {
-		const key = !result.role || result.role === 'anonymous' ? keys.get(result.route) : undefined;
-		if (!key || result.reused) continue;
+		const key = !result.role || result.role === 'anonymous' ? selection.keys.get(result.route) : undefined;
+		if (!key || result.reused || result.checkedAs === undefined || result.checkedAs !== selection.roles.get(result.route)) continue;
 		const loads = await loadHashes(result.network?.new, input.newOrigin, input.headers ?? {});
-		if (!loads) continue;
-		await writeReusable(dir, key, { ...result, loads }, checkedAt);
+		const bytes = result.files ? await fileStates(result.files, input.newOrigin, input.headers ?? {}) : undefined;
+		if (!loads || !bytes) continue;
+		await writeReusable(dir, key, { ...result, loads, bytes }, checkedAt);
 		kept++;
 	}
 	return kept;

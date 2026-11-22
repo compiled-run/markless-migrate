@@ -246,3 +246,37 @@ test('at --timeout, an app that has not answered the route\'s pages is an infras
 	}
 });
 
+
+test("a route's result names every file of NEW its pages fetched (images, fonts through CSS, later fetches), and none of OLD's", async () => {
+	const { withDeadline } = await import('../src/check/run.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const files: Record<string, [string, string]> = {
+		'/': ['text/html', '<!doctype html><link rel="stylesheet" href="/site.css"><p style="font-family:Inter">x</p><img src="/hero.png?v=2"><script>setTimeout(() => fetch("/later.json"), 50)</script>'],
+		'/site.css': ['text/css', '@font-face{font-family:Inter;src:url(/inter.woff2)}'],
+		'/hero.png': ['image/png', ''],
+		'/inter.woff2': ['font/woff2', ''],
+		'/later.json': ['application/json', '{}'],
+	};
+	const site = await listen((req, res) => {
+		const file = files[new URL(req.url ?? '/', 'http://x').pathname];
+		if (!file) return void res.writeHead(404).end();
+		res.writeHead(200, { 'content-type': file[0] }).end(file[1]);
+	});
+	try {
+		const run = { old: defaultEnv(origin(good)), new: defaultEnv(origin(site)), frozen: false };
+		const route = await withDeadline('/', run, 10_000, async (scoped) => {
+			for (const side of [scoped.old, scoped.new]) {
+				const context = await browser.newContext();
+				side.scope!.track(context);
+				const page = await context.newPage();
+				await page.goto(side.origin);
+				if (side === scoped.new) await page.waitForResponse((r) => r.url().endsWith('/later.json'));
+				await context.close();
+			}
+			return { route: '/', ok: true, dimensions: {} as never, failures: [], weight: {} as never, visualDiffs: [], shots: [] };
+		});
+		assert.deepEqual(route.files, ['/', '/hero.png?v=2', '/inter.woff2', '/later.json', '/site.css']);
+	} finally {
+		site.close();
+	}
+});

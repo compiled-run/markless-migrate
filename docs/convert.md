@@ -133,9 +133,10 @@ network does during experiments in Chromium (`src/prefetch/record.ts`), never fr
 Each trigger records how many links it could tell about, how many it fetched, how long after the action, its bytes and
 how many of its requests were cancelled; with the most speculative fetches in flight at once (a request still open when
 its phase ended counts until then) and every byte fetched before the first click. The site's facts are in
-`.migrate/prefetch.json`. Recordings are kept in `.migrate/convert/prefetch/v-<recorder>/`, one folder per version of
-the recorder's own code: a change anywhere else in convert records none of them again, and a page records again only
-when its old page changes. Links that end a session or delete are never hovered, pressed or followed (the same words
+`.migrate/prefetch.json`, each page's with the key of the old page it was recorded from: a partial convert reads the
+last convert's facts for a page only while that page is unchanged, and the report names each page the decision read
+that way (`prefetch.fromLastConvert`) and each it does not read (`prefetch.leftOut`), with why. The recordings are a kind
+of their own in the recordings store (below). Links that end a session or delete are never hovered, pressed or followed (the same words
 journeys and widget probes hold back, `src/check/destructive.ts`). The recorder has slots of its own beside the
 captures', so its waiting holds no capture back. A page is recorded once its capture worked (a page that kills the
 browser is not loaded again for it); a recording the browser died under twice leaves that page unknown to the
@@ -187,6 +188,19 @@ the setting, exports the lists in another shape, or does not take a value the de
 kept from before (a partial convert: it holds what the last full convert wrote, which may be older); or convert ran
 without `--source` and does not write `vite.config.ts`. None of these stops the convert: the setting is an
 improvement the app can do without, and the report and log say it was not applied.
+
+### How recordings are kept
+
+Every recording goes through one `record(kind, recorder, ...)` call in `src/convert/index.ts`. A kind's version
+(`src/convert/record-key.ts`) is a hash of its recorders' code as yuku's analyzer finds it (each declaration they
+reach, the files they open, the environment variables they read), the app files convert's orchestration reads, and
+the old site's id. A recording is kept under its kind's version, its old page and the data its recorder is handed, so
+a recorder change records again only that kind, on the pages that have it. What the analysis cannot place makes its
+kind record again on every run, and the store's tests fail.
+
+Two ways one kind's code can change state another kind reads are not detected (`src/closure-reads.ts`): a change made
+through an alias of a module-level binding (`const m = cache; m.set(...)`), and one made by a function the binding is
+handed (`fill(cache)`). Code that does either must key what it sets itself.
 
 ### How to iterate on a port
 

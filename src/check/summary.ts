@@ -62,6 +62,7 @@ export function summarize(report: Report): string {
 		const js = route.only === 'embeds' ? 'only the embeds compared (--only embeds)' : route.only === 'probes' ? 'only the widget probes compared (--only probes)' : route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		const state = routeState(route);
 		lines.push(`${state === 'pass' ? 'pass' : state === 'differs' ? 'FAIL' : 'INCOMPLETE'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
+		if (route.reused) lines.push(`      ${reusedLine(route.reused)}`);
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
 		if (route.probes) lines.push(`      ${probesLine(route.probes)}`);
@@ -108,6 +109,11 @@ export function summarize(report: Report): string {
 	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${unverified ? `, ${unverified} incomplete (no difference found, but some of it not verified)` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
 	if (report.partial) lines.push(partialLine(report.partial));
 	return `${lines.join('\n')}\n`;
+}
+
+/** What a reused route's line says in place of a check this run, so its skipped navigation is not read as a page no link reached. */
+export function reusedLine(reused: NonNullable<RouteResult['reused']>): string {
+	return `reused from ${reused.checkedAt.slice(0, 10)}: its HTML and code unchanged, the result of that check; in-place navigation into it not checked this run`;
 }
 
 export function partialLine(partial: NonNullable<Report['partial']>): string {

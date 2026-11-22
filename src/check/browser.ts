@@ -391,7 +391,8 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	// WebKit and Firefox know no clipboard permissions and refuse a context that asks for them.
 	const clipboard = browser.browserType().name() === 'chromium' ? ['clipboard-read', 'clipboard-write'] : [];
 	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), permissions: clipboard, ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(env.colorScheme ? { colorScheme: env.colorScheme } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
-	env.scope?.track(context);
+	// A write held back is answered by the checker: fetching it again later would send it.
+	env.scope?.track(context, (request) => handled.has(request));
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });

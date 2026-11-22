@@ -172,6 +172,9 @@ test('a partial convert decides from the last convert\'s pages and its own, and 
 		const recorder = await prefetchRecorder(state, ['/a', '/b', '/c', '/d'], VERSION, async (route) => pages[route] ?? '', () => {});
 		assert.deepEqual(recorder.recorded().map((f) => f.route).sort(), ['/a', '/b'], 'a page no longer listed, or whose old page changed since it was recorded, is not read');
 		assert.deepEqual(recorder.fromBefore(), ['/a', '/b']);
+		assert.deepEqual(recorder.unread(), [{ route: '/d', why: "its last convert's facts were recorded from an old page that has changed since" }], 'each listed page whose stored facts are not read back is named, with why');
+		const older = await prefetchRecorder(state, ['/a'], 'another-version', async (route) => pages[route] ?? '', () => {});
+		assert.deepEqual(older.unread(), [{ route: '/a', why: "its last convert's facts were recorded by another prefetch recorder version" }]);
 		assert.equal(decidePrefetch(recorder.recorded()).setting.viewport, 'all');
 		recorder.kept(page('/c', { viewport: e(4, 8) }));
 		await recorder.save();

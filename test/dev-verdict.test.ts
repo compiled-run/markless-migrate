@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { PROBE_ENGINES, shardCheckArgs } from '../src/check/ci-settings.ts';
+import { PROBE_ENGINES, shardCheckArgs, shardCheckLine } from '../src/check/ci-settings.ts';
 import type { RouteProbe } from '../src/dev/findings.ts';
 import { formatVerdicts, routeVerdict, type CheckedRoute } from '../src/dev/verdict.ts';
 
@@ -36,14 +36,17 @@ test("a page whose visual, motion and load run on its template group's represent
 
 test("the CI workflows read the shard check flags and the probe's budgets from ci-settings, the values dev --verdict runs", () => {
 	const check = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8');
-	assert.match(check, /scripts\/ci-flags\.ts" check "\$CONCURRENCY" "\$TIMEOUT"/);
-	assert.doesNotMatch(check.split('\n').find((l) => l.includes('src/cli.ts" check'))!, /--control-webkit|--busy-cpu/);
+	assert.match(check, /scripts\/ci-flags\.ts" shard "\$GITHUB_WORKSPACE\/\$TARGETS" "\$RUNNER_TEMP\/survey\/layout-survey\.json" "\$CONCURRENCY" "\$TIMEOUT"/);
+	assert.doesNotMatch(check.split('\n').find((l) => l.includes('src/cli.ts" check'))!, /--control-webkit|--busy-cpu|--site-targets/);
+	const pipeline = readFileSync(new URL('../.github/workflows/pipeline.yml', import.meta.url), 'utf8');
+	assert.match(pipeline, /CHECK_ARGS="\$\(node scripts\/ci-flags\.ts shard "\$GITHUB_WORKSPACE\/\$TARGETS" "\$RUNNER_TEMP\/survey\/layout-survey\.json"\) \$\{CHECK_FLAGS\}"/, "check-select keys by the shard's own options");
 	const probe = readFileSync(new URL('../.github/workflows/probe-dead-controls.yml', import.meta.url), 'utf8');
 	assert.match(probe, /ci-flags\.ts probe \$\{\{ matrix\.engine \}\}/);
 	assert.doesNotMatch(probe, /MAX_ACTIONS=/);
 	const script = new URL('../scripts/ci-flags.ts', import.meta.url).pathname;
 	assert.equal(execFileSync(process.execPath, [script, 'check', '', '']).toString().trim(), shardCheckArgs().join(' '));
 	assert.equal(execFileSync(process.execPath, [script, 'check', '2', '60']).toString().trim(), shardCheckArgs('2', '60').join(' '));
+	assert.equal(execFileSync(process.execPath, [script, 'shard', '/t.json', '/s.json', '', '']).toString().trim(), shardCheckLine('/t.json', '/s.json').join(' '));
 	assert.equal(execFileSync(process.execPath, [script, 'probe', 'webkit']).toString(), `${Object.entries(PROBE_ENGINES.webkit).map(([k, v]) => `export ${k}=${v}`).join('\n')}\n`);
 });
 

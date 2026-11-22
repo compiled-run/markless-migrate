@@ -51,7 +51,7 @@ import { observeMotion } from './motion.ts';
 import { observeScroll } from './scroll-motion.ts';
 import { observeDialogs } from './dialogs.ts';
 import { checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { contractLines, type NetworkRecord } from './network.ts';
+import { contractLines, sameApp, type NetworkRecord } from './network.ts';
 import { observeProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { CheckProgress } from './progress.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -66,7 +66,8 @@ import { mapRules } from './sourcemap.ts';
 import { stateNoise, type StatesRequest, type StatesRow, type StatesViewportRow } from './states-compare.ts';
 import { explainDefaults, observeStates, observeStatesAgainst } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
-import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
+import type { TemplateGroup } from './templates.ts';
+import { checkedAsRun, sharedControls, siteGroups } from './checked-as.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
@@ -76,6 +77,7 @@ import { observeTouch } from './touch.ts';
 import type { TouchOptions } from './touch-compare.ts';
 import type { InventoryRoutes, Served } from './unlisted.ts';
 import { bodyText, request } from './http.ts';
+import { CHECK_STOPPED } from './route-state.ts';
 
 export interface CheckOptions {
 	readonly oldOrigin: string;
@@ -727,7 +729,9 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 		if (first !== 'late') {
 			const timing = { ms: Date.now() - began, steps: [...stepsOf(route).done] };
 			log?.record({ stage: 'timing', req: '', value: timing });
-			const timed = { ...first, timing };
+			const files = fetchedFiles(scope, run.new.origin);
+			log?.record({ stage: 'files', req: '', value: files });
+			const timed = { ...first, timing, files };
 			routeSteps.delete(route);
 			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
 			return timed;
@@ -753,9 +757,19 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	const deadline: Deadline =
 		stalled || failedLately || lastAnswer === undefined
 			? { infrastructure: { cause: 'check timeout', message: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : failedLately ? 'a request failed just before it stopped' : 'an app never answered its pages'}` } }
-			: { failure: { route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime } };
+			: { failure: { route, dimension: 'http', check: CHECK_STOPPED, expected: 'the check runs to the end', actual: `incomplete: timed out after ${Math.round(ms / 1000)} s, ${steps}; ${answering}`, hint: HINTS.checkOutOfTime } };
 	log?.record({ stage: 'deadline', req: '', value: deadline }, true);
 	return deadlineResult(route, deadline, found);
+}
+
+/** NEW's own files among what a route's pages fetched, by path and query. */
+export function fetchedFiles(scope: Pick<Scope, 'fetched'>, origin: string): string[] {
+	const out = new Set<string>();
+	for (const raw of scope.fetched) {
+		const url = URL.parse(raw);
+		if (url && /^https?:$/.test(url.protocol) && sameApp(url, origin)) out.add(`${url.pathname}${url.search}`);
+	}
+	return [...out].sort();
 }
 
 async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
@@ -902,8 +916,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			if (kinds[i] === 'redirect') redirects.add(route);
 		});
 		const allPages = options.routes.filter((route) => !endpoints.has(route) && !redirects.has(route));
-		const groupPages = options.templates !== false && options.templates?.site ? [...new Set([...options.templates.site, ...allPages])] : allPages;
-		const groups: TemplateGroup[] = options.templates !== false && groupPages.length > (options.templates?.threshold ?? TEMPLATE_THRESHOLD) ? await groupTemplates(base.old, groupPages, options.templates?.patterns) : [];
+		const groups: TemplateGroup[] = await siteGroups(base.old, allPages, options.templates);
 		await event({ kind: 'plan', endpoints: [...endpoints], redirects: [...redirects], groups });
 		const { groupOf, light } = templateGroups(groups);
 		const coverages: RouteCoverage[] = [];
@@ -966,8 +979,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const sharedData = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
 			const pages = allPages;
-			const owners = layoutOwners(await layoutOf(roleRun, role));
+			const rows = await layoutOf(roleRun, role);
+			const owners = layoutOwners(rows);
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
+			const shared = sharedControls(rows, owners);
 			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const key = { route, ...(role ? { role } : {}), kind: 'page' as const };
@@ -1002,9 +1017,11 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const live = await recordLive(browser, run.old, route, first?.sockets ?? [], data.liveWindowMs ?? 0, (options.viewports ?? VIEWPORTS)[0]!);
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records), ...(live ? { live } : {}) });
 				}
+				const as = checkedAsRun(light(route), shared(route), Boolean(options.layoutSurvey));
+				log.record({ stage: 'checked as', req: '', value: as }, true);
 				if (observed) await observed.route(key, [...(failures.length ? [observed.row({ stage: 'data', req: '', value: failures })] : []), ...log.rows]);
-				const checkedAs = routeOutcome(groupOf, done, role, failures);
-				const kept = artifacts ? await artifacts.keep(checkedAs) : checkedAs;
+				const outcome = { ...routeOutcome(groupOf, done, role, failures), checkedAs: as };
+				const kept = artifacts ? await artifacts.keep(outcome) : outcome;
 				await progress?.write(route, role, kept);
 				options.onRoute?.(kept);
 				return kept;
