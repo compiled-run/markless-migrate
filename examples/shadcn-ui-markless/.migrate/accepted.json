@@ -1,6 +1,14 @@
 {
 	"accepted": [
 		{
+			"route": "/docs/components/base/tabs",
+			"dimension": "*",
+			"check": "*",
+			"reason": "Proof branch only, never merged: every difference of this one route is accepted so a green result exists to be kept and reused.",
+			"by": "reuse-proof worker",
+			"date": "2026-11-22"
+		},
+		{
 			"route": "/docs/components/aria/select",
 			"dimension": "*",
 			"check": "*",
