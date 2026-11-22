@@ -501,6 +501,37 @@ results.json, apart from differences a person accepted:
 Anything else stays red until it is fixed or a person accepts it. An expert may turn a rule off in
 `.migrate/overrides.json` (`{ "automatic": { "live-embed": false } }`); the file is optional.
 
+## Kept results (`--reuse`)
+
+`check --reuse <dir>` keeps each route's result under a key of everything the result depends on, and
+the next run reports a route whose key and files are unchanged as reused instead of checking it again.
+The key holds:
+
+- what NEW ships for the route: its HTML (pack file names aside), the code hash of every module it can
+  run (the build's `interaction-closures.json`), the bytes of every other file its HTML names, and the
+  Markless packages and build toolchain the port's package.json names;
+- the old site: OLD's HTML for the route, the id of the old site's build (`MIGRATE_ORIGINAL_ID`, which
+  the CI workflows set to the published original's id) and, with `--original`, the dataset's
+  manifest. With no `MIGRATE_ORIGINAL_ID` nothing is reused, since OLD's images and data are not in its
+  HTML;
+- the checker's code, the options that change what is checked, and the app's state files a check reads
+  (`accepted.json`, `overrides.json`, `switched.json`, the inventory, and under `--data replay` every
+  recording in `.migrate/data/`). `.migrate/embeds/` is not keyed: the embed step only writes there;
+- how the route is checked: in full or left to its template's representative, and which shared layout
+  controls it exercises and which it leaves to the routes that own them.
+
+On top of the key, every file of NEW the route's check fetched (images, fonts reached through CSS, the
+packs it ran, later fetches) is fetched again and must answer with the same status, type, redirect and
+bytes. These refetches are plain GET requests, without the browser's headers, so a file that answers
+differently by `Accept` or cookies is compared as it answers a plain request. Files the route fetched from
+other origins than NEW are not recorded and not compared.
+
+In-place navigation into a reused route is not checked: what it finds depends on the pages the route is
+entered from, which may have changed. A reused result drops what navigation found when it was kept and
+reports the navigation dimension as skipped.
+
+`--resume` is refused with `--reuse`: a route read back from a stopped run may have checked another build.
+
 ## Observations, and judging a check again
 
 Everything a check observes in a browser or over HTTP is kept as data, apart from what it decides: each

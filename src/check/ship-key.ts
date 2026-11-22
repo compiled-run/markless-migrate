@@ -4,8 +4,8 @@
 // ran, later fetches), OLD's HTML, and the checker's and Markless's versions. Pack names stay out of the key itself: a
 // shared pack is renamed whenever any member changes, and only the packs this route fetched are compared.
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join, relative, resolve } from 'node:path';
 import { OVERRIDES_FILE } from '../overrides.ts';
 import { INVENTORY_FILE, STATE_DIR } from '../status.ts';
 import { SWITCHED_FILE } from '../switch/state.ts';
@@ -13,6 +13,7 @@ import { ACCEPTED_FILE } from './accepted.ts';
 import { checkArgValues, checkOptionsKey } from './check-options.ts';
 import { checkerVersion } from './checker-version.ts';
 import { NAVIGATION_SHOT } from './nav-parity.ts';
+import { DATA_DIR } from './data.ts';
 import { CHECK_STOPPED } from './route-state.ts';
 import type { RouteResult } from './types.ts';
 
@@ -118,7 +119,7 @@ export async function shipVersions(appDir: string, checkArgs: readonly string[])
 	if (!markless) return { why: 'the port names no Markless packages' };
 	const old = await oldSideVersion(appDir, checkArgs);
 	if (!old.version) return { why: old.why ?? 'the old site is not known' };
-	return { versions: { checker: (await checkerVersion()).version, markless, state: await appStateVersion(appDir), options: checkOptionsKey(checkArgs), old: old.version } };
+	return { versions: { checker: (await checkerVersion()).version, markless, state: await appStateVersion(appDir, checkArgs), options: checkOptionsKey(checkArgs), old: old.version } };
 }
 
 /** The old site beyond the HTML each key holds: the published original served (by its id) and the dataset `--original` reads (by its manifest's bytes). */
@@ -145,13 +146,19 @@ export function toolchain(pkg: { dependencies?: Record<string, string>; devDepen
 		.join(' ');
 }
 
-/** The app's state files a check reads (accepted differences, overrides, switched routes, the inventory), by their bytes. */
-export async function appStateVersion(appDir: string): Promise<string> {
+/** The app's state files a check reads (accepted differences, overrides, switched routes, the inventory, and under `--data replay` the recordings it serves), by their bytes. */
+export async function appStateVersion(appDir: string, checkArgs: readonly string[] = []): Promise<string> {
 	const hash = createHash('sha256');
-	for (const file of [ACCEPTED_FILE, OVERRIDES_FILE, SWITCHED_FILE, INVENTORY_FILE]) {
-		const bytes = await readFile(join(appDir, STATE_DIR, file)).catch(() => undefined);
-		hash.update(`${file}\0${bytes ? `${bytes.length}\0` : 'absent\0'}`);
+	const part = (name: string, bytes: Uint8Array | undefined) => {
+		hash.update(`${name}\0${bytes ? `${bytes.length}\0` : 'absent\0'}`);
 		if (bytes) hash.update(bytes);
+	};
+	for (const file of [ACCEPTED_FILE, OVERRIDES_FILE, SWITCHED_FILE, INVENTORY_FILE]) part(file, await readFile(join(appDir, STATE_DIR, file)).catch(() => undefined));
+	if (checkArgValues(checkArgs).data === 'replay') {
+		const dir = join(appDir, STATE_DIR, DATA_DIR);
+		const files = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
+		const paths = files.filter((f) => f.isFile()).map((f) => relative(dir, join(f.parentPath, f.name))).sort();
+		for (const path of paths) part(`${DATA_DIR}/${path}`, await readFile(join(dir, path)));
 	}
 	return hash.digest('base64url');
 }

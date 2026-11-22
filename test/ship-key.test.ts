@@ -307,3 +307,20 @@ test("the old site is keyed by the id of the build served and of the dataset rea
 		await rm(app, { recursive: true, force: true });
 	}
 });
+
+test("under --data replay the recordings served to the old side are part of the key; under record they are what the check writes, and are not", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'ship-app-'));
+	try {
+		await mkdir(join(app, '.migrate', 'data'), { recursive: true });
+		await writeFile(join(app, '.migrate', 'data', 'index.json'), '{"responses":[1]}');
+		const replay = await appStateVersion(app, ['--data', 'replay']);
+		const record = await appStateVersion(app, ['--data', 'record']);
+		await writeFile(join(app, '.migrate', 'data', 'index.json'), '{"responses":[2]}');
+		assert.notEqual(await appStateVersion(app, ['--data', 'replay']), replay, 'a recording replayed changed');
+		assert.equal(await appStateVersion(app, ['--data', 'record']), record);
+		await writeFile(join(app, '.migrate', 'data', 'docs.json'), '{}');
+		assert.notEqual(await appStateVersion(app, ['--data', 'replay']), replay, 'a recording added');
+	} finally {
+		await rm(app, { recursive: true, force: true });
+	}
+});

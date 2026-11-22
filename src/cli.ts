@@ -358,7 +358,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           build's interaction-closures.json, --closures, else .vercel/output/.markless/static/), the
           bytes of every other file its HTML names, OLD's HTML, the build of OLD served (its id in
           MIGRATE_ORIGINAL_ID: with none, nothing is reused) and the dataset --original reads, the checker's code, the Markless
-          packages and options, and how the route is checked (in full or left to its template's
+          packages and options, the app's .migrate state files (its recordings too under --data
+          replay), and how the route is checked (in full or left to its template's
           representative, and the shared layout controls it exercises). A route whose key has a kept
           result, and whose every file its last check fetched (images, fonts, packs, later fetches)
           answers the same again, is not checked: its result is reported marked reused, with in-place
