@@ -40,9 +40,9 @@ export async function judgeRouteRows(header: RunHeader, route: string, role: str
 		let latest: RouteResult | undefined;
 		try {
 			const first = await roleCheck(replaying(rows), { ...headerContext(header, route, role, light), reached: (result) => void (latest = result) });
-			const timing = special('timing');
+			const timing = special('timing')?.value;
 			const files = special('files')?.value;
-			done = { ...first, ...(timing ? { timing: timing.value as NonNullable<RouteResult['timing']> } : {}), ...(isStrings(files) ? { files } : {}) };
+			done = { ...first, ...(isTiming(timing) ? { timing } : {}), ...(isStrings(files) ? { files } : {}) };
 		} catch (error) {
 			const deadline = special('deadline');
 			if (error instanceof Unobserved && deadline) done = deadlineResult(route, deadline.value as Deadline, latest?.failures ?? []);
@@ -57,6 +57,8 @@ export async function judgeRouteRows(header: RunHeader, route: string, role: str
 }
 
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((v) => typeof v === 'string');
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+const isTiming = (value: unknown): value is NonNullable<RouteResult['timing']> => isRecord(value) && typeof value.ms === 'number' && Array.isArray(value.steps) && value.steps.every((s) => isRecord(s) && typeof s.name === 'string' && typeof s.ms === 'number');
 
 /** The run's report from its observations, as the live run built it. */
 export async function judgeObserved(observed: Observed): Promise<Report> {
