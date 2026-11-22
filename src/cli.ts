@@ -360,7 +360,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           packages and options, and how the route is checked (in full or left to its template's
           representative, and the shared layout controls it exercises). A route whose key has a kept
           result, and whose every file its last check fetched (images, fonts, packs, later fetches)
-          answers the same again, is not checked: its result is reported marked reused. A route
+          answers the same again, is not checked: its result is reported marked reused, with in-place
+          navigation into it not checked (that depends on the pages it is entered from). A route
           with no key (no Markless route script, a module without a hash) is always checked.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report. Every
           observation the check makes (each page load, replay, probe and parity reading, as rows, their
@@ -1104,7 +1105,7 @@ async function main(argv: string[]): Promise<number> {
 					routes = reuse.check;
 					const why = new Map<string, number>();
 					for (const reason of reuse.unkeyed.values()) why.set(reason.replace(/^\S+ /, ''), (why.get(reason.replace(/^\S+ /, '')) ?? 0) + 1);
-					out(`--reuse: ${reuse.reused.length} route${reuse.reused.length === 1 ? '' : 's'} ship what they shipped when last checked and reuse that result; ${reuse.check.length} to check${reuse.unkeyed.size ? ` (${reuse.unkeyed.size} with no key: ${[...why].map(([w, n]) => `${n} ${w}`).join('; ')})` : ''}.\n`);
+					out(`--reuse: ${reuse.reused.length} route${reuse.reused.length === 1 ? '' : 's'} ship what they shipped when last checked and reuse that result, in-place navigation into them not checked; ${reuse.check.length} to check${reuse.unkeyed.size ? ` (${reuse.unkeyed.size} with no key: ${[...why].map(([w, n]) => `${n} ${w}`).join('; ')})` : ''}.\n`);
 				}
 			}
 			// A layout survey only loads the original's pages: no page load, slow network or navigation is measured.

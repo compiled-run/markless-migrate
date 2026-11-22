@@ -412,7 +412,7 @@ export function summary(routes: readonly ReportRoute[], data?: Datasets, profile
 	const reused = routes.filter((r) => r.reused).length;
 	const left = unfinished(routes).length;
 	return [
-		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check` : ''}`,
+		`${order.filter((s) => counts.get(s)).map((s) => `${counts.get(s)} ${s}`).join(', ')}, of ${routes.length}${reused ? `; ${reused} reused, their HTML and code unchanged since their last check, in-place navigation into them not checked` : ''}`,
 		'',
 		...accounts(routes, data, profile),
 		...(left ? [`**${left} of ${routes.length} routes were not checked to the end (not checked, or incomplete at --timeout), so this run is red.**`, ''] : []),

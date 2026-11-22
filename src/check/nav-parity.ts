@@ -61,6 +61,9 @@ export interface NavigationResult {
 	readonly ms: number;
 }
 
+/** The label every screenshot the navigation check takes starts with. */
+export const NAVIGATION_SHOT = 'navigation: ';
+
 export const NAVIGATION_HINTS = {
 	html: 'After an in-place navigation <html> carries different attributes than a fresh load of this page. An attribute the server renders for one page only (a data-theme the homepage sets) must go when the router leaves that page, and one a script owns (a theme class) must stay. Render page-specific attributes on <Html> per page; if the page code is right on a fresh load, this is the router\'s <html> sync (Markless 8d7669f8 fixed one case).',
 	body: 'After an in-place navigation <body> carries different attributes than a fresh load. Render them per page from the page, not from a script that ran on the previous page.',
@@ -694,7 +697,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 		const box = diff.region ? `${diff.region.width}x${diff.region.height} at (${diff.region.x}, ${diff.region.y})` : 'its size';
 		return {
 			failure: { route, dimension: 'navigation', check: `${how}: screenshot`, viewport: viewport.name, expected: 'the screenshot of a fresh load', actual: `${diff.differing} pixels differ${diff.sizeMismatch ? `, ${diff.sizeMismatch.actual} against ${diff.sizeMismatch.expected}` : ''}, within ${box}`, hint },
-			shot: { label: `navigation: ${how}`, viewport: viewport.name, old: at, new: actual, ...(diff.png ? { diff: diff.png } : {}), regions: diff.regions, ok: false },
+			shot: { label: `${NAVIGATION_SHOT}${how}`, viewport: viewport.name, old: at, new: actual, ...(diff.png ? { diff: diff.png } : {}), regions: diff.regions, ok: false },
 		};
 	};
 	async function pair(job: Job): Promise<PairOutcome | undefined> {

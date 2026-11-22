@@ -253,3 +253,35 @@ test("a route kept as one its template's representative stood for is checked aga
 		oldServer.close();
 	}
 });
+
+test('a reused result reports in-place navigation into it as not checked: what it found there depends on the entry pages, which may have changed', async () => {
+	const server = createServer((req, res) => {
+		if (req.url === '/a') return void res.writeHead(200, { 'content-type': 'text/html' }).end(page('pages/a.tsrx', 'AAAAAAAA'));
+		res.writeHead(404).end();
+	});
+	const oldServer = createServer((_, res) => void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><p>old</p>'));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	await new Promise<void>((done) => oldServer.listen(0, '127.0.0.1', done));
+	try {
+		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
+		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
+		const select = () => selectReusable({ routes: ['/a'], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: () => 'as' });
+		const dimensions = { ...({} as RouteResult['dimensions']), rendered: 'pass' as const, navigation: 'pass' as const };
+		const shot = { label: 'navigation: in place from /', viewport: 'desktop', old: {} as never, new: {} as never, regions: [], ok: false };
+		await keepChecked(dir, [result({ files: [], dimensions, navigation: { from: ['/'] }, shots: [shot] })], await select(), '2026-11-22T00:00:00.000Z', { newOrigin });
+		const green = (await select()).reused[0];
+		assert.equal(green?.dimensions.navigation, 'skipped', 'kept green after navigation from / passed');
+		assert.equal(green?.navigation, undefined);
+		assert.deepEqual(green?.shots, []);
+		const failure = { route: '/a', dimension: 'navigation' as const, check: 'in place from /', expected: 'x', actual: 'y', hint: '' };
+		await keepChecked(dir, [result({ ok: false, files: [], dimensions: { ...dimensions, navigation: 'fail' }, failures: [failure], navigation: { from: ['/'] } })], await select(), '2026-11-22T00:00:00.000Z', { newOrigin });
+		const red = (await select()).reused[0];
+		assert.equal(red?.dimensions.navigation, 'skipped');
+		assert.deepEqual(red?.failures, []);
+		assert.equal(red?.dimensions.rendered, 'pass', 'every other dimension as it was checked');
+	} finally {
+		server.close();
+		oldServer.close();
+	}
+});
