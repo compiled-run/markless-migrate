@@ -729,7 +729,9 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 		if (first !== 'late') {
 			const timing = { ms: Date.now() - began, steps: [...stepsOf(route).done] };
 			log?.record({ stage: 'timing', req: '', value: timing });
-			const timed = { ...first, timing, files: fetchedFiles(scope, run.new.origin) };
+			const files = fetchedFiles(scope, run.new.origin);
+			log?.record({ stage: 'files', req: '', value: files });
+			const timed = { ...first, timing, files };
 			routeSteps.delete(route);
 			if (oldCaptures.has(first)) oldCaptures.set(timed, oldCaptures.get(first)!);
 			return timed;
@@ -1014,8 +1016,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const live = await recordLive(browser, run.old, route, first?.sockets ?? [], data.liveWindowMs ?? 0, (options.viewports ?? VIEWPORTS)[0]!);
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records), ...(live ? { live } : {}) });
 				}
+				const as = checkedAs(light(route), owned?.(route));
+				log.record({ stage: 'checked as', req: '', value: as }, true);
 				if (observed) await observed.route(key, [...(failures.length ? [observed.row({ stage: 'data', req: '', value: failures })] : []), ...log.rows]);
-				const outcome = { ...routeOutcome(groupOf, done, role, failures), checkedAs: checkedAs(light(route), owned?.(route)) };
+				const outcome = { ...routeOutcome(groupOf, done, role, failures), checkedAs: as };
 				const kept = artifacts ? await artifacts.keep(outcome) : outcome;
 				await progress?.write(route, role, kept);
 				options.onRoute?.(kept);

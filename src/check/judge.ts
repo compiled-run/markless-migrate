@@ -41,7 +41,8 @@ export async function judgeRouteRows(header: RunHeader, route: string, role: str
 		try {
 			const first = await roleCheck(replaying(rows), { ...headerContext(header, route, role, light), reached: (result) => void (latest = result) });
 			const timing = special('timing');
-			done = timing ? { ...first, timing: timing.value as NonNullable<RouteResult['timing']> } : first;
+			const files = special('files');
+			done = { ...first, ...(timing ? { timing: timing.value as NonNullable<RouteResult['timing']> } : {}), ...(files ? { files: files.value as NonNullable<RouteResult['files']> } : {}) };
 		} catch (error) {
 			const deadline = special('deadline');
 			if (error instanceof Unobserved && deadline) done = deadlineResult(route, deadline.value as Deadline, latest?.failures ?? []);
@@ -50,7 +51,9 @@ export async function judgeRouteRows(header: RunHeader, route: string, role: str
 		}
 	}
 	forgetFailures(done.failures);
-	return routeOutcome(groupOf, done, role, (special('data')?.value as Failure[] | undefined) ?? []);
+	const checkedAs = special('checked as');
+	const judged = routeOutcome(groupOf, done, role, (special('data')?.value as Failure[] | undefined) ?? []);
+	return typeof checkedAs?.value === 'string' ? { ...judged, checkedAs: checkedAs.value } : judged;
 }
 
 /** The run's report from its observations, as the live run built it. */
