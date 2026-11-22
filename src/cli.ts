@@ -1192,8 +1192,8 @@ async function main(argv: string[]): Promise<number> {
 				out(`Layout survey: ${surveyTo}\n`);
 				return 0;
 			}
-			if (reuse) {
-				const kept = await keepChecked(resolve(values.reuse!), report.routes, reuse, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
+			if (reuse && values.reuse) {
+				const kept = await keepChecked(resolve(values.reuse), report.routes, reuse, report.startedAt, { newOrigin: values.new, ...(bypass.headers ? { headers: bypass.headers } : {}) });
 				out(`--reuse: kept ${kept} result${kept === 1 ? '' : 's'} for later runs.\n`);
 				report = { ...report, ok: report.ok && reuse.reused.every((r) => r.ok), routes: [...report.routes, ...reuse.reused] };
 				await observations.event({ kind: 'reused', routes: reuse.reused });

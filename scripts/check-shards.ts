@@ -462,7 +462,7 @@ async function main(): Promise<void> {
 		const seen = new Set<string>();
 		const newest = earlier.flat().filter((r) => !seen.has(r.route) && seen.add(r.route));
 		const targets = JSON.parse(await readFile(a, 'utf8')) as Targets;
-		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000, new Set(newest.filter((r) => (r as Timed).sliced).map((r) => r.route))) : { kept: targets, sliced: [] };
+		const { kept, sliced } = over ? sliceLong(targets, estimatesOf(newest), over * 1000, new Set(newest.filter((r) => 'sliced' in r && r.sliced === true).map((r) => r.route))) : { kept: targets, sliced: [] };
 		// A shard left with no routes once the long ones are sliced out checks nothing: its endpoints and redirects go to the first one with routes.
 		const dealt = split(kept, Number(b), costs);
 		const shards = dealt.filter((s) => s.routes.length);

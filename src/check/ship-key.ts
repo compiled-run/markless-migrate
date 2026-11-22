@@ -1,8 +1,4 @@
-// A route's check is reused only while what it ships is unchanged: its served HTML (pack file names aside), the code hash
-// of every module it can run (the build's interaction closures, before packing), the bytes of every other file its HTML
-// names, the responses it fetched at load, the bytes of every file of NEW its check fetched (images, fonts, the packs it
-// ran, later fetches), OLD's HTML, and the checker's and Markless's versions. Pack names stay out of the key itself: a
-// shared pack is renamed whenever any member changes, and only the packs this route fetched are compared.
+// A route's check is reused only while every input of its result is unchanged; docs/check.md "Kept results" lists them.
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';

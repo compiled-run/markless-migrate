@@ -142,8 +142,7 @@ export function checkArgValues(args: readonly string[]) {
 export function checkOptionsKey(args: readonly string[]): string {
 	const values = checkArgValues(args);
 	const hash = createHash('sha256');
-	for (const name of Object.keys(CHECK_OPTIONS).sort()) {
-		const value = (values as Record<string, string | boolean | string[] | undefined>)[name];
+	for (const [name, value] of Object.entries(values).sort(([a], [b]) => (a < b ? -1 : 1))) {
 		if (value === undefined || name in NOT_CHECKED) continue;
 		const text = name in BY_PRESENCE ? 'given' : Array.isArray(value) ? value.join('\0') : String(value);
 		hash.update(`${name}\0${SECRET_OPTIONS.has(name) ? createHash('sha256').update(text).digest('base64url') : text}\n`);
