@@ -28,7 +28,7 @@ const converted = routesFile ? new Set((await readFile(routesFile, 'utf8')).spli
 const targets: Targets = converted ? { ...all, routes: all.routes.filter((r) => converted.has(r)) } : all;
 // The command line check.yml's shards run check with (CHECK_ARGS), as far as it changes what is checked: in every route's key.
 const checkArgs = (process.env.CHECK_ARGS ?? '').split(/\s+/).filter(Boolean);
-const versions = await shipVersions(process.cwd(), checkArgs);
+const { versions, why: unversioned } = await shipVersions(process.cwd(), checkArgs);
 // Template groups and layout owners as the shards make them from the same options: what each route is checked as is in its key.
 const given = checkArgValues(checkArgs);
 const site = given['site-targets'] ? (JSON.parse(await readFile(given['site-targets'], 'utf8')) as Targets).routes : targets.routes;
@@ -42,7 +42,7 @@ const reused = selection?.reused ?? [];
 await mkdir(join(out, 'check-reused'), { recursive: true });
 await writeFile(join(out, 'targets.json'), `${JSON.stringify({ ...targets, routes: check })}\n`);
 await writeFile(join(out, 'check-reused', 'report.json'), `${JSON.stringify({ ok: reused.every((r) => r.ok), routes: reused })}\n`);
-const why = !versions ? 'the port names no Markless packages' : !closures ? `no closures at ${closuresFile || '(none found)'}` : '';
+const why = !versions ? unversioned : !closures ? `no closures at ${closuresFile || '(none found)'}` : '';
 const reasons = new Map<string, number>();
 for (const reason of selection?.unkeyed.values() ?? []) reasons.set(reason.replace(/^\S+ /, ''), (reasons.get(reason.replace(/^\S+ /, '')) ?? 0) + 1);
 console.error([...reasons].map(([why, n]) => `no reuse key: ${n} ${why}`).join('\n'));

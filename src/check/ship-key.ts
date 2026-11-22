@@ -5,12 +5,12 @@
 // shared pack is renamed whenever any member changes, and only the packs this route fetched are compared.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { OVERRIDES_FILE } from '../overrides.ts';
 import { INVENTORY_FILE, STATE_DIR } from '../status.ts';
 import { SWITCHED_FILE } from '../switch/state.ts';
 import { ACCEPTED_FILE } from './accepted.ts';
-import { checkOptionsKey } from './check-options.ts';
+import { checkArgValues, checkOptionsKey } from './check-options.ts';
 import { checkerVersion } from './checker-version.ts';
 import { NAVIGATION_SHOT } from './nav-parity.ts';
 import { CHECK_STOPPED } from './route-state.ts';
@@ -104,18 +104,31 @@ export async function readReusable(dir: string, key: string): Promise<Reused | u
 
 /**
  * What decides a key besides the route itself: the checker's version (the check command's code, checker-version.ts), the
- * Markless packages the port names, the app's state files a check reads, and the options of the check (`checkArgs`, its command line). Undefined when the port names none, so nothing is reused.
+ * Markless packages the port names, the app's state files a check reads, the old site's build and dataset, and the options
+ * of the check (`checkArgs`, its command line). `why` says what left it undefined, so nothing is reused.
  */
-export async function shipVersions(appDir: string, checkArgs: readonly string[]): Promise<Record<string, string> | undefined> {
+export async function shipVersions(appDir: string, checkArgs: readonly string[]): Promise<{ readonly versions?: Record<string, string>; readonly why?: string }> {
 	let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; pnpm?: { overrides?: Record<string, string> } };
 	try {
 		pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
 	} catch {
-		return undefined;
+		return { why: 'the port has no package.json' };
 	}
 	const markless = toolchain(pkg);
-	if (!markless) return undefined;
-	return { checker: (await checkerVersion()).version, markless, state: await appStateVersion(appDir), options: checkOptionsKey(checkArgs) };
+	if (!markless) return { why: 'the port names no Markless packages' };
+	const old = await oldSideVersion(appDir, checkArgs);
+	if (!old.version) return { why: old.why ?? 'the old site is not known' };
+	return { versions: { checker: (await checkerVersion()).version, markless, state: await appStateVersion(appDir), options: checkOptionsKey(checkArgs), old: old.version } };
+}
+
+/** The old site beyond the HTML each key holds: the published original served (by its id) and the dataset `--original` reads (by its manifest's bytes). */
+export async function oldSideVersion(appDir: string, checkArgs: readonly string[], id = process.env.MIGRATE_ORIGINAL_ID): Promise<{ readonly version?: string; readonly why?: string }> {
+	if (!id) return { why: 'MIGRATE_ORIGINAL_ID names no build of the old site, whose images and data its HTML does not hold' };
+	const dataset = checkArgValues(checkArgs).original;
+	if (dataset === undefined) return { version: sha(`original ${id}\n`) };
+	const manifest = await readFile(resolve(appDir, dataset, 'manifest.json')).catch(() => undefined);
+	if (!manifest) return { why: `${dataset} holds no dataset manifest` };
+	return { version: sha(Buffer.concat([Buffer.from(`original ${id}\ndataset `), manifest])) };
 }
 
 // The packages that build what the port ships besides its own code: the bundler under Vite+.

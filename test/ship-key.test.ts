@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { appStateVersion, toolchain, keepChecked, readClosures, readReusable, referencedFiles, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
+import { appStateVersion, oldSideVersion, toolchain, keepChecked, readClosures, readReusable, referencedFiles, selectReusable, shipKey, writeReusable } from '../src/check/ship-key.ts';
 import type { RouteResult } from '../src/check/types.ts';
 
 const page = (file: string, chunk: string, text = 'Hello') =>
@@ -283,5 +283,27 @@ test('a reused result reports in-place navigation into it as not checked: what i
 	} finally {
 		server.close();
 		oldServer.close();
+	}
+});
+
+test("the old site is keyed by the id of the build served and of the dataset read, not by its HTML alone: its images or data can change under the same HTML", async () => {
+	const app = await mkdtemp(join(tmpdir(), 'ship-app-'));
+	try {
+		const one = await oldSideVersion(app, [], 'a'.repeat(64));
+		assert.ok(one.version);
+		assert.notEqual((await oldSideVersion(app, [], 'b'.repeat(64))).version, one.version, 'another published original');
+		const none = await oldSideVersion(app, [], undefined);
+		assert.equal(none.version, undefined, 'an old site no id names is never taken as unchanged');
+		assert.match(none.why ?? '', /MIGRATE_ORIGINAL_ID/);
+		await mkdir(join(app, 'dataset'));
+		await writeFile(join(app, 'dataset', 'manifest.json'), '{"originalId":"a","producedAt":"1"}');
+		const read = await oldSideVersion(app, ['--original', 'dataset'], 'a'.repeat(64));
+		assert.ok(read.version);
+		assert.notEqual(read.version, one.version, 'the dataset read in place of observing the old side');
+		await writeFile(join(app, 'dataset', 'manifest.json'), '{"originalId":"a","producedAt":"2"}');
+		assert.notEqual((await oldSideVersion(app, ['--original', 'dataset'], 'a'.repeat(64))).version, read.version, 'the dataset produced again');
+		assert.match((await oldSideVersion(app, ['--original', 'missing'], 'a'.repeat(64))).why ?? '', /manifest/);
+	} finally {
+		await rm(app, { recursive: true, force: true });
 	}
 });

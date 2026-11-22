@@ -356,7 +356,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           --reuse <dir> keeps each route's result there under a key of what it ships: the HTML NEW
           serves (pack file names aside), the code hash of every module the route can run (the Markless
           build's interaction-closures.json, --closures, else .vercel/output/.markless/static/), the
-          bytes of every other file its HTML names, OLD's HTML, the checker's code, the Markless
+          bytes of every other file its HTML names, OLD's HTML, the build of OLD served (its id in
+          MIGRATE_ORIGINAL_ID: with none, nothing is reused) and the dataset --original reads, the checker's code, the Markless
           packages and options, and how the route is checked (in full or left to its template's
           representative, and the shared layout controls it exercises). A route whose key has a kept
           result, and whose every file its last check fetched (images, fonts, packs, later fetches)
@@ -1093,10 +1094,10 @@ async function main(argv: string[]): Promise<number> {
 			let reuse: ReuseSelection | undefined;
 			if (values.reuse) {
 				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
-				const versions = await shipVersions(cwd, rest);
+				const { versions, why: unversioned } = await shipVersions(cwd, rest);
 				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
 				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
-				if (!versions) out('--reuse: nothing reused, the port names no Markless packages.\n');
+				if (!versions) out(`--reuse: nothing reused, ${unversioned}.\n`);
 				else if (!closures) out(`--reuse: nothing reused, no closures at ${closuresFile}.\n`);
 				else {
 					site ??= routes ?? [];

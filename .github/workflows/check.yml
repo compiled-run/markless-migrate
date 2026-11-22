@@ -410,6 +410,8 @@ jobs:
           TIMEOUT: ${{ inputs.timeout }}
           REUSE: ${{ inputs.reuse != 'false' && '--reuse .migrate/reuse' || '' }}
           DATASET: ${{ inputs.dataset == 'true' && format('--original {0}/dataset', runner.temp) || '' }}
+          # The old site's build by id: in every kept result's key, as check-select keys it.
+          MIGRATE_ORIGINAL_ID: ${{ needs.original.outputs.id }}
           # Each route's time per part (explore, replays, probes, slow network) in check.txt, to tell a slow route's cause.
           MARKLESS_MIGRATE_PROFILE: '1'
         run: |
