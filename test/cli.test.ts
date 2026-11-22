@@ -101,6 +101,12 @@ test('check rejects an unknown --data mode and a bad --time', async () => {
 	assert.match((await run('check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--time', 'soon')).stderr, /--time must be a date/);
 });
 
+test('check refuses --resume with --reuse: a finished route read back from an earlier run may have checked another build, and would be kept under this build\'s key', async () => {
+	const result = await run('check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--route', '/', '--reuse', join(tmpdir(), 'no-such-reuse-dir'), '--resume');
+	assert.equal(result.status, 2);
+	assert.match(result.stderr, /--resume and --reuse/);
+});
+
 test('check rejects a bad interaction budget, CPU slowdown or control limit', async () => {
 	const check = (...args: string[]) => run('check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', ...args);
 	assert.match((await check('--interaction-budget', '0')).stderr, /--interaction-budget must be a number of milliseconds above 0/);

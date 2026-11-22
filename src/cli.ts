@@ -177,7 +177,7 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           page loaded is unchanged (ETag, Last-Modified or content hash); --no-cache loads them again.
           Each route's result is written to .migrate/check-progress as it finishes; --resume takes the
           results an earlier run of the same check (same origins, routes and options) wrote, so a run that
-          stopped carries on where it was.
+          stopped carries on where it was (not with --reuse).
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, responsiveness
@@ -1094,6 +1094,7 @@ async function main(argv: string[]): Promise<number> {
 			let reuse: ReuseSelection | undefined;
 			if (values.reuse) {
 				if (auth || loadOnly || embedsOnly || probesOnly || coverageOnly) fail('--reuse keeps whole anonymous checks: leave out --auth and --only');
+				if (values.resume) fail('--resume and --reuse cannot be used together: a route read back from a stopped run may have checked another build, and would be kept under this build\'s key');
 				const { versions, why: unversioned } = await shipVersions(cwd, rest);
 				const closuresFile = resolve(values.closures ?? join(cwd, '.vercel/output/.markless/static/interaction-closures.json'));
 				const closures = await readFile(closuresFile, 'utf8').then(readClosures, () => undefined);
