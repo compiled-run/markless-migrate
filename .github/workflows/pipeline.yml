@@ -837,7 +837,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/select/check-reused"
           # The options check.yml's shards check with (its Check step), which every route's key holds; check-select reads the site and survey from them.
-          CHECK_ARGS="$(node scripts/ci-flags.ts check) --site-targets $GITHUB_WORKSPACE/$TARGETS --layout-survey $RUNNER_TEMP/survey/layout-survey.json ${CHECK_FLAGS}"
+          CHECK_ARGS="$(node scripts/ci-flags.ts shard "$GITHUB_WORKSPACE/$TARGETS" "$RUNNER_TEMP/survey/layout-survey.json") ${CHECK_FLAGS}"
           export CHECK_ARGS
           closures=$({ find "$RUNNER_TEMP/new" "$GITHUB_WORKSPACE/$APP/.vercel/output" "$GITHUB_WORKSPACE/$APP/.output" -path '*/.markless/*/interaction-closures.json' 2>/dev/null || true; } | head -n 1)
           t=$(date +%s)

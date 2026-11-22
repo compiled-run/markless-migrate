@@ -13,3 +13,8 @@ export const PROBE_ENGINES: Readonly<Record<ProbeEngine, Readonly<Record<string,
 export function shardCheckArgs(concurrency?: string, timeout?: string): string[] {
 	return ['--concurrency', concurrency || String(SHARD_CHECK.concurrency), '--timeout', timeout || String(SHARD_CHECK.timeoutSeconds), ...SHARD_CHECK.flags];
 }
+
+/** A shard's `check` options as check.yml runs them and pipeline.yml's check-select keys every route by: the site, its layout survey, then `shardCheckArgs`. */
+export function shardCheckLine(siteTargets: string, survey: string, concurrency?: string, timeout?: string): string[] {
+	return ['--site-targets', siteTargets, '--layout-survey', survey, ...shardCheckArgs(concurrency, timeout)];
+}
