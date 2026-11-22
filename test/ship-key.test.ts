@@ -359,3 +359,11 @@ test("a run with no layout survey given names a route that left a shared control
 	assert.notEqual(checkedAsRun(false, { owned: [], left: ['nav button "Menu"'] }, false), unsurveyed);
 	assert.notEqual(checkedAsRun(false, { owned: [], left: [] }, true), checkedAsRun(false, { owned: [], left: ['nav button "Menu"'] }, true), 'with a survey, what it leaves to others is in the line');
 });
+
+test("a route the layout survey has no row for (one left to its representative) leaves every owned control to its owner, so a control losing its owner gives it a new line", async () => {
+	const { sharedControls } = await import('../src/check/checked-as.ts');
+	const menu = 'nav button "Menu"';
+	const rows = (owned: boolean) => [{ route: '/a', layout: owned ? [menu] : [], own: 0 }];
+	assert.deepEqual(sharedControls(rows(true))('/b'), { owned: [], left: [menu] });
+	assert.notDeepEqual(sharedControls(rows(false))('/b'), sharedControls(rows(true))('/b'), 'with no owner, its journeys use the menu');
+});

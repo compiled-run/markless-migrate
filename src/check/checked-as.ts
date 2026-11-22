@@ -30,11 +30,13 @@ export function checkedAsRun(light: boolean, controls: SharedControls, surveyed:
 	return checkedAs(light, surveyed || controls.left.length ? controls : undefined);
 }
 
-/** Each route's shared layout controls, by a survey's rows and the owners they give. */
+/** Each route's shared layout controls, by a survey's rows and the owners they give; a route with no row leaves every owned control to its owner. */
 export function sharedControls(rows: readonly SurveyRow[], owners: ReadonlyMap<string, string> = layoutOwners(rows)): (route: string) => SharedControls {
 	const layouts = new Map(rows.map((r) => [r.route, [...new Set(r.layout)]]));
+	const everyOwned = [...owners.keys()];
 	return (route) => {
-		const on = layouts.get(route) ?? [];
+		const on = layouts.get(route);
+		if (!on) return { owned: [], left: everyOwned };
 		return { owned: on.filter((s) => owners.get(s) === route), left: on.filter((s) => owners.get(s) !== route) };
 	};
 }
