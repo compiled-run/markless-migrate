@@ -527,8 +527,12 @@ differently by `Accept` or cookies is compared as it answers a plain request. Fi
 other origins than NEW are not recorded and not compared.
 
 In-place navigation into a reused route is not checked: what it finds depends on the pages the route is
-entered from, which may have changed. A reused result drops what navigation found when it was kept and
-reports the navigation dimension as skipped.
+entered from, which may have changed. A route whose kept result has a navigation failure no accepted
+difference covers is never reused: it is checked again, so it cannot come back green with its navigation
+dropped. Any other reused result drops what navigation found when it was kept and reports the navigation
+dimension as skipped; the text summary and the HTML report mark the route `reused from <date>` and say
+its in-place navigation was not checked this run, unlike a fresh route that was not a navigation
+destination.
 
 `--resume` is refused with `--reuse`: a route read back from a stopped run may have checked another build.
 

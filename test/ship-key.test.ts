@@ -254,7 +254,7 @@ test("a route kept as one its template's representative stood for is checked aga
 	}
 });
 
-test('a reused result reports in-place navigation into it as not checked: what it found there depends on the entry pages, which may have changed', async () => {
+test('a reused result reports in-place navigation into it as not checked, and a route red from navigation is checked again rather than reused', async () => {
 	const server = createServer((req, res) => {
 		if (req.url === '/a') return void res.writeHead(200, { 'content-type': 'text/html' }).end(page('pages/a.tsrx', 'AAAAAAAA'));
 		res.writeHead(404).end();
@@ -276,10 +276,14 @@ test('a reused result reports in-place navigation into it as not checked: what i
 		assert.deepEqual(green?.shots, []);
 		const failure = { route: '/a', dimension: 'navigation' as const, check: 'in place from /', expected: 'x', actual: 'y', hint: '' };
 		await keepChecked(dir, [result({ ok: false, files: [], dimensions: { ...dimensions, navigation: 'fail' }, failures: [failure], navigation: { from: ['/'] } })], await select(), '2026-11-22T00:00:00.000Z', { newOrigin });
-		const red = (await select()).reused[0];
-		assert.equal(red?.dimensions.navigation, 'skipped');
-		assert.deepEqual(red?.failures, []);
-		assert.equal(red?.dimensions.rendered, 'pass', 'every other dimension as it was checked');
+		const red = await select();
+		assert.deepEqual(red.reused, [], 'a route red from navigation is never reused: dropping its navigation would report it green');
+		assert.deepEqual(red.check, ['/a'], 'it is checked again');
+		await keepChecked(dir, [result({ files: [], dimensions: { ...dimensions, navigation: 'pass' }, failures: [{ ...failure, accepted: { reason: 'intended', by: 'me', date: '2026-11-22' } }], navigation: { from: ['/'] } })], await select(), '2026-11-22T00:00:00.000Z', { newOrigin });
+		const accepted = (await select()).reused[0];
+		assert.equal(accepted?.ok, true, 'an accepted navigation difference does not stop reuse');
+		assert.equal(accepted?.dimensions.navigation, 'skipped');
+		assert.equal(accepted?.dimensions.rendered, 'pass', 'every other dimension as it was checked');
 	} finally {
 		server.close();
 		oldServer.close();

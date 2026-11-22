@@ -73,13 +73,13 @@ type Kept = RouteResult & { readonly loads?: Record<string, string>; readonly by
 
 export type Reused = Kept & { readonly reused: { readonly key: string; readonly checkedAt: string } };
 
-/** A kept result without what in-place navigation into it found, which depends on its entry pages: a reused route's navigation is not checked. */
+/** A kept result without what in-place navigation into it found, which depends on its entry pages: a reused route's navigation is not checked. Only for a result with no open navigation failure, so its verdict stands. */
 export function withoutNavigation(result: Reused): Reused {
 	const { navigation: _, ...rest } = result;
-	const failures = result.failures.filter((f) => f.dimension !== 'navigation');
-	const dropped = failures.length < result.failures.length;
-	return { ...rest, ok: result.ok || (dropped && failures.length === 0 && !result.blocked && !result.infrastructure), failures, shots: result.shots.filter((s) => !s.label.startsWith(NAVIGATION_SHOT)), dimensions: { ...result.dimensions, navigation: 'skipped' } };
+	return { ...rest, failures: result.failures.filter((f) => f.dimension !== 'navigation'), shots: result.shots.filter((s) => !s.label.startsWith(NAVIGATION_SHOT)), dimensions: { ...result.dimensions, navigation: 'skipped' } };
 }
+
+const navigationRed = (result: RouteResult) => result.failures.some((f) => f.dimension === 'navigation' && !f.accepted);
 
 /** A kept result only when it compared the whole route: never one cut short by the network, a bot wall, `--only` or its timeout. */
 export async function writeReusable(dir: string, key: string, result: Kept, checkedAt: string): Promise<void> {
@@ -300,7 +300,7 @@ export async function selectReusable(input: { readonly routes: readonly string[]
 		const kept = await readReusable(input.dir, key);
 		const loads = kept ? await loadHashes(kept.network?.new, input.newOrigin, headers) : undefined;
 		const bytes = kept?.bytes ? await fileStates(Object.keys(kept.bytes), input.newOrigin, headers, fetched) : undefined;
-		if (kept && kept.route === route && !kept.role && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads) && bytes && JSON.stringify(bytes) === JSON.stringify(kept.bytes)) reused.push(withoutNavigation(kept));
+		if (kept && kept.route === route && !kept.role && !navigationRed(kept) && loads && kept.loads && JSON.stringify(loads) === JSON.stringify(kept.loads) && bytes && JSON.stringify(bytes) === JSON.stringify(kept.bytes)) reused.push(withoutNavigation(kept));
 		else check.push(route);
 	}
 	return { check, reused, keys, unkeyed, roles };
