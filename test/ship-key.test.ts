@@ -324,3 +324,38 @@ test("under --data replay the recordings served to the old side are part of the 
 		await rm(app, { recursive: true, force: true });
 	}
 });
+
+test("a route kept while it left a shared layout control to the route owning it is checked again once the survey no longer places that control on it, as its check then exercises it", async () => {
+	const { routeRoles } = await import('../src/check/checked-as.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const server = createServer((req, res) => {
+		if (req.url === '/b') return void res.writeHead(200, { 'content-type': 'text/html' }).end(page('pages/b.tsrx', 'AAAAAAAA'));
+		res.writeHead(404).end();
+	});
+	const oldServer = createServer((_, res) => void res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><p>old</p>'));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	await new Promise<void>((done) => oldServer.listen(0, '127.0.0.1', done));
+	try {
+		const newOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const oldOrigin = `http://127.0.0.1:${(oldServer.address() as AddressInfo).port}`;
+		const dir = await mkdtemp(join(tmpdir(), 'ship-'));
+		const menu = 'nav button "Menu"';
+		const survey = (onB: boolean) => ({ version: 1 as const, roles: [{ role: null, routes: [{ route: '/a', layout: [menu], own: 0 }, { route: '/b', layout: onB ? [menu] : [], own: 0 }] }] });
+		const roles = (onB: boolean) => routeRoles({ old: defaultEnv(oldOrigin), site: ['/a', '/b'], templates: false, survey: survey(onB) });
+		const select = async (onB: boolean) => selectReusable({ routes: ['/b'], newOrigin, oldOrigin, closures: closures(base), versions, dir, checkedAs: await roles(onB) });
+		await keepChecked(dir, [result({ route: '/b', files: [], checkedAs: (await roles(true))('/b') })], await select(true), '2026-11-22T00:00:00.000Z', { newOrigin });
+		assert.equal((await select(true)).reused.length, 1, 'kept while /a owns the menu and /b leaves it');
+		assert.equal((await select(false)).reused.length, 0, "the menu is not on /b's survey row: /b's check uses it itself");
+	} finally {
+		server.close();
+		oldServer.close();
+	}
+});
+
+test("a run with no layout survey given names a route that left a shared control to another of its routes so, and keeps it under no unsurveyed key: checked alone it would use that control", async () => {
+	const { checkedAs, checkedAsRun } = await import('../src/check/checked-as.ts');
+	const unsurveyed = checkedAs(false, undefined);
+	assert.equal(checkedAsRun(false, { owned: ['nav button "Menu"'], left: [] }, false), unsurveyed, 'it used every control on its pages, as alone');
+	assert.notEqual(checkedAsRun(false, { owned: [], left: ['nav button "Menu"'] }, false), unsurveyed);
+	assert.notEqual(checkedAsRun(false, { owned: [], left: [] }, true), checkedAsRun(false, { owned: [], left: ['nav button "Menu"'] }, true), 'with a survey, what it leaves to others is in the line');
+});

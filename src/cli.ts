@@ -360,7 +360,8 @@ ${CACHE_USAGE}  dev     (--route <path>... | --routes <glob> | --part <module>) 
           MIGRATE_ORIGINAL_ID: with none, nothing is reused) and the dataset --original reads, the checker's code, the Markless
           packages and options, the app's .migrate state files (its recordings too under --data
           replay), and how the route is checked (in full or left to its template's
-          representative, and the shared layout controls it exercises). A route whose key has a kept
+          representative, and the shared layout controls it exercises and those it leaves to their
+          owners). A route whose key has a kept
           result, and whose every file its last check fetched (images, fonts, packs, later fetches)
           answers the same again, is not checked: its result is reported marked reused, with in-place
           navigation into it not checked (that depends on the pages it is entered from). A route

@@ -67,7 +67,7 @@ import { stateNoise, type StatesRequest, type StatesRow, type StatesViewportRow 
 import { explainDefaults, observeStates, observeStatesAgainst } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
 import type { TemplateGroup } from './templates.ts';
-import { checkedAs, siteGroups } from './checked-as.ts';
+import { checkedAsRun, sharedControls, siteGroups } from './checked-as.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { ANONYMOUS, VIEWPORTS, type Failure, type HttpCapture, type LoginResult, type PageCapture, type Report, type RouteCapture, type RouteCoverage, type RouteResult, type Viewport } from './types.ts';
 import { measureWaste, type WasteReport } from './waste.ts';
@@ -979,9 +979,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const sharedData = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
 			const pages = allPages;
-			const owners = layoutOwners(await layoutOf(roleRun, role));
+			const rows = await layoutOf(roleRun, role);
+			const owners = layoutOwners(rows);
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
-			const owned = options.layoutSurvey ? (route: string) => [...owners].filter(([, owner]) => owner === route).map(([signature]) => signature) : undefined;
+			const shared = sharedControls(rows, owners);
 			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const key = { route, ...(role ? { role } : {}), kind: 'page' as const };
@@ -1016,7 +1017,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const live = await recordLive(browser, run.old, route, first?.sockets ?? [], data.liveWindowMs ?? 0, (options.viewports ?? VIEWPORTS)[0]!);
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records), ...(live ? { live } : {}) });
 				}
-				const as = checkedAs(light(route), owned?.(route));
+				const as = checkedAsRun(light(route), shared(route), Boolean(options.layoutSurvey));
 				log.record({ stage: 'checked as', req: '', value: as }, true);
 				if (observed) await observed.route(key, [...(failures.length ? [observed.row({ stage: 'data', req: '', value: failures })] : []), ...log.rows]);
 				const outcome = { ...routeOutcome(groupOf, done, role, failures), checkedAs: as };
