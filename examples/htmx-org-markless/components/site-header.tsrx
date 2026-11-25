@@ -4,7 +4,7 @@ import { GitHubButton } from '../lib/embeds/github-button/github-button.tsrx';
 /** `starFrame`: an example page, whose demo's fake XMLHttpRequest (sinon) sends buttons.js to its iframe fallback. */
 export default function SiteHeader({ starFrame = false }: { readonly starFrame?: boolean }) @{
 	let open = state(false);
-	const frame = element<HTMLElement>();
+	const frame = element<HTMLElement | undefined>();
 
 	<header class="top-nav">
 		<div class="c">

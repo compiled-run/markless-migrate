@@ -7,7 +7,7 @@ export default function Auth({ pathname, register }: { pathname: string; registe
 	const errors = element<HTMLElement>();
 	const fieldset = element<HTMLFieldSetElement>();
 	const button = element<HTMLButtonElement>();
-	const username = element<HTMLInputElement>();
+	const username = element<HTMLInputElement | undefined>();
 	const email = element<HTMLInputElement>();
 	const password = element<HTMLInputElement>();
 	const title = register ? 'Sign up' : 'Sign in';
