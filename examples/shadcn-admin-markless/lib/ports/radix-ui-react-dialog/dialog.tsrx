@@ -12,10 +12,10 @@ export const dialogState = shared(
 		const d = state({ open: false, controlled: false });
 		// One dialog may have a trigger in each of several exclusive places (a header per layout); the one on the page restores focus.
 		const triggerEl = element<HTMLButtonElement[]>();
-		const overlayEl = element<HTMLDivElement>();
-		const contentEl = element<HTMLDivElement>();
-		const titleEl = element<HTMLHeadingElement>();
-		const descriptionEl = element<HTMLParagraphElement>();
+		const overlayEl = element<HTMLDivElement | undefined>();
+		const contentEl = element<HTMLDivElement | undefined>();
+		const titleEl = element<HTMLHeadingElement | undefined>();
+		const descriptionEl = element<HTMLParagraphElement | undefined>();
 		return {
 			...d,
 			triggerEl,

@@ -58,10 +58,10 @@ export default function Tasks({ http, url }: PageProps) @{
 	let values = state<TaskForm>({ title: '', status: '', label: '', priority: '' });
 	let errors = state<FieldErrors<TaskForm>>({});
 	let submitted = state(false);
-	const subTrigger = element<HTMLDivElement>();
-	const subContent = element<HTMLDivElement>();
-	const labelGroup = element<HTMLDivElement>();
-	const priorityGroup = element<HTMLDivElement>();
+	const subTrigger = element<HTMLDivElement | undefined>();
+	const subContent = element<HTMLDivElement | undefined>();
+	const labelGroup = element<HTMLDivElement | undefined>();
+	const priorityGroup = element<HTMLDivElement | undefined>();
 
 	const facetTriggerClass = computed(() => btn('outline', 'sm', 'h-8 border-dashed'));
 	const viewTriggerClass = computed(() => btn('outline', 'sm', 'ms-auto hidden h-8 lg:flex'));
